@@ -3,6 +3,8 @@ import { tablesAPI, ordersAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import TableOrdersModal from '../components/TableOrdersModal';
+import { useAuth } from '../hooks/useAuth';
+import { getUserRoleNames } from '../utils/authz';
 import { Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin } from 'lucide-react';
 import type { Table, Order } from '../types';
 import type { SingleValue } from 'react-select';
@@ -11,6 +13,11 @@ import { ACTIVE_ORDER_STATUSES } from '../utils/orderStatus';
 import './Tables.css';
 
 export default function Tables() {
+    const { user } = useAuth();
+    const userRoleNames = getUserRoleNames(user);
+    const canCreateTable = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
+    const canEditTable = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'HOST'].includes(role));
+    const canDeleteTable = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [tables, setTables] = useState<Table[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -47,6 +54,15 @@ export default function Tables() {
     };
 
     const handleOpenSidebar = (table?: Table) => {
+        if (table && !canEditTable) {
+            alert('No tienes permisos para editar mesas');
+            return;
+        }
+        if (!table && !canCreateTable) {
+            alert('No tienes permisos para crear mesas');
+            return;
+        }
+
         if (table) {
             setEditingTable(table);
             setFormData({
@@ -70,6 +86,14 @@ export default function Tables() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (editingTable && !canEditTable) {
+            alert('No tienes permisos para editar mesas');
+            return;
+        }
+        if (!editingTable && !canCreateTable) {
+            alert('No tienes permisos para crear mesas');
+            return;
+        }
         try {
             const data = {
                 ...formData,
@@ -91,6 +115,10 @@ export default function Tables() {
     };
 
     const handleDelete = async (id: number) => {
+        if (!canDeleteTable) {
+            alert('No tienes permisos para eliminar mesas');
+            return;
+        }
         if (!window.confirm('¿Estás seguro de eliminar esta mesa?')) return;
         try {
             await tablesAPI.delete(id);
@@ -148,10 +176,12 @@ export default function Tables() {
                 <div className="header-title-section">
                     <h1><Grid3x3 size={32} /> Gestión de Mesas</h1>
                 </div>
-                <Button onClick={() => handleOpenSidebar()}>
-                    <Plus size={20} />
-                    Nueva Mesa
-                </Button>
+                {canCreateTable && (
+                    <Button onClick={() => handleOpenSidebar()}>
+                        <Plus size={20} />
+                        Nueva Mesa
+                    </Button>
+                )}
             </div>
 
             {/* Filters Row */}
@@ -230,21 +260,25 @@ export default function Tables() {
                                     <Eye size={20} />
                                     <span>Ver</span>
                                 </button>
-                                <button
-                                    className="action-btn-new edit"
-                                    onClick={() => handleOpenSidebar(table)}
-                                    title="Editar"
-                                >
-                                    <Edit2 size={20} />
-                                    <span>Editar</span>
-                                </button>
-                                <button
-                                    className="action-btn-new delete"
-                                    onClick={() => handleDelete(table.id)}
-                                    title="Eliminar"
-                                >
-                                    <Trash2 size={20} />
-                                </button>
+                                {canEditTable && (
+                                    <button
+                                        className="action-btn-new edit"
+                                        onClick={() => handleOpenSidebar(table)}
+                                        title="Editar"
+                                    >
+                                        <Edit2 size={20} />
+                                        <span>Editar</span>
+                                    </button>
+                                )}
+                                {canDeleteTable && (
+                                    <button
+                                        className="action-btn-new delete"
+                                        onClick={() => handleDelete(table.id)}
+                                        title="Eliminar"
+                                    >
+                                        <Trash2 size={20} />
+                                    </button>
+                                )}
                             </div>
                         </div>
                     );
@@ -255,7 +289,10 @@ export default function Tables() {
                 <div className="no-tables-message">
                     <Grid3x3 size={48} />
                     <p>No hay mesas {statusFilter ? 'con este estado' : 'registradas'}</p>
-                    <Button onClick={() => statusFilter ? setStatusFilter(null) : handleOpenSidebar()}>
+                    <Button
+                        onClick={() => statusFilter ? setStatusFilter(null) : handleOpenSidebar()}
+                        disabled={!statusFilter && !canCreateTable}
+                    >
                         {statusFilter ? 'Ver todas' : 'Crear primera mesa'}
                     </Button>
                 </div>

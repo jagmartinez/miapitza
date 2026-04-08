@@ -12,8 +12,25 @@ declare module 'axios' {
     }
 }
 
+const normalizeApiBaseUrl = () => {
+    const envUrl = import.meta.env.VITE_API_URL as string | undefined;
+    if (envUrl) {
+        return envUrl.replace(/\/+$/, '');
+    }
+
+    if (typeof window !== 'undefined') {
+        const host = window.location.hostname;
+        if (host.includes('-web-') && host.endsWith('.up.railway.app')) {
+            // Railway naming convention: <service>-web-<env>.up.railway.app -> <service>-<env>.up.railway.app
+            return `https://${host.replace('-web-', '-')}/api`;
+        }
+    }
+
+    return '/api';
+};
+
 const api = axios.create({
-    baseURL: '/api',
+    baseURL: normalizeApiBaseUrl(),
     withCredentials: true,
     headers: {
         'Content-Type': 'application/json',
@@ -24,11 +41,18 @@ const api = axios.create({
 api.interceptors.request.use(
     async (config) => {
         const requestConfig = config as InternalAxiosRequestConfig;
+        const url = requestConfig.url || '';
+        const isAuthRequest = url.startsWith('/auth/');
+        const token = localStorage.getItem('token');
+
+        if (token && !requestConfig.headers.Authorization) {
+            requestConfig.headers.Authorization = `Bearer ${token}`;
+        }
 
         // If offline and NOT a GET request, enqueue for sync
-        if (!offlineManager.getStatus() && requestConfig.method !== 'get' && requestConfig.method !== 'GET') {
+        if (!isAuthRequest && !offlineManager.getStatus() && requestConfig.method !== 'get' && requestConfig.method !== 'GET') {
             await offlineManager.enqueueRequest({
-                url: requestConfig.url || '',
+                url,
                 method: (requestConfig.method?.toUpperCase() as SyncItem['method']) || 'POST',
                 data: requestConfig.data,
                 operationType: requestConfig.offlineMeta?.operationType || 'GENERIC_MUTATION',
@@ -619,6 +643,9 @@ export const backupAPI = {
 export const reservationsAPI = {
     getAll: (params?: Record<string, unknown>) =>
         api.get('/reservations', { params }),
+
+    getUpcoming: (days = 7, branchId?: number) =>
+        api.get('/reservations/upcoming', { params: { days, branchId } }),
 
     getById: (id: number) =>
         api.get(`/reservations/${id}`),

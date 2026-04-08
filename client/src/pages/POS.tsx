@@ -5,7 +5,13 @@ import { tablesAPI, menuAPI, ordersAPI, settingsAPI, cashShiftsAPI, promotionsAP
 import { offlineManager } from '../services/offlineManager';
 import { useDebounce } from '../utils/useDebounce';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
-import { getUserAccentColor, hasAnyRole } from '../utils/authz';
+import {
+    getUserAccentColor,
+    hasAnyRole,
+    canSendOrderToKitchen,
+    canCancelOrder,
+    canCreatePayment
+} from '../utils/authz';
 import { getOrderStatusLabel } from '../utils/orderStatus';
 import TableSelectionModal from '../components/TableSelectionModal';
 import OrderCart from '../components/OrderCart';
@@ -59,6 +65,9 @@ export default function POS() {
     const navigate = useNavigate();
     const { user } = useAuth();
     const canManageShift = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CAJERO']);
+    const canSendToKitchen = canSendOrderToKitchen(user);
+    const canCancelActive = canCancelOrder(user);
+    const canPay = canCreatePayment(user);
     const [tables, setTables] = useState<Table[]>([]);
     const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
@@ -223,7 +232,7 @@ export default function POS() {
             }
             if (e.ctrlKey && e.key === 'k') {
                 e.preventDefault();
-                if (cart.length > 0 && selectedTable) handleSendToKitchenRef.current();
+                if (canSendToKitchen && cart.length > 0 && selectedTable) handleSendToKitchenRef.current();
             }
             if (e.key === 'Escape' && cart.length > 0) {
                 if (confirm('Â¿Limpiar carrito?')) {
@@ -234,7 +243,7 @@ export default function POS() {
 
         window.addEventListener('keydown', handleKeyPress);
         return () => window.removeEventListener('keydown', handleKeyPress);
-    }, [activeTableOrder?.customerName, cart, clearDraftCart, currentOrderId, selectedTable]);
+    }, [activeTableOrder?.customerName, canSendToKitchen, cart, clearDraftCart, currentOrderId, selectedTable]);
 
     useEffect(() => {
         checkShiftStatus();
@@ -425,6 +434,14 @@ export default function POS() {
     }, [activeTableOrder?.customerName, buildOrderPayload, cart, clearDraftCart, currentOrderId, syncOrderContext]);
 
     const handleSendToKitchen = async () => {
+        if (!canSendToKitchen) {
+            setNotification({
+                message: 'Tu rol no puede enviar órdenes a cocina. Pide apoyo a un mesero o administrador.',
+                type: 'warning'
+            });
+            return;
+        }
+
         if (!selectedTable) {
             alert('Por favor selecciona una mesa');
             return;
@@ -473,6 +490,14 @@ export default function POS() {
     };
 
     const handlePayment = async () => {
+        if (!canPay) {
+            setNotification({
+                message: 'Tu rol no puede registrar pagos. Pide apoyo a un cajero o administrador.',
+                type: 'warning'
+            });
+            return;
+        }
+
         if (cart.length === 0 && !currentOrderId) {
             alert('El carrito está vacío');
             return;
@@ -597,6 +622,14 @@ export default function POS() {
             return;
         }
 
+        if (!canCancelActive) {
+            setNotification({
+                message: 'Tu rol no puede cancelar órdenes. Pide apoyo a un mesero o administrador.',
+                type: 'warning'
+            });
+            return;
+        }
+
         const reason = window.prompt('Motivo de cancelación (opcional):') || undefined;
 
         try {
@@ -614,7 +647,7 @@ export default function POS() {
                 type: 'error'
             });
         }
-    }, [activeTableOrder, clearTableContext, loadData]);
+    }, [activeTableOrder, canCancelActive, clearTableContext, loadData]);
     const handleApplyPromotion = async (code: string) => {
         try {
             const res = await promotionsAPI.validate(code, subtotal);
@@ -669,7 +702,7 @@ export default function POS() {
     const total = subtotal - discountAmount + taxAmount;
     const activeOrderTotal = Number(activeTableOrder?.total || 0);
     const displayTotal = cart.length > 0 ? total : activeOrderTotal;
-    const canProcessPayment = cart.length > 0 || Boolean(currentOrderId);
+    const canProcessPayment = canPay && (cart.length > 0 || Boolean(currentOrderId));
 
     return (
         <div className="pos-container-new">
@@ -715,7 +748,7 @@ export default function POS() {
                         className="header-action-btn primary"
                         onClick={handlePayment}
                         disabled={!canProcessPayment}
-                        title="Pagar (Ctrl+P)"
+                        title={canPay ? 'Pagar (Ctrl+P)' : 'Tu rol no puede registrar pagos'}
                     >
                         <CreditCard size={18} />
                         <span>Pagar</span>
@@ -723,8 +756,8 @@ export default function POS() {
                     <button
                         className="header-action-btn secondary"
                         onClick={handleSendToKitchen}
-                        disabled={cart.length === 0 || !selectedTable}
-                        title="Enviar a Cocina (Ctrl+K)"
+                        disabled={!canSendToKitchen || cart.length === 0 || !selectedTable}
+                        title={canSendToKitchen ? 'Enviar a Cocina (Ctrl+K)' : 'Tu rol no puede enviar a cocina'}
                     >
                         <Send size={18} />
                         <span>Cocina</span>
@@ -836,7 +869,7 @@ export default function POS() {
                                                 Entregar
                                             </button>
                                         )}
-                                        {!activeTableOrder.payments?.length && activeTableOrder.status !== 'PAID' && activeTableOrder.status !== 'CANCELLED' && (
+                                        {canCancelActive && !activeTableOrder.payments?.length && activeTableOrder.status !== 'PAID' && activeTableOrder.status !== 'CANCELLED' && (
                                             <button
                                                 className="header-action-btn secondary"
                                                 onClick={handleCancelActiveOrder}
@@ -975,8 +1008,10 @@ export default function POS() {
                         </div>
                         <p className="shift-warning-note">
                             {canManageShift
-                                ? 'âš ï¸ Debe tener un turno activo vÃ¡lido para efectuar ventas.'
-                                : 'âš ï¸ Puedes crear Ã³rdenes y enviarlas a cocina. Los pagos requieren turno activo.'}
+                                ? 'Aviso: Debe tener un turno activo válido para efectuar ventas.'
+                                : canSendToKitchen
+                                    ? 'Aviso: Puedes crear órdenes y enviarlas a cocina. Los cobros los registra cajería y requieren turno activo.'
+                                    : 'Aviso: Los cobros los registra cajería y requieren turno de caja activo.'}
                         </p>
                     </div>
                 </div>

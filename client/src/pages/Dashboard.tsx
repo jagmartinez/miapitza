@@ -1,7 +1,7 @@
 import { useEffect, useState, Fragment, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { reportsAPI } from '../services/api';
+import { reportsAPI, reservationsAPI } from '../services/api';
 import Select from 'react-select';
 import Modal from '../components/Modal';
 import {
@@ -133,6 +133,16 @@ interface ReservationSummary {
     status: string;
     phone?: string;
     table?: string;
+    notes?: string;
+}
+
+interface UpcomingReservation {
+    id: number;
+    customerName: string;
+    date: string;
+    peopleCount: number;
+    status: string;
+    phone?: string;
     notes?: string;
 }
 
@@ -290,10 +300,23 @@ export default function Dashboard() {
             if (!isAdmin) {
                 const [myStatsRes, reservationsRes] = await Promise.allSettled([
                     Promise.race([reportsAPI.getMyStats(), timeout(5000)]),
-                    Promise.race([reportsAPI.getTodaysReservations(undefined, 7), timeout(5000)]),
+                    Promise.race([reservationsAPI.getUpcoming(7), timeout(5000)]),
                 ]);
                 if (myStatsRes.status === 'fulfilled') setMyStats((myStatsRes.value as ApiResponse).data.data as MyStats);
-                if (reservationsRes.status === 'fulfilled') setTodaysReservations((reservationsRes.value as ApiResponse).data.data as ReservationSummary[]);
+                if (reservationsRes.status === 'fulfilled') {
+                    const reservations = ((reservationsRes.value as ApiResponse).data.data as UpcomingReservation[]) || [];
+                    const mapped: ReservationSummary[] = reservations.map((reservation) => ({
+                        id: reservation.id,
+                        day: new Date(reservation.date).toLocaleDateString('es-MX', { weekday: 'short' }),
+                        time: new Date(reservation.date).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+                        name: reservation.customerName,
+                        pax: reservation.peopleCount,
+                        status: reservation.status,
+                        phone: reservation.phone,
+                        notes: reservation.notes
+                    }));
+                    setTodaysReservations(mapped);
+                }
                 setLoading(false);
                 return;
             }

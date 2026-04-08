@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from '../hooks/useAuth';
+import { hasAnyRole } from '../utils/authz';
 import { rolesAPI, permissionsAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
@@ -20,6 +22,9 @@ interface RoleRow {
 }
 
 export default function RolesPermissions() {
+    const { user } = useAuth();
+    const isSuperAdmin = hasAnyRole(user, ['SUPERADMIN']);
+
     const [roles, setRoles] = useState<RoleRow[]>([]);
     const [permissions, setPermissions] = useState<PermissionRow[]>([]);
     const [loading, setLoading] = useState(true);
@@ -80,6 +85,10 @@ export default function RolesPermissions() {
     };
 
     const handleDelete = async (id: number) => {
+        if (!isSuperAdmin) {
+            alert('Solo un superadministrador puede eliminar roles.');
+            return;
+        }
         if (!confirm('¿Estás seguro de eliminar este rol?')) return;
         try {
             await rolesAPI.delete(id);
@@ -157,9 +166,11 @@ export default function RolesPermissions() {
                             <button className="role-action-btn" onClick={() => handleOpenSidebar(role)}>
                                 <Edit size={15} /> Editar
                             </button>
-                            <button className="role-action-btn delete" onClick={() => handleDelete(role.id)}>
-                                <Trash2 size={15} /> Eliminar
-                            </button>
+                            {isSuperAdmin && (
+                                <button className="role-action-btn delete" onClick={() => handleDelete(role.id)}>
+                                    <Trash2 size={15} /> Eliminar
+                                </button>
+                            )}
                         </div>
                     </div>
                 ))}

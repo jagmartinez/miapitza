@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { suppliersAPI } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
+import { hasAnyRole } from '../utils/authz';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import Input from '../components/Input';
@@ -20,6 +22,12 @@ interface PriceHistoryRow {
 }
 
 export default function Suppliers() {
+    const { user } = useAuth();
+    /** Backend: POST/PUT /suppliers — SUPERADMIN | ADMIN */
+    const canManageSupplier = hasAnyRole(user, ['SUPERADMIN', 'ADMIN']);
+    /** Backend: DELETE /suppliers — SUPERADMIN only */
+    const canDeleteSupplier = hasAnyRole(user, ['SUPERADMIN']);
+
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -73,6 +81,7 @@ export default function Suppliers() {
     };
 
     const handleOpenModal = (supplier?: Supplier) => {
+        if (!canManageSupplier) return;
         if (supplier) {
             setEditingSupplier(supplier);
             setFormData({
@@ -102,6 +111,7 @@ export default function Suppliers() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!canManageSupplier) return;
         try {
             if (editingSupplier) {
                 await suppliersAPI.update(editingSupplier.id, formData);
@@ -117,6 +127,7 @@ export default function Suppliers() {
     };
 
     const handleDelete = async (id: number) => {
+        if (!canDeleteSupplier) return;
         if (!window.confirm('¿Estás seguro de eliminar este proveedor?')) return;
         try {
             await suppliersAPI.delete(id);
@@ -152,10 +163,12 @@ export default function Suppliers() {
                 <div className="header-title-section">
                     <h1><Truck size={32} /> Proveedores</h1>
                 </div>
-                <Button onClick={() => handleOpenModal()}>
-                    <Plus size={20} />
-                    Nuevo Proveedor
-                </Button>
+                {canManageSupplier && (
+                    <Button onClick={() => handleOpenModal()}>
+                        <Plus size={20} />
+                        Nuevo Proveedor
+                    </Button>
+                )}
             </div>
 
             {/* Filters Row */}
@@ -245,21 +258,25 @@ export default function Suppliers() {
                                 <History size={20} />
                                 <span>Precios</span>
                             </button>
-                            <button
-                                className="action-btn-new edit"
-                                onClick={() => handleOpenModal(supplier)}
-                                title="Editar"
-                            >
-                                <Plus size={20} />
-                                <span>Editar</span>
-                            </button>
-                            <button
-                                className="action-btn-new delete"
-                                onClick={() => handleDelete(supplier.id)}
-                                title="Eliminar"
-                            >
-                                <Trash2 size={20} />
-                            </button>
+                            {canManageSupplier && (
+                                <button
+                                    className="action-btn-new edit"
+                                    onClick={() => handleOpenModal(supplier)}
+                                    title="Editar"
+                                >
+                                    <Plus size={20} />
+                                    <span>Editar</span>
+                                </button>
+                            )}
+                            {canDeleteSupplier && (
+                                <button
+                                    className="action-btn-new delete"
+                                    onClick={() => handleDelete(supplier.id)}
+                                    title="Eliminar"
+                                >
+                                    <Trash2 size={20} />
+                                </button>
+                            )}
                         </div>
                     </div>
                 ))}

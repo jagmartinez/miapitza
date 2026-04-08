@@ -132,6 +132,8 @@ export default function CashShiftPage() {
     const [previewLoading, setPreviewLoading] = useState(false);
 
     const canForceClose = hasAnyRole(user, ['ADMIN', 'SUPERADMIN']);
+    /** Same backend constraint as supplier POST from cash context */
+    const canCreateSupplier = canForceClose;
     const isBlindCashier = hasAnyRole(user, ['CAJERO']) && !canForceClose;
 
     // Calculate totals
@@ -920,15 +922,17 @@ export default function CashShiftPage() {
                                                 onChange={(option: SingleValue<{ value: string; label: string }>) => setMovementForm({ ...movementForm, supplierId: option?.value || '' })}
                                             />
                                         </div>
-                                        <Button
-                                            type="button"
-                                            variant="secondary"
-                                            onClick={() => setIsNewSupplierModalOpen(true)}
-                                            className="add-supplier-btn"
-                                            style={{ width: '42px', height: '42px', padding: 0, marginBottom: '2px' }}
-                                        >
-                                            <Plus size={16} />
-                                        </Button>
+                                        {canCreateSupplier && (
+                                            <Button
+                                                type="button"
+                                                variant="secondary"
+                                                onClick={() => setIsNewSupplierModalOpen(true)}
+                                                className="add-supplier-btn"
+                                                style={{ width: '42px', height: '42px', padding: 0, marginBottom: '2px' }}
+                                            >
+                                                <Plus size={16} />
+                                            </Button>
+                                        )}
                                     </div>
                                 );
                             })()}
@@ -1241,6 +1245,10 @@ export default function CashShiftPage() {
             >
                 <form onSubmit={async (e) => {
                     e.preventDefault();
+                    if (!canCreateSupplier) {
+                        alert('Solo administradores pueden registrar nuevos proveedores.');
+                        return;
+                    }
                     try {
                         const res = await suppliersAPI.create(newSupplierForm);
                         setSuppliers([...suppliers, res.data.data]);

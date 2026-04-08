@@ -7,11 +7,12 @@ import { Plus, MapPin, Phone, Edit2, Trash2, Building2, Store } from 'lucide-rea
 import type { Branch, Company } from '../types';
 import type { SingleValue } from 'react-select';
 import { useAuth } from '../hooks/useAuth';
+import { hasAnyRole } from '../utils/authz';
 import './Branches.css';
 
 export default function Branches() {
     const { user } = useAuth();
-    const isSuperAdmin = user?.role?.name === 'SUPERADMIN';
+    const isSuperAdmin = hasAnyRole(user, ['SUPERADMIN']);
 
     const [branches, setBranches] = useState<Branch[]>([]);
     const [companies, setCompanies] = useState<Company[]>([]);
@@ -53,6 +54,10 @@ export default function Branches() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!editingBranch && !isSuperAdmin) {
+            alert('Solo un superadministrador puede crear sucursales.');
+            return;
+        }
         try {
             const payload = {
                 ...formData,
@@ -73,6 +78,10 @@ export default function Branches() {
     };
 
     const handleDelete = async (id: number) => {
+        if (!isSuperAdmin) {
+            alert('Solo un superadministrador puede desactivar sucursales.');
+            return;
+        }
         if (!confirm('¿Estás seguro de desactivar esta sucursal?')) return;
         try {
             await branchesAPI.delete(id);
@@ -84,6 +93,10 @@ export default function Branches() {
     };
 
     const openModal = (branch?: Branch) => {
+        if (!branch && !isSuperAdmin) {
+            alert('Solo un superadministrador puede crear sucursales.');
+            return;
+        }
         if (branch) {
             setEditingBranch(branch);
             setFormData({
@@ -127,10 +140,12 @@ export default function Branches() {
                 <div className="header-title-section">
                     <h1><Store size={32} /> Gestión de Sucursales</h1>
                 </div>
-                <Button variant="primary" onClick={() => openModal()}>
-                    <Plus size={20} />
-                    Nueva Sucursal
-                </Button>
+                {isSuperAdmin && (
+                    <Button variant="primary" onClick={() => openModal()}>
+                        <Plus size={20} />
+                        Nueva Sucursal
+                    </Button>
+                )}
             </div>
 
             {/* Filters Row */}
@@ -218,7 +233,7 @@ export default function Branches() {
                                 <Edit2 size={20} />
                                 <span>Editar</span>
                             </button>
-                            {branch.status === 'ACTIVE' && (
+                            {isSuperAdmin && branch.status === 'ACTIVE' && (
                                 <button
                                     className="action-btn-new delete"
                                     onClick={() => handleDelete(branch.id)}
@@ -236,9 +251,16 @@ export default function Branches() {
                 <div className="no-branches-message">
                     <Store size={48} />
                     <p>No hay sucursales {statusFilter ? 'con este estado' : 'registradas'}</p>
-                    <Button onClick={() => statusFilter ? setStatusFilter(null) : openModal()}>
-                        {statusFilter ? 'Ver todas' : 'Crear primera sucursal'}
-                    </Button>
+                    {(statusFilter || isSuperAdmin) && (
+                        <Button
+                            onClick={() => {
+                                if (statusFilter) setStatusFilter(null);
+                                else openModal();
+                            }}
+                        >
+                            {statusFilter ? 'Ver todas' : 'Crear primera sucursal'}
+                        </Button>
+                    )}
                 </div>
             )}
 

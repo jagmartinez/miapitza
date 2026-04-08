@@ -6,6 +6,8 @@ import {
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import { cateringAPI } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
+import { getUserRoleNames } from '../utils/authz';
 import './CateringMod.css';
 
 interface CateringServiceRow {
@@ -17,6 +19,9 @@ interface CateringServiceRow {
 }
 
 export default function CateringServices() {
+    const { user } = useAuth();
+    const userRoleNames = getUserRoleNames(user);
+    const canManageCatering = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [services, setServices] = useState<CateringServiceRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -47,6 +52,10 @@ export default function CateringServices() {
     }, [loadServices]);
 
     const handleOpenSidebar = (service?: CateringServiceRow) => {
+        if (!canManageCatering) {
+            alert('No tienes permisos para gestionar servicios de catering');
+            return;
+        }
         if (service) {
             setEditingService(service);
             setFormData({
@@ -68,6 +77,10 @@ export default function CateringServices() {
     };
 
     const handleSave = async () => {
+        if (!canManageCatering) {
+            alert('No tienes permisos para guardar servicios');
+            return;
+        }
         try {
             const data = {
                 ...formData,
@@ -89,6 +102,10 @@ export default function CateringServices() {
     };
 
     const handleDelete = async (id: number) => {
+        if (!canManageCatering) {
+            alert('No tienes permisos para eliminar servicios');
+            return;
+        }
         if (!window.confirm('¿Está seguro de eliminar este servicio del catálogo?')) return;
         try {
             await cateringAPI.deleteService(id);
@@ -110,7 +127,7 @@ export default function CateringServices() {
                     <h1><Library size={32} /> Catálogo de Servicios</h1>
                     <p className="catering-subtitle">Gestiona servicios, costos y precios de catering</p>
                 </div>
-                <Button onClick={() => handleOpenSidebar()}>
+                <Button onClick={() => handleOpenSidebar()} disabled={!canManageCatering}>
                     <Plus size={20} />
                     Nuevo Servicio
                 </Button>
@@ -170,22 +187,24 @@ export default function CateringServices() {
                                 <div style={{ fontWeight: 700, color: marginColor }}>
                                     {marginPercent.toFixed(1)}%
                                 </div>
-                                <div style={{ display: 'flex', gap: '8px' }}>
-                                    <button
-                                        className="action-btn-mini"
-                                        onClick={() => handleOpenSidebar(service)}
-                                        title="Editar"
-                                    >
-                                        <Edit2 size={15} />
-                                    </button>
-                                    <button
-                                        className="action-btn-mini delete"
-                                        onClick={() => handleDelete(service.id)}
-                                        title="Eliminar"
-                                    >
-                                        <Trash2 size={15} />
-                                    </button>
-                                </div>
+                                {canManageCatering && (
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <button
+                                            className="action-btn-mini"
+                                            onClick={() => handleOpenSidebar(service)}
+                                            title="Editar"
+                                        >
+                                            <Edit2 size={15} />
+                                        </button>
+                                        <button
+                                            className="action-btn-mini delete"
+                                            onClick={() => handleDelete(service.id)}
+                                            title="Eliminar"
+                                        >
+                                            <Trash2 size={15} />
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
@@ -273,7 +292,7 @@ export default function CateringServices() {
 
                     <div className="modal-footer" style={{ marginTop: 'auto', padding: '20px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                         <Button variant="secondary" onClick={() => setIsSidebarOpen(false)}>Cancelar</Button>
-                        <Button onClick={handleSave}>
+                        <Button onClick={handleSave} disabled={!canManageCatering}>
                             {editingService ? 'Actualizar Servicio' : 'Guardar Servicio'}
                         </Button>
                     </div>

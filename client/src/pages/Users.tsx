@@ -20,6 +20,7 @@ interface UserSavePayload {
     companyId?: number;
 }
 import { useAuth } from '../hooks/useAuth';
+import { hasAnyRole } from '../utils/authz';
 import './Users.css';
 
 function toApiPayload(payload: UserSavePayload): Record<string, unknown> {
@@ -28,10 +29,7 @@ function toApiPayload(payload: UserSavePayload): Record<string, unknown> {
 
 export default function Users() {
     const { user: currentUser } = useAuth();
-    const currentRoles = currentUser?.roles
-        ? currentUser.roles.map(r => r.name)
-        : [currentUser?.role?.name || ''];
-    const isSuperAdmin = currentRoles.includes('SUPERADMIN');
+    const isSuperAdmin = hasAnyRole(currentUser, ['SUPERADMIN']);
 
     const [users, setUsers] = useState<User[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
@@ -186,6 +184,10 @@ export default function Users() {
     };
 
     const handleDelete = async (id: number) => {
+        if (!isSuperAdmin) {
+            alert('Solo un superadministrador puede desactivar usuarios.');
+            return;
+        }
         if (!window.confirm('¿Estás seguro de desactivar este usuario?')) return;
         try {
             await usersAPI.delete(id);
@@ -359,7 +361,7 @@ export default function Users() {
                                     <Edit2 size={20} />
                                     <span>Editar</span>
                                 </button>
-                                {user.status === 'ACTIVE' && (
+                                {isSuperAdmin && user.status === 'ACTIVE' && (
                                     <button className="action-btn-new delete" onClick={(e) => { e.stopPropagation(); handleDelete(user.id); }}>
                                         <Trash2 size={20} />
                                         <span>Desactivar</span>

@@ -16,6 +16,20 @@ const MAX_RECONNECT_ATTEMPTS = 20;
 const BASE_RECONNECT_DELAY = 5000; // 5 seconds
 const MAX_RECONNECT_DELAY = 60000; // 60 seconds
 
+const resolveWebSocketUrl = () => {
+    const envUrl = import.meta.env.VITE_WS_URL as string | undefined;
+    if (envUrl) return envUrl;
+
+    if (typeof window !== 'undefined') {
+        const host = window.location.hostname;
+        if (host.includes('-web-') && host.endsWith('.up.railway.app')) {
+            return `wss://${host.replace('-web-', '-')}`;
+        }
+    }
+
+    return 'ws://localhost:3001';
+};
+
 /** Build WS URL without token in query string (security fix) */
 export const buildWebSocketUrl = (baseUrl: string) => {
     return baseUrl;
@@ -44,7 +58,7 @@ export const initializeWebSocket = (onMessage?: (data: WebSocketMessage) => void
 
     isManuallyClosed = false;
 
-    const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
+    const WS_URL = resolveWebSocketUrl();
 
     try {
         isConnecting = true;

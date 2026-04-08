@@ -7,6 +7,8 @@ import Sidebar from '../components/Sidebar';
 // import Input from '../components/Input';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
+import { useAuth } from '../hooks/useAuth';
+import { hasAnyRole } from '../utils/authz';
 import {
     AlertTriangle, Package, Plus, Edit2, Trash2,
     Activity, ShoppingBag, Layers, Truck, DollarSign, FileText
@@ -54,7 +56,17 @@ const STORAGE_TYPE_OPTIONS: { value: '' | 'PERISHABLE' | 'FROZEN' | 'NON_PERISHA
 
 export default function Inventory() {
     const navigate = useNavigate();
+    const { user } = useAuth();
     const { toasts, removeToast, success: showSuccess, error: showError, warning: showWarning } = useToast();
+
+    /** Backend: POST/PUT /products — SUPERADMIN | ADMIN */
+    const canMutateProduct = hasAnyRole(user, ['SUPERADMIN', 'ADMIN']);
+    /** Backend: DELETE /products — SUPERADMIN only */
+    const canDeleteProduct = hasAnyRole(user, ['SUPERADMIN']);
+    /** Backend: POST /inventory-movements — SUPERADMIN | ADMIN | CAJERO | BODEGA */
+    const canAdjustStock = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CAJERO', 'BODEGA']);
+    /** Backend: POST /advanced/auto-po/create — SUPERADMIN | ADMIN */
+    const canCreateAutoPO = hasAnyRole(user, ['SUPERADMIN', 'ADMIN']);
     const [products, setProducts] = useState<Product[]>([]);
     const [lowStock, setLowStock] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
@@ -211,6 +223,7 @@ export default function Inventory() {
 
     const handleAdjustmentSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!canAdjustStock) return;
 
         if (warehouses.length === 0) {
             showWarning('No hay almacenes disponibles para realizar el ajuste.');
@@ -241,6 +254,7 @@ export default function Inventory() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!canMutateProduct) return;
 
         try {
             const data: Record<string, unknown> = {
@@ -269,6 +283,7 @@ export default function Inventory() {
     };
 
     const handleDelete = async (id: number) => {
+        if (!canDeleteProduct) return;
         if (!confirm('¿Eliminar este producto?')) return;
 
         try {
@@ -308,6 +323,7 @@ export default function Inventory() {
 
     const handleCreateAutoPurchaseOrder = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!canCreateAutoPO) return;
 
         if (selectedSuggestions.length === 0) {
             showWarning('Selecciona al menos una sugerencia para crear la orden.');
@@ -392,18 +408,22 @@ export default function Inventory() {
                     <h1><Package size={32} /> Gestión de Inventario</h1>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                    <Button
-                        variant="secondary"
-                        onClick={() => setShowAutoPurchaseSidebar(true)}
-                        disabled={autoPurchaseSuggestions.length === 0}
-                    >
-                        <FileText size={18} />
-                        Crear OC sugerida
-                    </Button>
-                    <Button onClick={() => handleOpenSidebar()}>
-                        <Plus size={20} />
-                        Nuevo Producto
-                    </Button>
+                    {canCreateAutoPO && (
+                        <Button
+                            variant="secondary"
+                            onClick={() => setShowAutoPurchaseSidebar(true)}
+                            disabled={autoPurchaseSuggestions.length === 0}
+                        >
+                            <FileText size={18} />
+                            Crear OC sugerida
+                        </Button>
+                    )}
+                    {canMutateProduct && (
+                        <Button onClick={() => handleOpenSidebar()}>
+                            <Plus size={20} />
+                            Nuevo Producto
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -447,7 +467,7 @@ export default function Inventory() {
                             {autoPurchaseSuggestions.length === 0 && (
                                 <div className="detail-item"><span>Sin sugerencias de compra</span></div>
                             )}
-                            {autoPurchaseSuggestions.length > 0 && (
+                            {autoPurchaseSuggestions.length > 0 && canCreateAutoPO && (
                                 <div className="detail-item" style={{ marginTop: '8px' }}>
                                     <button
                                         type="button"
@@ -613,29 +633,35 @@ export default function Inventory() {
                                     <FileText size={20} />
                                     <span>Kardex</span>
                                 </button>
-                                <button
-                                    className="action-btn-new adjust"
-                                    onClick={() => handleOpenAdjustment(product)}
-                                    title="Ajustar Stock"
-                                >
-                                    <Activity size={20} />
-                                    <span>Ajustar</span>
-                                </button>
-                                <button
-                                    className="action-btn-new edit"
-                                    onClick={() => handleOpenSidebar(product)}
-                                    title="Editar"
-                                >
-                                    <Edit2 size={20} />
-                                    <span>Editar</span>
-                                </button>
-                                <button
-                                    className="action-btn-new delete"
-                                    onClick={() => handleDelete(product.id)}
-                                    title="Eliminar"
-                                >
-                                    <Trash2 size={20} />
-                                </button>
+                                {canAdjustStock && (
+                                    <button
+                                        className="action-btn-new adjust"
+                                        onClick={() => handleOpenAdjustment(product)}
+                                        title="Ajustar Stock"
+                                    >
+                                        <Activity size={20} />
+                                        <span>Ajustar</span>
+                                    </button>
+                                )}
+                                {canMutateProduct && (
+                                    <button
+                                        className="action-btn-new edit"
+                                        onClick={() => handleOpenSidebar(product)}
+                                        title="Editar"
+                                    >
+                                        <Edit2 size={20} />
+                                        <span>Editar</span>
+                                    </button>
+                                )}
+                                {canDeleteProduct && (
+                                    <button
+                                        className="action-btn-new delete"
+                                        onClick={() => handleDelete(product.id)}
+                                        title="Eliminar"
+                                    >
+                                        <Trash2 size={20} />
+                                    </button>
+                                )}
                             </div>
                         </div>
                     );
@@ -647,9 +673,11 @@ export default function Inventory() {
                     <div className="no-products-message">
                         <Package size={48} />
                         <p>No hay productos {filter !== 'all' ? 'con este filtro' : 'registrados'}</p>
-                        <Button onClick={() => filter !== 'all' ? setFilter('all') : handleOpenSidebar()}>
-                            {filter !== 'all' ? 'Ver todos' : 'Crear primer producto'}
-                        </Button>
+                        {filter !== 'all' ? (
+                            <Button onClick={() => setFilter('all')}>Ver todos</Button>
+                        ) : canMutateProduct ? (
+                            <Button onClick={() => handleOpenSidebar()}>Crear primer producto</Button>
+                        ) : null}
                     </div>
                 )
             }

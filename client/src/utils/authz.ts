@@ -32,6 +32,22 @@ export const hasAnyRole = (user: User | null | undefined, roles: string[]): bool
     return userRoles.some((role) => roles.includes(role));
 };
 
+/** POST /orders/:id/send-to-kitchen */
+export const canSendOrderToKitchen = (user: User | null | undefined): boolean =>
+    hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'MESERO']);
+
+/** POST /orders/:id/cancel */
+export const canCancelOrder = (user: User | null | undefined): boolean =>
+    hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'MESERO']);
+
+/** POST /payments (registrar cobro) */
+export const canCreatePayment = (user: User | null | undefined): boolean =>
+    hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CAJERO']);
+
+/** PATCH items start/finish, POST report-problem */
+export const canOperateKitchenLineItems = (user: User | null | undefined): boolean =>
+    hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'COCINA', 'CHEF']);
+
 export const getPrimaryRoleName = (user?: User | null): string => {
     return getUserRoleNames(user)[0] || user?.role?.name || '';
 };

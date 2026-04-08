@@ -11,6 +11,8 @@ import type { SingleValue } from 'react-select';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import { cateringAPI, menuAPI, paymentsAPI, branchesAPI, settingsAPI, categoriesAPI } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
+import { getUserRoleNames } from '../utils/authz';
 import type { Branch, MenuItem, PaymentMethod } from '../types';
 import type { CurrencySettings } from '../utils/currency';
 import './CateringMod.css';
@@ -89,6 +91,9 @@ type CateringEventDetail = CateringEvent & {
 };
 
 export default function Catering() {
+    const { user } = useAuth();
+    const userRoleNames = getUserRoleNames(user);
+    const canManageCatering = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [events, setEvents] = useState<CateringEvent[]>([]);
     const [loading, setLoading] = useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -278,6 +283,10 @@ export default function Catering() {
     };
 
     const handleSave = async () => {
+        if (!canManageCatering) {
+            alert('No tienes permisos para guardar eventos de catering');
+            return;
+        }
         try {
             const dataToSave = {
                 ...formData,
@@ -317,6 +326,10 @@ export default function Catering() {
     };
 
     const handleAddPayment = async () => {
+        if (!canManageCatering) {
+            alert('No tienes permisos para registrar pagos');
+            return;
+        }
         if (!selectedEvent || !paymentData.amount || !paymentData.paymentMethodId) return;
         try {
             await cateringAPI.addPayment(selectedEvent.id, {
@@ -452,10 +465,12 @@ export default function Catering() {
                             <CalendarDays size={18} />
                         </button>
                     </div>
-                    <Button onClick={() => handleOpenSidebar()}>
-                        <Plus size={20} />
-                        Nuevo Evento
-                    </Button>
+                    {canManageCatering && (
+                        <Button onClick={() => handleOpenSidebar()}>
+                            <Plus size={20} />
+                            Nuevo Evento
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -734,22 +749,24 @@ export default function Catering() {
                                     <span>PDF</span>
                                 </button>
 
-                                <button
-                                    className="action-btn-new delete"
-                                    onClick={async () => {
-                                        if (window.confirm('¿Estás seguro de eliminar este evento?')) {
-                                            try {
-                                                await cateringAPI.deleteEvent(event.id);
-                                                loadEvents();
-                                            } catch (error) {
-                                                console.error('Error deleting event:', error);
+                                {canManageCatering && (
+                                    <button
+                                        className="action-btn-new delete"
+                                        onClick={async () => {
+                                            if (window.confirm('¿Estás seguro de eliminar este evento?')) {
+                                                try {
+                                                    await cateringAPI.deleteEvent(event.id);
+                                                    loadEvents();
+                                                } catch (error) {
+                                                    console.error('Error deleting event:', error);
+                                                }
                                             }
-                                        }
-                                    }}
-                                    title="Eliminar"
-                                >
-                                    <Trash2 size={20} />
-                                </button>
+                                        }}
+                                        title="Eliminar"
+                                    >
+                                        <Trash2 size={20} />
+                                    </button>
+                                )}
                             </div>
                         </div>
                     ))}
@@ -1253,7 +1270,7 @@ export default function Catering() {
                                             />
                                         </div>
                                         <div className="modal-input-group" style={{ marginBottom: 0 }}>
-                                            <Button onClick={handleAddPayment} style={{ height: '40px', padding: '0 20px', whiteSpace: 'nowrap' }}>
+                                            <Button onClick={handleAddPayment} disabled={!canManageCatering} style={{ height: '40px', padding: '0 20px', whiteSpace: 'nowrap' }}>
                                                 Agregar Pago
                                             </Button>
                                         </div>
@@ -1289,7 +1306,7 @@ export default function Catering() {
                             </div>
                         </div>
                         <Button variant="secondary" onClick={() => setIsSidebarOpen(false)}>Cancelar</Button>
-                        <Button onClick={handleSave}>Guardar Cambios</Button>
+                        {canManageCatering && <Button onClick={handleSave}>Guardar Cambios</Button>}
                     </div>
                 </div>
             </Sidebar >

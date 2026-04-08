@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import Select from '../components/Select';
 import ReactSelect from 'react-select';
 import { branchPricingAPI, menuAPI, productsAPI, categoriesAPI, branchesAPI } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
+import { hasAnyRole } from '../utils/authz';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import {
@@ -49,6 +51,12 @@ interface MenuImageRecord {
 type StrOption = { value: string; label: string };
 
 export default function Menu() {
+  const { user } = useAuth();
+  /** Backend: menu/recipe/image mutations require SUPERADMIN | ADMIN */
+  const canMutateMenu = hasAnyRole(user, ['SUPERADMIN', 'ADMIN']);
+  /** Backend: branch price overrides via /advanced/pricing require SUPERADMIN | ADMIN */
+  const canSetBranchPrices = canMutateMenu;
+
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
@@ -163,6 +171,7 @@ export default function Menu() {
   };
 
   const handleSaveBranchPrice = async (branchId: number) => {
+    if (!canSetBranchPrices) return;
     if (!editingItem) return;
 
     const nextPrice = parseFloat(branchPriceDrafts[branchId] || '');
@@ -237,6 +246,7 @@ export default function Menu() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canMutateMenu) return;
     try {
       const menuData = {
         name: formData.name,
@@ -292,6 +302,7 @@ export default function Menu() {
   };
 
   const handleDelete = async (id: number) => {
+    if (!canMutateMenu) return;
     if (!confirm('¿Eliminar este plato?')) return;
     try {
       await menuAPI.delete(id);
@@ -324,7 +335,7 @@ export default function Menu() {
   };
 
   return (
-    <div className="menu-page">
+    <div className={`menu-page${!canMutateMenu ? ' menu-readonly' : ''}`}>
       <ImageViewer
         isOpen={isViewerOpen}
         onClose={() => setIsViewerOpen(false)}
@@ -337,10 +348,12 @@ export default function Menu() {
           <h1><Utensils size={32} /> Gestión de Menú</h1>
           <p className="menu-subtitle">{filteredItems.length} platos catalogados en el sistema</p>
         </div>
-        <Button onClick={() => handleOpenSidebar()}>
-          <Plus size={18} />
-          Nuevo Plato
-        </Button>
+        {canMutateMenu && (
+          <Button onClick={() => handleOpenSidebar()}>
+            <Plus size={18} />
+            Nuevo Plato
+          </Button>
+        )}
       </div>
 
       {/* Modern Filter Row */}
@@ -480,6 +493,8 @@ export default function Menu() {
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       required
+                      readOnly={!canMutateMenu}
+                      disabled={!canMutateMenu}
                     />
                   </div>
 
@@ -492,6 +507,7 @@ export default function Menu() {
                       onChange={(opt: SingleValue<StrOption>) => setFormData({ ...formData, categoryId: opt ? opt.value : '' })}
                       placeholder="Seleccionar..."
                       isClearable
+                      isDisabled={!canMutateMenu}
                     />
 
                     <Select
@@ -505,6 +521,7 @@ export default function Menu() {
                         ? { value: formData.branchId, label: branches.find((b) => b.id.toString() === formData.branchId)?.name || '' }
                         : { value: '', label: 'Todas las Sucursales (Global)' }}
                       onChange={(opt: SingleValue<StrOption>) => setFormData({ ...formData, branchId: opt ? opt.value : '' })}
+                      isDisabled={!canMutateMenu}
                     />
 
                     <div className="modal-input-group">
@@ -520,6 +537,8 @@ export default function Menu() {
                           value={formData.price}
                           onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                           required
+                          readOnly={!canMutateMenu}
+                          disabled={!canMutateMenu}
                         />
                       </div>
                     </div>
@@ -533,6 +552,8 @@ export default function Menu() {
                       placeholder="Detalles sobre sabores, ingredientes o preparación..."
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      readOnly={!canMutateMenu}
+                      disabled={!canMutateMenu}
                     />
                   </div>
                 </div>
@@ -592,6 +613,7 @@ export default function Menu() {
                           onChange={(opt: SingleValue<StrOption>) => setSelectedProductId(opt ? opt.value : '')}
                           placeholder="Buscar..."
                           isClearable
+                          isDisabled={!canMutateMenu}
                         />
                       </div>
                       <input
@@ -601,13 +623,15 @@ export default function Menu() {
                         placeholder="Cant"
                         value={quantity}
                         onChange={(e) => setQuantity(e.target.value)}
+                        readOnly={!canMutateMenu}
+                        disabled={!canMutateMenu}
                       />
                       <Button
                         type="button"
                         variant="primary"
                         style={{ padding: '0 12px' }}
                         onClick={addIngredient}
-                        disabled={!selectedProductId || !quantity}
+                        disabled={!canMutateMenu || !selectedProductId || !quantity}
                       >
                         <Plus size={18} />
                       </Button>
@@ -628,9 +652,11 @@ export default function Menu() {
                             <div style={{ fontWeight: 600, fontSize: '13px', marginRight: '16px' }}>
                               ${(ing.cost * ing.quantity).toFixed(2)}
                             </div>
-                            <button type="button" onClick={() => removeIngredient(i)} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer', padding: '4px' }}>
-                              <Trash2 size={14} />
-                            </button>
+                            {canMutateMenu ? (
+                              <button type="button" onClick={() => removeIngredient(i)} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer', padding: '4px' }}>
+                                <Trash2 size={14} />
+                              </button>
+                            ) : null}
                           </div>
                         ))
                       ) : (
@@ -660,16 +686,18 @@ export default function Menu() {
                             Principal
                           </span>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => removeImage(i)}
-                          style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(239, 68, 68, 0.9)', color: 'white', border: 'none', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}
-                        >
-                          <Trash2 size={12} />
-                        </button>
+                        {canMutateMenu ? (
+                          <button
+                            type="button"
+                            onClick={() => removeImage(i)}
+                            style={{ position: 'absolute', top: '4px', right: '4px', background: 'rgba(239, 68, 68, 0.9)', color: 'white', border: 'none', padding: '4px', borderRadius: '4px', cursor: 'pointer' }}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        ) : null}
                       </div>
                     ))}
-                    {images.length < 3 && (
+                    {images.length < 3 && canMutateMenu && (
                       <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', aspectRatio: '1', borderRadius: '8px', border: '2px dashed var(--color-border)', cursor: 'pointer', color: 'var(--color-neutral-400)', transition: 'all 0.2s' }}>
                         <input
                           type="file"
@@ -741,12 +769,14 @@ export default function Menu() {
                           style={{ width: '110px' }}
                           value={branchPriceDrafts[branch.id] ?? (existingPrice ? Number(existingPrice.price).toFixed(2) : Number(formData.price || 0).toFixed(2))}
                           onChange={(e) => setBranchPriceDrafts((prev) => ({ ...prev, [branch.id]: e.target.value }))}
+                          readOnly={!canSetBranchPrices}
+                          disabled={!canSetBranchPrices}
                         />
                         <Button
                           type="button"
                           variant="secondary"
                           onClick={() => handleSaveBranchPrice(branch.id)}
-                          disabled={savingBranchPriceId === branch.id}
+                          disabled={!canSetBranchPrices || savingBranchPriceId === branch.id}
                         >
                           {savingBranchPriceId === branch.id ? 'Guardando...' : 'Guardar'}
                         </Button>
@@ -759,11 +789,13 @@ export default function Menu() {
 
             <div className="modal-footer">
               <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>
-                Cancelar
+                {canMutateMenu ? 'Cancelar' : 'Cerrar'}
               </Button>
-              <Button type="submit" variant="primary" disabled={!formData.name}>
-                {editingItem ? 'Actualizar Plato' : 'Guardar en Catálogo'}
-              </Button>
+              {canMutateMenu && (
+                <Button type="submit" variant="primary" disabled={!formData.name}>
+                  {editingItem ? 'Actualizar Plato' : 'Guardar en Catálogo'}
+                </Button>
+              )}
             </div>
           </form >
         </div >

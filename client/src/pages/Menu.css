@@ -1407,3 +1407,9 @@
 .recipe-ingredient-row:hover {
   background: var(--color-background);
 }
+
+/* CHEF (and others) can open items in read-only; hide grid card mutations */
+.menu-page.menu-readonly .menu-card-actions .menu-action-btn.edit,
+.menu-page.menu-readonly .menu-card-actions .menu-action-btn.delete {
+  display: none;
+}

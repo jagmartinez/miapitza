@@ -34,8 +34,8 @@ export function NoOrdersEmptyState() {
     return (
         <EmptyState
             icon={<ChefHat size={64} />}
-            title="No hay Ã³rdenes"
-            description="Las nuevas Ã³rdenes aparecerÃ¡n aquÃ­ automÃ¡ticamente"
+            title="No hay ordenes"
+            description="Las nuevas ordenes apareceran aqui automaticamente"
         />
     );
 }
@@ -45,7 +45,7 @@ export function NoReservationsEmptyState() {
         <EmptyState
             icon={<Calendar size={64} />}
             title="No hay reservaciones"
-            description="Crea una nueva reservaciÃ³n para comenzar"
+            description="Crea una nueva reservacion para comenzar"
         />
     );
 }
@@ -55,7 +55,7 @@ export function NoResultsEmptyState() {
         <EmptyState
             icon={<Clock size={64} />}
             title="No se encontraron resultados"
-            description="Intenta ajustar los filtros de bÃºsqueda"
+            description="Intenta ajustar los filtros de busqueda"
         />
     );
 }
@@ -65,7 +65,7 @@ export function NoLocationEmptyState() {
         <EmptyState
             icon={<MapPin size={64} />}
             title="No hay ubicaciones"
-            description="Agrega una nueva ubicaciÃ³n para organizar tus mesas"
+            description="Agrega una nueva ubicacion para organizar tus mesas"
         />
     );
 }

@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useAuth } from '../hooks/useAuth';
 import { ordersAPI } from '../services/api';
 import { ChefHat, CheckCircle, AlertCircle, Volume2, VolumeX, AlertTriangle, Play, Check } from 'lucide-react';
 import { initializeSound, playNotificationSound } from '../utils/sound';
 import { escapeHtml } from '../utils/escapeHtml';
 import { useDebounce } from '../utils/useDebounce';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
-import { getUserAccentColor } from '../utils/authz';
+import { getUserAccentColor, canOperateKitchenLineItems } from '../utils/authz';
+import './Kitchen.css';
 import { getOrderStatusLabel, getOrderTimeline } from '../utils/orderStatus';
 import Select from '../components/Select';
 import type { SingleValue } from 'react-select';
@@ -18,7 +20,6 @@ function axiosMsg(err: unknown, fallback: string): string {
     }
     return fallback;
 }
-import './Kitchen.css';
 
 const dateFilterOptions = [
     { value: '24h', label: 'Últimas 24h' },
@@ -28,6 +29,9 @@ const dateFilterOptions = [
 ];
 
 export default function Kitchen() {
+    const { user } = useAuth();
+    const canKitchenLineOps = canOperateKitchenLineItems(user);
+
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [soundEnabled, setSoundEnabled] = useState(true);
@@ -106,6 +110,10 @@ export default function Kitchen() {
     };
 
     const handleStartItem = async (orderId: number, itemId: number) => {
+        if (!canKitchenLineOps) {
+            alert('Tu rol no puede iniciar ítems en cocina. Esta vista es de consulta; coordina con cocina o un administrador.');
+            return;
+        }
         try {
             await ordersAPI.startItem(orderId, itemId);
             loadOrders();
@@ -115,6 +123,10 @@ export default function Kitchen() {
     };
 
     const handleFinishItem = async (orderId: number, itemId: number) => {
+        if (!canKitchenLineOps) {
+            alert('Tu rol no puede finalizar ítems en cocina. Esta vista es de consulta; coordina con cocina o un administrador.');
+            return;
+        }
         try {
             const res = await ordersAPI.finishItem(orderId, itemId);
             if (res.data.data?.allDone) {
@@ -177,11 +189,19 @@ export default function Kitchen() {
     };
 
     const handleReportProblem = (orderId: number) => {
+        if (!canKitchenLineOps) {
+            alert('Tu rol no puede reportar problemas de cocina desde aquí. Coordina con cocina o un administrador.');
+            return;
+        }
         setSelectedOrderId(orderId);
         setShowProblemModal(true);
     };
 
     const submitProblemReport = async () => {
+        if (!canKitchenLineOps) {
+            alert('Tu rol no puede reportar problemas de cocina desde aquí. Coordina con cocina o un administrador.');
+            return;
+        }
         if (problemDescription.trim() && selectedOrderId) {
             try {
                 await ordersAPI.reportProblem(selectedOrderId, problemDescription.trim());
@@ -424,7 +444,7 @@ export default function Kitchen() {
                                                 )}
                                                 {order.status !== 'READY' && (
                                                     <>
-                                                        {item.status === 'PENDING' && (
+                                                        {canKitchenLineOps && item.status === 'PENDING' && (
                                                             <button onClick={() => handleStartItem(order.id, item.id)}
                                                                 title="Proceder"
                                                                 style={{
@@ -436,7 +456,7 @@ export default function Kitchen() {
                                                                 <Play size={12} /> Iniciar
                                                             </button>
                                                         )}
-                                                        {item.status === 'IN_PROGRESS' && (
+                                                        {canKitchenLineOps && item.status === 'IN_PROGRESS' && (
                                                             <button onClick={() => handleFinishItem(order.id, item.id)}
                                                                 title="Listo"
                                                                 style={{
@@ -468,14 +488,16 @@ export default function Kitchen() {
                                     </div>
                                 ) : (
                                     <>
-                                        <button
-                                            className="action-btn-new problem"
-                                            onClick={() => handleReportProblem(order.id)}
-                                            title="Reportar Problema"
-                                        >
-                                            <AlertTriangle size={20} />
-                                            <span>Problema</span>
-                                        </button>
+                                        {canKitchenLineOps && (
+                                            <button
+                                                className="action-btn-new problem"
+                                                onClick={() => handleReportProblem(order.id)}
+                                                title="Reportar Problema"
+                                            >
+                                                <AlertTriangle size={20} />
+                                                <span>Problema</span>
+                                            </button>
+                                        )}
                                         <button
                                             className="action-btn-new"
                                             onClick={() => handleMarkReady(order.id)}

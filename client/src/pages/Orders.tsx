@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../hooks/useAuth';
 import { ordersAPI, settingsAPI } from '../services/api';
+import { canSendOrderToKitchen, canCancelOrder, canCreatePayment } from '../utils/authz';
 import { useDebounce } from '../utils/useDebounce';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
@@ -25,6 +27,11 @@ type CompanyDisplaySettings = CurrencySettings & {
 };
 
 export default function Orders() {
+    const { user } = useAuth();
+    const canSendKitchen = canSendOrderToKitchen(user);
+    const canCancel = canCancelOrder(user);
+    const canPayOrder = canCreatePayment(user);
+
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -115,6 +122,10 @@ export default function Orders() {
     };
 
     const handleUpdateStatus = async (orderId: number, newStatus: string) => {
+        if (newStatus === 'SENT_TO_KITCHEN' && !canSendKitchen) {
+            alert('Tu rol no puede enviar órdenes a cocina. Pide apoyo a un mesero o administrador.');
+            return;
+        }
         try {
             await ordersAPI.updateStatus(orderId, newStatus);
             loadOrders();
@@ -126,6 +137,10 @@ export default function Orders() {
     };
 
     const handlePaymentClick = (order: Order) => {
+        if (!canPayOrder) {
+            alert('Tu rol no puede registrar pagos. Pide apoyo a un cajero o administrador.');
+            return;
+        }
         setPaymentOrder(order);
         setShowPaymentModal(true);
     };
@@ -141,6 +156,10 @@ export default function Orders() {
     };
 
     const openCancelModal = (orderId: number) => {
+        if (!canCancel) {
+            alert('Tu rol no puede cancelar órdenes. Pide apoyo a un mesero o administrador.');
+            return;
+        }
         setCancelOrderId(orderId);
         setCancelReason('');
         setShowCancelModal(true);
@@ -148,6 +167,10 @@ export default function Orders() {
 
     const handleCancelOrder = async () => {
         if (!cancelOrderId) return;
+        if (!canCancel) {
+            alert('Tu rol no puede cancelar órdenes. Pide apoyo a un mesero o administrador.');
+            return;
+        }
         try {
             await ordersAPI.cancel(cancelOrderId, cancelReason);
             loadOrders();
@@ -294,7 +317,7 @@ export default function Orders() {
     const getActionButtons = (order: Order) => {
         const buttons = [];
 
-        if (order.status === 'OPEN') {
+        if (order.status === 'OPEN' && canSendKitchen) {
             buttons.push(
                 <Button key="send" variant="primary" onClick={() => handleUpdateStatus(order.id, 'SENT_TO_KITCHEN')}>
                     <Send size={16} /> Enviar a Cocina
@@ -326,7 +349,7 @@ export default function Orders() {
             );
         }
 
-        if (order.status === 'DELIVERED') {
+        if (order.status === 'DELIVERED' && canPayOrder) {
             buttons.push(
                 <Button key="pay" variant="primary" onClick={() => handlePaymentClick(order)}>
                     <CreditCard size={16} /> Cobrar
@@ -334,7 +357,7 @@ export default function Orders() {
             );
         }
 
-        if (order.status !== 'PAID' && order.status !== 'CANCELLED') {
+        if (order.status !== 'PAID' && order.status !== 'CANCELLED' && canCancel) {
             buttons.push(
                 <Button key="cancel" variant="ghost" className="text-danger" onClick={() => openCancelModal(order.id)}>
                     <XCircle size={16} /> Cancelar

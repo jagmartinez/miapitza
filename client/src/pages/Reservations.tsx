@@ -4,6 +4,8 @@ import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 // import Input from '../components/Input';
 import { reservationsAPI } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
+import { getUserRoleNames } from '../utils/authz';
 import Select from '../components/Select';
 import type { SingleValue } from 'react-select';
 import './Reservations.css';
@@ -21,6 +23,9 @@ interface Reservation {
 }
 
 export default function Reservations() {
+    const { user } = useAuth();
+    const userRoleNames = getUserRoleNames(user);
+    const canManageReservations = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'HOST'].includes(role));
     const [reservations, setReservations] = useState<Reservation[]>([]);
     const [loading, setLoading] = useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -60,6 +65,11 @@ export default function Reservations() {
     }, [loadReservations]);
 
     const handleOpenSidebar = (reservation?: Reservation) => {
+        if (!reservation && !canManageReservations) {
+            alert('No tienes permisos para gestionar reservaciones');
+            return;
+        }
+
         if (reservation) {
             setEditingReservation(reservation);
             const reservationDate = new Date(reservation.date);
@@ -91,6 +101,10 @@ export default function Reservations() {
     };
 
     const handleUpdateStatus = async (id: number, status: string) => {
+        if (!canManageReservations) {
+            alert('No tienes permisos para actualizar reservaciones');
+            return;
+        }
         try {
             await reservationsAPI.update(id, { status });
             loadReservations();
@@ -106,6 +120,10 @@ export default function Reservations() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!canManageReservations) {
+            alert('No tienes permisos para guardar reservaciones');
+            return;
+        }
         try {
             const payload = {
                 customerName: formData.customerName,
@@ -305,10 +323,12 @@ export default function Reservations() {
                             <CalendarDays size={18} />
                         </button>
                     </div>
-                    <Button onClick={() => handleOpenSidebar()}>
-                        <Plus size={20} />
-                        Nueva Reservación
-                    </Button>
+                    {canManageReservations && (
+                        <Button onClick={() => handleOpenSidebar()}>
+                            <Plus size={20} />
+                            Nueva Reservación
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -613,7 +633,7 @@ export default function Reservations() {
 
                                     {/* Actions Footer */}
                                     <div className="reservation-card-actions-new" onClick={(e) => e.stopPropagation()}>
-                                        {reservation.status === 'PENDING' && (
+                                        {canManageReservations && reservation.status === 'PENDING' && (
                                             <>
                                                 <button
                                                     className="action-btn-new"
@@ -632,7 +652,7 @@ export default function Reservations() {
                                                 </button>
                                             </>
                                         )}
-                                        {reservation.status === 'CONFIRMED' && (
+                                        {canManageReservations && reservation.status === 'CONFIRMED' && (
                                             <>
                                                 <button
                                                     className="action-btn-new"
@@ -651,7 +671,7 @@ export default function Reservations() {
                                                 </button>
                                             </>
                                         )}
-                                        {(reservation.status === 'COMPLETED' || reservation.status === 'CANCELLED') && (
+                                        {canManageReservations && (reservation.status === 'COMPLETED' || reservation.status === 'CANCELLED') && (
                                             <button
                                                 className="action-btn-new"
                                                 onClick={() => handleUpdateStatus(reservation.id, 'PENDING')}
@@ -791,7 +811,7 @@ export default function Reservations() {
                                                 required
                                             />
                                         </div>
-                                        {editingReservation && (
+                                        {editingReservation && canManageReservations && (
                                             <Select
                                                 variant="modal"
                                                 label="Estado"
@@ -808,6 +828,7 @@ export default function Reservations() {
                                                 }}
                                                 onChange={async (option: SingleValue<{ value: Reservation['status']; label: string }>) => {
                                                     if (!option) return;
+                                                    if (!canManageReservations) return;
                                                     try {
                                                         await reservationsAPI.update(editingReservation.id, {
                                                             status: option.value
@@ -850,9 +871,11 @@ export default function Reservations() {
                             <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>
                                 Cancelar
                             </Button>
-                            <Button type="submit" variant="primary">
-                                {editingReservation ? 'Actualizar Reservación' : 'Crear Reservación'}
-                            </Button>
+                            {canManageReservations && (
+                                <Button type="submit" variant="primary">
+                                    {editingReservation ? 'Actualizar Reservación' : 'Crear Reservación'}
+                                </Button>
+                            )}
                         </div>
                     </form>
                 </div>

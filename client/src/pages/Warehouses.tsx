@@ -5,6 +5,8 @@ import Sidebar from '../components/Sidebar';
 import Select from '../components/Select';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
+import { useAuth } from '../hooks/useAuth';
+import { hasAnyRole } from '../utils/authz';
 import {
     Warehouse as WarehouseIcon, Plus, ArrowRightLeft, Package, MapPin,
     Eye, Trash2, Edit2, Search
@@ -32,7 +34,15 @@ interface StockItem {
 }
 
 export default function Warehouses() {
+    const { user } = useAuth();
     const { toasts, removeToast, success: showSuccess, error: showError } = useToast();
+
+    /** Backend: POST/PUT /warehouses — SUPERADMIN | ADMIN */
+    const canMutateWarehouse = hasAnyRole(user, ['SUPERADMIN', 'ADMIN']);
+    /** Backend: DELETE /warehouses — SUPERADMIN only */
+    const canDeleteWarehouse = hasAnyRole(user, ['SUPERADMIN']);
+    /** Backend: POST /inventory-movements/transfer — SUPERADMIN | ADMIN | BODEGA */
+    const canTransferStock = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'BODEGA']);
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
@@ -81,6 +91,7 @@ export default function Warehouses() {
 
     const handleCreateUpdate = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!canMutateWarehouse) return;
         try {
             const payload = {
                 name: formData.name,
@@ -103,6 +114,7 @@ export default function Warehouses() {
     };
 
     const handleDelete = async (id: number) => {
+        if (!canDeleteWarehouse) return;
         if (!confirm('¿Eliminar esta bodega?')) return;
         try {
             await warehousesAPI.delete(id);
@@ -126,6 +138,7 @@ export default function Warehouses() {
 
     const handleTransfer = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!canTransferStock) return;
         try {
             await inventoryMovementsAPI.transfer({
                 fromWarehouseId: parseInt(transferData.fromWarehouseId),
@@ -154,12 +167,14 @@ export default function Warehouses() {
     };
 
     const openCreate = () => {
+        if (!canMutateWarehouse) return;
         setEditingWarehouse(null);
         setFormData({ name: '', code: '', branchId: '', type: 'BRANCH' });
         setShowForm(true);
     };
 
     const openEdit = (wh: Warehouse) => {
+        if (!canMutateWarehouse) return;
         setEditingWarehouse(wh);
         setFormData({
             name: wh.name,
@@ -201,12 +216,16 @@ export default function Warehouses() {
                     <Button variant="secondary" onClick={viewTransferHistory}>
                         <ArrowRightLeft size={18} /> Historial Traslados
                     </Button>
-                    <Button variant="secondary" onClick={() => setShowTransfer(true)}>
-                        <ArrowRightLeft size={18} /> Nuevo Traslado
-                    </Button>
-                    <Button onClick={openCreate}>
-                        <Plus size={18} /> Nueva Bodega
-                    </Button>
+                    {canTransferStock && (
+                        <Button variant="secondary" onClick={() => setShowTransfer(true)}>
+                            <ArrowRightLeft size={18} /> Nuevo Traslado
+                        </Button>
+                    )}
+                    {canMutateWarehouse && (
+                        <Button onClick={openCreate}>
+                            <Plus size={18} /> Nueva Bodega
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -256,12 +275,16 @@ export default function Warehouses() {
                             <button className="action-btn-new" onClick={() => viewStock(wh)} title="Ver Stock">
                                 <Eye size={20} /><span>Stock</span>
                             </button>
-                            <button className="action-btn-new edit" onClick={() => openEdit(wh)} title="Editar">
-                                <Edit2 size={20} /><span>Editar</span>
-                            </button>
-                            <button className="action-btn-new delete" onClick={() => handleDelete(wh.id)} title="Eliminar">
-                                <Trash2 size={20} />
-                            </button>
+                            {canMutateWarehouse && (
+                                <button className="action-btn-new edit" onClick={() => openEdit(wh)} title="Editar">
+                                    <Edit2 size={20} /><span>Editar</span>
+                                </button>
+                            )}
+                            {canDeleteWarehouse && (
+                                <button className="action-btn-new delete" onClick={() => handleDelete(wh.id)} title="Eliminar">
+                                    <Trash2 size={20} />
+                                </button>
+                            )}
                         </div>
                     </div>
                 ))}
@@ -269,7 +292,9 @@ export default function Warehouses() {
                     <div className="no-products-message">
                         <WarehouseIcon size={48} />
                         <p>No hay bodegas registradas</p>
-                        <Button onClick={openCreate}>Crear primera bodega</Button>
+                        {canMutateWarehouse && (
+                            <Button onClick={openCreate}>Crear primera bodega</Button>
+                        )}
                     </div>
                 )}
             </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { hasAnyRole } from '../utils/authz';
 import { useNavigate } from 'react-router-dom';
 import { cashRegistersAPI, cashShiftsAPI } from '../services/api';
 import Button from '../components/Button';
@@ -15,6 +16,7 @@ import './CashRegisters.css';
 export default function CashRegisters() {
     const { user } = useAuth();
     const navigate = useNavigate();
+    const canCreateRegister = hasAnyRole(user, ['ADMIN', 'SUPERADMIN']);
     const [registers, setRegisters] = useState<CashRegister[]>([]);
     const [shifts, setShifts] = useState<CashShift[]>([]);
     const [loading, setLoading] = useState(true);
@@ -78,6 +80,10 @@ export default function CashRegisters() {
 
     const handleCreateRegister = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!canCreateRegister) {
+            alert('Solo administradores pueden crear cajas registradoras.');
+            return;
+        }
         try {
             await cashRegistersAPI.create({ name: newRegisterName, branchId: user?.branchId || 1 });
             setIsCreateModalOpen(false);
@@ -165,7 +171,7 @@ export default function CashRegisters() {
                             : `${shifts.length} turnos encontrados`}
                     </p>
                 </div>
-                {viewTab === 'registers' && (
+                {viewTab === 'registers' && canCreateRegister && (
                     <Button onClick={() => {
                         setActiveTab('general');
                         setIsCreateModalOpen(true);

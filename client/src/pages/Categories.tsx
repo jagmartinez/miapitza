@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { categoriesAPI } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
+import { hasAnyRole } from '../utils/authz';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import { Plus, Tag, Edit2, Trash2, List } from 'lucide-react';
@@ -17,6 +19,10 @@ interface CategoryRow {
 }
 
 export default function Categories() {
+    const { user } = useAuth();
+    /** Backend: category mutations require SUPERADMIN | ADMIN (CHEF can list only) */
+    const canMutateCategory = hasAnyRole(user, ['SUPERADMIN', 'ADMIN']);
+
     const [categories, setCategories] = useState<CategoryRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -46,6 +52,7 @@ export default function Categories() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!canMutateCategory) return;
         try {
             if (editingCategory) {
                 await categoriesAPI.update(editingCategory.id, formData);
@@ -61,6 +68,7 @@ export default function Categories() {
     };
 
     const handleDelete = async (id: number) => {
+        if (!canMutateCategory) return;
         if (!confirm('¿Estás seguro de eliminar esta categoría? Solo se puede eliminar si no tiene platos asociados.')) return;
         try {
             await categoriesAPI.delete(id);
@@ -75,6 +83,7 @@ export default function Categories() {
     };
 
     const openModal = (category?: CategoryRow) => {
+        if (!canMutateCategory) return;
         if (category) {
             setEditingCategory(category);
             setFormData({
@@ -109,10 +118,12 @@ export default function Categories() {
                     <h1><Tag size={32} /> Categorías</h1>
                     <p className="categories-subtitle">{categories.length} categorías configuradas</p>
                 </div>
-                <Button variant="primary" onClick={() => openModal()}>
-                    <Plus size={20} />
-                    Nueva Categoría
-                </Button>
+                {canMutateCategory && (
+                    <Button variant="primary" onClick={() => openModal()}>
+                        <Plus size={20} />
+                        Nueva Categoría
+                    </Button>
+                )}
             </div>
 
             <div className="categories-grid-new">
@@ -143,25 +154,27 @@ export default function Categories() {
                         </div>
 
                         {/* Actions */}
-                        <div className="category-card-actions-new">
-                            <button
-                                className="action-btn-new edit"
-                                onClick={() => openModal(category)}
-                                title="Editar"
-                            >
-                                <Edit2 size={20} />
-                                <span>Editar</span>
-                            </button>
-                            <button
-                                className="action-btn-new delete"
-                                onClick={() => handleDelete(category.id)}
-                                title="Eliminar"
-                                disabled={Number(category._count?.menuItems || 0) > 0}
-                            >
-                                <Trash2 size={20} />
-                                <span>Eliminar</span>
-                            </button>
-                        </div>
+                        {canMutateCategory && (
+                            <div className="category-card-actions-new">
+                                <button
+                                    className="action-btn-new edit"
+                                    onClick={() => openModal(category)}
+                                    title="Editar"
+                                >
+                                    <Edit2 size={20} />
+                                    <span>Editar</span>
+                                </button>
+                                <button
+                                    className="action-btn-new delete"
+                                    onClick={() => handleDelete(category.id)}
+                                    title="Eliminar"
+                                    disabled={Number(category._count?.menuItems || 0) > 0}
+                                >
+                                    <Trash2 size={20} />
+                                    <span>Eliminar</span>
+                                </button>
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>
@@ -170,7 +183,9 @@ export default function Categories() {
                 <div className="no-categories-message">
                     <Tag size={48} />
                     <p>No hay categorías configuradas</p>
-                    <Button onClick={() => openModal()}>Crear primera categoría</Button>
+                    {canMutateCategory && (
+                        <Button onClick={() => openModal()}>Crear primera categoría</Button>
+                    )}
                 </div>
             )}
 

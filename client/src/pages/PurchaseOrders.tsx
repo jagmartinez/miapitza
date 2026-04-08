@@ -7,6 +7,8 @@ import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import PurchaseOrderForm from './PurchaseOrderForm';
 import PurchaseOrderImport from '../components/PurchaseOrderImport';
+import { useAuth } from '../hooks/useAuth';
+import { getUserRoleNames } from '../utils/authz';
 import { Plus, Eye, Zap, X, ShoppingCart, FileDown, FileText } from 'lucide-react';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import type { AutoPurchaseSuggestion, PurchaseOrder } from '../types';
@@ -33,6 +35,9 @@ function errMsg(error: unknown, fallback: string): string {
 }
 
 export default function PurchaseOrders() {
+    const { user } = useAuth();
+    const userRoleNames = getUserRoleNames(user);
+    const canManagePurchaseOrders = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const navigate = useNavigate();
     const [orders, setOrders] = useState<PurchaseOrder[]>([]);
     const [loading, setLoading] = useState(true);
@@ -85,6 +90,10 @@ export default function PurchaseOrders() {
     };
 
     const loadAutoSuggestions = async () => {
+        if (!canManagePurchaseOrders) {
+            alert('No tienes permisos para generar órdenes automáticamente');
+            return;
+        }
         setLoadingSuggestions(true);
         try {
             const response = await api.get('/advanced/auto-po/suggestions');
@@ -160,6 +169,10 @@ export default function PurchaseOrders() {
     }, [statusFilter, searchQuery, startDate, endDate]);
 
     const handleOpenForm = (id?: number) => {
+        if (!canManagePurchaseOrders) {
+            alert('No tienes permisos para gestionar órdenes de compra');
+            return;
+        }
         setEditingOrderId(id);
         setIsSidebarOpen(true);
     };
@@ -175,6 +188,10 @@ export default function PurchaseOrders() {
     };
 
     const handleDeleteOrder = async (id: number) => {
+        if (!canManagePurchaseOrders) {
+            alert('No tienes permisos para eliminar órdenes');
+            return;
+        }
         const order = orders.find(o => o.id === id);
         if (order?.status === 'RECEIVED') {
             alert('No se pueden eliminar órdenes con estado RECIBIDA.');
@@ -201,15 +218,15 @@ export default function PurchaseOrders() {
                     <p className="header-subtitle">Gestión de suministros y abastecimiento</p>
                 </div>
                 <div className="header-actions">
-                    <Button variant="secondary" onClick={loadAutoSuggestions} disabled={loadingSuggestions}>
+                    <Button variant="secondary" onClick={loadAutoSuggestions} disabled={loadingSuggestions || !canManagePurchaseOrders}>
                         <Zap size={20} />
                         {loadingSuggestions ? 'Cargando...' : 'Auto-Generar'}
                     </Button>
-                    <Button variant="secondary" onClick={() => setIsImportSidebarOpen(true)}>
+                    <Button variant="secondary" onClick={() => setIsImportSidebarOpen(true)} disabled={!canManagePurchaseOrders}>
                         <FileDown size={20} />
                         Carga Masiva
                     </Button>
-                    <Button onClick={() => handleOpenForm()}>
+                    <Button onClick={() => handleOpenForm()} disabled={!canManagePurchaseOrders}>
                         <Plus size={20} />
                         Nueva Orden
                     </Button>
@@ -282,7 +299,7 @@ export default function PurchaseOrders() {
                         </thead>
                         <tbody>
                             {paginatedOrders.map(order => (
-                                <tr key={order.id} onClick={() => handleOpenForm(order.id)} className="clickable-row">
+                                <tr key={order.id} onClick={() => canManagePurchaseOrders && handleOpenForm(order.id)} className="clickable-row">
                                     <td data-label="Orden">
                                         <div className="order-id">
                                             <span className="hashtag">#</span>
@@ -316,19 +333,21 @@ export default function PurchaseOrders() {
                                     <td data-label="Estado">{getStatusBadge(order.status)}</td>
                                     <td className="text-center">
                                         <div className="action-buttons-group">
-                                            <button
-                                                className="action-btn-mini edit"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleOpenForm(order.id);
-                                                }}
-                                                title={order.status === 'RECEIVED' ? 'Ver detalles' : 'Editar'}
-                                            >
-                                                {order.status === 'RECEIVED' ? <Eye size={18} /> : <Zap size={18} />}
-                                                <span className="mobile-action-label">
-                                                    {order.status === 'RECEIVED' ? 'Ver' : 'Editar'}
-                                                </span>
-                                            </button>
+                                            {canManagePurchaseOrders && (
+                                                <button
+                                                    className="action-btn-mini edit"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenForm(order.id);
+                                                    }}
+                                                    title={order.status === 'RECEIVED' ? 'Ver detalles' : 'Editar'}
+                                                >
+                                                    {order.status === 'RECEIVED' ? <Eye size={18} /> : <Zap size={18} />}
+                                                    <span className="mobile-action-label">
+                                                        {order.status === 'RECEIVED' ? 'Ver' : 'Editar'}
+                                                    </span>
+                                                </button>
+                                            )}
                                             {order.invoicePdf && (
                                                 <a
                                                     href={`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}${order.invoicePdf}`}
@@ -342,18 +361,20 @@ export default function PurchaseOrders() {
                                                     <span className="mobile-action-label">PDF</span>
                                                 </a>
                                             )}
-                                            <button
-                                                className={`action-btn-mini delete ${order.status === 'RECEIVED' ? 'disabled' : ''}`}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDeleteOrder(order.id);
-                                                }}
-                                                title={order.status === 'RECEIVED' ? 'No se puede eliminar' : 'Eliminar'}
-                                                disabled={order.status === 'RECEIVED'}
-                                            >
-                                                <X size={18} />
-                                                <span className="mobile-action-label">Eliminar</span>
-                                            </button>
+                                            {canManagePurchaseOrders && (
+                                                <button
+                                                    className={`action-btn-mini delete ${order.status === 'RECEIVED' ? 'disabled' : ''}`}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDeleteOrder(order.id);
+                                                    }}
+                                                    title={order.status === 'RECEIVED' ? 'No se puede eliminar' : 'Eliminar'}
+                                                    disabled={order.status === 'RECEIVED'}
+                                                >
+                                                    <X size={18} />
+                                                    <span className="mobile-action-label">Eliminar</span>
+                                                </button>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>
@@ -481,7 +502,7 @@ export default function PurchaseOrders() {
                             <button className="btn btn-secondary" onClick={() => setShowSuggestionsModal(false)}>
                                 Cerrar
                             </button>
-                            <button className="btn btn-primary" onClick={() => {
+                            <button className="btn btn-primary" disabled={!canManagePurchaseOrders} onClick={() => {
                                 setShowSuggestionsModal(false);
                                 navigate('/purchase-orders/new');
                             }}>
