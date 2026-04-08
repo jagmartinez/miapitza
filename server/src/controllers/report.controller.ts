@@ -24,7 +24,7 @@ export class ReportController {
     static async getDashboardStats(req: Request, res: Response, next: NextFunction) {
         try {
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            const branchId = this.resolveBranchScope(req, requestedBranchId);
+            const branchId = ReportController.resolveBranchScope(req, requestedBranchId);
             const companyId = req.user!.companyId;
             const stats = await ReportService.getDashboardStats(companyId, branchId);
             res.json({
@@ -39,7 +39,7 @@ export class ReportController {
     static async getSalesChart(req: Request, res: Response, next: NextFunction) {
         try {
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            const branchId = this.resolveBranchScope(req, requestedBranchId);
+            const branchId = ReportController.resolveBranchScope(req, requestedBranchId);
             const period = req.query.period as 'week' | 'month' || 'week';
             const companyId = req.user!.companyId;
             const chartData = await ReportService.getSalesChart(companyId, period, branchId);
@@ -55,7 +55,7 @@ export class ReportController {
     static async getTopSellingProducts(req: Request, res: Response, next: NextFunction) {
         try {
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            const branchId = this.resolveBranchScope(req, requestedBranchId);
+            const branchId = ReportController.resolveBranchScope(req, requestedBranchId);
             const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
             const companyId = req.user!.companyId;
             const topProducts = await ReportService.getTopSellingProducts(companyId, branchId, limit);
@@ -71,7 +71,7 @@ export class ReportController {
     static async getSalesByUser(req: Request, res: Response, next: NextFunction) {
         try {
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            const branchId = this.resolveBranchScope(req, requestedBranchId);
+            const branchId = ReportController.resolveBranchScope(req, requestedBranchId);
             const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
             const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
             const companyId = req.user!.companyId;
@@ -88,7 +88,7 @@ export class ReportController {
     static async getRecentOrders(req: Request, res: Response, next: NextFunction) {
         try {
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            const branchId = this.resolveBranchScope(req, requestedBranchId);
+            const branchId = ReportController.resolveBranchScope(req, requestedBranchId);
             const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
             const companyId = req.user!.companyId;
             const orders = await ReportService.getRecentOrders(companyId, branchId, limit);
@@ -104,7 +104,7 @@ export class ReportController {
     static async getRecentInvoices(req: Request, res: Response, next: NextFunction) {
         try {
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            const branchId = this.resolveBranchScope(req, requestedBranchId);
+            const branchId = ReportController.resolveBranchScope(req, requestedBranchId);
             const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
             const todayOnly = req.query.todayOnly === 'true';
             const companyId = req.user!.companyId;
@@ -121,7 +121,7 @@ export class ReportController {
     static async getTodaysReservations(req: Request, res: Response, next: NextFunction) {
         try {
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            const branchId = this.resolveBranchScope(req, requestedBranchId);
+            const branchId = ReportController.resolveBranchScope(req, requestedBranchId);
             const days = req.query.days ? parseInt(req.query.days as string) : 1;
             const companyId = req.user!.companyId;
             const reservations = await ReportService.getTodaysReservations(companyId, branchId, days);
@@ -137,7 +137,7 @@ export class ReportController {
     static async getIncomeBreakdown(req: Request, res: Response, next: NextFunction) {
         try {
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            const branchId = this.resolveBranchScope(req, requestedBranchId);
+            const branchId = ReportController.resolveBranchScope(req, requestedBranchId);
             const periodRaw = req.query.period;
             const period: 'today' | 'week' | 'month' | 'year' =
                 periodRaw === 'today' ||
@@ -157,7 +157,7 @@ export class ReportController {
     static async getOccupancyHeatmap(req: Request, res: Response, next: NextFunction) {
         try {
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            const branchId = this.resolveBranchScope(req, requestedBranchId);
+            const branchId = ReportController.resolveBranchScope(req, requestedBranchId);
             const companyId = req.user!.companyId;
             const data = await ReportService.getOccupancyHeatmap(companyId, branchId);
             res.json({ success: true, data });
@@ -169,7 +169,7 @@ export class ReportController {
     static async getShiftEvaluation(req: Request, res: Response, next: NextFunction) {
         try {
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            const branchId = this.resolveBranchScope(req, requestedBranchId);
+            const branchId = ReportController.resolveBranchScope(req, requestedBranchId);
             const companyId = req.user!.companyId;
             const data = await ReportService.getShiftEvaluation(companyId, branchId);
             res.json({ success: true, data });
@@ -181,7 +181,7 @@ export class ReportController {
     static async getConversionFunnel(req: Request, res: Response, next: NextFunction) {
         try {
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            const branchId = this.resolveBranchScope(req, requestedBranchId);
+            const branchId = ReportController.resolveBranchScope(req, requestedBranchId);
             const companyId = req.user!.companyId;
             const data = await ReportService.getConversionFunnel(companyId, branchId);
             res.json({ success: true, data });
@@ -194,7 +194,7 @@ export class ReportController {
         try {
             const companyId = req.user!.companyId;
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            const branchId = this.resolveBranchScope(req, requestedBranchId);
+            const branchId = ReportController.resolveBranchScope(req, requestedBranchId);
             const data = await ReportService.getServiceTrends(companyId, branchId);
             res.json({ success: true, data });
         } catch (error: unknown) {
@@ -256,9 +256,9 @@ export class ReportController {
             if (req.query.dateTo) filters.dateTo = new Date(req.query.dateTo as string);
             if (req.query.branchId) {
                 const requestedBranchId = parseInt(req.query.branchId as string);
-                filters.branchId = this.resolveBranchScope(req, requestedBranchId);
+                filters.branchId = ReportController.resolveBranchScope(req, requestedBranchId);
             } else {
-                filters.branchId = this.resolveBranchScope(req, undefined);
+                filters.branchId = ReportController.resolveBranchScope(req, undefined);
             }
             if (req.query.categoryId) filters.categoryId = parseInt(req.query.categoryId as string);
             if (req.query.productId) filters.productId = parseInt(req.query.productId as string);

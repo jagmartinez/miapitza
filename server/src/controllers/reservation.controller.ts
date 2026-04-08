@@ -80,7 +80,7 @@ export class ReservationController {
         try {
             const requestedBranchId = parseInt(req.params.branchId);
             const companyId = req.user!.companyId;
-            const branchId = this.resolveBranchScope(req, requestedBranchId);
+            const branchId = ReservationController.resolveBranchScope(req, requestedBranchId);
             if (!branchId) {
                 return next({ statusCode: 400, message: 'ID de sucursal requerido' });
             }
@@ -100,7 +100,7 @@ export class ReservationController {
         try {
             const companyId = req.user!.companyId;
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            const branchId = this.resolveBranchScope(req, requestedBranchId);
+            const branchId = ReservationController.resolveBranchScope(req, requestedBranchId);
             const reservations = await ReservationService.getTodayReservations(companyId, branchId);
             res.json({
                 success: true,
@@ -115,7 +115,7 @@ export class ReservationController {
         try {
             const companyId = req.user!.companyId;
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            const branchId = this.resolveBranchScope(req, requestedBranchId);
+            const branchId = ReservationController.resolveBranchScope(req, requestedBranchId);
             const days = req.query.days ? parseInt(req.query.days as string) : 7;
 
             const reservations = await ReservationService.getUpcomingReservations(companyId, branchId, days);
@@ -139,7 +139,7 @@ export class ReservationController {
                 }
                 req.body.branchId = req.user.branchId;
             }
-            req.body.branchId = this.resolveBranchScope(req, Number(req.body.branchId));
+            req.body.branchId = ReservationController.resolveBranchScope(req, Number(req.body.branchId));
 
             // Convert date string to Date object
             const data = {
@@ -222,7 +222,7 @@ export class ReservationController {
         try {
             const requestedBranchId = parseInt(req.params.branchId);
             const companyId = req.user!.companyId;
-            const branchId = this.resolveBranchScope(req, requestedBranchId);
+            const branchId = ReservationController.resolveBranchScope(req, requestedBranchId);
             if (!branchId) {
                 return next({ statusCode: 400, message: 'ID de sucursal requerido' });
             }

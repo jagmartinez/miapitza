@@ -59,7 +59,7 @@ export class TableController {
         try {
             const requestedBranchId = parseInt(req.params.branchId);
             const companyId = req.user!.companyId;
-            const branchId = this.resolveBranchScope(req, requestedBranchId);
+            const branchId = TableController.resolveBranchScope(req, requestedBranchId);
             if (!branchId) {
                 return next({ statusCode: 400, message: 'ID de sucursal requerido' });
             }
@@ -84,7 +84,7 @@ export class TableController {
                 }
                 req.body.branchId = req.user.branchId;
             }
-            req.body.branchId = this.resolveBranchScope(req, Number(req.body.branchId));
+            req.body.branchId = TableController.resolveBranchScope(req, Number(req.body.branchId));
 
             const table = await TableService.create(companyId, req.body);
             res.status(201).json({
