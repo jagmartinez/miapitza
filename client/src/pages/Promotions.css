@@ -1,0 +1,316 @@
+/* ===== PROMOTIONS PAGE ===== */
+
+.promotions-page {
+    padding: var(--spacing-lg);
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.promo-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: var(--spacing-2xl);
+}
+
+.promo-header h1 {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    font-size: var(--font-size-3xl);
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0 0 var(--spacing-xs);
+}
+
+.promo-header p {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    margin: 0;
+}
+
+/* Grid */
+.promo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--spacing-lg);
+}
+
+/* Card */
+.promo-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: all var(--transition-fast);
+}
+
+.promo-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-xl);
+    border-color: var(--color-primary);
+}
+
+.promo-card.inactive {
+    opacity: 0.6;
+}
+
+/* Card Header */
+.promo-card-top {
+    padding: var(--spacing-lg);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.promo-code-badge {
+    font-family: monospace;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    padding: 6px 14px;
+    border-radius: var(--radius-md);
+    background: rgba(99, 102, 241, 0.12);
+    color: var(--color-primary);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.promo-type-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 10px;
+    text-transform: uppercase;
+}
+
+.promo-type-badge.percentage {
+    background: rgba(34, 197, 94, 0.12);
+    color: var(--color-success);
+}
+
+.promo-type-badge.fixed {
+    background: rgba(249, 115, 22, 0.12);
+    color: var(--color-warning);
+}
+
+/* Card Body */
+.promo-card-body {
+    padding: 0 var(--spacing-lg) var(--spacing-lg);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.promo-name {
+    font-size: var(--font-size-lg);
+    font-weight: 700;
+    color: var(--color-text);
+}
+
+.promo-desc {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    line-height: 1.4;
+}
+
+.promo-value-display {
+    font-size: var(--font-size-3xl);
+    font-weight: 800;
+    color: var(--color-primary);
+    margin: var(--spacing-xs) 0;
+}
+
+.promo-details {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: var(--spacing-sm);
+    border-top: 1px solid var(--color-border);
+}
+
+.promo-detail-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+}
+
+.promo-detail-row .label {
+    color: var(--color-text-secondary);
+}
+
+.promo-detail-row .value {
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+/* Usage Bar */
+.promo-usage-bar {
+    height: 4px;
+    background: var(--color-border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 4px;
+}
+
+.promo-usage-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--color-primary);
+    transition: width 0.3s;
+}
+
+/* Status Badge */
+.promo-status {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+}
+
+.promo-status.active {
+    background: rgba(34, 197, 94, 0.12);
+    color: var(--color-success);
+}
+
+.promo-status.expired {
+    background: rgba(239, 68, 68, 0.12);
+    color: var(--color-danger);
+}
+
+.promo-status.inactive {
+    background: var(--color-background);
+    color: var(--color-text-secondary);
+}
+
+/* Card Actions */
+.promo-card-actions {
+    display: flex;
+    border-top: 1px solid var(--color-border);
+    background: var(--color-background);
+    margin-top: auto;
+}
+
+.promo-action-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 11px;
+    border: none;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.promo-action-btn:not(:last-child) {
+    border-right: 1px solid var(--color-border);
+}
+
+.promo-action-btn:hover {
+    color: var(--color-primary);
+    background: var(--color-surface);
+}
+
+.promo-action-btn.deactivate:hover {
+    color: var(--color-danger);
+    background: rgba(239, 68, 68, 0.05);
+}
+
+/* Sidebar Form */
+.promo-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+
+.promo-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.promo-form-group label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.promo-input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-background);
+    color: var(--color-text);
+    font-size: 14px;
+    font-weight: 500;
+    transition: border-color 0.15s;
+}
+
+.promo-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.promo-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-md);
+}
+
+.promo-type-toggle {
+    display: flex;
+    gap: 8px;
+}
+
+.promo-type-btn {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-background);
+    color: var(--color-text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+}
+
+.promo-type-btn.active {
+    background: var(--color-primary);
+    color: white;
+    border-color: var(--color-primary);
+}
+
+.promo-form-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+    padding-top: var(--spacing-md);
+    border-top: 1px solid var(--color-border);
+}
+
+/* Empty state */
+.promo-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--color-text-secondary);
+}
+
+.promo-empty svg {
+    opacity: 0.2;
+    margin-bottom: 12px;
+}

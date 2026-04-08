@@ -1,0 +1,863 @@
+import { useState, useEffect, useCallback } from 'react';
+import { Calendar, Clock, Users, Phone, Plus, CheckCircle, XCircle, Mail, MessageSquare, Grid3x3, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
+import Button from '../components/Button';
+import Sidebar from '../components/Sidebar';
+// import Input from '../components/Input';
+import { reservationsAPI } from '../services/api';
+import Select from '../components/Select';
+import type { SingleValue } from 'react-select';
+import './Reservations.css';
+
+interface Reservation {
+    id: number;
+    customerName: string;
+    phone: string;
+    email?: string;
+    date: string;
+    peopleCount: number;
+    status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
+    notes?: string;
+    createdAt: string;
+}
+
+export default function Reservations() {
+    const [reservations, setReservations] = useState<Reservation[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [editingReservation, setEditingReservation] = useState<Reservation | null>(null);
+    const [filterStatus, setFilterStatus] = useState<string>('all');
+    const [viewMode, setViewMode] = useState<'cards' | 'calendar'>('cards');
+    const [calendarViewMode, setCalendarViewMode] = useState<'month' | 'week' | 'day'>('month');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [currentMonth, setCurrentMonth] = useState(new Date());
+    const [currentWeek, setCurrentWeek] = useState(new Date());
+    const [currentDay, setCurrentDay] = useState(new Date());
+    const [formData, setFormData] = useState({
+        customerName: '',
+        customerPhone: '',
+        customerEmail: '',
+        date: '',
+        time: '',
+        guests: '2',
+        notes: ''
+    });
+    const [activeTab, setActiveTab] = useState<'cliente' | 'reserva' | 'notas'>('cliente');
+
+
+    const loadReservations = useCallback(async () => {
+        try {
+            const response = await reservationsAPI.getAll();
+            setReservations(response.data.data);
+        } catch (error) {
+            console.error('Error loading reservations:', error);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadReservations();
+    }, [loadReservations]);
+
+    const handleOpenSidebar = (reservation?: Reservation) => {
+        if (reservation) {
+            setEditingReservation(reservation);
+            const reservationDate = new Date(reservation.date);
+            setFormData({
+                customerName: reservation.customerName,
+                customerPhone: reservation.phone,
+                customerEmail: reservation.email || '',
+                date: reservationDate.toISOString().split('T')[0],
+                time: reservationDate.toTimeString().slice(0, 5),
+                guests: reservation.peopleCount.toString(),
+                notes: reservation.notes || ''
+            });
+        } else {
+            setEditingReservation(null);
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            setFormData({
+                customerName: '',
+                customerPhone: '',
+                customerEmail: '',
+                date: tomorrow.toISOString().split('T')[0],
+                time: '19:00',
+                guests: '2',
+                notes: ''
+            });
+        }
+        setActiveTab('cliente');
+        setIsSidebarOpen(true);
+    };
+
+    const handleUpdateStatus = async (id: number, status: string) => {
+        try {
+            await reservationsAPI.update(id, { status });
+            loadReservations();
+        } catch (error: unknown) {
+            console.error('Error updating status:', error);
+            const apiMsg = typeof error === 'object' && error !== null && 'response' in error
+                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                : undefined;
+            const errorMessage = apiMsg || (error instanceof Error ? error.message : '') || 'Error al actualizar el estado';
+            alert(errorMessage);
+        }
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            const payload = {
+                customerName: formData.customerName,
+                phone: formData.customerPhone,
+                email: formData.customerEmail || undefined,
+                date: `${formData.date}T${formData.time}:00.000Z`,
+                peopleCount: parseInt(formData.guests),
+                notes: formData.notes || undefined
+            };
+
+            if (editingReservation) {
+                await reservationsAPI.update(editingReservation.id, payload);
+            } else {
+                await reservationsAPI.create(payload);
+            }
+
+            setIsSidebarOpen(false);
+            loadReservations();
+        } catch (error: unknown) {
+            console.error('Error saving reservation:', error);
+            const apiMsg = typeof error === 'object' && error !== null && 'response' in error
+                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                : undefined;
+            const errorMessage = apiMsg || (error instanceof Error ? error.message : '') || 'Error al guardar la reservación';
+            alert(errorMessage);
+        }
+    };
+
+    const getStatusColor = (status: string) => {
+        switch (status) {
+            case 'PENDING': return 'status-pending';
+            case 'CONFIRMED': return 'status-confirmed';
+            case 'COMPLETED': return 'status-completed';
+            case 'CANCELLED': return 'status-cancelled';
+            case 'NO_SHOW': return 'status-cancelled';
+            default: return '';
+        }
+    };
+
+    const getStatusText = (status: string) => {
+        const statusMap: Record<string, string> = {
+            'PENDING': 'Pendiente',
+            'CONFIRMED': 'Confirmada',
+            'COMPLETED': 'Completada',
+            'CANCELLED': 'Cancelada',
+            'NO_SHOW': 'No Asistió'
+        };
+        return statusMap[status] || status;
+    };
+
+    const formatDate = (dateString: string) => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('es-ES', {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric'
+        });
+    };
+
+    const formatTime = (dateString: string) => {
+        const date = new Date(dateString);
+        return date.toLocaleTimeString('es-ES', {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    };
+
+    // Filter by status
+    const statusFiltered = filterStatus === 'all'
+        ? reservations
+        : reservations.filter(r => r.status === filterStatus);
+
+    // Filter by search query (name, phone, or date)
+    const searchFiltered = statusFiltered.filter(r => {
+        if (!searchQuery) return true;
+        const query = searchQuery.toLowerCase();
+        const matchesName = r.customerName?.toLowerCase().includes(query) || false;
+        const matchesPhone = r.phone?.includes(query) || false;
+        const matchesDate = formatDate(r.date).toLowerCase().includes(query);
+        return matchesName || matchesPhone || matchesDate;
+    });
+
+    // Sort: upcoming first, then by date
+    const sortedReservations = [...searchFiltered].sort((a, b) => {
+        const now = new Date();
+        const dateA = new Date(a.date);
+        const dateB = new Date(b.date);
+
+        const aUpcoming = dateA >= now;
+        const bUpcoming = dateB >= now;
+
+        if (aUpcoming && !bUpcoming) return -1;
+        if (!aUpcoming && bUpcoming) return 1;
+
+        return dateA.getTime() - dateB.getTime();
+    });
+
+    // Calendar functions
+    const getDaysInMonth = (date: Date) => {
+        const year = date.getFullYear();
+        const month = date.getMonth();
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const daysInMonth = lastDay.getDate();
+        const startingDayOfWeek = firstDay.getDay();
+
+        return { daysInMonth, startingDayOfWeek, year, month };
+    };
+
+    const getReservationsForDate = (date: Date) => {
+        return reservations.filter(r => {
+            const resDate = new Date(r.date);
+            return resDate.getDate() === date.getDate() &&
+                resDate.getMonth() === date.getMonth() &&
+                resDate.getFullYear() === date.getFullYear();
+        });
+    };
+
+    const handlePrevPeriod = () => {
+        if (calendarViewMode === 'month') {
+            setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
+        } else if (calendarViewMode === 'week') {
+            const newWeek = new Date(currentWeek);
+            newWeek.setDate(newWeek.getDate() - 7);
+            setCurrentWeek(newWeek);
+        } else {
+            const newDay = new Date(currentDay);
+            newDay.setDate(newDay.getDate() - 1);
+            setCurrentDay(newDay);
+        }
+    };
+
+    const handleNextPeriod = () => {
+        if (calendarViewMode === 'month') {
+            setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
+        } else if (calendarViewMode === 'week') {
+            const newWeek = new Date(currentWeek);
+            newWeek.setDate(newWeek.getDate() + 7);
+            setCurrentWeek(newWeek);
+        } else {
+            const newDay = new Date(currentDay);
+            newDay.setDate(newDay.getDate() + 1);
+            setCurrentDay(newDay);
+        }
+    };
+
+    const handleToday = () => {
+        const today = new Date();
+        setCurrentMonth(today);
+        setCurrentWeek(today);
+        setCurrentDay(today);
+    };
+
+    const getCalendarTitle = () => {
+        if (calendarViewMode === 'month') {
+            return currentMonth.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+        } else if (calendarViewMode === 'week') {
+            const weekStart = new Date(currentWeek);
+            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekStart.getDate() + 6);
+            return `${weekStart.getDate()} - ${weekEnd.getDate()} ${weekEnd.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}`;
+        } else {
+            return currentDay.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        }
+    };
+
+    if (loading) {
+        return <div className="reservations-loading">Cargando reservaciones...</div>;
+    }
+
+    const { daysInMonth, startingDayOfWeek, year, month } = getDaysInMonth(currentMonth);
+
+    return (
+        <div className="reservations-page">
+            {/* Header */}
+            <div className="reservations-header">
+                <div>
+                    <h1><Calendar size={32} /> Reservaciones</h1>
+                </div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                    {/* View Toggle */}
+                    <div className="view-toggle">
+                        <button
+                            className={`view-toggle-btn ${viewMode === 'cards' ? 'active' : ''}`}
+                            onClick={() => setViewMode('cards')}
+                            title="Vista de Tarjetas"
+                        >
+                            <Grid3x3 size={18} />
+                        </button>
+                        <button
+                            className={`view-toggle-btn ${viewMode === 'calendar' ? 'active' : ''}`}
+                            onClick={() => setViewMode('calendar')}
+                            title="Vista de Calendario"
+                        >
+                            <CalendarDays size={18} />
+                        </button>
+                    </div>
+                    <Button onClick={() => handleOpenSidebar()}>
+                        <Plus size={20} />
+                        Nueva Reservación
+                    </Button>
+                </div>
+            </div>
+
+            {/* Filters - Only show in cards view */}
+            {viewMode === 'cards' && (
+                <div className="reservations-filters">
+                    {/* Status Filters */}
+                    <div className="filter-buttons">
+                        <button
+                            className={`filter-btn ${filterStatus === 'all' ? 'active' : ''}`}
+                            onClick={() => setFilterStatus('all')}
+                        >
+                            Todas
+                        </button>
+                        <button
+                            className={`filter-btn pending ${filterStatus === 'PENDING' ? 'active' : ''}`}
+                            onClick={() => setFilterStatus('PENDING')}
+                        >
+                            Pendientes
+                        </button>
+                        <button
+                            className={`filter-btn confirmed ${filterStatus === 'CONFIRMED' ? 'active' : ''}`}
+                            onClick={() => setFilterStatus('CONFIRMED')}
+                        >
+                            Confirmadas
+                        </button>
+                        <button
+                            className={`filter-btn completed ${filterStatus === 'COMPLETED' ? 'active' : ''}`}
+                            onClick={() => setFilterStatus('COMPLETED')}
+                        >
+                            Completadas
+                        </button>
+                        <button
+                            className={`filter-btn cancelled ${filterStatus === 'CANCELLED' ? 'active' : ''}`}
+                            onClick={() => setFilterStatus('CANCELLED')}
+                        >
+                            Canceladas
+                        </button>
+                    </div>
+
+                    {/* Stats and Search */}
+                    <div className="filter-right-section">
+                        {/* Stats Counters */}
+                        <input
+                            type="text"
+                            placeholder="Buscar por nombre, teléfono o fecha..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="search-input reservations-search"
+                        />
+                    </div>
+                </div>
+            )}
+
+            {/* Calendar View */}
+            {viewMode === 'calendar' && (
+                <div className="calendar-container">
+                    {/* Calendar Header */}
+                    <div className="calendar-header">
+                        <div className="calendar-month-year">
+                            <button className="calendar-nav-btn" onClick={handlePrevPeriod}>
+                                <ChevronLeft size={20} />
+                            </button>
+                            <h2>{getCalendarTitle()}</h2>
+                            <button className="calendar-nav-btn" onClick={handleNextPeriod}>
+                                <ChevronRight size={20} />
+                            </button>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            {/* Calendar View Mode Selector */}
+                            <div className="view-toggle" style={{ marginRight: '8px' }}>
+                                <button
+                                    className={`view-toggle-btn ${calendarViewMode === 'day' ? 'active' : ''}`}
+                                    onClick={() => setCalendarViewMode('day')}
+                                    title="Vista de día"
+                                >
+                                    Día
+                                </button>
+                                <button
+                                    className={`view-toggle-btn ${calendarViewMode === 'week' ? 'active' : ''}`}
+                                    onClick={() => setCalendarViewMode('week')}
+                                    title="Vista de semana"
+                                >
+                                    Semana
+                                </button>
+                                <button
+                                    className={`view-toggle-btn ${calendarViewMode === 'month' ? 'active' : ''}`}
+                                    onClick={() => setCalendarViewMode('month')}
+                                    title="Vista de mes"
+                                >
+                                    Mes
+                                </button>
+                            </div>
+                            <button className="today-btn" onClick={handleToday}>
+                                Hoy
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Calendar Content - Changes based on view mode */}
+                    {calendarViewMode === 'month' && (
+                        <div className="calendar-grid">
+                            {/* Day headers */}
+                            {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(day => (
+                                <div key={day} className="calendar-day-header">{day}</div>
+                            ))}
+
+                            {/* Empty cells for days before month starts */}
+                            {Array.from({ length: startingDayOfWeek }).map((_, i) => (
+                                <div key={`empty-${i}`} className="calendar-day empty"></div>
+                            ))}
+
+                            {/* Days of the month */}
+                            {Array.from({ length: daysInMonth }).map((_, i) => {
+                                const day = i + 1;
+                                const date = new Date(year, month, day);
+                                const dayReservations = getReservationsForDate(date);
+                                const isToday = new Date().toDateString() === date.toDateString();
+
+                                return (
+                                    <div
+                                        key={day}
+                                        className={`calendar-day ${isToday ? 'today' : ''} ${dayReservations.length > 0 ? 'has-reservations' : ''}`}
+                                    >
+                                        <div className="calendar-day-number">{day}</div>
+                                        {dayReservations.length > 0 && (
+                                            <div className="calendar-reservations">
+                                                {dayReservations.slice(0, 3).map(res => (
+                                                    <div
+                                                        key={res.id}
+                                                        className={`calendar-reservation-item ${getStatusColor(res.status)}`}
+                                                        onClick={() => {
+                                                            if (res.status === 'PENDING') {
+                                                                handleOpenSidebar(res);
+                                                            }
+                                                        }}
+                                                        style={{ cursor: res.status === 'PENDING' ? 'pointer' : 'default' }}
+                                                        title={`${res.customerName} - ${formatTime(res.date)} - ${res.peopleCount} personas - ${getStatusText(res.status)}`}
+                                                    >
+                                                        <span className="res-time">{formatTime(res.date)}</span>
+                                                        <span className="res-name">{res.customerName}</span>
+                                                        <span className="res-people">{res.peopleCount}<Users size={10} /></span>
+                                                    </div>
+                                                ))}
+                                                {dayReservations.length > 3 && (
+                                                    <div className="calendar-more">+{dayReservations.length - 3} más</div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {/* Week View - Timeline by day */}
+                    {calendarViewMode === 'week' && (
+                        <div className="week-view">
+                            {Array.from({ length: 7 }).map((_, dayIndex) => {
+                                const weekStart = new Date(currentWeek);
+                                weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+                                const date = new Date(weekStart);
+                                date.setDate(weekStart.getDate() + dayIndex);
+                                const dayReservations = getReservationsForDate(date).sort((a, b) =>
+                                    new Date(a.date).getTime() - new Date(b.date).getTime()
+                                );
+                                const isToday = new Date().toDateString() === date.toDateString();
+
+                                return (
+                                    <div key={dayIndex} className={`week-day ${isToday ? 'today' : ''}`}>
+                                        <div className="week-day-header">
+                                            <div className="week-day-name">{date.toLocaleDateString('es-ES', { weekday: 'short' })}</div>
+                                            <div className="week-day-number">{date.getDate()}</div>
+                                        </div>
+                                        <div className="week-day-reservations">
+                                            {dayReservations.length > 0 ? (
+                                                dayReservations.map(res => (
+                                                    <div
+                                                        key={res.id}
+                                                        className={`week-reservation-item ${getStatusColor(res.status)}`}
+                                                        onClick={() => {
+                                                            if (res.status === 'PENDING') {
+                                                                handleOpenSidebar(res);
+                                                            }
+                                                        }}
+                                                        style={{ cursor: res.status === 'PENDING' ? 'pointer' : 'default' }}
+                                                    >
+                                                        <div className="week-res-time">{formatTime(res.date)}</div>
+                                                        <div className="week-res-name">{res.customerName}</div>
+                                                        <div className="week-res-people"><Users size={14} /> {res.peopleCount}</div>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="no-reservations">Sin reservaciones</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {/* Day View - Timeline by hour */}
+                    {calendarViewMode === 'day' && (
+                        <div className="day-view">
+                            {Array.from({ length: 24 }).map((_, hour) => {
+                                const hourReservations = reservations.filter(r => {
+                                    const resDate = new Date(r.date);
+                                    return resDate.getDate() === currentDay.getDate() &&
+                                        resDate.getMonth() === currentDay.getMonth() &&
+                                        resDate.getFullYear() === currentDay.getFullYear() &&
+                                        resDate.getHours() === hour;
+                                }).sort((a, b) => new Date(a.date).getMinutes() - new Date(b.date).getMinutes());
+
+                                return (
+                                    <div key={hour} className="day-hour-slot">
+                                        <div className="day-hour-label">
+                                            {hour.toString().padStart(2, '0')}:00
+                                        </div>
+                                        <div className="day-hour-content">
+                                            {hourReservations.length > 0 ? (
+                                                hourReservations.map(res => (
+                                                    <div
+                                                        key={res.id}
+                                                        className={`day-reservation-item ${getStatusColor(res.status)}`}
+                                                        onClick={() => {
+                                                            if (res.status === 'PENDING') {
+                                                                handleOpenSidebar(res);
+                                                            }
+                                                        }}
+                                                        style={{ cursor: res.status === 'PENDING' ? 'pointer' : 'default' }}
+                                                    >
+                                                        <div className="day-res-header">
+                                                            <span className="day-res-time">{formatTime(res.date)}</span>
+                                                            <span className={`day-res-status ${getStatusColor(res.status)}`}>
+                                                                {getStatusText(res.status)}
+                                                            </span>
+                                                        </div>
+                                                        <div className="day-res-name">{res.customerName}</div>
+                                                        <div className="day-res-details">
+                                                            <span><Users size={14} /> {res.peopleCount} personas</span>
+                                                            {res.phone && <span><Phone size={14} /> {res.phone}</span>}
+                                                        </div>
+                                                        {res.notes && <div className="day-res-notes">{res.notes}</div>}
+                                                    </div>
+                                                ))
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Cards View */}
+            {viewMode === 'cards' && (
+                <>
+                    {sortedReservations.length === 0 ? (
+                        <div className="reservations-empty">
+                            <Calendar size={64} />
+                            <p>No hay reservaciones</p>
+                            <small>{searchQuery ? 'No se encontraron resultados para tu búsqueda' : 'Crea una nueva reservación para comenzar'}</small>
+                        </div>
+                    ) : (
+                        <div className="reservations-grid">
+                            {sortedReservations.map(reservation => (
+                                <div key={reservation.id} className={`reservation-card status-${reservation.status.toLowerCase()}`} onClick={() => handleOpenSidebar(reservation)}>
+                                    {/* Status Badge */}
+                                    <div className={`status-badge-new status-${reservation.status.toLowerCase()}`}>
+                                        <span>{getStatusText(reservation.status)}</span>
+                                    </div>
+
+                                    {/* Card Body */}
+                                    <div className="reservation-card-body-new">
+                                        <div className="reservation-name-new">{reservation.customerName}</div>
+
+                                        <div className="reservation-details-new">
+                                            <div className="detail-item-new">
+                                                <Users size={16} />
+                                                <span>{reservation.peopleCount} personas</span>
+                                            </div>
+                                            {reservation.phone && (
+                                                <div className="detail-item-new">
+                                                    <Phone size={16} />
+                                                    <span>{reservation.phone}</span>
+                                                </div>
+                                            )}
+                                            <div className="detail-item-new" style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--color-border)', opacity: 0.8 }}>
+                                                <Calendar size={14} />
+                                                <span>{formatDate(reservation.date)} • {formatTime(reservation.date)}</span>
+                                            </div>
+                                            {reservation.email && (
+                                                <div className="detail-item-new" style={{ opacity: 0.8 }}>
+                                                    <Mail size={14} />
+                                                    <span>{reservation.email}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Actions Footer */}
+                                    <div className="reservation-card-actions-new" onClick={(e) => e.stopPropagation()}>
+                                        {reservation.status === 'PENDING' && (
+                                            <>
+                                                <button
+                                                    className="action-btn-new"
+                                                    onClick={() => handleUpdateStatus(reservation.id, 'CONFIRMED')}
+                                                    title="Confirmar"
+                                                >
+                                                    <CheckCircle size={20} />
+                                                    <span>Confirmar</span>
+                                                </button>
+                                                <button
+                                                    className="action-btn-new delete"
+                                                    onClick={() => handleUpdateStatus(reservation.id, 'CANCELLED')}
+                                                    title="Cancelar"
+                                                >
+                                                    <XCircle size={20} />
+                                                </button>
+                                            </>
+                                        )}
+                                        {reservation.status === 'CONFIRMED' && (
+                                            <>
+                                                <button
+                                                    className="action-btn-new"
+                                                    onClick={() => handleUpdateStatus(reservation.id, 'COMPLETED')}
+                                                    title="Marcar como Llegó"
+                                                >
+                                                    <Users size={20} />
+                                                    <span>Completar</span>
+                                                </button>
+                                                <button
+                                                    className="action-btn-new delete"
+                                                    onClick={() => handleUpdateStatus(reservation.id, 'CANCELLED')}
+                                                    title="Cancelar"
+                                                >
+                                                    <XCircle size={20} />
+                                                </button>
+                                            </>
+                                        )}
+                                        {(reservation.status === 'COMPLETED' || reservation.status === 'CANCELLED') && (
+                                            <button
+                                                className="action-btn-new"
+                                                onClick={() => handleUpdateStatus(reservation.id, 'PENDING')}
+                                                title="Reabrir"
+                                            >
+                                                <Clock size={20} />
+                                                <span>Reabrir</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                            ))}
+                        </div>
+                    )}
+                </>
+            )}
+
+            {/* Sidebar Form */}
+            <Sidebar
+                isOpen={isSidebarOpen}
+                onClose={() => setIsSidebarOpen(false)}
+                title={editingReservation ? 'Editar Reservación' : 'Nueva Reservación'}
+            >
+                <div className="premium-modal-content reservation-modal-content">
+                    {/* Tabs Navigation */}
+                    <div className="modal-tabs">
+                        <div
+                            className={`modal-tab ${activeTab === 'cliente' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('cliente')}
+                        >
+                            <Users size={18} />
+                            <span>Cliente</span>
+                        </div>
+                        <div
+                            className={`modal-tab ${activeTab === 'reserva' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('reserva')}
+                        >
+                            <Calendar size={18} />
+                            <span>Reserva</span>
+                        </div>
+                        <div
+                            className={`modal-tab ${activeTab === 'notas' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('notas')}
+                        >
+                            <MessageSquare size={18} />
+                            <span>Notas</span>
+                        </div>
+                    </div>
+
+                    <form onSubmit={handleSubmit} className="modal-form-new">
+                        <div className="modal-tab-content">
+                            {activeTab === 'cliente' && (
+                                <div className="modal-section animate-slide-in">
+                                    <div className="modal-section-header">
+                                        <Users size={18} />
+                                        <h3>Información del Cliente</h3>
+                                    </div>
+
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label">Nombre del Cliente</label>
+                                        <input
+                                            type="text"
+                                            className="modal-standard-input"
+                                            value={formData.customerName}
+                                            onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                                            required
+                                            placeholder="Nombre completo"
+                                        />
+                                    </div>
+
+                                    <div className="modal-form-row">
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label">Teléfono</label>
+                                            <input
+                                                type="tel"
+                                                className="modal-standard-input"
+                                                value={formData.customerPhone}
+                                                onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
+                                                required
+                                                placeholder="Ej: +505 8888 8888"
+                                            />
+                                        </div>
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label">Email (opcional)</label>
+                                            <input
+                                                type="email"
+                                                className="modal-standard-input"
+                                                value={formData.customerEmail}
+                                                onChange={(e) => setFormData({ ...formData, customerEmail: e.target.value })}
+                                                placeholder="cliente@email.com"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'reserva' && (
+                                <div className="modal-section animate-slide-in">
+                                    <div className="modal-section-header">
+                                        <Calendar size={18} />
+                                        <h3>Detalles de la Reserva</h3>
+                                    </div>
+
+                                    <div className="modal-form-row">
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label">Fecha</label>
+                                            <input
+                                                type="date"
+                                                className="modal-standard-input"
+                                                value={formData.date}
+                                                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                                                required
+                                            />
+                                        </div>
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label">Hora</label>
+                                            <input
+                                                type="time"
+                                                className="modal-standard-input"
+                                                value={formData.time}
+                                                onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="modal-form-row">
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label">Número de Personas</label>
+                                            <input
+                                                type="number"
+                                                className="modal-standard-input"
+                                                min="1"
+                                                value={formData.guests}
+                                                onChange={(e) => setFormData({ ...formData, guests: e.target.value })}
+                                                required
+                                            />
+                                        </div>
+                                        {editingReservation && (
+                                            <Select
+                                                variant="modal"
+                                                label="Estado"
+                                                options={[
+                                                    { value: 'PENDING', label: 'Pendiente' },
+                                                    { value: 'CONFIRMED', label: 'Confirmada' },
+                                                    { value: 'COMPLETED', label: 'Completada' },
+                                                    { value: 'CANCELLED', label: 'Cancelada' },
+                                                    { value: 'NO_SHOW', label: 'No Asistió' }
+                                                ]}
+                                                value={{
+                                                    value: editingReservation.status,
+                                                    label: getStatusText(editingReservation.status)
+                                                }}
+                                                onChange={async (option: SingleValue<{ value: Reservation['status']; label: string }>) => {
+                                                    if (!option) return;
+                                                    try {
+                                                        await reservationsAPI.update(editingReservation.id, {
+                                                            status: option.value
+                                                        });
+                                                        loadReservations();
+                                                        setIsSidebarOpen(false);
+                                                    } catch (err) {
+                                                        console.error('Error updating status:', err);
+                                                    }
+                                                }}
+                                                isSearchable={false}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'notas' && (
+                                <div className="modal-section animate-slide-in">
+                                    <div className="modal-section-header">
+                                        <MessageSquare size={18} />
+                                        <h3>Notas y Observaciones</h3>
+                                    </div>
+
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label">Notas Adicionales</label>
+                                        <textarea
+                                            className="modal-textarea"
+                                            rows={8}
+                                            value={formData.notes}
+                                            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                            placeholder="Alergias, preferencias, ocasión especial (cumpleaños, aniversario)..."
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="modal-footer">
+                            <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>
+                                Cancelar
+                            </Button>
+                            <Button type="submit" variant="primary">
+                                {editingReservation ? 'Actualizar Reservación' : 'Crear Reservación'}
+                            </Button>
+                        </div>
+                    </form>
+                </div>
+            </Sidebar>
+
+        </div>
+    );
+}

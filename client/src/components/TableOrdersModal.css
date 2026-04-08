@@ -1,0 +1,511 @@
+.modal-overlay-orders {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: stretch;
+    justify-content: flex-end;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.orders-modal {
+    background: var(--color-surface);
+    width: 90%;
+    max-width: 500px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+    animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+    }
+
+    to {
+        transform: translateX(0);
+    }
+}
+
+/* Header */
+.orders-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-xl);
+    border-bottom: 2px solid var(--color-border);
+}
+
+.header-title h2 {
+    font-size: var(--font-size-xl);
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0 0 4px 0;
+}
+
+.header-subtitle {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-tertiary);
+}
+
+.close-btn-orders {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    background: var(--color-background);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.close-btn-orders:hover {
+    background: var(--color-danger);
+    color: white;
+}
+
+/* Summary Bar (Removed in favor of Tabs) */
+.orders-summary-bar {
+    display: none;
+}
+
+/* Tabs Navigation (New) */
+.modal-tabs {
+    display: flex;
+    padding: var(--spacing-md) var(--spacing-xl);
+    background: var(--color-background);
+    border-bottom: 2px solid var(--color-border);
+    gap: var(--spacing-sm);
+}
+
+.modal-tab {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: 10px 18px;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    font-weight: 600;
+    font-size: var(--font-size-sm);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.modal-tab:hover {
+    background: var(--color-background);
+}
+
+.modal-tab.active {
+    background: var(--color-primary);
+    color: white;
+    border-color: var(--color-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+.modal-tab svg {
+    width: 16px;
+    height: 16px;
+    opacity: 0.8;
+}
+
+.modal-tab.active svg {
+    opacity: 1;
+}
+
+.tab-badge {
+    background: rgba(0, 0, 0, 0.15);
+    color: inherit;
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 10px;
+}
+
+.dark .tab-badge {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.summary-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    color: var(--color-primary);
+}
+
+.summary-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.summary-value {
+    font-size: var(--font-size-lg);
+    font-weight: 700;
+    color: var(--color-text);
+}
+
+.summary-label {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
+}
+
+.summary-divider {
+    width: 1px;
+    height: 40px;
+    background: var(--color-border);
+}
+
+/* Content Areas */
+.modal-tab-content-orders {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing-xl);
+    background: var(--color-surface);
+}
+
+.orders-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.no-orders-message {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-3xl);
+    text-align: center;
+    color: var(--color-text-tertiary);
+}
+
+.no-orders-message svg {
+    margin-bottom: var(--spacing-lg);
+    opacity: 0.5;
+}
+
+.no-orders-message p {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    margin-bottom: var(--spacing-xs);
+    color: var(--color-text-secondary);
+}
+
+.no-orders-message small {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-tertiary);
+}
+
+/* Order Card */
+.order-card-modal {
+    background: var(--color-surface);
+    border: 2px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg);
+    margin-bottom: var(--spacing-md);
+    transition: all var(--transition-fast);
+}
+
+.order-card-modal:hover {
+    border-color: var(--color-primary);
+    box-shadow: var(--shadow-md);
+}
+
+.order-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-md);
+    padding-bottom: var(--spacing-md);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.order-id-time {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.order-id-badge {
+    font-weight: 700;
+    color: var(--color-primary);
+    font-size: var(--font-size-base);
+}
+
+.order-time {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-tertiary);
+}
+
+.order-status-badge {
+    padding: var(--spacing-xs) var(--spacing-md);
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+}
+
+.status-open {
+    background: rgba(59, 130, 246, 0.1);
+    color: rgb(37, 99, 235);
+}
+
+.status-kitchen {
+    background: rgba(245, 158, 11, 0.1);
+    color: rgb(217, 119, 6);
+}
+
+.status-ready {
+    background: rgba(34, 197, 94, 0.1);
+    color: rgb(22, 163, 74);
+}
+
+.status-delivered {
+    background: rgba(168, 85, 247, 0.1);
+    color: rgb(147, 51, 234);
+}
+
+/* Order Items */
+.order-items-list {
+    margin-bottom: var(--spacing-md);
+}
+
+.order-item-line {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    font-size: 14px;
+}
+
+.item-quantity-name {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+.item-qty {
+    font-weight: 700;
+    color: var(--color-primary);
+    min-width: 32px;
+    font-size: 14px;
+}
+
+.order-card-modal .item-name {
+    color: var(--color-text);
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.order-card-modal .item-price {
+    font-weight: 600;
+    color: var(--color-text);
+    /* Higher contrast in dark cards */
+    font-size: 14px;
+}
+
+/* Order Footer */
+.order-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: var(--spacing-md);
+    border-top: 1px solid var(--color-border);
+}
+
+.order-total-label {
+    font-weight: 700;
+    color: var(--color-text);
+}
+
+.order-total-amount {
+    font-size: var(--font-size-xl);
+    font-weight: 800;
+    color: var(--color-success);
+}
+
+/* Modal Footer */
+.orders-modal-footer {
+    display: flex;
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg) var(--spacing-xl);
+    border-top: 2px solid var(--color-border);
+    background: var(--color-background);
+}
+
+.btn-modal-secondary,
+.btn-modal-primary {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md) var(--spacing-xl);
+    border-radius: var(--radius-lg);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn-modal-secondary {
+    background: var(--color-surface);
+    border: 2px solid var(--color-border);
+    color: var(--color-text-secondary);
+}
+
+.btn-modal-secondary:hover {
+    background: var(--color-neutral-100);
+    border-color: var(--color-neutral-300);
+}
+
+.btn-modal-primary {
+    background: var(--color-primary);
+    border: 2px solid var(--color-primary);
+    color: white;
+}
+
+.btn-modal-primary:hover {
+    background: var(--color-primary-dark);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-lg);
+}
+
+/* Scrollbar */
+.orders-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.orders-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.orders-list::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 10px;
+}
+
+.orders-list::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-tertiary);
+}
+
+/* Bill Summary Pane */
+.bill-summary-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.bill-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+.bill-stat-card {
+    padding: 16px;
+    background: var(--color-background);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.bill-stat-card.primary {
+    background: rgba(37, 99, 235, 0.05);
+    border-color: rgba(37, 99, 235, 0.2);
+}
+
+.dark .bill-stat-card.primary {
+    background: rgba(37, 99, 235, 0.1);
+    border-color: rgba(37, 99, 235, 0.3);
+}
+
+.stat-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--color-text-tertiary);
+    letter-spacing: 0.5px;
+}
+
+.stat-value {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--color-text);
+}
+
+.bill-stat-card.primary .stat-value {
+    color: var(--color-primary);
+}
+
+.bill-details-section h3 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--color-text-secondary);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.bill-items-table {
+    background: var(--color-background);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.bill-item-row {
+    display: grid;
+    grid-template-columns: 40px 1fr 80px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--color-border);
+    align-items: center;
+}
+
+.bill-item-row:last-child {
+    border-bottom: none;
+}
+
+.bill-item-row .b-qty {
+    font-weight: 700;
+    color: var(--color-primary);
+}
+
+.bill-item-row .b-name {
+    font-weight: 500;
+    color: var(--color-text);
+}
+
+.bill-item-row .b-price {
+    font-weight: 700;
+    text-align: right;
+    color: var(--color-success);
+}
+
+/* Animations */
+.animate-slide-in {
+    animation: slideInDown 0.3s ease-out;
+}
+
+@keyframes slideInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

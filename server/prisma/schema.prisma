@@ -1,0 +1,1039 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// 0. CONTROL DE EMPRESAS (MULTI-TENANT)
+// ==========================================
+
+model Company {
+  id            Int           @id @default(autoincrement())
+  name          String
+  ruc           String?       @unique // Registro Único de Contribuyente (Nicaragua)
+  logo          String?
+  costingMethod CostingMethod @default(WEIGHTED_AVERAGE)
+  active        Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  branches           Branch[]
+  settings           Setting[]
+  users              User[]
+  tables             Table[]
+  reservations       Reservation[]
+  categories         Category[]
+  menuItems          MenuItem[]
+  products           Product[]
+  warehouses         Warehouse[]
+  suppliers          Supplier[]
+  purchaseOrders     PurchaseOrder[]
+  orders             Order[]
+  paymentMethods     PaymentMethod[]
+  cashRegisters      CashRegister[]
+  cashShifts         CashShift[]
+  modifierGroups     ModifierGroup[]
+  roles              Role[]
+  stocks             Stock[]
+  inventoryMovements InventoryMovement[]
+  cateringEvents     CateringEvent[]
+  cateringServices   CateringService[]
+  customers          Customer[]
+  promotions         Promotion[]
+  productCostHistories ProductCostHistory[]
+  invoiceSequences   InvoiceSequence[]
+}
+
+enum CostingMethod {
+  WEIGHTED_AVERAGE
+  FIFO
+}
+
+// ==========================================
+// 1. CONTROL DE SUCURSALES Y USUARIOS
+// ==========================================
+
+model Branch {
+  id        Int          @id @default(autoincrement())
+  companyId Int
+  name      String
+  code      String
+  address   String?
+  phone     String?
+  status    BranchStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  // Relations
+  company        Company               @relation(fields: [companyId], references: [id])
+  users          User[]
+  tables         Table[]
+  reservations   Reservation[]
+  warehouses     Warehouse[]
+  purchaseOrders PurchaseOrder[]
+  orders         Order[]
+  cashRegisters  CashRegister[]
+  menuItems      MenuItem[] // Optional: if menu varies by branch
+  menuItemPrices MenuItemBranchPrice[]
+  cateringEvents CateringEvent[]
+  invoiceSequences InvoiceSequence[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+}
+
+model InvoiceSequence {
+  id         Int      @id @default(autoincrement())
+  companyId  Int
+  branchId   Int
+  lastNumber Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+  branch  Branch  @relation(fields: [branchId], references: [id])
+
+  @@unique([companyId, branchId])
+}
+
+enum BranchStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model User {
+  id        Int        @id @default(autoincrement())
+  companyId Int? // Null for simple setups, non-null for enterprise
+  name      String
+  email     String     @unique
+  username  String     @unique
+  password           String // Hashed
+  mustChangePassword Boolean   @default(true)
+  passwordChangedAt  DateTime?
+  twoFactorSecret    String?
+  twoFactorEnabled   Boolean   @default(false)
+  roleId    Int
+  branchId  Int? // Primary branch
+  status    UserStatus @default(ACTIVE)
+  color     String? // Hex color for visual identification (e.g. waiters)
+  nif       String?
+  address   String?
+  phone     String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  // Relations
+  company  Company?       @relation(fields: [companyId], references: [id])
+  role     Role           @relation(fields: [roleId], references: [id])
+  branch   Branch?        @relation(fields: [branchId], references: [id])
+  sessions UserSession[]
+  userRoles UserRole[]
+
+  // Operational relations
+  orders          Order[]  @relation("OrderCreator")
+  cancelledOrders Order[]  @relation("OrderCancelledBy")
+  cashShifts CashShift[]
+  movements  InventoryMovement[]
+  auditLogs  AuditLog[]
+}
+
+model UserSession {
+  id        String   @id @default(uuid())
+  userId    Int
+  tokenHash String   @unique
+  ipAddress String?
+  userAgent String?
+  device    String?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model UserRole {
+  id     Int @id @default(autoincrement())
+  userId Int
+  roleId Int
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+}
+
+model Role {
+  id          Int     @id @default(autoincrement())
+  companyId   Int?
+  name        String  // SUPERADMIN, ADMIN, WAITER, etc.
+  description String?
+
+  company     Company?     @relation(fields: [companyId], references: [id])
+  users       User[]
+  userRoles   UserRole[]
+  permissions Permission[]
+
+  @@unique([companyId, name])
+}
+
+model Permission {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique // e.g., "create_order", "view_reports"
+  description String?
+
+  roles Role[]
+}
+
+// ==========================================
+// 2. CONTROL DE MESAS
+// ==========================================
+
+model Table {
+  id        Int         @id @default(autoincrement())
+  companyId Int
+  branchId  Int
+  number    String
+  capacity  Int
+  status    TableStatus @default(AVAILABLE)
+  location  String? // Salon, Terraza, VIP
+
+  company Company @relation(fields: [companyId], references: [id])
+  branch  Branch  @relation(fields: [branchId], references: [id])
+  orders  Order[]
+
+  @@unique([branchId, number])
+  @@index([companyId])
+  @@index([branchId])
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  OUT_OF_SERVICE
+}
+
+// ==========================================
+// 3. RESERVACIONES
+// ==========================================
+
+model Reservation {
+  id           Int               @id @default(autoincrement())
+  companyId    Int
+  branchId     Int
+  customerName String
+  phone        String?
+  email        String?
+  date         DateTime
+  peopleCount  Int
+  status       ReservationStatus @default(PENDING)
+  notes        String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+  branch  Branch  @relation(fields: [branchId], references: [id])
+
+  @@index([companyId])
+  @@index([branchId])
+  @@index([date])
+  @@index([status])
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  NO_SHOW
+  COMPLETED
+}
+
+// ==========================================
+// 4. MENÚ, RECETAS E INSUMOS
+// ==========================================
+
+model Category {
+  id          Int     @id @default(autoincrement())
+  companyId   Int
+  name        String
+  description String?
+  sortOrder   Int     @default(0)
+  active      Boolean @default(true)
+
+  company   Company    @relation(fields: [companyId], references: [id])
+  menuItems MenuItem[]
+  products  Product[] // Categories for inventory products too
+
+  @@unique([companyId, name])
+}
+
+model MenuItem {
+  id          Int          @id @default(autoincrement())
+  companyId   Int
+  branchId    Int? // Optional: null means global menu item (for the company)
+  categoryId  Int
+  name        String
+  description String?
+  price       Decimal      @db.Decimal(10, 2)
+  active      Boolean      @default(true)
+  type        MenuItemType @default(PREPARED) // Prepared (kitchen) or Direct (bottle of wine)
+
+  // Availability by time
+  availableFrom String? // Time format "HH:mm" e.g. "06:00"
+  availableTo   String? // Time format "HH:mm" e.g. "11:00"
+  menuType      MenuTimeType? // Breakfast, Lunch, Dinner, All Day
+
+  company  Company  @relation(fields: [companyId], references: [id])
+  category Category @relation(fields: [categoryId], references: [id])
+  branch   Branch?  @relation(fields: [branchId], references: [id])
+
+  recipes        Recipe[]
+  images         MenuItemImage[]
+  orderItems     OrderItem[]
+  modifierGroups ModifierGroup[]
+  branchPrices   MenuItemBranchPrice[]
+  cateringMenuItems CateringMenuItem[]
+
+  @@index([companyId, categoryId])
+  @@index([branchId])
+}
+
+enum MenuTimeType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  ALL_DAY
+}
+
+enum MenuItemType {
+  PREPARED // Uses a recipe
+  DIRECT // Direct sale of a product (e.g., Can of Soda)
+}
+
+// Branch-level menu availability and pricing
+model MenuItemBranchPrice {
+  id         Int      @id @default(autoincrement())
+  menuItemId Int
+  branchId   Int
+  price      Decimal  @db.Decimal(10, 2)
+  active     Boolean  @default(true) // Controls availability per branch
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  branch   Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([menuItemId, branchId])
+  @@index([menuItemId])
+  @@index([branchId])
+}
+
+// Ingredients and Direct Sale Products
+model Product {
+  id                 Int         @id @default(autoincrement())
+  companyId          Int
+  name               String
+  sku                String?
+  categoryId         Int?
+  unit               String // kg, g, L, ml, unit
+  minStock           Decimal     @default(0) @db.Decimal(10, 3)
+  cost               Decimal     @default(0) @db.Decimal(10, 2) // Legacy field, kept for compatibility
+  currentAverageCost Decimal     @default(0) @db.Decimal(10, 2) // Weighted average cost (primary)
+  lastPurchaseCost   Decimal     @default(0) @db.Decimal(10, 2) // Last purchase unit cost
+  price              Decimal?    @db.Decimal(10, 2) // Sale price if it's a direct sale product
+  type               ProductType  @default(INGREDIENT)
+  storageType        StorageType? // PERISHABLE, FROZEN, NON_PERISHABLE
+  active             Boolean     @default(true)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id])
+  category Category? @relation(fields: [categoryId], references: [id])
+
+  stocks             Stock[]
+  inventoryMovements InventoryMovement[]
+  purchaseOrderItems PurchaseOrderItem[]
+  recipes            Recipe[] // Used as ingredient
+  costHistory        ProductCostHistory[]
+
+  // If it's a direct sale product, it might be linked to a MenuItem or sold directly.
+  // For simplicity, we can link it to OrderItem directly OR via a "Direct" MenuItem.
+  // The prompt suggests "Direct" items in Menu.
+
+  @@unique([companyId, sku])
+  @@index([categoryId])
+}
+
+enum ProductType {
+  INGREDIENT
+  PRODUCT_FOR_SALE
+  BOTH
+}
+
+enum StorageType {
+  PERISHABLE
+  FROZEN
+  NON_PERISHABLE
+}
+
+model Recipe {
+  id         Int     @id @default(autoincrement())
+  menuItemId Int
+  productId  Int // The ingredient
+  quantity   Decimal @db.Decimal(10, 3)
+  unit       String? // If different from product unit (requires conversion logic)
+
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@unique([menuItemId, productId])
+}
+
+model MenuItemImage {
+  id         Int      @id @default(autoincrement())
+  menuItemId Int
+  imageUrl   String   @db.LongText
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+}
+
+// ==========================================
+// 5. INVENTARIO Y ALMACENES
+// ==========================================
+
+model Warehouse {
+  id        Int    @id @default(autoincrement())
+  companyId Int
+  branchId  Int?
+  type      WarehouseType @default(BRANCH)
+  name      String // Main, Kitchen, Bar
+  code      String
+
+  company   Company             @relation(fields: [companyId], references: [id])
+  branch    Branch?             @relation(fields: [branchId], references: [id])
+  stocks    Stock[]
+  movements InventoryMovement[]
+
+  @@unique([companyId, code])
+  @@unique([companyId, branchId, name])
+  @@index([companyId])
+  @@index([branchId])
+}
+
+enum WarehouseType {
+  CENTRAL
+  BRANCH
+}
+
+model Stock {
+  id          Int     @id @default(autoincrement())
+  warehouseId Int
+  productId   Int
+  companyId   Int
+  quantity    Decimal @default(0) @db.Decimal(10, 3)
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+  company   Company   @relation(fields: [companyId], references: [id])
+
+  @@unique([warehouseId, productId])
+  @@index([companyId])
+}
+
+model InventoryMovement {
+  id          Int          @id @default(autoincrement())
+  warehouseId Int
+  productId   Int
+  userId      Int
+  companyId   Int
+  type        MovementType
+  transferGroupId String?
+  quantity    Decimal      @db.Decimal(10, 3)
+  reason      String? // Purchase, Sale, Waste, Adjustment
+  reference   String? // Order ID, PO ID
+  unitCost    Decimal?     @db.Decimal(10, 2) // Unit cost at time of movement
+  totalCost   Decimal?     @db.Decimal(10, 2) // Total cost (quantity × unitCost)
+  balanceQty  Decimal?     @db.Decimal(10, 3) // Running balance after this movement
+  balanceCost Decimal?     @db.Decimal(10, 2) // Total cost of balance after movement
+  createdAt   DateTime     @default(now())
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+  company   Company   @relation(fields: [companyId], references: [id])
+
+  @@index([productId])
+  @@index([warehouseId])
+  @@index([createdAt])
+  @@index([companyId, productId, createdAt])
+  @@index([transferGroupId])
+}
+
+enum MovementType {
+  IN
+  OUT
+  ADJUSTMENT
+  TRANSFER
+}
+
+// ==========================================
+// 6. COMPRAS Y PROVEEDORES
+// ==========================================
+
+model Supplier {
+  id         Int     @id @default(autoincrement())
+  companyId  Int
+  name       String
+  contact    String?
+  phone      String?
+  email      String?
+  address    String?
+  taxId      String? // RUC/NIT
+  supplyType String? // e.g., "Vegetables", "Meats", "Services"
+  active     Boolean @default(true)
+
+  company        Company         @relation(fields: [companyId], references: [id])
+  purchaseOrders PurchaseOrder[]
+  cashMovements  CashMovement[]
+
+  @@index([companyId])
+}
+
+model PurchaseOrder {
+  id         Int                 @id @default(autoincrement())
+  companyId  Int
+  branchId   Int
+  supplierId Int
+  date       DateTime            @default(now())
+  status     PurchaseOrderStatus @default(DRAFT)
+  total      Decimal             @default(0) @db.Decimal(10, 2)
+  notes      String?
+  invoiceNumber String?
+  invoicePdf   String?
+
+  company  Company             @relation(fields: [companyId], references: [id])
+  branch   Branch              @relation(fields: [branchId], references: [id])
+  supplier Supplier            @relation(fields: [supplierId], references: [id])
+  items    PurchaseOrderItem[]
+
+  @@index([supplierId])
+  @@index([status])
+  @@index([companyId])
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  ISSUED
+  RECEIVED
+  CANCELLED
+}
+
+model PurchaseOrderItem {
+  id              Int     @id @default(autoincrement())
+  purchaseOrderId Int
+  productId       Int
+  quantity        Decimal @db.Decimal(10, 3)
+  cost            Decimal @db.Decimal(10, 2)
+  subtotal        Decimal @db.Decimal(10, 2)
+
+  purchaseOrder PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       Product              @relation(fields: [productId], references: [id])
+  costHistory   ProductCostHistory[]
+
+  @@index([purchaseOrderId])
+  @@index([productId])
+}
+
+// Product Cost History - Tracks cost changes for auditing
+model ProductCostHistory {
+  id                  Int      @id @default(autoincrement())
+  productId           Int
+  companyId           Int
+  purchaseOrderItemId Int?
+  quantity            Decimal  @db.Decimal(10, 3) // Quantity purchased
+  unitCost            Decimal  @db.Decimal(10, 2) // Unit cost at purchase
+  previousAvgCost     Decimal  @db.Decimal(10, 2) // Average cost before this purchase
+  newAvgCost          Decimal  @db.Decimal(10, 2) // Average cost after this purchase
+  previousStock       Decimal  @db.Decimal(10, 3) // Stock quantity before purchase
+  newStock            Decimal  @db.Decimal(10, 3) // Stock quantity after purchase
+  createdAt           DateTime @default(now())
+
+  product           Product            @relation(fields: [productId], references: [id])
+  purchaseOrderItem PurchaseOrderItem? @relation(fields: [purchaseOrderItemId], references: [id])
+  company           Company            @relation(fields: [companyId], references: [id])
+
+  @@index([productId])
+  @@index([companyId])
+  @@index([createdAt])
+}
+
+// ==========================================
+// 7. POS Y VENTAS
+// ==========================================
+
+model Order {
+  id             Int         @id @default(autoincrement())
+  companyId      Int
+  branchId       Int
+  tableId        Int?
+  userId         Int // Waiter/Cashier who created the order
+  cashRegisterId Int? // Linked when paid/processed
+  cashRegister   CashRegister? @relation("OrderCashRegister", fields: [cashRegisterId], references: [id])
+  customerName   String?
+  orderType      OrderType   @default(DINE_IN)
+  status         OrderStatus @default(OPEN)
+  total          Decimal     @default(0) @db.Decimal(10, 2)
+  discount       Decimal     @default(0) @db.Decimal(10, 2)
+  discountCode   String? // Applied promotion/discount code
+  tipAmount      Decimal     @default(0) @db.Decimal(10, 2)
+  tax            Decimal     @default(0) @db.Decimal(10, 2)
+  invoiceNumber  String?     @unique
+  cancelledById  Int? // User who cancelled the order
+  cancelReason   String? // Reason for cancellation
+  cancelledAt    DateTime? // Timestamp of cancellation
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  closedAt       DateTime?
+
+  company     Company @relation(fields: [companyId], references: [id])
+  branch      Branch  @relation(fields: [branchId], references: [id])
+  table       Table?  @relation(fields: [tableId], references: [id])
+  user        User    @relation("OrderCreator", fields: [userId], references: [id])
+  cancelledBy User?   @relation("OrderCancelledBy", fields: [cancelledById], references: [id])
+
+  items    OrderItem[]
+  payments Payment[]
+
+  @@index([companyId, branchId])
+  @@index([companyId, status])
+  @@index([companyId, createdAt])
+  @@index([userId])
+  @@index([tableId])
+}
+
+enum OrderType {
+  DINE_IN
+  TAKEOUT
+  DELIVERY
+}
+
+enum OrderStatus {
+  OPEN
+  SENT_TO_KITCHEN
+  IN_PREPARATION
+  READY
+  PAID
+  CANCELLED
+  DELIVERED
+}
+
+model OrderItem {
+  id         Int             @id @default(autoincrement())
+  orderId    Int
+  menuItemId Int
+  quantity   Int
+  price      Decimal         @db.Decimal(10, 2)
+  subtotal   Decimal         @db.Decimal(10, 2)
+  notes      String?
+  status     OrderItemStatus @default(PENDING)
+  sentAt     DateTime? // When sent to kitchen
+  startedAt  DateTime? // When kitchen started preparing
+  finishedAt DateTime? // When kitchen finished preparing
+
+  order     Order               @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  menuItem  MenuItem            @relation(fields: [menuItemId], references: [id])
+  modifiers OrderItemModifier[]
+
+  @@index([orderId])
+  @@index([menuItemId])
+}
+
+enum OrderItemStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+}
+
+model PaymentMethod {
+  id        Int     @id @default(autoincrement())
+  companyId Int? // Optional: null means system-wide
+  name      String // Cash, Card, Transfer
+  active    Boolean @default(true)
+
+  company  Company?  @relation(fields: [companyId], references: [id])
+  payments Payment[]
+  cateringPayments CateringPayment[]
+}
+
+model Payment {
+  id              Int      @id @default(autoincrement())
+  orderId         Int
+  paymentMethodId Int
+  amount          Decimal  @db.Decimal(10, 2)
+  reference       String?
+  payerName       String? // Name of the person paying (for split bills)
+  registeredById  Int? // User (cashier) who registered the payment
+  createdAt       DateTime @default(now())
+
+  order         Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  paymentMethod PaymentMethod @relation(fields: [paymentMethodId], references: [id])
+
+  @@index([orderId])
+  @@index([paymentMethodId])
+}
+
+// ==========================================
+// 8. CAJA
+// ==========================================
+
+model CashRegister {
+  id        Int                @id @default(autoincrement())
+  companyId Int
+  branchId  Int
+  name      String
+  status    CashRegisterStatus @default(CLOSED)
+
+  company Company     @relation(fields: [companyId], references: [id])
+  branch  Branch      @relation(fields: [branchId], references: [id])
+  shifts  CashShift[]
+  orders  Order[]     @relation("OrderCashRegister")
+
+  @@index([companyId])
+  @@index([branchId])
+}
+
+enum CashRegisterStatus {
+  OPEN
+  CLOSED
+}
+
+model CashShift {
+  id             Int       @id @default(autoincrement())
+  companyId      Int
+  cashRegisterId Int
+  userId         Int
+  startDate      DateTime  @default(now())
+  endDate        DateTime?
+  startAmount    Decimal   @db.Decimal(10, 2)
+  endAmount      Decimal?  @db.Decimal(10, 2)
+  difference     Decimal?  @db.Decimal(10, 2) // Surplus/Deficit
+  notes          String?
+
+  company      Company        @relation(fields: [companyId], references: [id])
+  cashRegister CashRegister   @relation(fields: [cashRegisterId], references: [id])
+  user         User           @relation(fields: [userId], references: [id])
+  movements    CashMovement[]
+  counts       CashCount[]
+
+  @@index([companyId, cashRegisterId])
+  @@index([userId])
+  @@index([cashRegisterId])
+}
+
+model CashCount {
+  id           Int     @id @default(autoincrement())
+  shiftId      Int
+  type         String  @default("BILL") // "BILL", "COIN" or "USD_BILL"
+  denomination Decimal @db.Decimal(10, 2)
+  count        Int
+
+  shift CashShift @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+
+  @@index([shiftId])
+}
+
+model CashMovement {
+  id             Int              @id @default(autoincrement())
+  shiftId        Int
+  type           CashMovementType
+  amount         Decimal          @db.Decimal(10, 2)
+  description    String?
+  reference      String? // Order ID if sale
+  createdAt      DateTime         @default(now())
+  documentDate   DateTime?
+  documentType   DocumentType?
+  documentNumber String?
+  supplierId     Int?
+
+  shift    CashShift @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+
+  @@index([shiftId])
+  @@index([reference])
+}
+
+enum CashMovementType {
+  IN
+  OUT
+}
+
+enum DocumentType {
+  FACTURA
+  RECIBO_GASTO
+  RECIBO_CAJA
+  NOTA_CREDITO
+  NOTA_DEBITO
+}
+
+// ==========================================
+// 9. MODIFICADORES
+// ==========================================
+
+model ModifierGroup {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  name        String
+  description String?
+  minSelect   Int      @default(0)
+  maxSelect   Int?     @default(1)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company   Company    @relation(fields: [companyId], references: [id])
+  menuItems MenuItem[]
+  modifiers Modifier[]
+}
+
+model Modifier {
+  id              Int      @id @default(autoincrement())
+  modifierGroupId Int
+  name            String
+  price           Decimal  @default(0) @db.Decimal(10, 2)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  modifierGroup      ModifierGroup       @relation(fields: [modifierGroupId], references: [id])
+  orderItemModifiers OrderItemModifier[]
+
+  @@index([modifierGroupId])
+}
+
+model OrderItemModifier {
+  id          Int     @id @default(autoincrement())
+  orderItemId Int
+  modifierId  Int
+  name        String
+  price       Decimal @db.Decimal(10, 2)
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  modifier  Modifier  @relation(fields: [modifierId], references: [id])
+
+  @@index([orderItemId])
+  @@index([modifierId])
+}
+
+// ==========================================
+// 10. PROMOCIONES Y DESCUENTOS
+// ==========================================
+
+model Promotion {
+  id             Int           @id @default(autoincrement())
+  companyId      Int
+  code           String
+  name           String
+  description    String?
+  type           PromotionType @default(PERCENTAGE)
+  value          Decimal       @db.Decimal(10, 2) // Percentage or fixed amount
+  minOrderAmount Decimal?      @db.Decimal(10, 2)
+  maxDiscount    Decimal?      @db.Decimal(10, 2)
+  validFrom      DateTime      @default(now())
+  validTo        DateTime?
+  usageLimit     Int? // Max times it can be used
+  usageCount     Int           @default(0)
+  active         Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, code])
+}
+
+enum PromotionType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+// ==========================================
+// 11. CONFIGURACIÓN GLOBAL
+// ==========================================
+
+model Setting {
+  id        Int      @id @default(autoincrement())
+  companyId Int? // Global or Company specific
+  name      String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company? @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, name])
+}
+// ==========================================
+// 12. CATERING MODULE
+// ==========================================
+
+model CateringEvent {
+  id           Int                 @id @default(autoincrement())
+  companyId    Int
+  branchId     Int
+  customerId   Int?
+  title        String
+  date         DateTime
+  peopleCount  Int
+  status       CateringStatus     @default(QUOTED)
+  totalAmount  Decimal            @default(0) @db.Decimal(10, 2)
+  balance      Decimal            @default(0) @db.Decimal(10, 2)
+  location     String?
+  notes        String?            @db.Text
+  clauses      Json?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  company      Company            @relation(fields: [companyId], references: [id])
+  branch       Branch             @relation(fields: [branchId], references: [id])
+  customer     Customer?          @relation(fields: [customerId], references: [id])
+  services     CateringServiceItem[]
+  menuItems    CateringMenuItem[]
+  payments     CateringPayment[]
+
+  @@index([companyId])
+  @@index([branchId])
+  @@index([customerId])
+  @@index([date])
+}
+
+enum CateringStatus {
+  QUOTED
+  RESERVED
+  PAID
+  FINISHED
+  CANCELLED
+}
+
+model CateringService {
+  id           Int      @id @default(autoincrement())
+  companyId    Int
+  name         String
+  description  String?  @db.Text
+  internalCost Decimal  @default(0) @db.Decimal(10, 2)
+  salePrice    Decimal  @default(0) @db.Decimal(10, 2)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company      Company  @relation(fields: [companyId], references: [id])
+  items        CateringServiceItem[]
+}
+
+model CateringServiceItem {
+  id                Int             @id @default(autoincrement())
+  cateringEventId   Int
+  cateringServiceId Int
+  quantity          Decimal         @db.Decimal(10, 2)
+  unitPrice         Decimal         @db.Decimal(10, 2)
+  subtotal          Decimal         @db.Decimal(10, 2)
+  notes             String?
+
+  event             CateringEvent   @relation(fields: [cateringEventId], references: [id], onDelete: Cascade)
+  service           CateringService @relation(fields: [cateringServiceId], references: [id])
+
+  @@index([cateringEventId])
+}
+
+model CateringMenuItem {
+  id              Int           @id @default(autoincrement())
+  cateringEventId Int
+  menuItemId      Int
+  quantity        Int
+  unitPrice       Decimal       @db.Decimal(10, 2)
+  subtotal        Decimal       @db.Decimal(10, 2)
+
+  event           CateringEvent @relation(fields: [cateringEventId], references: [id], onDelete: Cascade)
+  menuItem        MenuItem      @relation(fields: [menuItemId], references: [id])
+
+  @@index([cateringEventId])
+  @@index([menuItemId])
+}
+
+model CateringPayment {
+  id              Int           @id @default(autoincrement())
+  cateringEventId Int
+  paymentMethodId Int
+  amount          Decimal       @db.Decimal(10, 2)
+  reference       String?
+  type            CateringPaymentType @default(ADVANCE)
+  date            DateTime      @default(now())
+
+  event           CateringEvent @relation(fields: [cateringEventId], references: [id], onDelete: Restrict)
+  paymentMethod   PaymentMethod @relation(fields: [paymentMethodId], references: [id])
+
+  @@index([cateringEventId])
+}
+
+enum CateringPaymentType {
+  ADVANCE
+  FINAL_SETTLEMENT
+}
+
+// ==========================================
+// 13. AUDIT LOG
+// ==========================================
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  companyId  Int
+  entityType String   // Order, Payment, InventoryMovement, etc.
+  entityId   Int
+  action     String   // CANCEL, CREATE, UPDATE, DELETE, TRANSFER, etc.
+  userId     Int
+  details    Json?    // Additional context (reason, old/new values, etc.)
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([companyId, entityType, entityId])
+  @@index([companyId, createdAt])
+  @@index([userId])
+}
+
+// Consolidating Customers
+model Customer {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  name      String
+  email     String?
+  phone     String?
+  address   String?  @db.Text
+  taxId     String?  // RUC/NIT
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company  @relation(fields: [companyId], references: [id])
+  cateringEvents CateringEvent[]
+
+  @@index([companyId])
+}

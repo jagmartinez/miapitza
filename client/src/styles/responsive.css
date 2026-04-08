@@ -1,0 +1,191 @@
+/* Responsive Design Utilities */
+
+/* Mobile First Breakpoints */
+@media (max-width: 640px) {
+
+    /* sm */
+    .hide-mobile {
+        display: none !important;
+    }
+
+    .stats-grid,
+    .orders-grid,
+    .reservations-grid,
+    .tables-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .kitchen-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .pos-container {
+        flex-direction: column;
+    }
+
+    .pos-right {
+        width: 100% !important;
+    }
+
+    .sidebar-nav {
+        overflow-x: auto;
+    }
+
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 12px;
+    }
+
+    /* POS specific mobile optimizations */
+    .pos-categories {
+        overflow-x: auto;
+        padding-bottom: 8px;
+    }
+
+    .pos-item-card {
+        padding: 12px !important;
+    }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+
+    .kitchen-grid,
+    .tables-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+}
+
+@media (max-width: 768px) {
+
+    /* md */
+    .dashboard-sections {
+        grid-template-columns: 1fr !important;
+    }
+
+    .form-row {
+        flex-direction: column !important;
+    }
+
+    .table-card-body {
+        font-size: 14px;
+    }
+}
+
+@media (max-width: 1024px) {
+
+    /* lg */
+    .layout {
+        grid-template-columns: 240px 1fr !important;
+    }
+
+    .sidebar {
+        width: 240px !important;
+    }
+}
+
+/* Tablet and Desktop */
+@media (min-width: 641px) {
+    .show-mobile-only {
+        display: none !important;
+    }
+}
+
+/* Print Styles */
+@media print {
+
+    .sidebar,
+    .page-header button,
+    .nav-item,
+    .logout-btn,
+    button:not(.print-keep) {
+        display: none !important;
+    }
+
+    .main-content {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .invoice-card {
+        box-shadow: none !important;
+        border: 1px solid #000 !important;
+    }
+}
+
+/* Utility Classes */
+.text-center {
+    text-align: center;
+}
+
+.text-right {
+    text-align: right;
+}
+
+.mt-1 {
+    margin-top: 0.25rem;
+}
+
+.mt-2 {
+    margin-top: 0.5rem;
+}
+
+.mt-3 {
+    margin-top: 0.75rem;
+}
+
+.mt-4 {
+    margin-top: 1rem;
+}
+
+.mb-1 {
+    margin-bottom: 0.25rem;
+}
+
+.mb-2 {
+    margin-bottom: 0.5rem;
+}
+
+.mb-3 {
+    margin-bottom: 0.75rem;
+}
+
+.mb-4 {
+    margin-bottom: 1rem;
+}
+
+.flex {
+    display: flex;
+}
+
+.flex-col {
+    flex-direction: column;
+}
+
+.items-center {
+    align-items: center;
+}
+
+.justify-between {
+    justify-content: space-between;
+}
+
+.gap-2 {
+    gap: 0.5rem;
+}
+
+.gap-4 {
+    gap: 1rem;
+}
+
+.w-full {
+    width: 100%;
+}
+
+.hidden {
+    display: none;
+}

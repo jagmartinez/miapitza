@@ -1,0 +1,263 @@
+/* PurchaseOrderForm specific overrides */
+
+.po-sidebar-form {
+    height: 100%;
+}
+
+/* Form Styles */
+.form-grid-modern {
+    display: grid;
+    gap: var(--spacing-lg);
+}
+
+.modern-textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: var(--spacing-md);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+    background: var(--color-background);
+    color: var(--color-text);
+    font-size: var(--font-size-sm);
+    transition: all var(--transition-fast);
+    resize: vertical;
+}
+
+/* Ensure the table container handles overflow correctly in the new modal structure */
+.modern-table-container {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    margin-top: var(--spacing-md);
+}
+
+.modern-po-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.modern-po-table th {
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: var(--color-neutral-50);
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--color-border);
+    text-align: left;
+    white-space: nowrap;
+}
+
+.dark .modern-po-table th {
+    background: var(--color-neutral-800);
+}
+
+.modern-po-table td {
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-bottom: 1px solid var(--color-border);
+    font-size: var(--font-size-sm);
+    vertical-align: middle;
+}
+
+.modern-po-table tr:last-child td {
+    border-bottom: none;
+}
+
+.product-info-mini {
+    display: flex;
+    flex-direction: column;
+}
+
+.p-name {
+    font-weight: 600;
+}
+
+.p-unit {
+    font-size: 8.5px;
+    color: var(--color-text-tertiary);
+}
+
+.po-total-row td {
+    background: var(--color-neutral-50);
+    border-top: 1px solid var(--color-border);
+}
+
+.dark .po-total-row td {
+    background: var(--color-neutral-800);
+    border-top: 1px solid var(--color-border);
+}
+
+.total-amount {
+    font-weight: 800;
+    color: var(--color-primary);
+    font-size: var(--font-size-lg);
+}
+
+/* Custom alignment for buttons in the sidebar */
+.save-btn-premium {
+    gap: var(--spacing-sm);
+}
+
+.add-item-btn-modern {
+    font-size: var(--font-size-xs);
+    height: 36px;
+    padding: 0 var(--spacing-md);
+}
+
+/* Empty State */
+.empty-table-msg {
+    text-align: center;
+    padding: var(--spacing-2xl) !important;
+    color: var(--color-text-tertiary);
+    font-style: italic;
+}
+
+/* Item Form within Sidebar */
+
+.add-item-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+
+.modern-po-table th.text-right {
+    text-align: right;
+}
+
+/* Footer */
+.sidebar-footer {
+    padding: var(--spacing-lg);
+    border-top: 1px solid var(--color-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--color-surface);
+}
+
+/* Receive Order Modal */
+.receive-modal-container {
+    padding: var(--spacing-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xl);
+}
+
+.receive-info-box {
+    display: flex;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+    background: rgba(59, 130, 246, 0.05);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: var(--radius-lg);
+    align-items: flex-start;
+}
+
+.receive-info-box .info-icon {
+    color: var(--color-primary);
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.receive-info-box .info-text p {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.receive-info-box .info-subtext {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+}
+
+.modal-footer-actions {
+    display: flex;
+    gap: var(--spacing-md);
+    margin-top: var(--spacing-sm);
+}
+
+.receive-confirm-btn {
+    gap: var(--spacing-sm);
+    flex: 2 !important;
+}
+
+/* Fix for Select labels in modal */
+.receive-modal-container .modal-input-label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-xs);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--color-text-tertiary);
+}
+
+.action-buttons {
+    display: flex;
+    gap: var(--spacing-md);
+}
+
+.modern-po-table th.text-right {
+    text-align: right;
+}
+/* File Upload Styles */
+.file-upload-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.file-upload-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+    background: var(--color-background);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    transition: all var(--transition-fast);
+}
+
+.file-upload-label:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    background: rgba(59, 130, 246, 0.05);
+}
+
+.file-upload-label.disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.view-pdf-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: var(--font-size-xs);
+    color: var(--color-primary);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.view-pdf-link:hover {
+    text-decoration: underline;
+}
+
+.action-btn-mini.pdf {
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--color-primary);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.action-btn-mini.pdf:hover {
+    background: var(--color-primary);
+    color: white;
+}
+

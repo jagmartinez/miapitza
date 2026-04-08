@@ -1,0 +1,128 @@
+.sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    backdrop-filter: blur(2px);
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.sidebar-panel {
+    position: fixed;
+    top: 0;
+    right: -600px;
+    width: 600px;
+    height: 100vh;
+    background-color: var(--color-surface);
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-panel.sidebar-wide {
+    right: -1000px;
+    width: 1000px;
+}
+
+.sidebar-panel.sidebar-large {
+    right: -750px;
+    width: 750px;
+}
+
+.sidebar-panel.sidebar-normal {
+    right: -500px;
+    width: 500px;
+}
+
+.sidebar-panel.sidebar-full {
+    right: -100%;
+    width: 100%;
+}
+
+.sidebar-panel.sidebar-open {
+    right: 0 !important;
+}
+
+.sidebar-panel .sidebar-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-xl);
+    border-bottom: 1px solid var(--color-border);
+    background-color: var(--color-surface);
+    gap: var(--spacing-md);
+}
+
+.sidebar-panel .sidebar-header h2 {
+    margin: 0;
+    font-size: var(--font-size-2xl);
+    flex: 1;
+}
+
+.sidebar-close {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
+    background-color: transparent;
+    border: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.sidebar-close:hover {
+    background-color: var(--color-background);
+    color: var(--color-text);
+}
+
+.sidebar-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing-xl);
+}
+
+/* Exclude modals that already handle their own padding */
+.sidebar-body:has(.dish-modal-form),
+.sidebar-body:has(.order-detail-content),
+.sidebar-body:has(.supplier-modal-content),
+.sidebar-body:has(.table-modal-content),
+.sidebar-body:has(.reservation-modal-content),
+.sidebar-body:has(.cash-register-modal-content),
+.sidebar-body:has(.menu-item-modal-content),
+.sidebar-body:has(.product-modal-content),
+.sidebar-body:has(.user-modal-content),
+.sidebar-body:has(.branch-modal-content),
+.sidebar-body:has(.premium-modal-content),
+.sidebar-body:has(.catering-modal-content) {
+    padding: 0;
+}
+
+@media (max-width: 768px) {
+
+    .sidebar-panel,
+    .sidebar-panel.sidebar-wide,
+    .sidebar-panel.sidebar-large,
+    .sidebar-panel.sidebar-full {
+        width: 100%;
+        right: -100%;
+    }
+}

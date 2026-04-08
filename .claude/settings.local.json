@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /c/restaurant/server/src/tests -type f -name *.ts)",
+      "Bash(wc -l /c/restaurant/client/src/components/*.tsx /c/restaurant/client/src/pages/*.tsx)",
+      "Bash(npx tsc:*)",
+      "Bash(npx prisma:*)",
+      "Bash(find /c/restaurant -type f \\\\\\(-name docker-compose.yml -o -name tsconfig*.json -o -name eslint* -o -name playwright* -o -name jest* -o -name .prettier* -o -name .gitignore -o -name TODO.md -o -name CLAUDE.md \\\\\\))",
+      "Bash(xargs wc:*)",
+      "Bash(grep -v \"^\\\\.$\\\\|^\\\\.\\\\.$\")",
+      "Bash(xargs cat:*)",
+      "Bash(npx vite:*)",
+      "Bash(npx vitest:*)",
+      "Bash(npx jest:*)",
+      "Bash(npx eslint:*)",
+      "Bash(grep -E \"\\(error |\\\\.ts$\\)\")",
+      "Bash(find /c/restaurant/server/src -name *websocket* -o -name *socket* -o -name *ws*)",
+      "Bash(find /c/restaurant/client/src -name *websocket* -o -name *socket* -o -name *ws*)",
+      "Bash(grep -E \"\\\\.\\(ts|js\\)$\")",
+      "Bash(find /c/restaurant/server/src -name \"*.routes.ts\" -exec basename {})",
+      "Bash(grep -l \"MenuItemBranchPrice\\\\|branchPrice\" /c/restaurant/server/src/routes/*.ts)",
+      "Bash(find /c/restaurant/client/src -name *sound* -o -name *types*)"
+    ]
+  }
+}

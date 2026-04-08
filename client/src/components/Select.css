@@ -1,0 +1,121 @@
+.select-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    width: 100%;
+}
+
+.select-label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--color-neutral-500);
+    letter-spacing: 0.5px;
+}
+
+/* Base control styles */
+.select-group .react-select__control {
+    border-radius: 6px;
+    transition: all var(--transition-fast);
+    cursor: pointer;
+    box-shadow: none;
+}
+
+/* Standard Variant */
+.select-group.standard .react-select__control {
+    border: 1px solid var(--color-border);
+    background-color: var(--color-surface);
+    min-height: 38px;
+}
+
+/* Modal Variant */
+.select-group.modal .react-select__control {
+    border: 1px solid var(--color-border);
+    background-color: var(--color-background);
+    min-height: 38px;
+}
+
+.select-group .react-select__control--is-focused {
+    border-color: var(--color-primary) !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+    background-color: var(--color-surface) !important;
+}
+
+.select-group .react-select__value-container {
+    padding: 0 16px;
+}
+
+.select-group .react-select__placeholder {
+    color: var(--color-text-tertiary);
+}
+
+.select-group .react-select__single-value {
+    color: var(--color-text);
+}
+
+.select-group .react-select__indicator-separator {
+    display: none;
+}
+
+.select-group .react-select__dropdown-indicator {
+    color: var(--color-neutral-500);
+    padding: 8px 12px;
+}
+
+.select-group .react-select__menu {
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-lg);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    z-index: 100;
+    background-color: var(--color-surface);
+}
+
+.select-group .react-select__option {
+    padding: 10px 16px;
+    font-size: var(--font-size-base);
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.select-group .react-select__option--is-focused {
+    background-color: var(--color-background);
+    color: var(--color-text);
+}
+
+.select-group .react-select__option--is-selected {
+    background-color: var(--color-primary);
+    color: white;
+}
+
+.select-error-message {
+    font-size: var(--font-size-sm);
+    color: var(--color-danger);
+    margin-top: 4px;
+}
+
+/* Dark Mode support - Redundant with semantic variables but kept for specific overrides if needed */
+.dark .select-group .react-select__control {
+    background-color: var(--color-surface);
+    border-color: var(--color-border);
+}
+
+.dark .select-group.modal .react-select__control {
+    background-color: var(--color-background);
+}
+
+.dark .select-group .react-select__single-value {
+    color: var(--color-neutral-100);
+}
+
+.dark .select-group .react-select__menu {
+    background-color: var(--color-neutral-800);
+    border-color: var(--color-neutral-700);
+}
+
+.dark .select-group .react-select__option--is-focused {
+    background-color: var(--color-neutral-700);
+}

@@ -1,0 +1,91 @@
+import prisma from '../utils/prisma';
+
+export class SettingService {
+    static async getAll(companyId: number) {
+        // Use prefix to simulate multi-tenancy on a global unique name field
+        const prefix = `${companyId}_`;
+        const settings = await prisma.setting.findMany({
+            where: {
+                name: {
+                    startsWith: prefix
+                }
+            }
+        });
+
+        // Convert array to object and strip prefix
+        return settings.reduce((acc, curr) => {
+            const cleanName = curr.name.substring(prefix.length);
+            acc[cleanName] = curr.value;
+            return acc;
+        }, {} as Record<string, string>);
+    }
+
+    private static validateSettingValue(name: string, value: string) {
+        if (name === 'tax_rate') {
+            const rate = parseFloat(value);
+            if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+                throw new Error('La tasa de impuesto debe ser un número entre 0 y 100');
+            }
+        }
+        if (name === 'session_timeout' || name === 'timeout') {
+            const timeout = parseInt(value, 10);
+            if (!Number.isFinite(timeout) || timeout <= 0) {
+                throw new Error('El tiempo de espera debe ser un número positivo');
+            }
+        }
+    }
+
+    static async update(companyId: number, data: Record<string, string>) {
+        const prefix = `${companyId}_`;
+
+        // Validate all values before starting transaction
+        for (const [name, value] of Object.entries(data)) {
+            this.validateSettingValue(name, value);
+        }
+
+        await prisma.$transaction(async (tx) => {
+            for (const [name, value] of Object.entries(data)) {
+                const prefixedName = `${prefix}${name}`;
+                const existing = await tx.setting.findFirst({
+                    where: { companyId, name: prefixedName }
+                });
+
+                if (existing) {
+                    await tx.setting.update({
+                        where: { id: existing.id },
+                        data: { value }
+                    });
+                } else {
+                    await tx.setting.create({
+                        data: { name: prefixedName, value, companyId }
+                    });
+                }
+            }
+        });
+
+        return this.getAll(companyId);
+    }
+
+    /**
+     * Initialize default settings if they don't exist
+     */
+    static async initializeDefaults() {
+        const defaults: Record<string, string> = {
+            'restaurant_name': 'Mi Restaurante',
+            'currency': 'NIO',
+            'currency_symbol': 'C$',
+            'currency_name': 'Córdoba Nicaragüense',
+            'tax_rate': '15',
+            'timezone': 'America/Managua'
+        };
+
+        const existingCount = await prisma.setting.count();
+        if (existingCount === 0) {
+            // Only initialize if at least one company exists
+            const firstCompany = await prisma.company.findFirst({ select: { id: true } });
+            if (firstCompany) {
+                await this.update(firstCompany.id, defaults);
+            }
+        }
+    }
+}

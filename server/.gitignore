@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment files
+.env
+.env.local
+.env.test
+
+# Uploaded files (generated at runtime)
+uploads/
+
+# Backup files (generated at runtime)
+backups/
+
+# Logs and debug files
+*.log
+server_debug.log
+migration_log.txt
+errors.txt
+errors_v2.txt
+prisma_error.txt
+test_output.txt
+test_failure.txt
+db_check.json
+
+# OS files
+Thumbs.db
+.DS_Store

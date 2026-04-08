@@ -1,0 +1,143 @@
+.keypad-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+}
+
+.keypad-container {
+    background: var(--color-surface);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-xl);
+    box-shadow: var(--shadow-xl);
+    width: 320px;
+    animation: slideUp 0.2s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.keypad-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-lg);
+}
+
+.keypad-header h3 {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    color: var(--color-neutral-800);
+    margin: 0;
+}
+
+.keypad-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+    background: var(--color-neutral-100);
+    border: none;
+    color: var(--color-neutral-600);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.keypad-close:hover {
+    background: var(--color-neutral-200);
+    color: var(--color-text);
+}
+
+.keypad-display {
+    background: var(--color-neutral-50);
+    border: 2px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg);
+    text-align: center;
+    font-size: var(--font-size-4xl);
+    font-weight: 700;
+    color: var(--color-primary);
+    margin-bottom: var(--spacing-lg);
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.keypad-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-lg);
+}
+
+.keypad-btn {
+    padding: var(--spacing-lg);
+    border: 2px solid var(--color-border);
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    font-size: var(--font-size-2xl);
+    font-weight: 600;
+    color: var(--color-neutral-800);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    min-height: 60px;
+}
+
+.keypad-btn:hover {
+    background: var(--color-neutral-50);
+    border-color: var(--color-primary);
+    transform: scale(1.05);
+}
+
+.keypad-btn:active {
+    transform: scale(0.95);
+}
+
+.keypad-clear,
+.keypad-backspace {
+    background: var(--color-neutral-100);
+    color: var(--color-danger);
+    font-weight: 700;
+}
+
+.keypad-confirm {
+    width: 100%;
+    padding: var(--spacing-lg);
+    background: var(--color-primary);
+    color: white;
+    border: none;
+    border-radius: var(--radius-lg);
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.keypad-confirm:hover {
+    background: var(--color-primary-dark);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.keypad-confirm:active {
+    transform: translateY(0);
+}
