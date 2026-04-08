@@ -1,0 +1,13 @@
+# Config as code for Railway — static SPA after Vite build.
+# Dashboard: set this service Root Directory to "client".
+# Set VITE_API_URL and VITE_WS_URL to your *public* API URLs before deploy (build-time).
+
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "npm start"
+healthcheckPath = "/"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

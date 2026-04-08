@@ -1,0 +1,13 @@
+# Railway: set service Root Directory to "client".
+# Vite needs devDependencies to build; NODE_ENV=production would skip them without --include=dev.
+
+providers = ["node"]
+
+[variables]
+NIXPACKS_NODE_VERSION = "20"
+
+[phases.install]
+cmds = ["npm ci --include=dev"]
+
+[phases.build]
+cmds = ["npm run build"]

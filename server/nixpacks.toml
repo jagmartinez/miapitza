@@ -1,7 +1,10 @@
-# Railway / Nixpacks: backend lives in server/ — set Root Directory to "server" in Railway.
+# Railway / Nixpacks: set service Root Directory to "server" in Railway.
 # NODE_ENV=production skips devDependencies by default; we need them for tsc + prisma CLI at build time.
 
 providers = ["node"]
+
+[variables]
+NIXPACKS_NODE_VERSION = "20"
 
 [phases.install]
 cmds = ["npm ci --include=dev"]

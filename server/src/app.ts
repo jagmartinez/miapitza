@@ -45,6 +45,11 @@ dotenv.config();
 
 const app: Express = express();
 
+// Liveness for load balancers (Railway, etc.) — minimal stack, no DB
+app.get('/health', (_req, res) => {
+    res.status(200).type('text/plain').send('ok');
+});
+
 // Trust proxy for correct IP detection behind reverse proxy
 app.set('trust proxy', 1);
 

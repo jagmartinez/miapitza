@@ -54,6 +54,10 @@ export default defineConfig({
             }
         }
     },
+    preview: {
+        host: true,
+        port: parseInt(process.env.PORT ?? '4173', 10)
+    },
     build: {
         chunkSizeWarningLimit: 900,
         rollupOptions: {
