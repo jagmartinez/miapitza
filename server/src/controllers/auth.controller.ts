@@ -139,7 +139,7 @@ export class AuthController {
         try {
             const userId = req.user!.userId;
             const sessions = await SessionService.listActive(userId);
-            const currentToken = this.extractToken(req);
+            const currentToken = AuthController.extractToken(req);
             const currentHash = SessionService.hashToken(currentToken);
             const data = sessions.map((s: { tokenHash: string; id: string; device: string | null; ipAddress: string | null; createdAt: Date }) => {
                 const { tokenHash, ...rest } = s;
@@ -164,7 +164,7 @@ export class AuthController {
     static async revokeAllSessions(req: Request, res: Response, next: NextFunction) {
         try {
             const userId = req.user!.userId;
-            const token = this.extractToken(req);
+            const token = AuthController.extractToken(req);
             await SessionService.revokeAllExcept(userId, token);
             res.clearCookie('auth_token', { path: '/' });
             res.json({ success: true, message: 'Otras sesiones cerradas' });
