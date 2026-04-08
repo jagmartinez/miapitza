@@ -1,5 +1,5 @@
-# Use when Railway Root Directory is "server" (Dockerfile in this folder).
-# If Root Directory is empty, the repo-root Dockerfile + railway.toml apply instead.
+# Monorepo API: build from repo root. Leave "Root Directory" empty in Railway.
+# Railway uses Dockerfile when present (avoids Railpack "build plan" errors on repo root).
 
 [build]
 builder = "DOCKERFILE"
