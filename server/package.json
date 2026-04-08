@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "typecheck": "tsc --noEmit",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "lint": "eslint .",
     "start": "node dist/index.js",
     "db:prepare-legacy": "ts-node prisma/prepare-legacy-schema.ts",
