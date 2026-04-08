@@ -55,7 +55,7 @@ export default function Menu() {
   /** Backend: menu/recipe/image mutations require SUPERADMIN | ADMIN */
   const canMutateMenu = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CHEF']);
   /** Backend: branch price overrides via /advanced/pricing require SUPERADMIN | ADMIN */
-  const canSetBranchPrices = canMutateMenu;
+  const canSetBranchPrices = hasAnyRole(user, ['SUPERADMIN', 'ADMIN']);
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
