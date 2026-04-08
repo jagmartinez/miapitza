@@ -17,14 +17,40 @@ export const getUserRoleNames = (user?: User | null): string[] => {
     }
 
     if (Array.isArray(user.roles) && user.roles.length > 0) {
-        return user.roles.map((role) => role.name);
+        const rolesFromArray = user.roles
+            .map((role) => {
+                if (typeof role === 'string') {
+                    return role;
+                }
+                if (role && typeof role === 'object' && 'name' in role && typeof role.name === 'string') {
+                    return role.name;
+                }
+                return '';
+            })
+            .filter(Boolean);
+        if (rolesFromArray.length > 0) {
+            return rolesFromArray;
+        }
     }
 
     if (Array.isArray(user.userRoles) && user.userRoles.length > 0) {
-        return user.userRoles.map((userRole) => userRole.role.name);
+        const userRoles = user.userRoles
+            .map((userRole) => userRole?.role?.name || '')
+            .filter(Boolean);
+        if (userRoles.length > 0) {
+            return userRoles;
+        }
     }
 
-    return user.role?.name ? [user.role.name] : [];
+    const rawRole = (user as unknown as { role?: { name?: string } | string }).role;
+    if (typeof rawRole === 'string') {
+        return [rawRole];
+    }
+    if (rawRole && typeof rawRole === 'object' && typeof rawRole.name === 'string') {
+        return [rawRole.name];
+    }
+
+    return [];
 };
 
 export const hasAnyRole = (user: User | null | undefined, roles: string[]): boolean => {

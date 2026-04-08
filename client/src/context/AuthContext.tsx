@@ -68,7 +68,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         try {
             const parsed = JSON.parse(storedUser);
-            if (!parsed || typeof parsed !== 'object' || !parsed.id || !parsed.role) {
+            if (!parsed || typeof parsed !== 'object' || !parsed.id) {
                 throw new Error('Invalid user data in localStorage');
             }
 
@@ -93,7 +93,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 const serverUser = res.data?.data;
                 if (serverUser) {
                     const safeFields = { ...serverUser };
+                    delete safeFields.userId;
                     delete safeFields.role;
+                    delete safeFields.roles;
+                    delete safeFields.userRoles;
                     delete safeFields.company;
                     setUser((prev) => (prev ? { ...prev, ...safeFields } : prev));
                 }

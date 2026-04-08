@@ -25,13 +25,27 @@ export class TableController {
     static async getAll(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
+            const currentRole = req.user?.role;
             let branchId: number | undefined;
             if (req.user?.role === 'SUPERADMIN') {
                 branchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
             } else {
                 branchId = req.user?.branchId;
             }
-            const tables = await TableService.getAll(companyId, branchId);
+            let tables = await TableService.getAll(companyId, branchId);
+
+            // Defensive fallback:
+            // if branch-scoped users (e.g. waiter/host/cashier) get an empty list due
+            // inconsistent branch assignment, return company tables so POS remains operable.
+            if (
+                tables.length === 0 &&
+                branchId &&
+                !req.query.branchId &&
+                currentRole &&
+                ['MESERO', 'HOST', 'CAJERO'].includes(currentRole)
+            ) {
+                tables = await TableService.getAll(companyId, undefined);
+            }
             res.json({
                 success: true,
                 data: tables
