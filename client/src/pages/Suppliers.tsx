@@ -24,7 +24,7 @@ interface PriceHistoryRow {
 export default function Suppliers() {
     const { user } = useAuth();
     /** Backend: POST/PUT /suppliers — SUPERADMIN | ADMIN */
-    const canManageSupplier = hasAnyRole(user, ['SUPERADMIN', 'ADMIN']);
+    const canManageSupplier = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'BODEGA']);
     /** Backend: DELETE /suppliers — SUPERADMIN only */
     const canDeleteSupplier = hasAnyRole(user, ['SUPERADMIN']);
 

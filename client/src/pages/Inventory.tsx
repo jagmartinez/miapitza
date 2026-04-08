@@ -60,13 +60,13 @@ export default function Inventory() {
     const { toasts, removeToast, success: showSuccess, error: showError, warning: showWarning } = useToast();
 
     /** Backend: POST/PUT /products — SUPERADMIN | ADMIN */
-    const canMutateProduct = hasAnyRole(user, ['SUPERADMIN', 'ADMIN']);
+    const canMutateProduct = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'BODEGA']);
     /** Backend: DELETE /products — SUPERADMIN only */
     const canDeleteProduct = hasAnyRole(user, ['SUPERADMIN']);
     /** Backend: POST /inventory-movements — SUPERADMIN | ADMIN | CAJERO | BODEGA */
     const canAdjustStock = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CAJERO', 'BODEGA']);
     /** Backend: POST /advanced/auto-po/create — SUPERADMIN | ADMIN */
-    const canCreateAutoPO = hasAnyRole(user, ['SUPERADMIN', 'ADMIN']);
+    const canCreateAutoPO = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'BODEGA']);
     const [products, setProducts] = useState<Product[]>([]);
     const [lowStock, setLowStock] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);

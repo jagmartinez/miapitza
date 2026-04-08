@@ -10,8 +10,8 @@ router.use(authMiddleware);
 router.get('/', SupplierController.getAll);
 router.get('/:id', SupplierController.getById);
 router.get('/:id/price-history', SupplierController.getPriceHistory);
-router.post('/', requireRole('SUPERADMIN', 'ADMIN'), SupplierController.create);
-router.put('/:id', requireRole('SUPERADMIN', 'ADMIN'), SupplierController.update);
+router.post('/', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), SupplierController.create);
+router.put('/:id', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), SupplierController.update);
 router.delete('/:id', requireRole('SUPERADMIN'), SupplierController.delete);
 
 export default router;

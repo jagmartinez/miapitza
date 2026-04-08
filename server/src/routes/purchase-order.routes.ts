@@ -42,20 +42,20 @@ router.use(authMiddleware);
 
 router.get('/', PurchaseOrderController.getAll);
 router.get('/:id', PurchaseOrderController.getById);
-router.post('/', requireRole('SUPERADMIN', 'ADMIN'), uploadInvoice.single('invoicePdf'), PurchaseOrderController.create);
-router.put('/:id', requireRole('SUPERADMIN', 'ADMIN'), uploadInvoice.single('invoicePdf'), PurchaseOrderController.update);
+router.post('/', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), uploadInvoice.single('invoicePdf'), PurchaseOrderController.create);
+router.put('/:id', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), uploadInvoice.single('invoicePdf'), PurchaseOrderController.update);
 router.delete('/:id', requireRole('SUPERADMIN', 'ADMIN'), PurchaseOrderController.delete);
 
 // Item management
-router.post('/:id/items', requireRole('SUPERADMIN', 'ADMIN'), PurchaseOrderController.addItem);
-router.delete('/items/:itemId', requireRole('SUPERADMIN', 'ADMIN'), PurchaseOrderController.removeItem);
+router.post('/:id/items', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), PurchaseOrderController.addItem);
+router.delete('/items/:itemId', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), PurchaseOrderController.removeItem);
 
 // Receive order (updates inventory)
-router.post('/:id/receive', requireRole('SUPERADMIN', 'ADMIN'), PurchaseOrderController.receive);
+router.post('/:id/receive', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), PurchaseOrderController.receive);
 
 // Bulk import
 router.get('/import/template', PurchaseOrderImportController.getTemplate);
 router.post('/import/validate', upload.single('file'), PurchaseOrderImportController.validate);
-router.post('/import/confirm', requireRole('SUPERADMIN', 'ADMIN'), PurchaseOrderImportController.confirm);
+router.post('/import/confirm', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), PurchaseOrderImportController.confirm);
 
 export default router;

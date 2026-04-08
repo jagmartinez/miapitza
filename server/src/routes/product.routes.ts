@@ -12,8 +12,8 @@ router.get('/', ProductController.getAll);
 router.get('/low-stock', ProductController.getLowStock);
 router.get('/:id', ProductController.getById);
 router.get('/:id/cost-history', CostingController.getCostHistory);
-router.post('/', requireRole('SUPERADMIN', 'ADMIN'), ProductController.create);
-router.put('/:id', requireRole('SUPERADMIN', 'ADMIN'), ProductController.update);
+router.post('/', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), ProductController.create);
+router.put('/:id', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), ProductController.update);
 router.delete('/:id', requireRole('SUPERADMIN'), ProductController.delete);
 router.post('/:id/recalculate-cost', requireRole('SUPERADMIN'), CostingController.recalculateCost);
 

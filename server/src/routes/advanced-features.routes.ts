@@ -66,7 +66,7 @@ router.get('/auto-po/suggestions', async (req: Request, res: Response, next: Nex
     }
 });
 
-router.post('/auto-po/create', requireRole('ADMIN', 'SUPERADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/auto-po/create', requireRole('ADMIN', 'SUPERADMIN', 'BODEGA'), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const { branchId, supplierId, items } = req.body;

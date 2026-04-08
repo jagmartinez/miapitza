@@ -37,7 +37,8 @@ function errMsg(error: unknown, fallback: string): string {
 export default function PurchaseOrders() {
     const { user } = useAuth();
     const userRoleNames = getUserRoleNames(user);
-    const canManagePurchaseOrders = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
+    const canManagePurchaseOrders = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'BODEGA'].includes(role));
+    const canDeletePurchaseOrders = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const navigate = useNavigate();
     const [orders, setOrders] = useState<PurchaseOrder[]>([]);
     const [loading, setLoading] = useState(true);
@@ -188,7 +189,7 @@ export default function PurchaseOrders() {
     };
 
     const handleDeleteOrder = async (id: number) => {
-        if (!canManagePurchaseOrders) {
+        if (!canDeletePurchaseOrders) {
             alert('No tienes permisos para eliminar órdenes');
             return;
         }
@@ -361,7 +362,7 @@ export default function PurchaseOrders() {
                                                     <span className="mobile-action-label">PDF</span>
                                                 </a>
                                             )}
-                                            {canManagePurchaseOrders && (
+                                            {canDeletePurchaseOrders && (
                                                 <button
                                                     className={`action-btn-mini delete ${order.status === 'RECEIVED' ? 'disabled' : ''}`}
                                                     onClick={(e) => {

@@ -107,8 +107,8 @@ function App() {
                                 <Route path="/kardex" element={<RoleGuard roles={WAREHOUSE}><Kardex /></RoleGuard>} />
                                 <Route path="/suppliers" element={<RoleGuard roles={WAREHOUSE}><Suppliers /></RoleGuard>} />
                                 <Route path="/purchase-orders" element={<RoleGuard roles={WAREHOUSE}><PurchaseOrders /></RoleGuard>} />
-                                <Route path="/purchase-orders/new" element={<RoleGuard roles={ADMIN}><PurchaseOrderForm /></RoleGuard>} />
-                                <Route path="/purchase-orders/:id" element={<RoleGuard roles={ADMIN}><PurchaseOrderForm /></RoleGuard>} />
+                                <Route path="/purchase-orders/new" element={<RoleGuard roles={['SUPERADMIN', 'ADMIN', 'BODEGA']}><PurchaseOrderForm /></RoleGuard>} />
+                                <Route path="/purchase-orders/:id" element={<RoleGuard roles={['SUPERADMIN', 'ADMIN', 'BODEGA']}><PurchaseOrderForm /></RoleGuard>} />
                                 <Route path="/warehouses" element={<RoleGuard roles={WAREHOUSE}><WarehousesPage /></RoleGuard>} />
                                 <Route path="/cost-report" element={<RoleGuard roles={ADMIN}><CostReport /></RoleGuard>} />
                                 <Route path="/users" element={<RoleGuard roles={ADMIN}><Users /></RoleGuard>} />

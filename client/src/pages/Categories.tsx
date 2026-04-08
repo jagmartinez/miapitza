@@ -21,7 +21,7 @@ interface CategoryRow {
 export default function Categories() {
     const { user } = useAuth();
     /** Backend: category mutations require SUPERADMIN | ADMIN (CHEF can list only) */
-    const canMutateCategory = hasAnyRole(user, ['SUPERADMIN', 'ADMIN']);
+    const canMutateCategory = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CHEF']);
 
     const [categories, setCategories] = useState<CategoryRow[]>([]);
     const [loading, setLoading] = useState(true);

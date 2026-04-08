@@ -38,7 +38,7 @@ export default function Warehouses() {
     const { toasts, removeToast, success: showSuccess, error: showError } = useToast();
 
     /** Backend: POST/PUT /warehouses — SUPERADMIN | ADMIN */
-    const canMutateWarehouse = hasAnyRole(user, ['SUPERADMIN', 'ADMIN']);
+    const canMutateWarehouse = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'BODEGA']);
     /** Backend: DELETE /warehouses — SUPERADMIN only */
     const canDeleteWarehouse = hasAnyRole(user, ['SUPERADMIN']);
     /** Backend: POST /inventory-movements/transfer — SUPERADMIN | ADMIN | BODEGA */

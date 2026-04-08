@@ -53,7 +53,7 @@ type StrOption = { value: string; label: string };
 export default function Menu() {
   const { user } = useAuth();
   /** Backend: menu/recipe/image mutations require SUPERADMIN | ADMIN */
-  const canMutateMenu = hasAnyRole(user, ['SUPERADMIN', 'ADMIN']);
+  const canMutateMenu = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CHEF']);
   /** Backend: branch price overrides via /advanced/pricing require SUPERADMIN | ADMIN */
   const canSetBranchPrices = canMutateMenu;
 
