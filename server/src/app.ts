@@ -40,6 +40,7 @@ import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './utils/swagger';
 import invoiceRoutes from './routes/invoice.routes';
 import kardexRoutes from './routes/kardex.routes';
+import unitConversionRoutes from './routes/unit-conversion.routes';
 
 dotenv.config();
 
@@ -132,6 +133,7 @@ app.use('/api/advanced', advancedFeaturesRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/reports/kardex', kardexRoutes);
 app.use('/api/catering', cateringRoutes);
+app.use('/api/units', unitConversionRoutes);
 
 // Health check — do not expose internal operational details
 app.get('/api/health', (req: Request, res: Response) => {

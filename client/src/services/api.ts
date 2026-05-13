@@ -524,11 +524,33 @@ export const inventoryMovementsAPI = {
         quantity: number;
         reason?: string;
         reference?: string;
+        unit?: string;
     }) =>
         api.post('/inventory-movements', data),
 
     transfer: (data: Record<string, unknown>) =>
         api.post('/inventory-movements/transfer', data),
+};
+
+// Units of Measure API
+export const unitsAPI = {
+    getAll: () =>
+        api.get('/units'),
+
+    getProductUnits: (productId: number) =>
+        api.get(`/units/product/${productId}`),
+
+    setProductUnits: (productId: number, data: { baseUnitId: number; allowedUnits: Array<{ unitId: number; conversionFactor: number; isDefault?: boolean }> }) =>
+        api.put(`/units/product/${productId}`, data),
+
+    seedDefaults: () =>
+        api.post('/units/seed'),
+
+    autoConfigureProduct: (productId: number) =>
+        api.post(`/units/product/${productId}/auto-configure`),
+
+    autoConfigureAll: () =>
+        api.post('/units/auto-configure-all'),
 };
 
 // Stock Alerts API

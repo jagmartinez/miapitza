@@ -79,7 +79,8 @@ export class PurchaseOrderController {
                     ...item,
                     productId: item.productId != null ? Number(item.productId) : undefined,
                     quantity: item.quantity != null ? Number(item.quantity) : 0,
-                    cost: item.cost != null ? Number(item.cost) : 0
+                    cost: item.cost != null ? Number(item.cost) : 0,
+                    purchaseUnit: item.purchaseUnit || undefined
                 }));
             }
 
@@ -128,7 +129,8 @@ export class PurchaseOrderController {
                     ...item,
                     productId: item.productId != null ? Number(item.productId) : undefined,
                     quantity: item.quantity != null ? Number(item.quantity) : 0,
-                    cost: item.cost != null ? Number(item.cost) : 0
+                    cost: item.cost != null ? Number(item.cost) : 0,
+                    purchaseUnit: item.purchaseUnit || undefined
                 }));
             }
 

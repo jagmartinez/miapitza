@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Select from '../components/Select';
-import { autoPurchaseOrdersAPI, branchesAPI, productsAPI, inventoryMovementsAPI, categoriesAPI, stockAlertsAPI, suppliersAPI } from '../services/api';
+import { autoPurchaseOrdersAPI, branchesAPI, productsAPI, inventoryMovementsAPI, categoriesAPI, stockAlertsAPI, suppliersAPI, unitsAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 // import Input from '../components/Input';
@@ -13,7 +13,7 @@ import {
     AlertTriangle, Package, Plus, Edit2, Trash2,
     Activity, ShoppingBag, Layers, Truck, DollarSign, FileText
 } from 'lucide-react';
-import type { AutoPurchaseSuggestion, Branch, Product, StockAlertItem, Supplier, Warehouse } from '../types';
+import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, Warehouse } from '../types';
 import type { SingleValue } from 'react-select';
 import './Inventory.css';
 
@@ -111,8 +111,10 @@ export default function Inventory() {
         warehouseId: '',
         type: 'OUT' as 'IN' | 'OUT' | 'ADJUSTMENT',
         quantity: '',
-        reason: ''
+        reason: '',
+        unit: ''
     });
+    const [adjustmentUnits, setAdjustmentUnits] = useState<ProductAllowedUnit[]>([]);
 
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
 
@@ -208,15 +210,30 @@ export default function Inventory() {
         setIsSidebarOpen(true);
     };
 
-    const handleOpenAdjustment = (product: Product) => {
+    const loadProductUnits = useCallback(async (productId: number) => {
+        try {
+            const res = await unitsAPI.getProductUnits(productId);
+            const units: ProductAllowedUnit[] = res.data.data || [];
+            setAdjustmentUnits(units);
+            const defaultUnit = units.find(u => u.isDefault) || units.find(u => u.isBase) || units[0];
+            return defaultUnit?.abbreviation || '';
+        } catch {
+            setAdjustmentUnits([]);
+            return '';
+        }
+    }, []);
+
+    const handleOpenAdjustment = async (product: Product) => {
         const storedWarehouseId = localStorage.getItem('inventory_adjustment_warehouse_id');
+        const defaultUnitAbbr = await loadProductUnits(product.id);
         setAdjustmentData({
             productId: product.id,
             productName: product.name,
             warehouseId: storedWarehouseId || warehouses[0]?.id?.toString() || '',
             type: 'OUT',
             quantity: '',
-            reason: ''
+            reason: '',
+            unit: defaultUnitAbbr
         });
         setIsAdjustmentModalOpen(true);
     };
@@ -241,7 +258,8 @@ export default function Inventory() {
                 productId: adjustmentData.productId,
                 type: adjustmentData.type,
                 quantity: parseFloat(adjustmentData.quantity),
-                reason: adjustmentData.reason
+                reason: adjustmentData.reason,
+                unit: adjustmentData.unit || undefined
             });
             localStorage.setItem('inventory_adjustment_warehouse_id', adjustmentData.warehouseId);
             showSuccess('Ajuste realizado correctamente');
@@ -1010,17 +1028,40 @@ export default function Inventory() {
                                     isSearchable={false}
                                 />
 
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label">Cantidad</label>
-                                    <input
-                                        type="number"
-                                        step="0.001"
-                                        className="modal-standard-input"
-                                        value={adjustmentData.quantity}
-                                        onChange={(e) => setAdjustmentData({ ...adjustmentData, quantity: e.target.value })}
-                                        required
-                                        placeholder="0.00"
-                                    />
+                                <div className="modal-form-row">
+                                    <div className="modal-input-group" style={{ flex: 2 }}>
+                                        <label className="modal-input-label">Cantidad</label>
+                                        <input
+                                            type="number"
+                                            step="0.001"
+                                            className="modal-standard-input"
+                                            value={adjustmentData.quantity}
+                                            onChange={(e) => setAdjustmentData({ ...adjustmentData, quantity: e.target.value })}
+                                            required
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <Select
+                                            variant="modal"
+                                            label="Unidad"
+                                            options={adjustmentUnits.length > 0
+                                                ? adjustmentUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))
+                                                : [{ value: '', label: 'Sin unidades' }]
+                                            }
+                                            value={adjustmentData.unit
+                                                ? {
+                                                    value: adjustmentData.unit,
+                                                    label: adjustmentUnits.find(u => u.abbreviation === adjustmentData.unit)
+                                                        ? `${adjustmentUnits.find(u => u.abbreviation === adjustmentData.unit)!.name} (${adjustmentData.unit})`
+                                                        : adjustmentData.unit
+                                                }
+                                                : null}
+                                            onChange={(option: StrOption) => setAdjustmentData({ ...adjustmentData, unit: option?.value || '' })}
+                                            placeholder="Unidad..."
+                                            isSearchable={false}
+                                        />
+                                    </div>
                                 </div>
 
                                 <div className="modal-input-group">

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { warehousesAPI, inventoryMovementsAPI, branchesAPI, productsAPI } from '../services/api';
+import { useState, useEffect, useCallback } from 'react';
+import { warehousesAPI, inventoryMovementsAPI, branchesAPI, productsAPI, unitsAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import Select from '../components/Select';
@@ -11,7 +11,7 @@ import {
     Warehouse as WarehouseIcon, Plus, ArrowRightLeft, Package, MapPin,
     Eye, Trash2, Edit2, Search
 } from 'lucide-react';
-import type { Branch, InventoryMovement, Product, Warehouse } from '../types';
+import type { Branch, InventoryMovement, Product, ProductAllowedUnit, Warehouse } from '../types';
 import type { SingleValue } from 'react-select';
 import './Inventory.css';
 
@@ -63,8 +63,9 @@ export default function Warehouses() {
     // Transfer
     const [showTransfer, setShowTransfer] = useState(false);
     const [transferData, setTransferData] = useState({
-        fromWarehouseId: '', toWarehouseId: '', productId: '', quantity: '', reference: ''
+        fromWarehouseId: '', toWarehouseId: '', productId: '', quantity: '', reference: '', unit: ''
     });
+    const [transferUnits, setTransferUnits] = useState<ProductAllowedUnit[]>([]);
 
     // Transfer history
     const [showHistory, setShowHistory] = useState(false);
@@ -136,6 +137,19 @@ export default function Warehouses() {
         }
     };
 
+    const handleTransferProductChange = useCallback(async (productId: string) => {
+        try {
+            const res = await unitsAPI.getProductUnits(Number(productId));
+            const units: ProductAllowedUnit[] = res.data.data || [];
+            setTransferUnits(units);
+            const defaultUnit = units.find(u => u.isDefault) || units.find(u => u.isBase) || units[0];
+            setTransferData(prev => ({ ...prev, productId, unit: defaultUnit?.abbreviation || '' }));
+        } catch {
+            setTransferUnits([]);
+            setTransferData(prev => ({ ...prev, productId, unit: '' }));
+        }
+    }, []);
+
     const handleTransfer = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!canTransferStock) return;
@@ -145,11 +159,13 @@ export default function Warehouses() {
                 toWarehouseId: parseInt(transferData.toWarehouseId),
                 productId: parseInt(transferData.productId),
                 quantity: parseFloat(transferData.quantity),
-                reference: transferData.reference || undefined
+                reference: transferData.reference || undefined,
+                unit: transferData.unit || undefined
             });
             showSuccess('Traslado realizado correctamente');
             setShowTransfer(false);
-            setTransferData({ fromWarehouseId: '', toWarehouseId: '', productId: '', quantity: '', reference: '' });
+            setTransferData({ fromWarehouseId: '', toWarehouseId: '', productId: '', quantity: '', reference: '', unit: '' });
+            setTransferUnits([]);
             loadData();
         } catch (err: unknown) {
             showError(axiosMessage(err, 'Error en traslado'));
@@ -396,19 +412,33 @@ export default function Warehouses() {
                         <Select variant="modal" label="Producto" placeholder="Seleccionar producto..."
                             options={products.map((p) => ({ value: p.id.toString(), label: `${p.name} (${p.unit})` }))}
                             value={transferData.productId ? { value: transferData.productId, label: products.find((p) => p.id.toString() === transferData.productId)?.name } : null}
-                            onChange={(opt: SingleValue<StrOption>) => opt && setTransferData({ ...transferData, productId: opt.value })} required />
+                            onChange={(opt: SingleValue<StrOption>) => opt && handleTransferProductChange(opt.value)} required />
                     </div>
                     <div className="modal-form-row">
-                        <div className="modal-input-group">
+                        <div className="modal-input-group" style={{ flex: 2 }}>
                             <label className="modal-input-label">Cantidad</label>
                             <input type="number" step="0.001" className="modal-standard-input" value={transferData.quantity}
                                 onChange={e => setTransferData({ ...transferData, quantity: e.target.value })} required min="0.001" />
                         </div>
-                        <div className="modal-input-group">
-                            <label className="modal-input-label">Referencia (opcional)</label>
-                            <input type="text" className="modal-standard-input" value={transferData.reference}
-                                onChange={e => setTransferData({ ...transferData, reference: e.target.value })} placeholder="Ej: TRF-001" />
-                        </div>
+                        {transferUnits.length > 0 && (
+                            <div className="modal-input-group" style={{ flex: 1 }}>
+                                <Select variant="modal" label="Unidad" placeholder="Unidad..."
+                                    options={transferUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))}
+                                    value={transferData.unit ? {
+                                        value: transferData.unit,
+                                        label: transferUnits.find(u => u.abbreviation === transferData.unit)
+                                            ? `${transferUnits.find(u => u.abbreviation === transferData.unit)!.name} (${transferData.unit})`
+                                            : transferData.unit
+                                    } : null}
+                                    onChange={(opt: SingleValue<StrOption>) => opt && setTransferData({ ...transferData, unit: opt.value })}
+                                    isSearchable={false} />
+                            </div>
+                        )}
+                    </div>
+                    <div className="modal-input-group">
+                        <label className="modal-input-label">Referencia (opcional)</label>
+                        <input type="text" className="modal-standard-input" value={transferData.reference}
+                            onChange={e => setTransferData({ ...transferData, reference: e.target.value })} placeholder="Ej: TRF-001" />
                     </div>
                     <div className="modal-footer">
                         <Button type="button" variant="ghost" onClick={() => setShowTransfer(false)}>Cancelar</Button>

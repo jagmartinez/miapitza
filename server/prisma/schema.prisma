@@ -51,6 +51,8 @@ model Company {
   promotions         Promotion[]
   productCostHistories ProductCostHistory[]
   invoiceSequences   InvoiceSequence[]
+  unitsOfMeasure     UnitOfMeasure[]
+  productUnits       ProductUnit[]
 }
 
 enum CostingMethod {
@@ -347,6 +349,53 @@ model MenuItemBranchPrice {
   @@index([branchId])
 }
 
+// ==========================================
+// 4a. UNIDADES DE MEDIDA Y CONVERSIONES
+// ==========================================
+
+enum MeasurementType {
+  MASS
+  VOLUME
+  UNIT
+  PACKAGE
+}
+
+model UnitOfMeasure {
+  id              Int             @id @default(autoincrement())
+  companyId       Int
+  name            String
+  abbreviation    String
+  measurementType MeasurementType
+  systemFactor    Decimal         @db.Decimal(18, 6)
+  active          Boolean         @default(true)
+
+  company         Company        @relation(fields: [companyId], references: [id])
+  productUnits    ProductUnit[]
+  productBase     Product[]      @relation("ProductBaseUnit")
+  recipeUnits     Recipe[]       @relation("RecipeUnit")
+
+  @@unique([companyId, abbreviation])
+  @@index([companyId])
+}
+
+model ProductUnit {
+  id               Int     @id @default(autoincrement())
+  companyId        Int
+  productId        Int
+  unitId           Int
+  conversionFactor Decimal @db.Decimal(18, 6)
+  isDefault        Boolean @default(false)
+  active           Boolean @default(true)
+
+  company  Company       @relation(fields: [companyId], references: [id])
+  product  Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  unit     UnitOfMeasure @relation(fields: [unitId], references: [id])
+
+  @@unique([productId, unitId])
+  @@index([companyId])
+  @@index([productId])
+}
+
 // Ingredients and Direct Sale Products
 model Product {
   id                 Int         @id @default(autoincrement())
@@ -354,30 +403,29 @@ model Product {
   name               String
   sku                String?
   categoryId         Int?
-  unit               String // kg, g, L, ml, unit
+  unit               String // Legacy: kg, g, L, ml, unit
+  baseUnitId         Int?
   minStock           Decimal     @default(0) @db.Decimal(10, 3)
-  cost               Decimal     @default(0) @db.Decimal(10, 2) // Legacy field, kept for compatibility
-  currentAverageCost Decimal     @default(0) @db.Decimal(10, 2) // Weighted average cost (primary)
-  lastPurchaseCost   Decimal     @default(0) @db.Decimal(10, 2) // Last purchase unit cost
-  price              Decimal?    @db.Decimal(10, 2) // Sale price if it's a direct sale product
+  cost               Decimal     @default(0) @db.Decimal(10, 2)
+  currentAverageCost Decimal     @default(0) @db.Decimal(10, 6)
+  lastPurchaseCost   Decimal     @default(0) @db.Decimal(10, 6)
+  price              Decimal?    @db.Decimal(10, 2)
   type               ProductType  @default(INGREDIENT)
-  storageType        StorageType? // PERISHABLE, FROZEN, NON_PERISHABLE
+  storageType        StorageType?
   active             Boolean     @default(true)
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
 
-  company  Company   @relation(fields: [companyId], references: [id])
-  category Category? @relation(fields: [categoryId], references: [id])
+  company      Company        @relation(fields: [companyId], references: [id])
+  category     Category?      @relation(fields: [categoryId], references: [id])
+  baseUnit     UnitOfMeasure? @relation("ProductBaseUnit", fields: [baseUnitId], references: [id])
 
   stocks             Stock[]
   inventoryMovements InventoryMovement[]
   purchaseOrderItems PurchaseOrderItem[]
-  recipes            Recipe[] // Used as ingredient
+  recipes            Recipe[]
   costHistory        ProductCostHistory[]
-
-  // If it's a direct sale product, it might be linked to a MenuItem or sold directly.
-  // For simplicity, we can link it to OrderItem directly OR via a "Direct" MenuItem.
-  // The prompt suggests "Direct" items in Menu.
+  allowedUnits       ProductUnit[]
 
   @@unique([companyId, sku])
   @@index([categoryId])
@@ -398,12 +446,14 @@ enum StorageType {
 model Recipe {
   id         Int     @id @default(autoincrement())
   menuItemId Int
-  productId  Int // The ingredient
+  productId  Int
   quantity   Decimal @db.Decimal(10, 3)
-  unit       String? // If different from product unit (requires conversion logic)
+  unit       String?
+  unitId     Int?
 
-  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
-  product  Product  @relation(fields: [productId], references: [id])
+  menuItem      MenuItem        @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  product       Product         @relation(fields: [productId], references: [id])
+  unitOfMeasure UnitOfMeasure?  @relation("RecipeUnit", fields: [unitId], references: [id])
 
   @@unique([menuItemId, productId])
 }
@@ -451,7 +501,7 @@ model Stock {
   warehouseId Int
   productId   Int
   companyId   Int
-  quantity    Decimal @default(0) @db.Decimal(10, 3)
+  quantity    Decimal @default(0) @db.Decimal(18, 6)
 
   warehouse Warehouse @relation(fields: [warehouseId], references: [id])
   product   Product   @relation(fields: [productId], references: [id])
@@ -462,21 +512,24 @@ model Stock {
 }
 
 model InventoryMovement {
-  id          Int          @id @default(autoincrement())
-  warehouseId Int
-  productId   Int
-  userId      Int
-  companyId   Int
-  type        MovementType
-  transferGroupId String?
-  quantity    Decimal      @db.Decimal(10, 3)
-  reason      String? // Purchase, Sale, Waste, Adjustment
-  reference   String? // Order ID, PO ID
-  unitCost    Decimal?     @db.Decimal(10, 2) // Unit cost at time of movement
-  totalCost   Decimal?     @db.Decimal(10, 2) // Total cost (quantity × unitCost)
-  balanceQty  Decimal?     @db.Decimal(10, 3) // Running balance after this movement
-  balanceCost Decimal?     @db.Decimal(10, 2) // Total cost of balance after movement
-  createdAt   DateTime     @default(now())
+  id               Int          @id @default(autoincrement())
+  warehouseId      Int
+  productId        Int
+  userId           Int
+  companyId        Int
+  type             MovementType
+  transferGroupId  String?
+  quantity         Decimal      @db.Decimal(18, 6)
+  reason           String?
+  reference        String?
+  originalQuantity Decimal?     @db.Decimal(18, 6)
+  originalUnit     String?
+  conversionFactor Decimal?     @db.Decimal(18, 6)
+  unitCost         Decimal?     @db.Decimal(18, 6)
+  totalCost        Decimal?     @db.Decimal(18, 6)
+  balanceQty       Decimal?     @db.Decimal(18, 6)
+  balanceCost      Decimal?     @db.Decimal(18, 6)
+  createdAt        DateTime     @default(now())
 
   warehouse Warehouse @relation(fields: [warehouseId], references: [id])
   product   Product   @relation(fields: [productId], references: [id])
@@ -550,12 +603,16 @@ enum PurchaseOrderStatus {
 }
 
 model PurchaseOrderItem {
-  id              Int     @id @default(autoincrement())
-  purchaseOrderId Int
-  productId       Int
-  quantity        Decimal @db.Decimal(10, 3)
-  cost            Decimal @db.Decimal(10, 2)
-  subtotal        Decimal @db.Decimal(10, 2)
+  id               Int      @id @default(autoincrement())
+  purchaseOrderId  Int
+  productId        Int
+  quantity         Decimal  @db.Decimal(18, 6)
+  cost             Decimal  @db.Decimal(18, 6)
+  subtotal         Decimal  @db.Decimal(18, 6)
+  purchaseUnit     String?
+  conversionFactor Decimal? @db.Decimal(18, 6)
+  baseQuantity     Decimal? @db.Decimal(18, 6)
+  baseCost         Decimal? @db.Decimal(18, 6)
 
   purchaseOrder PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   product       Product              @relation(fields: [productId], references: [id])
@@ -571,12 +628,12 @@ model ProductCostHistory {
   productId           Int
   companyId           Int
   purchaseOrderItemId Int?
-  quantity            Decimal  @db.Decimal(10, 3) // Quantity purchased
-  unitCost            Decimal  @db.Decimal(10, 2) // Unit cost at purchase
-  previousAvgCost     Decimal  @db.Decimal(10, 2) // Average cost before this purchase
-  newAvgCost          Decimal  @db.Decimal(10, 2) // Average cost after this purchase
-  previousStock       Decimal  @db.Decimal(10, 3) // Stock quantity before purchase
-  newStock            Decimal  @db.Decimal(10, 3) // Stock quantity after purchase
+  quantity            Decimal  @db.Decimal(18, 6)
+  unitCost            Decimal  @db.Decimal(18, 6)
+  previousAvgCost     Decimal  @db.Decimal(18, 6)
+  newAvgCost          Decimal  @db.Decimal(18, 6)
+  previousStock       Decimal  @db.Decimal(18, 6)
+  newStock            Decimal  @db.Decimal(18, 6)
   createdAt           DateTime @default(now())
 
   product           Product            @relation(fields: [productId], references: [id])
