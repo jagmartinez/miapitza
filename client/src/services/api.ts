@@ -49,6 +49,17 @@ api.interceptors.request.use(
             requestConfig.headers.Authorization = `Bearer ${token}`;
         }
 
+        // CSRF: read cookie and send as header on mutations
+        if (requestConfig.method !== 'get' && requestConfig.method !== 'GET') {
+            const csrfToken = document.cookie
+                .split('; ')
+                .find(c => c.startsWith('csrf_token='))
+                ?.split('=')[1];
+            if (csrfToken) {
+                requestConfig.headers['x-csrf-token'] = decodeURIComponent(csrfToken);
+            }
+        }
+
         // If offline and NOT a GET request, enqueue for sync
         if (!isAuthRequest && !offlineManager.getStatus() && requestConfig.method !== 'get' && requestConfig.method !== 'GET') {
             await offlineManager.enqueueRequest({

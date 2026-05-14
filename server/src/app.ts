@@ -36,6 +36,8 @@ import advancedFeaturesRoutes from './routes/advanced-features.routes';
 import cateringRoutes from './routes/catering.routes';
 import categoryRoutes from './routes/category.routes';
 import { errorHandler } from './middlewares/errorHandler';
+import { idempotency } from './middlewares/idempotency';
+import { csrfProtection } from './middlewares/csrf';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './utils/swagger';
 import invoiceRoutes from './routes/invoice.routes';
@@ -69,6 +71,12 @@ app.use(express.json({
     }
 }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// CSRF protection (double-submit cookie) — skips API-key requests
+app.use('/api', csrfProtection);
+
+// Idempotency — deduplicates POST/PUT/PATCH with X-Idempotency-Key header
+app.use('/api', idempotency);
 
 // Protect uploads with authentication — require valid JWT to access uploaded files
 import path from 'path';

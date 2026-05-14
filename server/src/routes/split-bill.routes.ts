@@ -1,6 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { SplitBillService } from '../services/split-bill.service';
 import { authMiddleware, requireRole } from '../middlewares/auth';
+import { validate } from '../middlewares/validate';
+import * as s from '../middlewares/validate-schemas';
 import { getErrorMessage } from '../utils/error';
 
 const router = Router();
@@ -15,7 +17,7 @@ router.use(requireRole('SUPERADMIN', 'ADMIN', 'CAJERO', 'MESERO'));
  *     summary: Split order evenly among N people
  *     tags: [POS]
  */
-router.post('/:orderId/evenly', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:orderId/evenly', validate(s.splitEvenly), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const orderId = parseInt(req.params.orderId);
@@ -46,7 +48,7 @@ router.post('/:orderId/evenly', async (req: Request, res: Response, next: NextFu
  *     summary: Split order by items (each person selects their items)
  *     tags: [POS]
  */
-router.post('/:orderId/by-items', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:orderId/by-items', validate(s.splitByItems), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const orderId = parseInt(req.params.orderId);

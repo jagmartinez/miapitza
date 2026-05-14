@@ -3,11 +3,22 @@ import * as qrcode from 'qrcode';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import prisma from '../utils/prisma';
+import { encrypt, decrypt, isEncrypted } from '../utils/encryption';
 
 const RECOVERY_CODE_COUNT = 10;
 const BCRYPT_ROUNDS = 10;
 
-async function checkCode(token: string, secret: string): Promise<boolean> {
+function decryptSecret(stored: string): string {
+    if (!stored) return stored;
+    try {
+        return isEncrypted(stored) ? decrypt(stored) : stored;
+    } catch {
+        return stored;
+    }
+}
+
+async function checkCode(token: string, storedSecret: string): Promise<boolean> {
+    const secret = decryptSecret(storedSecret);
     const result = await verify({ secret, token });
     return result.valid === true;
 }
@@ -42,9 +53,16 @@ export class TwoFactorService {
         });
         const qrCodeDataUrl = await qrcode.toDataURL(otpAuthUrl);
 
+        let storedSecret: string;
+        try {
+            storedSecret = encrypt(secret);
+        } catch {
+            storedSecret = secret;
+        }
+
         await prisma.user.update({
             where: { id: userId },
-            data: { twoFactorSecret: secret, twoFactorEnabled: false },
+            data: { twoFactorSecret: storedSecret, twoFactorEnabled: false },
         });
 
         return { qrCodeDataUrl };

@@ -1,0 +1,170 @@
+.sync-status-panel {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    z-index: 1000;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    min-width: 260px;
+    max-width: 380px;
+    font-size: 13px;
+}
+
+.sync-status-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 10px 14px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-text);
+}
+
+.sync-status-summary {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.sync-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.sync-badge-error {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+.sync-badge-pending {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+}
+
+.sync-status-details {
+    border-top: 1px solid var(--color-border);
+    padding: 8px;
+}
+
+.sync-failed-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.sync-failed-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 6px 8px;
+    border-radius: 4px;
+    margin-bottom: 4px;
+    background: rgba(239, 68, 68, 0.05);
+}
+
+.sync-failed-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.sync-failed-type {
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+}
+
+.sync-failed-method {
+    font-size: 12px;
+    color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sync-failed-error {
+    font-size: 11px;
+    color: #ef4444;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sync-failed-retries {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+.sync-failed-more {
+    text-align: center;
+    font-size: 11px;
+    color: var(--color-text-muted);
+    padding: 4px;
+}
+
+.sync-status-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.sync-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    flex: 1;
+    justify-content: center;
+}
+
+.sync-retry-btn {
+    background: #2563eb;
+    color: white;
+}
+
+.sync-retry-btn:hover {
+    background: #1d4ed8;
+}
+
+.sync-retry-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.sync-clear-btn {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+}
+
+.sync-clear-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}

@@ -1,29 +1,26 @@
 import { Router } from 'express';
 import { CateringController } from '../controllers/catering.controller';
 import { authMiddleware, requireRole } from '../middlewares/auth';
+import { validate } from '../middlewares/validate';
+import * as s from '../middlewares/validate-schemas';
 
 const router = Router();
 
-// All routes require authentication
 router.use(authMiddleware);
 
-// Services Catalog
 router.get('/services', CateringController.getAllServices);
-router.post('/services', requireRole('SUPERADMIN', 'ADMIN'), CateringController.createService);
-router.put('/services/:id', requireRole('SUPERADMIN', 'ADMIN'), CateringController.updateService);
-router.delete('/services/:id', requireRole('SUPERADMIN', 'ADMIN'), CateringController.deleteService);
+router.post('/services', requireRole('SUPERADMIN', 'ADMIN'), validate(s.createCateringService), CateringController.createService);
+router.put('/services/:id', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), CateringController.updateService);
+router.delete('/services/:id', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), CateringController.deleteService);
 
-// Availability Checks
 router.get('/availability', CateringController.checkAvailability);
 
-// Events
 router.get('/', CateringController.getAllEvents);
-router.get('/:id', CateringController.getEventById);
-router.post('/', requireRole('SUPERADMIN', 'ADMIN'), CateringController.createEvent);
-router.put('/:id', requireRole('SUPERADMIN', 'ADMIN'), CateringController.updateEvent);
-router.delete('/:id', requireRole('SUPERADMIN', 'ADMIN'), CateringController.deleteEvent);
+router.get('/:id', validate(s.idParam), CateringController.getEventById);
+router.post('/', requireRole('SUPERADMIN', 'ADMIN'), validate(s.createCateringEvent), CateringController.createEvent);
+router.put('/:id', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), CateringController.updateEvent);
+router.delete('/:id', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), CateringController.deleteEvent);
 
-// Payments
-router.post('/:id/payments', requireRole('SUPERADMIN', 'ADMIN'), CateringController.addPayment);
+router.post('/:id/payments', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), CateringController.addPayment);
 
 export default router;

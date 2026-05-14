@@ -5,6 +5,8 @@ import { useLanguage } from '../hooks/useLanguage';
 import ThemeToggle from './ThemeToggle';
 import LanguageSelector from './LanguageSelector';
 import NetworkStatus from './NetworkStatus';
+import SyncStatus from './SyncStatus';
+import '../components/SyncStatus.css';
 import {
     LayoutDashboard,
     ShoppingCart,
@@ -203,6 +205,7 @@ export default function Layout() {
 
             <main className={`main-content ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
                 <Outlet />
+                <SyncStatus />
             </main>
         </div>
     );

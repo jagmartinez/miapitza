@@ -5,6 +5,8 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { authMiddleware, requireRole } from '../middlewares/auth';
+import { validate } from '../middlewares/validate';
+import * as s from '../middlewares/validate-schemas';
 
 // Configure multer for invoice uploads
 const storage = multer.diskStorage({
@@ -41,17 +43,15 @@ const router = Router();
 router.use(authMiddleware);
 
 router.get('/', PurchaseOrderController.getAll);
-router.get('/:id', PurchaseOrderController.getById);
+router.get('/:id', validate(s.idParam), PurchaseOrderController.getById);
 router.post('/', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), uploadInvoice.single('invoicePdf'), PurchaseOrderController.create);
-router.put('/:id', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), uploadInvoice.single('invoicePdf'), PurchaseOrderController.update);
-router.delete('/:id', requireRole('SUPERADMIN', 'ADMIN'), PurchaseOrderController.delete);
+router.put('/:id', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.idParam), uploadInvoice.single('invoicePdf'), PurchaseOrderController.update);
+router.delete('/:id', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), PurchaseOrderController.delete);
 
-// Item management
-router.post('/:id/items', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), PurchaseOrderController.addItem);
+router.post('/:id/items', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.addPOItem), PurchaseOrderController.addItem);
 router.delete('/items/:itemId', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), PurchaseOrderController.removeItem);
 
-// Receive order (updates inventory)
-router.post('/:id/receive', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), PurchaseOrderController.receive);
+router.post('/:id/receive', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.idParam), PurchaseOrderController.receive);
 
 // Bulk import
 router.get('/import/template', PurchaseOrderImportController.getTemplate);

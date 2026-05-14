@@ -1,6 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { PromotionService } from '../services/promotion.service';
 import { authMiddleware, requireRole } from '../middlewares/auth';
+import { validate } from '../middlewares/validate';
+import * as s from '../middlewares/validate-schemas';
 import { getErrorMessage } from '../utils/error';
 
 const router = Router();
@@ -41,7 +43,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
  *     security:
  *       - bearerAuth: []
  */
-router.post('/validate', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/validate', validate(s.validatePromotion), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { code, orderTotal } = req.body;
 
@@ -80,7 +82,7 @@ router.post('/validate', async (req: Request, res: Response, next: NextFunction)
  *     security:
  *       - bearerAuth: []
  */
-router.post('/', requireRole('ADMIN', 'SUPERADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', requireRole('ADMIN', 'SUPERADMIN'), validate(s.createPromotion), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const promotion = await PromotionService.create(companyId, req.body);
@@ -104,7 +106,7 @@ router.post('/', requireRole('ADMIN', 'SUPERADMIN'), async (req: Request, res: R
  *     security:
  *       - bearerAuth: []
  */
-router.put('/:id', requireRole('ADMIN', 'SUPERADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id', requireRole('ADMIN', 'SUPERADMIN'), validate(s.idParam), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = parseInt(req.params.id);
         const companyId = req.user!.companyId;
@@ -129,7 +131,7 @@ router.put('/:id', requireRole('ADMIN', 'SUPERADMIN'), async (req: Request, res:
  *     security:
  *       - bearerAuth: []
  */
-router.patch('/:id/deactivate', requireRole('ADMIN', 'SUPERADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/:id/deactivate', requireRole('ADMIN', 'SUPERADMIN'), validate(s.idParam), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = parseInt(req.params.id);
         const companyId = req.user!.companyId;
