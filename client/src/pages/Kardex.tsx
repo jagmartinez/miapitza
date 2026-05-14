@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { warehousesAPI, reportsAPI } from '../services/api';
 import Select from '../components/Select';
 import Button from '../components/Button';
 import { ToastContainer } from '../components/Toast';
@@ -63,6 +64,9 @@ interface KardexData {
 export default function Kardex() {
     const navigate = useNavigate();
     const { toasts, removeToast, success: showSuccess, error: showError } = useToast();
+    const showErrorRef = useRef(showError);
+    showErrorRef.current = showError;
+
     const [warehouses, setWarehouses] = useState<WarehouseRow[]>([]);
     const [kardexData, setKardexData] = useState<KardexData | null>(null);
     const [loading, setLoading] = useState(false);
@@ -78,9 +82,8 @@ export default function Kardex() {
 
     const loadWarehouses = useCallback(async () => {
         try {
-            const response = await fetch('/api/warehouses', { credentials: 'include' });
-            const data = await response.json();
-            setWarehouses(data.data || []);
+            const res = await warehousesAPI.getAll();
+            setWarehouses(res.data.data || []);
         } catch (error) {
             console.error('Error loading warehouses:', error);
         }
@@ -88,34 +91,30 @@ export default function Kardex() {
 
     const loadKardex = useCallback(async () => {
         if (!selectedProduct) {
-            showError('Selecciona un producto');
+            showErrorRef.current('Selecciona un producto');
             return;
         }
 
         setLoading(true);
         try {
-            const params = new URLSearchParams();
-            params.append('productId', selectedProduct.toString());
-            if (selectedWarehouse) params.append('warehouseId', selectedWarehouse.toString());
-            if (dateFrom) params.append('dateFrom', dateFrom);
-            if (dateTo) params.append('dateTo', dateTo);
-            if (movementType) params.append('type', movementType);
+            const params: Record<string, string> = {
+                productId: selectedProduct.toString()
+            };
+            if (selectedWarehouse) params.warehouseId = selectedWarehouse.toString();
+            if (dateFrom) params.dateFrom = dateFrom;
+            if (dateTo) params.dateTo = dateTo;
+            if (movementType) params.type = movementType;
 
-            const response = await fetch(`/api/reports/kardex?${params.toString()}`, { credentials: 'include' });
-
-            if (!response.ok) {
-                throw new Error('Error al cargar kardex');
-            }
-
-            const data = await response.json();
-            setKardexData(data);
+            const res = await reportsAPI.getKardex(params);
+            setKardexData(res.data);
             setCurrentPage(1);
         } catch (error: unknown) {
-            showError(error instanceof Error ? error.message : 'Error al cargar kardex');
+            const msg = error instanceof Error ? error.message : 'Error al cargar kardex';
+            showErrorRef.current(msg);
         } finally {
             setLoading(false);
         }
-    }, [dateFrom, dateTo, movementType, selectedProduct, selectedWarehouse, showError]);
+    }, [dateFrom, dateTo, movementType, selectedProduct, selectedWarehouse]);
 
     useEffect(() => {
         void loadWarehouses();
@@ -140,19 +139,15 @@ export default function Kardex() {
         }
 
         try {
-            const params = new URLSearchParams();
-            params.append('productId', selectedProduct.toString());
-            if (selectedWarehouse) params.append('warehouseId', selectedWarehouse.toString());
-            if (dateFrom) params.append('dateFrom', dateFrom);
-            if (dateTo) params.append('dateTo', dateTo);
+            const params: Record<string, string> = {
+                productId: selectedProduct.toString()
+            };
+            if (selectedWarehouse) params.warehouseId = selectedWarehouse.toString();
+            if (dateFrom) params.dateFrom = dateFrom;
+            if (dateTo) params.dateTo = dateTo;
 
-            const response = await fetch(`/api/reports/kardex/export?${params.toString()}`, { credentials: 'include' });
-
-            if (!response.ok) {
-                throw new Error('Error al exportar');
-            }
-
-            const blob = await response.blob();
+            const res = await reportsAPI.exportKardex(params);
+            const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;

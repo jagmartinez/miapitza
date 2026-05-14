@@ -76,13 +76,19 @@ api.interceptors.request.use(
 // Response interceptor for error handling and caching
 api.interceptors.response.use(
     async (response) => {
-        // Cache successful GET responses
-        if (response.config.method === 'get' || response.config.method === 'GET') {
-            await db.caches.put({
-                id: response.config.url!,
-                data: response.data,
-                timestamp: Date.now()
-            });
+        // Cache successful GET responses (skip auth endpoints and binary responses)
+        const method = response.config.method?.toLowerCase();
+        const url = response.config.url || '';
+        if (method === 'get' && !url.startsWith('/auth/') && response.config.responseType !== 'arraybuffer') {
+            try {
+                await db.caches.put({
+                    id: url,
+                    data: response.data,
+                    timestamp: Date.now()
+                });
+            } catch {
+                // IndexedDB quota exceeded or unavailable — non-critical
+            }
         }
         return response;
     },
@@ -104,12 +110,13 @@ api.interceptors.response.use(
             window.location.href = '/login';
         }
 
-        // Handle GET failure due to network (offline fallback)
+        // Handle GET failure due to network (offline fallback with TTL check)
         if (!error.response && (error.config?.method === 'get' || error.config?.method === 'GET')) {
-            const cached = await db.caches.get(error.config.url!);
-            if (cached) {
+            const url = error.config.url!;
+            const cachedData = await offlineManager.getCachedData(url);
+            if (cachedData !== null) {
                 return {
-                    data: cached.data,
+                    data: cachedData,
                     status: 200,
                     statusText: 'OK',
                     headers: {},
@@ -498,6 +505,8 @@ export const reportsAPI = {
     getMyPerformance: () => api.get('/reports/my-performance'),
     getMyPasswordInfo: () => api.get('/reports/my-password-info'),
     getCostReport: (params?: Record<string, unknown>) => api.get('/reports/costs', { params }),
+    getKardex: (params?: Record<string, string>) => api.get('/reports/kardex', { params }),
+    exportKardex: (params?: Record<string, string>) => api.get('/reports/kardex/export', { params, responseType: 'arraybuffer' }),
 };
 
 // Inventory Movements API

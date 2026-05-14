@@ -207,4 +207,16 @@ export class AuthController {
             next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
+
+    static async regenerateRecoveryCodes(req: Request, res: Response, next: NextFunction) {
+        try {
+            const userId = req.user!.userId;
+            const { code } = req.body;
+            if (!code) return next({ statusCode: 400, message: 'Código TOTP requerido' });
+            const data = await TwoFactorService.regenerateRecoveryCodes(userId, code);
+            res.json({ success: true, data });
+        } catch (error) {
+            next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
+        }
+    }
 }

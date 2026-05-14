@@ -51,6 +51,7 @@ model Company {
   promotions         Promotion[]
   productCostHistories ProductCostHistory[]
   invoiceSequences   InvoiceSequence[]
+  apiKeys            ApiKey[]
 }
 
 enum CostingMethod {
@@ -119,8 +120,10 @@ model User {
   password           String // Hashed
   mustChangePassword Boolean   @default(true)
   passwordChangedAt  DateTime?
-  twoFactorSecret    String?
-  twoFactorEnabled   Boolean   @default(false)
+  twoFactorSecret         String?
+  twoFactorEnabled        Boolean   @default(false)
+  twoFactorRecoveryCodes  Json?
+  twoFactorEnabledAt      DateTime?
   roleId    Int
   branchId  Int? // Primary branch
   status    UserStatus @default(ACTIVE)
@@ -144,6 +147,7 @@ model User {
   cashShifts CashShift[]
   movements  InventoryMovement[]
   auditLogs  AuditLog[]
+  apiKeys    ApiKey[]     @relation("ApiKeyCreator")
 }
 
 model UserSession {
@@ -1019,6 +1023,29 @@ model AuditLog {
   @@index([companyId, entityType, entityId])
   @@index([companyId, createdAt])
   @@index([userId])
+}
+
+// ==========================================
+// 14. API KEYS
+// ==========================================
+
+model ApiKey {
+  id         Int       @id @default(autoincrement())
+  companyId  Int
+  name       String
+  keyHash    String    @unique
+  keyPrefix  String
+  scopes     Json      @default("[]")
+  active     Boolean   @default(true)
+  expiresAt  DateTime?
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  createdBy  Int?
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  creator User?   @relation("ApiKeyCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
 }
 
 // Consolidating Customers

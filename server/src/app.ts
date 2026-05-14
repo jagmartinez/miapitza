@@ -40,6 +40,7 @@ import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './utils/swagger';
 import invoiceRoutes from './routes/invoice.routes';
 import kardexRoutes from './routes/kardex.routes';
+import v1Router from './routes/v1.router';
 
 dotenv.config();
 
@@ -74,10 +75,22 @@ import path from 'path';
 import { auth as authMiddlewareForUploads } from './middlewares/auth';
 app.use('/uploads', authMiddlewareForUploads, express.static(path.resolve(__dirname, '..', 'uploads')));
 
-// Swagger docs only in development
-if (process.env.NODE_ENV !== 'production') {
-    app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-}
+// Swagger docs — protected by basic auth in production
+const swaggerAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (process.env.NODE_ENV !== 'production') return next();
+    const auth = req.headers.authorization;
+    if (!auth || !auth.startsWith('Basic ')) {
+        res.set('WWW-Authenticate', 'Basic realm="API Docs"');
+        return res.status(401).send('Authentication required');
+    }
+    const [user, pass] = Buffer.from(auth.slice(6), 'base64').toString().split(':');
+    if (user === (process.env.DOCS_USER || 'admin') && pass === process.env.DOCS_PASSWORD) {
+        return next();
+    }
+    res.set('WWW-Authenticate', 'Basic realm="API Docs"');
+    return res.status(401).send('Invalid credentials');
+};
+app.use('/api/docs', swaggerAuth, swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Validate :id params globally (reject NaN before hitting controllers)
 app.param('id', (req, res, next, value) => {
@@ -132,6 +145,9 @@ app.use('/api/advanced', advancedFeaturesRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/reports/kardex', kardexRoutes);
 app.use('/api/catering', cateringRoutes);
+
+// API v1 versioned router (new endpoints go here)
+app.use('/api/v1', v1Router);
 
 // Health check — do not expose internal operational details
 app.get('/api/health', (req: Request, res: Response) => {

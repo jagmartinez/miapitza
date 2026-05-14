@@ -31,7 +31,20 @@ export class WebSocketService {
     private static clients: Map<string, WebSocketClient> = new Map();
 
     static initialize(server: Server): void {
-        this.wss = new WebSocketServer({ server });
+        const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000').split(',').map(o => o.trim());
+
+        this.wss = new WebSocketServer({
+            server,
+            maxPayload: 128 * 1024, // 128KB max message size
+            verifyClient: ({ origin }, callback) => {
+                if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+                    callback(true);
+                } else {
+                    console.warn(`[WS] Rejected connection from origin: ${origin}`);
+                    callback(false, 403, 'Forbidden origin');
+                }
+            }
+        });
 
         this.wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
             const client = ws as WebSocketClient;
@@ -250,7 +263,11 @@ export class WebSocketService {
                 return;
             }
 
-            client.send(data);
+            try {
+                client.send(data);
+            } catch (err) {
+                console.error(`[WS] Failed to send to client ${clientId}:`, err);
+            }
         });
     }
 
@@ -258,7 +275,11 @@ export class WebSocketService {
         const client = this.clients.get(clientId);
 
         if (client && client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify(message));
+            try {
+                client.send(JSON.stringify(message));
+            } catch (err) {
+                console.error(`[WS] Failed to send to client ${clientId}:`, err);
+            }
         }
     }
 

@@ -181,7 +181,10 @@ export class AuthService {
                 pending2FATokens.set(tempToken, { userId: user.id, expiresAt: Date.now() + 5 * 60 * 1000 });
                 return { requires2FA: true, tempToken };
             }
-            const valid2FA = await TwoFactorService.validateCode(user.id, twoFactorCode);
+            let valid2FA = await TwoFactorService.validateCode(user.id, twoFactorCode);
+            if (!valid2FA) {
+                valid2FA = await TwoFactorService.validateRecoveryCode(user.id, twoFactorCode);
+            }
             if (!valid2FA) {
                 recordFailedAttempt(username);
                 throw new Error('Invalid 2FA code');

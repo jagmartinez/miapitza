@@ -31,6 +31,7 @@ export interface SyncItem {
     dependencyKey?: string | null;
     entityTempId?: string | null;
     lastError?: string | null;
+    idempotencyKey?: string | null;
 }
 
 export class RestaurantDB extends Dexie {
@@ -54,6 +55,14 @@ export class RestaurantDB extends Dexie {
                 item.dependencyKey = item.dependencyKey ?? null;
                 item.entityTempId = item.entityTempId ?? null;
                 item.lastError = item.lastError ?? null;
+            });
+        });
+        this.version(3).stores({
+            caches: 'id, timestamp',
+            syncQueue: '++id, status, timestamp, operationType, dependencyKey, entityTempId, idempotencyKey'
+        }).upgrade(async (tx) => {
+            await tx.table('syncQueue').toCollection().modify((item: Partial<SyncItem>) => {
+                item.idempotencyKey = item.idempotencyKey ?? null;
             });
         });
     }
