@@ -6,6 +6,8 @@ import { RecipeScalingService } from '../services/recipe-scaling.service';
 import { TicketPrintingService } from '../services/ticket-printing.service';
 import { BankReconciliationService } from '../services/bank-reconciliation.service';
 import { authMiddleware, requireRole } from '../middlewares/auth';
+import { validate } from '../middlewares/validate';
+import * as s from '../middlewares/validate-schemas';
 import { getErrorMessage } from '../utils/error';
 
 const router = Router();
@@ -14,7 +16,7 @@ router.use(authMiddleware);
 
 // ==================== WASTE REPORTS ====================
 
-router.post('/waste', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/waste', validate(s.recordWaste), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const userId = req.user!.userId;
@@ -66,7 +68,7 @@ router.get('/auto-po/suggestions', async (req: Request, res: Response, next: Nex
     }
 });
 
-router.post('/auto-po/create', requireRole('ADMIN', 'SUPERADMIN', 'BODEGA'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/auto-po/create', requireRole('ADMIN', 'SUPERADMIN', 'BODEGA'), validate(s.createAutoPO), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const { branchId, supplierId, items } = req.body;
@@ -92,7 +94,7 @@ router.get('/pricing/:menuItemId', async (req: Request, res: Response, next: Nex
     }
 });
 
-router.post('/pricing/:menuItemId/branch/:branchId', requireRole('ADMIN', 'SUPERADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/pricing/:menuItemId/branch/:branchId', requireRole('ADMIN', 'SUPERADMIN'), validate(s.setBranchPrice), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const menuItemId = parseInt(req.params.menuItemId);
@@ -108,7 +110,7 @@ router.post('/pricing/:menuItemId/branch/:branchId', requireRole('ADMIN', 'SUPER
 
 // ==================== RECIPE SCALING ====================
 
-router.post('/recipes/:recipeId/scale', requireRole('ADMIN', 'SUPERADMIN', 'CHEF'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/recipes/:recipeId/scale', requireRole('ADMIN', 'SUPERADMIN', 'CHEF'), validate(s.scaleRecipe), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const recipeId = parseInt(req.params.recipeId);
@@ -121,7 +123,7 @@ router.post('/recipes/:recipeId/scale', requireRole('ADMIN', 'SUPERADMIN', 'CHEF
     }
 });
 
-router.post('/recipes/:menuItemId/yield', requireRole('ADMIN', 'SUPERADMIN', 'CHEF'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/recipes/:menuItemId/yield', requireRole('ADMIN', 'SUPERADMIN', 'CHEF'), validate(s.calculateYield), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const menuItemId = parseInt(req.params.menuItemId);
@@ -207,7 +209,7 @@ router.get('/reconciliation/pending', async (req: Request, res: Response, next: 
     }
 });
 
-router.post('/reconciliation/deposit', requireRole('ADMIN', 'SUPERADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/reconciliation/deposit', requireRole('ADMIN', 'SUPERADMIN'), validate(s.recordDeposit), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const deposit = await BankReconciliationService.recordDeposit(companyId, req.body);
@@ -217,7 +219,7 @@ router.post('/reconciliation/deposit', requireRole('ADMIN', 'SUPERADMIN'), async
     }
 });
 
-router.post('/reconciliation/mark-reconciled', requireRole('ADMIN', 'SUPERADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/reconciliation/mark-reconciled', requireRole('ADMIN', 'SUPERADMIN'), validate(s.markReconciled), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { shiftIds, depositReference } = req.body;
         const result = await BankReconciliationService.markAsReconciled(shiftIds, depositReference);

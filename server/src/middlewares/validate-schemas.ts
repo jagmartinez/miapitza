@@ -287,3 +287,108 @@ export const validatePromotion: ValidationSchema = {
         orderTotal: { type: 'number', required: true, min: 0 },
     },
 };
+
+// ── Advanced Features: Waste ──
+export const recordWaste: ValidationSchema = {
+    body: {
+        productId: { type: 'number', required: true, min: 1 },
+        quantity: { type: 'number', required: true, min: 0 },
+        reason: { type: 'string', required: true, min: 1 },
+        warehouseId: { type: 'number', required: true, min: 1 },
+    },
+};
+
+// ── Advanced Features: Auto PO ──
+export const createAutoPO: ValidationSchema = {
+    body: {
+        branchId: { type: 'number', required: true, min: 1 },
+        supplierId: { type: 'number', required: true, min: 1 },
+        items: { type: 'array', required: true, min: 1 },
+    },
+};
+
+// ── Advanced Features: Dynamic Pricing ──
+export const setBranchPrice: ValidationSchema = {
+    params: {
+        menuItemId: { type: 'number', required: true, min: 1 },
+        branchId: { type: 'number', required: true, min: 1 },
+    },
+    body: {
+        price: { type: 'number', required: true, min: 0 },
+    },
+};
+
+// ── Advanced Features: Recipe Scaling ──
+export const scaleRecipe: ValidationSchema = {
+    params: { recipeId: { type: 'number', required: true, min: 1 } },
+    body: {
+        targetPortions: { type: 'number', required: true, min: 1 },
+    },
+};
+
+export const calculateYield: ValidationSchema = {
+    params: { menuItemId: { type: 'number', required: true, min: 1 } },
+};
+
+// ── Advanced Features: Bank Reconciliation ──
+export const recordDeposit: ValidationSchema = {
+    body: {
+        amount: { type: 'number', required: true, min: 0 },
+        depositDate: { type: 'date', required: true },
+    },
+};
+
+export const markReconciled: ValidationSchema = {
+    body: {
+        shiftIds: { type: 'array', required: true, min: 1 },
+        depositReference: { type: 'string', required: true, min: 1 },
+    },
+};
+
+// ── Cash Arqueo ──
+export const shiftIdParam: ValidationSchema = {
+    params: { shiftId: { type: 'number', required: true, min: 1 } },
+};
+
+export const cashCount: ValidationSchema = {
+    params: { shiftId: { type: 'number', required: true, min: 1 } },
+    body: {
+        bills: { type: 'object' },
+        coins: { type: 'object' },
+    },
+};
+
+export const closeShift: ValidationSchema = {
+    params: { shiftId: { type: 'number', required: true, min: 1 } },
+    body: {
+        endAmount: { type: 'number', required: true, min: 0 },
+    },
+};
+
+// ── Settings ──
+export const updateSettings: ValidationSchema = {
+    body: {
+        restaurantName: { type: 'string' },
+    },
+};
+
+export const updateCostingMethod: ValidationSchema = {
+    body: {
+        costingMethod: { type: 'string', required: true },
+    },
+};
+
+// ── Delivery ──
+export const updateDeliveryStatus: ValidationSchema = {
+    params: { orderId: { type: 'number', required: true, min: 1 } },
+    body: {
+        status: { type: 'string', required: true },
+        platform: { type: 'string', required: true },
+        externalOrderId: { type: 'string', required: true },
+    },
+};
+
+// ── Backup ──
+export const filenameParam: ValidationSchema = {
+    params: { filename: { type: 'string', required: true, min: 1, max: 255, pattern: /^[a-zA-Z0-9._-]+$/ } },
+};

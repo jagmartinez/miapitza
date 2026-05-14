@@ -1,6 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { CashArqueoService } from '../services/cash-arqueo.service';
 import { authMiddleware, requireRole } from '../middlewares/auth';
+import { validate } from '../middlewares/validate';
+import * as s from '../middlewares/validate-schemas';
 import { getErrorMessage } from '../utils/error';
 
 const router = Router();
@@ -15,7 +17,7 @@ router.use(requireRole('SUPERADMIN', 'ADMIN', 'CAJERO'));
  *     summary: Get detailed cash breakdown for a shift
  *     tags: [Cash Register]
  */
-router.get('/:shiftId', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:shiftId', validate(s.shiftIdParam), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const shiftId = parseInt(req.params.shiftId);
@@ -42,7 +44,7 @@ router.get('/:shiftId', async (req: Request, res: Response, next: NextFunction) 
  *     summary: Perform cash count (arqueo)
  *     tags: [Cash Register]
  */
-router.post('/:shiftId/count', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:shiftId/count', validate(s.cashCount), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const shiftId = parseInt(req.params.shiftId);
@@ -59,7 +61,7 @@ router.post('/:shiftId/count', async (req: Request, res: Response, next: NextFun
     }
 });
 
-router.post('/:shiftId/preview-close', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:shiftId/preview-close', validate(s.closeShift), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const shiftId = parseInt(req.params.shiftId);
@@ -90,7 +92,7 @@ router.post('/:shiftId/preview-close', async (req: Request, res: Response, next:
  *     summary: Close shift with final count
  *     tags: [Cash Register]
  */
-router.post('/:shiftId/close', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:shiftId/close', validate(s.closeShift), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const shiftId = parseInt(req.params.shiftId);
@@ -123,7 +125,7 @@ router.post('/:shiftId/close', async (req: Request, res: Response, next: NextFun
  *     summary: Generate shift report
  *     tags: [Cash Register]
  */
-router.get('/:shiftId/report', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:shiftId/report', validate(s.shiftIdParam), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const shiftId = parseInt(req.params.shiftId);

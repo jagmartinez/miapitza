@@ -15,6 +15,8 @@ function toPlatformApiStatus(mapped: string): DeliveryStatusUpdate['status'] {
     }
 }
 import { authMiddleware, requireRole } from '../middlewares/auth';
+import { validate } from '../middlewares/validate';
+import * as s from '../middlewares/validate-schemas';
 import { getErrorMessage } from '../utils/error';
 
 const router = Router();
@@ -104,7 +106,7 @@ router.post('/webhook/:platform', async (req: Request, res: Response, next: Next
  *     security:
  *       - bearerAuth: []
  */
-router.put('/:orderId/status', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:orderId/status', authMiddleware, validate(s.updateDeliveryStatus), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { status, platform, externalOrderId } = req.body;
 
