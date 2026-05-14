@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma';
 import { Prisma } from '@prisma/client';
+import { UnitConversionService } from './unit-conversion.service';
 
 /** Valid state transitions for orders */
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -831,23 +832,32 @@ export class OrderService {
                         throw new Error(`Product ${recipe.product.name} not found in warehouse`);
                     }
 
-                    // Calculate required quantity with unit conversion
-                    let recipeQty = Number(recipe.quantity);
-                    const recipeUnit = recipe.unit || recipe.product.unit; // Fallback to product unit
-                    const stockUnit = recipe.product.unit;
+                    // Convert recipe quantity to product base unit
+                    const recipeUnit = recipe.unit || recipe.product.unit;
+                    let recipeQtyBase = Number(recipe.quantity);
+                    let origUnit: string | null = null;
+                    let origQty: number | null = null;
+                    let convFactor: number | null = null;
 
-                    if (recipeUnit && stockUnit && recipeUnit !== stockUnit) {
-                        recipeQty = this.convertUnit(recipeQty, recipeUnit, stockUnit);
+                    try {
+                        const conv = await UnitConversionService.convert(
+                            recipe.productId, companyId, Number(recipe.quantity), recipeUnit, tx
+                        );
+                        recipeQtyBase = conv.baseQuantity;
+                        origUnit = conv.originalUnit;
+                        origQty = conv.originalQuantity;
+                        convFactor = conv.conversionFactor;
+                    } catch {
+                        // Fallback: if conversion not configured, use raw quantity
                     }
 
-                    const requiredQty = recipeQty * item.quantity;
+                    const requiredQty = recipeQtyBase * item.quantity;
                     const newQty = Number(stock.quantity) - requiredQty;
 
                     if (newQty < 0) {
-                        throw new Error(`Insufficient stock for ${recipe.product.name}. Required: ${requiredQty} ${stockUnit}, Available: ${stock.quantity} ${stockUnit}`);
+                        throw new Error(`Stock insuficiente para ${recipe.product.name}. Requerido: ${requiredQty}, Disponible: ${stock.quantity}`);
                     }
 
-                    // Update stock
                     await tx.stock.update({
                         where: {
                             warehouseId_productId: {
@@ -855,18 +865,14 @@ export class OrderService {
                                 productId: recipe.productId
                             }
                         },
-                        data: {
-                            quantity: newQty
-                        }
+                        data: { quantity: newQty }
                     });
 
-                    // Calculate cost data for the movement
                     const productData = await tx.product.findUnique({ where: { id: recipe.productId } });
-                    const unitCost = Number(productData?.cost || 0);
+                    const unitCost = Number(productData?.currentAverageCost || productData?.cost || 0);
                     const totalCost = unitCost * requiredQty;
                     const newBalanceCost = newQty * unitCost;
 
-                    // Create inventory movement
                     await tx.inventoryMovement.create({
                         data: {
                             companyId,
@@ -875,6 +881,9 @@ export class OrderService {
                             userId: order.userId,
                             type: 'OUT',
                             quantity: requiredQty,
+                            originalQuantity: origQty ? origQty * item.quantity : null,
+                            originalUnit: origUnit,
+                            conversionFactor: convFactor,
                             unitCost,
                             totalCost,
                             balanceQty: newQty,
@@ -1127,44 +1136,4 @@ export class OrderService {
         };
     }
 
-    private static convertUnit(amount: number, fromUnit: string, toUnit: string): number {
-        // Normalize units to lowercase
-        const from = fromUnit.toLowerCase();
-        const to = toUnit.toLowerCase();
-
-        if (from === to) return amount;
-
-        // Mass conversions
-        const massUnits: Record<string, number> = {
-            'kg': 1000,
-            'g': 1,
-            'mg': 0.001,
-            'lb': 453.592,
-            'oz': 28.3495
-        };
-
-        if (massUnits[from] && massUnits[to]) {
-            // Convert to grams then to target unit
-            const grams = amount * massUnits[from];
-            return grams / massUnits[to];
-        }
-
-        // Volume conversions
-        const volUnits: Record<string, number> = {
-            'l': 1000,
-            'ml': 1,
-            'gal': 3785.41,
-            'oz_fl': 29.5735
-        };
-
-        if (volUnits[from] && volUnits[to]) {
-            // Convert to ml then to target unit
-            const ml = amount * volUnits[from];
-            return ml / volUnits[to];
-        }
-
-        // If incompatible, throw error or return original (assuming 1:1)
-        // For safety, we'll throw an error to alert the user
-        throw new Error(`Cannot convert from ${fromUnit} to ${toUnit}`);
-    }
 }

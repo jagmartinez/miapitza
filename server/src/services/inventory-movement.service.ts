@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { UnitConversionService } from './unit-conversion.service';
 
 export class InventoryMovementService {
     static async getAll(companyId: number, filters?: {
@@ -129,6 +130,7 @@ export class InventoryMovementService {
         quantity: number;
         reason?: string;
         reference?: string;
+        unit?: string;
     }) {
         // Verify warehouse belongs to company
         const warehouse = await prisma.warehouse.findFirst({
@@ -151,6 +153,22 @@ export class InventoryMovementService {
         // Validate quantity
         if (data.quantity <= 0) {
             throw new Error('Quantity must be greater than 0');
+        }
+
+        // Convert unit if specified
+        let baseQuantity = data.quantity;
+        let originalQuantity: number | null = null;
+        let originalUnit: string | null = null;
+        let conversionFactor: number | null = null;
+
+        if (data.unit) {
+            const conv = await UnitConversionService.convert(
+                data.productId, companyId, data.quantity, data.unit
+            );
+            baseQuantity = conv.baseQuantity;
+            originalQuantity = conv.originalQuantity;
+            originalUnit = conv.originalUnit;
+            conversionFactor = conv.conversionFactor;
         }
 
         // Start transaction
@@ -176,20 +194,19 @@ export class InventoryMovementService {
                 });
             }
 
-            // Calculate new quantity based on movement type
+            // Calculate new quantity based on movement type (using base-unit quantity)
             const currentQuantity = Number(stock.quantity);
             let newQuantity = currentQuantity;
 
             if (data.type === 'IN') {
-                newQuantity += data.quantity;
+                newQuantity += baseQuantity;
             } else if (data.type === 'ADJUSTMENT') {
-                // ADJUSTMENT: positive quantity adds, negative subtracts
-                newQuantity += data.quantity; // data.quantity can be negative for downward adjustments
+                newQuantity += baseQuantity;
                 if (newQuantity < 0) {
                     throw new Error('Adjustment would result in negative stock');
                 }
             } else if (data.type === 'OUT' || data.type === 'TRANSFER') {
-                newQuantity -= data.quantity;
+                newQuantity -= baseQuantity;
 
                 if (newQuantity < 0) {
                     throw new Error('Insufficient stock for this operation');
@@ -209,11 +226,9 @@ export class InventoryMovementService {
                 }
             });
 
-            // **NEW: Calculate cost information for Kardex**
             const unitCost = Number(product.currentAverageCost || product.cost || 0);
-            const totalCost = data.quantity * unitCost;
+            const totalCost = baseQuantity * unitCost;
 
-            // Calculate balance cost (simplified - actual cost should consider FIFO/weighted average)
             const currentBalanceCost = currentQuantity * unitCost;
             let newBalanceCost = currentBalanceCost;
 
@@ -223,10 +238,18 @@ export class InventoryMovementService {
                 newBalanceCost = currentBalanceCost - totalCost;
             }
 
-            // Create movement record with cost tracking
             const movement = await tx.inventoryMovement.create({
                 data: {
-                    ...data,
+                    warehouseId: data.warehouseId,
+                    productId: data.productId,
+                    userId: data.userId,
+                    type: data.type,
+                    quantity: baseQuantity,
+                    reason: data.reason,
+                    reference: data.reference,
+                    originalQuantity,
+                    originalUnit,
+                    conversionFactor,
                     companyId,
                     unitCost,
                     totalCost,
@@ -301,7 +324,7 @@ export class InventoryMovementService {
         });
     }
 
-    // Transfer between warehouses — all operations in a SINGLE transaction (no nested $transaction)
+    // Transfer between warehouses with unit conversion support
     static async transfer(companyId: number, data: {
         fromWarehouseId: number;
         toWarehouseId: number;
@@ -309,6 +332,7 @@ export class InventoryMovementService {
         userId: number;
         quantity: number;
         reference?: string;
+        unit?: string;
     }) {
         if (data.fromWarehouseId === data.toWarehouseId) {
             throw new Error('Cannot transfer to the same warehouse');
@@ -318,16 +342,32 @@ export class InventoryMovementService {
             throw new Error('Transfer quantity must be positive');
         }
 
+        // Convert unit before transaction
+        let baseQuantity = data.quantity;
+        let originalQuantity: number | null = null;
+        let originalUnit: string | null = null;
+        let convFactor: number | null = null;
+
+        if (data.unit) {
+            const conv = await UnitConversionService.convert(
+                data.productId, companyId, data.quantity, data.unit
+            );
+            baseQuantity = conv.baseQuantity;
+            originalQuantity = conv.originalQuantity;
+            originalUnit = conv.originalUnit;
+            convFactor = conv.conversionFactor;
+        }
+
         return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const transferGroupId = `TRF-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-            // Verify product belongs to company
+
             const product = await tx.product.findFirst({
                 where: { id: data.productId, companyId }
             });
             if (!product) throw new Error('Product not found or unauthorized');
 
             const unitCost = Number(product.currentAverageCost || product.cost || 0);
-            const totalCost = data.quantity * unitCost;
+            const totalCost = baseQuantity * unitCost;
 
             // --- OUT from source warehouse ---
             const sourceStock = await tx.stock.findUnique({
@@ -335,7 +375,7 @@ export class InventoryMovementService {
             });
             if (!sourceStock) throw new Error('No stock in source warehouse');
 
-            const sourceNewQty = Number(sourceStock.quantity) - data.quantity;
+            const sourceNewQty = Number(sourceStock.quantity) - baseQuantity;
             if (sourceNewQty < 0) throw new Error('Insufficient stock in source warehouse for transfer');
 
             await tx.stock.update({
@@ -351,7 +391,10 @@ export class InventoryMovementService {
                     userId: data.userId,
                     type: 'TRANSFER',
                     transferGroupId,
-                    quantity: data.quantity,
+                    quantity: baseQuantity,
+                    originalQuantity,
+                    originalUnit,
+                    conversionFactor: convFactor,
                     reason: `Transfer out to warehouse ${data.toWarehouseId}`,
                     reference: data.reference || null,
                     unitCost,
@@ -371,7 +414,7 @@ export class InventoryMovementService {
                 });
             }
 
-            const destNewQty = Number(destStock.quantity) + data.quantity;
+            const destNewQty = Number(destStock.quantity) + baseQuantity;
 
             await tx.stock.update({
                 where: { warehouseId_productId: { warehouseId: data.toWarehouseId, productId: data.productId } },
@@ -386,7 +429,10 @@ export class InventoryMovementService {
                     userId: data.userId,
                     type: 'TRANSFER',
                     transferGroupId,
-                    quantity: data.quantity,
+                    quantity: baseQuantity,
+                    originalQuantity,
+                    originalUnit,
+                    conversionFactor: convFactor,
                     reason: `Transfer in from warehouse ${data.fromWarehouseId}`,
                     reference: data.reference || null,
                     unitCost,

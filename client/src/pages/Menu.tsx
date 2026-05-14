@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Select from '../components/Select';
 import ReactSelect from 'react-select';
-import { branchPricingAPI, menuAPI, productsAPI, categoriesAPI, branchesAPI } from '../services/api';
+import { branchPricingAPI, menuAPI, productsAPI, categoriesAPI, branchesAPI, unitsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { hasAnyRole } from '../utils/authz';
 import Button from '../components/Button';
@@ -10,7 +10,7 @@ import {
   Plus, Utensils, Trash2, Image as ImageIcon,
   Info, PieChart, ImagePlus
 } from 'lucide-react';
-import type { Branch, MenuItem, Product } from '../types';
+import type { Branch, MenuItem, Product, ProductAllowedUnit } from '../types';
 import type { SingleValue } from 'react-select';
 
 type CatFilterOption = { value: string; label: string };
@@ -80,6 +80,8 @@ export default function Menu() {
 
   const [recipe, setRecipe] = useState<RecipeIngredient[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string>('');
+  const [selectedIngredientUnit, setSelectedIngredientUnit] = useState<string>('');
+  const [ingredientUnits, setIngredientUnits] = useState<ProductAllowedUnit[]>([]);
   const [quantity, setQuantity] = useState<string>('');
   const [images, setImages] = useState<string[]>([]);
   const [branchPricing, setBranchPricing] = useState<BranchPriceRow[]>([]);
@@ -199,6 +201,25 @@ export default function Menu() {
     }
   };
 
+  const handleIngredientProductChange = useCallback(async (productId: string) => {
+    setSelectedProductId(productId);
+    if (!productId) {
+      setIngredientUnits([]);
+      setSelectedIngredientUnit('');
+      return;
+    }
+    try {
+      const res = await unitsAPI.getProductUnits(Number(productId));
+      const units: ProductAllowedUnit[] = res.data.data || [];
+      setIngredientUnits(units);
+      const defaultUnit = units.find(u => u.isBase) || units.find(u => u.isDefault) || units[0];
+      setSelectedIngredientUnit(defaultUnit?.abbreviation || '');
+    } catch {
+      setIngredientUnits([]);
+      setSelectedIngredientUnit('');
+    }
+  }, []);
+
   const addIngredient = () => {
     if (!selectedProductId || !quantity) return;
 
@@ -209,12 +230,14 @@ export default function Menu() {
       productId: product.id,
       productName: product.name,
       quantity: parseFloat(quantity),
-      unit: product.unit,
+      unit: selectedIngredientUnit || product.unit,
       cost: Number(product.cost)
     };
 
     setRecipe([...recipe, newIngredient]);
     setSelectedProductId('');
+    setSelectedIngredientUnit('');
+    setIngredientUnits([]);
     setQuantity('');
   };
 
@@ -599,8 +622,8 @@ export default function Menu() {
                   {/* Add Tool */}
                   <div className="modal-input-group">
                     <label className="modal-input-label">Incorporar Ingrediente</label>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <div style={{ flex: 2, minWidth: '140px' }}>
                         <Select
                           variant="modal"
                           options={products.map(p => ({
@@ -610,7 +633,7 @@ export default function Menu() {
                             .map(p => ({ value: p.id.toString(), label: p.name }))
                             .find(opt => opt.value === selectedProductId) || null
                           }
-                          onChange={(opt: SingleValue<StrOption>) => setSelectedProductId(opt ? opt.value : '')}
+                          onChange={(opt: SingleValue<StrOption>) => handleIngredientProductChange(opt ? opt.value : '')}
                           placeholder="Buscar..."
                           isClearable
                           isDisabled={!canMutateMenu}
@@ -626,6 +649,20 @@ export default function Menu() {
                         readOnly={!canMutateMenu}
                         disabled={!canMutateMenu}
                       />
+                      {ingredientUnits.length > 0 && (
+                        <div style={{ minWidth: '100px' }}>
+                          <Select
+                            variant="modal"
+                            options={ingredientUnits.map(u => ({ value: u.abbreviation, label: u.abbreviation }))}
+                            value={selectedIngredientUnit
+                              ? { value: selectedIngredientUnit, label: selectedIngredientUnit }
+                              : null}
+                            onChange={(opt: SingleValue<StrOption>) => setSelectedIngredientUnit(opt?.value || '')}
+                            isSearchable={false}
+                            isDisabled={!canMutateMenu}
+                          />
+                        </div>
+                      )}
                       <Button
                         type="button"
                         variant="primary"

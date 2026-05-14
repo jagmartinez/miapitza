@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import Select from '../components/Select';
 import { useParams, useNavigate } from 'react-router-dom';
-import { purchaseOrdersAPI, suppliersAPI, productsAPI, branchesAPI, warehousesAPI } from '../services/api';
+import { purchaseOrdersAPI, suppliersAPI, productsAPI, branchesAPI, warehousesAPI, unitsAPI } from '../services/api';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import Modal from '../components/Modal';
 import Sidebar from '../components/Sidebar';
 import { Plus, Trash2, Save, CheckCircle, Package, Info, MapPin, Building2, FileText, Eye } from 'lucide-react';
-import type { PurchaseOrder, PurchaseOrderItem, Supplier, Product, Branch, Warehouse } from '../types';
+import type { PurchaseOrder, PurchaseOrderItem, Supplier, Product, Branch, Warehouse, ProductAllowedUnit } from '../types';
 import type { SingleValue } from 'react-select';
 import './PurchaseOrderForm.css';
 
@@ -17,6 +17,7 @@ interface NewOrderLineDraft {
     productId: number;
     quantity: number;
     cost: number;
+    purchaseUnit?: string;
     product: Product;
 }
 
@@ -56,8 +57,10 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
     const [itemForm, setItemForm] = useState({
         productId: '',
         quantity: 1,
-        cost: 0
+        cost: 0,
+        purchaseUnit: ''
     });
+    const [itemUnits, setItemUnits] = useState<ProductAllowedUnit[]>([]);
 
     // Receive Modal
     const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
@@ -125,6 +128,24 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
         }
     }, [effectiveId, loadDependencies, loadOrder]);
 
+    const loadItemUnits = useCallback(async (productId: number) => {
+        try {
+            const res = await unitsAPI.getProductUnits(productId);
+            const units: ProductAllowedUnit[] = res.data.data || [];
+            setItemUnits(units);
+            const defaultUnit = units.find(u => u.isDefault) || units.find(u => u.isBase) || units[0];
+            return defaultUnit?.abbreviation || '';
+        } catch {
+            setItemUnits([]);
+            return '';
+        }
+    }, []);
+
+    const handleItemProductChange = useCallback(async (productId: string) => {
+        const defaultUnit = await loadItemUnits(Number(productId));
+        setItemForm(prev => ({ ...prev, productId, purchaseUnit: defaultUnit }));
+    }, [loadItemUnits]);
+
     const handleAddItem = async () => {
         if (!itemForm.productId || itemForm.quantity <= 0 || itemForm.cost < 0) {
             alert('Por favor complete los datos del ítem correctamente');
@@ -139,19 +160,22 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 productId: Number(itemForm.productId),
                 quantity: Number(itemForm.quantity),
                 cost: Number(itemForm.cost),
-                product // for display
+                purchaseUnit: itemForm.purchaseUnit || undefined,
+                product
             }]);
-            setItemForm({ productId: '', quantity: 1, cost: 0 });
+            setItemForm({ productId: '', quantity: 1, cost: 0, purchaseUnit: '' });
+            setItemUnits([]);
         } else {
-            // Add to existing order
             try {
                 await purchaseOrdersAPI.addItem(Number(effectiveId), {
                     productId: Number(itemForm.productId),
                     quantity: Number(itemForm.quantity),
-                    cost: Number(itemForm.cost)
+                    cost: Number(itemForm.cost),
+                    purchaseUnit: itemForm.purchaseUnit || undefined
                 });
                 loadOrder(Number(effectiveId));
-                setItemForm({ productId: '', quantity: 1, cost: 0 });
+                setItemForm({ productId: '', quantity: 1, cost: 0, purchaseUnit: '' });
+                setItemUnits([]);
             } catch (error) {
                 console.error('Error adding item:', error);
                 alert('Error al agregar ítem');
@@ -199,7 +223,8 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 payload.append('items', JSON.stringify(newItems.map(item => ({
                     productId: item.productId,
                     quantity: item.quantity,
-                    cost: item.cost
+                    cost: item.cost,
+                    purchaseUnit: item.purchaseUnit
                 }))));
                 const res = await purchaseOrdersAPI.create(payload);
                 if (onSaved) {
@@ -394,7 +419,11 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                             <td className="product-name-cell">
                                                 <div className="product-info-mini">
                                                     <span className="p-name">{item.product?.name}</span>
-                                                    <span className="p-unit">{item.product?.unit}</span>
+                                                    <span className="p-unit">
+                                                        {'purchaseUnit' in item && item.purchaseUnit
+                                                            ? item.purchaseUnit
+                                                            : item.product?.unit}
+                                                    </span>
                                                 </div>
                                             </td>
                                             <td className="text-right font-mono">{Number(item.quantity).toFixed(2)}</td>
@@ -531,11 +560,28 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                     label="Producto"
                                     options={products.map(p => ({ value: p.id.toString(), label: `${p.name} (${p.unit})` }))}
                                     value={prod ? { value: itemForm.productId, label: `${prod.name} (${prod.unit})` } : null}
-                                    onChange={(option: SingleValue<StrOption>) => option && setItemForm({ ...itemForm, productId: option.value })}
+                                    onChange={(option: SingleValue<StrOption>) => option && handleItemProductChange(option?.value || '')}
                                     placeholder="Seleccione Producto"
                                 />
                             );
                         })()}
+                        {itemUnits.length > 0 && (
+                            <Select
+                                variant="modal"
+                                label="Unidad de Compra"
+                                options={itemUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))}
+                                value={itemForm.purchaseUnit
+                                    ? {
+                                        value: itemForm.purchaseUnit,
+                                        label: itemUnits.find(u => u.abbreviation === itemForm.purchaseUnit)
+                                            ? `${itemUnits.find(u => u.abbreviation === itemForm.purchaseUnit)!.name} (${itemForm.purchaseUnit})`
+                                            : itemForm.purchaseUnit
+                                    }
+                                    : null}
+                                onChange={(option: SingleValue<StrOption>) => setItemForm({ ...itemForm, purchaseUnit: option?.value || '' })}
+                                placeholder="Seleccione Unidad"
+                            />
+                        )}
                         <Input
                             label="Cantidad"
                             type="number"

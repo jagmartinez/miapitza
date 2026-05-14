@@ -147,11 +147,32 @@ export interface Payment {
   registeredById?: number;
 }
 
+export interface UnitOfMeasure {
+  id: number;
+  companyId: number;
+  name: string;
+  abbreviation: string;
+  measurementType: 'MASS' | 'VOLUME' | 'UNIT' | 'PACKAGE';
+  systemFactor: number;
+  active: boolean;
+}
+
+export interface ProductAllowedUnit {
+  unitId: number;
+  abbreviation: string;
+  name: string;
+  conversionFactor: number;
+  isBase: boolean;
+  isDefault: boolean;
+}
+
 export interface Product {
   id: number;
   name: string;
   sku?: string;
   unit: string;
+  baseUnitId?: number;
+  baseUnit?: UnitOfMeasure;
   cost: number;
   price?: number;
   minStock: number;
@@ -159,6 +180,7 @@ export interface Product {
   type: 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH';
   storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE' | null;
   active: boolean;
+  allowedUnits?: ProductAllowedUnit[];
 }
 
 export interface Branch {
@@ -211,6 +233,10 @@ export interface PurchaseOrderItem {
   quantity: number;
   cost: number;
   subtotal: number;
+  purchaseUnit?: string;
+  conversionFactor?: number;
+  baseQuantity?: number;
+  baseCost?: number;
 }
 
 export interface CashRegister {

@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { UnitConversionService } from './unit-conversion.service';
 
 type Tx = Prisma.TransactionClient;
 
@@ -115,6 +116,7 @@ export class PurchaseOrderService {
             productId: number;
             quantity: number;
             cost: number;
+            purchaseUnit?: string;
         }>;
     }) {
         // Verify branch
@@ -146,15 +148,34 @@ export class PurchaseOrderService {
                 }
             });
 
-            // Create order items
+            // Create order items with unit conversion
             for (const item of data.items) {
+                let purchaseUnit: string | null = item.purchaseUnit || null;
+                let conversionFactor: number | null = null;
+                let baseQuantity: number | null = null;
+                let baseCost: number | null = null;
+
+                if (purchaseUnit) {
+                    const conv = await UnitConversionService.convertWithCost(
+                        item.productId, companyId, item.quantity, purchaseUnit, item.cost, tx
+                    );
+                    conversionFactor = conv.conversionFactor;
+                    baseQuantity = conv.baseQuantity;
+                    baseCost = conv.baseCost;
+                    purchaseUnit = conv.originalUnit;
+                }
+
                 await tx.purchaseOrderItem.create({
                     data: {
                         purchaseOrderId: order.id,
                         productId: item.productId,
                         quantity: item.quantity,
                         cost: item.cost,
-                        subtotal: item.quantity * item.cost
+                        subtotal: item.quantity * item.cost,
+                        purchaseUnit,
+                        conversionFactor,
+                        baseQuantity,
+                        baseCost
                     }
                 });
             }
@@ -276,9 +297,12 @@ export class PurchaseOrderService {
             // Import CostingService dynamically to avoid circular dependencies
             const { CostingService } = await import('./costing.service');
 
-            // Update each product's stock and cost
+            // Update each product's stock and cost (using base-unit quantities)
             for (const item of order.items) {
-                // Get or create stock record
+                // Use converted base quantities if available, otherwise original
+                const stockQty = item.baseQuantity ? Number(item.baseQuantity) : Number(item.quantity);
+                const costPerBase = item.baseCost ? Number(item.baseCost) : Number(item.cost);
+
                 let stock = await tx.stock.findUnique({
                     where: {
                         warehouseId_productId: {
@@ -299,7 +323,8 @@ export class PurchaseOrderService {
                     });
                 }
 
-                // Update stock
+                const newBalanceQty = Number(stock.quantity) + stockQty;
+
                 await tx.stock.update({
                     where: {
                         warehouseId_productId: {
@@ -307,18 +332,12 @@ export class PurchaseOrderService {
                             productId: item.productId
                         }
                     },
-                    data: {
-                        quantity: Number(stock.quantity) + Number(item.quantity)
-                    }
+                    data: { quantity: newBalanceQty }
                 });
 
-                // Calculate cost data for the movement
-                const unitCost = Number(item.cost || 0);
-                const movementTotalCost = unitCost * Number(item.quantity);
-                const newBalanceQty = Number(stock.quantity) + Number(item.quantity);
-                const newBalanceCost = newBalanceQty * unitCost;
+                const movementTotalCost = costPerBase * stockQty;
+                const newBalanceCost = newBalanceQty * costPerBase;
 
-                // Create inventory movement
                 await tx.inventoryMovement.create({
                     data: {
                         warehouseId,
@@ -326,8 +345,11 @@ export class PurchaseOrderService {
                         userId,
                         companyId,
                         type: 'IN',
-                        quantity: Number(item.quantity),
-                        unitCost,
+                        quantity: stockQty,
+                        originalQuantity: Number(item.quantity),
+                        originalUnit: item.purchaseUnit || null,
+                        conversionFactor: item.conversionFactor ? Number(item.conversionFactor) : null,
+                        unitCost: costPerBase,
                         totalCost: movementTotalCost,
                         balanceQty: newBalanceQty,
                         balanceCost: newBalanceCost,
@@ -336,13 +358,13 @@ export class PurchaseOrderService {
                     }
                 });
 
-                // Update product cost automatically
+                // Update product cost using base-unit values
                 await CostingService.updateProductCost(
                     item.productId,
                     companyId,
                     item.id,
-                    Number(item.quantity),
-                    Number(item.cost),
+                    stockQty,
+                    costPerBase,
                     warehouseId
                 );
             }
@@ -369,6 +391,7 @@ export class PurchaseOrderService {
         productId: number;
         quantity: number;
         cost: number;
+        purchaseUnit?: string;
     }) {
         const order = await prisma.purchaseOrder.findFirst({
             where: { id: orderId, companyId }
@@ -383,13 +406,32 @@ export class PurchaseOrderService {
         }
 
         return await prisma.$transaction(async (tx: Tx) => {
+            let purchaseUnit: string | null = data.purchaseUnit || null;
+            let conversionFactor: number | null = null;
+            let baseQuantity: number | null = null;
+            let baseCost: number | null = null;
+
+            if (purchaseUnit) {
+                const conv = await UnitConversionService.convertWithCost(
+                    data.productId, companyId, data.quantity, purchaseUnit, data.cost, tx
+                );
+                conversionFactor = conv.conversionFactor;
+                baseQuantity = conv.baseQuantity;
+                baseCost = conv.baseCost;
+                purchaseUnit = conv.originalUnit;
+            }
+
             const item = await tx.purchaseOrderItem.create({
                 data: {
                     purchaseOrderId: orderId,
                     productId: data.productId,
                     quantity: data.quantity,
                     cost: data.cost,
-                    subtotal: data.quantity * data.cost
+                    subtotal: data.quantity * data.cost,
+                    purchaseUnit,
+                    conversionFactor,
+                    baseQuantity,
+                    baseCost
                 },
                 include: {
                     product: true
