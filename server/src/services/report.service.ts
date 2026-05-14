@@ -1095,4 +1095,368 @@ export class ReportService {
             byProduct: productList.sort((a, b) => b.totalCost - a.totalCost)
         };
     }
+
+    static async getInventoryReport(companyId: number, filters?: {
+        warehouseId?: number;
+        categoryId?: number;
+        productId?: number;
+        lowStockOnly?: boolean;
+    }) {
+        const stockWhere: Prisma.StockWhereInput = {
+            companyId,
+            ...(filters?.warehouseId ? { warehouseId: filters.warehouseId } : {}),
+            ...(filters?.productId ? { productId: filters.productId } : {}),
+            ...(filters?.categoryId ? { product: { categoryId: filters.categoryId } } : {}),
+        };
+
+        const stocks = await prisma.stock.findMany({
+            where: stockWhere,
+            include: {
+                product: {
+                    select: {
+                        id: true, name: true, sku: true, unit: true,
+                        minStock: true, currentAverageCost: true,
+                        category: { select: { name: true } }
+                    }
+                },
+                warehouse: { select: { name: true } }
+            }
+        });
+
+        const items = stocks.map(s => {
+            const qty = Number(s.quantity);
+            const minStock = Number(s.product.minStock);
+            const avgCost = Number(s.product.currentAverageCost);
+            const totalValue = Math.round(qty * avgCost * 100) / 100;
+            const status: 'CRITICAL' | 'LOW' | 'OK' = qty <= 0 ? 'CRITICAL' : qty < minStock ? 'LOW' : 'OK';
+            return {
+                productId: s.product.id,
+                productName: s.product.name,
+                sku: s.product.sku,
+                unit: s.product.unit,
+                categoryName: s.product.category?.name || null,
+                warehouseName: s.warehouse.name,
+                quantity: Math.round(qty * 100) / 100,
+                minStock: Math.round(minStock * 100) / 100,
+                maxStock: null as number | null,
+                currentAverageCost: Math.round(avgCost * 100) / 100,
+                totalValue,
+                status
+            };
+        });
+
+        const filtered = filters?.lowStockOnly ? items.filter(i => i.status === 'LOW' || i.status === 'CRITICAL') : items;
+
+        const totalValue = Math.round(filtered.reduce((s, i) => s + i.totalValue, 0) * 100) / 100;
+        const lowStockCount = filtered.filter(i => i.status === 'LOW').length;
+        const criticalCount = filtered.filter(i => i.status === 'CRITICAL').length;
+
+        return {
+            items: filtered,
+            summary: {
+                totalProducts: filtered.length,
+                totalValue,
+                lowStockCount,
+                criticalCount
+            }
+        };
+    }
+
+    static async getPurchasesReport(companyId: number, filters?: {
+        dateFrom?: Date;
+        dateTo?: Date;
+        supplierId?: number;
+        categoryId?: number;
+        branchId?: number;
+        status?: string;
+    }) {
+        const poWhere: Prisma.PurchaseOrderWhereInput = {
+            companyId,
+            ...(filters?.branchId ? { branchId: filters.branchId } : {}),
+            ...(filters?.supplierId ? { supplierId: filters.supplierId } : {}),
+            ...(filters?.status ? { status: filters.status as any } : {}),
+            ...(filters?.dateFrom || filters?.dateTo
+                ? {
+                      date: {
+                          ...(filters?.dateFrom ? { gte: filters.dateFrom } : {}),
+                          ...(filters?.dateTo ? { lte: filters.dateTo } : {}),
+                      },
+                  }
+                : {}),
+        };
+
+        const purchaseOrders = await prisma.purchaseOrder.findMany({
+            where: poWhere,
+            include: {
+                supplier: { select: { name: true } },
+                branch: { select: { name: true } },
+                items: {
+                    include: {
+                        product: {
+                            select: {
+                                name: true, categoryId: true,
+                                category: { select: { name: true } }
+                            }
+                        }
+                    }
+                }
+            },
+            orderBy: { date: 'desc' }
+        });
+
+        const items: {
+            date: Date; poNumber: string | null; supplierName: string;
+            productName: string; categoryName: string | null;
+            quantity: number; unitCost: number; totalCost: number; status: string;
+        }[] = [];
+
+        const supplierSet = new Set<number>();
+        const productSet = new Set<number>();
+        let totalAmount = 0;
+
+        for (const po of purchaseOrders) {
+            supplierSet.add(po.supplierId);
+            for (const item of po.items) {
+                if (filters?.categoryId && item.product.categoryId !== filters.categoryId) continue;
+                productSet.add(item.productId);
+                const cost = Math.round(Number(item.subtotal) * 100) / 100;
+                totalAmount += cost;
+                items.push({
+                    date: po.date,
+                    poNumber: po.invoiceNumber,
+                    supplierName: po.supplier.name,
+                    productName: item.product.name,
+                    categoryName: item.product.category?.name || null,
+                    quantity: Math.round(Number(item.quantity) * 100) / 100,
+                    unitCost: Math.round(Number(item.cost) * 100) / 100,
+                    totalCost: cost,
+                    status: po.status
+                });
+            }
+        }
+
+        return {
+            items,
+            summary: {
+                totalOrders: purchaseOrders.length,
+                totalAmount: Math.round(totalAmount * 100) / 100,
+                uniqueSuppliers: supplierSet.size,
+                uniqueProducts: productSet.size
+            }
+        };
+    }
+
+    static async getSalesReport(companyId: number, filters?: {
+        dateFrom?: Date;
+        dateTo?: Date;
+        branchId?: number;
+        categoryId?: number;
+        userId?: number;
+        paymentMethodId?: number;
+    }) {
+        const orderWhere: Prisma.OrderWhereInput = {
+            companyId,
+            status: 'PAID',
+            ...(filters?.branchId ? { branchId: filters.branchId } : {}),
+            ...(filters?.userId ? { userId: filters.userId } : {}),
+            ...(filters?.dateFrom || filters?.dateTo
+                ? {
+                      createdAt: {
+                          ...(filters?.dateFrom ? { gte: filters.dateFrom } : {}),
+                          ...(filters?.dateTo ? { lte: filters.dateTo } : {}),
+                      },
+                  }
+                : {}),
+            ...(filters?.paymentMethodId
+                ? { payments: { some: { paymentMethodId: filters.paymentMethodId } } }
+                : {}),
+        };
+
+        const orders = await prisma.order.findMany({
+            where: orderWhere,
+            include: {
+                items: {
+                    include: {
+                        menuItem: {
+                            select: {
+                                name: true, categoryId: true,
+                                category: { select: { name: true } }
+                            }
+                        }
+                    }
+                },
+                payments: {
+                    include: {
+                        paymentMethod: { select: { name: true } }
+                    }
+                },
+                user: { select: { name: true } }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        const items: {
+            date: Date; orderNumber: string; productName: string;
+            categoryName: string | null; quantity: number; unitPrice: number;
+            discount: number; totalSale: number; paymentMethod: string; userName: string;
+        }[] = [];
+
+        let totalSales = 0;
+        let totalDiscount = 0;
+
+        for (const order of orders) {
+            const paymentMethodName = order.payments.map(p => p.paymentMethod.name).join(', ') || 'N/A';
+            const orderDiscount = Math.round(Number(order.discount) * 100) / 100;
+            totalDiscount += orderDiscount;
+
+            for (const item of order.items) {
+                if (filters?.categoryId && item.menuItem?.categoryId !== filters.categoryId) continue;
+                const subtotal = Math.round(Number(item.subtotal) * 100) / 100;
+                totalSales += subtotal;
+                items.push({
+                    date: order.createdAt,
+                    orderNumber: order.invoiceNumber || String(order.id),
+                    productName: item.menuItem?.name || 'Unknown',
+                    categoryName: item.menuItem?.category?.name || null,
+                    quantity: item.quantity,
+                    unitPrice: Math.round(Number(item.price) * 100) / 100,
+                    discount: orderDiscount,
+                    totalSale: subtotal,
+                    paymentMethod: paymentMethodName,
+                    userName: order.user?.name || 'Unknown'
+                });
+            }
+        }
+
+        return {
+            items,
+            summary: {
+                totalOrders: orders.length,
+                totalSales: Math.round(totalSales * 100) / 100,
+                totalDiscount: Math.round(totalDiscount * 100) / 100,
+                averageTicket: orders.length > 0 ? Math.round((totalSales / orders.length) * 100) / 100 : 0
+            }
+        };
+    }
+
+    static async getProfitabilityReport(companyId: number, filters?: {
+        categoryId?: number;
+        branchId?: number;
+    }) {
+        const menuItemWhere: Prisma.MenuItemWhereInput = {
+            companyId,
+            active: true,
+            ...(filters?.categoryId ? { categoryId: filters.categoryId } : {}),
+            ...(filters?.branchId ? { branchId: filters.branchId } : {}),
+        };
+
+        const menuItems = await prisma.menuItem.findMany({
+            where: menuItemWhere,
+            include: {
+                category: { select: { name: true } },
+                recipes: {
+                    include: {
+                        product: {
+                            select: { currentAverageCost: true }
+                        }
+                    }
+                }
+            }
+        });
+
+        const items = menuItems.map(mi => {
+            const price = Math.round(Number(mi.price) * 100) / 100;
+            const estimatedCost = Math.round(
+                mi.recipes.reduce((sum, r) => sum + Number(r.quantity) * Number(r.product.currentAverageCost), 0) * 100
+            ) / 100;
+            const grossMargin = Math.round((price - estimatedCost) * 100) / 100;
+            const marginPercent = price > 0 ? Math.round(((price - estimatedCost) / price) * 10000) / 100 : 0;
+            const status: 'HIGH' | 'MEDIUM' | 'LOW' = marginPercent > 60 ? 'HIGH' : marginPercent >= 30 ? 'MEDIUM' : 'LOW';
+
+            return {
+                menuItemName: mi.name,
+                categoryName: mi.category?.name || null,
+                price,
+                estimatedCost,
+                grossMargin,
+                marginPercent,
+                status
+            };
+        });
+
+        const avgMargin = items.length > 0
+            ? Math.round(items.reduce((s, i) => s + i.marginPercent, 0) / items.length * 100) / 100
+            : 0;
+        const lowMarginCount = items.filter(i => i.status === 'LOW').length;
+
+        return {
+            items,
+            summary: {
+                totalItems: items.length,
+                avgMargin,
+                lowMarginCount
+            }
+        };
+    }
+
+    static async getLowStockReport(companyId: number, filters?: {
+        warehouseId?: number;
+        categoryId?: number;
+    }) {
+        const stockWhere: Prisma.StockWhereInput = {
+            companyId,
+            ...(filters?.warehouseId ? { warehouseId: filters.warehouseId } : {}),
+            ...(filters?.categoryId ? { product: { categoryId: filters.categoryId } } : {}),
+            product: {
+                ...(filters?.categoryId ? { categoryId: filters.categoryId } : {}),
+                minStock: { gt: 0 }
+            }
+        };
+
+        const stocks = await prisma.stock.findMany({
+            where: stockWhere,
+            include: {
+                product: {
+                    select: {
+                        name: true, unit: true, minStock: true,
+                        category: { select: { name: true } }
+                    }
+                },
+                warehouse: { select: { name: true } }
+            }
+        });
+
+        // Filter in application: quantity < minStock
+        const lowStockItems = stocks
+            .filter(s => Number(s.quantity) < Number(s.product.minStock))
+            .map(s => {
+                const currentStock = Math.round(Number(s.quantity) * 100) / 100;
+                const minStock = Math.round(Number(s.product.minStock) * 100) / 100;
+                const deficit = Math.round((minStock - currentStock) * 100) / 100;
+                const criticality: 'CRITICAL' | 'WARNING' = currentStock <= 0 ? 'CRITICAL' : 'WARNING';
+
+                return {
+                    productName: s.product.name,
+                    categoryName: s.product.category?.name || null,
+                    warehouseName: s.warehouse.name,
+                    currentStock,
+                    minStock,
+                    deficit,
+                    unit: s.product.unit,
+                    criticality
+                };
+            });
+
+        const criticalCount = lowStockItems.filter(i => i.criticality === 'CRITICAL').length;
+        const warningCount = lowStockItems.filter(i => i.criticality === 'WARNING').length;
+
+        return {
+            items: lowStockItems,
+            summary: {
+                totalLowStock: lowStockItems.length,
+                criticalCount,
+                warningCount
+            }
+        };
+    }
 }

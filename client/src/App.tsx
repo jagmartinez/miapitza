@@ -62,6 +62,7 @@ const Categories = lazy(() => import('./pages/Categories'));
 const Promotions = lazy(() => import('./pages/Promotions'));
 const WarehousesPage = lazy(() => import('./pages/Warehouses'));
 const CostReport = lazy(() => import('./pages/CostReport'));
+const Reports = lazy(() => import('./pages/Reports'));
 const Profile = lazy(() => import('./pages/Profile'));
 const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 
@@ -111,6 +112,8 @@ function App() {
                                 <Route path="/purchase-orders/:id" element={<RoleGuard roles={['SUPERADMIN', 'ADMIN', 'BODEGA']}><PurchaseOrderForm /></RoleGuard>} />
                                 <Route path="/warehouses" element={<RoleGuard roles={WAREHOUSE}><WarehousesPage /></RoleGuard>} />
                                 <Route path="/cost-report" element={<RoleGuard roles={ADMIN}><CostReport /></RoleGuard>} />
+                                <Route path="/reporteria" element={<RoleGuard roles={ADMIN}><Reports /></RoleGuard>} />
+                                <Route path="/reporteria/:reportId" element={<RoleGuard roles={ADMIN}><Reports /></RoleGuard>} />
                                 <Route path="/users" element={<RoleGuard roles={ADMIN}><Users /></RoleGuard>} />
                                 <Route path="/waste-report" element={<RoleGuard roles={ADMIN}><WasteReport /></RoleGuard>} />
                                 <Route path="/bank-reconciliation" element={<RoleGuard roles={ADMIN}><BankReconciliation /></RoleGuard>} />

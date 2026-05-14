@@ -518,6 +518,17 @@ export const reportsAPI = {
     getCostReport: (params?: Record<string, unknown>) => api.get('/reports/costs', { params }),
     getKardex: (params?: Record<string, string>) => api.get('/reports/kardex', { params }),
     exportKardex: (params?: Record<string, string>) => api.get('/reports/kardex/export', { params, responseType: 'arraybuffer' }),
+
+    getInventoryReport: (params?: Record<string, string>) => api.get('/reports/inventory', { params }),
+    exportInventoryReport: (params?: Record<string, string>) => api.get('/reports/inventory/export', { params, responseType: 'arraybuffer' }),
+    getPurchasesReport: (params?: Record<string, string>) => api.get('/reports/purchases', { params }),
+    exportPurchasesReport: (params?: Record<string, string>) => api.get('/reports/purchases/export', { params, responseType: 'arraybuffer' }),
+    getSalesReport: (params?: Record<string, string>) => api.get('/reports/sales', { params }),
+    exportSalesReport: (params?: Record<string, string>) => api.get('/reports/sales/export', { params, responseType: 'arraybuffer' }),
+    getProfitabilityReport: (params?: Record<string, string>) => api.get('/reports/profitability', { params }),
+    exportProfitabilityReport: (params?: Record<string, string>) => api.get('/reports/profitability/export', { params, responseType: 'arraybuffer' }),
+    getLowStockReport: (params?: Record<string, string>) => api.get('/reports/low-stock', { params }),
+    exportLowStockReport: (params?: Record<string, string>) => api.get('/reports/low-stock/export', { params, responseType: 'arraybuffer' }),
 };
 
 // Inventory Movements API

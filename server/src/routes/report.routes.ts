@@ -24,4 +24,16 @@ router.get('/my-performance', ReportController.getMyPerformance);
 router.get('/my-password-info', ReportController.getPasswordInfo);
 router.get('/costs', requireRole('SUPERADMIN', 'ADMIN'), ReportController.getCostReport);
 
+// ── Reportería endpoints ──
+router.get('/inventory', requireRole('SUPERADMIN', 'ADMIN'), ReportController.getInventoryReport);
+router.get('/inventory/export', requireRole('SUPERADMIN', 'ADMIN'), ReportController.exportInventoryReport);
+router.get('/purchases', requireRole('SUPERADMIN', 'ADMIN'), ReportController.getPurchasesReport);
+router.get('/purchases/export', requireRole('SUPERADMIN', 'ADMIN'), ReportController.exportPurchasesReport);
+router.get('/sales', requireRole('SUPERADMIN', 'ADMIN'), ReportController.getSalesReport);
+router.get('/sales/export', requireRole('SUPERADMIN', 'ADMIN'), ReportController.exportSalesReport);
+router.get('/profitability', requireRole('SUPERADMIN', 'ADMIN'), ReportController.getProfitabilityReport);
+router.get('/profitability/export', requireRole('SUPERADMIN', 'ADMIN'), ReportController.exportProfitabilityReport);
+router.get('/low-stock', requireRole('SUPERADMIN', 'ADMIN'), ReportController.getLowStockReport);
+router.get('/low-stock/export', requireRole('SUPERADMIN', 'ADMIN'), ReportController.exportLowStockReport);
+
 export default router;

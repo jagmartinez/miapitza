@@ -73,6 +73,7 @@ const NAV_SECTIONS: NavSection[] = [
             { to: '/purchase-orders', icon: ClipboardList, label: 'Órdenes de Compra', roles: ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'] },
             { to: '/warehouses', icon: Warehouse, label: 'Bodegas', roles: ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'] },
             { to: '/cost-report', icon: BarChart3, label: 'Reporte Costos', roles: ADMIN_ROLES },
+            { to: '/reporteria', icon: ClipboardList, label: 'Reportería', roles: ADMIN_ROLES },
             { to: '/users', icon: Users, label: 'Usuarios', roles: ADMIN_ROLES },
         ],
     },
