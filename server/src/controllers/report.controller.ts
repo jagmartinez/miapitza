@@ -326,7 +326,7 @@ export class ReportController {
                     'Stock Bajo': data.summary.lowStockCount,
                     'Crítico': data.summary.criticalCount,
                 },
-                userName: req.user?.name || req.user?.username,
+                userName: req.user?.roleObj?.name || req.user?.role || 'Admin',
             });
 
             const date = new Date().toISOString().split('T')[0];
@@ -399,7 +399,7 @@ export class ReportController {
                     'Proveedores': data.summary.uniqueSuppliers,
                     'Productos': data.summary.uniqueProducts,
                 },
-                userName: req.user?.name || req.user?.username,
+                userName: req.user?.roleObj?.name || req.user?.role || 'Admin',
             });
 
             const date = new Date().toISOString().split('T')[0];
@@ -472,7 +472,7 @@ export class ReportController {
                     'Descuento Total': data.summary.totalDiscount,
                     'Ticket Promedio': data.summary.averageTicket,
                 },
-                userName: req.user?.name || req.user?.username,
+                userName: req.user?.roleObj?.name || req.user?.role || 'Admin',
             });
 
             const date = new Date().toISOString().split('T')[0];
@@ -522,7 +522,7 @@ export class ReportController {
                     'Margen Promedio': `${data.summary.avgMargin}%`,
                     'Bajo Margen': data.summary.lowMarginCount,
                 },
-                userName: req.user?.name || req.user?.username,
+                userName: req.user?.roleObj?.name || req.user?.role || 'Admin',
             });
 
             const date = new Date().toISOString().split('T')[0];
@@ -575,7 +575,7 @@ export class ReportController {
                     'Crítico': data.summary.criticalCount,
                     'Advertencia': data.summary.warningCount,
                 },
-                userName: req.user?.name || req.user?.username,
+                userName: req.user?.roleObj?.name || req.user?.role || 'Admin',
             });
 
             const date = new Date().toISOString().split('T')[0];

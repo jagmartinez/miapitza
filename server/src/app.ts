@@ -135,6 +135,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/cash-registers', cashRegisterRoutes);
 app.use('/api/cash-shifts', cashShiftRoutes);
+app.use('/api/reports/kardex', kardexRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingRoutes);
 app.use('/api/roles', roleRoutes);
@@ -152,7 +153,6 @@ app.use('/api/cash-arqueo', cashArqueoRoutes);
 app.use('/api/split-bill', splitBillRoutes);
 app.use('/api/advanced', advancedFeaturesRoutes);
 app.use('/api/categories', categoryRoutes);
-app.use('/api/reports/kardex', kardexRoutes);
 app.use('/api/catering', cateringRoutes);
 app.use('/api/units', unitConversionRoutes);
 

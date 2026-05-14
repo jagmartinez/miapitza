@@ -296,6 +296,20 @@ export const productsAPI = {
 
     delete: (id: number) =>
         api.delete(`/products/${id}`),
+
+    getImportTemplate: () =>
+        api.get('/products/import/template', { responseType: 'arraybuffer' }),
+
+    validateImport: (file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return api.post('/products/import/validate', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+    },
+
+    confirmImport: (items: unknown[]) =>
+        api.post('/products/import/confirm', { items }),
 };
 
 // Categories API

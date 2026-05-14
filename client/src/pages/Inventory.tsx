@@ -11,7 +11,8 @@ import { useAuth } from '../hooks/useAuth';
 import { hasAnyRole } from '../utils/authz';
 import {
     AlertTriangle, Package, Plus, Edit2, Trash2,
-    Activity, ShoppingBag, Layers, Truck, DollarSign, FileText
+    Activity, ShoppingBag, Layers, Truck, DollarSign, FileText,
+    Upload, Download
 } from 'lucide-react';
 import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, Warehouse } from '../types';
 import type { SingleValue } from 'react-select';
@@ -117,6 +118,21 @@ export default function Inventory() {
     const [adjustmentUnits, setAdjustmentUnits] = useState<ProductAllowedUnit[]>([]);
 
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+
+    // Excel import state
+    const [showImportSidebar, setShowImportSidebar] = useState(false);
+    const [importFile, setImportFile] = useState<File | null>(null);
+    const [importValidation, setImportValidation] = useState<{
+        items: Array<{
+            rowNumber: number; sku: string; name: string; category: string; unit: string;
+            isUpdate: boolean; existingProductId: number | null; categoryId: number | null;
+            errors: string[]; isValid: boolean;
+            minStock?: number | null; cost?: number | null; price?: number | null;
+            type?: string; storageType?: string;
+        }>;
+        summary: { valid: number; invalid: number; totalRows: number; newProducts: number; updates: number };
+    } | null>(null);
+    const [importLoading, setImportLoading] = useState(false);
 
     useEffect(() => {
         loadInventory();
@@ -385,6 +401,62 @@ export default function Inventory() {
         }
     };
 
+    const handleDownloadTemplate = async () => {
+        try {
+            const res = await productsAPI.getImportTemplate();
+            const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'Plantilla_Productos.xlsx';
+            a.click();
+            URL.revokeObjectURL(url);
+            showSuccess('Plantilla descargada');
+        } catch {
+            showError('Error al descargar la plantilla');
+        }
+    };
+
+    const handleImportValidate = async () => {
+        if (!importFile) return;
+        setImportLoading(true);
+        try {
+            const res = await productsAPI.validateImport(importFile);
+            setImportValidation(res.data.data);
+            if (res.data.data.summary.invalid > 0) {
+                showWarning(`${res.data.data.summary.invalid} filas con errores`);
+            } else {
+                showSuccess(`${res.data.data.summary.valid} productos listos para importar`);
+            }
+        } catch {
+            showError('Error al validar el archivo');
+        } finally {
+            setImportLoading(false);
+        }
+    };
+
+    const handleImportConfirm = async () => {
+        if (!importValidation) return;
+        const validItems = importValidation.items.filter(i => i.isValid);
+        if (validItems.length === 0) {
+            showError('No hay productos válidos para importar');
+            return;
+        }
+        setImportLoading(true);
+        try {
+            const res = await productsAPI.confirmImport(validItems);
+            showSuccess(res.data.message);
+            setShowImportSidebar(false);
+            setImportFile(null);
+            setImportValidation(null);
+            loadInventory();
+        } catch {
+            showError('Error al confirmar la importación');
+        } finally {
+            setImportLoading(false);
+        }
+    };
+
     const filteredProducts = useMemo(() => {
         return products.filter(p => {
             const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -425,7 +497,19 @@ export default function Inventory() {
                 <div className="header-title-section">
                     <h1><Package size={32} /> Gestión de Inventario</h1>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {canMutateProduct && (
+                        <Button variant="secondary" onClick={handleDownloadTemplate}>
+                            <Download size={18} />
+                            Plantilla Excel
+                        </Button>
+                    )}
+                    {canMutateProduct && (
+                        <Button variant="secondary" onClick={() => { setShowImportSidebar(true); setImportFile(null); setImportValidation(null); }}>
+                            <Upload size={18} />
+                            Importar Excel
+                        </Button>
+                    )}
                     {canCreateAutoPO && (
                         <Button
                             variant="secondary"
@@ -1222,6 +1306,110 @@ export default function Inventory() {
                             </Button>
                         </div>
                     </form>
+                </div>
+            </Sidebar>
+
+            {/* Import Excel Sidebar */}
+            <Sidebar isOpen={showImportSidebar} onClose={() => setShowImportSidebar(false)} title="Importar Productos desde Excel" width="600px">
+                <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ padding: '1rem', borderRadius: '8px', background: 'var(--color-surface-alt, #f5f5f5)', border: '1px solid var(--color-border, #ddd)' }}>
+                        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-text-secondary, #666)' }}>
+                            Sube un archivo Excel (.xlsx) con los productos a importar. Descarga la plantilla para ver el formato esperado.
+                            Los productos con SKU existente se actualizarán; los nuevos se crearán.
+                        </p>
+                    </div>
+
+                    <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600, color: 'var(--color-text, #333)' }}>
+                            Archivo Excel
+                        </label>
+                        <input
+                            type="file"
+                            accept=".xlsx,.xls"
+                            onChange={(e) => { setImportFile(e.target.files?.[0] || null); setImportValidation(null); }}
+                            style={{ width: '100%', padding: '0.5rem', border: '1px solid var(--color-border, #ddd)', borderRadius: '6px', background: 'var(--color-surface, #fff)', color: 'var(--color-text, #333)' }}
+                        />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <Button variant="secondary" onClick={handleDownloadTemplate}>
+                            <Download size={16} /> Descargar Plantilla
+                        </Button>
+                        <Button onClick={handleImportValidate} disabled={!importFile || importLoading}>
+                            {importLoading ? 'Validando...' : 'Validar Archivo'}
+                        </Button>
+                    </div>
+
+                    {importValidation && (
+                        <>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>
+                                <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'var(--color-surface-alt, #f0f9ff)', textAlign: 'center', border: '1px solid var(--color-border, #ddd)' }}>
+                                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--color-text, #333)' }}>{importValidation.summary.totalRows}</div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary, #666)' }}>Total filas</div>
+                                </div>
+                                <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'var(--color-success-bg, #f0fdf4)', textAlign: 'center', border: '1px solid var(--color-border, #ddd)' }}>
+                                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#16a34a' }}>{importValidation.summary.valid}</div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary, #666)' }}>Válidos</div>
+                                </div>
+                                <div style={{ padding: '0.75rem', borderRadius: '8px', background: importValidation.summary.invalid > 0 ? 'var(--color-danger-bg, #fef2f2)' : 'var(--color-surface-alt, #f5f5f5)', textAlign: 'center', border: '1px solid var(--color-border, #ddd)' }}>
+                                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: importValidation.summary.invalid > 0 ? '#dc2626' : 'var(--color-text, #333)' }}>{importValidation.summary.invalid}</div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary, #666)' }}>Con errores</div>
+                                </div>
+                                <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'var(--color-surface-alt, #f5f5f5)', textAlign: 'center', border: '1px solid var(--color-border, #ddd)' }}>
+                                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--color-text, #333)' }}>{importValidation.summary.newProducts}</div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary, #666)' }}>Nuevos</div>
+                                </div>
+                            </div>
+
+                            <div style={{ maxHeight: '300px', overflow: 'auto', border: '1px solid var(--color-border, #ddd)', borderRadius: '8px' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                    <thead>
+                                        <tr style={{ background: 'var(--color-surface-alt, #f5f5f5)', position: 'sticky', top: 0 }}>
+                                            <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '1px solid var(--color-border, #ddd)', color: 'var(--color-text, #333)' }}>#</th>
+                                            <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '1px solid var(--color-border, #ddd)', color: 'var(--color-text, #333)' }}>SKU</th>
+                                            <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '1px solid var(--color-border, #ddd)', color: 'var(--color-text, #333)' }}>Nombre</th>
+                                            <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '1px solid var(--color-border, #ddd)', color: 'var(--color-text, #333)' }}>Acción</th>
+                                            <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '1px solid var(--color-border, #ddd)', color: 'var(--color-text, #333)' }}>Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {importValidation.items.map((item, idx) => (
+                                            <tr key={idx} style={{ background: item.isValid ? 'transparent' : 'var(--color-danger-bg, #fef2f2)' }}>
+                                                <td style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--color-border, #eee)', color: 'var(--color-text-secondary, #666)' }}>{item.rowNumber}</td>
+                                                <td style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--color-border, #eee)', color: 'var(--color-text, #333)', fontFamily: 'monospace' }}>{item.sku}</td>
+                                                <td style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--color-border, #eee)', color: 'var(--color-text, #333)' }}>{item.name}</td>
+                                                <td style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--color-border, #eee)' }}>
+                                                    <span style={{
+                                                        padding: '2px 8px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 600,
+                                                        background: item.isUpdate ? '#dbeafe' : '#dcfce7',
+                                                        color: item.isUpdate ? '#1d4ed8' : '#166534'
+                                                    }}>
+                                                        {item.isUpdate ? 'Actualizar' : 'Nuevo'}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--color-border, #eee)' }}>
+                                                    {item.isValid ? (
+                                                        <span style={{ color: '#16a34a', fontWeight: 600, fontSize: '0.75rem' }}>✓ OK</span>
+                                                    ) : (
+                                                        <span style={{ color: '#dc2626', fontSize: '0.7rem' }} title={item.errors.join(', ')}>
+                                                            ✗ {item.errors[0]}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <Button
+                                onClick={handleImportConfirm}
+                                disabled={importValidation.summary.valid === 0 || importLoading}
+                            >
+                                {importLoading ? 'Importando...' : `Confirmar importación (${importValidation.summary.valid} productos)`}
+                            </Button>
+                        </>
+                    )}
                 </div>
             </Sidebar>
 
