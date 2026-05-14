@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { reportsAPI, branchesAPI, categoriesAPI, suppliersAPI, warehousesAPI } from '../services/api';
+import Button from '../components/Button';
+import Select from '../components/Select';
 import {
     Package, ShoppingCart, DollarSign, TrendingUp, BarChart3, AlertTriangle,
     ArrowLeft, Download, Filter, Search, FileSpreadsheet, Truck,
-    RefreshCw, ChevronDown, ChevronUp
+    RefreshCw, FileText, Calendar
 } from 'lucide-react';
 import type { Branch, Supplier } from '../types';
 import './Reports.css';
@@ -22,8 +24,7 @@ const fmtPercent = (n: number) => `${n.toFixed(1)}%`;
 
 const fmtDate = (d: string) => {
     if (!d) return '-';
-    const date = new Date(d);
-    return date.toLocaleDateString('es-NI');
+    return new Date(d).toLocaleDateString('es-NI');
 };
 
 const todayStr = () => new Date().toISOString().split('T')[0];
@@ -80,10 +81,11 @@ function ReportsHub({ onSelect }: { onSelect: (r: ReportDef) => void }) {
 
     return (
         <div className="reports-hub">
-            <div className="reports-search">
-                <Search size={16} className="reports-search-icon" />
+            <div className="reports-search-bar">
+                <Search size={16} />
                 <input
                     type="text"
+                    className="table-filter-input"
                     placeholder="Buscar reportes..."
                     value={search}
                     onChange={e => setSearch(e.target.value)}
@@ -91,24 +93,19 @@ function ReportsHub({ onSelect }: { onSelect: (r: ReportDef) => void }) {
             </div>
 
             {grouped.map(g => (
-                <div key={g.category} className="reports-category">
-                    <h3>{g.category}</h3>
-                    <div className="reports-grid">
+                <div key={g.category} className="reports-category-section">
+                    <h3 className="reports-category-title">{g.category}</h3>
+                    <div className="reports-card-grid">
                         {g.reports.map(r => (
-                            <div key={r.id} className="report-card" onClick={() => onSelect(r)}>
-                                <div className="report-card-header">
-                                    <div className="report-card-icon">
-                                        <r.icon size={20} />
-                                    </div>
-                                    <div>
-                                        <h4>{r.name}</h4>
-                                        <p>{r.description}</p>
-                                    </div>
+                            <div key={r.id} className="reports-card" onClick={() => onSelect(r)}>
+                                <div className="reports-card-icon">
+                                    <r.icon size={22} />
                                 </div>
-                                <div className="report-card-footer">
-                                    <span className="report-card-category">{r.category}</span>
-                                    <span className="report-card-link">Ver reporte →</span>
+                                <div className="reports-card-body">
+                                    <h4>{r.name}</h4>
+                                    <p>{r.description}</p>
                                 </div>
+                                <span className="reports-card-arrow">→</span>
                             </div>
                         ))}
                     </div>
@@ -116,9 +113,9 @@ function ReportsHub({ onSelect }: { onSelect: (r: ReportDef) => void }) {
             ))}
 
             {grouped.length === 0 && (
-                <div className="report-empty-state">
+                <div className="reports-empty">
                     <Search size={48} />
-                    <p>No se encontraron reportes que coincidan con "{search}"</p>
+                    <p>No se encontraron reportes que coincidan con &ldquo;{search}&rdquo;</p>
                 </div>
             )}
         </div>
@@ -130,21 +127,18 @@ function ReportDetail({ reportId }: { reportId: string }) {
     const navigate = useNavigate();
     const reportDef = REPORT_CATALOG.find(r => r.id === reportId);
 
-    const [data, setData] = useState<{ items: any[]; summary: Record<string, number> } | null>(null);
+    const [data, setData] = useState<{ items: Record<string, unknown>[]; summary: Record<string, number> } | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [exporting, setExporting] = useState(false);
-    const [filtersOpen, setFiltersOpen] = useState(true);
     const [page, setPage] = useState(1);
     const PAGE_SIZE = 50;
 
-    // Filter options
     const [branches, setBranches] = useState<Branch[]>([]);
     const [categories, setCategories] = useState<CategoryOption[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
 
-    // Filter values
     const [filters, setFilters] = useState<Record<string, string>>({
         dateFrom: monthStartStr(),
         dateTo: todayStr(),
@@ -193,8 +187,9 @@ function ReportDetail({ reportId }: { reportId: string }) {
                 default: throw new Error('Reporte no encontrado');
             }
             setData(res.data.data);
-        } catch (err: any) {
-            setError(err?.response?.data?.message || err?.message || 'Error al cargar el reporte');
+        } catch (err: unknown) {
+            const e = err as { response?: { data?: { message?: string } }; message?: string };
+            setError(e?.response?.data?.message || e?.message || 'Error al cargar el reporte');
         } finally {
             setLoading(false);
         }
@@ -215,8 +210,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
                 case 'low-stock': res = await reportsAPI.exportLowStockReport(params); break;
                 default: return;
             }
-            const date = todayStr();
-            downloadBlob(res.data, `reporte_${reportId}_${date}.xlsx`);
+            downloadBlob(res.data, `reporte_${reportId}_${todayStr()}.xlsx`);
         } catch {
             setError('Error al exportar el reporte');
         } finally {
@@ -225,25 +219,17 @@ function ReportDetail({ reportId }: { reportId: string }) {
     };
 
     const clearFilters = () => {
-        setFilters({
-            dateFrom: monthStartStr(),
-            dateTo: todayStr(),
-            warehouseId: '',
-            categoryId: '',
-            supplierId: '',
-            branchId: '',
-            lowStockOnly: '',
-        });
+        setFilters({ dateFrom: monthStartStr(), dateTo: todayStr(), warehouseId: '', categoryId: '', supplierId: '', branchId: '', lowStockOnly: '' });
     };
 
     if (!reportDef) {
         return (
-            <div className="report-error">
+            <div className="reports-empty">
                 <AlertTriangle size={48} />
                 <p>Reporte no encontrado</p>
-                <button className="report-back-btn" onClick={() => navigate('/reporteria')}>
+                <Button variant="secondary" onClick={() => navigate('/reporteria')}>
                     <ArrowLeft size={16} /> Volver a Reportería
-                </button>
+                </Button>
             </div>
         );
     }
@@ -252,205 +238,186 @@ function ReportDetail({ reportId }: { reportId: string }) {
     const totalPages = Math.ceil(items.length / PAGE_SIZE);
     const paginatedItems = items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
+    const set = (key: string, val: string) => setFilters(f => ({ ...f, [key]: val }));
+
     return (
-        <div className="report-detail">
-            <div className="report-detail-header">
-                <button className="report-back-btn" onClick={() => navigate('/reporteria')}>
-                    <ArrowLeft size={16} /> Volver a Reportería
-                </button>
-                <div className="report-detail-title">
-                    <h1><reportDef.icon size={28} /> {reportDef.name}</h1>
-                    <p>{reportDef.description}</p>
+        <div className="reports-detail-page">
+            {/* Header — matches cost-report-header */}
+            <div className="cost-report-header">
+                <div className="header-title-section">
+                    <Button variant="ghost" onClick={() => navigate('/reporteria')} style={{ marginBottom: '8px' }}>
+                        <ArrowLeft size={16} /> Volver a Reportería
+                    </Button>
+                    <h1><reportDef.icon size={32} /> {reportDef.name}</h1>
+                    <p style={{ color: 'var(--color-text-secondary)', margin: '4px 0 0' }}>{reportDef.description}</p>
                 </div>
-                <button className="export-btn" onClick={handleExport} disabled={exporting || !data}>
+                <Button onClick={handleExport} disabled={exporting || !data}>
                     {exporting ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
                     {exporting ? 'Exportando...' : 'Exportar Excel'}
-                </button>
+                </Button>
             </div>
 
-            {/* Filters */}
-            <div className="report-filters-container">
-                <button className="report-filters-toggle" onClick={() => setFiltersOpen(!filtersOpen)}>
-                    <Filter size={16} /> Filtros
-                    {filtersOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </button>
-
-                {filtersOpen && (
-                    <div className="report-filters">
-                        {renderFilters(reportId, filters, setFilters, branches, categories, suppliers, warehouses)}
-                        <div className="report-filters-actions">
-                            <button className="btn-apply" onClick={loadReport}>
-                                <Filter size={14} /> Aplicar Filtros
-                            </button>
-                            <button className="btn-clear" onClick={clearFilters}>Limpiar</button>
-                        </div>
+            {/* Filters — matches cost-report-filters pattern */}
+            <div className="cost-report-filters">
+                {(reportId === 'purchases' || reportId === 'sales') && (
+                    <div className="cost-report-date-range">
+                        <Calendar size={16} />
+                        <input type="date" className="table-filter-input" value={filters.dateFrom}
+                            onChange={e => set('dateFrom', e.target.value)} />
+                        <span>-</span>
+                        <input type="date" className="table-filter-input" value={filters.dateTo}
+                            onChange={e => set('dateTo', e.target.value)} />
                     </div>
                 )}
+                {(reportId === 'inventory' || reportId === 'low-stock') && (
+                    <div className="cost-report-select-wrapper">
+                        <Select
+                            options={[{ value: '', label: 'Todos Almacenes' }, ...warehouses.map(w => ({ value: w.id.toString(), label: w.name }))]}
+                            value={{ value: filters.warehouseId, label: filters.warehouseId ? warehouses.find(w => w.id.toString() === filters.warehouseId)?.name || '' : 'Todos Almacenes' }}
+                            onChange={(opt) => opt && set('warehouseId', (opt as { value: string }).value)}
+                            isSearchable={false}
+                        />
+                    </div>
+                )}
+                {(reportId === 'inventory' || reportId === 'purchases' || reportId === 'sales' || reportId === 'profitability' || reportId === 'low-stock') && (
+                    <div className="cost-report-select-wrapper">
+                        <Select
+                            options={[{ value: '', label: 'Todas Categorías' }, ...categories.map(c => ({ value: c.id.toString(), label: c.name }))]}
+                            value={{ value: filters.categoryId, label: filters.categoryId ? categories.find(c => c.id.toString() === filters.categoryId)?.name || '' : 'Todas Categorías' }}
+                            onChange={(opt) => opt && set('categoryId', (opt as { value: string }).value)}
+                            isSearchable={false}
+                        />
+                    </div>
+                )}
+                {(reportId === 'purchases') && (
+                    <div className="cost-report-select-wrapper">
+                        <Select
+                            options={[{ value: '', label: 'Todos Proveedores' }, ...suppliers.map(s => ({ value: s.id.toString(), label: s.name }))]}
+                            value={{ value: filters.supplierId, label: filters.supplierId ? suppliers.find(s => s.id.toString() === filters.supplierId)?.name || '' : 'Todos Proveedores' }}
+                            onChange={(opt) => opt && set('supplierId', (opt as { value: string }).value)}
+                            isSearchable={false}
+                        />
+                    </div>
+                )}
+                {(reportId === 'sales' || reportId === 'purchases') && (
+                    <div className="cost-report-select-wrapper">
+                        <Select
+                            options={[{ value: '', label: 'Todas Sucursales' }, ...branches.map(b => ({ value: b.id.toString(), label: b.name }))]}
+                            value={{ value: filters.branchId, label: filters.branchId ? branches.find(b => b.id.toString() === filters.branchId)?.name || '' : 'Todas Sucursales' }}
+                            onChange={(opt) => opt && set('branchId', (opt as { value: string }).value)}
+                            isSearchable={false}
+                        />
+                    </div>
+                )}
+                {reportId === 'inventory' && (
+                    <div className="cost-report-select-wrapper">
+                        <Select
+                            options={[{ value: '', label: 'No' }, { value: 'true', label: 'Sí' }]}
+                            value={{ value: filters.lowStockOnly, label: filters.lowStockOnly === 'true' ? 'Sí' : 'No' }}
+                            onChange={(opt) => opt && set('lowStockOnly', (opt as { value: string }).value)}
+                            isSearchable={false}
+                            label="Solo stock bajo"
+                        />
+                    </div>
+                )}
+                <Button onClick={loadReport} disabled={loading}>
+                    <Filter size={16} />
+                    {loading ? 'Cargando...' : 'Aplicar Filtros'}
+                </Button>
+                <Button variant="ghost" onClick={clearFilters}>Limpiar</Button>
             </div>
 
-            {/* Summary Cards */}
+            {/* KPI Summary Cards — matches cost-report-kpi-grid */}
             {data?.summary && !loading && (
-                <div className="report-summary-cards">
-                    {Object.entries(data.summary).map(([key, val]) => (
-                        <div key={key} className="report-summary-card">
-                            <div className="label">{formatSummaryLabel(key)}</div>
-                            <div className="value">
-                                {typeof val === 'number' && key.toLowerCase().includes('value') || key.toLowerCase().includes('amount') || key.toLowerCase().includes('sales') || key.toLowerCase().includes('cost') || key.toLowerCase().includes('discount') || key.toLowerCase().includes('ticket')
-                                    ? fmtCurrency(val as number)
-                                    : typeof val === 'number' && key.toLowerCase().includes('margin') && !key.toLowerCase().includes('count')
-                                    ? fmtPercent(val as number)
-                                    : fmtNumber(val as number)}
+                <div className="cost-report-kpi-grid">
+                    {Object.entries(data.summary).map(([key, val]) => {
+                        const isCurrency = /value|amount|sales|cost|discount|ticket/i.test(key) && !/count/i.test(key);
+                        const isPercent = /margin/i.test(key) && !/count/i.test(key);
+                        return (
+                            <div key={key} className="cost-kpi-card">
+                                <div className="cost-kpi-label">{formatSummaryLabel(key)}</div>
+                                <div className="cost-kpi-value">
+                                    {isCurrency ? fmtCurrency(val) : isPercent ? fmtPercent(val) : fmtNumber(val)}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 
-            {/* States */}
+            {/* Loading */}
             {loading && (
-                <div className="report-loading">
+                <div className="reports-empty">
                     <RefreshCw size={32} className="animate-spin" />
                     <p>Cargando reporte...</p>
                 </div>
             )}
 
+            {/* Error */}
             {error && !loading && (
-                <div className="report-error">
+                <div className="reports-empty">
                     <AlertTriangle size={32} />
-                    <p>{error}</p>
-                    <button className="btn-apply" onClick={loadReport}><RefreshCw size={14} /> Reintentar</button>
+                    <p style={{ color: '#ef4444' }}>{error}</p>
+                    <Button variant="secondary" onClick={loadReport}><RefreshCw size={14} /> Reintentar</Button>
                 </div>
             )}
 
-            {!loading && !error && items.length === 0 && (
-                <div className="report-empty-state">
-                    <Search size={48} />
+            {/* Empty */}
+            {!loading && !error && items.length === 0 && data && (
+                <div className="reports-empty">
+                    <FileText size={48} />
                     <p>No se encontraron resultados con los filtros seleccionados.</p>
                 </div>
             )}
 
-            {/* Table */}
+            {/* Table — matches cost-report-table-wrapper */}
             {!loading && !error && items.length > 0 && (
                 <>
-                    <div className="report-table-wrapper">
-                        <table className="report-table">
-                            <thead>
-                                <tr>{getColumns(reportId).map(col => (
-                                    <th key={col.key} className={col.align === 'right' ? 'text-right' : ''}>{col.header}</th>
-                                ))}</tr>
-                            </thead>
-                            <tbody>
-                                {paginatedItems.map((row, i) => (
-                                    <tr key={i}>{getColumns(reportId).map(col => (
-                                        <td key={col.key} className={col.align === 'right' ? 'text-right' : ''}>
-                                            {renderCell(row[col.key], col)}
-                                        </td>
+                    <div className="cost-report-table-wrapper">
+                        <div className="cost-report-table-header">
+                            {reportDef.name} ({items.length})
+                        </div>
+                        <div className="cost-report-table-scroll">
+                            <table className="cost-report-table">
+                                <thead>
+                                    <tr>{getColumns(reportId).map(col => (
+                                        <th key={col.key} className={col.align === 'right' ? 'text-right' : ''}>{col.header}</th>
                                     ))}</tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    {paginatedItems.map((row, i) => (
+                                        <tr key={i}>{getColumns(reportId).map(col => (
+                                            <td key={col.key} className={col.align === 'right' ? 'text-right' : ''}>
+                                                {renderCell(row[col.key], col)}
+                                            </td>
+                                        ))}</tr>
+                                    ))}
+                                    {items.length === 0 && (
+                                        <tr><td colSpan={getColumns(reportId).length} className="cost-report-empty">Sin datos para los filtros seleccionados</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
 
                     {totalPages > 1 && (
-                        <div className="report-pagination">
-                            <button disabled={page <= 1} onClick={() => setPage(p => p - 1)}>← Anterior</button>
-                            <span>Página {page} de {totalPages} ({items.length} registros)</span>
-                            <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Siguiente →</button>
+                        <div className="kardex-pagination" style={{ marginTop: '16px' }}>
+                            <Button variant="secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+                                Anterior
+                            </Button>
+                            <span className="pagination-info">
+                                Página {page} de {totalPages}
+                                <span className="total-records"> ({items.length} registros)</span>
+                            </span>
+                            <Button variant="secondary" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+                                Siguiente
+                            </Button>
                         </div>
                     )}
                 </>
             )}
         </div>
     );
-}
-
-// ── Filter Renderers ──
-function renderFilters(
-    reportId: string,
-    filters: Record<string, string>,
-    setFilters: (fn: (f: Record<string, string>) => Record<string, string>) => void,
-    branches: Branch[],
-    categories: CategoryOption[],
-    suppliers: Supplier[],
-    warehouses: WarehouseOption[],
-) {
-    const set = (key: string, val: string) => setFilters(f => ({ ...f, [key]: val }));
-
-    const dateFilters = (
-        <>
-            <div className="report-filter-group">
-                <label>Desde</label>
-                <input type="date" value={filters.dateFrom} onChange={e => set('dateFrom', e.target.value)} />
-            </div>
-            <div className="report-filter-group">
-                <label>Hasta</label>
-                <input type="date" value={filters.dateTo} onChange={e => set('dateTo', e.target.value)} />
-            </div>
-        </>
-    );
-
-    const branchFilter = (
-        <div className="report-filter-group">
-            <label>Sucursal</label>
-            <select value={filters.branchId} onChange={e => set('branchId', e.target.value)}>
-                <option value="">Todas</option>
-                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-        </div>
-    );
-
-    const categoryFilter = (
-        <div className="report-filter-group">
-            <label>Categoría</label>
-            <select value={filters.categoryId} onChange={e => set('categoryId', e.target.value)}>
-                <option value="">Todas</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-        </div>
-    );
-
-    const warehouseFilter = (
-        <div className="report-filter-group">
-            <label>Almacén</label>
-            <select value={filters.warehouseId} onChange={e => set('warehouseId', e.target.value)}>
-                <option value="">Todos</option>
-                {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
-        </div>
-    );
-
-    const supplierFilter = (
-        <div className="report-filter-group">
-            <label>Proveedor</label>
-            <select value={filters.supplierId} onChange={e => set('supplierId', e.target.value)}>
-                <option value="">Todos</option>
-                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-        </div>
-    );
-
-    switch (reportId) {
-        case 'inventory':
-            return <>{warehouseFilter}{categoryFilter}
-                <div className="report-filter-group">
-                    <label>Solo stock bajo</label>
-                    <select value={filters.lowStockOnly} onChange={e => set('lowStockOnly', e.target.value)}>
-                        <option value="">No</option>
-                        <option value="true">Sí</option>
-                    </select>
-                </div>
-            </>;
-        case 'purchases':
-            return <>{dateFilters}{supplierFilter}{categoryFilter}{branchFilter}</>;
-        case 'sales':
-            return <>{dateFilters}{branchFilter}{categoryFilter}</>;
-        case 'profitability':
-            return <>{categoryFilter}</>;
-        case 'low-stock':
-            return <>{warehouseFilter}{categoryFilter}</>;
-        default:
-            return null;
-    }
 }
 
 // ── Column Definitions ──
@@ -542,22 +509,14 @@ function renderCell(value: unknown, col: ColDef) {
 
 function formatSummaryLabel(key: string): string {
     const map: Record<string, string> = {
-        totalProducts: 'Total Productos',
-        totalValue: 'Valor Total',
-        lowStockCount: 'Stock Bajo',
-        criticalCount: 'Crítico',
-        totalOrders: 'Total Órdenes',
-        totalAmount: 'Monto Total',
-        uniqueSuppliers: 'Proveedores',
-        uniqueProducts: 'Productos',
-        totalSales: 'Ventas Totales',
-        totalDiscount: 'Descuento Total',
-        averageTicket: 'Ticket Promedio',
-        totalItems: 'Total Items',
-        avgMargin: 'Margen Promedio',
-        lowMarginCount: 'Bajo Margen',
-        totalLowStock: 'Total Bajo Stock',
-        warningCount: 'Advertencia',
+        totalProducts: 'Total Productos', totalValue: 'Valor Total',
+        lowStockCount: 'Stock Bajo', criticalCount: 'Crítico',
+        totalOrders: 'Total Órdenes', totalAmount: 'Monto Total',
+        uniqueSuppliers: 'Proveedores', uniqueProducts: 'Productos',
+        totalSales: 'Ventas Totales', totalDiscount: 'Descuento Total',
+        averageTicket: 'Ticket Promedio', totalItems: 'Total Items',
+        avgMargin: 'Margen Promedio', lowMarginCount: 'Bajo Margen',
+        totalLowStock: 'Total Bajo Stock', warningCount: 'Advertencia',
     };
     return map[key] || key;
 }
@@ -576,13 +535,15 @@ export default function Reports() {
     };
 
     return (
-        <div className="reports-page">
+        <div className="cost-report-page">
             {!reportId && (
                 <>
-                    <div className="reports-header">
-                        <div>
-                            <h1><BarChart3 size={28} /> Reportería</h1>
-                            <p>Consulta, filtra y exporta información clave del negocio.</p>
+                    <div className="cost-report-header">
+                        <div className="header-title-section">
+                            <h1><BarChart3 size={32} /> Reportería</h1>
+                            <p style={{ color: 'var(--color-text-secondary)', margin: '4px 0 0' }}>
+                                Consulta, filtra y exporta información clave del negocio.
+                            </p>
                         </div>
                     </div>
                     <ReportsHub onSelect={handleSelect} />

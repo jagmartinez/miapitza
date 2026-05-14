@@ -138,17 +138,25 @@ export default function Warehouses() {
     };
 
     const handleTransferProductChange = useCallback(async (productId: string) => {
+        const product = products.find(p => p.id === parseInt(productId));
         try {
             const res = await unitsAPI.getProductUnits(Number(productId));
             const units: ProductAllowedUnit[] = res.data.data || [];
-            setTransferUnits(units);
-            const defaultUnit = units.find(u => u.isDefault) || units.find(u => u.isBase) || units[0];
-            setTransferData(prev => ({ ...prev, productId, unit: defaultUnit?.abbreviation || '' }));
+            if (units.length > 0) {
+                setTransferUnits(units);
+                const defaultUnit = units.find(u => u.isDefault) || units.find(u => u.isBase) || units[0];
+                setTransferData(prev => ({ ...prev, productId, unit: defaultUnit?.abbreviation || product?.unit || '' }));
+            } else {
+                const baseUnit = product?.unit || 'unidad';
+                setTransferUnits([{ id: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
+                setTransferData(prev => ({ ...prev, productId, unit: baseUnit }));
+            }
         } catch {
-            setTransferUnits([]);
-            setTransferData(prev => ({ ...prev, productId, unit: '' }));
+            const baseUnit = product?.unit || 'unidad';
+            setTransferUnits([{ id: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
+            setTransferData(prev => ({ ...prev, productId, unit: baseUnit }));
         }
-    }, []);
+    }, [products]);
 
     const handleTransfer = async (e: React.FormEvent) => {
         e.preventDefault();

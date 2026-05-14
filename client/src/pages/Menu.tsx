@@ -208,17 +208,25 @@ export default function Menu() {
       setSelectedIngredientUnit('');
       return;
     }
+    const product = products.find(p => p.id === parseInt(productId));
     try {
       const res = await unitsAPI.getProductUnits(Number(productId));
       const units: ProductAllowedUnit[] = res.data.data || [];
-      setIngredientUnits(units);
-      const defaultUnit = units.find(u => u.isBase) || units.find(u => u.isDefault) || units[0];
-      setSelectedIngredientUnit(defaultUnit?.abbreviation || '');
+      if (units.length > 0) {
+        setIngredientUnits(units);
+        const defaultUnit = units.find(u => u.isBase) || units.find(u => u.isDefault) || units[0];
+        setSelectedIngredientUnit(defaultUnit?.abbreviation || product?.unit || '');
+      } else {
+        const baseUnit = product?.unit || 'unidad';
+        setIngredientUnits([{ id: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
+        setSelectedIngredientUnit(baseUnit);
+      }
     } catch {
-      setIngredientUnits([]);
-      setSelectedIngredientUnit('');
+      const baseUnit = product?.unit || 'unidad';
+      setIngredientUnits([{ id: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
+      setSelectedIngredientUnit(baseUnit);
     }
-  }, []);
+  }, [products]);
 
   const addIngredient = () => {
     if (!selectedProductId || !quantity) return;

@@ -227,17 +227,25 @@ export default function Inventory() {
     };
 
     const loadProductUnits = useCallback(async (productId: number) => {
+        const product = products.find(p => p.id === productId);
         try {
             const res = await unitsAPI.getProductUnits(productId);
             const units: ProductAllowedUnit[] = res.data.data || [];
-            setAdjustmentUnits(units);
-            const defaultUnit = units.find(u => u.isDefault) || units.find(u => u.isBase) || units[0];
-            return defaultUnit?.abbreviation || '';
+            if (units.length > 0) {
+                setAdjustmentUnits(units);
+                const defaultUnit = units.find(u => u.isDefault) || units.find(u => u.isBase) || units[0];
+                return defaultUnit?.abbreviation || product?.unit || '';
+            } else {
+                const baseUnit = product?.unit || 'unidad';
+                setAdjustmentUnits([{ id: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
+                return baseUnit;
+            }
         } catch {
-            setAdjustmentUnits([]);
-            return '';
+            const baseUnit = product?.unit || 'unidad';
+            setAdjustmentUnits([{ id: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
+            return baseUnit;
         }
-    }, []);
+    }, [products]);
 
     const handleOpenAdjustment = async (product: Product) => {
         const storedWarehouseId = localStorage.getItem('inventory_adjustment_warehouse_id');

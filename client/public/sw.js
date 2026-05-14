@@ -65,8 +65,10 @@ self.addEventListener('fetch', (event) => {
 // Listen for sync events
 self.addEventListener('sync', (event) => {
   if (event.tag === 'sync-queue') {
-    event.respondWith(self.clients.matchAll().then((clients) => {
-      clients.forEach((client) => client.postMessage({ type: 'SYNC_REQUESTED' }));
-    }));
+    event.waitUntil(
+      self.clients.matchAll().then((clients) => {
+        clients.forEach((client) => client.postMessage({ type: 'SYNC_REQUESTED' }));
+      })
+    );
   }
 });
