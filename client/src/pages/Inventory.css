@@ -589,3 +589,205 @@
         align-items: flex-start;
     }
 }
+
+/* ===== Stock/History List (Warehouses sidebars) ===== */
+
+.stock-items-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.stock-item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: var(--color-neutral-50);
+    border: 1px solid var(--color-neutral-200);
+}
+
+.dark .stock-item-row {
+    background: var(--color-neutral-800);
+    border-color: var(--color-neutral-700);
+}
+
+.stock-item-row.stock-low {
+    background: rgba(239, 68, 68, 0.04);
+    border-color: rgba(239, 68, 68, 0.2);
+}
+
+.stock-item-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--color-text);
+}
+
+.stock-item-sku {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+}
+
+.stock-item-qty {
+    text-align: right;
+}
+
+.stock-item-value {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--color-text);
+}
+
+.stock-item-value.stock-low-text {
+    color: var(--color-error, #ef4444);
+}
+
+.stock-item-min {
+    font-size: 0.7rem;
+    color: var(--color-text-secondary);
+}
+
+.stock-empty-message {
+    text-align: center;
+    color: var(--color-text-secondary);
+    padding: 24px 0;
+    margin: 0;
+}
+
+/* ===== Price History Table (Suppliers) ===== */
+
+.price-history-table-wrap {
+    overflow-x: auto;
+}
+
+.price-history-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.price-history-table thead tr {
+    background: var(--color-neutral-100);
+}
+
+.dark .price-history-table thead tr {
+    background: var(--color-neutral-800);
+}
+
+.price-history-table th {
+    padding: 8px 12px;
+    font-weight: 600;
+    color: var(--color-text);
+    text-align: left;
+}
+
+.price-history-table th.text-right {
+    text-align: right;
+}
+
+.price-history-table td {
+    padding: 8px 12px;
+    color: var(--color-text);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.price-history-table td.text-right {
+    text-align: right;
+}
+
+.price-history-table .product-cell-name {
+    font-weight: 600;
+}
+
+.price-history-table .product-cell-sku {
+    font-size: 0.7rem;
+    color: var(--color-text-secondary);
+}
+
+/* ===== Import Sidebar ===== */
+
+.import-info-banner {
+    padding: 1rem;
+    border-radius: 8px;
+    background: var(--color-neutral-50);
+    border: 1px solid var(--color-border);
+}
+
+.dark .import-info-banner {
+    background: var(--color-neutral-800);
+}
+
+.import-info-banner p {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+}
+
+.import-actions-row {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.import-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.5rem;
+}
+
+.import-summary-card {
+    padding: 0.75rem;
+    border-radius: 8px;
+    background: var(--color-neutral-50);
+    text-align: center;
+    border: 1px solid var(--color-border);
+}
+
+.dark .import-summary-card {
+    background: var(--color-neutral-800);
+}
+
+.import-summary-card.import-summary-success {
+    background: rgba(22, 163, 74, 0.06);
+}
+
+.import-summary-card.import-summary-error {
+    background: rgba(220, 38, 38, 0.06);
+}
+
+.import-summary-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-text);
+}
+
+.import-summary-card.import-summary-success .import-summary-value {
+    color: #16a34a;
+}
+
+.import-summary-card.import-summary-error .import-summary-value {
+    color: #dc2626;
+}
+
+.import-summary-label {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+}
+
+.import-table-wrap {
+    max-height: 300px;
+    overflow: auto;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+}
+
+.import-row-error {
+    background: rgba(220, 38, 38, 0.04);
+}
+
+.modal-input-hint {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    margin-top: 4px;
+}

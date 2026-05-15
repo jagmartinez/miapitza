@@ -779,7 +779,7 @@ export default function Catering() {
                 title={selectedEvent ? `Editar: ${selectedEvent.title}` : 'Nuevo Evento de Catering'}
                 width="large"
             >
-                <div className="catering-modal-content">
+                <div className="premium-modal-content">
                     <div className="modal-tabs">
                         <div
                             className={`modal-tab ${activeTab === 'info' ? 'active' : ''}`}
@@ -820,10 +820,10 @@ export default function Catering() {
                         )}
                     </div>
 
-                    <div className="modal-tab-body" style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+                    <div className="modal-tab-content">
                         {activeTab === 'info' && (
                             <div className="animate-slide-in">
-                                <div className="modal-section-v2">
+                                <div className="modal-section">
                                     <h3 className="section-title-v2">Datos del Cliente</h3>
                                     <div className="modal-form-row">
                                         <div className="modal-input-group">
@@ -856,7 +856,7 @@ export default function Catering() {
                                     </div>
                                 </div>
 
-                                <div className="modal-section-v2">
+                                <div className="modal-section">
                                     <h3 className="section-title-v2">Detalles del Evento</h3>
                                     <div className="modal-form-row">
                                         <div className="modal-input-group">
@@ -932,7 +932,7 @@ export default function Catering() {
                                 </div>
 
 
-                                <div className="modal-section-v2">
+                                <div className="modal-section">
                                     <h3 className="section-title-v2">Información Adicional</h3>
                                     <div className="modal-input-group">
                                         <label>Ubicación</label>
@@ -1102,7 +1102,7 @@ export default function Catering() {
 
                         {activeTab === 'clauses' && (
                             <div className="animate-slide-in">
-                                <div className="modal-section-v2">
+                                <div className="modal-section">
                                     <h3 className="section-title-v2">Cláusulas del Contrato</h3>
                                     <p style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', marginBottom: '16px' }}>
                                         Defina los términos específicos para este evento de catering.

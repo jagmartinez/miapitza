@@ -865,119 +865,115 @@ export default function CashShiftPage() {
                 onClose={() => setIsMovementSidebarOpen(false)}
                 title={movementType === 'IN' ? 'Registrar Ingreso' : 'Registrar Retiro'}
             >
-                <form onSubmit={handleAddMovement} className="movement-form">
-                    {/* Document Info Section */}
-                    <div className="modal-section">
-                        <div className="modal-section-header">
-                            <FileText size={18} />
-                            <h3>Información del Documento</h3>
-                        </div>
-
-                        <div className="modal-form-row">
-                            <Input
-                                label="Fecha Documento"
-                                type="date"
-                                variant="modal"
-                                value={movementForm.documentDate}
-                                onChange={(e) => setMovementForm({ ...movementForm, documentDate: e.target.value })}
-                            />
-                            <Select
-                                variant="modal"
-                                label="Tipo Documento"
-                                options={DOCUMENT_TYPES}
-                                value={DOCUMENT_TYPES.find(dt => dt.value === movementForm.documentType) || null}
-                                onChange={(option: SingleValue<{ value: string; label: string }>) => setMovementForm({ ...movementForm, documentType: option?.value || '' })}
-                                placeholder="Seleccionar..."
-                                isSearchable={false}
-                            />
-                        </div>
-
-                        <Input
-                            label="Número de Documento"
-                            variant="modal"
-                            value={movementForm.documentNumber}
-                            onChange={(e) => setMovementForm({ ...movementForm, documentNumber: e.target.value })}
-                            placeholder="Ej: FAC-001, REC-2026-001"
-                        />
-                    </div>
-
-                    {/* Supplier Section - Only for withdrawals */}
-                    {movementType === 'OUT' && (
-                        <div className="modal-section">
-                            <div className="modal-section-header">
-                                <Building2 size={18} />
-                                <h3>Proveedor</h3>
+                <div className="premium-modal-content">
+                    <form onSubmit={handleAddMovement} className="modal-form-new">
+                        <div className="modal-tab-content">
+                            <div className="modal-section">
+                                <div className="modal-section-header">
+                                    <FileText size={18} />
+                                    <h3>Información del Documento</h3>
+                                </div>
+                                <div className="modal-form-row">
+                                    <Input
+                                        label="Fecha Documento"
+                                        type="date"
+                                        variant="modal"
+                                        value={movementForm.documentDate}
+                                        onChange={(e) => setMovementForm({ ...movementForm, documentDate: e.target.value })}
+                                    />
+                                    <Select
+                                        variant="modal"
+                                        label="Tipo Documento"
+                                        options={DOCUMENT_TYPES}
+                                        value={DOCUMENT_TYPES.find(dt => dt.value === movementForm.documentType) || null}
+                                        onChange={(option: SingleValue<{ value: string; label: string }>) => setMovementForm({ ...movementForm, documentType: option?.value || '' })}
+                                        placeholder="Seleccionar..."
+                                        isSearchable={false}
+                                    />
+                                </div>
+                                <Input
+                                    label="Número de Documento"
+                                    variant="modal"
+                                    value={movementForm.documentNumber}
+                                    onChange={(e) => setMovementForm({ ...movementForm, documentNumber: e.target.value })}
+                                    placeholder="Ej: FAC-001, REC-2026-001"
+                                />
                             </div>
 
-                            {(() => {
-                                const supplier = suppliers.find(s => s.id.toString() === movementForm.supplierId);
-                                return (
-                                    <div className="form-row" style={{ display: 'flex', alignItems: 'flex-end', gap: 'var(--spacing-xs)' }}>
-                                        <div style={{ flex: 1 }}>
-                                            <Select
-                                                variant="modal"
-                                                label="Seleccionar Proveedor"
-                                                options={[{ value: '', label: 'Sin proveedor' }, ...suppliers.map(s => ({ value: s.id.toString(), label: s.name }))]}
-                                                value={supplier ? { value: movementForm.supplierId, label: supplier.name } : { value: '', label: 'Sin proveedor' }}
-                                                onChange={(option: SingleValue<{ value: string; label: string }>) => setMovementForm({ ...movementForm, supplierId: option?.value || '' })}
-                                            />
-                                        </div>
-                                        {canCreateSupplier && (
-                                            <Button
-                                                type="button"
-                                                variant="secondary"
-                                                onClick={() => setIsNewSupplierModalOpen(true)}
-                                                className="add-supplier-btn"
-                                                style={{ width: '42px', height: '42px', padding: 0, marginBottom: '2px' }}
-                                            >
-                                                <Plus size={16} />
-                                            </Button>
-                                        )}
+                            {movementType === 'OUT' && (
+                                <div className="modal-section">
+                                    <div className="modal-section-header">
+                                        <Building2 size={18} />
+                                        <h3>Proveedor</h3>
                                     </div>
-                                );
-                            })()}
-                        </div>
-                    )}
+                                    {(() => {
+                                        const supplier = suppliers.find(s => s.id.toString() === movementForm.supplierId);
+                                        return (
+                                            <div className="modal-form-row" style={{ alignItems: 'flex-end' }}>
+                                                <div style={{ flex: 1 }}>
+                                                    <Select
+                                                        variant="modal"
+                                                        label="Seleccionar Proveedor"
+                                                        options={[{ value: '', label: 'Sin proveedor' }, ...suppliers.map(s => ({ value: s.id.toString(), label: s.name }))]}
+                                                        value={supplier ? { value: movementForm.supplierId, label: supplier.name } : { value: '', label: 'Sin proveedor' }}
+                                                        onChange={(option: SingleValue<{ value: string; label: string }>) => setMovementForm({ ...movementForm, supplierId: option?.value || '' })}
+                                                    />
+                                                </div>
+                                                {canCreateSupplier && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="secondary"
+                                                        onClick={() => setIsNewSupplierModalOpen(true)}
+                                                        className="add-supplier-btn"
+                                                        style={{ width: '42px', height: '42px', padding: 0, marginBottom: '2px' }}
+                                                    >
+                                                        <Plus size={16} />
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                            )}
 
-                    {/* Amount Section */}
-                    <div className="modal-section">
-                        <div className="modal-section-header">
-                            <Banknote size={18} />
-                            <h3>Monto y Descripción</h3>
+                            <div className="modal-section">
+                                <div className="modal-section-header">
+                                    <Banknote size={18} />
+                                    <h3>Monto y Descripción</h3>
+                                </div>
+                                <Input
+                                    label="Monto"
+                                    variant="modal"
+                                    type="number"
+                                    value={movementForm.amount}
+                                    onChange={(e) => setMovementForm({ ...movementForm, amount: e.target.value })}
+                                    min={0}
+                                    step="0.01"
+                                    required
+                                />
+                                <div className="modal-input-group">
+                                    <label className="modal-input-label">Descripción</label>
+                                    <textarea
+                                        className="modal-textarea"
+                                        rows={3}
+                                        value={movementForm.description}
+                                        onChange={(e) => setMovementForm({ ...movementForm, description: e.target.value })}
+                                        placeholder="Describe el motivo del movimiento..."
+                                        required
+                                    />
+                                </div>
+                            </div>
                         </div>
-
-                        <Input
-                            label="Monto"
-                            variant="modal"
-                            type="number"
-                            value={movementForm.amount}
-                            onChange={(e) => setMovementForm({ ...movementForm, amount: e.target.value })}
-                            min={0}
-                            step="0.01"
-                            required
-                        />
-                        <div className="modal-input-group">
-                            <label className="modal-input-label">Descripción</label>
-                            <textarea
-                                className="modal-textarea"
-                                rows={3}
-                                value={movementForm.description}
-                                onChange={(e) => setMovementForm({ ...movementForm, description: e.target.value })}
-                                placeholder="Describe el motivo del movimiento..."
-                                required
-                            />
+                        <div className="modal-footer">
+                            <Button type="button" variant="ghost" onClick={() => setIsMovementSidebarOpen(false)}>
+                                Cancelar
+                            </Button>
+                            <Button type="submit">
+                                {movementType === 'IN' ? 'Registrar Ingreso' : 'Registrar Retiro'}
+                            </Button>
                         </div>
-                    </div>
-
-                    <div className="form-actions">
-                        <Button type="button" variant="secondary" onClick={() => setIsMovementSidebarOpen(false)} fullWidth>
-                            Cancelar
-                        </Button>
-                        <Button type="submit" fullWidth>
-                            {movementType === 'IN' ? 'Registrar Ingreso' : 'Registrar Retiro'}
-                        </Button>
-                    </div>
-                </form>
+                    </form>
+                </div>
             </Sidebar>
 
             {/* Arqueo de Caja (Close Shift) Sidebar */}
@@ -1243,80 +1239,84 @@ export default function CashShiftPage() {
                 onClose={() => setIsNewSupplierModalOpen(false)}
                 title="Nuevo Proveedor"
             >
-                <form onSubmit={async (e) => {
-                    e.preventDefault();
-                    if (!canCreateSupplier) {
-                        alert('Solo administradores pueden registrar nuevos proveedores.');
-                        return;
-                    }
-                    try {
-                        const res = await suppliersAPI.create(newSupplierForm);
-                        setSuppliers([...suppliers, res.data.data]);
-                        setMovementForm({ ...movementForm, supplierId: String(res.data.data.id) });
-                        setNewSupplierForm({ name: '', contact: '', phone: '', email: '', address: '', taxId: '', supplyType: '' });
-                        setIsNewSupplierModalOpen(false);
-                    } catch (error) {
-                        console.error('Error creating supplier:', error);
-                        alert('Error al crear proveedor');
-                    }
-                }} className="supplier-form">
-                    <Input
-                        label="Nombre Empresa"
-                        variant="modal"
-                        value={newSupplierForm.name}
-                        onChange={(e) => setNewSupplierForm({ ...newSupplierForm, name: e.target.value })}
-                        required
-                        autoFocus
-                    />
-                    <Input
-                        label="Contacto Principal"
-                        variant="modal"
-                        value={newSupplierForm.contact}
-                        onChange={(e) => setNewSupplierForm({ ...newSupplierForm, contact: e.target.value })}
-                    />
-                    <div className="modal-form-row">
-                        <Input
-                            label="Teléfono"
-                            variant="modal"
-                            value={newSupplierForm.phone}
-                            onChange={(e) => setNewSupplierForm({ ...newSupplierForm, phone: e.target.value })}
-                        />
-                        <Input
-                            label="Email"
-                            variant="modal"
-                            type="email"
-                            value={newSupplierForm.email}
-                            onChange={(e) => setNewSupplierForm({ ...newSupplierForm, email: e.target.value })}
-                        />
-                    </div>
-                    <Input
-                        label="Dirección"
-                        variant="modal"
-                        value={newSupplierForm.address}
-                        onChange={(e) => setNewSupplierForm({ ...newSupplierForm, address: e.target.value })}
-                    />
-                    <Input
-                        label="RUC / NIT"
-                        variant="modal"
-                        value={newSupplierForm.taxId}
-                        onChange={(e) => setNewSupplierForm({ ...newSupplierForm, taxId: e.target.value })}
-                    />
-                    <Input
-                        label="Tipo de Insumo/Servicio"
-                        variant="modal"
-                        value={newSupplierForm.supplyType}
-                        onChange={(e) => setNewSupplierForm({ ...newSupplierForm, supplyType: e.target.value })}
-                        placeholder="Ej: Verduras, Carnes, Mantenimiento"
-                    />
-                    <div className="form-actions">
-                        <Button type="button" variant="secondary" onClick={() => setIsNewSupplierModalOpen(false)} fullWidth>
-                            Cancelar
-                        </Button>
-                        <Button type="submit" fullWidth>
-                            Guardar
-                        </Button>
-                    </div>
-                </form>
+                <div className="premium-modal-content">
+                    <form onSubmit={async (e) => {
+                        e.preventDefault();
+                        if (!canCreateSupplier) {
+                            alert('Solo administradores pueden registrar nuevos proveedores.');
+                            return;
+                        }
+                        try {
+                            const res = await suppliersAPI.create(newSupplierForm);
+                            setSuppliers([...suppliers, res.data.data]);
+                            setMovementForm({ ...movementForm, supplierId: String(res.data.data.id) });
+                            setNewSupplierForm({ name: '', contact: '', phone: '', email: '', address: '', taxId: '', supplyType: '' });
+                            setIsNewSupplierModalOpen(false);
+                        } catch (error) {
+                            console.error('Error creating supplier:', error);
+                            alert('Error al crear proveedor');
+                        }
+                    }} className="modal-form-new">
+                        <div className="modal-tab-content">
+                            <Input
+                                label="Nombre Empresa"
+                                variant="modal"
+                                value={newSupplierForm.name}
+                                onChange={(e) => setNewSupplierForm({ ...newSupplierForm, name: e.target.value })}
+                                required
+                                autoFocus
+                            />
+                            <Input
+                                label="Contacto Principal"
+                                variant="modal"
+                                value={newSupplierForm.contact}
+                                onChange={(e) => setNewSupplierForm({ ...newSupplierForm, contact: e.target.value })}
+                            />
+                            <div className="modal-form-row">
+                                <Input
+                                    label="Teléfono"
+                                    variant="modal"
+                                    value={newSupplierForm.phone}
+                                    onChange={(e) => setNewSupplierForm({ ...newSupplierForm, phone: e.target.value })}
+                                />
+                                <Input
+                                    label="Email"
+                                    variant="modal"
+                                    type="email"
+                                    value={newSupplierForm.email}
+                                    onChange={(e) => setNewSupplierForm({ ...newSupplierForm, email: e.target.value })}
+                                />
+                            </div>
+                            <Input
+                                label="Dirección"
+                                variant="modal"
+                                value={newSupplierForm.address}
+                                onChange={(e) => setNewSupplierForm({ ...newSupplierForm, address: e.target.value })}
+                            />
+                            <Input
+                                label="RUC / NIT"
+                                variant="modal"
+                                value={newSupplierForm.taxId}
+                                onChange={(e) => setNewSupplierForm({ ...newSupplierForm, taxId: e.target.value })}
+                            />
+                            <Input
+                                label="Tipo de Insumo/Servicio"
+                                variant="modal"
+                                value={newSupplierForm.supplyType}
+                                onChange={(e) => setNewSupplierForm({ ...newSupplierForm, supplyType: e.target.value })}
+                                placeholder="Ej: Verduras, Carnes, Mantenimiento"
+                            />
+                        </div>
+                        <div className="modal-footer">
+                            <Button type="button" variant="ghost" onClick={() => setIsNewSupplierModalOpen(false)}>
+                                Cancelar
+                            </Button>
+                            <Button type="submit">
+                                Guardar
+                            </Button>
+                        </div>
+                    </form>
+                </div>
             </Sidebar>
         </div>
     );

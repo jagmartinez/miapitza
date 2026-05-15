@@ -367,26 +367,26 @@ export default function CashRegisters() {
             )}
 
             <Sidebar isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Apertura de Caja">
-                <div className="catering-modal-content">
-                    <div className="modal-tab-body" style={{ padding: '30px' }}>
-                        <div className="modal-section-v2">
+                <div className="premium-modal-content">
+                    <div className="modal-tab-content">
+                        <div className="modal-section">
                             <h3 className="section-title-v2">Saldo de Apertura</h3>
                             <div className="modal-input-group">
-                                <label>Monto Inicial en Efectivo</label>
+                                <label className="modal-input-label">Monto Inicial en Efectivo</label>
                                 <input type="number" className="modal-standard-input" value={startAmount} onChange={(e) => setStartAmount(e.target.value)} placeholder="0.00" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void confirmOpenShift(); } }} />
-                                <p style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '8px' }}>Ingrese la cantidad total de efectivo disponible al iniciar.</p>
+                                <span className="modal-input-hint">Ingrese la cantidad total de efectivo disponible al iniciar.</span>
                             </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
-                            <Button variant="secondary" fullWidth onClick={() => setIsModalOpen(false)}>Cancelar</Button>
-                            <Button fullWidth onClick={() => void confirmOpenShift()}>Abrir Turno</Button>
-                        </div>
+                    </div>
+                    <div className="modal-footer">
+                        <Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
+                        <Button onClick={() => void confirmOpenShift()}>Abrir Turno</Button>
                     </div>
                 </div>
             </Sidebar>
 
             <Sidebar isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Nueva Caja Registradora">
-                <div className="catering-modal-content">
+                <div className="premium-modal-content">
                     <div className="modal-tabs">
                         <div className={`modal-tab ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>
                             <Wallet size={18} />
@@ -397,29 +397,29 @@ export default function CashRegisters() {
                             <span>Configuración</span>
                         </div>
                     </div>
-                    <div className="modal-tab-body" style={{ padding: '30px' }}>
+                    <div className="modal-tab-content">
                         {activeTab === 'general' && (
-                            <div className="modal-section-v2">
+                            <div className="modal-section">
                                 <h3 className="section-title-v2">Identificación</h3>
                                 <div className="modal-input-group">
-                                    <label>Nombre de la Caja</label>
+                                    <label className="modal-input-label">Nombre de la Caja</label>
                                     <input type="text" className="modal-standard-input" value={newRegisterName} onChange={(e) => setNewRegisterName(e.target.value)} placeholder="Ej: Caja Barra..." autoFocus />
                                 </div>
                             </div>
                         )}
                         {activeTab === 'configuracion' && (
-                            <div className="modal-section-v2">
+                            <div className="modal-section">
                                 <h3 className="section-title-v2">Ubicación</h3>
                                 <div className="modal-input-group">
-                                    <label>Sucursal</label>
+                                    <label className="modal-input-label">Sucursal</label>
                                     <input type="text" className="modal-standard-input" value={user?.branch?.name || 'Sucursal Principal'} disabled />
                                 </div>
                             </div>
                         )}
-                        <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
-                            <Button variant="secondary" fullWidth onClick={() => setIsCreateModalOpen(false)}>Cancelar</Button>
-                            <Button fullWidth onClick={handleCreateRegister}>Guardar Caja</Button>
-                        </div>
+                    </div>
+                    <div className="modal-footer">
+                        <Button variant="ghost" onClick={() => setIsCreateModalOpen(false)}>Cancelar</Button>
+                        <Button onClick={handleCreateRegister}>Guardar Caja</Button>
                     </div>
                 </div>
             </Sidebar>
