@@ -2,6 +2,7 @@ import { generateSecret, verify, generateURI } from 'otplib';
 import * as qrcode from 'qrcode';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { encrypt, decrypt, isEncrypted } from '../utils/encryption';
 
@@ -111,7 +112,7 @@ export class TwoFactorService {
             data: {
                 twoFactorEnabled: false,
                 twoFactorSecret: null,
-                twoFactorRecoveryCodes: null,
+                twoFactorRecoveryCodes: Prisma.JsonNull,
                 twoFactorEnabledAt: null,
             },
         });
@@ -206,7 +207,7 @@ export class TwoFactorService {
                     entityId: userId,
                     action,
                     userId,
-                    details: details ?? null,
+                    details: details ? (details as Prisma.InputJsonValue) : Prisma.JsonNull,
                 },
             });
         } catch {

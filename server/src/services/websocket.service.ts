@@ -266,7 +266,7 @@ export class WebSocketService {
             try {
                 client.send(data);
             } catch (err) {
-                console.error(`[WS] Failed to send to client ${clientId}:`, err);
+                console.error('[WS] Failed to send to client:', err);
             }
         });
     }

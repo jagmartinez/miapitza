@@ -51,8 +51,8 @@ export const apiKeyAuth = async (
 
         // Parse scopes — stored as JSON array
         const scopes: string[] = Array.isArray(record.scopes)
-            ? record.scopes
-            : JSON.parse(record.scopes ?? '[]');
+            ? record.scopes.map(String)
+            : JSON.parse(String(record.scopes ?? '[]'));
 
         req.user = {
             userId: 0,
