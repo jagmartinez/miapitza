@@ -325,183 +325,186 @@ export default function Warehouses() {
 
             {/* Create/Edit Warehouse */}
             <Sidebar isOpen={showForm} onClose={() => setShowForm(false)} title={editingWarehouse ? 'Editar Bodega' : 'Nueva Bodega'}>
-                <form onSubmit={handleCreateUpdate} className="modal-form-new" style={{ padding: '16px' }}>
-                    <div className="modal-input-group">
-                        <label className="modal-input-label">Nombre</label>
-                        <input type="text" className="modal-standard-input" value={formData.name}
-                            onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Ej: Bodega Central" required autoFocus />
-                    </div>
-                    <div className="modal-form-row">
-                        <div className="modal-input-group">
-                            <label className="modal-input-label">CÃ³digo</label>
-                            <input type="text" className="modal-standard-input" value={formData.code}
-                                onChange={e => setFormData({ ...formData, code: e.target.value.toUpperCase() })} placeholder="Ej: CENTRAL-MAIN" required />
+                <div className="premium-modal-content">
+                    <form onSubmit={handleCreateUpdate} className="modal-form-new">
+                        <div className="modal-tab-content">
+                            <div className="modal-input-group">
+                                <label className="modal-input-label">Nombre</label>
+                                <input type="text" className="modal-standard-input" value={formData.name}
+                                    onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Ej: Bodega Central" required autoFocus />
+                            </div>
+                            <div className="modal-form-row">
+                                <div className="modal-input-group">
+                                    <label className="modal-input-label">Código</label>
+                                    <input type="text" className="modal-standard-input" value={formData.code}
+                                        onChange={e => setFormData({ ...formData, code: e.target.value.toUpperCase() })} placeholder="Ej: CENTRAL-MAIN" required />
+                                </div>
+                                <div className="modal-input-group">
+                                    <Select variant="modal" label="Tipo" placeholder="Seleccionar tipo"
+                                        options={[
+                                            { value: 'BRANCH', label: 'Sucursal' },
+                                            { value: 'CENTRAL', label: 'Central' }
+                                        ]}
+                                        value={{ value: formData.type, label: formData.type === 'CENTRAL' ? 'Central' : 'Sucursal' }}
+                                        onChange={(opt: SingleValue<WarehouseTypeOption>) =>
+                                            opt && setFormData({ ...formData, type: opt.value, branchId: opt.value === 'CENTRAL' ? '' : formData.branchId })} required />
+                                </div>
+                            </div>
+                            {formData.type === 'BRANCH' && (
+                                <div className="modal-input-group">
+                                    <Select variant="modal" label="Sucursal" placeholder="Seleccionar sucursal"
+                                        options={branches.map((b) => ({ value: b.id.toString(), label: b.name }))}
+                                        value={formData.branchId ? { value: formData.branchId, label: branches.find((b) => b.id.toString() === formData.branchId)?.name } : null}
+                                        onChange={(opt: SingleValue<StrOption>) => opt && setFormData({ ...formData, branchId: opt.value })} required />
+                                </div>
+                            )}
                         </div>
-                        <div className="modal-input-group">
-                            <Select variant="modal" label="Tipo" placeholder="Seleccionar tipo"
-                                options={[
-                                    { value: 'BRANCH', label: 'Sucursal' },
-                                    { value: 'CENTRAL', label: 'Central' }
-                                ]}
-                                value={{ value: formData.type, label: formData.type === 'CENTRAL' ? 'Central' : 'Sucursal' }}
-                                onChange={(opt: SingleValue<WarehouseTypeOption>) =>
-                                    opt && setFormData({ ...formData, type: opt.value, branchId: opt.value === 'CENTRAL' ? '' : formData.branchId })} required />
+                        <div className="modal-footer">
+                            <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancelar</Button>
+                            <Button type="submit">{editingWarehouse ? 'Guardar' : 'Crear'}</Button>
                         </div>
-                    </div>
-                    {formData.type === 'BRANCH' && (
-                        <div className="modal-input-group">
-                            <Select variant="modal" label="Sucursal" placeholder="Seleccionar sucursal"
-                                options={branches.map((b) => ({ value: b.id.toString(), label: b.name }))}
-                                value={formData.branchId ? { value: formData.branchId, label: branches.find((b) => b.id.toString() === formData.branchId)?.name } : null}
-                                onChange={(opt: SingleValue<StrOption>) => opt && setFormData({ ...formData, branchId: opt.value })} required />
-                        </div>
-                    )}
-                    <div className="modal-footer">
-                        <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancelar</Button>
-                        <Button type="submit">{editingWarehouse ? 'Guardar' : 'Crear'}</Button>
-                    </div>
-                </form>
+                    </form>
+                </div>
             </Sidebar>
 
             {/* Stock View */}
             <Sidebar isOpen={showStock} onClose={() => setShowStock(false)} title={`Stock - ${selectedWarehouse?.name || ''}`} width="large">
-                <div style={{ padding: '16px' }}>
-                    <div style={{ marginBottom: '12px', position: 'relative' }}>
-                        <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-neutral-400)' }} />
-                        <input type="text" className="modal-standard-input" style={{ paddingLeft: '34px' }} placeholder="Buscar producto..."
-                            value={stockSearch} onChange={e => setStockSearch(e.target.value)} />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        {filteredStock.map(s => {
-                            const isLow = Number(s.quantity) < Number(s.product.minStock);
-                            return (
-                                <div key={s.id} style={{
-                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                    padding: '10px 14px', borderRadius: '8px',
-                                    background: isLow ? 'var(--color-error, #ef4444)08' : 'var(--color-neutral-50)',
-                                    border: `1px solid ${isLow ? 'var(--color-error, #ef4444)30' : 'var(--color-neutral-200)'}`
-                                }}>
-                                    <div>
-                                        <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{s.product.name}</div>
-                                        {s.product.sku && <div style={{ fontSize: '0.75rem', color: 'var(--color-neutral-500)' }}>{s.product.sku}</div>}
-                                    </div>
-                                    <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontWeight: 700, fontSize: '1rem', color: isLow ? 'var(--color-error)' : 'inherit' }}>
-                                            {Number(s.quantity).toFixed(2)} {s.product.unit}
+                <div className="premium-modal-content">
+                    <div className="modal-tab-content">
+                        <div className="modal-input-group">
+                            <div className="search-input-wrapper">
+                                <Search size={16} className="search-icon" />
+                                <input type="text" className="modal-standard-input" style={{ paddingLeft: '34px' }} placeholder="Buscar producto..."
+                                    value={stockSearch} onChange={e => setStockSearch(e.target.value)} />
+                            </div>
+                        </div>
+                        <div className="stock-items-list">
+                            {filteredStock.map(s => {
+                                const isLow = Number(s.quantity) < Number(s.product.minStock);
+                                return (
+                                    <div key={s.id} className={`stock-item-row ${isLow ? 'stock-low' : ''}`}>
+                                        <div>
+                                            <div className="stock-item-name">{s.product.name}</div>
+                                            {s.product.sku && <div className="stock-item-sku">{s.product.sku}</div>}
                                         </div>
-                                        <div style={{ fontSize: '0.7rem', color: 'var(--color-neutral-400)' }}>Min: {Number(s.product.minStock)}</div>
+                                        <div className="stock-item-qty">
+                                            <div className={`stock-item-value ${isLow ? 'stock-low-text' : ''}`}>
+                                                {Number(s.quantity).toFixed(2)} {s.product.unit}
+                                            </div>
+                                            <div className="stock-item-min">Min: {Number(s.product.minStock)}</div>
+                                        </div>
                                     </div>
-                                </div>
-                            );
-                        })}
-                        {filteredStock.length === 0 && (
-                            <p style={{ textAlign: 'center', color: 'var(--color-neutral-400)', padding: '24px 0' }}>Sin productos en esta bodega</p>
-                        )}
+                                );
+                            })}
+                            {filteredStock.length === 0 && (
+                                <p className="stock-empty-message">Sin productos en esta bodega</p>
+                            )}
+                        </div>
                     </div>
                 </div>
             </Sidebar>
 
             {/* Transfer Modal */}
             <Sidebar isOpen={showTransfer} onClose={() => setShowTransfer(false)} title="Nuevo Traslado entre Bodegas">
-                <form onSubmit={handleTransfer} className="modal-form-new" style={{ padding: '16px' }}>
-                    <div className="modal-input-group">
-                        <Select variant="modal" label="Bodega Origen" placeholder="Seleccionar..."
-                            options={warehouses.map(w => ({ value: w.id.toString(), label: `${w.name} (${w.type === 'CENTRAL' ? 'Central' : w.branch?.name || 'Sin sucursal'})` }))}
-                            value={transferData.fromWarehouseId ? { value: transferData.fromWarehouseId, label: warehouses.find(w => w.id.toString() === transferData.fromWarehouseId)?.name } : null}
-                            onChange={(opt: SingleValue<StrOption>) => opt && setTransferData({ ...transferData, fromWarehouseId: opt.value })} required />
-                    </div>
-                    <div className="modal-input-group">
-                        <Select variant="modal" label="Bodega Destino" placeholder="Seleccionar..."
-                            options={warehouses.filter(w => w.id.toString() !== transferData.fromWarehouseId).map(w => ({ value: w.id.toString(), label: `${w.name} (${w.type === 'CENTRAL' ? 'Central' : w.branch?.name || 'Sin sucursal'})` }))}
-                            value={transferData.toWarehouseId ? { value: transferData.toWarehouseId, label: warehouses.find(w => w.id.toString() === transferData.toWarehouseId)?.name } : null}
-                            onChange={(opt: SingleValue<StrOption>) => opt && setTransferData({ ...transferData, toWarehouseId: opt.value })} required />
-                    </div>
-                    <div className="modal-input-group">
-                        <Select variant="modal" label="Producto" placeholder="Seleccionar producto..."
-                            options={products.map((p) => ({ value: p.id.toString(), label: `${p.name} (${p.unit})` }))}
-                            value={transferData.productId ? { value: transferData.productId, label: products.find((p) => p.id.toString() === transferData.productId)?.name } : null}
-                            onChange={(opt: SingleValue<StrOption>) => opt && handleTransferProductChange(opt.value)} required />
-                    </div>
-                    <div className="modal-form-row">
-                        <div className="modal-input-group" style={{ flex: 2 }}>
-                            <label className="modal-input-label">Cantidad</label>
-                            <input type="number" step="0.001" className="modal-standard-input" value={transferData.quantity}
-                                onChange={e => setTransferData({ ...transferData, quantity: e.target.value })} required min="0.001" />
-                        </div>
-                        {transferUnits.length > 0 && (
-                            <div className="modal-input-group" style={{ flex: 1 }}>
-                                <Select variant="modal" label="Unidad" placeholder="Unidad..."
-                                    options={transferUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))}
-                                    value={transferData.unit ? {
-                                        value: transferData.unit,
-                                        label: transferUnits.find(u => u.abbreviation === transferData.unit)
-                                            ? `${transferUnits.find(u => u.abbreviation === transferData.unit)!.name} (${transferData.unit})`
-                                            : transferData.unit
-                                    } : null}
-                                    onChange={(opt: SingleValue<StrOption>) => opt && setTransferData({ ...transferData, unit: opt.value })}
-                                    isSearchable={false} />
+                <div className="premium-modal-content">
+                    <form onSubmit={handleTransfer} className="modal-form-new">
+                        <div className="modal-tab-content">
+                            <div className="modal-input-group">
+                                <Select variant="modal" label="Bodega Origen" placeholder="Seleccionar..."
+                                    options={warehouses.map(w => ({ value: w.id.toString(), label: `${w.name} (${w.type === 'CENTRAL' ? 'Central' : w.branch?.name || 'Sin sucursal'})` }))}
+                                    value={transferData.fromWarehouseId ? { value: transferData.fromWarehouseId, label: warehouses.find(w => w.id.toString() === transferData.fromWarehouseId)?.name } : null}
+                                    onChange={(opt: SingleValue<StrOption>) => opt && setTransferData({ ...transferData, fromWarehouseId: opt.value })} required />
                             </div>
-                        )}
-                    </div>
-                    <div className="modal-input-group">
-                        <label className="modal-input-label">Referencia (opcional)</label>
-                        <input type="text" className="modal-standard-input" value={transferData.reference}
-                            onChange={e => setTransferData({ ...transferData, reference: e.target.value })} placeholder="Ej: TRF-001" />
-                    </div>
-                    <div className="modal-footer">
-                        <Button type="button" variant="ghost" onClick={() => setShowTransfer(false)}>Cancelar</Button>
-                        <Button type="submit">Realizar Traslado</Button>
-                    </div>
-                </form>
+                            <div className="modal-input-group">
+                                <Select variant="modal" label="Bodega Destino" placeholder="Seleccionar..."
+                                    options={warehouses.filter(w => w.id.toString() !== transferData.fromWarehouseId).map(w => ({ value: w.id.toString(), label: `${w.name} (${w.type === 'CENTRAL' ? 'Central' : w.branch?.name || 'Sin sucursal'})` }))}
+                                    value={transferData.toWarehouseId ? { value: transferData.toWarehouseId, label: warehouses.find(w => w.id.toString() === transferData.toWarehouseId)?.name } : null}
+                                    onChange={(opt: SingleValue<StrOption>) => opt && setTransferData({ ...transferData, toWarehouseId: opt.value })} required />
+                            </div>
+                            <div className="modal-input-group">
+                                <Select variant="modal" label="Producto" placeholder="Seleccionar producto..."
+                                    options={products.map((p) => ({ value: p.id.toString(), label: `${p.name} (${p.unit})` }))}
+                                    value={transferData.productId ? { value: transferData.productId, label: products.find((p) => p.id.toString() === transferData.productId)?.name } : null}
+                                    onChange={(opt: SingleValue<StrOption>) => opt && handleTransferProductChange(opt.value)} required />
+                            </div>
+                            <div className="modal-form-row">
+                                <div className="modal-input-group" style={{ flex: 2 }}>
+                                    <label className="modal-input-label">Cantidad</label>
+                                    <input type="number" step="0.001" className="modal-standard-input" value={transferData.quantity}
+                                        onChange={e => setTransferData({ ...transferData, quantity: e.target.value })} required min="0.001" />
+                                </div>
+                                {transferUnits.length > 0 && (
+                                    <div className="modal-input-group" style={{ flex: 1 }}>
+                                        <Select variant="modal" label="Unidad" placeholder="Unidad..."
+                                            options={transferUnits.map(u => ({ value: u.abbreviation, label: `${u.name} (${u.abbreviation})` }))}
+                                            value={transferData.unit ? {
+                                                value: transferData.unit,
+                                                label: transferUnits.find(u => u.abbreviation === transferData.unit)
+                                                    ? `${transferUnits.find(u => u.abbreviation === transferData.unit)!.name} (${transferData.unit})`
+                                                    : transferData.unit
+                                            } : null}
+                                            onChange={(opt: SingleValue<StrOption>) => opt && setTransferData({ ...transferData, unit: opt.value })}
+                                            isSearchable={false} />
+                                    </div>
+                                )}
+                            </div>
+                            <div className="modal-input-group">
+                                <label className="modal-input-label">Referencia (opcional)</label>
+                                <input type="text" className="modal-standard-input" value={transferData.reference}
+                                    onChange={e => setTransferData({ ...transferData, reference: e.target.value })} placeholder="Ej: TRF-001" />
+                            </div>
+                        </div>
+                        <div className="modal-footer">
+                            <Button type="button" variant="ghost" onClick={() => setShowTransfer(false)}>Cancelar</Button>
+                            <Button type="submit">Realizar Traslado</Button>
+                        </div>
+                    </form>
+                </div>
             </Sidebar>
 
             {/* Transfer History */}
             <Sidebar isOpen={showHistory} onClose={() => setShowHistory(false)} title="Historial de Traslados" width="wide">
-                <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {Object.entries(groupedTransferHistory).map(([groupId, movements]) => {
-                        const ordered = [...movements].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-                        const source = ordered.find((movement) => movement.type === 'TRANSFER');
-                        const destination = ordered.find((movement) => movement.type === 'IN');
+                <div className="premium-modal-content">
+                    <div className="modal-tab-content">
+                        <div className="stock-items-list">
+                            {Object.entries(groupedTransferHistory).map(([groupId, movements]) => {
+                                const ordered = [...movements].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+                                const source = ordered.find((movement) => movement.type === 'TRANSFER');
+                                const destination = ordered.find((movement) => movement.type === 'IN');
 
-                        return (
-                            <div key={groupId} style={{
-                                padding: '12px', borderRadius: '8px', background: 'var(--color-neutral-50)',
-                                border: '1px solid var(--color-neutral-200)', fontSize: '0.85rem'
-                            }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                    <strong>{ordered[0]?.product?.name}</strong>
-                                    <span style={{ color: 'var(--color-neutral-500)' }}>{new Date(ordered[0]?.createdAt || Date.now()).toLocaleString('es-ES')}</span>
+                                return (
+                                    <div key={groupId} className="stock-item-row">
+                                        <div style={{ flex: 1 }}>
+                                            <div className="stock-item-name">{ordered[0]?.product?.name}</div>
+                                            <div className="stock-item-sku">
+                                                {source?.warehouse?.name || 'Origen desconocido'} &rarr; {destination?.warehouse?.name || 'Destino desconocido'}
+                                                {' '}&middot; Cant: {Number(ordered[0]?.quantity || 0).toFixed(2)}
+                                                {' '}&middot; Por: {ordered[0]?.user?.name}
+                                                {ordered[0]?.reference && <> &middot; Ref: {ordered[0].reference}</>}
+                                            </div>
+                                        </div>
+                                        <div className="stock-item-sku">{new Date(ordered[0]?.createdAt || Date.now()).toLocaleString('es-ES')}</div>
+                                    </div>
+                                );
+                            })}
+                            {showLegacyTransferHistory && transferHistory.map((m) => (
+                                <div key={m.id} className="stock-item-row">
+                                    <div style={{ flex: 1 }}>
+                                        <div className="stock-item-name">{m.product?.name}</div>
+                                        <div className="stock-item-sku">
+                                            {m.warehouse?.name} &middot; {m.type === 'TRANSFER' ? 'OUT' : 'IN'}: {Number(m.quantity).toFixed(2)}
+                                            {' '}&middot; Por: {m.user?.name}
+                                            {m.reference && <> &middot; Ref: {m.reference}</>}
+                                        </div>
+                                    </div>
+                                    <div className="stock-item-sku">{new Date(m.createdAt).toLocaleString('es-ES')}</div>
                                 </div>
-                                <div style={{ display: 'flex', gap: '16px', color: 'var(--color-neutral-600)', flexWrap: 'wrap' }}>
-                                    <span>{source?.warehouse?.name || 'Origen desconocido'} → {destination?.warehouse?.name || 'Destino desconocido'}</span>
-                                    <span>Cant: {Number(ordered[0]?.quantity || 0).toFixed(2)}</span>
-                                    <span>Por: {ordered[0]?.user?.name}</span>
-                                    {ordered[0]?.reference && <span>Ref: {ordered[0].reference}</span>}
-                                    <span>ID: {groupId}</span>
-                                </div>
-                            </div>
-                        );
-                    })}
-                    {showLegacyTransferHistory && transferHistory.map((m) => (
-                        <div key={m.id} style={{
-                            padding: '12px', borderRadius: '8px', background: 'var(--color-neutral-50)',
-                            border: '1px solid var(--color-neutral-200)', fontSize: '0.85rem'
-                        }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                <strong>{m.product?.name}</strong>
-                                <span style={{ color: 'var(--color-neutral-500)' }}>{new Date(m.createdAt).toLocaleString('es-ES')}</span>
-                            </div>
-                            <div style={{ display: 'flex', gap: '16px', color: 'var(--color-neutral-600)' }}>
-                                <span>{m.warehouse?.name}</span>
-                                <span>{m.type === 'TRANSFER' ? '→ OUT' : '← IN'}: {Number(m.quantity).toFixed(2)}</span>
-                                <span>Por: {m.user?.name}</span>
-                                {m.reference && <span>Ref: {m.reference}</span>}
-                            </div>
+                            ))}
+                            {transferHistory.length === 0 && (
+                                <p className="stock-empty-message">No hay traslados registrados</p>
+                            )}
                         </div>
-                    ))}
-                    {transferHistory.length === 0 && (
-                        <p style={{ textAlign: 'center', color: 'var(--color-neutral-400)', padding: '24px 0' }}>No hay traslados registrados</p>
-                    )}
+                    </div>
                 </div>
             </Sidebar>
         </div>

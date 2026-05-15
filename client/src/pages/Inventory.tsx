@@ -1318,105 +1318,104 @@ export default function Inventory() {
             </Sidebar>
 
             {/* Import Excel Sidebar */}
-            <Sidebar isOpen={showImportSidebar} onClose={() => setShowImportSidebar(false)} title="Importar Productos desde Excel" width="600px">
-                <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <div style={{ padding: '1rem', borderRadius: '8px', background: 'var(--color-surface-alt, #f5f5f5)', border: '1px solid var(--color-border, #ddd)' }}>
-                        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-text-secondary, #666)' }}>
-                            Sube un archivo Excel (.xlsx) con los productos a importar. Descarga la plantilla para ver el formato esperado.
-                            Los productos con SKU existente se actualizarán; los nuevos se crearán.
-                        </p>
-                    </div>
+            <Sidebar isOpen={showImportSidebar} onClose={() => setShowImportSidebar(false)} title="Importar Productos desde Excel" width="wide">
+                <div className="premium-modal-content">
+                    <div className="modal-tab-content">
+                        <div className="import-info-banner">
+                            <p>
+                                Sube un archivo Excel (.xlsx) con los productos a importar. Descarga la plantilla para ver el formato esperado.
+                                Los productos con SKU existente se actualizarán; los nuevos se crearán.
+                            </p>
+                        </div>
 
-                    <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600, color: 'var(--color-text, #333)' }}>
-                            Archivo Excel
-                        </label>
-                        <input
-                            type="file"
-                            accept=".xlsx,.xls"
-                            onChange={(e) => { setImportFile(e.target.files?.[0] || null); setImportValidation(null); }}
-                            style={{ width: '100%', padding: '0.5rem', border: '1px solid var(--color-border, #ddd)', borderRadius: '6px', background: 'var(--color-surface, #fff)', color: 'var(--color-text, #333)' }}
-                        />
-                    </div>
+                        <div className="modal-input-group">
+                            <label className="modal-input-label">Archivo Excel</label>
+                            <input
+                                type="file"
+                                accept=".xlsx,.xls"
+                                onChange={(e) => { setImportFile(e.target.files?.[0] || null); setImportValidation(null); }}
+                                className="modal-standard-input"
+                            />
+                        </div>
 
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <Button variant="secondary" onClick={handleDownloadTemplate}>
-                            <Download size={16} /> Descargar Plantilla
-                        </Button>
-                        <Button onClick={handleImportValidate} disabled={!importFile || importLoading}>
-                            {importLoading ? 'Validando...' : 'Validar Archivo'}
-                        </Button>
-                    </div>
+                        <div className="import-actions-row">
+                            <Button variant="secondary" onClick={handleDownloadTemplate}>
+                                <Download size={16} /> Descargar Plantilla
+                            </Button>
+                            <Button onClick={handleImportValidate} disabled={!importFile || importLoading}>
+                                {importLoading ? 'Validando...' : 'Validar Archivo'}
+                            </Button>
+                        </div>
 
-                    {importValidation && (
-                        <>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>
-                                <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'var(--color-surface-alt, #f0f9ff)', textAlign: 'center', border: '1px solid var(--color-border, #ddd)' }}>
-                                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--color-text, #333)' }}>{importValidation.summary.totalRows}</div>
-                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary, #666)' }}>Total filas</div>
+                        {importValidation && (
+                            <>
+                                <div className="import-summary-grid">
+                                    <div className="import-summary-card">
+                                        <div className="import-summary-value">{importValidation.summary.totalRows}</div>
+                                        <div className="import-summary-label">Total filas</div>
+                                    </div>
+                                    <div className="import-summary-card import-summary-success">
+                                        <div className="import-summary-value">{importValidation.summary.valid}</div>
+                                        <div className="import-summary-label">Válidos</div>
+                                    </div>
+                                    <div className={`import-summary-card ${importValidation.summary.invalid > 0 ? 'import-summary-error' : ''}`}>
+                                        <div className="import-summary-value">{importValidation.summary.invalid}</div>
+                                        <div className="import-summary-label">Con errores</div>
+                                    </div>
+                                    <div className="import-summary-card">
+                                        <div className="import-summary-value">{importValidation.summary.newProducts}</div>
+                                        <div className="import-summary-label">Nuevos</div>
+                                    </div>
                                 </div>
-                                <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'var(--color-success-bg, #f0fdf4)', textAlign: 'center', border: '1px solid var(--color-border, #ddd)' }}>
-                                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#16a34a' }}>{importValidation.summary.valid}</div>
-                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary, #666)' }}>Válidos</div>
-                                </div>
-                                <div style={{ padding: '0.75rem', borderRadius: '8px', background: importValidation.summary.invalid > 0 ? 'var(--color-danger-bg, #fef2f2)' : 'var(--color-surface-alt, #f5f5f5)', textAlign: 'center', border: '1px solid var(--color-border, #ddd)' }}>
-                                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: importValidation.summary.invalid > 0 ? '#dc2626' : 'var(--color-text, #333)' }}>{importValidation.summary.invalid}</div>
-                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary, #666)' }}>Con errores</div>
-                                </div>
-                                <div style={{ padding: '0.75rem', borderRadius: '8px', background: 'var(--color-surface-alt, #f5f5f5)', textAlign: 'center', border: '1px solid var(--color-border, #ddd)' }}>
-                                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--color-text, #333)' }}>{importValidation.summary.newProducts}</div>
-                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary, #666)' }}>Nuevos</div>
-                                </div>
-                            </div>
 
-                            <div style={{ maxHeight: '300px', overflow: 'auto', border: '1px solid var(--color-border, #ddd)', borderRadius: '8px' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                                    <thead>
-                                        <tr style={{ background: 'var(--color-surface-alt, #f5f5f5)', position: 'sticky', top: 0 }}>
-                                            <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '1px solid var(--color-border, #ddd)', color: 'var(--color-text, #333)' }}>#</th>
-                                            <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '1px solid var(--color-border, #ddd)', color: 'var(--color-text, #333)' }}>SKU</th>
-                                            <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '1px solid var(--color-border, #ddd)', color: 'var(--color-text, #333)' }}>Nombre</th>
-                                            <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '1px solid var(--color-border, #ddd)', color: 'var(--color-text, #333)' }}>Acción</th>
-                                            <th style={{ padding: '0.5rem', textAlign: 'left', borderBottom: '1px solid var(--color-border, #ddd)', color: 'var(--color-text, #333)' }}>Estado</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {importValidation.items.map((item, idx) => (
-                                            <tr key={idx} style={{ background: item.isValid ? 'transparent' : 'var(--color-danger-bg, #fef2f2)' }}>
-                                                <td style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--color-border, #eee)', color: 'var(--color-text-secondary, #666)' }}>{item.rowNumber}</td>
-                                                <td style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--color-border, #eee)', color: 'var(--color-text, #333)', fontFamily: 'monospace' }}>{item.sku}</td>
-                                                <td style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--color-border, #eee)', color: 'var(--color-text, #333)' }}>{item.name}</td>
-                                                <td style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--color-border, #eee)' }}>
-                                                    <span style={{
-                                                        padding: '2px 8px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 600,
-                                                        background: item.isUpdate ? '#dbeafe' : '#dcfce7',
-                                                        color: item.isUpdate ? '#1d4ed8' : '#166534'
-                                                    }}>
-                                                        {item.isUpdate ? 'Actualizar' : 'Nuevo'}
-                                                    </span>
-                                                </td>
-                                                <td style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--color-border, #eee)' }}>
-                                                    {item.isValid ? (
-                                                        <span style={{ color: '#16a34a', fontWeight: 600, fontSize: '0.75rem' }}>✓ OK</span>
-                                                    ) : (
-                                                        <span style={{ color: '#dc2626', fontSize: '0.7rem' }} title={item.errors.join(', ')}>
-                                                            ✗ {item.errors[0]}
-                                                        </span>
-                                                    )}
-                                                </td>
+                                <div className="import-table-wrap">
+                                    <table className="price-history-table">
+                                        <thead>
+                                            <tr>
+                                                <th>#</th>
+                                                <th>SKU</th>
+                                                <th>Nombre</th>
+                                                <th>Acción</th>
+                                                <th>Estado</th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-
+                                        </thead>
+                                        <tbody>
+                                            {importValidation.items.map((item, idx) => (
+                                                <tr key={idx} className={item.isValid ? '' : 'import-row-error'}>
+                                                    <td>{item.rowNumber}</td>
+                                                    <td style={{ fontFamily: 'monospace' }}>{item.sku}</td>
+                                                    <td>{item.name}</td>
+                                                    <td>
+                                                        <span className={`report-status-badge ${item.isUpdate ? 'status-default' : 'status-ok'}`}>
+                                                            {item.isUpdate ? 'Actualizar' : 'Nuevo'}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        {item.isValid ? (
+                                                            <span className="report-status-badge status-ok">✓ OK</span>
+                                                        ) : (
+                                                            <span className="report-status-badge status-critical" title={item.errors.join(', ')}>
+                                                                ✗ {item.errors[0]}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                    {importValidation && (
+                        <div className="modal-footer">
                             <Button
                                 onClick={handleImportConfirm}
                                 disabled={importValidation.summary.valid === 0 || importLoading}
                             >
                                 {importLoading ? 'Importando...' : `Confirmar importación (${importValidation.summary.valid} productos)`}
                             </Button>
-                        </>
+                        </div>
                     )}
                 </div>
             </Sidebar>

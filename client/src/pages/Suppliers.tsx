@@ -4,7 +4,6 @@ import { useAuth } from '../hooks/useAuth';
 import { hasAnyRole } from '../utils/authz';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
-import Input from '../components/Input';
 import { Plus, Trash2, Phone, Mail, MapPin, Truck, Search, Users, Info, Building2, Tag, History } from 'lucide-react';
 import type { Supplier } from '../types';
 import './Suppliers.css';
@@ -298,25 +297,24 @@ export default function Suppliers() {
                 onClose={() => setIsModalOpen(false)}
                 title={editingSupplier ? 'Editar Proveedor' : 'Nuevo Proveedor'}
             >
-                <div className="supplier-modal-content">
-                    {/* Tabs Navigation */}
-                    <div className="supplier-tabs">
+                <div className="premium-modal-content">
+                    <div className="modal-tabs">
                         <button
-                            className={`supplier-tab ${activeTab === 'empresa' ? 'active' : ''}`}
+                            className={`modal-tab ${activeTab === 'empresa' ? 'active' : ''}`}
                             onClick={() => setActiveTab('empresa')}
                         >
                             <Building2 size={18} />
                             <span>Empresa</span>
                         </button>
                         <button
-                            className={`supplier-tab ${activeTab === 'contacto' ? 'active' : ''}`}
+                            className={`modal-tab ${activeTab === 'contacto' ? 'active' : ''}`}
                             onClick={() => setActiveTab('contacto')}
                         >
                             <Users size={18} />
                             <span>Contacto</span>
                         </button>
                         <button
-                            className={`supplier-tab ${activeTab === 'ubicacion' ? 'active' : ''}`}
+                            className={`modal-tab ${activeTab === 'ubicacion' ? 'active' : ''}`}
                             onClick={() => setActiveTab('ubicacion')}
                         >
                             <MapPin size={18} />
@@ -324,31 +322,28 @@ export default function Suppliers() {
                         </button>
                     </div>
 
-                    <form onSubmit={handleSubmit} className="supplier-form-new">
-                        <div className="tab-content-container">
-                            {/* Tab 1: Empresa */}
+                    <form onSubmit={handleSubmit} className="modal-form-new">
+                        <div className="modal-tab-content">
                             {activeTab === 'empresa' && (
-                                <div className="form-section-new animate-slide-in">
-                                    <div className="section-header-new">
+                                <div className="modal-section animate-slide-in">
+                                    <div className="modal-section-header">
                                         <Info size={16} />
                                         <h3>Información Principal</h3>
                                     </div>
-                                    <Input
-                                        label="Nombre de la Empresa"
-                                        value={formData.name}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        required
-                                        placeholder="Ej: Distribuidora Central S.A."
-                                    />
-                                    <Input
-                                        label="RUC / NIT (Opcional)"
-                                        value={formData.taxId}
-                                        onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
-                                        placeholder="Ej: J031000000123"
-                                    />
-
-                                    <div className="input-group-new">
-                                        <label className="input-label-new">
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label">Nombre de la Empresa</label>
+                                        <input type="text" className="modal-standard-input" value={formData.name}
+                                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                            required placeholder="Ej: Distribuidora Central S.A." />
+                                    </div>
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label">RUC / NIT (Opcional)</label>
+                                        <input type="text" className="modal-standard-input" value={formData.taxId}
+                                            onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
+                                            placeholder="Ej: J031000000123" />
+                                    </div>
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label">
                                             <Tag size={14} />
                                             Tipo de Suministro
                                         </label>
@@ -368,48 +363,45 @@ export default function Suppliers() {
                                 </div>
                             )}
 
-                            {/* Tab 2: Contacto */}
                             {activeTab === 'contacto' && (
-                                <div className="form-section-new animate-slide-in">
-                                    <div className="section-header-new">
+                                <div className="modal-section animate-slide-in">
+                                    <div className="modal-section-header">
                                         <Users size={16} />
                                         <h3>Datos de Contacto</h3>
                                     </div>
-                                    <Input
-                                        label="Nombre del Contacto"
-                                        value={formData.contact}
-                                        onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
-                                        placeholder="Ej: Juan Pérez"
-                                    />
-                                    <div className="form-row-new">
-                                        <Input
-                                            label="Teléfono"
-                                            value={formData.phone}
-                                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                                            placeholder="Ej: +505 8888 8888"
-                                        />
-                                        <Input
-                                            label="Email"
-                                            type="email"
-                                            value={formData.email}
-                                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                            placeholder="Ej: contacto@empresa.com"
-                                        />
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label">Nombre del Contacto</label>
+                                        <input type="text" className="modal-standard-input" value={formData.contact}
+                                            onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
+                                            placeholder="Ej: Juan Pérez" />
+                                    </div>
+                                    <div className="modal-form-row">
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label">Teléfono</label>
+                                            <input type="text" className="modal-standard-input" value={formData.phone}
+                                                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                                placeholder="Ej: +505 8888 8888" />
+                                        </div>
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label">Email</label>
+                                            <input type="email" className="modal-standard-input" value={formData.email}
+                                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                                placeholder="Ej: contacto@empresa.com" />
+                                        </div>
                                     </div>
                                 </div>
                             )}
 
-                            {/* Tab 3: Ubicación */}
                             {activeTab === 'ubicacion' && (
-                                <div className="form-section-new animate-slide-in">
-                                    <div className="section-header-new">
+                                <div className="modal-section animate-slide-in">
+                                    <div className="modal-section-header">
                                         <MapPin size={16} />
                                         <h3>Ubicación Física</h3>
                                     </div>
-                                    <div className="input-group-new">
-                                        <label className="input-label-new">Dirección Completa</label>
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label">Dirección Completa</label>
                                         <textarea
-                                            className="textarea-new"
+                                            className="modal-textarea"
                                             rows={4}
                                             value={formData.address}
                                             onChange={(e) => setFormData({ ...formData, address: e.target.value })}
@@ -420,8 +412,8 @@ export default function Suppliers() {
                             )}
                         </div>
 
-                        <div className="form-footer-new">
-                            <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
+                        <div className="modal-footer">
+                            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>
                                 Cancelar
                             </Button>
                             <Button type="submit">
@@ -435,46 +427,48 @@ export default function Suppliers() {
             {/* Price History Sidebar */}
             <Sidebar isOpen={showPriceHistory} onClose={() => setShowPriceHistory(false)}
                 title={`Historial de Precios - ${priceHistorySupplier?.name || ''}`} width="wide">
-                <div style={{ padding: '16px' }}>
-                    {priceHistoryLoading ? (
-                        <p style={{ textAlign: 'center', padding: '24px', color: 'var(--color-neutral-400)' }}>Cargando...</p>
-                    ) : priceHistory.length > 0 ? (
-                        <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                                <thead>
-                                    <tr style={{ background: 'var(--color-neutral-100)' }}>
-                                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Producto</th>
-                                        <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>Precio Unit.</th>
-                                        <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>Cantidad</th>
-                                        <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>Subtotal</th>
-                                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Fecha</th>
-                                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>OC#</th>
-                                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Sucursal</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {priceHistory.map((item, idx: number) => (
-                                        <tr key={idx} style={{ borderBottom: '1px solid var(--color-neutral-200)' }}>
-                                            <td style={{ padding: '8px 12px' }}>
-                                                <div style={{ fontWeight: 600 }}>{item.productName}</div>
-                                                {item.productSku && <div style={{ fontSize: '0.7rem', color: 'var(--color-neutral-400)' }}>{item.productSku}</div>}
-                                            </td>
-                                            <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>${item.unitCost.toFixed(2)}/{item.unit}</td>
-                                            <td style={{ padding: '8px 12px', textAlign: 'right' }}>{item.quantity.toFixed(2)}</td>
-                                            <td style={{ padding: '8px 12px', textAlign: 'right' }}>${item.subtotal.toFixed(2)}</td>
-                                            <td style={{ padding: '8px 12px' }}>{new Date(item.date).toLocaleDateString('es-ES')}</td>
-                                            <td style={{ padding: '8px 12px' }}>#{item.purchaseOrderId}</td>
-                                            <td style={{ padding: '8px 12px' }}>{item.branchName || '-'}</td>
+                <div className="premium-modal-content">
+                    <div className="modal-tab-content">
+                        {priceHistoryLoading ? (
+                            <p className="stock-empty-message">Cargando...</p>
+                        ) : priceHistory.length > 0 ? (
+                            <div className="price-history-table-wrap">
+                                <table className="price-history-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Producto</th>
+                                            <th className="text-right">Precio Unit.</th>
+                                            <th className="text-right">Cantidad</th>
+                                            <th className="text-right">Subtotal</th>
+                                            <th>Fecha</th>
+                                            <th>OC#</th>
+                                            <th>Sucursal</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        <p style={{ textAlign: 'center', padding: '32px', color: 'var(--color-neutral-400)' }}>
-                            No hay historial de precios para este proveedor
-                        </p>
-                    )}
+                                    </thead>
+                                    <tbody>
+                                        {priceHistory.map((item, idx: number) => (
+                                            <tr key={idx}>
+                                                <td>
+                                                    <div className="product-cell-name">{item.productName}</div>
+                                                    {item.productSku && <div className="product-cell-sku">{item.productSku}</div>}
+                                                </td>
+                                                <td className="text-right" style={{ fontWeight: 600 }}>${item.unitCost.toFixed(2)}/{item.unit}</td>
+                                                <td className="text-right">{item.quantity.toFixed(2)}</td>
+                                                <td className="text-right">${item.subtotal.toFixed(2)}</td>
+                                                <td>{new Date(item.date).toLocaleDateString('es-ES')}</td>
+                                                <td>#{item.purchaseOrderId}</td>
+                                                <td>{item.branchName || '-'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <p className="stock-empty-message">
+                                No hay historial de precios para este proveedor
+                            </p>
+                        )}
+                    </div>
                 </div>
             </Sidebar>
         </div>

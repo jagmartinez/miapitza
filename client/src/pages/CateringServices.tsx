@@ -217,10 +217,10 @@ export default function CateringServices() {
                 title={editingService ? `Editar: ${editingService.name}` : 'Nuevo Servicio de Catering'}
                 width="normal"
             >
-                <div className="catering-modal-content">
-                    <div className="modal-tab-body" style={{ padding: '20px', overflowY: 'auto' }}>
+                <div className="premium-modal-content">
+                    <div className="modal-tab-content">
                         <div className="animate-slide-in">
-                            <div className="modal-section-v2">
+                            <div className="modal-section">
                                 <h3 className="section-title-v2">Información General</h3>
                                 <div className="modal-input-group">
                                     <label>Nombre del Servicio</label>
@@ -243,7 +243,7 @@ export default function CateringServices() {
                                 </div>
                             </div>
 
-                            <div className="modal-section-v2">
+                            <div className="modal-section">
                                 <h3 className="section-title-v2">Análisis de Costos y Precios</h3>
                                 <div className="modal-form-row">
                                     <div className="modal-input-group">
