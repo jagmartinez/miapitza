@@ -245,11 +245,11 @@ function ReportDetail({ reportId }: { reportId: string }) {
             {/* Header — matches cost-report-header */}
             <div className="cost-report-header">
                 <div className="header-title-section">
-                    <Button variant="ghost" onClick={() => navigate('/reporteria')} style={{ marginBottom: '8px' }}>
+                    <Button variant="ghost" onClick={() => navigate('/reporteria')} className="report-back-btn">
                         <ArrowLeft size={16} /> Volver a Reportería
                     </Button>
                     <h1><reportDef.icon size={32} /> {reportDef.name}</h1>
-                    <p style={{ color: 'var(--color-text-secondary)', margin: '4px 0 0' }}>{reportDef.description}</p>
+                    <p className="report-description">{reportDef.description}</p>
                 </div>
                 <Button onClick={handleExport} disabled={exporting || !data}>
                     {exporting ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
@@ -357,7 +357,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
             {error && !loading && (
                 <div className="reports-empty">
                     <AlertTriangle size={32} />
-                    <p style={{ color: '#ef4444' }}>{error}</p>
+                    <p className="report-error-text">{error}</p>
                     <Button variant="secondary" onClick={loadReport}><RefreshCw size={14} /> Reintentar</Button>
                 </div>
             )}
@@ -401,7 +401,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
                     </div>
 
                     {totalPages > 1 && (
-                        <div className="kardex-pagination" style={{ marginTop: '16px' }}>
+                        <div className="kardex-pagination report-pagination">
                             <Button variant="secondary" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
                                 Anterior
                             </Button>

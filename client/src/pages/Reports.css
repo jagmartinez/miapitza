@@ -161,6 +161,32 @@
     color: var(--color-text-secondary);
 }
 
+/* Detail page utilities */
+.report-back-btn {
+    margin-bottom: 8px;
+}
+
+.report-description {
+    color: var(--color-text-secondary);
+    margin: 4px 0 0;
+    font-size: 0.9rem;
+}
+
+.report-error-text {
+    color: #ef4444;
+    margin: 0;
+}
+
+.report-pagination {
+    margin-top: 16px;
+}
+
+/* Date range inputs — match table-filter-input sizing */
+.cost-report-date-range input[type="date"] {
+    height: 38px;
+    min-width: 150px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .reports-card-grid {

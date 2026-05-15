@@ -338,6 +338,9 @@ a {
   overflow-y: auto;
   padding: var(--spacing-xl);
   background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
 }
 
 .modal-section {
@@ -379,7 +382,8 @@ a {
   gap: var(--spacing-xs);
 }
 
-.modal-input-label {
+.modal-input-label,
+.modal-input-group > label {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
@@ -407,6 +411,27 @@ a {
   border-color: var(--color-primary);
   background: var(--color-surface);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/* Date inputs — native datepicker styling */
+input[type="date"].modal-standard-input,
+input[type="date"].table-filter-input {
+  color-scheme: light;
+}
+
+.dark input[type="date"].modal-standard-input,
+.dark input[type="date"].table-filter-input {
+  color-scheme: dark;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
 }
 
 .modal-textarea {
