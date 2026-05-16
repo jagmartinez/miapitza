@@ -55,6 +55,10 @@ model Company {
   unitsOfMeasure     UnitOfMeasure[]
   productUnits       ProductUnit[]
   salesChannelConfigs SalesChannelConfig[]
+  pedidosYaConfigs    PedidosYaConfig[]
+  pedidosYaMappings   PedidosYaProductMapping[]
+  pedidosYaWebhookLogs PedidosYaWebhookLog[]
+  pedidosYaOrderSyncs PedidosYaOrderSync[]
 }
 
 enum CostingMethod {
@@ -90,6 +94,7 @@ model Branch {
   menuItemPrices MenuItemBranchPrice[]
   cateringEvents CateringEvent[]
   invoiceSequences InvoiceSequence[]
+  pedidosYaConfigs PedidosYaConfig[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -321,6 +326,7 @@ model MenuItem {
   modifierGroups ModifierGroup[]
   branchPrices   MenuItemBranchPrice[]
   cateringMenuItems CateringMenuItem[]
+  pedidosYaMappings PedidosYaProductMapping[]
 
   @@index([companyId, categoryId])
   @@index([branchId])
@@ -491,6 +497,7 @@ model Warehouse {
   branch    Branch?             @relation(fields: [branchId], references: [id])
   stocks    Stock[]
   movements InventoryMovement[]
+  pedidosYaConfigs PedidosYaConfig[]
 
   @@unique([companyId, code])
   @@unique([companyId, branchId, name])
@@ -691,6 +698,7 @@ model Order {
 
   items    OrderItem[]
   payments Payment[]
+  pedidosYaSyncs PedidosYaOrderSync[]
 
   @@index([companyId, branchId])
   @@index([companyId, status])
@@ -1136,6 +1144,93 @@ model ApiKey {
   creator User?   @relation("ApiKeyCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([companyId])
+}
+
+// ==========================================
+// 15. PEDIDOSYA INTEGRATION
+// ==========================================
+
+model PedidosYaConfig {
+  id                Int      @id @default(autoincrement())
+  companyId         Int
+  branchId          Int?
+  clientId          String?
+  clientSecret      String?
+  restaurantId      String?
+  webhookSecret     String?
+  environment       String   @default("sandbox") // sandbox | production
+  autoAcceptOrders  Boolean  @default(false)
+  autoSyncStatus    Boolean  @default(true)
+  defaultWarehouseId Int?
+  active            Boolean  @default(false)
+  accessToken       String?  @db.Text
+  refreshToken      String?  @db.Text
+  tokenExpiresAt    DateTime?
+  lastSyncAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  company   Company   @relation(fields: [companyId], references: [id])
+  branch    Branch?   @relation(fields: [branchId], references: [id])
+  warehouse Warehouse? @relation(fields: [defaultWarehouseId], references: [id])
+
+  @@unique([companyId, branchId])
+  @@index([companyId])
+}
+
+model PedidosYaProductMapping {
+  id             Int      @id @default(autoincrement())
+  companyId      Int
+  externalId     String
+  externalName   String
+  menuItemId     Int?
+  isActive       Boolean  @default(true)
+  lastSyncAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id])
+  menuItem MenuItem? @relation(fields: [menuItemId], references: [id])
+
+  @@unique([companyId, externalId])
+  @@index([companyId])
+  @@index([menuItemId])
+}
+
+model PedidosYaWebhookLog {
+  id            Int      @id @default(autoincrement())
+  companyId     Int
+  eventType     String
+  externalId    String?
+  payload       Json
+  status        String   @default("RECEIVED") // RECEIVED | PROCESSED | FAILED | IGNORED
+  errorMessage  String?  @db.Text
+  processedAt   DateTime?
+  createdAt     DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, createdAt])
+  @@index([externalId])
+}
+
+model PedidosYaOrderSync {
+  id             Int      @id @default(autoincrement())
+  companyId      Int
+  orderId        Int
+  externalId     String
+  externalStatus String?
+  internalStatus String?
+  lastSyncAt     DateTime @default(now())
+  syncDirection  String   @default("INBOUND") // INBOUND | OUTBOUND
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id])
+  order   Order   @relation(fields: [orderId], references: [id])
+
+  @@unique([companyId, externalId])
+  @@index([companyId, orderId])
 }
 
 // Consolidating Customers

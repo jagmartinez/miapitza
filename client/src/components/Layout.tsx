@@ -35,6 +35,7 @@ import {
     Warehouse,
     BarChart3,
     BookOpen,
+    Zap,
     type LucideIcon
 } from 'lucide-react';
 import { getUserAccentColor, getUserRoleNames } from '../utils/authz';
@@ -81,6 +82,7 @@ const NAV_SECTIONS: NavSection[] = [
         section: 'Configuración',
         items: [
             { to: '/branches', icon: MapPin, label: 'Sucursales', roles: ADMIN_ROLES },
+            { to: '/integraciones/pedidosya', icon: Zap, label: 'PedidosYa', roles: ADMIN_ROLES },
             { to: '/companies', icon: Building2, label: 'Empresas', roles: ['SUPERADMIN'] },
             { to: '/settings', icon: Grid3x3, label: 'Configuración', roles: ADMIN_ROLES },
         ],

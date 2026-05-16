@@ -1,6 +1,7 @@
 import prisma from '../utils/prisma';
 import { Prisma } from '@prisma/client';
 import { UnitConversionService } from './unit-conversion.service';
+import { PedidosYaService } from './pedidosya.service';
 
 /** Valid state transitions for orders */
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -598,6 +599,10 @@ export class OrderService {
                 }
             });
         });
+
+        if (updatedOrder.salesChannel === 'PEDIDOSYA') {
+            PedidosYaService.syncOrderStatus(companyId, id, status).catch(() => {});
+        }
 
         return this.withTimeline(updatedOrder);
     }

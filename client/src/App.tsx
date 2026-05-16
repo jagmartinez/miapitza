@@ -63,6 +63,7 @@ const Promotions = lazy(() => import('./pages/Promotions'));
 const WarehousesPage = lazy(() => import('./pages/Warehouses'));
 const CostReport = lazy(() => import('./pages/CostReport'));
 const Reports = lazy(() => import('./pages/Reports'));
+const PedidosYaIntegration = lazy(() => import('./pages/PedidosYaIntegration'));
 const Profile = lazy(() => import('./pages/Profile'));
 const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 
@@ -120,6 +121,7 @@ function App() {
 
                                 {/* Configuration – admin/superadmin */}
                                 <Route path="/branches" element={<RoleGuard roles={ADMIN}><Branches /></RoleGuard>} />
+                                <Route path="/integraciones/pedidosya" element={<RoleGuard roles={ADMIN}><PedidosYaIntegration /></RoleGuard>} />
                                 <Route path="/settings" element={<RoleGuard roles={ADMIN}><Settings /></RoleGuard>} />
                                 <Route path="/roles-permissions" element={<RoleGuard roles={ADMIN}><RolesPermissions /></RoleGuard>} />
                                 <Route path="/companies" element={<RoleGuard roles={['SUPERADMIN']}><Companies /></RoleGuard>} />
