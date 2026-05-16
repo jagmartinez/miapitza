@@ -1,0 +1,48 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Server (Debug)",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/server",
+            "runtimeExecutable": "npx",
+            "runtimeArgs": [
+                "ts-node-dev",
+                "--respawn",
+                "--transpile-only",
+                "src/index.ts"
+            ],
+            "skipFiles": [
+                "<node_internals>/**",
+                "**/node_modules/**"
+            ],
+            "console": "integratedTerminal",
+            "internalConsoleOptions": "neverOpen",
+            "env": {
+                "PORT": "3001"
+            }
+        },
+        {
+            "name": "Chrome: Client",
+            "type": "chrome",
+            "request": "launch",
+            "url": "http://localhost:3000",
+            "webRoot": "${workspaceFolder}/client/src",
+            "sourceMapPathOverrides": {
+                "webpack:///./src/*": "${webRoot}/*"
+            },
+            "skipFiles": [
+                "<node_internals>/**"
+            ]
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Full System (Server + Client)",
+            "configurations": ["Server (Debug)"],
+            "preLaunchTask": "Client: dev",
+            "stopAll": true
+        }
+    ]
+}

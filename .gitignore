@@ -13,7 +13,9 @@ node_modules/
 dist/
 
 # IDE
-.vscode/
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json
 .idea/
 
 # OS files
