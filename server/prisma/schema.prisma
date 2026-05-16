@@ -288,7 +288,7 @@ model Category {
   companyId   Int
   name        String
   description String?
-  codePrefix  String? // e.g. CAR, BEB, LAC — used for auto-generating product SKU
+  codePrefix  String? // e.g. CAR, BEB, LAC - used for auto-generating product SKU
   sortOrder   Int     @default(0)
   active      Boolean @default(true)
 

@@ -19,7 +19,8 @@ const globalLimiter = rateLimit({
         const apiKey = req.headers['x-api-key'];
         if (typeof apiKey === 'string') return `apikey:${apiKey.slice(0, 8)}`;
         return req.ip || 'unknown';
-    }
+    },
+    validate: { keyGeneratorIpFallback: false }
 });
 
 v1.use(globalLimiter);
