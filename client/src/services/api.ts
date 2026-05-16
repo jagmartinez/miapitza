@@ -830,4 +830,26 @@ export const cateringAPI = {
         api.delete(`/catering/${id}`),
 };
 
+// PedidosYa Integration API
+export const pedidosYaAPI = {
+    getConfig: (branchId?: number) =>
+        api.get('/pedidosya/config', { params: { branchId } }),
+    upsertConfig: (data: Record<string, unknown>) =>
+        api.put('/pedidosya/config', data),
+    testConnection: () =>
+        api.post('/pedidosya/test-connection'),
+    syncMenu: () =>
+        api.post('/pedidosya/sync-menu'),
+    getMappings: () =>
+        api.get('/pedidosya/mappings'),
+    upsertMapping: (data: { externalId: string; externalName: string; menuItemId?: number | null; isActive?: boolean }) =>
+        api.put('/pedidosya/mappings', data),
+    deleteMapping: (id: number) =>
+        api.delete(`/pedidosya/mappings/${id}`),
+    getWebhookLogs: (params?: Record<string, unknown>) =>
+        api.get('/pedidosya/webhook-logs', { params }),
+    getOrderSyncs: (params?: Record<string, unknown>) =>
+        api.get('/pedidosya/order-syncs', { params }),
+};
+
 export default api;
