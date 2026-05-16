@@ -543,6 +543,60 @@ export const reportsAPI = {
     exportProfitabilityReport: (params?: Record<string, string>) => api.get('/reports/profitability/export', { params, responseType: 'arraybuffer' }),
     getLowStockReport: (params?: Record<string, string>) => api.get('/reports/low-stock', { params }),
     exportLowStockReport: (params?: Record<string, string>) => api.get('/reports/low-stock/export', { params, responseType: 'arraybuffer' }),
+
+    // Extended Purchase Reports
+    getPurchasesByDay: (params?: Record<string, string>) => api.get('/reports/purchases-by-day', { params }),
+    exportPurchasesByDay: (params?: Record<string, string>) => api.get('/reports/purchases-by-day/export', { params, responseType: 'arraybuffer' }),
+    getPurchasesByMonth: (params?: Record<string, string>) => api.get('/reports/purchases-by-month', { params }),
+    exportPurchasesByMonth: (params?: Record<string, string>) => api.get('/reports/purchases-by-month/export', { params, responseType: 'arraybuffer' }),
+    getPriceComparison: (params?: Record<string, string>) => api.get('/reports/price-comparison', { params }),
+    exportPriceComparison: (params?: Record<string, string>) => api.get('/reports/price-comparison/export', { params, responseType: 'arraybuffer' }),
+    getMostPurchased: (params?: Record<string, string>) => api.get('/reports/most-purchased', { params }),
+    exportMostPurchased: (params?: Record<string, string>) => api.get('/reports/most-purchased/export', { params, responseType: 'arraybuffer' }),
+    getPurchasesBySupplier: (params?: Record<string, string>) => api.get('/reports/purchases-by-supplier', { params }),
+    exportPurchasesBySupplier: (params?: Record<string, string>) => api.get('/reports/purchases-by-supplier/export', { params, responseType: 'arraybuffer' }),
+
+    // Extended Sales Reports
+    getSalesByCategory: (params?: Record<string, string>) => api.get('/reports/sales-by-category', { params }),
+    exportSalesByCategory: (params?: Record<string, string>) => api.get('/reports/sales-by-category/export', { params, responseType: 'arraybuffer' }),
+    getSalesDaily: (params?: Record<string, string>) => api.get('/reports/sales-daily', { params }),
+    exportSalesDaily: (params?: Record<string, string>) => api.get('/reports/sales-daily/export', { params, responseType: 'arraybuffer' }),
+    getSalesMonthly: (params?: Record<string, string>) => api.get('/reports/sales-monthly', { params }),
+    exportSalesMonthly: (params?: Record<string, string>) => api.get('/reports/sales-monthly/export', { params, responseType: 'arraybuffer' }),
+    getSalesByPaymentMethod: (params?: Record<string, string>) => api.get('/reports/sales-by-payment-method', { params }),
+    exportSalesByPaymentMethod: (params?: Record<string, string>) => api.get('/reports/sales-by-payment-method/export', { params, responseType: 'arraybuffer' }),
+    getSalesByWaiter: (params?: Record<string, string>) => api.get('/reports/sales-by-waiter', { params }),
+    exportSalesByWaiter: (params?: Record<string, string>) => api.get('/reports/sales-by-waiter/export', { params, responseType: 'arraybuffer' }),
+    getSalesByChannel: (params?: Record<string, string>) => api.get('/reports/sales-by-channel', { params }),
+    exportSalesByChannel: (params?: Record<string, string>) => api.get('/reports/sales-by-channel/export', { params, responseType: 'arraybuffer' }),
+    getSalesByHour: (params?: Record<string, string>) => api.get('/reports/sales-by-hour', { params }),
+    exportSalesByHour: (params?: Record<string, string>) => api.get('/reports/sales-by-hour/export', { params, responseType: 'arraybuffer' }),
+
+    // Cost Reports
+    getFoodCostByCategory: (params?: Record<string, string>) => api.get('/reports/food-cost-by-category', { params }),
+    exportFoodCostByCategory: (params?: Record<string, string>) => api.get('/reports/food-cost-by-category/export', { params, responseType: 'arraybuffer' }),
+    getMarginByProduct: (params?: Record<string, string>) => api.get('/reports/margin-by-product', { params }),
+    exportMarginByProduct: (params?: Record<string, string>) => api.get('/reports/margin-by-product/export', { params, responseType: 'arraybuffer' }),
+
+    // Audit Reports
+    getAuditReport: (params?: Record<string, string>) => api.get('/reports/audit', { params }),
+    exportAuditReport: (params?: Record<string, string>) => api.get('/reports/audit/export', { params, responseType: 'arraybuffer' }),
+
+    // Decision Reports
+    getDayAnalysis: (params?: Record<string, string>) => api.get('/reports/day-analysis', { params }),
+    exportDayAnalysis: (params?: Record<string, string>) => api.get('/reports/day-analysis/export', { params, responseType: 'arraybuffer' }),
+    getMonthComparison: (params?: Record<string, string>) => api.get('/reports/month-comparison', { params }),
+    exportMonthComparison: (params?: Record<string, string>) => api.get('/reports/month-comparison/export', { params, responseType: 'arraybuffer' }),
+
+    // Production & Engineering Reports
+    getRecipeCostAnalysis: (params?: Record<string, string>) => api.get('/reports/recipe-cost', { params }),
+    exportRecipeCostAnalysis: (params?: Record<string, string>) => api.get('/reports/recipe-cost/export', { params, responseType: 'arraybuffer' }),
+    getProductionYield: (params?: Record<string, string>) => api.get('/reports/production-yield', { params }),
+    exportProductionYield: (params?: Record<string, string>) => api.get('/reports/production-yield/export', { params, responseType: 'arraybuffer' }),
+    getMenuEngineering: (params?: Record<string, string>) => api.get('/reports/menu-engineering', { params }),
+    exportMenuEngineering: (params?: Record<string, string>) => api.get('/reports/menu-engineering/export', { params, responseType: 'arraybuffer' }),
+    getPurchaseProjection: (params?: Record<string, string>) => api.get('/reports/purchase-projection', { params }),
+    exportPurchaseProjection: (params?: Record<string, string>) => api.get('/reports/purchase-projection/export', { params, responseType: 'arraybuffer' }),
 };
 
 // Inventory Movements API
@@ -596,6 +650,16 @@ export const unitsAPI = {
 
     autoConfigureAll: () =>
         api.post('/units/auto-configure-all'),
+};
+
+// Sales Channel Config API
+export const salesChannelsAPI = {
+    getAll: () => api.get('/sales-channels'),
+    upsert: (data: { channel: string; priceMarkupPct: number; commissionPct: number; isActive?: boolean }) =>
+        api.put('/sales-channels', data),
+    ensureDefaults: () => api.post('/sales-channels/ensure-defaults'),
+    calculatePricing: (basePrice: number, channel: string) =>
+        api.get('/sales-channels/calculate-pricing', { params: { basePrice, channel } }),
 };
 
 // Stock Alerts API

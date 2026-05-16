@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { getErrorMessage } from '../utils/error';
+import { AuditLogService } from './audit-log.service';
 
 export class ProductService {
 
@@ -111,6 +112,38 @@ export class ProductService {
         return product;
     }
 
+    static async generateSku(companyId: number, categoryId: number): Promise<string> {
+        const category = await prisma.category.findFirst({
+            where: { id: categoryId, companyId }
+        });
+
+        if (!category) {
+            throw new Error('Categoría no encontrada para generar código');
+        }
+
+        const prefix = category.codePrefix || 'GEN';
+
+        const lastProduct = await prisma.product.findFirst({
+            where: {
+                companyId,
+                sku: { startsWith: `${prefix}-` }
+            },
+            orderBy: { sku: 'desc' },
+            select: { sku: true }
+        });
+
+        let nextNumber = 1;
+        if (lastProduct?.sku) {
+            const parts = lastProduct.sku.split('-');
+            const num = parseInt(parts[parts.length - 1], 10);
+            if (!isNaN(num)) {
+                nextNumber = num + 1;
+            }
+        }
+
+        return `${prefix}-${String(nextNumber).padStart(6, '0')}`;
+    }
+
     static async create(companyId: number, data: {
         name: string;
         sku?: string;
@@ -121,8 +154,11 @@ export class ProductService {
         price?: number;
         type?: 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH';
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE';
-    }) {
-        // Check if SKU already exists in the same company
+    }, userId?: number) {
+        if (!data.sku && data.categoryId) {
+            data.sku = await this.generateSku(companyId, data.categoryId);
+        }
+
         if (data.sku) {
             const existing = await prisma.product.findFirst({
                 where: { sku: data.sku, companyId }
@@ -133,7 +169,7 @@ export class ProductService {
             }
         }
 
-        return await prisma.product.create({
+        const product = await prisma.product.create({
             data: {
                 ...data,
                 companyId,
@@ -150,6 +186,15 @@ export class ProductService {
                 }
             }
         });
+
+        if (userId) {
+            AuditLogService.log({
+                companyId, userId, entityType: 'Product', entityId: product.id,
+                action: 'CREATE', details: { name: product.name, sku: product.sku }
+            }).catch(() => {});
+        }
+
+        return product;
     }
 
     static async update(id: number, companyId: number, data: {
@@ -163,7 +208,7 @@ export class ProductService {
         type?: 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH';
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE' | null;
         active?: boolean;
-    }) {
+    }, userId?: number) {
         // Check if new SKU already exists in the same company
         if (data.sku) {
             const existing = await prisma.product.findFirst({
@@ -179,10 +224,9 @@ export class ProductService {
             }
         }
 
-        // Verify ownership
-        await this.getById(id, companyId);
+        const existing = await this.getById(id, companyId);
 
-        return await prisma.product.update({
+        const product = await prisma.product.update({
             where: { id },
             data,
             include: {
@@ -194,9 +238,24 @@ export class ProductService {
                 }
             }
         });
+
+        if (userId) {
+            const diff = AuditLogService.buildDiff(
+                { name: existing.name, sku: (existing as Record<string, unknown>).sku, cost: (existing as Record<string, unknown>).cost, active: (existing as Record<string, unknown>).active },
+                data as Record<string, unknown>
+            );
+            if (Object.keys(diff).length > 0) {
+                AuditLogService.log({
+                    companyId, userId, entityType: 'Product', entityId: id,
+                    action: 'UPDATE', details: diff
+                }).catch(() => {});
+            }
+        }
+
+        return product;
     }
 
-    static async delete(id: number, companyId: number) {
+    static async delete(id: number, companyId: number, userId?: number) {
         // Check if product has stock or is used in recipes
         const product = await prisma.product.findFirst({
             where: { id, companyId },
@@ -218,9 +277,18 @@ export class ProductService {
             throw new Error('Cannot delete product used in recipes');
         }
 
-        return await prisma.product.delete({
+        const deleted = await prisma.product.delete({
             where: { id },
         });
+
+        if (userId) {
+            AuditLogService.log({
+                companyId, userId, entityType: 'Product', entityId: id,
+                action: 'DELETE', details: { name: product.name, sku: (product as Record<string, unknown>).sku }
+            }).catch(() => {});
+        }
+
+        return deleted;
     }
 
     static async getLowStock(companyId: number, branchId?: number) {

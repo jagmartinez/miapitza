@@ -73,4 +73,18 @@ export class CategoryController {
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
+
+    static async ensureDefaults(req: Request, res: Response, next: NextFunction) {
+        try {
+            const companyId = req.user!.companyId;
+            const result = await CategoryService.ensureDefaultCategories(companyId);
+            res.json({
+                success: true,
+                message: 'Categorías verificadas/creadas exitosamente',
+                data: result
+            });
+        } catch (error: unknown) {
+            next({ statusCode: 500, message: getErrorMessage(error) });
+        }
+    }
 }

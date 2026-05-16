@@ -80,6 +80,7 @@ export const updateUser: ValidationSchema = {
 export const createCategory: ValidationSchema = {
     body: {
         name: { type: 'string', required: true, min: 1, max: 100 },
+        codePrefix: { type: 'string', required: false, min: 2, max: 10 },
     },
 };
 

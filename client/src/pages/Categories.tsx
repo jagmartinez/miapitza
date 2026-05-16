@@ -11,6 +11,7 @@ interface CategoryRow {
     id: number;
     name: string;
     description?: string;
+    codePrefix?: string;
     sortOrder?: number;
     active: boolean;
     _count?: {
@@ -30,6 +31,7 @@ export default function Categories() {
     const [formData, setFormData] = useState({
         name: '',
         description: '',
+        codePrefix: '',
         sortOrder: 0,
         active: true
     });
@@ -89,6 +91,7 @@ export default function Categories() {
             setFormData({
                 name: category.name,
                 description: category.description || '',
+                codePrefix: category.codePrefix || '',
                 sortOrder: category.sortOrder || 0,
                 active: category.active
             });
@@ -97,6 +100,7 @@ export default function Categories() {
             setFormData({
                 name: '',
                 description: '',
+                codePrefix: '',
                 sortOrder: categories.length,
                 active: true
             });
@@ -143,6 +147,12 @@ export default function Categories() {
                                     <List size={16} />
                                     <span>{category._count?.menuItems || 0} Platos asociados</span>
                                 </div>
+                                {category.codePrefix && (
+                                    <div className="detail-item">
+                                        <Tag size={16} />
+                                        <span>Prefijo: <strong>{category.codePrefix}</strong></span>
+                                    </div>
+                                )}
                                 <div className="detail-item">
                                     <Tag size={16} />
                                     <span>Orden: {category.sortOrder}</span>
@@ -234,6 +244,21 @@ export default function Categories() {
                                             required
                                             autoFocus
                                         />
+                                    </div>
+
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label">Prefijo de Código (SKU)</label>
+                                        <input
+                                            type="text"
+                                            className="modal-standard-input"
+                                            value={formData.codePrefix}
+                                            onChange={e => setFormData({ ...formData, codePrefix: e.target.value.toUpperCase().replace(/[^A-Z]/g, '').substring(0, 10) })}
+                                            placeholder="Ej: CAR, BEB, VEG..."
+                                            maxLength={10}
+                                        />
+                                        <p style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
+                                            Se usa para generar códigos automáticos en productos (ej: CAR-000001). Solo letras, máx 10 caracteres.
+                                        </p>
                                     </div>
 
                                     <div className="modal-input-group">
