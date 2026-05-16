@@ -1,13 +1,21 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { settingsAPI, uploadAPI, backupAPI } from '../services/api';
+import { settingsAPI, uploadAPI, backupAPI, salesChannelsAPI } from '../services/api';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import Input from '../components/Input';
-import { Settings as SettingsIcon, Building2, FileText, Users, Database, Upload } from 'lucide-react';
+import { Settings as SettingsIcon, Building2, FileText, Users, Database, Upload, Truck } from 'lucide-react';
 import './Settings.css';
 
-type SettingsTab = 'general' | 'company' | 'invoice' | 'roles' | 'system';
+interface SalesChannelConfig {
+    id?: number;
+    channel: string;
+    priceMarkupPct: number;
+    commissionPct: number;
+    isActive: boolean;
+}
+
+type SettingsTab = 'general' | 'company' | 'invoice' | 'roles' | 'channels' | 'system';
 
 export default function Settings() {
     const navigate = useNavigate();
@@ -16,6 +24,8 @@ export default function Settings() {
     const [saving, setSaving] = useState(false);
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string>('');
+    const [channels, setChannels] = useState<SalesChannelConfig[]>([]);
+    const [channelsLoading, setChannelsLoading] = useState(false);
 
     const [formData, setFormData] = useState({
         // General
@@ -45,6 +55,7 @@ export default function Settings() {
 
     useEffect(() => {
         loadSettings();
+        loadChannels();
     }, []);
 
     const loadSettings = async () => {
@@ -75,6 +86,45 @@ export default function Settings() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const loadChannels = async () => {
+        try {
+            setChannelsLoading(true);
+            const res = await salesChannelsAPI.getAll();
+            setChannels(res.data.data || []);
+        } catch {
+            console.error('Error loading sales channels');
+        } finally {
+            setChannelsLoading(false);
+        }
+    };
+
+    const handleEnsureDefaults = async () => {
+        try {
+            await salesChannelsAPI.ensureDefaults();
+            await loadChannels();
+        } catch {
+            alert('Error al crear canales por defecto');
+        }
+    };
+
+    const handleChannelSave = async (channel: SalesChannelConfig) => {
+        try {
+            await salesChannelsAPI.upsert({
+                channel: channel.channel,
+                priceMarkupPct: channel.priceMarkupPct,
+                commissionPct: channel.commissionPct,
+                isActive: channel.isActive,
+            });
+            await loadChannels();
+        } catch {
+            alert('Error al guardar configuración del canal');
+        }
+    };
+
+    const updateChannelField = (index: number, field: keyof SalesChannelConfig, value: unknown) => {
+        setChannels(prev => prev.map((ch, i) => i === index ? { ...ch, [field]: value } : ch));
     };
 
     const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -127,6 +177,7 @@ export default function Settings() {
         { id: 'company' as SettingsTab, label: 'Empresa', icon: <Building2 size={18} /> },
         { id: 'invoice' as SettingsTab, label: 'Facturación', icon: <FileText size={18} /> },
         { id: 'roles' as SettingsTab, label: 'Roles y Permisos', icon: <Users size={18} /> },
+        { id: 'channels' as SettingsTab, label: 'Canales de Venta', icon: <Truck size={18} /> },
         { id: 'system' as SettingsTab, label: 'Sistema', icon: <Database size={18} /> }
     ];
 
@@ -286,6 +337,81 @@ export default function Settings() {
                                 <Users size={18} />
                                 Gestionar Roles y Permisos
                             </Button>
+                        </div>
+                    )}
+
+                    {activeTab === 'channels' && (
+                        <div className="settings-section">
+                            <h3>Canales de Venta</h3>
+                            <p className="section-description">
+                                Configura las comisiones y markup de precio para cada canal de venta (PedidosYa, Delivery propio, etc.).
+                            </p>
+
+                            {channelsLoading ? (
+                                <p>Cargando canales...</p>
+                            ) : channels.length === 0 ? (
+                                <div>
+                                    <p style={{ marginBottom: '12px', color: 'var(--color-text-secondary)' }}>
+                                        No hay canales configurados. Crea los canales predeterminados para comenzar.
+                                    </p>
+                                    <Button type="button" variant="primary" onClick={handleEnsureDefaults}>
+                                        <Truck size={18} />
+                                        Crear Canales por Defecto
+                                    </Button>
+                                </div>
+                            ) : (
+                                <div className="channels-grid">
+                                    {channels.map((ch, idx) => (
+                                        <div key={ch.channel} className="channel-card" style={{
+                                            border: '1px solid var(--color-border)',
+                                            borderRadius: '8px',
+                                            padding: '16px',
+                                            marginBottom: '12px',
+                                            opacity: ch.isActive ? 1 : 0.6
+                                        }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                                <h4 style={{ margin: 0 }}>{ch.channel.replace('_', ' ')}</h4>
+                                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={ch.isActive}
+                                                        onChange={(e) => updateChannelField(idx, 'isActive', e.target.checked)}
+                                                    />
+                                                    Activo
+                                                </label>
+                                            </div>
+                                            <div className="form-row" style={{ gap: '12px' }}>
+                                                <Input
+                                                    label="Markup de Precio (%)"
+                                                    type="number"
+                                                    step="0.1"
+                                                    min="0"
+                                                    max="100"
+                                                    value={String(ch.priceMarkupPct)}
+                                                    onChange={(e) => updateChannelField(idx, 'priceMarkupPct', parseFloat(e.target.value) || 0)}
+                                                />
+                                                <Input
+                                                    label="Comisión del Canal (%)"
+                                                    type="number"
+                                                    step="0.1"
+                                                    min="0"
+                                                    max="100"
+                                                    value={String(ch.commissionPct)}
+                                                    onChange={(e) => updateChannelField(idx, 'commissionPct', parseFloat(e.target.value) || 0)}
+                                                />
+                                            </div>
+                                            <Button
+                                                type="button"
+                                                variant="secondary"
+                                                onClick={() => handleChannelSave(ch)}
+                                                style={{ marginTop: '8px' }}
+                                            >
+                                                Guardar Canal
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
 

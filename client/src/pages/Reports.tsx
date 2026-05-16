@@ -74,9 +74,14 @@ const REPORT_CATALOG: ReportDef[] = [
     // Toma de Decisiones
     { id: 'day-analysis', name: 'Análisis por Día', description: 'Días más fuertes y débiles de la semana para planificación.', icon: Calendar, category: 'Decisiones' },
     { id: 'month-comparison', name: 'Comparación Mes vs Mes', description: 'Compara ventas entre dos meses con variación absoluta y porcentual.', icon: GitCompare, category: 'Decisiones' },
+    // Producción
+    { id: 'recipe-cost', name: 'Costos de Recetas', description: 'Desglose de costo por ingredientes de cada platillo con food cost %.', icon: FileText, category: 'Producción' },
+    { id: 'production-yield', name: 'Rendimiento de Producción', description: 'Porciones posibles con stock actual y ingrediente limitante.', icon: Package, category: 'Producción' },
+    { id: 'menu-engineering', name: 'Productos Estrella', description: 'Clasificación BCG: Estrellas, Puzzles, Caballos de Trabajo y Perros.', icon: TrendingUp, category: 'Producción' },
+    { id: 'purchase-projection', name: 'Proyección de Compras', description: 'Estimación de necesidades de compra basado en velocidad de ventas.', icon: ShoppingCart, category: 'Producción' },
 ];
 
-const CATEGORIES_ORDER = ['Inventario', 'Compras', 'Ventas', 'Costos', 'Auditoría', 'Decisiones'];
+const CATEGORIES_ORDER = ['Inventario', 'Compras', 'Ventas', 'Costos', 'Producción', 'Auditoría', 'Decisiones'];
 
 function downloadBlob(data: ArrayBuffer, filename: string) {
     const blob = new Blob([data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -225,6 +230,10 @@ function ReportDetail({ reportId }: { reportId: string }) {
                 case 'audit': res = await reportsAPI.getAuditReport(params); break;
                 case 'day-analysis': res = await reportsAPI.getDayAnalysis(params); break;
                 case 'month-comparison': res = await reportsAPI.getMonthComparison(params); break;
+                case 'recipe-cost': res = await reportsAPI.getRecipeCostAnalysis(params); break;
+                case 'production-yield': res = await reportsAPI.getProductionYield(params); break;
+                case 'menu-engineering': res = await reportsAPI.getMenuEngineering(params); break;
+                case 'purchase-projection': res = await reportsAPI.getPurchaseProjection(params); break;
                 default: throw new Error('Reporte no encontrado');
             }
             setData(res.data.data);
@@ -266,6 +275,10 @@ function ReportDetail({ reportId }: { reportId: string }) {
                 case 'audit': res = await reportsAPI.exportAuditReport(params); break;
                 case 'day-analysis': res = await reportsAPI.exportDayAnalysis(params); break;
                 case 'month-comparison': res = await reportsAPI.exportMonthComparison(params); break;
+                case 'recipe-cost': res = await reportsAPI.exportRecipeCostAnalysis(params); break;
+                case 'production-yield': res = await reportsAPI.exportProductionYield(params); break;
+                case 'menu-engineering': res = await reportsAPI.exportMenuEngineering(params); break;
+                case 'purchase-projection': res = await reportsAPI.exportPurchaseProjection(params); break;
                 default: return;
             }
             downloadBlob(res.data, `reporte_${reportId}_${todayStr()}.xlsx`);
@@ -485,16 +498,19 @@ const DATE_FILTER_REPORTS = new Set([
     'most-purchased', 'purchases-by-supplier', 'sales-by-category', 'sales-daily',
     'sales-monthly', 'sales-by-payment-method', 'sales-by-waiter', 'sales-by-channel',
     'sales-by-hour', 'food-cost-by-category', 'margin-by-product', 'audit', 'day-analysis',
+    'menu-engineering', 'purchase-projection',
 ]);
 const BRANCH_FILTER_REPORTS = new Set([
     'purchases', 'sales', 'purchases-by-day', 'purchases-by-month', 'most-purchased',
     'purchases-by-supplier', 'sales-by-category', 'sales-daily', 'sales-monthly',
     'sales-by-payment-method', 'sales-by-waiter', 'sales-by-channel', 'sales-by-hour',
     'food-cost-by-category', 'margin-by-product', 'day-analysis', 'month-comparison',
+    'recipe-cost', 'production-yield', 'menu-engineering', 'purchase-projection',
 ]);
 const CATEGORY_FILTER_REPORTS = new Set([
     'inventory', 'purchases', 'sales', 'profitability', 'low-stock',
     'price-comparison', 'sales-by-category', 'margin-by-product',
+    'recipe-cost',
 ]);
 const SUPPLIER_FILTER_REPORTS = new Set([
     'purchases', 'purchases-by-day', 'purchases-by-month', 'price-comparison',
@@ -695,6 +711,42 @@ function getColumns(reportId: string): ColDef[] {
             { key: 'totalSales', header: 'Ventas', align: 'right', format: 'currency' },
             { key: 'orderCount', header: '# Órdenes', align: 'right', format: 'number' },
         ];
+        case 'recipe-cost': return [
+            { key: 'menuItemName', header: 'Plato' },
+            { key: 'category', header: 'Categoría' },
+            { key: 'price', header: 'Precio', align: 'right', format: 'currency' },
+            { key: 'totalCost', header: 'Costo', align: 'right', format: 'currency' },
+            { key: 'margin', header: 'Margen', align: 'right', format: 'currency' },
+            { key: 'foodCostPct', header: 'Food Cost %', align: 'right', format: 'percent' },
+            { key: 'ingredientCount', header: '# Ingred.', align: 'right', format: 'number' },
+        ];
+        case 'production-yield': return [
+            { key: 'menuItemName', header: 'Plato' },
+            { key: 'category', header: 'Categoría' },
+            { key: 'maxPortions', header: 'Porciones Posibles', align: 'right', format: 'number' },
+            { key: 'limitingIngredient', header: 'Ingrediente Limitante' },
+            { key: 'ingredientCount', header: '# Ingred.', align: 'right', format: 'number' },
+        ];
+        case 'menu-engineering': return [
+            { key: 'menuItemName', header: 'Plato' },
+            { key: 'classification', header: 'Clasificación' },
+            { key: 'price', header: 'Precio', align: 'right', format: 'currency' },
+            { key: 'cost', header: 'Costo', align: 'right', format: 'currency' },
+            { key: 'margin', header: 'Margen', align: 'right', format: 'currency' },
+            { key: 'qtySold', header: 'Qty Vendida', align: 'right', format: 'number' },
+            { key: 'revenue', header: 'Ingresos', align: 'right', format: 'currency' },
+            { key: 'totalProfit', header: 'Ganancia', align: 'right', format: 'currency' },
+        ];
+        case 'purchase-projection': return [
+            { key: 'productName', header: 'Producto' },
+            { key: 'category', header: 'Categoría' },
+            { key: 'unit', header: 'Unidad' },
+            { key: 'currentStock', header: 'Stock Actual', align: 'right', format: 'number' },
+            { key: 'dailyUsage', header: 'Uso Diario', align: 'right', format: 'number' },
+            { key: 'suggestedPurchase', header: 'Compra Sugerida', align: 'right', format: 'number' },
+            { key: 'daysUntilStockout', header: 'Días p/ Agotar', align: 'right', format: 'number' },
+            { key: 'estimatedCost', header: 'Costo Est.', align: 'right', format: 'currency' },
+        ];
         default: return [];
     }
 }
@@ -752,6 +804,15 @@ function formatSummaryLabel(key: string): string {
         weakestDay: 'Día Más Débil', salesMonthA: 'Ventas Mes A',
         salesMonthB: 'Ventas Mes B', absoluteVariation: 'Variación Absoluta',
         percentVariation: 'Variación %',
+        // Production reports
+        totalMenuItems: 'Total Platillos', withRecipes: 'Con Recetas',
+        withoutRecipes: 'Sin Recetas', avgFoodCostPct: 'Food Cost Promedio %',
+        highCostItems: 'Alto Costo (>35%)', totalPossiblePortions: 'Porciones Posibles',
+        itemsWithZeroStock: 'Sin Stock', avgPortionsPerItem: 'Prom. Porciones',
+        totalAnalyzed: 'Total Analizados', stars: 'Estrellas', puzzles: 'Puzzles',
+        horses: 'Caballos', dogs: 'Perros', avgQtySold: 'Prom. Qty Vendida',
+        projectionDays: 'Días Proyección', urgentItems: 'Urgentes (≤3 días)',
+        estimatedTotalCost: 'Costo Estimado Total', avgDaysUntilStockout: 'Prom. Días p/ Agotar',
     };
     return map[key] || key;
 }

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { ReportController } from '../controllers/report.controller';
 import { ReportExtendedController } from '../controllers/report-extended.controller';
+import { ReportProductionController } from '../controllers/report-production.controller';
 import { authMiddleware, requireRole } from '../middlewares/auth';
 
 const router = Router();
@@ -80,5 +81,15 @@ router.get('/day-analysis', requireRole('SUPERADMIN', 'ADMIN'), ReportExtendedCo
 router.get('/day-analysis/export', requireRole('SUPERADMIN', 'ADMIN'), ReportExtendedController.exportDayAnalysis);
 router.get('/month-comparison', requireRole('SUPERADMIN', 'ADMIN'), ReportExtendedController.getMonthComparison);
 router.get('/month-comparison/export', requireRole('SUPERADMIN', 'ADMIN'), ReportExtendedController.exportMonthComparison);
+
+// ── Production & Engineering Reports ──
+router.get('/recipe-cost', requireRole('SUPERADMIN', 'ADMIN'), ReportProductionController.getRecipeCostAnalysis);
+router.get('/recipe-cost/export', requireRole('SUPERADMIN', 'ADMIN'), ReportProductionController.exportRecipeCostAnalysis);
+router.get('/production-yield', requireRole('SUPERADMIN', 'ADMIN'), ReportProductionController.getProductionYield);
+router.get('/production-yield/export', requireRole('SUPERADMIN', 'ADMIN'), ReportProductionController.exportProductionYield);
+router.get('/menu-engineering', requireRole('SUPERADMIN', 'ADMIN'), ReportProductionController.getMenuEngineering);
+router.get('/menu-engineering/export', requireRole('SUPERADMIN', 'ADMIN'), ReportProductionController.exportMenuEngineering);
+router.get('/purchase-projection', requireRole('SUPERADMIN', 'ADMIN'), ReportProductionController.getPurchaseProjection);
+router.get('/purchase-projection/export', requireRole('SUPERADMIN', 'ADMIN'), ReportProductionController.exportPurchaseProjection);
 
 export default router;

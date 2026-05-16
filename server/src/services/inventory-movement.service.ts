@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
+import { AuditLogService } from './audit-log.service';
 
 export class InventoryMovementService {
     static async getAll(companyId: number, filters?: {
@@ -278,6 +279,13 @@ export class InventoryMovementService {
                     }
                 }
             });
+
+            AuditLogService.log({
+                companyId, userId: data.userId,
+                entityType: 'InventoryMovement', entityId: movement.id,
+                action: data.type === 'TRANSFER' ? 'TRANSFER' : 'CREATE',
+                details: { type: data.type, productId: data.productId, warehouseId: data.warehouseId, quantity: baseQuantity, reason: data.reason }
+            }).catch(() => {});
 
             return movement;
         });

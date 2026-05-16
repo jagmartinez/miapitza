@@ -587,6 +587,16 @@ export const reportsAPI = {
     exportDayAnalysis: (params?: Record<string, string>) => api.get('/reports/day-analysis/export', { params, responseType: 'arraybuffer' }),
     getMonthComparison: (params?: Record<string, string>) => api.get('/reports/month-comparison', { params }),
     exportMonthComparison: (params?: Record<string, string>) => api.get('/reports/month-comparison/export', { params, responseType: 'arraybuffer' }),
+
+    // Production & Engineering Reports
+    getRecipeCostAnalysis: (params?: Record<string, string>) => api.get('/reports/recipe-cost', { params }),
+    exportRecipeCostAnalysis: (params?: Record<string, string>) => api.get('/reports/recipe-cost/export', { params, responseType: 'arraybuffer' }),
+    getProductionYield: (params?: Record<string, string>) => api.get('/reports/production-yield', { params }),
+    exportProductionYield: (params?: Record<string, string>) => api.get('/reports/production-yield/export', { params, responseType: 'arraybuffer' }),
+    getMenuEngineering: (params?: Record<string, string>) => api.get('/reports/menu-engineering', { params }),
+    exportMenuEngineering: (params?: Record<string, string>) => api.get('/reports/menu-engineering/export', { params, responseType: 'arraybuffer' }),
+    getPurchaseProjection: (params?: Record<string, string>) => api.get('/reports/purchase-projection', { params }),
+    exportPurchaseProjection: (params?: Record<string, string>) => api.get('/reports/purchase-projection/export', { params, responseType: 'arraybuffer' }),
 };
 
 // Inventory Movements API

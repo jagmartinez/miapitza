@@ -1,4 +1,5 @@
 import prisma from '../utils/prisma';
+import { AuditLogService } from './audit-log.service';
 
 export class RoleService {
     static async getAll(companyId: number) {
@@ -38,10 +39,10 @@ export class RoleService {
         name: string;
         description?: string;
         permissionIds?: number[];
-    }) {
+    }, userId?: number) {
         const { permissionIds, ...roleData } = data;
 
-        return await prisma.role.create({
+        const role = await prisma.role.create({
             data: {
                 ...roleData,
                 companyId,
@@ -53,16 +54,25 @@ export class RoleService {
                 permissions: true
             }
         });
+
+        if (userId) {
+            AuditLogService.log({
+                companyId, userId, entityType: 'Role', entityId: role.id,
+                action: 'CREATE', details: { name: role.name, permissionIds }
+            }).catch(() => {});
+        }
+
+        return role;
     }
 
     static async update(id: number, companyId: number, data: {
         name?: string;
         description?: string;
         permissionIds?: number[];
-    }) {
+    }, userId?: number) {
         const { permissionIds, ...roleData } = data;
 
-        return await prisma.role.update({
+        const role = await prisma.role.update({
             where: { id },
             data: {
                 ...roleData,
@@ -74,6 +84,16 @@ export class RoleService {
                 permissions: true
             }
         });
+
+        if (userId) {
+            AuditLogService.log({
+                companyId, userId, entityType: 'Role', entityId: id,
+                action: permissionIds ? 'PERMISSION_CHANGE' : 'UPDATE',
+                details: { name: data.name, permissionIds }
+            }).catch(() => {});
+        }
+
+        return role;
     }
 
     static async delete(id: number, companyId: number) {
