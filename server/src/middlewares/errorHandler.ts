@@ -30,6 +30,8 @@ const SAFE_ERROR_MESSAGES = new Set([
     'Usuario y contraseña son requeridos',
     'Contraseña actual y nueva son requeridas',
     'Código 2FA inválido',
+    'JWT_SECRET environment variable is not configured',
+    'No se pudo conectar a la base de datos. Arranca MySQL o revisa DATABASE_URL.',
     'Cuenta bloqueada temporalmente',
     'Código inválido',
     'La nueva contraseña debe ser diferente a la actual',
@@ -94,9 +96,11 @@ export const errorHandler = (
     // Only forward safe messages to client; generic message for everything else
     const message = statusCode < 500 && isSafeMessage(rawMessage)
         ? rawMessage
-        : statusCode >= 500
-            ? 'Error interno del servidor'
-            : rawMessage.length < 200 && isSafeMessage(rawMessage) ? rawMessage : 'Ocurrió un error';
+        : statusCode === 503 && isSafeMessage(rawMessage)
+            ? rawMessage
+            : statusCode >= 500
+                ? 'Error interno del servidor'
+                : rawMessage.length < 200 && isSafeMessage(rawMessage) ? rawMessage : 'Ocurrió un error';
 
     res.status(statusCode).json({
         success: false,

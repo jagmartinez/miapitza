@@ -218,12 +218,12 @@ export default function Menu() {
         setSelectedIngredientUnit(defaultUnit?.abbreviation || product?.unit || '');
       } else {
         const baseUnit = product?.unit || 'unidad';
-        setIngredientUnits([{ id: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
+        setIngredientUnits([{ unitId: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }]);
         setSelectedIngredientUnit(baseUnit);
       }
     } catch {
       const baseUnit = product?.unit || 'unidad';
-      setIngredientUnits([{ id: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
+      setIngredientUnits([{ unitId: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }]);
       setSelectedIngredientUnit(baseUnit);
     }
   }, [products]);
@@ -543,7 +543,7 @@ export default function Menu() {
 
                     <Select
                       variant="modal"
-                      label="Sucursal (dejar vacío = menú global)"
+                      label="Sucursal"
                       options={[
                         { value: '', label: 'Todas las Sucursales (Global)' },
                         ...branches.map((b) => ({ value: b.id.toString(), label: b.name }))

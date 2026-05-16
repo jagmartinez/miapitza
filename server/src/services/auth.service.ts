@@ -159,17 +159,17 @@ export class AuthService {
 
         if (!user) {
             recordFailedAttempt(username);
-            throw new Error('Invalid credentials');
+            throw new Error('Credenciales inválidas');
         }
         if (user.status !== 'ACTIVE') {
             recordFailedAttempt(username);
-            throw new Error('Invalid credentials'); // Don't reveal account status
+            throw new Error('Credenciales inválidas'); // Don't reveal account status
         }
 
         const isValidPassword = await bcrypt.compare(password, user.password);
         if (!isValidPassword) {
             recordFailedAttempt(username);
-            throw new Error('Invalid credentials');
+            throw new Error('Credenciales inválidas');
         }
 
         // 2FA check: if enabled, require code
@@ -187,7 +187,7 @@ export class AuthService {
             }
             if (!valid2FA) {
                 recordFailedAttempt(username);
-                throw new Error('Invalid 2FA code');
+                throw new Error('Código 2FA inválido');
             }
         }
 

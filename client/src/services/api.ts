@@ -116,9 +116,17 @@ api.interceptors.response.use(
         }
 
         if (error.response?.status === 401) {
+            const requestUrl = error.config?.url || '';
+            const isLoginRequest = requestUrl.startsWith('/auth/login');
+            const isOnLoginPage = window.location.pathname === '/login';
+
             localStorage.removeItem('token');
             localStorage.removeItem('user');
-            window.location.href = '/login';
+            localStorage.removeItem('authFlags');
+
+            if (!isLoginRequest && !isOnLoginPage) {
+                window.location.href = '/login';
+            }
         }
 
         // Handle GET failure due to network (offline fallback with TTL check)

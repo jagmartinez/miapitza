@@ -9,6 +9,8 @@ import './Login.css';
 function translateError(msg: string): string {
     const map: Record<string, string> = {
         'Invalid credentials': 'Usuario o contraseña incorrectos',
+        'Credenciales inválidas': 'Usuario o contraseña incorrectos',
+        'Código 2FA inválido': 'Código de verificación incorrecto',
         'Login failed': 'Error al iniciar sesión. Intenta de nuevo.',
         'User account is inactive': 'Tu cuenta está desactivada. Contacta al administrador.',
         'JWT_SECRET environment variable is not configured': 'Error de configuración del servidor.',

@@ -113,6 +113,16 @@ export class AuthController {
 
             res.json({ success: true, message: 'Inicio de sesión exitoso', data: result });
         } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            if (msg.includes('JWT_SECRET')) {
+                return next({ statusCode: 401, message: 'JWT_SECRET environment variable is not configured' });
+            }
+            if (/prisma|ECONNREFUSED|P1001|P1017|can.t reach database/i.test(msg)) {
+                return next({
+                    statusCode: 503,
+                    message: 'No se pudo conectar a la base de datos. Arranca MySQL o revisa DATABASE_URL.',
+                });
+            }
             next({ statusCode: 401, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }

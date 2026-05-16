@@ -5,6 +5,13 @@ export default defineConfig({
     plugins: [react()],
     server: {
         port: 3000,
+        // Explicit HMR endpoint avoids flaky WebSocket upgrades on some Windows setups / extensions.
+        hmr: {
+            protocol: 'ws',
+            host: 'localhost',
+            port: 3000,
+            clientPort: 3000,
+        },
         proxy: {
             '/api': {
                 target: 'http://localhost:3001',
