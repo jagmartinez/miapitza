@@ -187,9 +187,43 @@
     min-width: 150px;
 }
 
+/* KPI summary cards */
+.cost-report-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin: 20px 0;
+}
+
+.cost-kpi-card {
+    padding: 20px;
+    border-radius: 12px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+}
+
+.cost-kpi-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-text-secondary);
+    font-size: 0.85rem;
+    margin-bottom: 8px;
+}
+
+.cost-kpi-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--color-text);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .reports-card-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .cost-report-kpi-grid {
         grid-template-columns: 1fr;
     }
 }
