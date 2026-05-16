@@ -3,7 +3,6 @@ import { pedidosYaAPI, menuAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import Input from '../components/Input';
-import Select from '../components/Select';
 import {
     Settings, Zap, Link2, RefreshCw, CheckCircle, XCircle,
     Package, AlertTriangle, Clock, ArrowRightLeft, Search, Plus, Trash2
@@ -246,15 +245,15 @@ export default function PedidosYaIntegration() {
                                     placeholder="ID del restaurante en PedidosYa"
                                 />
                                 <div className="input-group">
-                                    <Select
-                                        label="Ambiente"
+                                    <label className="input-label">Ambiente</label>
+                                    <select
+                                        className="modal-standard-input"
                                         value={config.environment}
                                         onChange={e => setConfig({ ...config, environment: e.target.value })}
-                                        options={[
-                                            { value: 'sandbox', label: 'Sandbox (Pruebas)' },
-                                            { value: 'production', label: 'Producción' },
-                                        ]}
-                                    />
+                                    >
+                                        <option value="sandbox">Sandbox (Pruebas)</option>
+                                        <option value="production">Producción</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>
