@@ -51,10 +51,20 @@ api.interceptors.request.use(
 
         // CSRF: read cookie and send as header on mutations
         if (requestConfig.method !== 'get' && requestConfig.method !== 'GET') {
-            const csrfToken = document.cookie
+            let csrfToken = document.cookie
                 .split('; ')
                 .find(c => c.startsWith('csrf_token='))
                 ?.split('=')[1];
+            // If no CSRF cookie yet, fetch one via a lightweight GET
+            if (!csrfToken) {
+                try {
+                    await api.get('/health');
+                    csrfToken = document.cookie
+                        .split('; ')
+                        .find(c => c.startsWith('csrf_token='))
+                        ?.split('=')[1];
+                } catch { /* proceed without — server exempts login */ }
+            }
             if (csrfToken) {
                 requestConfig.headers['x-csrf-token'] = decodeURIComponent(csrfToken);
             }
