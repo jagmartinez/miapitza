@@ -13,5 +13,6 @@ router.get('/:id', validate(s.idParam), CategoryController.getById);
 router.post('/', requireRole('ADMIN', 'SUPERADMIN', 'CHEF'), validate(s.createCategory), CategoryController.create);
 router.put('/:id', requireRole('ADMIN', 'SUPERADMIN', 'CHEF'), validate(s.idParam), CategoryController.update);
 router.delete('/:id', requireRole('ADMIN', 'SUPERADMIN', 'CHEF'), validate(s.idParam), CategoryController.delete);
+router.post('/ensure-defaults', requireRole('ADMIN', 'SUPERADMIN'), CategoryController.ensureDefaults);
 
 export default router;

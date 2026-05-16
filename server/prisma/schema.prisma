@@ -54,6 +54,7 @@ model Company {
   apiKeys            ApiKey[]
   unitsOfMeasure     UnitOfMeasure[]
   productUnits       ProductUnit[]
+  salesChannelConfigs SalesChannelConfig[]
 }
 
 enum CostingMethod {
@@ -282,6 +283,7 @@ model Category {
   companyId   Int
   name        String
   description String?
+  codePrefix  String? // e.g. CAR, BEB, LAC — used for auto-generating product SKU
   sortOrder   Int     @default(0)
   active      Boolean @default(true)
 
@@ -290,6 +292,7 @@ model Category {
   products  Product[] // Categories for inventory products too
 
   @@unique([companyId, name])
+  @@unique([companyId, codePrefix])
 }
 
 model MenuItem {
@@ -663,12 +666,15 @@ model Order {
   cashRegister   CashRegister? @relation("OrderCashRegister", fields: [cashRegisterId], references: [id])
   customerName   String?
   orderType      OrderType   @default(DINE_IN)
+  salesChannel   SalesChannel @default(RESTAURANT)
   status         OrderStatus @default(OPEN)
   total          Decimal     @default(0) @db.Decimal(10, 2)
   discount       Decimal     @default(0) @db.Decimal(10, 2)
   discountCode   String? // Applied promotion/discount code
   tipAmount      Decimal     @default(0) @db.Decimal(10, 2)
   tax            Decimal     @default(0) @db.Decimal(10, 2)
+  channelCommission Decimal  @default(0) @db.Decimal(10, 2) // e.g. 24% PedidosYa commission
+  channelMarkup     Decimal  @default(0) @db.Decimal(10, 2) // price markup applied for channel
   invoiceNumber  String?     @unique
   cancelledById  Int? // User who cancelled the order
   cancelReason   String? // Reason for cancellation
@@ -697,6 +703,12 @@ enum OrderType {
   DINE_IN
   TAKEOUT
   DELIVERY
+}
+
+enum SalesChannel {
+  RESTAURANT
+  DELIVERY
+  PEDIDOSYA
 }
 
 enum OrderStatus {
@@ -936,6 +948,27 @@ model Promotion {
 enum PromotionType {
   PERCENTAGE
   FIXED_AMOUNT
+}
+
+// ==========================================
+// 10a. SALES CHANNEL CONFIGURATION
+// ==========================================
+
+model SalesChannelConfig {
+  id               Int          @id @default(autoincrement())
+  companyId        Int
+  channel          SalesChannel
+  name             String       // Display name: "PedidosYa", "Delivery Propio"
+  priceMarkupPct   Decimal      @default(0) @db.Decimal(5, 2) // e.g. 18.00 for 18%
+  commissionPct    Decimal      @default(0) @db.Decimal(5, 2) // e.g. 24.00 for 24%
+  active           Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, channel])
+  @@index([companyId])
 }
 
 // ==========================================

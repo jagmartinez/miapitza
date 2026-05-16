@@ -44,6 +44,7 @@ import invoiceRoutes from './routes/invoice.routes';
 import kardexRoutes from './routes/kardex.routes';
 import v1Router from './routes/v1.router';
 import unitConversionRoutes from './routes/unit-conversion.routes';
+import salesChannelRoutes from './routes/sales-channel.routes';
 
 dotenv.config();
 
@@ -155,6 +156,7 @@ app.use('/api/advanced', advancedFeaturesRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/catering', cateringRoutes);
 app.use('/api/units', unitConversionRoutes);
+app.use('/api/sales-channels', salesChannelRoutes);
 
 // API v1 versioned router (new endpoints go here)
 app.use('/api/v1', v1Router);

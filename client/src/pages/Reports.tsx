@@ -6,7 +6,8 @@ import Select from '../components/Select';
 import {
     Package, ShoppingCart, DollarSign, TrendingUp, BarChart3, AlertTriangle,
     ArrowLeft, Download, Filter, Search, FileSpreadsheet, Truck,
-    RefreshCw, FileText, Calendar
+    RefreshCw, FileText, Calendar, Clock, Users, PieChart, Shield,
+    GitCompare, Activity, CreditCard
 } from 'lucide-react';
 import type { Branch, Supplier } from '../types';
 import './Reports.css';
@@ -43,16 +44,39 @@ type ReportDef = {
 };
 
 const REPORT_CATALOG: ReportDef[] = [
+    // Inventario
     { id: 'inventory', name: 'Inventario Actual', description: 'Existencias por producto, almacén y categoría con valorización.', icon: Package, category: 'Inventario' },
     { id: 'kardex', name: 'Kardex de Movimientos', description: 'Entradas, salidas, ajustes y traslados de inventario.', icon: FileSpreadsheet, category: 'Inventario', navigateTo: '/kardex' },
     { id: 'low-stock', name: 'Stock Bajo', description: 'Productos con inventario por debajo del mínimo configurado.', icon: AlertTriangle, category: 'Inventario' },
-    { id: 'purchases', name: 'Compras', description: 'Análisis de compras por proveedor, producto y período.', icon: Truck, category: 'Compras' },
-    { id: 'sales', name: 'Ventas', description: 'Ventas por período, producto, categoría, usuario y método de pago.', icon: ShoppingCart, category: 'Ventas' },
+    // Compras
+    { id: 'purchases', name: 'Compras General', description: 'Análisis de compras por proveedor, producto y período.', icon: Truck, category: 'Compras' },
+    { id: 'purchases-by-day', name: 'Compras por Día', description: 'Historial de compras diario con montos y cantidad de órdenes.', icon: Calendar, category: 'Compras' },
+    { id: 'purchases-by-month', name: 'Compras por Mes', description: 'Tendencia mensual de compras acumuladas.', icon: BarChart3, category: 'Compras' },
+    { id: 'purchases-by-supplier', name: 'Compras por Proveedor', description: 'Distribución del gasto entre proveedores con porcentaje del total.', icon: Truck, category: 'Compras' },
+    { id: 'price-comparison', name: 'Comparación de Precios', description: 'Matriz de precios por producto y proveedor con variación.', icon: GitCompare, category: 'Compras' },
+    { id: 'most-purchased', name: 'Productos Más Comprados', description: 'Top de productos por volumen y costo total de compra.', icon: TrendingUp, category: 'Compras' },
+    // Ventas
+    { id: 'sales', name: 'Ventas General', description: 'Ventas por período, producto, categoría, usuario y método de pago.', icon: ShoppingCart, category: 'Ventas' },
+    { id: 'sales-daily', name: 'Ventas Diarias', description: 'Resumen de ventas día a día con ticket promedio.', icon: Calendar, category: 'Ventas' },
+    { id: 'sales-monthly', name: 'Ventas Mensuales', description: 'Ventas por mes con variación mes a mes.', icon: BarChart3, category: 'Ventas' },
+    { id: 'sales-by-category', name: 'Ventas por Categoría', description: 'Distribución de ventas por categoría con porcentaje del total.', icon: PieChart, category: 'Ventas' },
+    { id: 'sales-by-payment-method', name: 'Ventas por Método de Pago', description: 'Desglose de pagos: efectivo, tarjeta, transferencia, etc.', icon: CreditCard, category: 'Ventas' },
+    { id: 'sales-by-waiter', name: 'Ventas por Mesero', description: 'Rendimiento de ventas por usuario/mesero.', icon: Users, category: 'Ventas' },
+    { id: 'sales-by-channel', name: 'Ventas por Canal', description: 'Restaurante vs Delivery vs PedidosYa con comisiones y margen.', icon: Activity, category: 'Ventas' },
+    { id: 'sales-by-hour', name: 'Ventas por Hora', description: 'Análisis de horas pico y distribución horaria de ventas.', icon: Clock, category: 'Ventas' },
+    // Costos
     { id: 'costs', name: 'Costos', description: 'COGS estimado, costos de compra y margen bruto por período.', icon: DollarSign, category: 'Costos', navigateTo: '/cost-report' },
     { id: 'profitability', name: 'Rentabilidad por Producto', description: 'Precio de venta vs costo estimado y margen por platillo.', icon: TrendingUp, category: 'Costos' },
+    { id: 'food-cost-by-category', name: 'Food Cost por Categoría', description: 'Porcentaje de food cost y margen bruto por categoría.', icon: PieChart, category: 'Costos' },
+    { id: 'margin-by-product', name: 'Margen por Producto', description: 'Productos más rentables ordenados por margen de contribución.', icon: TrendingUp, category: 'Costos' },
+    // Auditoría y Control
+    { id: 'audit', name: 'Registro de Auditoría', description: 'Log de acciones del sistema: quién hizo qué y cuándo.', icon: Shield, category: 'Auditoría' },
+    // Toma de Decisiones
+    { id: 'day-analysis', name: 'Análisis por Día', description: 'Días más fuertes y débiles de la semana para planificación.', icon: Calendar, category: 'Decisiones' },
+    { id: 'month-comparison', name: 'Comparación Mes vs Mes', description: 'Compara ventas entre dos meses con variación absoluta y porcentual.', icon: GitCompare, category: 'Decisiones' },
 ];
 
-const CATEGORIES_ORDER = ['Inventario', 'Compras', 'Ventas', 'Costos'];
+const CATEGORIES_ORDER = ['Inventario', 'Compras', 'Ventas', 'Costos', 'Auditoría', 'Decisiones'];
 
 function downloadBlob(data: ArrayBuffer, filename: string) {
     const blob = new Blob([data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -184,6 +208,23 @@ function ReportDetail({ reportId }: { reportId: string }) {
                 case 'sales': res = await reportsAPI.getSalesReport(params); break;
                 case 'profitability': res = await reportsAPI.getProfitabilityReport(params); break;
                 case 'low-stock': res = await reportsAPI.getLowStockReport(params); break;
+                case 'purchases-by-day': res = await reportsAPI.getPurchasesByDay(params); break;
+                case 'purchases-by-month': res = await reportsAPI.getPurchasesByMonth(params); break;
+                case 'price-comparison': res = await reportsAPI.getPriceComparison(params); break;
+                case 'most-purchased': res = await reportsAPI.getMostPurchased(params); break;
+                case 'purchases-by-supplier': res = await reportsAPI.getPurchasesBySupplier(params); break;
+                case 'sales-by-category': res = await reportsAPI.getSalesByCategory(params); break;
+                case 'sales-daily': res = await reportsAPI.getSalesDaily(params); break;
+                case 'sales-monthly': res = await reportsAPI.getSalesMonthly(params); break;
+                case 'sales-by-payment-method': res = await reportsAPI.getSalesByPaymentMethod(params); break;
+                case 'sales-by-waiter': res = await reportsAPI.getSalesByWaiter(params); break;
+                case 'sales-by-channel': res = await reportsAPI.getSalesByChannel(params); break;
+                case 'sales-by-hour': res = await reportsAPI.getSalesByHour(params); break;
+                case 'food-cost-by-category': res = await reportsAPI.getFoodCostByCategory(params); break;
+                case 'margin-by-product': res = await reportsAPI.getMarginByProduct(params); break;
+                case 'audit': res = await reportsAPI.getAuditReport(params); break;
+                case 'day-analysis': res = await reportsAPI.getDayAnalysis(params); break;
+                case 'month-comparison': res = await reportsAPI.getMonthComparison(params); break;
                 default: throw new Error('Reporte no encontrado');
             }
             setData(res.data.data);
@@ -208,6 +249,23 @@ function ReportDetail({ reportId }: { reportId: string }) {
                 case 'sales': res = await reportsAPI.exportSalesReport(params); break;
                 case 'profitability': res = await reportsAPI.exportProfitabilityReport(params); break;
                 case 'low-stock': res = await reportsAPI.exportLowStockReport(params); break;
+                case 'purchases-by-day': res = await reportsAPI.exportPurchasesByDay(params); break;
+                case 'purchases-by-month': res = await reportsAPI.exportPurchasesByMonth(params); break;
+                case 'price-comparison': res = await reportsAPI.exportPriceComparison(params); break;
+                case 'most-purchased': res = await reportsAPI.exportMostPurchased(params); break;
+                case 'purchases-by-supplier': res = await reportsAPI.exportPurchasesBySupplier(params); break;
+                case 'sales-by-category': res = await reportsAPI.exportSalesByCategory(params); break;
+                case 'sales-daily': res = await reportsAPI.exportSalesDaily(params); break;
+                case 'sales-monthly': res = await reportsAPI.exportSalesMonthly(params); break;
+                case 'sales-by-payment-method': res = await reportsAPI.exportSalesByPaymentMethod(params); break;
+                case 'sales-by-waiter': res = await reportsAPI.exportSalesByWaiter(params); break;
+                case 'sales-by-channel': res = await reportsAPI.exportSalesByChannel(params); break;
+                case 'sales-by-hour': res = await reportsAPI.exportSalesByHour(params); break;
+                case 'food-cost-by-category': res = await reportsAPI.exportFoodCostByCategory(params); break;
+                case 'margin-by-product': res = await reportsAPI.exportMarginByProduct(params); break;
+                case 'audit': res = await reportsAPI.exportAuditReport(params); break;
+                case 'day-analysis': res = await reportsAPI.exportDayAnalysis(params); break;
+                case 'month-comparison': res = await reportsAPI.exportMonthComparison(params); break;
                 default: return;
             }
             downloadBlob(res.data, `reporte_${reportId}_${todayStr()}.xlsx`);
@@ -259,7 +317,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
 
             {/* Filters — matches cost-report-filters pattern */}
             <div className="cost-report-filters">
-                {(reportId === 'purchases' || reportId === 'sales') && (
+                {hasDateFilter(reportId) && (
                     <div className="cost-report-date-range">
                         <Calendar size={16} />
                         <input type="date" className="table-filter-input" value={filters.dateFrom}
@@ -279,7 +337,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
                         />
                     </div>
                 )}
-                {(reportId === 'inventory' || reportId === 'purchases' || reportId === 'sales' || reportId === 'profitability' || reportId === 'low-stock') && (
+                {hasCategoryFilter(reportId) && (
                     <div className="cost-report-select-wrapper">
                         <Select
                             options={[{ value: '', label: 'Todas Categorías' }, ...categories.map(c => ({ value: c.id.toString(), label: c.name }))]}
@@ -289,7 +347,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
                         />
                     </div>
                 )}
-                {(reportId === 'purchases') && (
+                {hasSupplierFilter(reportId) && (
                     <div className="cost-report-select-wrapper">
                         <Select
                             options={[{ value: '', label: 'Todos Proveedores' }, ...suppliers.map(s => ({ value: s.id.toString(), label: s.name }))]}
@@ -299,7 +357,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
                         />
                     </div>
                 )}
-                {(reportId === 'sales' || reportId === 'purchases') && (
+                {hasBranchFilter(reportId) && (
                     <div className="cost-report-select-wrapper">
                         <Select
                             options={[{ value: '', label: 'Todas Sucursales' }, ...branches.map(b => ({ value: b.id.toString(), label: b.name }))]}
@@ -330,14 +388,15 @@ function ReportDetail({ reportId }: { reportId: string }) {
             {/* KPI Summary Cards — matches cost-report-kpi-grid */}
             {data?.summary && !loading && (
                 <div className="cost-report-kpi-grid">
-                    {Object.entries(data.summary).map(([key, val]) => {
-                        const isCurrency = /value|amount|sales|cost|discount|ticket/i.test(key) && !/count/i.test(key);
-                        const isPercent = /margin/i.test(key) && !/count/i.test(key);
+                    {Object.entries(data.summary).filter(([key]) => key !== 'actionBreakdown').map(([key, val]) => {
+                        const isString = typeof val === 'string';
+                        const isCurrency = !isString && /value|amount|sales|cost|discount|ticket|revenue|cogs|spent|income|commission|variation/i.test(key) && !/count|pct|percent/i.test(key);
+                        const isPercent = !isString && /margin|foodcost|variation/i.test(key) && /pct|percent|overall/i.test(key);
                         return (
                             <div key={key} className="cost-kpi-card">
                                 <div className="cost-kpi-label">{formatSummaryLabel(key)}</div>
                                 <div className="cost-kpi-value">
-                                    {isCurrency ? fmtCurrency(val) : isPercent ? fmtPercent(val) : fmtNumber(val)}
+                                    {isString ? String(val) : isCurrency ? fmtCurrency(Number(val)) : isPercent ? fmtPercent(Number(val)) : fmtNumber(Number(val))}
                                 </div>
                             </div>
                         );
@@ -420,6 +479,32 @@ function ReportDetail({ reportId }: { reportId: string }) {
     );
 }
 
+// ── Filter visibility helpers ──
+const DATE_FILTER_REPORTS = new Set([
+    'purchases', 'sales', 'purchases-by-day', 'purchases-by-month', 'price-comparison',
+    'most-purchased', 'purchases-by-supplier', 'sales-by-category', 'sales-daily',
+    'sales-monthly', 'sales-by-payment-method', 'sales-by-waiter', 'sales-by-channel',
+    'sales-by-hour', 'food-cost-by-category', 'margin-by-product', 'audit', 'day-analysis',
+]);
+const BRANCH_FILTER_REPORTS = new Set([
+    'purchases', 'sales', 'purchases-by-day', 'purchases-by-month', 'most-purchased',
+    'purchases-by-supplier', 'sales-by-category', 'sales-daily', 'sales-monthly',
+    'sales-by-payment-method', 'sales-by-waiter', 'sales-by-channel', 'sales-by-hour',
+    'food-cost-by-category', 'margin-by-product', 'day-analysis', 'month-comparison',
+]);
+const CATEGORY_FILTER_REPORTS = new Set([
+    'inventory', 'purchases', 'sales', 'profitability', 'low-stock',
+    'price-comparison', 'sales-by-category', 'margin-by-product',
+]);
+const SUPPLIER_FILTER_REPORTS = new Set([
+    'purchases', 'purchases-by-day', 'purchases-by-month', 'price-comparison',
+]);
+
+function hasDateFilter(id: string) { return DATE_FILTER_REPORTS.has(id); }
+function hasBranchFilter(id: string) { return BRANCH_FILTER_REPORTS.has(id); }
+function hasCategoryFilter(id: string) { return CATEGORY_FILTER_REPORTS.has(id); }
+function hasSupplierFilter(id: string) { return SUPPLIER_FILTER_REPORTS.has(id); }
+
 // ── Column Definitions ──
 type ColDef = { key: string; header: string; align?: 'right' | 'center'; format?: 'currency' | 'number' | 'percent' | 'date' | 'status' };
 
@@ -479,6 +564,137 @@ function getColumns(reportId: string): ColDef[] {
             { key: 'unit', header: 'Unidad' },
             { key: 'criticality', header: 'Criticidad', format: 'status' },
         ];
+        case 'purchases-by-day': return [
+            { key: 'date', header: 'Fecha', format: 'date' },
+            { key: 'totalAmount', header: 'Monto Total', align: 'right', format: 'currency' },
+            { key: 'orderCount', header: '# Órdenes', align: 'right', format: 'number' },
+            { key: 'itemCount', header: '# Items', align: 'right', format: 'number' },
+        ];
+        case 'purchases-by-month': return [
+            { key: 'month', header: 'Mes' },
+            { key: 'totalAmount', header: 'Monto Total', align: 'right', format: 'currency' },
+            { key: 'orderCount', header: '# Órdenes', align: 'right', format: 'number' },
+        ];
+        case 'price-comparison': return [
+            { key: 'productName', header: 'Producto' },
+            { key: 'sku', header: 'SKU' },
+            { key: 'categoryName', header: 'Categoría' },
+            { key: 'supplierName', header: 'Proveedor' },
+            { key: 'avgCost', header: 'Costo Prom.', align: 'right', format: 'currency' },
+            { key: 'minCost', header: 'Costo Mín.', align: 'right', format: 'currency' },
+            { key: 'maxCost', header: 'Costo Máx.', align: 'right', format: 'currency' },
+            { key: 'priceVariation', header: 'Variación %', align: 'right', format: 'number' },
+            { key: 'totalQuantity', header: 'Qty Total', align: 'right', format: 'number' },
+        ];
+        case 'most-purchased': return [
+            { key: 'productName', header: 'Producto' },
+            { key: 'sku', header: 'SKU' },
+            { key: 'unit', header: 'Unidad' },
+            { key: 'categoryName', header: 'Categoría' },
+            { key: 'totalQuantity', header: 'Qty Total', align: 'right', format: 'number' },
+            { key: 'totalCost', header: 'Costo Total', align: 'right', format: 'currency' },
+            { key: 'avgUnitCost', header: 'Costo Unit. Prom.', align: 'right', format: 'currency' },
+            { key: 'orderCount', header: '# OC', align: 'right', format: 'number' },
+        ];
+        case 'purchases-by-supplier': return [
+            { key: 'supplierName', header: 'Proveedor' },
+            { key: 'totalAmount', header: 'Monto Total', align: 'right', format: 'currency' },
+            { key: 'orderCount', header: '# Órdenes', align: 'right', format: 'number' },
+            { key: 'avgPerOrder', header: 'Prom. por OC', align: 'right', format: 'currency' },
+            { key: 'percentOfTotal', header: '% del Total', align: 'right', format: 'number' },
+        ];
+        case 'sales-by-category': return [
+            { key: 'categoryName', header: 'Categoría' },
+            { key: 'totalSales', header: 'Ventas Totales', align: 'right', format: 'currency' },
+            { key: 'percentOfTotal', header: '% del Total', align: 'right', format: 'number' },
+            { key: 'itemCount', header: '# Items', align: 'right', format: 'number' },
+            { key: 'unitsSold', header: 'Unidades', align: 'right', format: 'number' },
+        ];
+        case 'sales-daily': return [
+            { key: 'date', header: 'Fecha', format: 'date' },
+            { key: 'totalSales', header: 'Ventas', align: 'right', format: 'currency' },
+            { key: 'orderCount', header: '# Órdenes', align: 'right', format: 'number' },
+            { key: 'avgTicket', header: 'Ticket Prom.', align: 'right', format: 'currency' },
+            { key: 'totalDiscount', header: 'Descuentos', align: 'right', format: 'currency' },
+        ];
+        case 'sales-monthly': return [
+            { key: 'month', header: 'Mes' },
+            { key: 'totalSales', header: 'Ventas', align: 'right', format: 'currency' },
+            { key: 'orderCount', header: '# Órdenes', align: 'right', format: 'number' },
+            { key: 'avgTicket', header: 'Ticket Prom.', align: 'right', format: 'currency' },
+            { key: 'variationPct', header: 'Var. %', align: 'right', format: 'number' },
+        ];
+        case 'sales-by-payment-method': return [
+            { key: 'methodName', header: 'Método de Pago' },
+            { key: 'totalAmount', header: 'Monto Total', align: 'right', format: 'currency' },
+            { key: 'transactionCount', header: '# Transacciones', align: 'right', format: 'number' },
+            { key: 'percentOfTotal', header: '% del Total', align: 'right', format: 'number' },
+        ];
+        case 'sales-by-waiter': return [
+            { key: 'userName', header: 'Usuario' },
+            { key: 'roleName', header: 'Rol' },
+            { key: 'totalSales', header: 'Ventas', align: 'right', format: 'currency' },
+            { key: 'orderCount', header: '# Órdenes', align: 'right', format: 'number' },
+            { key: 'avgTicket', header: 'Ticket Prom.', align: 'right', format: 'currency' },
+        ];
+        case 'sales-by-channel': return [
+            { key: 'channelName', header: 'Canal' },
+            { key: 'grossSales', header: 'Ventas Brutas', align: 'right', format: 'currency' },
+            { key: 'commission', header: 'Comisión', align: 'right', format: 'currency' },
+            { key: 'netIncome', header: 'Ingreso Neto', align: 'right', format: 'currency' },
+            { key: 'estimatedCOGS', header: 'COGS Est.', align: 'right', format: 'currency' },
+            { key: 'margin', header: 'Margen', align: 'right', format: 'currency' },
+            { key: 'marginPct', header: 'Margen %', align: 'right', format: 'number' },
+            { key: 'orderCount', header: '# Órdenes', align: 'right', format: 'number' },
+            { key: 'percentOfTotal', header: '% del Total', align: 'right', format: 'number' },
+        ];
+        case 'sales-by-hour': return [
+            { key: 'hourLabel', header: 'Hora' },
+            { key: 'totalSales', header: 'Ventas', align: 'right', format: 'currency' },
+            { key: 'orderCount', header: '# Órdenes', align: 'right', format: 'number' },
+            { key: 'avgTicket', header: 'Ticket Prom.', align: 'right', format: 'currency' },
+        ];
+        case 'food-cost-by-category': return [
+            { key: 'categoryName', header: 'Categoría' },
+            { key: 'revenue', header: 'Ingresos', align: 'right', format: 'currency' },
+            { key: 'cogs', header: 'COGS', align: 'right', format: 'currency' },
+            { key: 'grossMargin', header: 'Margen Bruto', align: 'right', format: 'currency' },
+            { key: 'foodCostPct', header: 'Food Cost %', align: 'right', format: 'number' },
+            { key: 'marginPct', header: 'Margen %', align: 'right', format: 'number' },
+        ];
+        case 'margin-by-product': return [
+            { key: 'menuItemName', header: 'Producto' },
+            { key: 'categoryName', header: 'Categoría' },
+            { key: 'revenue', header: 'Ingresos', align: 'right', format: 'currency' },
+            { key: 'cogs', header: 'COGS', align: 'right', format: 'currency' },
+            { key: 'margin', header: 'Margen', align: 'right', format: 'currency' },
+            { key: 'marginPct', header: 'Margen %', align: 'right', format: 'number' },
+            { key: 'foodCostPct', header: 'Food Cost %', align: 'right', format: 'number' },
+            { key: 'unitsSold', header: 'Uds. Vendidas', align: 'right', format: 'number' },
+        ];
+        case 'audit': return [
+            { key: 'date', header: 'Fecha', format: 'date' },
+            { key: 'userName', header: 'Usuario' },
+            { key: 'roleName', header: 'Rol' },
+            { key: 'entityType', header: 'Entidad' },
+            { key: 'entityId', header: 'ID', align: 'right', format: 'number' },
+            { key: 'action', header: 'Acción' },
+            { key: 'details', header: 'Detalles' },
+        ];
+        case 'day-analysis': return [
+            { key: 'rank', header: '#', align: 'right', format: 'number' },
+            { key: 'dayName', header: 'Día' },
+            { key: 'totalSales', header: 'Ventas Totales', align: 'right', format: 'currency' },
+            { key: 'avgDailySales', header: 'Prom. Diario', align: 'right', format: 'currency' },
+            { key: 'orderCount', header: '# Órdenes', align: 'right', format: 'number' },
+            { key: 'avgTicket', header: 'Ticket Prom.', align: 'right', format: 'currency' },
+        ];
+        case 'month-comparison': return [
+            { key: 'month', header: 'Mes' },
+            { key: 'label', header: 'Etiqueta' },
+            { key: 'totalSales', header: 'Ventas', align: 'right', format: 'currency' },
+            { key: 'orderCount', header: '# Órdenes', align: 'right', format: 'number' },
+        ];
         default: return [];
     }
 }
@@ -517,6 +733,25 @@ function formatSummaryLabel(key: string): string {
         averageTicket: 'Ticket Promedio', totalItems: 'Total Items',
         avgMargin: 'Margen Promedio', lowMarginCount: 'Bajo Margen',
         totalLowStock: 'Total Bajo Stock', warningCount: 'Advertencia',
+        totalDays: 'Total Días', avgPerDay: 'Promedio Diario',
+        totalMonths: 'Total Meses', totalComparisons: 'Comparaciones',
+        avgVariation: 'Variación Promedio', totalSpent: 'Total Gastado',
+        totalSuppliers: 'Total Proveedores', topSupplier: 'Top Proveedor',
+        totalCategories: 'Total Categorías', topCategory: 'Top Categoría',
+        avgDailySales: 'Promedio Diario', avgTicket: 'Ticket Promedio',
+        totalMethods: 'Métodos de Pago', dominantMethod: 'Método Dominante',
+        totalUsers: 'Total Usuarios', topWaiter: 'Top Mesero',
+        totalChannels: 'Total Canales', totalGrossSales: 'Ventas Brutas',
+        totalCommissions: 'Total Comisiones', totalNetIncome: 'Ingreso Neto',
+        peakHour: 'Hora Pico', peakSales: 'Ventas Hora Pico',
+        totalRevenue: 'Ingresos Totales', totalCOGS: 'COGS Total',
+        overallFoodCost: 'Food Cost General', overallMargin: 'Margen General',
+        totalMargin: 'Margen Total', mostProfitable: 'Más Rentable',
+        totalEvents: 'Total Eventos', uniqueUsers: 'Usuarios Únicos',
+        actionBreakdown: 'Acciones', strongestDay: 'Día Más Fuerte',
+        weakestDay: 'Día Más Débil', salesMonthA: 'Ventas Mes A',
+        salesMonthB: 'Ventas Mes B', absoluteVariation: 'Variación Absoluta',
+        percentVariation: 'Variación %',
     };
     return map[key] || key;
 }

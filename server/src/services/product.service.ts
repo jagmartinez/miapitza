@@ -111,6 +111,38 @@ export class ProductService {
         return product;
     }
 
+    static async generateSku(companyId: number, categoryId: number): Promise<string> {
+        const category = await prisma.category.findFirst({
+            where: { id: categoryId, companyId }
+        });
+
+        if (!category) {
+            throw new Error('Categoría no encontrada para generar código');
+        }
+
+        const prefix = category.codePrefix || 'GEN';
+
+        const lastProduct = await prisma.product.findFirst({
+            where: {
+                companyId,
+                sku: { startsWith: `${prefix}-` }
+            },
+            orderBy: { sku: 'desc' },
+            select: { sku: true }
+        });
+
+        let nextNumber = 1;
+        if (lastProduct?.sku) {
+            const parts = lastProduct.sku.split('-');
+            const num = parseInt(parts[parts.length - 1], 10);
+            if (!isNaN(num)) {
+                nextNumber = num + 1;
+            }
+        }
+
+        return `${prefix}-${String(nextNumber).padStart(6, '0')}`;
+    }
+
     static async create(companyId: number, data: {
         name: string;
         sku?: string;
@@ -122,7 +154,10 @@ export class ProductService {
         type?: 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH';
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE';
     }) {
-        // Check if SKU already exists in the same company
+        if (!data.sku && data.categoryId) {
+            data.sku = await this.generateSku(companyId, data.categoryId);
+        }
+
         if (data.sku) {
             const existing = await prisma.product.findFirst({
                 where: { sku: data.sku, companyId }

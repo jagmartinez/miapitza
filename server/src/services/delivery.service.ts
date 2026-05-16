@@ -1,4 +1,5 @@
 import prisma from '../utils/prisma';
+import { SalesChannelService } from './sales-channel.service';
 
 /**
  * Delivery Platform Integration Service
@@ -81,6 +82,25 @@ export class DeliveryService {
         // Match delivery items with internal menu items
         const matchedItems = await this.matchDeliveryItems(companyId, deliveryOrder.items);
 
+        // Determine sales channel and calculate commission/markup
+        const channelMap: Record<string, 'RESTAURANT' | 'DELIVERY' | 'PEDIDOSYA'> = {
+            'PEDIDOSYA': 'PEDIDOSYA',
+            'UBER_EATS': 'DELIVERY',
+            'RAPPI': 'DELIVERY',
+            'OTHER': 'DELIVERY',
+        };
+        const salesChannel = channelMap[deliveryOrder.platform] || 'DELIVERY';
+
+        let channelCommission = 0;
+        let channelMarkup = 0;
+        if (salesChannel === 'PEDIDOSYA') {
+            const config = await SalesChannelService.getByChannel(companyId, 'PEDIDOSYA');
+            if (config) {
+                channelCommission = Math.round(deliveryOrder.total * Number(config.commissionPct) / 100 * 100) / 100;
+                channelMarkup = Number(config.priceMarkupPct);
+            }
+        }
+
         const order = await prisma.order.create({
             data: {
                 companyId,
@@ -88,6 +108,9 @@ export class DeliveryService {
                 userId: systemUser.id,
                 customerName: customerNameWithMeta.substring(0, 255),
                 orderType: 'DELIVERY',
+                salesChannel,
+                channelCommission,
+                channelMarkup,
                 status: 'OPEN',
                 total: deliveryOrder.total,
                 items: matchedItems.length > 0 ? {
