@@ -1350,6 +1350,317 @@
   }
 }
 
+@media (max-width: 768px) {
+  .menu-page {
+    padding: var(--spacing-md);
+  }
+
+  .menu-header {
+    flex-direction: column;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+    align-items: stretch;
+  }
+
+  .menu-header h1 {
+    font-size: 1.4rem;
+    gap: var(--spacing-sm);
+  }
+
+  .menu-header h1 svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .menu-subtitle {
+    font-size: 0.75rem;
+    margin-bottom: 0;
+  }
+
+  /* "Nuevo Plato" button: full-width, bigger touch target */
+  .menu-header > button,
+  .menu-header .btn {
+    width: 100%;
+    padding: 14px;
+    font-size: var(--font-size-base);
+    font-weight: 700;
+    justify-content: center;
+  }
+
+  .menu-stats-counts {
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+  }
+
+  .menu-stat-count {
+    height: 36px;
+    padding: 0 var(--spacing-sm);
+    font-size: var(--font-size-xs);
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .menu-stat-count small {
+    display: none;
+  }
+
+  .filter-right-section {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: var(--spacing-sm);
+  }
+
+  /* Filter section: card-like grouping for cleaner UI */
+  .menu-filters-bar {
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-lg);
+    background: var(--color-surface);
+    padding: var(--spacing-md);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+  }
+
+  .menu-filters-row {
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    align-items: stretch;
+  }
+
+  .menu-filters-row > * {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* React-select & native select consistency on mobile - same height as search input */
+  .menu-filters-row .category-select-container,
+  .menu-filters-row select {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* Unify control heights to 48px on mobile */
+  .menu-filters-row .category-select-container .react-select__control {
+    min-height: 48px !important;
+    height: 48px !important;
+    border-radius: var(--radius-md) !important;
+  }
+
+  .menu-filters-row .category-select-container .react-select__value-container {
+    padding: 0 var(--spacing-md) !important;
+  }
+
+  .menu-filters-row .category-select-container .react-select__indicators {
+    height: 48px !important;
+  }
+
+  .menu-filters-row select {
+    height: 48px !important;
+    min-height: 48px !important;
+    padding: 0 var(--spacing-md) !important;
+    border-radius: var(--radius-md) !important;
+    box-sizing: border-box;
+    font-size: 14px !important;
+  }
+
+  .category-filters {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
+    padding: var(--spacing-xs);
+    gap: var(--spacing-xs);
+  }
+
+  .category-filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  .category-filter-btn {
+    white-space: nowrap;
+    padding: 6px 14px;
+    font-size: var(--font-size-xs);
+    flex-shrink: 0;
+    border-radius: var(--radius-full);
+  }
+
+  input.search-input,
+  .menu-filters-row input.search-input,
+  .menu-filters-row .search-input {
+    width: 100% !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    padding: 12px var(--spacing-md) !important;
+    font-size: 14px !important;
+    border-radius: var(--radius-md) !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Grid: single column for full-width cards */
+  .menu-grid {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-md);
+  }
+
+  /* Horizontal card layout using CSS Grid: image left, content top-right, actions bottom-right */
+  .menu-item-card {
+    display: grid !important;
+    grid-template-columns: 110px 1fr;
+    grid-template-rows: 1fr auto;
+    min-height: 130px;
+    border-width: 1px;
+    border-radius: var(--radius-lg);
+  }
+
+  .menu-item-card:hover {
+    transform: none;
+  }
+
+  .item-visual-container {
+    grid-row: 1 / -1;
+    grid-column: 1;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    aspect-ratio: auto;
+  }
+
+  .menu-item-content {
+    grid-row: 1;
+    grid-column: 2;
+    padding: var(--spacing-md);
+    gap: 4px;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  /* Title on its own line; price on its own line below */
+  .menu-item-content > div:first-child {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 4px;
+  }
+
+  .item-name {
+    font-size: 0.95rem;
+    line-height: 1.25;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    width: 100%;
+  }
+
+  .item-price-tag {
+    font-size: 1.05rem;
+    color: var(--color-primary);
+    font-weight: 800;
+  }
+
+  .item-description {
+    font-size: 11px;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+    margin-top: 2px;
+    color: var(--color-text-secondary);
+  }
+
+  .category-tag {
+    padding: 3px 8px;
+    font-size: 9px;
+  }
+
+  /* Actions row at bottom of right column */
+  .menu-card-actions {
+    grid-row: 2;
+    grid-column: 2;
+    flex-direction: row;
+    background: transparent;
+    border-top: 1px solid var(--color-border);
+    margin-top: 0;
+  }
+
+  .menu-action-btn {
+    padding: 10px 4px !important;
+    font-size: 10px !important;
+    flex-direction: row !important;
+    gap: 4px !important;
+    border-right: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+  }
+
+  .dark .menu-action-btn {
+    color: var(--color-text-secondary);
+  }
+
+  .menu-action-btn:last-child {
+    border-right: none;
+  }
+
+  .menu-action-btn svg {
+    width: 14px !important;
+    height: 14px !important;
+  }
+
+  .menu-action-btn span {
+    font-size: 10px;
+  }
+
+  .menu-action-btn.delete {
+    flex: 0 0 44px !important;
+  }
+
+  .image-gallery {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .menu-page {
+    padding: var(--spacing-sm);
+  }
+
+  .menu-filters-bar {
+    padding: var(--spacing-sm);
+  }
+
+  /* Smaller card for tiny phones */
+  .menu-item-card {
+    grid-template-columns: 92px 1fr;
+    min-height: 116px;
+  }
+
+  .menu-item-content {
+    padding: var(--spacing-sm);
+  }
+
+  .item-name {
+    font-size: 0.85rem;
+  }
+
+  .item-price-tag {
+    font-size: 0.95rem;
+  }
+
+  .menu-action-btn {
+    padding: 8px 2px !important;
+  }
+
+  .menu-action-btn span {
+    display: none;
+  }
+
+  .menu-action-btn.delete {
+    flex: 0 0 36px !important;
+  }
+
+  .image-gallery {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 /* Dark Mode Modal Enhancements */
 .cost-stat-card {
   background: var(--color-surface);

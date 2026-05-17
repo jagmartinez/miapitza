@@ -491,20 +491,76 @@
 
 /* Responsive */
 @media (max-width: 768px) {
+    .modal-overlay-new {
+        align-items: flex-end;
+        padding: 0;
+        z-index: 1500;
+        /* above .mobile-bottom-nav (1050) */
+    }
+
     .payment-modal-new {
-        width: 95%;
-        max-height: 95vh;
+        width: 100%;
+        max-width: 100%;
+        max-height: 92vh;
+        max-height: 92dvh;
+        border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+        animation: slideUpSheet 0.25s ease-out;
+        z-index: 1501;
+    }
+
+    @keyframes slideUpSheet {
+        from {
+            transform: translateY(100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+
+    .payment-header {
+        padding: var(--spacing-md) var(--spacing-lg);
+        position: sticky;
+        top: 0;
+        background: var(--color-surface);
+        z-index: 2;
+    }
+
+    .payment-header h2 {
+        font-size: var(--font-size-lg);
     }
 
     .payment-body {
         grid-template-columns: 1fr;
+        gap: var(--spacing-md);
+        padding: var(--spacing-md);
     }
 
     .total-amount-large {
-        font-size: 2.5rem;
+        font-size: 2rem;
     }
 
     .payment-methods-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--spacing-sm);
+    }
+}
+
+@media (max-width: 480px) {
+    .payment-methods-grid {
         grid-template-columns: 1fr;
+    }
+
+    .payment-header {
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+
+    .payment-header h2 {
+        font-size: var(--font-size-base);
+    }
+
+    .total-amount-large {
+        font-size: 1.6rem;
     }
 }

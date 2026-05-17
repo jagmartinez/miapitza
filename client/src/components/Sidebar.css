@@ -117,12 +117,65 @@
 }
 
 @media (max-width: 768px) {
+    /* Bottom-sheet behavior on mobile: slide up from bottom */
+    .sidebar-overlay {
+        z-index: 1500;
+    }
 
     .sidebar-panel,
     .sidebar-panel.sidebar-wide,
     .sidebar-panel.sidebar-large,
-    .sidebar-panel.sidebar-full {
+    .sidebar-panel.sidebar-full,
+    .sidebar-panel.sidebar-normal {
+        top: auto;
+        bottom: -100%;
+        right: 0;
+        left: 0;
         width: 100%;
-        right: -100%;
+        max-width: 100%;
+        height: 92vh;
+        height: 92dvh;
+        max-height: 92vh;
+        max-height: 92dvh;
+        border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+        box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.25);
+        transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 1501;
+    }
+
+    .sidebar-panel.sidebar-open {
+        right: 0 !important;
+        bottom: 0 !important;
+    }
+
+    .sidebar-panel .sidebar-header {
+        padding: var(--spacing-md) var(--spacing-lg);
+        position: sticky;
+        top: 0;
+        z-index: 2;
+    }
+
+    .sidebar-panel .sidebar-header h2 {
+        font-size: var(--font-size-lg);
+    }
+
+    .sidebar-body {
+        padding: var(--spacing-md);
+    }
+
+    /* For sidebars whose content already handles padding */
+    .sidebar-body:has(.dish-modal-form),
+    .sidebar-body:has(.order-detail-content),
+    .sidebar-body:has(.supplier-modal-content),
+    .sidebar-body:has(.table-modal-content),
+    .sidebar-body:has(.reservation-modal-content),
+    .sidebar-body:has(.cash-register-modal-content),
+    .sidebar-body:has(.menu-item-modal-content),
+    .sidebar-body:has(.product-modal-content),
+    .sidebar-body:has(.user-modal-content),
+    .sidebar-body:has(.branch-modal-content),
+    .sidebar-body:has(.premium-modal-content),
+    .sidebar-body:has(.catering-modal-content) {
+        padding: 0;
     }
 }

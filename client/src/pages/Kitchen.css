@@ -390,11 +390,48 @@
 
 /* Card Body */
 .kitchen-card-body-new {
-    padding: var(--spacing-lg) var(--spacing-md);
+    /* extra top padding so content clears the absolute status badge */
+    padding: calc(var(--spacing-lg) + 14px) var(--spacing-md) var(--spacing-md);
     display: flex;
     flex-direction: column;
     gap: var(--spacing-sm);
     flex: 1;
+    min-width: 0;
+}
+
+.kitchen-card-new {
+    cursor: pointer;
+}
+
+.kitchen-card-top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+}
+
+.kitchen-waiter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border-width: 1.5px;
+    border-style: solid;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.kitchen-waiter-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
 }
 
 .table-number-new {
@@ -437,29 +474,269 @@
     border-radius: 4px;
 }
 
+/* Timeline grid inside card body */
+.kitchen-timeline-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 0.9rem;
+    min-width: 0;
+}
+
+.kitchen-timeline-cell {
+    padding: 0.5rem 0.6rem;
+    border-radius: 10px;
+    background: var(--color-background);
+    border: 1px solid var(--color-border);
+    min-width: 0;
+    overflow: hidden;
+}
+
+.kitchen-timeline-label {
+    font-size: 0.7rem;
+    color: var(--color-text-secondary);
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    font-weight: 600;
+}
+
+.kitchen-timeline-value {
+    font-weight: 700;
+    color: var(--color-text);
+    font-size: 0.85rem;
+    line-height: 1.25;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    hyphens: auto;
+}
+
+.dark .kitchen-timeline-value {
+    color: #ffffff;
+}
+
+.dark .kitchen-timeline-label {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* Items summary chip shown on the card (replaces full items list) */
+.kitchen-items-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--color-background);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    font-size: 0.78rem;
+    margin-top: auto;
+}
+
+.kitchen-items-summary-icon {
+    display: inline-flex;
+    color: var(--color-primary);
+}
+
+.kitchen-items-summary-text {
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.kitchen-items-summary-hint {
+    margin-left: auto;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--color-primary);
+    font-weight: 600;
+}
+
+/* Order detail modal styles */
+.kitchen-detail-modal {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+
+.kitchen-detail-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+}
+
+.kitchen-detail-status {
+    padding: 5px 12px;
+    border-radius: var(--radius-md);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #fff;
+}
+
+.kitchen-detail-status.status-normal { background: var(--color-success); }
+.kitchen-detail-status.status-warning { background: var(--color-warning); }
+.kitchen-detail-status.status-urgent { background: var(--color-danger); }
+.kitchen-detail-status.status-ready { background: var(--color-primary); }
+
+.kitchen-detail-section-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--color-text);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+}
+
+.kitchen-detail-modal .kitchen-timeline-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 540px) {
+    .kitchen-detail-modal .kitchen-timeline-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.kitchen-items-list-modal {
+    border-top: none;
+    margin-top: 0;
+    padding: 0;
+    max-height: 360px;
+    overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+    .kitchen-items-list-modal {
+        max-height: none;
+    }
+}
+
+.kitchen-detail-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-sm);
+    padding-top: var(--spacing-sm);
+    border-top: 1px solid var(--color-border);
+    flex-wrap: wrap;
+}
+
+.kitchen-detail-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-danger-ghost {
+    background: transparent;
+    color: var(--color-danger);
+    border: 1px solid var(--color-danger);
+}
+
+.btn-danger-ghost:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
 /* Items List */
 .kitchen-items-list {
     padding: var(--spacing-sm) 0;
     border-top: 1px solid var(--color-border);
     margin-top: var(--spacing-sm);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .kitchen-item {
     display: flex;
-    gap: var(--spacing-sm);
-    padding: 4px 0;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
     font-size: 13px;
+    background: transparent;
+    border-left: 3px solid var(--color-border);
+    transition: background var(--transition-fast);
+}
+
+.kitchen-item.item-pending {
+    background: transparent;
+    border-left-color: var(--color-border);
+}
+
+.kitchen-item.item-progress {
+    background: rgba(245, 158, 11, 0.12);
+    border-left-color: var(--color-warning, #f59e0b);
+}
+
+.kitchen-item.item-done {
+    background: rgba(34, 197, 94, 0.12);
+    border-left-color: var(--color-success, #22c55e);
+}
+
+.dark .kitchen-item.item-progress {
+    background: rgba(245, 158, 11, 0.18);
+}
+
+.dark .kitchen-item.item-done {
+    background: rgba(34, 197, 94, 0.18);
 }
 
 .item-qty-kitchen {
     font-weight: 700;
     color: var(--color-primary);
-    min-width: 25px;
+    min-width: 28px;
 }
 
 .item-name-kitchen {
     color: var(--color-text);
     font-weight: 500;
+    flex: 1;
+    min-width: 0;
+}
+
+.item-note-kitchen {
+    display: block;
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    margin-top: 2px;
+}
+
+.item-prep-time {
+    font-size: 0.7rem;
+    color: var(--color-warning, #f59e0b);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.item-action-btn {
+    border: none;
+    border-radius: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #fff;
+    transition: filter var(--transition-fast);
+    white-space: nowrap;
+}
+
+.item-action-btn:hover {
+    filter: brightness(1.08);
+}
+
+.item-action-start {
+    background: var(--color-warning, #f59e0b);
+}
+
+.item-action-finish {
+    background: var(--color-success, #22c55e);
 }
 
 /* Actions Footer */
@@ -570,19 +847,179 @@
 }
 
 /* Responsive */
+@media (max-width: 1024px) {
+    .kitchen-grid-new {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
 @media (max-width: 768px) {
+    .kitchen-page-new {
+        padding: var(--spacing-md);
+    }
+
     .kitchen-grid-new {
         grid-template-columns: 1fr;
+        gap: var(--spacing-md);
     }
 
     .kitchen-header-new {
         flex-direction: column;
-        gap: var(--spacing-md);
+        gap: var(--spacing-sm);
+        align-items: stretch;
+        margin-bottom: var(--spacing-md);
+    }
+
+    .header-left-kitchen h1 {
+        font-size: var(--font-size-2xl);
     }
 
     .kitchen-controls {
         width: 100%;
-        justify-content: space-between;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        gap: var(--spacing-sm);
+    }
+
+    .sound-toggle-new,
+    .stat-badge-new {
+        padding: var(--spacing-xs) var(--spacing-sm);
+        font-size: var(--font-size-xs);
+    }
+
+    /* Filters scroll horizontally, no wrap, hidden ugly scrollbar */
+    .kitchen-filters-new {
+        overflow-x: auto;
+        overflow-y: hidden;
+        flex-wrap: nowrap;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        -webkit-overflow-scrolling: touch;
+        padding: var(--spacing-xs) var(--spacing-sm);
+        gap: var(--spacing-xs);
+        margin: 0 0 var(--spacing-sm);
+    }
+
+    .kitchen-filters-new::-webkit-scrollbar,
+    .status-filters-new::-webkit-scrollbar {
+        display: none;
+    }
+
+    .kitchen-filters-new > *,
+    .status-filters-new > * {
+        flex-shrink: 0;
+        white-space: nowrap;
+    }
+
+    /* Hide the kitchen controls (Sonido toggle) on mobile to save space */
+    .kitchen-controls {
+        display: none !important;
+    }
+
+    /* Give status filters horizontal breathing room so pills don't touch edges */
+    .status-filters-new {
+        padding: var(--spacing-xs) var(--spacing-sm) !important;
+        margin: 0 0 var(--spacing-sm) !important;
+        gap: var(--spacing-xs);
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .station-filter-new,
+    .status-filter-btn-new {
+        padding: 8px 14px;
+        font-size: var(--font-size-xs);
+        white-space: nowrap;
+        border-radius: var(--radius-sm);
+        font-weight: 600;
+    }
+
+    .filters-row {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+        margin-bottom: var(--spacing-md);
+    }
+
+    /* Keep the Mesa # input and date select on the same line */
+    .additional-filters {
+        flex-direction: row !important;
+        align-items: stretch !important;
+        gap: var(--spacing-sm);
+        width: 100%;
+    }
+
+    .additional-filters .filter-group {
+        flex: 1 1 50%;
+        min-width: 0;
+    }
+
+    .additional-filters .filter-group.date-filter-group {
+        flex: 1 1 50%;
+    }
+
+    /* Unify input/select heights to 48px on mobile */
+    .table-filter-input {
+        width: 100%;
+        min-width: 0;
+        height: 48px !important;
+        min-height: 48px !important;
+        box-sizing: border-box;
+        padding: 0 var(--spacing-md) !important;
+        font-size: 14px !important;
+        border-radius: var(--radius-md);
+    }
+
+    .date-filter-group .react-select__control {
+        min-height: 48px !important;
+        height: 48px !important;
+        border-radius: var(--radius-md) !important;
+    }
+
+    .date-filter-group .react-select__value-container {
+        padding: 0 var(--spacing-md) !important;
+    }
+
+    /* Kitchen card adjustments */
+    .kitchen-timeline-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .kitchen-timeline-cell {
+        padding: 6px 8px;
+    }
+
+    .kitchen-timeline-label {
+        font-size: 0.6rem;
+    }
+
+    .kitchen-timeline-value {
+        font-size: 0.8rem;
+    }
+
+    /* Status badge stays clean */
+    .status-badge-new {
+        padding: 4px 10px;
+        font-size: 9px;
+        color: white !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .kitchen-page-new {
+        padding: var(--spacing-sm);
+    }
+
+    .header-left-kitchen h1 {
+        font-size: var(--font-size-xl);
+    }
+
+    .station-filter-new,
+    .status-filter-btn-new {
+        padding: 6px 12px;
+        font-size: 11px;
     }
 }
 

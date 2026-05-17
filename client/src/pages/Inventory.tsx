@@ -299,8 +299,10 @@ export default function Inventory() {
         if (!canMutateProduct) return;
 
         try {
+            const trimmedSku = formData.sku.trim();
             const data: Record<string, unknown> = {
                 ...formData,
+                sku: trimmedSku ? trimmedSku : undefined,
                 categoryId: formData.categoryId ? parseInt(formData.categoryId, 10) : null,
                 cost: parseFloat(formData.cost),
                 price: formData.price ? parseFloat(formData.price) : null,
@@ -543,7 +545,7 @@ export default function Inventory() {
                         <div className="product-name-new">Alertas de stock</div>
                         <div className="product-details-new">
                             <div className="detail-item"><AlertTriangle size={14} /><span>{stockAlertSummary?.totalAlerts || 0} alertas activas</span></div>
-                            <div className="detail-item"><span>{stockAlertSummary?.criticalAlerts || 0} crÃ­ticas</span></div>
+                            <div className="detail-item"><span>{stockAlertSummary?.criticalAlerts || 0} críticas</span></div>
                             <div className="detail-item"><span>{stockAlertSummary?.warningAlerts || 0} preventivas</span></div>
                         </div>
                     </div>
@@ -566,7 +568,7 @@ export default function Inventory() {
                 </div>
                 <div className="inventory-card-new">
                     <div className="inventory-card-body-new">
-                        <div className="product-name-new">ReposiciÃ³n sugerida</div>
+                        <div className="product-name-new">Reposición sugerida</div>
                         <div className="product-details-new">
                             {autoPurchaseSuggestions.slice(0, 3).map((suggestion) => (
                                 <div key={`${suggestion.productId}-${suggestion.warehouseId}`} className="detail-item">
@@ -913,13 +915,18 @@ export default function Inventory() {
 
                                     <div className="modal-form-row">
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label">SKU / Código</label>
+                                            <label className="modal-input-label">
+                                                SKU / Código
+                                                {!editingProduct && (
+                                                    <span className="label-note"> (Se genera automáticamente si lo dejas vacío)</span>
+                                                )}
+                                            </label>
                                             <input
                                                 type="text"
                                                 className="modal-standard-input"
                                                 value={formData.sku}
                                                 onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                                                placeholder="Ej: A001"
+                                                placeholder={editingProduct ? 'Ej: ING-000001' : 'Dejar vacío para autogenerar'}
                                             />
                                         </div>
                                         <Select

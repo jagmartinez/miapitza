@@ -1,3 +1,4 @@
+import { ReactNode } from 'react';
 import Select, { Props as SelectProps, GroupBase } from 'react-select';
 import './Select.css';
 
@@ -6,7 +7,7 @@ interface CustomSelectProps<
     IsMulti extends boolean = false,
     Group extends GroupBase<Option> = GroupBase<Option>
 > extends SelectProps<Option, IsMulti, Group> {
-    label?: string;
+    label?: ReactNode;
     error?: string;
     variant?: 'standard' | 'modal';
 }

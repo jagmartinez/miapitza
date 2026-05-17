@@ -1592,31 +1592,10 @@ select {
     stroke-width: 3px;
 }
 
-/* Card Base - SYNCED WITH TABLES (duplicated so Catering works without Tables.css) */
-.table-card-new {
-    position: relative;
-    background: var(--color-surface);
-    border: 2px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    transition: all var(--transition-fast);
-    display: flex;
-    flex-direction: column;
-}
-
-.table-card-new:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-xl);
-}
-
-/* Card Body - SYNCED WITH TABLES */
+/* Card / Card Body — base styles now live in index.css under the unified
+   .entity-* system. Catering-specific tweaks only. */
 .table-card-body-new {
-    padding: var(--spacing-lg) var(--spacing-md);
     min-height: 140px;
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
-    flex: 1;
 }
 
 .table-number-new {
@@ -1647,65 +1626,8 @@ select {
     opacity: 0.7;
 }
 
-/* Actions Footer - SYNCED WITH TABLES */
-.table-card-actions-new {
-    display: flex;
-    border-top: 2px solid var(--color-border);
-    background: var(--color-background);
-    margin-top: auto;
-}
-
-.action-btn-new {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    padding: 10px 4px;
-    border: none;
-    background: transparent;
-    color: var(--color-text-secondary);
-    font-weight: 800;
-    font-size: 8.5px;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-}
-
-.action-btn-new:not(:last-child) {
-    border-right: 1px solid var(--color-border);
-}
-
-.action-btn-new:hover {
-    background: var(--color-neutral-100);
-}
-
-.action-btn-new.view:hover {
-    color: var(--color-primary);
-}
-
-.action-btn-new.delete {
-    flex: 0;
-    padding: var(--spacing-sm) var(--spacing-md);
-    min-width: 50px;
-}
-
-.action-btn-new.delete:hover {
-    color: var(--color-danger);
-    background: rgba(239, 68, 68, 0.1);
-}
-
-/* Dark Mode Overrides */
-.dark .table-card-actions-new {
-    background: rgba(0, 0, 0, 0.2);
-    border-top-color: rgba(255, 255, 255, 0.05);
-}
-
-.dark .action-btn-new:not(:last-child) {
-    border-right-color: rgba(255, 255, 255, 0.05);
-}
+/* Actions Footer / Action Buttons — base styles in index.css under the
+   unified .entity-card-actions / .action-btn-new selectors. */
 
 .dark .action-btn-new:hover {
     background: rgba(255, 255, 255, 0.05);

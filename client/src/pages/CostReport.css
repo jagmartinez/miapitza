@@ -1,17 +1,39 @@
-/* ===== COST REPORT PAGE ===== */
+/* ===== COST REPORT PAGE =====
+   Layout, header, filters, KPIs, table styles now live in `index.css`.
+   This file only contains cost-report-specific tweaks plus legacy
+   class names still used by Reports.tsx (kept for backwards compatibility).
+*/
+
+/* Product cell inside the data table */
+.product-cell-name {
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.product-cell-sku {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
+    margin-top: 2px;
+}
+
+/* ===== Legacy classes (still referenced by older pages) =====
+   These map the previous class names to the unified design tokens so
+   existing markup keeps working until each page is migrated. */
 
 .cost-report-page {
+    /* Extend page-wrapper if applied alongside it; otherwise use defaults. */
     padding: var(--spacing-lg);
     max-width: 1400px;
     margin: 0 auto;
 }
 
-/* Header */
 .cost-report-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    gap: var(--spacing-lg);
     margin-bottom: var(--spacing-xl);
+    flex-wrap: wrap;
 }
 
 .cost-report-header .header-title-section h1 {
@@ -24,101 +46,119 @@
     margin: 0;
 }
 
-/* Filters */
 .cost-report-filters {
     display: flex;
+    align-items: flex-end;
     flex-wrap: wrap;
-    gap: 10px;
-    align-items: center;
-    margin-bottom: var(--spacing-2xl);
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--spacing-xl);
 }
 
 .cost-report-date-range {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--spacing-sm);
     color: var(--color-text-secondary);
 }
 
 .cost-report-select-wrapper {
-    min-width: 150px;
+    min-width: 180px;
+    flex: 0 1 200px;
 }
 
-/* KPI Cards Grid */
 .cost-report-kpi-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 16px;
-    margin: 20px 0;
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-xl);
 }
 
 .cost-kpi-card {
-    padding: 20px;
-    border-radius: 12px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-lg);
     background: var(--color-surface);
     border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    transition: all var(--transition-fast);
 }
 
-.cost-kpi-card.margin-good {
-    background: rgba(22, 163, 74, 0.08);
-    border-color: rgba(22, 163, 74, 0.25);
+.cost-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
 }
 
-.cost-kpi-card.margin-warn {
-    background: rgba(217, 119, 6, 0.08);
-    border-color: rgba(217, 119, 6, 0.25);
+.cost-kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: var(--color-primary);
 }
 
-.cost-kpi-card.margin-bad {
-    background: rgba(220, 38, 38, 0.08);
-    border-color: rgba(220, 38, 38, 0.25);
-}
+.cost-kpi-card.margin-good { background: rgba(16, 185, 129, 0.04); }
+.cost-kpi-card.margin-good::before { background: var(--color-success); }
+
+.cost-kpi-card.margin-warn { background: rgba(245, 158, 11, 0.04); }
+.cost-kpi-card.margin-warn::before { background: var(--color-warning); }
+
+.cost-kpi-card.margin-bad { background: rgba(239, 68, 68, 0.04); }
+.cost-kpi-card.margin-bad::before { background: var(--color-danger); }
 
 .cost-kpi-label {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--spacing-xs);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
     color: var(--color-text-secondary);
-    font-size: 0.85rem;
-    margin-bottom: 8px;
 }
 
 .cost-kpi-value {
-    font-size: 1.6rem;
-    font-weight: 700;
+    font-size: var(--font-size-2xl);
+    font-weight: 800;
     color: var(--color-text);
+    line-height: 1.1;
+    word-break: break-word;
 }
 
-.cost-margin-value.margin-good {
-    color: #16A34A;
-}
-
-.cost-margin-value.margin-warn {
-    color: #D97706;
-}
-
-.cost-margin-value.margin-bad {
-    color: #DC2626;
-}
+.cost-margin-value.margin-good { color: var(--color-success); }
+.cost-margin-value.margin-warn { color: var(--color-warning); }
+.cost-margin-value.margin-bad { color: var(--color-danger); }
 
 .cost-kpi-detail {
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
     color: var(--color-text-tertiary);
 }
 
-/* Table */
 .cost-report-table-wrapper {
     background: var(--color-surface);
-    border-radius: 12px;
     border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
     overflow: hidden;
+    margin-bottom: var(--spacing-lg);
 }
 
 .cost-report-table-header {
-    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-md) var(--spacing-lg);
     border-bottom: 1px solid var(--color-border);
+    background: var(--color-background);
     font-weight: 600;
-    font-size: 1rem;
+    font-size: var(--font-size-sm);
     color: var(--color-text);
 }
 
@@ -129,7 +169,7 @@
 .cost-report-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.85rem;
+    font-size: var(--font-size-sm);
 }
 
 .cost-report-table thead tr {
@@ -137,18 +177,23 @@
 }
 
 .cost-report-table th {
-    padding: 10px 16px;
+    padding: var(--spacing-sm) var(--spacing-md);
     text-align: left;
-    font-weight: 600;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
     color: var(--color-text-secondary);
+    border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
 }
 
-.cost-report-table th.text-right {
-    text-align: right;
-}
+.cost-report-table th.text-right { text-align: right; }
+.cost-report-table th.text-center { text-align: center; }
 
 .cost-report-table tbody tr {
     border-bottom: 1px solid var(--color-border);
+    transition: background-color var(--transition-fast);
 }
 
 .cost-report-table tbody tr:hover {
@@ -156,39 +201,22 @@
 }
 
 .cost-report-table td {
-    padding: 10px 16px;
+    padding: var(--spacing-md);
     color: var(--color-text);
+    vertical-align: middle;
 }
 
-.cost-report-table td.text-right {
-    text-align: right;
-}
-
-.cost-report-table td.text-secondary {
-    color: var(--color-text-secondary);
-}
-
-.cost-report-table td.font-semibold {
-    font-weight: 600;
-}
-
-.product-cell-name {
-    font-weight: 600;
-    color: var(--color-text);
-}
-
-.product-cell-sku {
-    font-size: 0.75rem;
-    color: var(--color-text-tertiary);
-}
+.cost-report-table td.text-right { text-align: right; }
+.cost-report-table td.text-center { text-align: center; }
+.cost-report-table td.text-secondary { color: var(--color-text-secondary); }
+.cost-report-table td.font-semibold { font-weight: 600; }
 
 .cost-report-empty {
-    padding: 32px !important;
+    padding: var(--spacing-2xl) var(--spacing-lg) !important;
     text-align: center;
     color: var(--color-text-tertiary);
 }
 
-/* Responsive */
 @media (max-width: 768px) {
     .cost-report-filters {
         flex-direction: column;

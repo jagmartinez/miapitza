@@ -147,25 +147,27 @@
     /* Slightly more gap as well to match width */
 }
 
-/* User Card */
+/* User Card — base styles follow the same pattern as .entity-card.
+   Users use distinct class names (.user-card, .user-card-actions, ...) so
+   the styles can't simply be aliased; we keep them here but in sync. */
 .user-card {
     background: var(--color-surface);
-    border-radius: var(--radius-xl);
-    overflow: hidden;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: var(--shadow-sm);
     border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    transition: transform var(--transition-fast),
+                box-shadow var(--transition-fast),
+                border-color var(--transition-fast);
     cursor: pointer;
     position: relative;
     display: flex;
     flex-direction: column;
     min-height: 240px;
-    /* More substantial feel */
 }
 
 .user-card:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-xl);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
     border-color: var(--color-primary);
 }
 
@@ -285,60 +287,15 @@
     font-weight: 600;
 }
 
-/* Card Actions (EXACT CATERING STYLE) */
+/* Card Actions — aligned with the unified .entity-card-actions look.
+   .action-btn-new base styles live in index.css. */
 .user-card-actions {
-    display: flex;
-    background: #1e293b;
-    /* Dark Slate */
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    padding: 0;
-    /* Remove padding to allow buttons to hit edges */
-    opacity: 1;
-}
-
-.dark .user-card-actions {
-    background: #0f172a;
-    /* Even darker in dark mode */
-}
-
-.action-btn-new {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    padding: 10px 4px;
-    border: none;
-    background: transparent;
-    color: #94a3b8;
-    font-weight: 800;
-    font-size: 8.5px;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border-right: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.action-btn-new:last-child {
-    border-right: none;
-}
-
-.action-btn-new svg {
-    width: 20px;
-    height: 20px;
-    opacity: 0.8;
-}
-
-.action-btn-new:hover {
-    background: rgba(255, 255, 255, 0.03);
-    color: #ffffff;
-}
-
-.action-btn-new:hover svg {
-    opacity: 1;
-    transform: scale(1.1);
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    border-top: 1px solid var(--color-border);
+    background: var(--color-background);
+    margin-top: auto;
 }
 
 .action-btn-new.delete:hover {

@@ -152,3 +152,106 @@
         transform: translateX(0);
     }
 }
+
+@keyframes modalSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(100%);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* === Mobile responsive modals === */
+@media (max-width: 768px) {
+    .modal-overlay {
+        align-items: flex-end;
+        padding: 0;
+        z-index: 1500;
+        /* must be above .mobile-bottom-nav (z-index 1050) */
+    }
+
+    .modal-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: 92vh;
+        max-height: 92dvh;
+        border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+        animation: modalSlideUp 0.25s ease-out;
+        display: flex;
+        flex-direction: column;
+        z-index: 1501;
+    }
+
+    .modal-sm,
+    .modal-md,
+    .modal-lg {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .modal-header {
+        padding: var(--spacing-md) var(--spacing-lg);
+        position: sticky;
+        top: 0;
+        background: var(--color-surface);
+        z-index: 2;
+    }
+
+    .modal-header h2 {
+        font-size: var(--font-size-lg);
+    }
+
+    .modal-body {
+        padding: var(--spacing-lg);
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: calc(var(--spacing-lg) + env(safe-area-inset-bottom, 0px));
+    }
+
+    /* Sidebar modals on mobile: use the same bottom-sheet pattern as centered modals
+       for consistency (slide up from bottom, rounded top corners). */
+    .modal-overlay-sidebar {
+        align-items: flex-end !important;
+        justify-content: center !important;
+        z-index: 1500 !important;
+    }
+
+    .modal-sidebar,
+    .modal-sidebar.modal-sm,
+    .modal-sidebar.modal-md,
+    .modal-sidebar.modal-lg {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: 92vh !important;
+        height: 92dvh !important;
+        max-height: 92vh !important;
+        max-height: 92dvh !important;
+        border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important;
+        border-left: none !important;
+        box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.25) !important;
+        animation: modalSlideUp 0.25s ease-out !important;
+        z-index: 1501;
+    }
+
+    .modal-sidebar .modal-body {
+        padding-bottom: calc(var(--spacing-lg) + 16px + env(safe-area-inset-bottom, 0px));
+    }
+}
+
+@media (max-width: 480px) {
+    .modal-header {
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+
+    .modal-header h2 {
+        font-size: var(--font-size-base);
+    }
+
+    .modal-body {
+        padding: var(--spacing-md);
+    }
+}

@@ -4,9 +4,13 @@ import { useAuth } from '../hooks/useAuth';
 import { hasAnyRole } from '../utils/authz';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
-import { Plus, Trash2, Phone, Mail, MapPin, Truck, Search, Users, Info, Building2, Tag, History } from 'lucide-react';
+import Select from '../components/Select';
+import type { SingleValue } from 'react-select';
+import { Plus, Trash2, Phone, Mail, MapPin, Truck, Search, Users, Info, Building2, Tag, History, X } from 'lucide-react'; // Tag kept for use inside modal
 import type { Supplier } from '../types';
 import './Suppliers.css';
+
+type SupplyTypeOption = { value: string; label: string };
 
 interface PriceHistoryRow {
     productName: string;
@@ -172,35 +176,57 @@ export default function Suppliers() {
 
             {/* Filters Row */}
             <div className="suppliers-filters-row">
-                <div className="supplier-type-filters">
-                    <button
-                        className={`supplier-type-btn ${supplyTypeFilter === null ? 'active' : ''}`}
-                        onClick={() => setSupplyTypeFilter(null)}
-                    >
-                        Todos
-                    </button>
-                    {supplyTypes.map(type => (
-                        <button
-                            key={type}
-                            className={`supplier-type-btn ${supplyTypeFilter === type ? 'active' : ''}`}
-                            onClick={() => setSupplyTypeFilter(type as string)}
-                        >
-                            {type}
-                        </button>
-                    ))}
-                </div>
-
                 <div className="supplier-search-section">
                     <div className="search-input-wrapper">
                         <Search size={18} className="search-icon" />
                         <input
                             type="text"
-                            placeholder="Buscar proveedor..."
+                            placeholder="Buscar por nombre, contacto o tipo..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="search-input-new"
                         />
+                        {searchTerm && (
+                            <button
+                                type="button"
+                                className="search-clear-btn"
+                                onClick={() => setSearchTerm('')}
+                                aria-label="Limpiar búsqueda"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
                     </div>
+                </div>
+
+                <div className="supplier-filter-group">
+                    <Select<SupplyTypeOption>
+                        isClearable
+                        isSearchable={false}
+                        placeholder="Todos los tipos"
+                        options={supplyTypes.map(type => ({ value: type, label: type }))}
+                        value={supplyTypeFilter ? { value: supplyTypeFilter, label: supplyTypeFilter } : null}
+                        onChange={(option: SingleValue<SupplyTypeOption>) =>
+                            setSupplyTypeFilter(option?.value ?? null)}
+                        aria-label="Filtrar por tipo de suministro"
+                    />
+                </div>
+
+                <div className="supplier-results-info">
+                    <span className="results-count">{filteredSuppliers.length}</span>
+                    <span className="results-label">
+                        {filteredSuppliers.length === 1 ? 'proveedor' : 'proveedores'}
+                    </span>
+                    {(searchTerm || supplyTypeFilter) && (
+                        <button
+                            type="button"
+                            className="filter-clear-btn"
+                            onClick={() => { setSearchTerm(''); setSupplyTypeFilter(null); }}
+                        >
+                            <X size={14} />
+                            Limpiar
+                        </button>
+                    )}
                 </div>
             </div>
 

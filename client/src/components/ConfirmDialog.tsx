@@ -38,7 +38,7 @@ export default function ConfirmDialog({
                     <p className="confirm-dialog-message">{message}</p>
                 </div>
                 <div className="confirm-dialog-footer">
-                    <Button variant="secondary" onClick={onCancel}>
+                    <Button variant="ghost" onClick={onCancel}>
                         {cancelText}
                     </Button>
                     <Button

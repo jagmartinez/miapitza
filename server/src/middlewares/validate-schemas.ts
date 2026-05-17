@@ -104,7 +104,8 @@ export const addRecipe: ValidationSchema = {
 // ── Tables ──
 export const createTable: ValidationSchema = {
     body: {
-        number: { type: 'number', required: true, min: 1 },
+        // `number` is stored as String in Prisma (allows "01", "A2", "VIP-1", etc.)
+        number: { type: 'string', required: true, min: 1, max: 20 },
         capacity: { type: 'number', required: true, min: 1 },
     },
 };
@@ -166,8 +167,12 @@ export const createCashRegister: ValidationSchema = {
 export const createReservation: ValidationSchema = {
     body: {
         customerName: { type: 'string', required: true, min: 1, max: 200 },
-        partySize: { type: 'number', required: true, min: 1 },
+        peopleCount: { type: 'number', required: true, min: 1 },
         date: { type: 'date', required: true },
+        phone: { type: 'string', max: 30 },
+        email: { type: 'email' },
+        notes: { type: 'string', max: 1000 },
+        branchId: { type: 'number', min: 1 },
     },
 };
 

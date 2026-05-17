@@ -31,29 +31,10 @@
     margin: 0;
 }
 
-/* Grid */
+/* Grid / Card — base styles in index.css under the unified .entity-* system.
+   Page-specific overrides only. */
 .categories-grid-new {
-    display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: var(--spacing-lg);
-}
-
-/* Category Card */
-.category-card-new {
-    position: relative;
-    background: var(--color-surface);
-    border: 2px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    transition: all var(--transition-fast);
-    display: flex;
-    flex-direction: column;
-}
-
-.category-card-new:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-xl);
-    border-color: var(--color-primary-light);
 }
 
 /* Status Badge */
@@ -82,13 +63,9 @@
     background: var(--color-danger);
 }
 
-/* Card Body */
+/* Card Body — base in index.css. Category-specific tweaks only. */
 .category-card-body-new {
-    padding: var(--spacing-lg) var(--spacing-md);
     min-height: 160px;
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
 }
 
 .category-name-new {
@@ -124,54 +101,8 @@
     overflow: hidden;
 }
 
-/* Card Actions */
-.category-card-actions-new {
-    display: flex;
-    border-top: 1px solid var(--color-border);
-    background: var(--color-surface);
-}
-
-.action-btn-new {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    padding: 10px 4px;
-    border: none;
-    background: transparent;
-    color: var(--color-text-secondary);
-    font-weight: 800;
-    font-size: 8.5px;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-}
-
-.action-btn-new:not(:last-child) {
-    border-right: 1px solid var(--color-border);
-}
-
-.action-btn-new:hover {
-    background: var(--color-neutral-100);
-}
-
-.action-btn-new.edit:hover {
-    color: var(--color-success);
-    background: rgba(34, 197, 94, 0.1);
-}
-
-.action-btn-new.delete:hover:not(:disabled) {
-    color: var(--color-danger);
-    background: rgba(239, 68, 68, 0.1);
-}
-
-.action-btn-new:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-}
+/* Card Actions / Action Buttons — base styles in index.css under the
+   unified .entity-card-actions / .action-btn-new selectors. */
 
 /* Toggle Library Styles (Simplified) */
 .modal-toggle-card {

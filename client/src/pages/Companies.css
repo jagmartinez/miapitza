@@ -108,27 +108,9 @@
     font-size: var(--font-size-lg);
 }
 
-/* ===== COMPANIES GRID ===== */
-.companies-grid-new {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: var(--spacing-lg);
-}
-
-/* ===== COMPANY CARD ===== */
-.company-card-new {
-    position: relative;
-    background: var(--color-surface);
-    border: 2px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    transition: all var(--transition-fast);
-}
-
-.company-card-new:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-xl);
-}
+/* ===== COMPANIES GRID / CARD =====
+   Base styles in index.css under the unified .entity-* system.
+   Only company-specific overrides remain here. */
 
 /* Status-based borders */
 .company-card-new.active {
@@ -176,14 +158,10 @@
     /* Red 600 */
 }
 
-/* ===== CARD BODY ===== */
+/* ===== CARD BODY — base in index.css; company overrides only ===== */
 .company-card-body-new {
-    padding: var(--spacing-md);
-    min-height: 180px;
-    display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: var(--spacing-sm);
+    min-height: 180px;
 }
 
 .company-logo-new {
@@ -249,60 +227,8 @@
     font-weight: 500;
 }
 
-/* ===== CARD ACTIONS (PREMIUM VERTICAL STYLE) ===== */
-.company-card-actions-new {
-    display: flex;
-    background: #1e293b;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.dark .company-card-actions-new {
-    background: #0f172a;
-}
-
-.action-btn-new {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    padding: 10px 4px;
-    border: none;
-    background: transparent;
-    color: #94a3b8;
-    font-weight: 800;
-    font-size: 8.5px;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border-right: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.action-btn-new:last-child {
-    border-right: none;
-}
-
-.action-btn-new svg {
-    width: 20px;
-    height: 20px;
-    opacity: 0.8;
-}
-
-.action-btn-new:hover {
-    background: rgba(255, 255, 255, 0.03);
-    color: #ffffff;
-}
-
-.action-btn-new:hover svg {
-    opacity: 1;
-    transform: scale(1.1);
-}
-
-.action-btn-new.edit:hover {
-    color: var(--color-success);
-}
+/* ===== CARD ACTIONS / ACTION BUTTONS — unified styles in index.css =====
+   Company-specific deactivate/activate variants below. */
 
 .action-btn-new.deactivate:hover {
     color: var(--color-danger);
@@ -311,6 +237,7 @@
 
 .action-btn-new.activate:hover {
     color: var(--color-success);
+    background: rgba(16, 185, 129, 0.1);
 }
 
 /* ===== NO COMPANIES MESSAGE ===== */
@@ -352,9 +279,7 @@
         justify-content: space-around;
     }
 
-    .action-btn-new span {
-        display: none;
-    }
+    /* .action-btn-new span responsive hide handled in index.css */
 }
 
 /* ===== LEGACY STYLES (Keep for backward compatibility) ===== */

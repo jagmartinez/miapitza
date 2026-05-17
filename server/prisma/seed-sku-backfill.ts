@@ -34,7 +34,9 @@ async function backfillSkus() {
     const prefixCounters: Record<string, number> = {};
 
     for (const product of productsWithoutSku) {
-        const prefix = product.category?.codePrefix || 'GEN';
+        const prefix =
+            product.category?.codePrefix ||
+            (product.type === 'INGREDIENT' ? 'ING' : 'GEN');
         const cacheKey = `${product.companyId}:${prefix}`;
 
         if (!(cacheKey in prefixCounters)) {

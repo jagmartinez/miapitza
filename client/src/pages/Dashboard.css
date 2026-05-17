@@ -704,13 +704,157 @@
     }
 }
 
-@media (max-width: 768px) {
-    .bento-grid {
-        grid-template-columns: 1fr;
+@media (max-width: 900px) {
+    .dashboard {
+        padding: var(--spacing-md);
+        max-width: 100%;
+        overflow-x: hidden;
     }
 
+    .dashboard-header-hero {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--spacing-md);
+        margin-bottom: var(--spacing-md);
+    }
+
+    .header-greeting h1 {
+        font-size: 1.4rem;
+    }
+
+    .header-actions-wrapper {
+        align-items: stretch;
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+
+    .header-meta-group {
+        flex-wrap: wrap;
+        gap: var(--spacing-sm);
+        width: 100%;
+    }
+
+    .bento-grid,
+    .bento-grid.final-layout {
+        grid-template-columns: 1fr 1fr !important;
+        grid-auto-rows: auto !important;
+        gap: var(--spacing-sm) !important;
+    }
+
+    .bento-item {
+        min-width: 0;
+        overflow: hidden;
+        padding: var(--spacing-md);
+    }
+
+    /* Force every section to span 1 column on tablet/mobile, overriding inline grid-column */
     .heatmap-section,
     .radar-section,
+    .treemap-section,
+    .waterfall-section,
+    .funnel-section,
+    .scatter-section-large,
+    .top-products-compact,
+    .orders-section,
+    .invoices-section,
+    .reservations-section,
+    .stat-card-modern {
+        grid-column: span 2 !important;
+    }
+
+    .stat-card-modern {
+        grid-column: span 1 !important;
+        min-height: 120px;
+    }
+
+    /* Stat numbers must not overflow narrow cards */
+    .stat-number {
+        font-size: 1.1rem;
+        word-break: break-all;
+        line-height: 1.2;
+    }
+
+    .stat-body h3 {
+        font-size: 0.85rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .stat-icon-bg {
+        width: 30px;
+        height: 30px;
+    }
+
+    .stat-percentage {
+        font-size: 0.65rem;
+        padding: 2px 6px;
+    }
+
+    /* Charts get more reasonable height on mobile */
+    .heatmap-section,
+    .radar-section,
+    .treemap-section,
+    .waterfall-section,
+    .funnel-section,
+    .scatter-section-large {
+        height: auto;
+        min-height: 260px;
+    }
+
+    .heatmap-grid {
+        grid-template-columns: 30px repeat(10, minmax(0, 1fr));
+        gap: 2px;
+    }
+
+    .hm-cell-header,
+    .hm-cell-row-label {
+        font-size: 0.6rem;
+    }
+
+    .command-bar {
+        width: 100%;
+        justify-content: flex-start;
+        overflow-x: auto;
+        scrollbar-width: thin;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .cmd-btn {
+        white-space: nowrap;
+        flex-shrink: 0;
+        padding: 6px 12px;
+    }
+
+    .compact-alert-ticker {
+        flex: 1 1 100%;
+    }
+
+    .detail-stats-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    .dashboard {
+        padding: var(--spacing-sm);
+    }
+
+    .header-greeting h1 {
+        font-size: 1.25rem;
+    }
+
+    /* Stat cards: force one column at small phones */
+    .bento-grid,
+    .bento-grid.final-layout {
+        grid-template-columns: 1fr !important;
+        gap: var(--spacing-sm) !important;
+    }
+
+    .stat-card-modern,
+    .heatmap-section,
+    .radar-section,
+    .treemap-section,
     .waterfall-section,
     .funnel-section,
     .scatter-section-large,
@@ -718,13 +862,29 @@
     .orders-section,
     .invoices-section,
     .reservations-section {
-        grid-column: span 1;
+        grid-column: span 1 !important;
     }
 
-    .command-bar {
-        width: 100%;
-        justify-content: space-between;
-        overflow-x: auto;
+    .stat-card-modern {
+        min-height: 100px;
+    }
+
+    .stat-number {
+        font-size: 1.4rem;
+        word-break: normal;
+    }
+
+    .stat-body h3 {
+        font-size: 0.9rem;
+    }
+
+    .detail-stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .period-btn {
+        padding: 3px 8px;
+        font-size: 0.65rem;
     }
 }
 

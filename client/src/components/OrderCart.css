@@ -318,3 +318,27 @@
     opacity: 0.4;
     cursor: not-allowed;
 }
+
+@media (max-width: 768px) {
+    .order-cart {
+        border-radius: 0;
+        border: none;
+        box-shadow: none;
+    }
+
+    .cart-header {
+        padding: var(--spacing-md);
+    }
+
+    .cart-items-list {
+        padding: var(--spacing-sm);
+    }
+
+    .cart-item-compact {
+        padding: var(--spacing-sm);
+    }
+
+    .cart-footer {
+        padding: var(--spacing-md);
+    }
+}

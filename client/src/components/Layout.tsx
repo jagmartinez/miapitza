@@ -25,8 +25,6 @@ import {
     Utensils,
     ChevronLeft,
     ChevronRight,
-    Menu,
-    X,
     ConciergeBell,
     Library,
     MapPin,
@@ -47,6 +45,16 @@ type NavSection = { section: string; items: NavItem[] };
 
 const ALL_ROLES = ['SUPERADMIN', 'ADMIN', 'CAJERO', 'MESERO', 'HOST', 'COCINA', 'BODEGA', 'CHEF'];
 const ADMIN_ROLES = ['SUPERADMIN', 'ADMIN'];
+
+// Quick-access bottom nav for mobile (max 6 items, role-filtered)
+const MOBILE_QUICK_NAV: NavItem[] = [
+    { to: '/dashboard', icon: BarChart3, label: 'BI', roles: ALL_ROLES },
+    { to: '/pos', icon: CreditCard, label: 'POS', roles: ['SUPERADMIN', 'ADMIN', 'CAJERO', 'MESERO'] },
+    { to: '/kitchen', icon: ChefHat, label: 'Cocina', roles: ['SUPERADMIN', 'ADMIN', 'MESERO', 'COCINA', 'CHEF'] },
+    { to: '/reservations', icon: Calendar, label: 'Reservas', roles: ['SUPERADMIN', 'ADMIN', 'HOST', 'CAJERO'] },
+    { to: '/orders', icon: ShoppingCart, label: 'Órdenes', roles: ['SUPERADMIN', 'ADMIN', 'CAJERO', 'MESERO'] },
+    // { to: '/menu', icon: UtensilsCrossed, label: 'Menú', roles: ['SUPERADMIN', 'ADMIN', 'CHEF'] },
+];
 
 const NAV_SECTIONS: NavSection[] = [
     {
@@ -100,7 +108,6 @@ export default function Layout() {
     const { t } = useLanguage();
     const navigate = useNavigate();
     const [isCollapsed, setIsCollapsed] = useState(true);
-    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     const userRoleNames = getUserRoleNames(user);
     const userAccentColor = getUserAccentColor(user);
@@ -110,29 +117,9 @@ export default function Layout() {
         navigate('/login');
     };
 
-    const toggleMobileMenu = () => {
-        setIsMobileMenuOpen(!isMobileMenuOpen);
-    };
-
-    const closeMobileMenu = () => {
-        setIsMobileMenuOpen(false);
-    };
-
     return (
         <div className="layout">
-            <button
-                className="mobile-menu-toggle"
-                onClick={toggleMobileMenu}
-                aria-label="Toggle menu"
-            >
-                {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
-
-            {isMobileMenuOpen && (
-                <div className="sidebar-overlay-mobile" onClick={closeMobileMenu} />
-            )}
-
-            <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''} ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
+            <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
                 <div className="sidebar-header">
                     <div className="header-brand-row">
                         <div className="brand-info">
@@ -171,7 +158,6 @@ export default function Layout() {
                                         to={item.to}
                                         className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}
                                         title={item.label}
-                                        onClick={closeMobileMenu}
                                     >
                                         <item.icon size={20} />
                                         <span>{item.label}</span>
@@ -210,6 +196,40 @@ export default function Layout() {
                 <Outlet />
                 <SyncStatus />
             </main>
+
+            {(() => {
+                const visibleQuickItems = MOBILE_QUICK_NAV.filter(item =>
+                    userRoleNames.some(r => item.roles.includes(r))
+                );
+                if (visibleQuickItems.length === 0) return null;
+                return (
+                    <nav className="mobile-bottom-nav" aria-label="Acceso rápido">
+                        {visibleQuickItems.map(item => (
+                            <NavLink
+                                key={item.to}
+                                to={item.to}
+                                className={({ isActive }) =>
+                                    isActive ? 'mobile-bottom-nav-item active' : 'mobile-bottom-nav-item'
+                                }
+                                title={item.label}
+                            >
+                                <item.icon size={22} />
+                                <span>{item.label}</span>
+                            </NavLink>
+                        ))}
+                        <button
+                            type="button"
+                            onClick={handleLogout}
+                            className="mobile-bottom-nav-item mobile-bottom-nav-logout"
+                            title={t('common.logout')}
+                            aria-label={t('common.logout')}
+                        >
+                            <LogOut size={22} />
+                            <span>Salir</span>
+                        </button>
+                    </nav>
+                );
+            })()}
         </div>
     );
 }

@@ -112,13 +112,16 @@ app.param('id', (req, res, next, value) => {
     next();
 });
 
-// Rate limiting for auth endpoints (prevent brute force)
+// Rate limiting for auth endpoints (prevent brute force).
+// Disabled in non-production to avoid getting locked out during local dev / e2e runs.
+const isProd = process.env.NODE_ENV === 'production';
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 20, // max 20 attempts per window
+    max: isProd ? 20 : 1000,
     message: { success: false, message: 'Too many attempts, please try again later' },
     standardHeaders: true,
-    legacyHeaders: false
+    legacyHeaders: false,
+    skip: () => !isProd
 });
 
 // Routes

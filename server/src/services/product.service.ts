@@ -112,16 +112,23 @@ export class ProductService {
         return product;
     }
 
-    static async generateSku(companyId: number, categoryId: number): Promise<string> {
-        const category = await prisma.category.findFirst({
-            where: { id: categoryId, companyId }
-        });
+    static async generateSku(
+        companyId: number,
+        categoryId?: number | null,
+        type?: 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH'
+    ): Promise<string> {
+        let prefix = 'GEN';
 
-        if (!category) {
-            throw new Error('Categoría no encontrada para generar código');
+        if (categoryId) {
+            const category = await prisma.category.findFirst({
+                where: { id: categoryId, companyId }
+            });
+            if (category?.codePrefix) {
+                prefix = category.codePrefix;
+            }
+        } else if (type === 'INGREDIENT') {
+            prefix = 'ING';
         }
-
-        const prefix = category.codePrefix || 'GEN';
 
         const lastProduct = await prisma.product.findFirst({
             where: {
@@ -155,8 +162,8 @@ export class ProductService {
         type?: 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH';
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE';
     }, userId?: number) {
-        if (!data.sku && data.categoryId) {
-            data.sku = await this.generateSku(companyId, data.categoryId);
+        if (!data.sku || data.sku.trim() === '') {
+            data.sku = await this.generateSku(companyId, data.categoryId, data.type);
         }
 
         if (data.sku) {
@@ -209,9 +216,24 @@ export class ProductService {
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE' | null;
         active?: boolean;
     }, userId?: number) {
-        // Check if new SKU already exists in the same company
+        const existing = await this.getById(id, companyId);
+
+        const hasSkuKey = Object.prototype.hasOwnProperty.call(data, 'sku');
+        const incomingSkuEmpty = hasSkuKey && (!data.sku || String(data.sku).trim() === '');
+        const currentSkuEmpty = !existing.sku || String(existing.sku).trim() === '';
+
+        if (incomingSkuEmpty || (!hasSkuKey && currentSkuEmpty)) {
+            const effectiveCategoryId =
+                data.categoryId !== undefined ? data.categoryId : existing.categoryId;
+            const effectiveType = (data.type || existing.type) as
+                | 'INGREDIENT'
+                | 'PRODUCT_FOR_SALE'
+                | 'BOTH';
+            data.sku = await this.generateSku(companyId, effectiveCategoryId, effectiveType);
+        }
+
         if (data.sku) {
-            const existing = await prisma.product.findFirst({
+            const duplicate = await prisma.product.findFirst({
                 where: {
                     sku: data.sku,
                     companyId,
@@ -219,12 +241,10 @@ export class ProductService {
                 }
             });
 
-            if (existing) {
+            if (duplicate) {
                 throw new Error('Product with this SKU already exists');
             }
         }
-
-        const existing = await this.getById(id, companyId);
 
         const product = await prisma.product.update({
             where: { id },

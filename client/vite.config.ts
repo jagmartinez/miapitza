@@ -4,20 +4,33 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
     plugins: [react()],
     server: {
+        // Bind on both IPv4 and IPv6 (Windows sometimes resolves localhost to 127.0.0.1
+        // instead of ::1, which would otherwise refuse the connection).
+        host: '127.0.0.1',
         port: 3000,
-        // Explicit HMR endpoint avoids flaky WebSocket upgrades on some Windows setups / extensions.
+        strictPort: true,
+        // Put HMR on its own dedicated port so it can never collide with the /api
+        // proxy upgrade path. 24678 is Vite's default.
         hmr: {
             protocol: 'ws',
-            host: 'localhost',
-            port: 3000,
-            clientPort: 3000,
+            host: '127.0.0.1',
+            port: 24678,
+            clientPort: 24678,
+        },
+        // Cursor/VSCode on Windows uses "atomic save" (write-temp-then-rename),
+        // which chokidar's native fs events sometimes miss. Polling guarantees
+        // every save fires an HMR update.
+        watch: {
+            usePolling: true,
+            interval: 300,
         },
         proxy: {
+            // The application WebSocket connects directly to ws://localhost:3001
+            // (see VITE_WS_URL), so we intentionally do NOT enable ws: true here.
             '/api': {
                 target: 'http://localhost:3001',
                 changeOrigin: true,
-                secure: false,
-                ws: true
+                secure: false
             }
         }
     },

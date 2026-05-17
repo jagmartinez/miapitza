@@ -314,3 +314,126 @@
     opacity: 0.2;
     margin-bottom: 12px;
 }
+
+/* === Mobile responsive === */
+@media (max-width: 768px) {
+    .promotions-page {
+        padding: var(--spacing-md);
+    }
+
+    .promo-header {
+        flex-direction: column;
+        gap: var(--spacing-md);
+        align-items: stretch;
+        margin-bottom: var(--spacing-md);
+    }
+
+    .promo-header h1 {
+        font-size: 1.4rem;
+        gap: var(--spacing-sm);
+    }
+
+    .promo-header h1 svg {
+        width: 22px;
+        height: 22px;
+    }
+
+    .promo-header p {
+        font-size: 0.75rem;
+    }
+
+    /* Full-width primary button */
+    .promo-header > button,
+    .promo-header .btn {
+        width: 100%;
+        padding: 14px;
+        font-size: var(--font-size-base);
+        font-weight: 700;
+        justify-content: center;
+    }
+
+    .promo-grid {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-md);
+    }
+
+    .promo-card:hover {
+        transform: none;
+    }
+
+    .promo-card-top {
+        padding: var(--spacing-md);
+        align-items: center;
+    }
+
+    .promo-card-body {
+        padding: 0 var(--spacing-md) var(--spacing-md);
+        gap: var(--spacing-xs);
+    }
+
+    .promo-code-badge {
+        font-size: 12px;
+        padding: 5px 12px;
+    }
+
+    .promo-type-badge {
+        font-size: 9px;
+        padding: 3px 8px;
+    }
+
+    .promo-name {
+        font-size: var(--font-size-base);
+    }
+
+    .promo-value-display {
+        font-size: 1.6rem;
+        margin: 0;
+    }
+
+    .promo-details {
+        gap: 4px;
+        padding-top: var(--spacing-xs);
+    }
+
+    .promo-detail-row {
+        font-size: 11px;
+    }
+
+    .promo-form-row {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-sm);
+    }
+
+    .promo-form-actions {
+        flex-direction: column;
+    }
+
+    .promo-form-actions button,
+    .promo-form-actions .btn {
+        width: 100%;
+    }
+
+    .promo-empty {
+        padding: 40px var(--spacing-md);
+    }
+}
+
+@media (max-width: 480px) {
+    .promotions-page {
+        padding: var(--spacing-sm);
+    }
+
+    .promo-header h1 {
+        font-size: 1.25rem;
+    }
+
+    .promo-card-actions {
+        flex-wrap: wrap;
+    }
+
+    .promo-action-btn {
+        flex: 1 1 33.33%;
+        padding: 10px 6px;
+        font-size: 10px;
+    }
+}

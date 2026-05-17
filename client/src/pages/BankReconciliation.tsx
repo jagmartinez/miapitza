@@ -1,6 +1,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
+import Button from '../components/Button';
+import { ToastContainer } from '../components/Toast';
+import { useToast } from '../hooks/useToast';
+import {
+    Landmark,
+    BarChart3,
+    Hourglass,
+    CircleDollarSign,
+    CalendarRange,
+    Search,
+    Calendar,
+    TrendingUp,
+    Wallet,
+    CheckCircle2,
+    AlertTriangle,
+    Loader2,
+    FileText,
+    Save,
+} from 'lucide-react';
 
 function errorMessage(error: unknown): string {
     if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -10,22 +29,13 @@ function errorMessage(error: unknown): string {
     if (error instanceof Error) return error.message;
     return 'Error';
 }
-import '../index.css';
 
 interface ReconciliationStatus {
-    period: {
-        start: string;
-        end: string;
-    };
+    period: { start: string; end: string };
     shifts: number;
     totals: {
         totalSales: number;
-        byMethod: {
-            cash: number;
-            card: number;
-            transfer: number;
-            other: number;
-        };
+        byMethod: { cash: number; card: number; transfer: number; other: number };
         cashInRegisters: number;
     };
     reconciliation: {
@@ -47,8 +57,11 @@ interface PendingReconciliation {
     status: string;
 }
 
+type TabKey = 'status' | 'pending' | 'deposit';
+
 const BankReconciliation: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'status' | 'pending' | 'deposit'>('status');
+    const { toasts, removeToast, success: showSuccess, error: showError } = useToast();
+    const [activeTab, setActiveTab] = useState<TabKey>('status');
     const [status, setStatus] = useState<ReconciliationStatus | null>(null);
     const [pending, setPending] = useState<PendingReconciliation[]>([]);
     const [selectedShifts, setSelectedShifts] = useState<number[]>([]);
@@ -112,7 +125,6 @@ const BankReconciliation: React.FC = () => {
     const handleRecordDeposit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-
         try {
             await api.post('/advanced/reconciliation/deposit', {
                 date: new Date(depositForm.date),
@@ -122,8 +134,7 @@ const BankReconciliation: React.FC = () => {
                 notes: depositForm.notes,
                 shiftIds: selectedShifts
             });
-
-            alert('Depósito registrado exitosamente');
+            showSuccess('Depósito registrado exitosamente');
             setDepositForm({
                 date: new Date().toISOString().split('T')[0],
                 amount: '',
@@ -134,7 +145,7 @@ const BankReconciliation: React.FC = () => {
             setSelectedShifts([]);
             loadPendingReconciliations();
         } catch (error: unknown) {
-            alert('Error al registrar depósito: ' + errorMessage(error));
+            showError('Error al registrar depósito: ' + errorMessage(error));
         } finally {
             setLoading(false);
         }
@@ -142,10 +153,9 @@ const BankReconciliation: React.FC = () => {
 
     const handleMarkAsReconciled = async () => {
         if (selectedShifts.length === 0) {
-            alert('Seleccione al menos un turno para conciliar');
+            showError('Seleccione al menos un turno para conciliar');
             return;
         }
-
         const reference = prompt('Ingrese la referencia del depósito bancario:');
         if (!reference) return;
 
@@ -155,13 +165,12 @@ const BankReconciliation: React.FC = () => {
                 shiftIds: selectedShifts,
                 depositReference: reference
             });
-
-            alert(`${selectedShifts.length} turno(s) marcado(s) como conciliado(s)`);
+            showSuccess(`${selectedShifts.length} turno(s) marcado(s) como conciliado(s)`);
             setSelectedShifts([]);
             loadPendingReconciliations();
             loadReconciliationStatus();
         } catch (error: unknown) {
-            alert('Error al marcar como conciliado: ' + errorMessage(error));
+            showError('Error al marcar como conciliado: ' + errorMessage(error));
         } finally {
             setLoading(false);
         }
@@ -173,257 +182,266 @@ const BankReconciliation: React.FC = () => {
         );
     };
 
+    const tabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
+        { key: 'status', label: 'Estado', icon: <BarChart3 size={16} /> },
+        { key: 'pending', label: 'Pendientes', icon: <Hourglass size={16} /> },
+        { key: 'deposit', label: 'Registrar Depósito', icon: <CircleDollarSign size={16} /> },
+    ];
+
+    const isReconciled = status?.reconciliation.status === 'RECONCILED';
+
     return (
-        <div className="page-container">
-            <div className="page-header">
-                <h1>🏦 Conciliación Bancaria</h1>
-                <p>Gestiona la conciliación de caja con depósitos bancarios</p>
+        <div className="page-wrapper">
+            <ToastContainer toasts={toasts} onRemove={removeToast} />
+
+            <div className="page-header-bar">
+                <div className="header-title-section">
+                    <h1><Landmark size={32} /> Conciliación Bancaria</h1>
+                    <p className="header-subtitle">Gestiona la conciliación de caja con depósitos bancarios</p>
+                </div>
             </div>
 
-            {/* Tabs */}
-            <div className="tabs">
-                <button
-                    className={`tab ${activeTab === 'status' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('status')}
-                >
-                    📊 Estado
-                </button>
-                <button
-                    className={`tab ${activeTab === 'pending' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('pending')}
-                >
-                    ⏳ Pendientes
-                </button>
-                <button
-                    className={`tab ${activeTab === 'deposit' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('deposit')}
-                >
-                    💰 Registrar Depósito
-                </button>
+            <div className="page-tabs" style={{ marginBottom: 'var(--spacing-lg)' }}>
+                {tabs.map((tab) => (
+                    <button
+                        key={tab.key}
+                        className={`page-tab ${activeTab === tab.key ? 'active' : ''}`}
+                        onClick={() => setActiveTab(tab.key)}
+                    >
+                        {tab.icon}
+                        {tab.label}
+                    </button>
+                ))}
             </div>
 
-            {/* Status Tab */}
+            {/* ========================= STATUS TAB ========================= */}
             {activeTab === 'status' && (
                 <>
-                    <div className="card">
-                        <h2>Período de Conciliación</h2>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Fecha Inicio</label>
-                                <input
-                                    type="date"
-                                    value={dateRange.startDate}
-                                    onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
-                                />
-                            </div>
-
-                            <div className="form-group">
-                                <label>Fecha Fin</label>
-                                <input
-                                    type="date"
-                                    value={dateRange.endDate}
-                                    onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
-                                />
-                            </div>
-
-                            <div className="form-group" style={{ alignSelf: 'flex-end' }}>
-                                <button onClick={loadReconciliationStatus} className="btn btn-primary" disabled={loading}>
-                                    {loading ? 'Cargando...' : '🔍 Consultar'}
-                                </button>
-                            </div>
+                    <div className="filters-toolbar" style={{ marginBottom: 'var(--spacing-lg)' }}>
+                        <div className="filter-field filter-field-narrow">
+                            <label className="filter-field-label">
+                                <Calendar size={14} /> Desde
+                            </label>
+                            <input
+                                type="date"
+                                className="filter-input"
+                                value={dateRange.startDate}
+                                onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
+                            />
+                        </div>
+                        <div className="filter-field filter-field-narrow">
+                            <label className="filter-field-label">
+                                <Calendar size={14} /> Hasta
+                            </label>
+                            <input
+                                type="date"
+                                className="filter-input"
+                                value={dateRange.endDate}
+                                onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
+                            />
+                        </div>
+                        <div className="filter-actions" style={{ alignSelf: 'flex-end' }}>
+                            <Button onClick={loadReconciliationStatus} disabled={loading}>
+                                {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                                {loading ? 'Cargando...' : 'Consultar'}
+                            </Button>
                         </div>
                     </div>
 
                     {status && (
                         <>
-                            <div className="stats-grid">
-                                <div className="stat-card">
-                                    <div className="stat-icon">📅</div>
-                                    <div className="stat-content">
-                                        <div className="stat-label">Turnos Cerrados</div>
-                                        <div className="stat-value">{status.shifts}</div>
-                                    </div>
+                            <div className="kpi-grid">
+                                <div className="kpi-card kpi-neutral">
+                                    <div className="kpi-label"><CalendarRange size={14} /> Turnos cerrados</div>
+                                    <div className="kpi-value">{status.shifts}</div>
                                 </div>
-
-                                <div className="stat-card">
-                                    <div className="stat-icon">💵</div>
-                                    <div className="stat-content">
-                                        <div className="stat-label">Ventas Totales</div>
-                                        <div className="stat-value">{formatCurrency(status.totals.totalSales, settings)}</div>
-                                    </div>
+                                <div className="kpi-card">
+                                    <div className="kpi-label"><TrendingUp size={14} /> Ventas totales</div>
+                                    <div className="kpi-value">{formatCurrency(status.totals.totalSales, settings)}</div>
                                 </div>
-
-                                <div className="stat-card">
-                                    <div className="stat-icon">🏦</div>
-                                    <div className="stat-content">
-                                        <div className="stat-label">Efectivo en Cajas</div>
-                                        <div className="stat-value">{formatCurrency(status.totals.cashInRegisters, settings)}</div>
-                                    </div>
+                                <div className="kpi-card">
+                                    <div className="kpi-label"><Wallet size={14} /> Efectivo en cajas</div>
+                                    <div className="kpi-value">{formatCurrency(status.totals.cashInRegisters, settings)}</div>
                                 </div>
-
-                                <div className={`stat-card ${status.reconciliation.status === 'RECONCILED' ? 'success' : 'warning'}`}>
-                                    <div className="stat-icon">{status.reconciliation.status === 'RECONCILED' ? '✅' : '⚠️'}</div>
-                                    <div className="stat-content">
-                                        <div className="stat-label">Estado</div>
-                                        <div className="stat-value">
-                                            {status.reconciliation.status === 'RECONCILED' ? 'Conciliado' : 'Pendiente'}
-                                        </div>
+                                <div className={`kpi-card ${isReconciled ? 'kpi-success' : 'kpi-warning'}`}>
+                                    <div className="kpi-label">
+                                        {isReconciled ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+                                        Estado
+                                    </div>
+                                    <div className="kpi-value">
+                                        {isReconciled ? 'Conciliado' : 'Pendiente'}
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="card">
-                                <h2>Ventas por Método de Pago</h2>
-                                <table className="data-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Método</th>
-                                            <th>Monto</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td>💵 Efectivo</td>
-                                            <td>{formatCurrency(status.totals.byMethod.cash, settings)}</td>
-                                        </tr>
-                                        <tr>
-                                            <td>💳 Tarjeta</td>
-                                            <td>{formatCurrency(status.totals.byMethod.card, settings)}</td>
-                                        </tr>
-                                        <tr>
-                                            <td>🏦 Transferencia</td>
-                                            <td>{formatCurrency(status.totals.byMethod.transfer, settings)}</td>
-                                        </tr>
-                                        <tr>
-                                            <td>📱 Otros</td>
-                                            <td>{formatCurrency(status.totals.byMethod.other, settings)}</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                            <div className="data-table-wrapper">
+                                <div className="data-table-header">Ventas por método de pago</div>
+                                <div className="data-table-scroll">
+                                    <table className="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Método</th>
+                                                <th className="text-right">Monto</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td>Efectivo</td>
+                                                <td className="text-right font-semibold">{formatCurrency(status.totals.byMethod.cash, settings)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Tarjeta</td>
+                                                <td className="text-right font-semibold">{formatCurrency(status.totals.byMethod.card, settings)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Transferencia</td>
+                                                <td className="text-right font-semibold">{formatCurrency(status.totals.byMethod.transfer, settings)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Otros</td>
+                                                <td className="text-right font-semibold">{formatCurrency(status.totals.byMethod.other, settings)}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
 
-                            <div className="card">
-                                <h2>Conciliación de Efectivo</h2>
-                                <table className="data-table">
-                                    <tbody>
-                                        <tr>
-                                            <td><strong>Efectivo Esperado</strong></td>
-                                            <td>{formatCurrency(status.reconciliation.cashExpected, settings)}</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Efectivo Real en Cajas</strong></td>
-                                            <td>{formatCurrency(status.reconciliation.cashActual, settings)}</td>
-                                        </tr>
-                                        <tr className={status.reconciliation.difference === 0 ? 'success' : 'warning'}>
-                                            <td><strong>Diferencia</strong></td>
-                                            <td>
-                                                <strong>
-                                                    {formatCurrency(status.reconciliation.difference, settings)}
-                                                    {status.reconciliation.difference > 0 && ' (Sobrante)'}
-                                                    {status.reconciliation.difference < 0 && ' (Faltante)'}
-                                                </strong>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                            <div className="data-table-wrapper">
+                                <div className="data-table-header">Conciliación de efectivo</div>
+                                <div className="data-table-scroll">
+                                    <table className="data-table">
+                                        <tbody>
+                                            <tr>
+                                                <td>Efectivo esperado</td>
+                                                <td className="text-right font-semibold">{formatCurrency(status.reconciliation.cashExpected, settings)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Efectivo real en cajas</td>
+                                                <td className="text-right font-semibold">{formatCurrency(status.reconciliation.cashActual, settings)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Diferencia</strong></td>
+                                                <td className="text-right">
+                                                    <span className={`status-pill ${status.reconciliation.difference === 0 ? 'status-success' : 'status-warning'}`}>
+                                                        {formatCurrency(status.reconciliation.difference, settings)}
+                                                        {status.reconciliation.difference > 0 && ' • Sobrante'}
+                                                        {status.reconciliation.difference < 0 && ' • Faltante'}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </>
+                    )}
+
+                    {!status && !loading && (
+                        <div className="state-placeholder">
+                            <BarChart3 size={48} />
+                            <p>No hay datos disponibles para el período seleccionado.</p>
+                        </div>
                     )}
                 </>
             )}
 
-            {/* Pending Tab */}
+            {/* ========================= PENDING TAB ========================= */}
             {activeTab === 'pending' && (
-                <div className="card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                        <h2>Turnos Pendientes de Conciliación</h2>
+                <div className="data-table-wrapper">
+                    <div className="data-table-header">
+                        <span>Turnos pendientes de conciliación</span>
                         {selectedShifts.length > 0 && (
-                            <button onClick={handleMarkAsReconciled} className="btn btn-success" disabled={loading}>
-                                ✅ Marcar {selectedShifts.length} como Conciliado(s)
-                            </button>
+                            <Button variant="primary" onClick={handleMarkAsReconciled} disabled={loading}>
+                                <CheckCircle2 size={16} /> Marcar {selectedShifts.length} como conciliado(s)
+                            </Button>
                         )}
                     </div>
-
-                    <div className="table-container">
-                        <table className="data-table">
-                            <thead>
-                                <tr>
-                                    <th>
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedShifts.length === pending.length && pending.length > 0}
-                                            onChange={(e) =>
-                                                setSelectedShifts(e.target.checked ? pending.map((p) => p.shiftId) : [])
-                                            }
-                                        />
-                                    </th>
-                                    <th>Fecha</th>
-                                    <th>Caja</th>
-                                    <th>Usuario</th>
-                                    <th>Monto Inicial</th>
-                                    <th>Monto Final</th>
-                                    <th>Diferencia</th>
-                                    <th>Estado</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {pending.map((shift) => (
-                                    <tr key={shift.shiftId}>
-                                        <td>
+                    {pending.length > 0 ? (
+                        <div className="data-table-scroll">
+                            <table className="data-table">
+                                <thead>
+                                    <tr>
+                                        <th style={{ width: 36 }}>
                                             <input
                                                 type="checkbox"
-                                                checked={selectedShifts.includes(shift.shiftId)}
-                                                onChange={() => toggleShiftSelection(shift.shiftId)}
+                                                checked={selectedShifts.length === pending.length && pending.length > 0}
+                                                onChange={(e) =>
+                                                    setSelectedShifts(e.target.checked ? pending.map((p) => p.shiftId) : [])
+                                                }
                                             />
-                                        </td>
-                                        <td>{new Date(shift.date).toLocaleDateString()}</td>
-                                        <td>{shift.cashRegister}</td>
-                                        <td>{shift.user}</td>
-                                        <td>{formatCurrency(shift.startAmount, settings)}</td>
-                                        <td>{formatCurrency(shift.endAmount, settings)}</td>
-                                        <td className={shift.difference === 0 ? 'success' : 'warning'}>
-                                            {formatCurrency(shift.difference, settings)}
-                                        </td>
-                                        <td>
-                                            <span className={`badge ${shift.status === 'BALANCED' ? 'success' : 'warning'}`}>
-                                                {shift.status === 'BALANCED' ? 'Cuadrado' : 'Con Diferencia'}
-                                            </span>
-                                        </td>
+                                        </th>
+                                        <th>Fecha</th>
+                                        <th>Caja</th>
+                                        <th>Usuario</th>
+                                        <th className="text-right">Monto inicial</th>
+                                        <th className="text-right">Monto final</th>
+                                        <th className="text-right">Diferencia</th>
+                                        <th className="text-center">Estado</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {pending.length === 0 && (
-                        <p style={{ textAlign: 'center', padding: '2rem', color: '#888' }}>
-                            No hay turnos pendientes de conciliación
-                        </p>
+                                </thead>
+                                <tbody>
+                                    {pending.map((shift) => (
+                                        <tr key={shift.shiftId}>
+                                            <td>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedShifts.includes(shift.shiftId)}
+                                                    onChange={() => toggleShiftSelection(shift.shiftId)}
+                                                />
+                                            </td>
+                                            <td>{new Date(shift.date).toLocaleDateString()}</td>
+                                            <td>{shift.cashRegister}</td>
+                                            <td className="text-secondary">{shift.user}</td>
+                                            <td className="text-right font-semibold">{formatCurrency(shift.startAmount, settings)}</td>
+                                            <td className="text-right font-semibold">{formatCurrency(shift.endAmount, settings)}</td>
+                                            <td className="text-right">
+                                                <span className={`status-pill ${shift.difference === 0 ? 'status-success' : 'status-warning'}`}>
+                                                    {formatCurrency(shift.difference, settings)}
+                                                </span>
+                                            </td>
+                                            <td className="text-center">
+                                                <span className={`status-pill ${shift.status === 'BALANCED' ? 'status-success' : 'status-warning'}`}>
+                                                    {shift.status === 'BALANCED' ? 'Cuadrado' : 'Con diferencia'}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="state-placeholder" style={{ borderTop: 'none', borderRadius: 0 }}>
+                            <Hourglass size={48} />
+                            <p>No hay turnos pendientes de conciliación.</p>
+                        </div>
                     )}
                 </div>
             )}
 
-            {/* Deposit Tab */}
+            {/* ========================= DEPOSIT TAB ========================= */}
             {activeTab === 'deposit' && (
-                <div className="card">
-                    <h2>Registrar Depósito Bancario</h2>
-                    <form onSubmit={handleRecordDeposit} className="form">
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Fecha del Depósito *</label>
+                <div className="data-table-wrapper" style={{ padding: 'var(--spacing-lg)' }}>
+                    <h2 style={{ margin: '0 0 var(--spacing-md) 0', fontSize: 'var(--font-size-lg)' }}>
+                        Registrar depósito bancario
+                    </h2>
+                    <form onSubmit={handleRecordDeposit} className="modal-form-new" style={{ padding: 0 }}>
+                        <div className="modal-form-row">
+                            <div className="modal-input-group">
+                                <label className="modal-input-label">Fecha del depósito *</label>
                                 <input
                                     type="date"
+                                    className="modal-standard-input"
                                     value={depositForm.date}
                                     onChange={(e) => setDepositForm({ ...depositForm, date: e.target.value })}
                                     required
                                 />
                             </div>
-
-                            <div className="form-group">
-                                <label>Monto *</label>
+                            <div className="modal-input-group">
+                                <label className="modal-input-label">Monto *</label>
                                 <input
                                     type="number"
                                     step="0.01"
+                                    className="modal-standard-input"
                                     value={depositForm.amount}
                                     onChange={(e) => setDepositForm({ ...depositForm, amount: e.target.value })}
                                     required
@@ -433,22 +451,23 @@ const BankReconciliation: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Cuenta Bancaria *</label>
+                        <div className="modal-form-row">
+                            <div className="modal-input-group">
+                                <label className="modal-input-label">Cuenta bancaria *</label>
                                 <input
                                     type="text"
+                                    className="modal-standard-input"
                                     value={depositForm.bankAccount}
                                     onChange={(e) => setDepositForm({ ...depositForm, bankAccount: e.target.value })}
                                     required
-                                    placeholder="Ej: BAC - Cuenta Corriente 123456"
+                                    placeholder="Ej: BAC — Cuenta Corriente 123456"
                                 />
                             </div>
-
-                            <div className="form-group">
-                                <label>Referencia/Boleta *</label>
+                            <div className="modal-input-group">
+                                <label className="modal-input-label">Referencia / Boleta *</label>
                                 <input
                                     type="text"
+                                    className="modal-standard-input"
                                     value={depositForm.reference}
                                     onChange={(e) => setDepositForm({ ...depositForm, reference: e.target.value })}
                                     required
@@ -457,9 +476,10 @@ const BankReconciliation: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="form-group">
-                            <label>Notas</label>
+                        <div className="modal-input-group">
+                            <label className="modal-input-label">Notas</label>
                             <textarea
+                                className="modal-textarea"
                                 value={depositForm.notes}
                                 onChange={(e) => setDepositForm({ ...depositForm, notes: e.target.value })}
                                 rows={3}
@@ -468,30 +488,47 @@ const BankReconciliation: React.FC = () => {
                         </div>
 
                         {pending.length > 0 && (
-                            <div className="form-group">
-                                <label>Turnos Asociados (Opcional)</label>
-                                <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #333', borderRadius: '8px', padding: '0.5rem' }}>
+                            <div className="modal-input-group">
+                                <label className="modal-input-label">Turnos asociados (opcional)</label>
+                                <div style={{
+                                    maxHeight: 200,
+                                    overflowY: 'auto',
+                                    border: '1px solid var(--color-border)',
+                                    borderRadius: 'var(--radius-md)',
+                                    padding: 'var(--spacing-sm)',
+                                    background: 'var(--color-background)'
+                                }}>
                                     {pending.map((shift) => (
-                                        <div key={shift.shiftId} style={{ padding: '0.5rem' }}>
-                                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedShifts.includes(shift.shiftId)}
-                                                    onChange={() => toggleShiftSelection(shift.shiftId)}
-                                                />
-                                                <span>
-                                                    {new Date(shift.date).toLocaleDateString()} - {shift.cashRegister} - {formatCurrency(shift.endAmount, settings)}
-                                                </span>
-                                            </label>
-                                        </div>
+                                        <label key={shift.shiftId} style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 'var(--spacing-sm)',
+                                            cursor: 'pointer',
+                                            padding: 'var(--spacing-xs) var(--spacing-sm)',
+                                            borderRadius: 'var(--radius-sm)',
+                                            fontSize: 'var(--font-size-sm)',
+                                            color: 'var(--color-text)'
+                                        }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedShifts.includes(shift.shiftId)}
+                                                onChange={() => toggleShiftSelection(shift.shiftId)}
+                                            />
+                                            <span>
+                                                {new Date(shift.date).toLocaleDateString()} — {shift.cashRegister} — {formatCurrency(shift.endAmount, settings)}
+                                            </span>
+                                        </label>
                                     ))}
                                 </div>
                             </div>
                         )}
 
-                        <button type="submit" className="btn btn-primary" disabled={loading}>
-                            {loading ? 'Guardando...' : '💾 Registrar Depósito'}
-                        </button>
+                        <div className="modal-footer" style={{ borderTop: 'none', padding: 'var(--spacing-md) 0 0', marginTop: 'var(--spacing-md)' }}>
+                            <Button type="submit" disabled={loading}>
+                                {loading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                                {loading ? 'Guardando...' : 'Registrar depósito'}
+                            </Button>
+                        </div>
                     </form>
                 </div>
             )}

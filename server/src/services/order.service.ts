@@ -578,6 +578,21 @@ export class OrderService {
                 );
             }
 
+            // When the whole order is marked as READY (e.g. "Todo Listo" in KDS),
+            // force every still-open item to DONE so the kitchen timeline (firstStartedAt / readyAt)
+            // reflects the actual completion time instead of staying blank.
+            if (status === 'READY') {
+                const now = new Date();
+                await tx.orderItem.updateMany({
+                    where: { orderId: id, status: { not: 'DONE' } },
+                    data: { status: 'DONE', finishedAt: now }
+                });
+                await tx.orderItem.updateMany({
+                    where: { orderId: id, startedAt: null },
+                    data: { startedAt: now }
+                });
+            }
+
             return await tx.order.update({
                 where: { id },
                 data: { status },

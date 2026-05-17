@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { ordersAPI } from '../services/api';
-import { ChefHat, CheckCircle, AlertCircle, Volume2, VolumeX, AlertTriangle, Play, Check } from 'lucide-react';
+import { ChefHat, CheckCircle, AlertCircle, Volume2, VolumeX, AlertTriangle, Play, Check, ListOrdered } from 'lucide-react';
 import { initializeSound, playNotificationSound } from '../utils/sound';
 import { escapeHtml } from '../utils/escapeHtml';
 import { useDebounce } from '../utils/useDebounce';
@@ -10,6 +10,7 @@ import { getUserAccentColor, canOperateKitchenLineItems } from '../utils/authz';
 import './Kitchen.css';
 import { getOrderStatusLabel, getOrderTimeline } from '../utils/orderStatus';
 import Select from '../components/Select';
+import Modal from '../components/Modal';
 import type { SingleValue } from 'react-select';
 import type { Order, OrderItem } from '../types';
 
@@ -42,6 +43,7 @@ export default function Kitchen() {
     const [showProblemModal, setShowProblemModal] = useState(false);
     const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
     const [problemDescription, setProblemDescription] = useState('');
+    const [detailOrderId, setDetailOrderId] = useState<number | null>(null);
     const previousOrderCount = useRef(0);
 
     useEffect(() => {
@@ -342,8 +344,23 @@ export default function Kitchen() {
                     const waiterAccent = getUserAccentColor(order.user);
 
 
+                    const itemsCount = order.items?.reduce((acc, it) => acc + (it.quantity || 1), 0) || 0;
+
                     return (
-                        <div key={order.id} className={`kitchen-card-new ${order.status === 'READY' ? 'order-ready' : timeClass}`} style={{ borderTop: `4px solid ${waiterAccent}` }}>
+                        <div
+                            key={order.id}
+                            className={`kitchen-card-new ${order.status === 'READY' ? 'order-ready' : timeClass}`}
+                            style={{ borderTop: `4px solid ${waiterAccent}` }}
+                            onClick={() => setDetailOrderId(order.id)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setDetailOrderId(order.id);
+                                }
+                            }}
+                        >
                             {/* Status Badge */}
                             <div className={`status-badge-new status-${order.status === 'READY' ? 'ready' : timeClass.replace('time-', '')}`}>
                                 <span>{order.status === 'READY' ? 'Lista' : `${waitTime} min`}</span>
@@ -351,21 +368,21 @@ export default function Kitchen() {
 
                             {/* Card Body */}
                             <div className="kitchen-card-body-new">
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div className="kitchen-card-top-row">
                                     <div className="table-number-new">Mesa {order.table?.number || 'N/A'}</div>
                                     {order.user && (
-                                        <span style={{
-                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                            fontSize: '0.75rem', fontWeight: 600, padding: '2px 8px',
-                                            borderRadius: '10px',
-                                            backgroundColor: `${waiterAccent}25`,
-                                            color: waiterAccent,
-                                            border: `1.5px solid ${waiterAccent}`
-                                        }}>
-                                            <span style={{
-                                                width: '8px', height: '8px', borderRadius: '50%',
-                                                backgroundColor: waiterAccent
-                                            }} />
+                                        <span
+                                            className="kitchen-waiter-chip"
+                                            style={{
+                                                backgroundColor: `${waiterAccent}25`,
+                                                color: waiterAccent,
+                                                borderColor: waiterAccent
+                                            }}
+                                        >
+                                            <span
+                                                className="kitchen-waiter-dot"
+                                                style={{ backgroundColor: waiterAccent }}
+                                            />
                                             {order.user.name}
                                         </span>
                                     )}
@@ -380,28 +397,23 @@ export default function Kitchen() {
                                     </span>
                                 </div>
 
-                                <div style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-                                    gap: '0.5rem',
-                                    marginBottom: '0.9rem'
-                                }}>
-                                    <div style={{ padding: '0.55rem 0.65rem', borderRadius: '10px', background: 'var(--color-neutral-50)' }}>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)' }}>Estado</div>
-                                        <div style={{ fontWeight: 700 }}>{getOrderStatusLabel(order.status)}</div>
+                                <div className="kitchen-timeline-grid">
+                                    <div className="kitchen-timeline-cell">
+                                        <div className="kitchen-timeline-label">Estado</div>
+                                        <div className="kitchen-timeline-value">{getOrderStatusLabel(order.status)}</div>
                                     </div>
-                                    <div style={{ padding: '0.55rem 0.65rem', borderRadius: '10px', background: 'var(--color-neutral-50)' }}>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)' }}>Inicio</div>
-                                        <div style={{ fontWeight: 700 }}>
+                                    <div className="kitchen-timeline-cell">
+                                        <div className="kitchen-timeline-label">Inicio</div>
+                                        <div className="kitchen-timeline-value">
                                             {timeline.firstStartedAt ? new Date(timeline.firstStartedAt).toLocaleTimeString('es-ES', {
                                                 hour: '2-digit',
                                                 minute: '2-digit'
                                             }) : '--:--'}
                                         </div>
                                     </div>
-                                    <div style={{ padding: '0.55rem 0.65rem', borderRadius: '10px', background: 'var(--color-neutral-50)' }}>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)' }}>Lista</div>
-                                        <div style={{ fontWeight: 700 }}>
+                                    <div className="kitchen-timeline-cell">
+                                        <div className="kitchen-timeline-label">Lista</div>
+                                        <div className="kitchen-timeline-value">
                                             {timeline.readyAt ? new Date(timeline.readyAt).toLocaleTimeString('es-ES', {
                                                 hour: '2-digit',
                                                 minute: '2-digit'
@@ -418,69 +430,20 @@ export default function Kitchen() {
                                     </div>
                                 )}
 
-
-                                {/* Items List with per-item controls */}
-                                <div className="kitchen-items-list">
-                                    {order.items?.map((item) => {
-                                        const prepTime = getItemTimeDiff(item.startedAt);
-                                        return (
-                                            <div key={item.id || item.menuItemId} className="kitchen-item" style={{
-                                                display: 'flex', alignItems: 'center', gap: '8px',
-                                                padding: '6px 8px', borderRadius: '6px',
-                                                background: item.status === 'DONE' ? 'var(--color-success, #22c55e)10' :
-                                                    item.status === 'IN_PROGRESS' ? 'var(--color-warning, #f59e0b)10' : 'transparent',
-                                                borderLeft: `3px solid ${item.status === 'DONE' ? 'var(--color-success, #22c55e)' :
-                                                    item.status === 'IN_PROGRESS' ? 'var(--color-warning, #f59e0b)' : 'var(--color-neutral-300)'}`
-                                            }}>
-                                                <span className="item-qty-kitchen" style={{ fontWeight: 700, minWidth: '28px' }}>{item.quantity}x</span>
-                                                <span className="item-name-kitchen" style={{ flex: 1 }}>
-                                                    {item.menuItem?.name}
-                                                    {item.notes && <small style={{ display: 'block', color: 'var(--color-neutral-500)', fontSize: '0.75rem' }}>{item.notes}</small>}
-                                                </span>
-                                                {item.status === 'IN_PROGRESS' && prepTime !== null && (
-                                                    <span style={{ fontSize: '0.7rem', color: 'var(--color-warning, #f59e0b)', fontWeight: 600 }}>
-                                                        {prepTime}m
-                                                    </span>
-                                                )}
-                                                {order.status !== 'READY' && (
-                                                    <>
-                                                        {canKitchenLineOps && item.status === 'PENDING' && (
-                                                            <button onClick={() => handleStartItem(order.id, item.id)}
-                                                                title="Proceder"
-                                                                style={{
-                                                                    background: 'var(--color-warning, #f59e0b)', color: '#fff',
-                                                                    border: 'none', borderRadius: '6px', padding: '4px 8px',
-                                                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px',
-                                                                    fontSize: '0.75rem', fontWeight: 600
-                                                                }}>
-                                                                <Play size={12} /> Iniciar
-                                                            </button>
-                                                        )}
-                                                        {canKitchenLineOps && item.status === 'IN_PROGRESS' && (
-                                                            <button onClick={() => handleFinishItem(order.id, item.id)}
-                                                                title="Listo"
-                                                                style={{
-                                                                    background: 'var(--color-success, #22c55e)', color: '#fff',
-                                                                    border: 'none', borderRadius: '6px', padding: '4px 8px',
-                                                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px',
-                                                                    fontSize: '0.75rem', fontWeight: 600
-                                                                }}>
-                                                                <Check size={12} /> Listo
-                                                            </button>
-                                                        )}
-                                                        {item.status === 'DONE' && (
-                                                            <CheckCircle size={16} color="var(--color-success, #22c55e)" />
-                                                        )}
-                                                    </>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
+                                {/* Items summary (click card to see detail) */}
+                                <div className="kitchen-items-summary">
+                                    <span className="kitchen-items-summary-icon">
+                                        <ListOrdered size={14} />
+                                    </span>
+                                    <span className="kitchen-items-summary-text">
+                                        {itemsCount} {itemsCount === 1 ? 'producto' : 'productos'}
+                                    </span>
+                                    <span className="kitchen-items-summary-hint">Ver detalle</span>
                                 </div>
                             </div>
 
                             {/* Actions Footer */}
-                            <div className="kitchen-card-actions-new">
+                            <div className="kitchen-card-actions-new" onClick={(e) => e.stopPropagation()}>
                                 {order.status === 'READY' ? (
                                     <div className="ready-badge-footer">
                                         <CheckCircle size={16} />
@@ -523,6 +486,156 @@ export default function Kitchen() {
                     </div>
                 )}
             </div>
+
+            {/* Order Detail Modal */}
+            {detailOrderId !== null && (() => {
+                const detailOrder = orders.find(o => o.id === detailOrderId);
+                if (!detailOrder) return null;
+                const detailWaitTime = getWaitTime(detailOrder.createdAt);
+                const detailTimeline = getOrderTimeline(detailOrder);
+                const detailWaiterAccent = getUserAccentColor(detailOrder.user);
+                return (
+                    <Modal
+                        isOpen={true}
+                        onClose={() => setDetailOrderId(null)}
+                        title={`Orden #${detailOrder.id} — Mesa ${detailOrder.table?.number || 'N/A'}`}
+                        size="md"
+                        variant="sidebar"
+                    >
+                        <div className="kitchen-detail-modal">
+                            <div className="kitchen-detail-meta">
+                                {detailOrder.user && (
+                                    <span
+                                        className="kitchen-waiter-chip"
+                                        style={{
+                                            backgroundColor: `${detailWaiterAccent}25`,
+                                            color: detailWaiterAccent,
+                                            borderColor: detailWaiterAccent
+                                        }}
+                                    >
+                                        <span
+                                            className="kitchen-waiter-dot"
+                                            style={{ backgroundColor: detailWaiterAccent }}
+                                        />
+                                        {detailOrder.user.name}
+                                    </span>
+                                )}
+                                <span className={`kitchen-detail-status status-${detailOrder.status === 'READY' ? 'ready' : getTimeClass(detailWaitTime).replace('time-', '')}`}>
+                                    {detailOrder.status === 'READY' ? 'Lista' : `${detailWaitTime} min`}
+                                </span>
+                            </div>
+
+                            <div className="kitchen-timeline-grid">
+                                <div className="kitchen-timeline-cell">
+                                    <div className="kitchen-timeline-label">Estado</div>
+                                    <div className="kitchen-timeline-value">{getOrderStatusLabel(detailOrder.status)}</div>
+                                </div>
+                                <div className="kitchen-timeline-cell">
+                                    <div className="kitchen-timeline-label">Recibida</div>
+                                    <div className="kitchen-timeline-value">
+                                        {new Date(detailOrder.createdAt).toLocaleTimeString('es-ES', {
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                        })}
+                                    </div>
+                                </div>
+                                <div className="kitchen-timeline-cell">
+                                    <div className="kitchen-timeline-label">Inicio</div>
+                                    <div className="kitchen-timeline-value">
+                                        {detailTimeline.firstStartedAt ? new Date(detailTimeline.firstStartedAt).toLocaleTimeString('es-ES', {
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                        }) : '--:--'}
+                                    </div>
+                                </div>
+                                <div className="kitchen-timeline-cell">
+                                    <div className="kitchen-timeline-label">Lista</div>
+                                    <div className="kitchen-timeline-value">
+                                        {detailTimeline.readyAt ? new Date(detailTimeline.readyAt).toLocaleTimeString('es-ES', {
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                        }) : '--:--'}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <h4 className="kitchen-detail-section-title">Productos de la orden</h4>
+                            <div className="kitchen-items-list kitchen-items-list-modal">
+                                {detailOrder.items?.map((item) => {
+                                    const prepTime = getItemTimeDiff(item.startedAt);
+                                    const itemStatusClass = item.status === 'DONE' ? 'item-done' : item.status === 'IN_PROGRESS' ? 'item-progress' : 'item-pending';
+                                    return (
+                                        <div key={item.id || item.menuItemId} className={`kitchen-item ${itemStatusClass}`}>
+                                            <span className="item-qty-kitchen">{item.quantity}x</span>
+                                            <span className="item-name-kitchen">
+                                                {item.menuItem?.name}
+                                                {item.notes && <small className="item-note-kitchen">{item.notes}</small>}
+                                            </span>
+                                            {item.status === 'IN_PROGRESS' && prepTime !== null && (
+                                                <span className="item-prep-time">
+                                                    {prepTime}m
+                                                </span>
+                                            )}
+                                            {detailOrder.status !== 'READY' && (
+                                                <>
+                                                    {canKitchenLineOps && item.status === 'PENDING' && (
+                                                        <button
+                                                            onClick={() => handleStartItem(detailOrder.id, item.id)}
+                                                            title="Proceder"
+                                                            className="item-action-btn item-action-start"
+                                                        >
+                                                            <Play size={12} /> Iniciar
+                                                        </button>
+                                                    )}
+                                                    {canKitchenLineOps && item.status === 'IN_PROGRESS' && (
+                                                        <button
+                                                            onClick={() => handleFinishItem(detailOrder.id, item.id)}
+                                                            title="Listo"
+                                                            className="item-action-btn item-action-finish"
+                                                        >
+                                                            <Check size={12} /> Listo
+                                                        </button>
+                                                    )}
+                                                    {item.status === 'DONE' && (
+                                                        <CheckCircle size={16} color="var(--color-success, #22c55e)" />
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {detailOrder.status !== 'READY' && (
+                                <div className="kitchen-detail-actions">
+                                    {canKitchenLineOps && (
+                                        <button
+                                            className="btn btn-danger-ghost"
+                                            onClick={() => {
+                                                setDetailOrderId(null);
+                                                handleReportProblem(detailOrder.id);
+                                            }}
+                                        >
+                                            <AlertTriangle size={16} />
+                                            Reportar problema
+                                        </button>
+                                    )}
+                                    <button
+                                        className="btn btn-primary"
+                                        onClick={() => {
+                                            handleMarkReady(detailOrder.id);
+                                            setDetailOrderId(null);
+                                        }}
+                                    >
+                                        <CheckCircle size={16} />
+                                        Marcar todo listo
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </Modal>
+                );
+            })()}
 
             {/* Problem Report Modal */}
             {showProblemModal && (

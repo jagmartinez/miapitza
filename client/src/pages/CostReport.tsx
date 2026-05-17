@@ -2,7 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { reportsAPI, branchesAPI, categoriesAPI, suppliersAPI } from '../services/api';
 import Select from '../components/Select';
 import Button from '../components/Button';
-import { DollarSign, TrendingUp, ShoppingCart, BarChart3, Filter } from 'lucide-react';
+import {
+    DollarSign, TrendingUp, ShoppingCart, BarChart3,
+    Search, RefreshCw, Calendar, Tag, Building2, Truck, Package
+} from 'lucide-react';
 import type { Branch, Supplier } from '../types';
 import './CostReport.css';
 
@@ -83,93 +86,136 @@ export default function CostReport() {
         void loadReport();
     }, [loadReport]);
 
-    const cs = '$';
+    const fmt = (n: number) => new Intl.NumberFormat('es-NI', {
+        style: 'currency', currency: 'NIO', minimumFractionDigits: 2
+    }).format(n);
 
     const marginClass = summary
-        ? summary.grossMargin >= 50 ? 'margin-good' : summary.grossMargin >= 30 ? 'margin-warn' : 'margin-bad'
+        ? summary.grossMargin >= 50 ? 'kpi-success' : summary.grossMargin >= 30 ? 'kpi-warning' : 'kpi-danger'
         : '';
 
     return (
-        <div className="cost-report-page">
-            <div className="cost-report-header">
+        <div className="page-wrapper cost-report-page">
+            <div className="page-header-bar">
                 <div className="header-title-section">
-                    <h1><BarChart3 size={32} /> Reporte de Costos</h1>
+                    <h1><BarChart3 size={28} /> Reporte de Costos</h1>
+                    <p className="header-subtitle">
+                        Análisis de costos de compra, COGS estimado y margen bruto por período.
+                    </p>
                 </div>
-                <Button onClick={loadReport} disabled={loading}>
-                    {loading ? 'Cargando...' : 'Actualizar'}
-                </Button>
+                <div className="page-header-actions">
+                    <Button onClick={loadReport} disabled={loading}>
+                        {loading ? <RefreshCw size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                        {loading ? 'Cargando...' : 'Actualizar'}
+                    </Button>
+                </div>
             </div>
 
-            {/* Filters */}
-            <div className="cost-report-filters">
-                <div className="cost-report-date-range">
-                    <Filter size={16} />
-                    <input type="date" className="table-filter-input" value={filters.dateFrom}
-                        onChange={e => setFilters({ ...filters, dateFrom: e.target.value })} />
-                    <span>-</span>
-                    <input type="date" className="table-filter-input" value={filters.dateTo}
-                        onChange={e => setFilters({ ...filters, dateTo: e.target.value })} />
+            {/* Filters Toolbar */}
+            <div className="filters-toolbar">
+                <div className="filter-field filter-field-wide">
+                    <label className="filter-field-label">
+                        <Calendar size={12} /> Rango de Fechas
+                    </label>
+                    <div className="filter-field-date-range">
+                        <input
+                            type="date"
+                            className="filter-input"
+                            value={filters.dateFrom}
+                            onChange={e => setFilters({ ...filters, dateFrom: e.target.value })}
+                        />
+                        <span className="filter-range-sep">→</span>
+                        <input
+                            type="date"
+                            className="filter-input"
+                            value={filters.dateTo}
+                            onChange={e => setFilters({ ...filters, dateTo: e.target.value })}
+                        />
+                    </div>
                 </div>
-                <div className="cost-report-select-wrapper">
-                    <Select options={[{ value: '', label: 'Todas Sucursales' }, ...branches.map((b) => ({ value: b.id.toString(), label: b.name }))]}
-                        value={{ value: filters.branchId, label: filters.branchId ? branches.find((b) => b.id.toString() === filters.branchId)?.name : 'Todas Sucursales' }}
-                        onChange={(opt) => opt && setFilters({ ...filters, branchId: opt.value })} isSearchable={false} />
+
+                <div className="filter-field">
+                    <Select
+                        label={<><Building2 size={12} /> Sucursal</>}
+                        options={[{ value: '', label: 'Todas las Sucursales' }, ...branches.map((b) => ({ value: b.id.toString(), label: b.name }))]}
+                        value={{ value: filters.branchId, label: filters.branchId ? branches.find((b) => b.id.toString() === filters.branchId)?.name || '' : 'Todas las Sucursales' }}
+                        onChange={(opt) => opt && setFilters({ ...filters, branchId: opt.value })}
+                        isSearchable={false}
+                    />
                 </div>
-                <div className="cost-report-select-wrapper">
-                    <Select options={[{ value: '', label: 'Todas Categorías' }, ...categories.map((c) => ({ value: c.id.toString(), label: c.name }))]}
-                        value={{ value: filters.categoryId, label: filters.categoryId ? categories.find((c) => c.id.toString() === filters.categoryId)?.name : 'Todas Categorías' }}
-                        onChange={(opt) => opt && setFilters({ ...filters, categoryId: opt.value })} isSearchable={false} />
+
+                <div className="filter-field">
+                    <Select
+                        label={<><Tag size={12} /> Categoría</>}
+                        options={[{ value: '', label: 'Todas las Categorías' }, ...categories.map((c) => ({ value: c.id.toString(), label: c.name }))]}
+                        value={{ value: filters.categoryId, label: filters.categoryId ? categories.find((c) => c.id.toString() === filters.categoryId)?.name || '' : 'Todas las Categorías' }}
+                        onChange={(opt) => opt && setFilters({ ...filters, categoryId: opt.value })}
+                        isSearchable={false}
+                    />
                 </div>
-                <div className="cost-report-select-wrapper">
-                    <Select options={[{ value: '', label: 'Todos Proveedores' }, ...suppliers.map((s) => ({ value: s.id.toString(), label: s.name }))]}
-                        value={{ value: filters.supplierId, label: filters.supplierId ? suppliers.find((s) => s.id.toString() === filters.supplierId)?.name : 'Todos Proveedores' }}
-                        onChange={(opt) => opt && setFilters({ ...filters, supplierId: opt.value })} isSearchable={false} />
+
+                <div className="filter-field">
+                    <Select
+                        label={<><Truck size={12} /> Proveedor</>}
+                        options={[{ value: '', label: 'Todos los Proveedores' }, ...suppliers.map((s) => ({ value: s.id.toString(), label: s.name }))]}
+                        value={{ value: filters.supplierId, label: filters.supplierId ? suppliers.find((s) => s.id.toString() === filters.supplierId)?.name || '' : 'Todos los Proveedores' }}
+                        onChange={(opt) => opt && setFilters({ ...filters, supplierId: opt.value })}
+                        isSearchable={false}
+                    />
                 </div>
-                <Button variant="secondary" onClick={loadReport}>Aplicar Filtros</Button>
+
+                <div className="filter-spacer" />
+
+                <div className="filter-actions">
+                    <Button onClick={loadReport} disabled={loading}>
+                        <Search size={16} /> Aplicar Filtros
+                    </Button>
+                </div>
             </div>
 
             {/* KPI Cards */}
             {summary && (
-                <div className="cost-report-kpi-grid">
-                    <div className="cost-kpi-card">
-                        <div className="cost-kpi-label">
-                            <ShoppingCart size={18} /> Costo Total Compras
+                <div className="kpi-grid">
+                    <div className="kpi-card kpi-neutral">
+                        <div className="kpi-label">
+                            <ShoppingCart size={14} /> Costo Total Compras
                         </div>
-                        <div className="cost-kpi-value">{cs}{summary.totalPurchaseCost.toFixed(2)}</div>
-                        <div className="cost-kpi-detail">{summary.purchaseOrderCount} órdenes de compra</div>
+                        <div className="kpi-value">{fmt(summary.totalPurchaseCost)}</div>
+                        <div className="kpi-detail">{summary.purchaseOrderCount} órdenes de compra</div>
                     </div>
-                    <div className="cost-kpi-card">
-                        <div className="cost-kpi-label">
-                            <DollarSign size={18} /> COGS Estimado
+                    <div className="kpi-card kpi-warning">
+                        <div className="kpi-label">
+                            <DollarSign size={14} /> COGS Estimado
                         </div>
-                        <div className="cost-kpi-value">{cs}{summary.estimatedCOGS.toFixed(2)}</div>
-                        <div className="cost-kpi-detail">Basado en recetas x costo promedio</div>
+                        <div className="kpi-value">{fmt(summary.estimatedCOGS)}</div>
+                        <div className="kpi-detail">Basado en recetas × costo promedio</div>
                     </div>
-                    <div className="cost-kpi-card">
-                        <div className="cost-kpi-label">
-                            <TrendingUp size={18} /> Revenue
+                    <div className="kpi-card kpi-success">
+                        <div className="kpi-label">
+                            <TrendingUp size={14} /> Ingresos
                         </div>
-                        <div className="cost-kpi-value">{cs}{summary.totalRevenue.toFixed(2)}</div>
+                        <div className="kpi-value">{fmt(summary.totalRevenue)}</div>
                     </div>
-                    <div className={`cost-kpi-card ${marginClass}`}>
-                        <div className="cost-kpi-label">
-                            <BarChart3 size={18} /> Margen Bruto
+                    <div className={`kpi-card ${marginClass}`}>
+                        <div className="kpi-label">
+                            <BarChart3 size={14} /> Margen Bruto
                         </div>
-                        <div className={`cost-kpi-value cost-margin-value ${marginClass}`}>
+                        <div className="kpi-value">
                             {summary.grossMargin.toFixed(1)}%
                         </div>
-                        <div className="cost-kpi-detail">(Revenue - COGS) / Revenue</div>
+                        <div className="kpi-detail">(Ingresos − COGS) / Ingresos</div>
                     </div>
                 </div>
             )}
 
             {/* Product Cost Table */}
-            <div className="cost-report-table-wrapper">
-                <div className="cost-report-table-header">
-                    Detalle por Producto ({products.length})
+            <div className="data-table-wrapper">
+                <div className="data-table-header">
+                    <span>Detalle por Producto</span>
+                    <span className="data-table-count">{products.length} productos</span>
                 </div>
-                <div className="cost-report-table-scroll">
-                    <table className="cost-report-table">
+                <div className="data-table-scroll">
+                    <table className="data-table">
                         <thead>
                             <tr>
                                 <th>Producto</th>
@@ -189,13 +235,18 @@ export default function CostReport() {
                                     </td>
                                     <td className="text-secondary">{p.categoryName || '-'}</td>
                                     <td className="text-right">{p.totalQuantity.toFixed(2)} {p.unit}</td>
-                                    <td className="text-right font-semibold">{cs}{p.totalCost.toFixed(2)}</td>
-                                    <td className="text-right">{cs}{p.avgUnitCost.toFixed(2)}</td>
-                                    <td className="text-right">{cs}{p.currentAvgCost.toFixed(2)}</td>
+                                    <td className="text-right font-semibold">{fmt(p.totalCost)}</td>
+                                    <td className="text-right">{fmt(p.avgUnitCost)}</td>
+                                    <td className="text-right">{fmt(p.currentAvgCost)}</td>
                                 </tr>
                             ))}
-                            {products.length === 0 && (
-                                <tr><td colSpan={6} className="cost-report-empty">Sin datos para los filtros seleccionados</td></tr>
+                            {products.length === 0 && !loading && (
+                                <tr>
+                                    <td colSpan={6} className="data-table-empty">
+                                        <Package size={32} style={{ opacity: 0.4 }} />
+                                        <p style={{ marginTop: 8 }}>Sin datos para los filtros seleccionados</p>
+                                    </td>
+                                </tr>
                             )}
                         </tbody>
                     </table>

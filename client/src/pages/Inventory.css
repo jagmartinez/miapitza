@@ -4,6 +4,8 @@
     padding: var(--spacing-lg);
     max-width: 1400px;
     margin: 0 auto;
+    /* Prevent horizontal overflow when filter row is dense */
+    min-width: 0;
 }
 
 /* Header - Tables Style */
@@ -35,17 +37,19 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: var(--spacing-2xl);
-    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-xl);
+    gap: var(--spacing-md);
     flex-wrap: wrap;
 }
 
 .inventory-status-filters {
     display: flex;
+    align-items: center;
     gap: var(--spacing-sm);
     background: var(--color-surface);
     padding: var(--spacing-xs);
     border-radius: var(--radius-lg);
+    flex-wrap: wrap;
 }
 
 .inventory-status-btn {
@@ -92,7 +96,8 @@
 }
 
 .inventory-category-select-wrapper {
-    min-width: 220px;
+    min-width: 180px;
+    max-width: 220px;
 }
 
 .category-select-filter .react-select__control {
@@ -101,8 +106,8 @@
 }
 
 .inventory-search {
-    width: 280px;
-    flex-shrink: 0;
+    width: 260px;
+    max-width: 100%;
     padding: var(--spacing-sm) var(--spacing-md) !important;
     margin: 0 !important;
     box-sizing: border-box;
@@ -124,7 +129,7 @@
     font-size: 14px;
     background: var(--color-surface);
     color: var(--color-text);
-    min-width: 280px;
+    min-width: 220px;
     transition: all var(--transition-fast);
 }
 
@@ -163,31 +168,14 @@
     font-size: var(--font-size-lg);
 }
 
-/* Products Grid - Tables Style */
+/* Products Grid - Tables Style.
+   NOTE: base card/grid styles live in index.css under the unified
+   .entity-* system. We only keep page-specific overrides here. */
 .inventory-grid-new {
-    display: grid;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: var(--spacing-lg);
 }
 
-/* Product Card - Tables Style */
-.inventory-card-new {
-    position: relative;
-    background: var(--color-surface);
-    border: 2px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    transition: all var(--transition-fast);
-    display: flex;
-    flex-direction: column;
-}
-
-.inventory-card-new:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-xl);
-}
-
-/* Type-based borders */
+/* Type-based accent borders */
 .inventory-card-new.ingredient {
     border-color: var(--color-primary);
 }
@@ -251,14 +239,9 @@
     /* Cyan 700 */
 }
 
-/* Card Body */
+/* Card Body — base styles in index.css (.entity-card-body). Page-specific tweaks only. */
 .inventory-card-body-new {
-    padding: var(--spacing-lg) var(--spacing-md);
     min-height: 140px;
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
-    flex: 1;
 }
 
 .product-name-new {
@@ -339,68 +322,9 @@
     margin-top: auto;
 }
 
-/* Card Actions - Tables Style */
-.inventory-card-actions-new {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    border-top: 1px solid var(--color-border);
-    background: var(--color-background);
-}
-
-.action-btn-new {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    padding: 10px 4px;
-    border: none;
-    background: transparent;
-    color: var(--color-neutral-600);
-    font-weight: 800;
-    font-size: 8.5px;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    min-width: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-}
-
-.action-btn-new:not(:last-child) {
-    border-right: 1px solid var(--color-border);
-}
-
-.action-btn-new:hover {
-    background: var(--color-background);
-}
-
-.action-btn-new.kardex:hover {
-    color: var(--color-info-600);
-    background: rgba(59, 130, 246, 0.1);
-}
-
-.action-btn-new.adjust:hover {
-    color: var(--color-primary);
-    background: rgba(37, 99, 235, 0.1);
-}
-
-.action-btn-new.edit:hover {
-    color: var(--color-success);
-    background: rgba(34, 197, 94, 0.1);
-}
-
-.action-btn-new.delete {
-    padding: var(--spacing-sm);
-}
-
-.action-btn-new.delete span {
-    display: none;
-}
-
-.action-btn-new.delete:hover {
-    color: var(--color-danger);
-    background: rgba(239, 68, 68, 0.1);
-}
+/* Card Actions / Action Buttons — base styles live in index.css
+   under the unified .entity-card-actions / .action-btn-new selectors.
+   No page-specific overrides needed here. */
 
 /* No Products Message */
 .no-products-message {
@@ -461,9 +385,6 @@
         justify-content: space-around;
     }
 
-    .action-btn-new span {
-        display: none;
-    }
 }
 
 /* Animations */

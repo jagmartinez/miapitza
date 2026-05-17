@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import axios from 'axios';
 import { tablesAPI, ordersAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
@@ -11,6 +12,22 @@ import type { SingleValue } from 'react-select';
 import Select from '../components/Select';
 import { ACTIVE_ORDER_STATUSES } from '../utils/orderStatus';
 import './Tables.css';
+
+interface ApiValidationError { field?: string; message?: string }
+function extractApiError(error: unknown, fallback: string): string {
+    if (axios.isAxiosError(error)) {
+        const data = error.response?.data as { message?: string; errors?: ApiValidationError[] } | undefined;
+        if (data?.errors && data.errors.length > 0) {
+            const details = data.errors
+                .map(e => e.field ? `${e.field}: ${e.message}` : e.message)
+                .filter(Boolean)
+                .join('\n');
+            return `${data.message || fallback}\n\n${details}`;
+        }
+        if (data?.message) return data.message;
+    }
+    return fallback;
+}
 
 export default function Tables() {
     const { user } = useAuth();
@@ -110,7 +127,7 @@ export default function Tables() {
             loadTables();
         } catch (error) {
             console.error('Error saving table:', error);
-            alert('Error al guardar la mesa');
+            alert(extractApiError(error, 'Error al guardar la mesa'));
         }
     };
 
@@ -125,7 +142,7 @@ export default function Tables() {
             loadTables();
         } catch (error) {
             console.error('Error deleting table:', error);
-            alert('Error al eliminar la mesa');
+            alert(extractApiError(error, 'Error al eliminar la mesa'));
         }
     };
 

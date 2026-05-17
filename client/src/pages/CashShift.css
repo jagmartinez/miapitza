@@ -809,6 +809,27 @@
     }
 }
 
+@media (max-width: 480px) {
+    .cash-shift-page {
+        padding: var(--spacing-sm) !important;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr 1fr !important;
+        gap: var(--spacing-xs) !important;
+    }
+
+    .denomination-row {
+        grid-template-columns: 60px 18px 50px 1fr !important;
+        font-size: var(--font-size-xs);
+    }
+
+    .movements-toolbar input,
+    .movements-toolbar select {
+        width: 100%;
+    }
+}
+
 /* ===== ENHANCED MOVEMENTS HEADER ===== */
 .movements-title-row {
     display: flex;

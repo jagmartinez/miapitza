@@ -3,7 +3,12 @@ import api from '../services/api';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import type { SingleValue } from 'react-select';
 import Select from '../components/Select';
-import '../index.css';
+import Button from '../components/Button';
+import {
+    Trash2, AlertTriangle, FileText, Search, RefreshCw,
+    Calendar, Warehouse as WarehouseIcon, Package, Tag,
+    DollarSign, BarChart3, Save
+} from 'lucide-react';
 
 type StrOption = { value: string; label: string };
 
@@ -63,7 +68,6 @@ const WasteReport: React.FC = () => {
     const [settings, setSettings] = useState<CurrencySettings>({});
     const [loading, setLoading] = useState(false);
 
-    // Form state for recording waste
     const [formData, setFormData] = useState({
         warehouseId: '',
         productId: '',
@@ -72,7 +76,6 @@ const WasteReport: React.FC = () => {
         notes: ''
     });
 
-    // Report filters
     const [filters, setFilters] = useState({
         startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         endDate: new Date().toISOString().split('T')[0],
@@ -87,7 +90,6 @@ const WasteReport: React.FC = () => {
                 api.get('/products'),
                 api.get('/advanced/waste/reasons')
             ]);
-
             setWarehouses(warehousesRes.data.data || []);
             setProducts(productsRes.data.data || []);
             setWasteReasons(reasonsRes.data.data || []);
@@ -108,7 +110,6 @@ const WasteReport: React.FC = () => {
     const handleRecordWaste = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-
         try {
             await api.post('/advanced/waste', {
                 warehouseId: parseInt(formData.warehouseId),
@@ -117,7 +118,6 @@ const WasteReport: React.FC = () => {
                 reason: formData.reason,
                 notes: formData.notes
             });
-
             alert('Merma registrada exitosamente');
             setFormData({
                 warehouseId: '',
@@ -126,11 +126,7 @@ const WasteReport: React.FC = () => {
                 reason: '',
                 notes: ''
             });
-
-            // Reload report if on report tab
-            if (activeTab === 'report') {
-                loadReport();
-            }
+            if (activeTab === 'report') loadReport();
         } catch (error: unknown) {
             alert('Error al registrar merma: ' + errMsg(error));
         } finally {
@@ -162,106 +158,140 @@ const WasteReport: React.FC = () => {
     }, [loadInitialData, loadSettings]);
 
     useEffect(() => {
-        if (activeTab === 'report') {
-            void loadReport();
-        }
+        if (activeTab === 'report') void loadReport();
     }, [activeTab, loadReport]);
 
     return (
-        <div className="page-container">
-            <div className="page-header">
-                <h1>📊 Reporte de Merma y Desperdicio</h1>
-                <p>Registra y analiza las pérdidas de inventario</p>
+        <div className="page-wrapper">
+            <div className="page-header-bar">
+                <div className="header-title-section">
+                    <h1><Trash2 size={28} /> Reporte de Merma y Desperdicio</h1>
+                    <p className="header-subtitle">
+                        Registra y analiza las pérdidas de inventario para mejorar el control de costos.
+                    </p>
+                </div>
             </div>
 
             {/* Tabs */}
-            <div className="tabs">
+            <div className="page-tabs">
                 <button
-                    className={`tab ${activeTab === 'record' ? 'active' : ''}`}
+                    type="button"
+                    className={`page-tab ${activeTab === 'record' ? 'active' : ''}`}
                     onClick={() => setActiveTab('record')}
                 >
-                    📝 Registrar Merma
+                    <Save size={16} />
+                    <span>Registrar Merma</span>
                 </button>
                 <button
-                    className={`tab ${activeTab === 'report' ? 'active' : ''}`}
+                    type="button"
+                    className={`page-tab ${activeTab === 'report' ? 'active' : ''}`}
                     onClick={() => setActiveTab('report')}
                 >
-                    📈 Ver Reporte
+                    <BarChart3 size={16} />
+                    <span>Ver Reporte</span>
                 </button>
             </div>
 
             {/* Record Waste Tab */}
             {activeTab === 'record' && (
-                <div className="card">
-                    <h2>Registrar Nueva Merma</h2>
-                    <form onSubmit={handleRecordWaste} className="form">
-                        <div className="form-row">
-                            {(() => {
-                                const wh = warehouses.find(w => w.id.toString() === formData.warehouseId);
-                                return (
+                <div className="data-table-wrapper" style={{ padding: 'var(--spacing-xl)' }}>
+                    <form onSubmit={handleRecordWaste} className="modal-form-new" style={{ overflow: 'visible' }}>
+                        <div className="modal-section">
+                            <div className="modal-section-header">
+                                <Trash2 size={18} />
+                                <h3>Nueva Merma</h3>
+                            </div>
+
+                            <div className="modal-form-row">
+                                <div className="modal-input-group">
                                     <Select
-                                        label="Almacén *"
+                                        label={<><WarehouseIcon size={12} /> Almacén *</>}
                                         options={warehouses.map((w) => ({ value: w.id.toString(), label: w.name }))}
-                                        value={wh ? { value: formData.warehouseId, label: wh.name } : null}
-                                        onChange={(option: SingleValue<StrOption>) => option && setFormData({ ...formData, warehouseId: option.value })}
+                                        value={
+                                            formData.warehouseId
+                                                ? { value: formData.warehouseId, label: warehouses.find((w) => w.id.toString() === formData.warehouseId)?.name || '' }
+                                                : null
+                                        }
+                                        onChange={(option: SingleValue<StrOption>) =>
+                                            option && setFormData({ ...formData, warehouseId: option.value })
+                                        }
                                         placeholder="Seleccionar almacén"
                                         required
                                     />
-                                );
-                            })()}
+                                </div>
 
-                            {(() => {
-                                const prod = products.find(p => p.id.toString() === formData.productId);
-                                return (
+                                <div className="modal-input-group">
                                     <Select
-                                        label="Producto *"
+                                        label={<><Package size={12} /> Producto *</>}
                                         options={products.map((p) => ({ value: p.id.toString(), label: `${p.name} (${p.unit})` }))}
-                                        value={prod ? { value: formData.productId, label: `${prod.name} (${prod.unit})` } : null}
-                                        onChange={(option: SingleValue<StrOption>) => option && setFormData({ ...formData, productId: option.value })}
+                                        value={
+                                            formData.productId
+                                                ? {
+                                                    value: formData.productId,
+                                                    label: (() => {
+                                                        const prod = products.find((p) => p.id.toString() === formData.productId);
+                                                        return prod ? `${prod.name} (${prod.unit})` : '';
+                                                    })(),
+                                                }
+                                                : null
+                                        }
+                                        onChange={(option: SingleValue<StrOption>) =>
+                                            option && setFormData({ ...formData, productId: option.value })
+                                        }
                                         placeholder="Seleccionar producto"
                                         required
                                     />
-                                );
-                            })()}
-                        </div>
-
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Cantidad *</label>
-                                <input
-                                    type="number"
-                                    step="0.001"
-                                    value={formData.quantity}
-                                    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                                    required
-                                    min="0.001"
-                                />
+                                </div>
                             </div>
 
-                            <Select
-                                label="Razón *"
-                                options={wasteReasons.map((reason) => ({ value: reason, label: reason }))}
-                                value={formData.reason ? { value: formData.reason, label: formData.reason } : null}
-                                onChange={(option: SingleValue<StrOption>) => option && setFormData({ ...formData, reason: option.value })}
-                                placeholder="Seleccionar razón"
-                                required
-                                isSearchable={false}
-                            />
+                            <div className="modal-form-row">
+                                <div className="modal-input-group">
+                                    <label className="modal-input-label">Cantidad *</label>
+                                    <input
+                                        type="number"
+                                        step="0.001"
+                                        className="modal-standard-input"
+                                        value={formData.quantity}
+                                        onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                                        required
+                                        min="0.001"
+                                        placeholder="0.000"
+                                    />
+                                </div>
+
+                                <div className="modal-input-group">
+                                    <Select
+                                        label={<><AlertTriangle size={12} /> Razón *</>}
+                                        options={wasteReasons.map((reason) => ({ value: reason, label: reason }))}
+                                        value={formData.reason ? { value: formData.reason, label: formData.reason } : null}
+                                        onChange={(option: SingleValue<StrOption>) =>
+                                            option && setFormData({ ...formData, reason: option.value })
+                                        }
+                                        placeholder="Seleccionar razón"
+                                        required
+                                        isSearchable={false}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="modal-input-group">
+                                <label className="modal-input-label">Notas</label>
+                                <textarea
+                                    className="modal-textarea"
+                                    value={formData.notes}
+                                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                    rows={3}
+                                    placeholder="Detalles adicionales..."
+                                />
+                            </div>
                         </div>
 
-                        <div className="form-group">
-                            <label>Notas</label>
-                            <textarea
-                                value={formData.notes}
-                                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                                rows={3}
-                                placeholder="Detalles adicionales..."
-                            />
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--spacing-lg)' }}>
+                            <Button type="submit" disabled={loading}>
+                                {loading ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
+                                {loading ? 'Guardando...' : 'Registrar Merma'}
+                            </Button>
                         </div>
-
-                        <button type="submit" className="btn btn-primary" disabled={loading}>
-                            {loading ? 'Guardando...' : '💾 Registrar Merma'}
-                        </button>
                     </form>
                 </div>
             )}
@@ -270,118 +300,140 @@ const WasteReport: React.FC = () => {
             {activeTab === 'report' && (
                 <>
                     {/* Filters */}
-                    <div className="card">
-                        <h2>Filtros</h2>
-                        <div className="form-row">
-                            <div className="form-group">
-                                <label>Fecha Inicio</label>
+                    <div className="filters-toolbar">
+                        <div className="filter-field filter-field-wide">
+                            <label className="filter-field-label">
+                                <Calendar size={12} /> Rango de Fechas
+                            </label>
+                            <div className="filter-field-date-range">
                                 <input
                                     type="date"
+                                    className="filter-input"
                                     value={filters.startDate}
                                     onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
                                 />
-                            </div>
-
-                            <div className="form-group">
-                                <label>Fecha Fin</label>
+                                <span className="filter-range-sep">→</span>
                                 <input
                                     type="date"
+                                    className="filter-input"
                                     value={filters.endDate}
                                     onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
                                 />
                             </div>
+                        </div>
 
+                        <div className="filter-field">
                             <Select
-                                label="Almacén"
+                                label={<><WarehouseIcon size={12} /> Almacén</>}
                                 options={[
-                                    { value: '', label: 'Todos' },
+                                    { value: '', label: 'Todos los Almacenes' },
                                     ...warehouses.map((w) => ({ value: w.id.toString(), label: w.name }))
                                 ]}
-                                value={filters.warehouseId ? { value: filters.warehouseId, label: warehouses.find(w => w.id.toString() === filters.warehouseId)?.name || 'Todos' } : { value: '', label: 'Todos' }}
+                                value={
+                                    filters.warehouseId
+                                        ? { value: filters.warehouseId, label: warehouses.find(w => w.id.toString() === filters.warehouseId)?.name || 'Todos' }
+                                        : { value: '', label: 'Todos los Almacenes' }
+                                }
                                 onChange={(option: SingleValue<StrOption>) => option && setFilters({ ...filters, warehouseId: option.value })}
                             />
+                        </div>
 
+                        <div className="filter-field">
                             <Select
-                                label="Producto"
+                                label={<><Package size={12} /> Producto</>}
                                 options={[
-                                    { value: '', label: 'Todos' },
+                                    { value: '', label: 'Todos los Productos' },
                                     ...products.map((p) => ({ value: p.id.toString(), label: p.name }))
                                 ]}
-                                value={filters.productId ? { value: filters.productId, label: products.find(p => p.id.toString() === filters.productId)?.name || 'Todos' } : { value: '', label: 'Todos' }}
+                                value={
+                                    filters.productId
+                                        ? { value: filters.productId, label: products.find(p => p.id.toString() === filters.productId)?.name || 'Todos' }
+                                        : { value: '', label: 'Todos los Productos' }
+                                }
                                 onChange={(option: SingleValue<StrOption>) => option && setFilters({ ...filters, productId: option.value })}
                             />
                         </div>
 
-                        <button onClick={loadReport} className="btn btn-primary" disabled={loading}>
-                            {loading ? 'Cargando...' : '🔍 Generar Reporte'}
-                        </button>
+                        <div className="filter-spacer" />
+
+                        <div className="filter-actions">
+                            <Button onClick={loadReport} disabled={loading}>
+                                {loading ? <RefreshCw size={16} className="animate-spin" /> : <Search size={16} />}
+                                {loading ? 'Cargando...' : 'Generar Reporte'}
+                            </Button>
+                        </div>
                     </div>
 
-                    {/* Summary */}
                     {report && (
                         <>
-                            <div className="stats-grid">
-                                <div className="stat-card">
-                                    <div className="stat-icon">📋</div>
-                                    <div className="stat-content">
-                                        <div className="stat-label">Total Entradas</div>
-                                        <div className="stat-value">{report.summary.totalEntries}</div>
+                            <div className="kpi-grid">
+                                <div className="kpi-card kpi-neutral">
+                                    <div className="kpi-label">
+                                        <FileText size={14} /> Total Entradas
                                     </div>
+                                    <div className="kpi-value">{report.summary.totalEntries}</div>
                                 </div>
-
-                                <div className="stat-card">
-                                    <div className="stat-icon">📦</div>
-                                    <div className="stat-content">
-                                        <div className="stat-label">Total Unidades</div>
-                                        <div className="stat-value">{report.summary.totalUnits.toFixed(2)}</div>
+                                <div className="kpi-card kpi-warning">
+                                    <div className="kpi-label">
+                                        <Package size={14} /> Total Unidades
                                     </div>
+                                    <div className="kpi-value">{report.summary.totalUnits.toFixed(2)}</div>
                                 </div>
-
-                                <div className="stat-card">
-                                    <div className="stat-icon">💰</div>
-                                    <div className="stat-content">
-                                        <div className="stat-label">Costo Total</div>
-                                        <div className="stat-value">{formatCurrency(report.summary.totalCost, settings)}</div>
+                                <div className="kpi-card kpi-danger">
+                                    <div className="kpi-label">
+                                        <DollarSign size={14} /> Costo Total
                                     </div>
+                                    <div className="kpi-value">{formatCurrency(report.summary.totalCost, settings)}</div>
                                 </div>
                             </div>
 
                             {/* By Reason */}
-                            <div className="card">
-                                <h2>Merma por Razón</h2>
-                                <table className="data-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Razón</th>
-                                            <th>Cantidad de Entradas</th>
-                                            <th>Unidades</th>
-                                            <th>Costo</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {report.byReason.map((item, idx) => (
-                                            <tr key={idx}>
-                                                <td>{item.reason}</td>
-                                                <td>{item.count}</td>
-                                                <td>{item.quantity.toFixed(2)}</td>
-                                                <td>{formatCurrency(item.cost, settings)}</td>
+                            <div className="data-table-wrapper">
+                                <div className="data-table-header">
+                                    <span><Tag size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />Merma por Razón</span>
+                                    <span className="data-table-count">{report.byReason.length} razones</span>
+                                </div>
+                                <div className="data-table-scroll">
+                                    <table className="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Razón</th>
+                                                <th className="text-right">Entradas</th>
+                                                <th className="text-right">Unidades</th>
+                                                <th className="text-right">Costo</th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                        </thead>
+                                        <tbody>
+                                            {report.byReason.map((item, idx) => (
+                                                <tr key={idx}>
+                                                    <td>{item.reason}</td>
+                                                    <td className="text-right">{item.count}</td>
+                                                    <td className="text-right">{item.quantity.toFixed(2)}</td>
+                                                    <td className="text-right font-semibold">{formatCurrency(item.cost, settings)}</td>
+                                                </tr>
+                                            ))}
+                                            {report.byReason.length === 0 && (
+                                                <tr><td colSpan={4} className="data-table-empty">Sin datos para los filtros seleccionados</td></tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
 
                             {/* Details */}
-                            <div className="card">
-                                <h2>Detalle de Mermas</h2>
-                                <div className="table-container">
+                            <div className="data-table-wrapper">
+                                <div className="data-table-header">
+                                    <span><FileText size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />Detalle de Mermas</span>
+                                    <span className="data-table-count">{report.details.length} registros</span>
+                                </div>
+                                <div className="data-table-scroll">
                                     <table className="data-table">
                                         <thead>
                                             <tr>
                                                 <th>Fecha</th>
                                                 <th>Producto</th>
-                                                <th>Cantidad</th>
-                                                <th>Costo</th>
+                                                <th className="text-right">Cantidad</th>
+                                                <th className="text-right">Costo</th>
                                                 <th>Razón</th>
                                                 <th>Almacén</th>
                                                 <th>Usuario</th>
@@ -392,20 +444,30 @@ const WasteReport: React.FC = () => {
                                                 <tr key={entry.id}>
                                                     <td>{new Date(entry.date).toLocaleDateString()}</td>
                                                     <td>{entry.product}</td>
-                                                    <td>
+                                                    <td className="text-right">
                                                         {entry.quantity.toFixed(2)} {entry.unit}
                                                     </td>
-                                                    <td>{formatCurrency(entry.cost, settings)}</td>
+                                                    <td className="text-right font-semibold">{formatCurrency(entry.cost, settings)}</td>
                                                     <td>{entry.reason}</td>
                                                     <td>{entry.warehouse}</td>
                                                     <td>{entry.user}</td>
                                                 </tr>
                                             ))}
+                                            {report.details.length === 0 && (
+                                                <tr><td colSpan={7} className="data-table-empty">Sin registros de merma en el período seleccionado</td></tr>
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>
                             </div>
                         </>
+                    )}
+
+                    {!report && !loading && (
+                        <div className="state-placeholder">
+                            <BarChart3 size={48} />
+                            <p>Aplica los filtros para generar el reporte.</p>
+                        </div>
                     )}
                 </>
             )}

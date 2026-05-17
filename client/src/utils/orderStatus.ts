@@ -56,19 +56,28 @@ export const getOrderStatusClassName = (status: Order['status']): string => {
     }
 };
 
-export const getOrderTimeline = (order: Pick<Order, 'createdAt' | 'items'>) => {
-    const startedTimes = (order.items || [])
+export const getOrderTimeline = (order: Pick<Order, 'createdAt' | 'items' | 'status'>) => {
+    const items = order.items || [];
+    const startedTimes = items
         .map((item) => item.startedAt)
         .filter((value): value is string => Boolean(value))
         .sort();
-    const readyTimes = (order.items || [])
+    const readyTimes = items
         .map((item) => item.finishedAt)
         .filter((value): value is string => Boolean(value))
         .sort();
 
+    const allItemsFinished = items.length > 0 && readyTimes.length === items.length;
+    // If the order has already advanced past kitchen (READY/DELIVERED/PAID) but some legacy
+    // items lack finishedAt, fall back to the latest available finishedAt instead of "--:--".
+    const orderConsideredReady = ['READY', 'DELIVERED', 'PAID'].includes(order.status);
+    const readyAt = allItemsFinished
+        ? readyTimes[readyTimes.length - 1]
+        : (orderConsideredReady && readyTimes.length > 0 ? readyTimes[readyTimes.length - 1] : null);
+
     return {
         requestedAt: order.createdAt,
         firstStartedAt: startedTimes[0] || null,
-        readyAt: readyTimes.length === (order.items || []).length ? readyTimes[readyTimes.length - 1] : null,
+        readyAt,
     };
 };

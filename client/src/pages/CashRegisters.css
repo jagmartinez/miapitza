@@ -436,3 +436,71 @@
         justify-content: flex-end;
     }
 }
+
+@media (max-width: 768px) {
+    .cash-registers-page {
+        padding: var(--spacing-md);
+    }
+
+    .cash-registers-header {
+        flex-direction: column;
+        gap: var(--spacing-md);
+    }
+
+    .header-title-section h1 {
+        font-size: var(--font-size-2xl);
+    }
+
+    .filters-row {
+        gap: var(--spacing-sm);
+        margin-bottom: var(--spacing-md);
+    }
+
+    .filters-left {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--spacing-sm);
+        width: 100%;
+    }
+
+    .search-container {
+        max-width: 100%;
+    }
+
+    .premium-search-input {
+        height: 48px !important;
+        min-height: 48px !important;
+        box-sizing: border-box;
+        font-size: 14px !important;
+    }
+
+    .navigation-right {
+        flex-wrap: wrap;
+        justify-content: stretch;
+        gap: var(--spacing-sm);
+    }
+
+    .registers-grid {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-md);
+    }
+
+    .register-card-body-premium {
+        padding: var(--spacing-md);
+        gap: var(--spacing-md);
+    }
+
+    .register-card-actions-premium {
+        flex-wrap: wrap;
+    }
+}
+
+@media (max-width: 480px) {
+    .cash-registers-page {
+        padding: var(--spacing-sm);
+    }
+
+    .header-title-section h1 {
+        font-size: var(--font-size-xl);
+    }
+}

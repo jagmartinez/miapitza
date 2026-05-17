@@ -144,11 +144,13 @@ export default function Reservations() {
             loadReservations();
         } catch (error: unknown) {
             console.error('Error saving reservation:', error);
-            const apiMsg = typeof error === 'object' && error !== null && 'response' in error
-                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+            const resp = typeof error === 'object' && error !== null && 'response' in error
+                ? (error as { response?: { data?: { message?: string; errors?: Array<{ field: string; message: string }> } } }).response?.data
                 : undefined;
-            const errorMessage = apiMsg || (error instanceof Error ? error.message : '') || 'Error al guardar la reservación';
-            alert(errorMessage);
+            const detail = resp?.errors?.map(e => `${e.field}: ${e.message}`).join('\n');
+            const apiMsg = resp?.message;
+            const baseMsg = apiMsg || (error instanceof Error ? error.message : '') || 'Error al guardar la reservación';
+            alert(detail ? `${baseMsg}\n\n${detail}` : baseMsg);
         }
     };
 
