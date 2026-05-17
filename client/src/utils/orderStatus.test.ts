@@ -25,6 +25,7 @@ describe('order status utils', () => {
 
     it('builds the operational timeline from order item timestamps', () => {
         const timeline = getOrderTimeline({
+            status: 'OPEN',
             createdAt: '2026-04-02T16:00:00.000Z',
             items: [
                 {
@@ -61,6 +62,7 @@ describe('order status utils', () => {
 
     it('leaves readyAt empty until all items are finished', () => {
         const timeline = getOrderTimeline({
+            status: 'OPEN',
             createdAt: '2026-04-02T16:00:00.000Z',
             items: [
                 {

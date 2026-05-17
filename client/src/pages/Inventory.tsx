@@ -237,12 +237,12 @@ export default function Inventory() {
                 return defaultUnit?.abbreviation || product?.unit || '';
             } else {
                 const baseUnit = product?.unit || 'unidad';
-                setAdjustmentUnits([{ id: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
+                setAdjustmentUnits([{ unitId: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
                 return baseUnit;
             }
         } catch {
             const baseUnit = product?.unit || 'unidad';
-            setAdjustmentUnits([{ id: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
+            setAdjustmentUnits([{ unitId: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
             return baseUnit;
         }
     }, [products]);

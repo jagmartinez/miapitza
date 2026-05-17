@@ -148,12 +148,12 @@ export default function Warehouses() {
                 setTransferData(prev => ({ ...prev, productId, unit: defaultUnit?.abbreviation || product?.unit || '' }));
             } else {
                 const baseUnit = product?.unit || 'unidad';
-                setTransferUnits([{ id: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
+                setTransferUnits([{ unitId: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
                 setTransferData(prev => ({ ...prev, productId, unit: baseUnit }));
             }
         } catch {
             const baseUnit = product?.unit || 'unidad';
-            setTransferUnits([{ id: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
+            setTransferUnits([{ unitId: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
             setTransferData(prev => ({ ...prev, productId, unit: baseUnit }));
         }
     }, [products]);

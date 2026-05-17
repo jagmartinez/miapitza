@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AlertTriangle, RefreshCw, Trash2, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { offlineManager } from '../services/offlineManager';
 import type { SyncItem } from '../services/db';
 
