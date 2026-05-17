@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma';
 import crypto from 'crypto';
+import type { Prisma } from '@prisma/client';
 import { AuditLogService } from './audit-log.service';
 
 export class PedidosYaService {
@@ -124,7 +125,13 @@ export class PedidosYaService {
 
     static async processWebhook(companyId: number, eventType: string, payload: Record<string, unknown>) {
         const log = await prisma.pedidosYaWebhookLog.create({
-            data: { companyId, eventType, externalId: payload.id as string || null, payload, status: 'RECEIVED' },
+            data: {
+                companyId,
+                eventType,
+                externalId: payload.id as string || null,
+                payload: payload as Prisma.InputJsonValue,
+                status: 'RECEIVED'
+            },
         });
 
         try {
@@ -221,7 +228,7 @@ export class PedidosYaService {
                 externalStatus: payload.status as string || 'NEW',
                 internalStatus: 'OPEN',
                 syncDirection: 'INBOUND',
-                metadata: payload,
+                metadata: payload as Prisma.InputJsonValue,
             },
         });
 

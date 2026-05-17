@@ -1,4 +1,5 @@
 import prisma from '../utils/prisma';
+import type { Prisma } from '@prisma/client';
 
 export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'CANCEL' | 'TRANSFER' | 'LOGIN' | 'LOGOUT' | 'PASSWORD_CHANGE' | 'PERMISSION_CHANGE';
 
@@ -12,6 +13,10 @@ export interface AuditLogEntry {
 }
 
 export class AuditLogService {
+    private static asJson(details?: Record<string, unknown>): Prisma.InputJsonValue | undefined {
+        return details as Prisma.InputJsonValue | undefined;
+    }
+
     static async log(entry: AuditLogEntry) {
         return prisma.auditLog.create({
             data: {
@@ -20,7 +25,7 @@ export class AuditLogService {
                 entityType: entry.entityType,
                 entityId: entry.entityId,
                 action: entry.action,
-                details: entry.details ?? undefined,
+                details: AuditLogService.asJson(entry.details),
             },
         });
     }
@@ -34,7 +39,7 @@ export class AuditLogService {
                 entityType: e.entityType,
                 entityId: e.entityId,
                 action: e.action,
-                details: e.details ?? undefined,
+                details: AuditLogService.asJson(e.details),
             })),
         });
     }
