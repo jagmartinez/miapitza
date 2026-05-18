@@ -41,47 +41,61 @@ type ReportDef = {
     icon: typeof Package;
     category: string;
     navigateTo?: string;
+    hiddenInHub?: boolean;
 };
 
 const REPORT_CATALOG: ReportDef[] = [
     // Inventario
-    { id: 'inventory', name: 'Inventario Actual', description: 'Existencias por producto, almacén y categoría con valorización.', icon: Package, category: 'Inventario' },
+    { id: 'inventory', name: 'Inventario Actual', description: 'Existencias por producto, almacén y categoría con valorización. Incluye vista de stock bajo.', icon: Package, category: 'Inventario' },
     { id: 'kardex', name: 'Kardex de Movimientos', description: 'Entradas, salidas, ajustes y traslados de inventario.', icon: FileSpreadsheet, category: 'Inventario', navigateTo: '/kardex' },
-    { id: 'low-stock', name: 'Stock Bajo', description: 'Productos con inventario por debajo del mínimo configurado.', icon: AlertTriangle, category: 'Inventario' },
+    { id: 'low-stock', name: 'Stock Bajo', description: 'Productos con inventario por debajo del mínimo configurado.', icon: AlertTriangle, category: 'Inventario', hiddenInHub: true },
     // Compras
-    { id: 'purchases', name: 'Compras General', description: 'Análisis de compras por proveedor, producto y período.', icon: Truck, category: 'Compras' },
-    { id: 'purchases-by-day', name: 'Compras por Día', description: 'Historial de compras diario con montos y cantidad de órdenes.', icon: Calendar, category: 'Compras' },
-    { id: 'purchases-by-month', name: 'Compras por Mes', description: 'Tendencia mensual de compras acumuladas.', icon: BarChart3, category: 'Compras' },
-    { id: 'purchases-by-supplier', name: 'Compras por Proveedor', description: 'Distribución del gasto entre proveedores con porcentaje del total.', icon: Truck, category: 'Compras' },
-    { id: 'price-comparison', name: 'Comparación de Precios', description: 'Matriz de precios por producto y proveedor con variación.', icon: GitCompare, category: 'Compras' },
-    { id: 'most-purchased', name: 'Productos Más Comprados', description: 'Top de productos por volumen y costo total de compra.', icon: TrendingUp, category: 'Compras' },
+    { id: 'purchases', name: 'Compras General', description: 'Análisis consolidado de compras. Incluye vistas por día, mes, proveedor y productos.', icon: Truck, category: 'Compras' },
+    { id: 'purchases-by-day', name: 'Compras por Día', description: 'Historial de compras diario con montos y cantidad de órdenes.', icon: Calendar, category: 'Compras', hiddenInHub: true },
+    { id: 'purchases-by-month', name: 'Compras por Mes', description: 'Tendencia mensual de compras acumuladas.', icon: BarChart3, category: 'Compras', hiddenInHub: true },
+    { id: 'purchases-by-supplier', name: 'Compras por Proveedor', description: 'Distribución del gasto entre proveedores con porcentaje del total.', icon: Truck, category: 'Compras', hiddenInHub: true },
+    { id: 'price-comparison', name: 'Comparación de Precios', description: 'Matriz de precios por producto y proveedor con variación.', icon: GitCompare, category: 'Compras', hiddenInHub: true },
+    { id: 'most-purchased', name: 'Productos Más Comprados', description: 'Top de productos por volumen y costo total de compra.', icon: TrendingUp, category: 'Compras', hiddenInHub: true },
     // Ventas
-    { id: 'sales', name: 'Ventas General', description: 'Ventas por período, producto, categoría, usuario y método de pago.', icon: ShoppingCart, category: 'Ventas' },
-    { id: 'sales-daily', name: 'Ventas Diarias', description: 'Resumen de ventas día a día con ticket promedio.', icon: Calendar, category: 'Ventas' },
-    { id: 'sales-monthly', name: 'Ventas Mensuales', description: 'Ventas por mes con variación mes a mes.', icon: BarChart3, category: 'Ventas' },
-    { id: 'sales-by-category', name: 'Ventas por Categoría', description: 'Distribución de ventas por categoría con porcentaje del total.', icon: PieChart, category: 'Ventas' },
-    { id: 'sales-by-payment-method', name: 'Ventas por Método de Pago', description: 'Desglose de pagos: efectivo, tarjeta, transferencia, etc.', icon: CreditCard, category: 'Ventas' },
-    { id: 'sales-by-waiter', name: 'Ventas por Mesero', description: 'Rendimiento de ventas por usuario/mesero.', icon: Users, category: 'Ventas' },
-    { id: 'sales-by-channel', name: 'Ventas por Canal', description: 'Restaurante vs Delivery vs PedidosYa con comisiones y margen.', icon: Activity, category: 'Ventas' },
-    { id: 'sales-by-hour', name: 'Ventas por Hora', description: 'Análisis de horas pico y distribución horaria de ventas.', icon: Clock, category: 'Ventas' },
+    { id: 'sales', name: 'Ventas General', description: 'Ventas consolidadas con vistas por día, mes, categoría, método de pago, canal, hora y usuario.', icon: ShoppingCart, category: 'Ventas' },
+    { id: 'sales-daily', name: 'Ventas Diarias', description: 'Resumen de ventas día a día con ticket promedio.', icon: Calendar, category: 'Ventas', hiddenInHub: true },
+    { id: 'sales-monthly', name: 'Ventas Mensuales', description: 'Ventas por mes con variación mes a mes.', icon: BarChart3, category: 'Ventas', hiddenInHub: true },
+    { id: 'sales-by-category', name: 'Ventas por Categoría', description: 'Distribución de ventas por categoría con porcentaje del total.', icon: PieChart, category: 'Ventas', hiddenInHub: true },
+    { id: 'sales-by-payment-method', name: 'Ventas por Método de Pago', description: 'Desglose de pagos: efectivo, tarjeta, transferencia, etc.', icon: CreditCard, category: 'Ventas', hiddenInHub: true },
+    { id: 'sales-by-waiter', name: 'Ventas por Mesero', description: 'Rendimiento de ventas por usuario/mesero.', icon: Users, category: 'Ventas', hiddenInHub: true },
+    { id: 'sales-by-channel', name: 'Ventas por Canal', description: 'Restaurante vs Delivery vs PedidosYa con comisiones y margen.', icon: Activity, category: 'Ventas', hiddenInHub: true },
+    { id: 'sales-by-hour', name: 'Ventas por Hora', description: 'Análisis de horas pico y distribución horaria de ventas.', icon: Clock, category: 'Ventas', hiddenInHub: true },
     // Costos
     { id: 'costs', name: 'Costos', description: 'COGS estimado, costos de compra y margen bruto por período.', icon: DollarSign, category: 'Costos', navigateTo: '/cost-report' },
-    { id: 'profitability', name: 'Rentabilidad por Producto', description: 'Precio de venta vs costo estimado y margen por platillo.', icon: TrendingUp, category: 'Costos' },
-    { id: 'food-cost-by-category', name: 'Food Cost por Categoría', description: 'Porcentaje de food cost y margen bruto por categoría.', icon: PieChart, category: 'Costos' },
-    { id: 'margin-by-product', name: 'Margen por Producto', description: 'Productos más rentables ordenados por margen de contribución.', icon: TrendingUp, category: 'Costos' },
+    { id: 'profitability', name: 'Rentabilidad por Producto', description: 'Análisis consolidado de rentabilidad, food cost y margen por producto/categoría.', icon: TrendingUp, category: 'Costos' },
+    { id: 'food-cost-by-category', name: 'Food Cost por Categoría', description: 'Porcentaje de food cost y margen bruto por categoría.', icon: PieChart, category: 'Costos', hiddenInHub: true },
+    { id: 'margin-by-product', name: 'Margen por Producto', description: 'Productos más rentables ordenados por margen de contribución.', icon: TrendingUp, category: 'Costos', hiddenInHub: true },
     // Auditoría y Control
     { id: 'audit', name: 'Registro de Auditoría', description: 'Log de acciones del sistema: quién hizo qué y cuándo.', icon: Shield, category: 'Auditoría' },
     // Toma de Decisiones
     { id: 'day-analysis', name: 'Análisis por Día', description: 'Días más fuertes y débiles de la semana para planificación.', icon: Calendar, category: 'Decisiones' },
     { id: 'month-comparison', name: 'Comparación Mes vs Mes', description: 'Compara ventas entre dos meses con variación absoluta y porcentual.', icon: GitCompare, category: 'Decisiones' },
     // Producción
-    { id: 'recipe-cost', name: 'Costos de Recetas', description: 'Desglose de costo por ingredientes de cada platillo con food cost %.', icon: FileText, category: 'Producción' },
-    { id: 'production-yield', name: 'Rendimiento de Producción', description: 'Porciones posibles con stock actual y ingrediente limitante.', icon: Package, category: 'Producción' },
-    { id: 'menu-engineering', name: 'Productos Estrella', description: 'Clasificación BCG: Estrellas, Puzzles, Caballos de Trabajo y Perros.', icon: TrendingUp, category: 'Producción' },
-    { id: 'purchase-projection', name: 'Proyección de Compras', description: 'Estimación de necesidades de compra basado en velocidad de ventas.', icon: ShoppingCart, category: 'Producción' },
+    { id: 'recipe-cost', name: 'Costos de Recetas', description: 'Análisis consolidado de producción: costo receta, rendimiento, productos estrella y proyección de compras.', icon: FileText, category: 'Producción' },
+    { id: 'production-yield', name: 'Rendimiento de Producción', description: 'Porciones posibles con stock actual y ingrediente limitante.', icon: Package, category: 'Producción', hiddenInHub: true },
+    { id: 'menu-engineering', name: 'Productos Estrella', description: 'Clasificación BCG: Estrellas, Puzzles, Caballos de Trabajo y Perros.', icon: TrendingUp, category: 'Producción', hiddenInHub: true },
+    { id: 'purchase-projection', name: 'Proyección de Compras', description: 'Estimación de necesidades de compra basado en velocidad de ventas.', icon: ShoppingCart, category: 'Producción', hiddenInHub: true },
 ];
 
 const CATEGORIES_ORDER = ['Inventario', 'Compras', 'Ventas', 'Costos', 'Producción', 'Auditoría', 'Decisiones'];
+
+const REPORT_GROUPS: Array<{ key: string; reports: string[] }> = [
+    { key: 'inventory', reports: ['inventory', 'low-stock'] },
+    { key: 'purchases', reports: ['purchases', 'purchases-by-day', 'purchases-by-month', 'purchases-by-supplier', 'price-comparison', 'most-purchased'] },
+    { key: 'sales', reports: ['sales', 'sales-daily', 'sales-monthly', 'sales-by-category', 'sales-by-payment-method', 'sales-by-waiter', 'sales-by-channel', 'sales-by-hour'] },
+    { key: 'costs-analytics', reports: ['profitability', 'food-cost-by-category', 'margin-by-product'] },
+    { key: 'production', reports: ['recipe-cost', 'production-yield', 'menu-engineering', 'purchase-projection'] },
+];
+
+function getGroupReports(reportId: string) {
+    const group = REPORT_GROUPS.find(g => g.reports.includes(reportId));
+    return group ? group.reports : [reportId];
+}
 
 function downloadBlob(data: ArrayBuffer, filename: string) {
     const blob = new Blob([data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -98,10 +112,11 @@ function downloadBlob(data: ArrayBuffer, filename: string) {
 // ── Hub View ──
 function ReportsHub({ onSelect }: { onSelect: (r: ReportDef) => void }) {
     const [search, setSearch] = useState('');
-    const filtered = REPORT_CATALOG.filter(r =>
-        r.name.toLowerCase().includes(search.toLowerCase()) ||
-        r.description.toLowerCase().includes(search.toLowerCase())
-    );
+    const term = search.toLowerCase();
+    const filtered = REPORT_CATALOG.filter(r => {
+        if (r.hiddenInHub) return false;
+        return r.name.toLowerCase().includes(term) || r.description.toLowerCase().includes(term);
+    });
 
     const grouped = CATEGORIES_ORDER.map(cat => ({
         category: cat,
@@ -159,6 +174,10 @@ function ReportsHub({ onSelect }: { onSelect: (r: ReportDef) => void }) {
 function ReportDetail({ reportId }: { reportId: string }) {
     const navigate = useNavigate();
     const reportDef = REPORT_CATALOG.find(r => r.id === reportId);
+    const groupedReportIds = getGroupReports(reportId);
+    const groupedReports = groupedReportIds
+        .map(id => REPORT_CATALOG.find(r => r.id === id))
+        .filter((r): r is ReportDef => Boolean(r));
 
     const [data, setData] = useState<{ items: Record<string, unknown>[]; summary: Record<string, number> } | null>(null);
     const [loading, setLoading] = useState(false);
@@ -339,6 +358,20 @@ function ReportDetail({ reportId }: { reportId: string }) {
                     <p className="header-subtitle">{reportDef.description}</p>
                 </div>
                 <div className="page-header-actions">
+                    {groupedReports.length > 1 && (
+                        <div className="filter-field filter-field-wide">
+                            <label className="filter-field-label">Vista</label>
+                            <select
+                                className="filter-input"
+                                value={reportId}
+                                onChange={(e) => navigate(`/reporteria/${e.target.value}`)}
+                            >
+                                {groupedReports.map(r => (
+                                    <option key={r.id} value={r.id}>{r.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
                     <Button onClick={handleExport} disabled={exporting || !data}>
                         {exporting ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
                         {exporting ? 'Exportando...' : 'Exportar Excel'}
