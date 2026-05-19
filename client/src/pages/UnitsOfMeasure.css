@@ -75,54 +75,55 @@
 
 .units-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--spacing-lg);
+}
+
+.unit-card-inactive {
+    opacity: 0.65;
+}
+
+.unit-card-head {
+    display: flex;
     gap: var(--spacing-md);
+    align-items: flex-start;
+    padding-right: 70px;
 }
 
-.unit-card {
-    position: relative;
-    overflow: hidden;
+.unit-card-icon-box {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-md);
+    background: rgba(59, 130, 246, 0.12);
+    color: var(--color-primary);
+    flex-shrink: 0;
 }
 
-.unit-card.inactive {
-    opacity: 0.85;
+.entity-card.entity-accent-success .unit-card-icon-box {
+    background: rgba(34, 197, 94, 0.14);
+    color: var(--color-success);
 }
 
-.unit-card-body {
-    min-height: 130px;
-    padding: var(--spacing-md);
+.entity-card.entity-accent-warning .unit-card-icon-box {
+    background: rgba(234, 179, 8, 0.16);
+    color: var(--color-warning);
 }
 
-.unit-name {
-    font-size: var(--font-size-lg);
-    font-weight: 700;
-    color: var(--color-text);
-    margin-top: var(--spacing-sm);
+.entity-card.entity-accent-danger .unit-card-icon-box {
+    background: rgba(239, 68, 68, 0.14);
+    color: var(--color-danger);
 }
 
-.unit-details {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 8px;
+.unit-card-headings {
+    flex: 1;
+    min-width: 0;
 }
 
-.unit-meta {
-    margin-top: 8px;
-    font-size: var(--font-size-sm);
-    color: var(--color-text-secondary);
-}
-
-.unit-meta-hint {
-    margin: 6px 0 0;
-    font-size: 11px;
-    color: var(--color-neutral-500);
-    line-height: 1.4;
-}
-
-.unit-card-actions {
-    display: flex;
-    border-top: 1px solid var(--color-border);
+.unit-card-headings .entity-card-subtitle {
+    margin-top: 2px;
 }
 
 .units-empty-page {

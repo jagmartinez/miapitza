@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import Select from '../components/Select';
 import { productsAPI, unitsAPI } from '../services/api';
@@ -7,11 +7,15 @@ import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
 import { hasAnyRole } from '../utils/authz';
-import { ArrowLeft, Layers, Package, Ruler } from 'lucide-react';
+import {
+    ArrowLeft, Layers, Package as PackageIcon, Ruler,
+    Weight, Beaker, Hash, Wand2, Trash2, Star, StarOff, Info
+} from 'lucide-react';
 import type { Product, ProductAllowedUnit, UnitOfMeasure } from '../types';
 import type { SingleValue } from 'react-select';
 import './Inventory.css';
 import './UnitsOfMeasure.css';
+import './ProductUnitSettings.css';
 
 type StrOption = SingleValue<{ value: string; label: string }>;
 
@@ -21,6 +25,20 @@ interface EditableAllowedUnit {
     isDefault: boolean;
 }
 
+const TYPE_ICON: Record<UnitOfMeasure['measurementType'], typeof Weight> = {
+    MASS: Weight,
+    VOLUME: Beaker,
+    UNIT: Hash,
+    PACKAGE: PackageIcon
+};
+
+const TYPE_LABEL: Record<UnitOfMeasure['measurementType'], string> = {
+    MASS: 'Peso',
+    VOLUME: 'Volumen',
+    UNIT: 'Conteo',
+    PACKAGE: 'Paquete'
+};
+
 function apiErrorMessage(error: unknown): string {
     if (typeof error === 'object' && error !== null && 'response' in error) {
         const m = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
@@ -28,6 +46,15 @@ function apiErrorMessage(error: unknown): string {
     }
     if (error instanceof Error) return error.message;
     return 'Error';
+}
+
+function formatNumber(n: number): string {
+    if (!Number.isFinite(n)) return '';
+    if (n === 0) return '0';
+    const abs = Math.abs(n);
+    if (abs >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    if (abs >= 1) return n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+    return n.toLocaleString(undefined, { maximumFractionDigits: 6 });
 }
 
 export default function ProductUnitSettings() {
@@ -96,25 +123,37 @@ export default function ProductUnitSettings() {
         loadData();
     }, [parsedProductId, loadData, navigate]);
 
-    const unitLabelById = (unitId: number) => {
-        const unit = allUnits.find((u) => u.id === unitId);
-        return unit ? `${unit.name} (${unit.abbreviation})` : `Unidad #${unitId}`;
-    };
+    const baseUnit = useMemo(
+        () => allUnits.find((u) => String(u.id) === baseUnitId) || null,
+        [allUnits, baseUnitId]
+    );
 
-    const ensureBaseUnitIncluded = (nextBaseUnitId: number, units: EditableAllowedUnit[]) => {
-        const filtered = units.filter((u) => u.unitId !== nextBaseUnitId);
-        const existingDefault = filtered.some((u) => u.isDefault);
+    const ensureBaseUnitIncluded = useCallback((nextBaseUnitId: number, units: EditableAllowedUnit[]) => {
+        const existingNonBase = units.filter((u) => u.unitId !== nextBaseUnitId);
+        const hasDefault = existingNonBase.some((u) => u.isDefault);
         return [
-            { unitId: nextBaseUnitId, conversionFactor: '1', isDefault: !existingDefault },
-            ...filtered
+            { unitId: nextBaseUnitId, conversionFactor: '1', isDefault: !hasDefault },
+            ...existingNonBase
         ];
-    };
+    }, []);
 
-    const handleChangeBaseUnit = (nextBaseUnitId: string) => {
+    const handleChangeBaseUnit = (option: StrOption) => {
+        const nextBaseUnitId = option?.value || '';
         setBaseUnitId(nextBaseUnitId);
         const parsedBase = Number(nextBaseUnitId);
         if (!parsedBase) return;
         setEditableAllowedUnits((prev) => ensureBaseUnitIncluded(parsedBase, prev));
+    };
+
+    const suggestFactor = (unit: UnitOfMeasure): number | null => {
+        if (!baseUnit) return null;
+        if (unit.id === baseUnit.id) return 1;
+        if (unit.measurementType !== baseUnit.measurementType) return null;
+        const a = Number(unit.systemFactor);
+        const b = Number(baseUnit.systemFactor);
+        if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
+        if (unit.measurementType === 'PACKAGE') return null;
+        return a / b;
     };
 
     const handleAddAllowedUnit = () => {
@@ -124,11 +163,50 @@ export default function ProductUnitSettings() {
             showWarning('Esa unidad ya está agregada');
             return;
         }
+        const unit = allUnits.find((u) => u.id === parsedUnitId);
+        const suggested = unit ? suggestFactor(unit) : null;
         setEditableAllowedUnits((prev) => [
             ...prev,
-            { unitId: parsedUnitId, conversionFactor: '1', isDefault: prev.length === 0 }
+            {
+                unitId: parsedUnitId,
+                conversionFactor: suggested != null ? String(suggested) : '',
+                isDefault: false
+            }
         ]);
         setNewAllowedUnitId('');
+    };
+
+    const updateUnit = (unitId: number, patch: Partial<EditableAllowedUnit>) => {
+        setEditableAllowedUnits((prev) => prev.map((u) =>
+            u.unitId === unitId ? { ...u, ...patch } : u
+        ));
+    };
+
+    const removeAllowedUnit = (unitId: number) => {
+        const parsedBase = Number(baseUnitId);
+        if (unitId === parsedBase) {
+            showWarning('La unidad base no se puede quitar. Cámbiala antes de retirarla.');
+            return;
+        }
+        setEditableAllowedUnits((prev) => prev.filter((u) => u.unitId !== unitId));
+    };
+
+    const setDefault = (unitId: number) => {
+        setEditableAllowedUnits((prev) => prev.map((u) => ({
+            ...u,
+            isDefault: u.unitId === unitId
+        })));
+    };
+
+    const applySuggestion = (unitId: number) => {
+        const unit = allUnits.find((u) => u.id === unitId);
+        if (!unit) return;
+        const suggested = suggestFactor(unit);
+        if (suggested == null) {
+            showWarning('No hay sugerencia automática para esta unidad (tipos distintos o paquete personalizado).');
+            return;
+        }
+        updateUnit(unitId, { conversionFactor: String(suggested) });
     };
 
     const handleSave = async () => {
@@ -147,7 +225,8 @@ export default function ProductUnitSettings() {
         for (const unit of editableAllowedUnits) {
             const factor = unit.unitId === parsedBase ? 1 : Number(unit.conversionFactor);
             if (!Number.isFinite(factor) || factor <= 0) {
-                showWarning(`Factor inválido para ${unitLabelById(unit.unitId)}`);
+                const unitObj = allUnits.find((u) => u.id === unit.unitId);
+                showWarning(`Define un factor válido para ${unitObj?.name || `unidad #${unit.unitId}`}`);
                 return;
             }
             uniqueByUnit.set(unit.unitId, {
@@ -186,6 +265,18 @@ export default function ProductUnitSettings() {
 
     if (!product) return null;
 
+    const baseOptions = allUnits.map((unit) => ({
+        value: String(unit.id),
+        label: `${unit.name} (${unit.abbreviation}) · ${TYPE_LABEL[unit.measurementType]}`
+    }));
+
+    const addOptions = allUnits
+        .filter((unit) => !editableAllowedUnits.some((u) => u.unitId === unit.id))
+        .map((unit) => ({
+            value: String(unit.id),
+            label: `${unit.name} (${unit.abbreviation}) · ${TYPE_LABEL[unit.measurementType]}`
+        }));
+
     return (
         <div className="inventory-page product-units-page">
             <div className="inventory-header-new">
@@ -196,11 +287,11 @@ export default function ProductUnitSettings() {
                     </button>
                     <h1><Layers size={32} /> Conversiones del producto</h1>
                     <p className="header-subtitle">
-                        <Package size={14} /> {product.name}
+                        <PackageIcon size={14} /> {product.name}
                         {product.sku ? ` · ${product.sku}` : ''}
                     </p>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <div className="puc-header-actions">
                     <Button variant="secondary" onClick={() => navigate('/units-of-measure')}>
                         <Ruler size={18} />
                         Catálogo de unidades
@@ -213,12 +304,18 @@ export default function ProductUnitSettings() {
                 </div>
             </div>
 
-            <div className="import-info-banner" style={{ marginBottom: '1.5rem' }}>
-                <p>
-                    Aquí defines <strong>qué unidades puede usar este producto</strong> y el factor hacia su unidad base
-                    (inventario interno). Para crear o inhabilitar unidades del catálogo (gramos, quintales, paquetes, etc.),
-                    usa <Link to="/units-of-measure">Unidades de Medida</Link>.
-                </p>
+            <div className="puc-intro">
+                <Info size={18} />
+                <div>
+                    <strong>¿Cómo funciona?</strong>
+                    <p>
+                        Cada producto se controla en <em>una unidad base</em> (el stock se guarda en esa unidad).
+                        Las demás unidades se usan al comprar, recetar o transferir, y el sistema convierte
+                        automáticamente al guardar/descontar. La <strong>unidad base contra sí misma siempre vale 1</strong>,
+                        por eso ese campo no se edita: el peso o equivalencia se define en las otras unidades.
+                        Para crear o inhabilitar unidades del catálogo usa <Link to="/units-of-measure">Unidades de Medida</Link>.
+                    </p>
+                </div>
             </div>
 
             {allUnits.length === 0 ? (
@@ -228,115 +325,209 @@ export default function ProductUnitSettings() {
                     <Button onClick={() => navigate('/units-of-measure')}>Ir a Unidades de Medida</Button>
                 </div>
             ) : (
-                <div className="premium-modal-content" style={{ maxWidth: 720 }}>
-                    <div className="modal-section">
-                        <div className="modal-input-group">
-                            <label className="modal-input-label">Unidad base interna</label>
+                <div className="puc-grid">
+                    <section className="puc-section">
+                        <div className="puc-section-header">
+                            <span className="puc-step">1</span>
+                            <div>
+                                <h2>Unidad base del producto</h2>
+                                <p>El inventario interno se controla en esta unidad.</p>
+                            </div>
+                        </div>
+                        <div className="puc-base-card">
                             <Select
                                 variant="modal"
-                                options={allUnits.map((unit) => ({
-                                    value: String(unit.id),
-                                    label: `${unit.name} (${unit.abbreviation})`
-                                }))}
-                                value={baseUnitId
-                                    ? { value: baseUnitId, label: unitLabelById(Number(baseUnitId)) }
+                                label="Unidad base interna"
+                                options={baseOptions}
+                                value={baseUnit
+                                    ? { value: String(baseUnit.id), label: `${baseUnit.name} (${baseUnit.abbreviation}) · ${TYPE_LABEL[baseUnit.measurementType]}` }
                                     : null}
-                                onChange={(option: StrOption) => handleChangeBaseUnit(option?.value || '')}
+                                onChange={handleChangeBaseUnit}
                                 placeholder="Selecciona la unidad base..."
                                 isDisabled={!canMutate}
                             />
-                            <small className="modal-input-hint">
-                                Toda existencia se controla en esta unidad (ej. gramos para peso).
-                            </small>
+                            {baseUnit && (
+                                <div className="puc-base-summary">
+                                    {(() => {
+                                        const Icon = TYPE_ICON[baseUnit.measurementType];
+                                        return <div className="puc-base-icon"><Icon size={22} /></div>;
+                                    })()}
+                                    <div>
+                                        <strong>{baseUnit.name} ({baseUnit.abbreviation})</strong>
+                                        <p>{TYPE_LABEL[baseUnit.measurementType]}</p>
+                                        {baseUnit.measurementType === 'PACKAGE' && (
+                                            <small className="puc-package-hint">
+                                                Tu base es un paquete personalizado. Para que las compras en gramos/libras
+                                                se conviertan correctamente, agrega esas unidades abajo y define
+                                                <em> cuánto pesa 1 paquete </em>en cada una (1 g = X paquetes).
+                                            </small>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </div>
+                    </section>
 
-                        <div className="modal-input-group">
-                            <label className="modal-input-label">Agregar unidad permitida</label>
-                            <div className="units-row-inline">
-                                <Select
-                                    variant="modal"
-                                    options={allUnits
-                                        .filter((unit) => !editableAllowedUnits.some((u) => u.unitId === unit.id))
-                                        .map((unit) => ({
-                                            value: String(unit.id),
-                                            label: `${unit.name} (${unit.abbreviation})`
-                                        }))}
-                                    value={newAllowedUnitId
-                                        ? { value: newAllowedUnitId, label: unitLabelById(Number(newAllowedUnitId)) }
-                                        : null}
-                                    onChange={(option: StrOption) => setNewAllowedUnitId(option?.value || '')}
-                                    placeholder="Selecciona una unidad..."
-                                    isDisabled={!canMutate}
-                                />
-                                <Button type="button" variant="secondary" onClick={handleAddAllowedUnit} disabled={!canMutate}>
-                                    Agregar
-                                </Button>
+                    <section className="puc-section">
+                        <div className="puc-section-header">
+                            <span className="puc-step">2</span>
+                            <div>
+                                <h2>Unidades permitidas y conversiones</h2>
+                                <p>Define qué unidades acepta este producto y a cuánto equivale cada una.</p>
                             </div>
                         </div>
 
-                        <div className="units-config-list">
+                        {canMutate && (
+                            <div className="puc-add-row">
+                                <Select
+                                    variant="modal"
+                                    options={addOptions}
+                                    value={newAllowedUnitId
+                                        ? addOptions.find((o) => o.value === newAllowedUnitId) || null
+                                        : null}
+                                    onChange={(option: StrOption) => setNewAllowedUnitId(option?.value || '')}
+                                    placeholder="Selecciona una unidad para agregar..."
+                                />
+                                <Button type="button" variant="primary" onClick={handleAddAllowedUnit} disabled={!newAllowedUnitId}>
+                                    Agregar unidad
+                                </Button>
+                            </div>
+                        )}
+
+                        <div className="puc-units-list">
                             {editableAllowedUnits.length === 0 && (
-                                <div className="units-empty-state">Sin unidades permitidas configuradas.</div>
+                                <div className="puc-empty">
+                                    Selecciona arriba la unidad base. Las unidades permitidas aparecerán aquí.
+                                </div>
                             )}
-                            {editableAllowedUnits.map((unit) => {
-                                const isBase = baseUnitId && Number(baseUnitId) === unit.unitId;
+                            {editableAllowedUnits.map((row) => {
+                                const unit = allUnits.find((u) => u.id === row.unitId);
+                                if (!unit) return null;
+                                const isBase = baseUnit?.id === unit.id;
+                                const Icon = TYPE_ICON[unit.measurementType];
+                                const factor = Number(row.conversionFactor);
+                                const factorValid = Number.isFinite(factor) && factor > 0;
+                                const inverseFactor = factorValid ? 1 / factor : null;
+                                const suggestion = baseUnit ? suggestFactor(unit) : null;
+                                const canSuggest = !isBase && suggestion != null;
                                 return (
-                                    <div key={unit.unitId} className="units-config-item">
-                                        <div className="units-config-main">
-                                            <strong>{unitLabelById(unit.unitId)}</strong>
-                                            <span className="sku-tag">{isBase ? 'Base' : 'Permitida'}</span>
-                                        </div>
-                                        <div className="units-config-controls">
-                                            <div className="units-factor-input">
-                                                <label>Factor a base</label>
-                                                <input
-                                                    type="number"
-                                                    min="0.000001"
-                                                    step="0.000001"
-                                                    className="modal-standard-input"
-                                                    value={isBase ? '1' : unit.conversionFactor}
-                                                    onChange={(e) => {
-                                                        const v = e.target.value;
-                                                        setEditableAllowedUnits((prev) => prev.map((u) =>
-                                                            u.unitId === unit.unitId ? { ...u, conversionFactor: v } : u
-                                                        ));
-                                                    }}
-                                                    disabled={Boolean(isBase) || !canMutate}
-                                                />
+                                    <div
+                                        key={unit.id}
+                                        className={`entity-card puc-unit-card ${isBase ? 'puc-unit-base' : ''}`}
+                                    >
+                                        <div className="entity-card-body puc-unit-card-body">
+                                            <div className="puc-unit-head">
+                                                <div className="puc-unit-icon"><Icon size={20} /></div>
+                                                <div className="puc-unit-headings">
+                                                    <h3 className="entity-card-title">{unit.name}</h3>
+                                                    <p className="entity-card-subtitle">
+                                                        <span className="entity-card-tag">{unit.abbreviation}</span>
+                                                        <span>{TYPE_LABEL[unit.measurementType]}</span>
+                                                    </p>
+                                                </div>
+                                                <div className="puc-unit-status">
+                                                    {isBase ? (
+                                                        <span className="puc-pill base">Unidad base</span>
+                                                    ) : (
+                                                        <span className="puc-pill allowed">Permitida</span>
+                                                    )}
+                                                    {row.isDefault && (
+                                                        <span className="puc-pill default"><Star size={12} /> Por defecto</span>
+                                                    )}
+                                                </div>
                                             </div>
-                                            <label className="units-default-checkbox">
-                                                <input
-                                                    type="radio"
-                                                    name="productDefaultUnit"
-                                                    checked={unit.isDefault}
-                                                    onChange={() => setEditableAllowedUnits((prev) => prev.map((u) => ({
-                                                        ...u,
-                                                        isDefault: u.unitId === unit.unitId
-                                                    })))}
-                                                    disabled={!canMutate}
-                                                />
-                                                Por defecto
-                                            </label>
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                onClick={() => {
-                                                    if (isBase) {
-                                                        showWarning('La unidad base no se puede quitar');
-                                                        return;
-                                                    }
-                                                    setEditableAllowedUnits((prev) => prev.filter((u) => u.unitId !== unit.unitId));
-                                                }}
-                                                disabled={Boolean(isBase) || !canMutate}
-                                            >
-                                                Quitar
-                                            </Button>
+
+                                            <div className="puc-conversion-block">
+                                                {isBase ? (
+                                                    <div className="puc-base-explainer">
+                                                        <Info size={16} />
+                                                        <span>
+                                                            Es la unidad de control de stock. <strong>1 {unit.abbreviation} = 1 {unit.abbreviation}</strong>.
+                                                            No se edita: define la conversión en las otras unidades.
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <label className="puc-conv-label">
+                                                            ¿Cuántos <strong>{baseUnit?.abbreviation || 'base'}</strong> equivale 1 <strong>{unit.abbreviation}</strong>?
+                                                        </label>
+                                                        <div className="puc-conv-equation">
+                                                            <span className="puc-conv-token">1 {unit.abbreviation}</span>
+                                                            <span className="puc-conv-eq">=</span>
+                                                            <input
+                                                                type="number"
+                                                                min="0.000001"
+                                                                step="0.000001"
+                                                                className="modal-standard-input puc-conv-input"
+                                                                value={row.conversionFactor}
+                                                                onChange={(e) => updateUnit(unit.id, { conversionFactor: e.target.value })}
+                                                                placeholder="Factor"
+                                                                disabled={!canMutate}
+                                                            />
+                                                            <span className="puc-conv-token">{baseUnit?.abbreviation || 'base'}</span>
+                                                            {canSuggest && canMutate && (
+                                                                <button
+                                                                    type="button"
+                                                                    className="puc-suggest-btn"
+                                                                    onClick={() => applySuggestion(unit.id)}
+                                                                    title={`Calcular automáticamente desde el catálogo (${formatNumber(suggestion!)})`}
+                                                                >
+                                                                    <Wand2 size={14} />
+                                                                    Sugerir
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        {factorValid && baseUnit && inverseFactor != null && (
+                                                            <div className="puc-conv-inverse">
+                                                                Equivale a: <strong>1 {baseUnit.abbreviation} = {formatNumber(inverseFactor)} {unit.abbreviation}</strong>
+                                                            </div>
+                                                        )}
+                                                        {!canSuggest && baseUnit && unit.measurementType !== baseUnit.measurementType && (
+                                                            <div className="puc-conv-warn">
+                                                                <Info size={14} />
+                                                                Tipos distintos ({TYPE_LABEL[unit.measurementType]} ↔ {TYPE_LABEL[baseUnit.measurementType]}).
+                                                                Debes definir el factor manualmente.
+                                                            </div>
+                                                        )}
+                                                        {baseUnit?.measurementType === 'PACKAGE' && unit.measurementType !== 'PACKAGE' && (
+                                                            <div className="puc-conv-warn">
+                                                                <Info size={14} />
+                                                                Si 1 paquete pesa, por ejemplo, 3.5 g, entonces
+                                                                <strong> 1 g = {formatNumber(1 / 3.5)} paquetes</strong>.
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
+                                        {canMutate && (
+                                            <div className="entity-card-actions">
+                                                <button
+                                                    type="button"
+                                                    className={`action-btn-new ${row.isDefault ? 'view' : 'edit'}`}
+                                                    onClick={() => setDefault(unit.id)}
+                                                    title="Marcar como unidad por defecto al mostrar"
+                                                >
+                                                    {row.isDefault ? <Star size={18} /> : <StarOff size={18} />}
+                                                    <span>{row.isDefault ? 'Por defecto' : 'Hacer por defecto'}</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="action-btn-new delete"
+                                                    onClick={() => removeAllowedUnit(unit.id)}
+                                                    disabled={isBase}
+                                                    title={isBase ? 'Cambia la unidad base para quitarla' : 'Quitar'}
+                                                >
+                                                    <Trash2 size={18} />
+                                                    <span>Quitar</span>
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
                         </div>
-                    </div>
+                    </section>
                 </div>
             )}
 

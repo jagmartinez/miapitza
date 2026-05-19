@@ -271,12 +271,24 @@
 }
 
 .product-details-new .sku-tag {
-    background: var(--color-background);
-    padding: 2px 8px;
+    display: inline-flex;
+    align-items: center;
+    background: var(--color-neutral-100);
+    border: 1px solid var(--color-border);
+    padding: 3px 8px;
     border-radius: var(--radius-sm);
-    font-family: monospace;
-    font-size: 11px;
-    color: var(--color-text-secondary);
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1.2;
+    color: var(--color-text);
+}
+
+.dark .product-details-new .sku-tag {
+    background: var(--color-neutral-700);
+    border-color: var(--color-neutral-600);
+    color: var(--color-neutral-50);
 }
 
 .product-pricing-new {
@@ -410,6 +422,16 @@
     grid-template-columns: repeat(3, 1fr);
     gap: var(--spacing-md);
     margin: var(--spacing-md) 0 var(--spacing-lg);
+}
+
+.type-selector-grid--storage {
+    grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 720px) {
+    .type-selector-grid--storage {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 .type-option {

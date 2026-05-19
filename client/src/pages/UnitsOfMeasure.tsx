@@ -14,13 +14,6 @@ import './UnitsOfMeasure.css';
 type MeasurementTypeOption = UnitOfMeasure['measurementType'];
 type FilterOption = 'all' | 'active' | 'inactive';
 
-const MEASUREMENT_TYPE_LABELS: Record<MeasurementTypeOption, string> = {
-    MASS: 'Peso',
-    VOLUME: 'Volumen',
-    UNIT: 'Conteo',
-    PACKAGE: 'Paquete'
-};
-
 interface MeasurementTypeMeta {
     value: MeasurementTypeOption;
     title: string;
@@ -329,46 +322,58 @@ export default function UnitsOfMeasurePage() {
             )}
 
             <div className="units-grid">
-                {filteredUnits.map((unit) => (
-                    <div key={unit.id} className={`unit-card entity-card-new ${unit.active ? '' : 'inactive'}`}>
-                        <div className={`status-badge-new ${unit.active ? 'active' : 'inactive'}`}>
-                            {unit.active ? 'Activa' : 'Inactiva'}
+                {filteredUnits.map((unit) => {
+                    const meta = MEASUREMENT_TYPE_META[unit.measurementType];
+                    const TypeIcon = meta.icon;
+                    const accentClass =
+                        unit.measurementType === 'MASS' ? 'entity-accent-info' :
+                            unit.measurementType === 'VOLUME' ? 'entity-accent-success' :
+                                unit.measurementType === 'UNIT' ? 'entity-accent-warning' :
+                                    'entity-accent-danger';
+                    return (
+                        <div
+                            key={unit.id}
+                            className={`entity-card entity-card-accent ${accentClass} ${unit.active ? '' : 'unit-card-inactive'}`}
+                        >
+                            <div className={`entity-card-badge ${unit.active ? 'badge-success' : 'badge-neutral'}`}>
+                                {unit.active ? 'Activa' : 'Inactiva'}
+                            </div>
+                            <div className="entity-card-body">
+                                <div className="unit-card-head">
+                                    <div className="unit-card-icon-box"><TypeIcon size={20} /></div>
+                                    <div className="unit-card-headings">
+                                        <h3 className="entity-card-title">{unit.name}</h3>
+                                        <p className="entity-card-subtitle">{meta.title} · {meta.description}</p>
+                                    </div>
+                                </div>
+                                <div className="entity-card-meta">
+                                    <span className="entity-card-tag">{unit.abbreviation}</span>
+                                    <span className="entity-card-meta-item">
+                                        <Ruler size={14} />
+                                        1 {unit.abbreviation} = {Number(unit.systemFactor).toLocaleString()} {meta.baseLabel}
+                                    </span>
+                                </div>
+                            </div>
+                            {canMutate && (
+                                <div className="entity-card-actions">
+                                    <button type="button" className="action-btn-new edit" onClick={() => openModal(unit)} title="Editar">
+                                        <Edit2 size={20} />
+                                        <span>Editar</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`action-btn-new ${unit.active ? 'delete' : 'adjust'}`}
+                                        onClick={() => handleToggleActive(unit)}
+                                        title={unit.active ? 'Inhabilitar' : 'Habilitar'}
+                                    >
+                                        {unit.active ? <PowerOff size={20} /> : <Power size={20} />}
+                                        <span>{unit.active ? 'Inhabilitar' : 'Habilitar'}</span>
+                                    </button>
+                                </div>
+                            )}
                         </div>
-                        <div className="unit-card-body entity-card-body">
-                            <div className="unit-name">{unit.name}</div>
-                            <div className="unit-details">
-                                <span className="sku-tag">{unit.abbreviation}</span>
-                                <span className="sku-tag">{MEASUREMENT_TYPE_LABELS[unit.measurementType]}</span>
-                            </div>
-                            <div className="unit-meta">
-                                <span>1 {unit.abbreviation} = {Number(unit.systemFactor).toLocaleString()} {MEASUREMENT_TYPE_META[unit.measurementType].baseLabel}</span>
-                            </div>
-                            <p className="unit-meta-hint">
-                                {unit.measurementType === 'MASS' && 'Se convierte automáticamente a gramos.'}
-                                {unit.measurementType === 'VOLUME' && 'Se convierte automáticamente a mililitros.'}
-                                {unit.measurementType === 'UNIT' && 'Se cuenta por piezas enteras.'}
-                                {unit.measurementType === 'PACKAGE' && 'El peso real se define en cada producto.'}
-                            </p>
-                        </div>
-                        {canMutate && (
-                            <div className="unit-card-actions entity-card-actions">
-                                <button type="button" className="action-btn-new edit" onClick={() => openModal(unit)} title="Editar">
-                                    <Edit2 size={20} />
-                                    <span>Editar</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    className={`action-btn-new ${unit.active ? 'delete' : 'adjust'}`}
-                                    onClick={() => handleToggleActive(unit)}
-                                    title={unit.active ? 'Inhabilitar' : 'Habilitar'}
-                                >
-                                    {unit.active ? <PowerOff size={20} /> : <Power size={20} />}
-                                    <span>{unit.active ? 'Inhabilitar' : 'Habilitar'}</span>
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                ))}
+                    );
+                })}
             </div>
 
             {units.length > 0 && filteredUnits.length === 0 && (

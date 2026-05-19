@@ -12,7 +12,7 @@ import { hasAnyRole } from '../utils/authz';
 import {
     AlertTriangle, Package, Plus, Edit2, Trash2,
     Activity, ShoppingBag, Layers, Truck, DollarSign, FileText,
-    Upload, Download, Ruler
+    Upload, Download
 } from 'lucide-react';
 import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, UnitOfMeasure, Warehouse } from '../types';
 import type { SingleValue } from 'react-select';
@@ -559,12 +559,7 @@ export default function Inventory() {
                             Crear OC sugerida
                         </Button>
                     )}
-                    {canMutateProduct && (
-                        <Button variant="secondary" onClick={() => navigate('/units-of-measure')}>
-                            <Ruler size={18} />
-                            Unidades de Medida
-                        </Button>
-                    )}
+                    {/* Acceso a "Unidades de Medida" se gestiona desde su propia vista (sidebar/menú). */}
                     {canMutateProduct && (
                         <Button onClick={() => handleOpenSidebar()}>
                             <Plus size={20} />
@@ -943,7 +938,7 @@ export default function Inventory() {
 
                                     <div className="modal-input-group">
                                         <label className="modal-input-label">Tipo de Almacenamiento</label>
-                                        <div className="type-selector-grid">
+                                        <div className="type-selector-grid type-selector-grid--storage">
                                             {STORAGE_TYPE_OPTIONS.map((opt) => (
                                                 <div key={opt.value || 'none'}
                                                     className={`type-option ${formData.storageType === opt.value ? 'active' : ''}`}
@@ -993,7 +988,7 @@ export default function Inventory() {
                                                 if (!option) return;
                                                 setFormData({ ...formData, unit: option.value });
                                             }}
-                                            placeholder={allUnits.length === 0 ? 'Sin unidades' : 'Seleccionar unidad...'}
+                                            placeholder={allUnits.length === 0 ? 'Sin unidades' : 'Seleccionar...'}
                                             isDisabled={allUnits.length === 0}
                                             isSearchable
                                         />
