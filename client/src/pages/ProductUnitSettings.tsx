@@ -22,7 +22,16 @@ type StrOption = SingleValue<{ value: string; label: string }>;
 interface EditableAllowedUnit {
     unitId: number;
     conversionFactor: string;
+    inverseFactor: string;
     isDefault: boolean;
+}
+
+function computeInverse(raw: string): string {
+    if (raw === '' || raw == null) return '';
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return '';
+    const inv = 1 / n;
+    return String(Number(inv.toPrecision(10)));
 }
 
 const TYPE_ICON: Record<UnitOfMeasure['measurementType'], typeof Weight> = {
@@ -91,11 +100,15 @@ export default function ProductUnitSettings() {
             const configuredBase = configured.find((u) => u.isBase);
             if (configuredBase?.unitId) {
                 setBaseUnitId(String(configuredBase.unitId));
-                setEditableAllowedUnits(configured.map((u) => ({
-                    unitId: u.unitId,
-                    conversionFactor: String(u.conversionFactor),
-                    isDefault: Boolean(u.isDefault)
-                })));
+                setEditableAllowedUnits(configured.map((u) => {
+                    const factor = String(u.conversionFactor);
+                    return {
+                        unitId: u.unitId,
+                        conversionFactor: factor,
+                        inverseFactor: computeInverse(factor),
+                        isDefault: Boolean(u.isDefault)
+                    };
+                }));
             } else {
                 const fallback = catalog.find((u) => u.abbreviation === productData.unit);
                 if (fallback) {
@@ -103,6 +116,7 @@ export default function ProductUnitSettings() {
                     setEditableAllowedUnits([{
                         unitId: fallback.id,
                         conversionFactor: '1',
+                        inverseFactor: '1',
                         isDefault: true
                     }]);
                 }
@@ -132,7 +146,7 @@ export default function ProductUnitSettings() {
         const existingNonBase = units.filter((u) => u.unitId !== nextBaseUnitId);
         const hasDefault = existingNonBase.some((u) => u.isDefault);
         return [
-            { unitId: nextBaseUnitId, conversionFactor: '1', isDefault: !hasDefault },
+            { unitId: nextBaseUnitId, conversionFactor: '1', inverseFactor: '1', isDefault: !hasDefault },
             ...existingNonBase
         ];
     }, []);
@@ -165,11 +179,13 @@ export default function ProductUnitSettings() {
         }
         const unit = allUnits.find((u) => u.id === parsedUnitId);
         const suggested = unit ? suggestFactor(unit) : null;
+        const factorStr = suggested != null ? String(suggested) : '';
         setEditableAllowedUnits((prev) => [
             ...prev,
             {
                 unitId: parsedUnitId,
-                conversionFactor: suggested != null ? String(suggested) : '',
+                conversionFactor: factorStr,
+                inverseFactor: computeInverse(factorStr),
                 isDefault: false
             }
         ]);
@@ -182,19 +198,20 @@ export default function ProductUnitSettings() {
         ));
     };
 
-    const updateFactorByInverse = (unitId: number, inverseRaw: string) => {
-        if (inverseRaw === '') {
-            updateUnit(unitId, { conversionFactor: '' });
-            return;
-        }
-        const inv = Number(inverseRaw);
-        if (!Number.isFinite(inv) || inv <= 0) {
-            updateUnit(unitId, { conversionFactor: '' });
-            return;
-        }
-        const factor = 1 / inv;
-        const rounded = Number(factor.toPrecision(10));
-        updateUnit(unitId, { conversionFactor: String(rounded) });
+    const handleFactorChange = (unitId: number, raw: string) => {
+        setEditableAllowedUnits((prev) => prev.map((u) =>
+            u.unitId === unitId
+                ? { ...u, conversionFactor: raw, inverseFactor: computeInverse(raw) }
+                : u
+        ));
+    };
+
+    const handleInverseChange = (unitId: number, raw: string) => {
+        setEditableAllowedUnits((prev) => prev.map((u) =>
+            u.unitId === unitId
+                ? { ...u, inverseFactor: raw, conversionFactor: computeInverse(raw) }
+                : u
+        ));
     };
 
     const removeAllowedUnit = (unitId: number) => {
@@ -221,7 +238,11 @@ export default function ProductUnitSettings() {
             showWarning('No hay sugerencia automática para esta unidad (tipos distintos o paquete personalizado).');
             return;
         }
-        updateUnit(unitId, { conversionFactor: String(suggested) });
+        const factorStr = String(suggested);
+        updateUnit(unitId, {
+            conversionFactor: factorStr,
+            inverseFactor: computeInverse(factorStr)
+        });
     };
 
     const handleSave = async () => {
@@ -420,9 +441,6 @@ export default function ProductUnitSettings() {
                                 if (!unit) return null;
                                 const isBase = baseUnit?.id === unit.id;
                                 const Icon = TYPE_ICON[unit.measurementType];
-                                const factor = Number(row.conversionFactor);
-                                const factorValid = Number.isFinite(factor) && factor > 0;
-                                const inverseFactor = factorValid ? 1 / factor : null;
                                 const suggestion = baseUnit ? suggestFactor(unit) : null;
                                 const canSuggest = !isBase && suggestion != null;
                                 return (
@@ -487,11 +505,11 @@ export default function ProductUnitSettings() {
                                                             <span className="puc-conv-eq">=</span>
                                                             <input
                                                                 type="number"
-                                                                min="0.000001"
+                                                                min="0"
                                                                 step="any"
                                                                 className="modal-standard-input puc-conv-input"
                                                                 value={row.conversionFactor}
-                                                                onChange={(e) => updateUnit(unit.id, { conversionFactor: e.target.value })}
+                                                                onChange={(e) => handleFactorChange(unit.id, e.target.value)}
                                                                 placeholder="Ej. 0.2857"
                                                                 disabled={!canMutate}
                                                             />
@@ -503,11 +521,11 @@ export default function ProductUnitSettings() {
                                                             <span className="puc-conv-eq">=</span>
                                                             <input
                                                                 type="number"
-                                                                min="0.000001"
+                                                                min="0"
                                                                 step="any"
                                                                 className="modal-standard-input puc-conv-input"
-                                                                value={inverseFactor != null ? formatNumber(inverseFactor) : ''}
-                                                                onChange={(e) => updateFactorByInverse(unit.id, e.target.value)}
+                                                                value={row.inverseFactor}
+                                                                onChange={(e) => handleInverseChange(unit.id, e.target.value)}
                                                                 placeholder="Ej. 3.5"
                                                                 disabled={!canMutate}
                                                             />
