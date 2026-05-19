@@ -993,7 +993,7 @@ export default function Inventory() {
                                                 if (!option) return;
                                                 setFormData({ ...formData, unit: option.value });
                                             }}
-                                            placeholder={allUnits.length === 0 ? 'Sin unidades — créalas primero' : 'Seleccionar unidad...'}
+                                            placeholder={allUnits.length === 0 ? 'Sin unidades' : 'Seleccionar unidad...'}
                                             isDisabled={allUnits.length === 0}
                                             isSearchable
                                         />
