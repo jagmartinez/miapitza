@@ -8,6 +8,7 @@ router.use(authMiddleware);
 
 router.get('/', UnitConversionController.getAllUnits);
 router.post('/', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), UnitConversionController.createUnit);
+router.put('/:id', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), UnitConversionController.updateUnit);
 router.post('/seed', requireRole('SUPERADMIN', 'ADMIN'), UnitConversionController.seedUnits);
 router.post('/auto-configure-all', requireRole('SUPERADMIN', 'ADMIN'), UnitConversionController.autoConfigureAll);
 router.get('/product/:productId', UnitConversionController.getProductUnits);

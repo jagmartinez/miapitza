@@ -67,13 +67,124 @@ export class UnitConversionController {
     static async getAllUnits(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
+            const includeInactive =
+                req.query.includeInactive === 'true' || req.query.includeInactive === '1';
+
             const units = await prisma.unitOfMeasure.findMany({
-                where: { companyId, active: true },
+                where: {
+                    companyId,
+                    ...(includeInactive ? {} : { active: true })
+                },
                 orderBy: [{ measurementType: 'asc' }, { name: 'asc' }]
             });
             res.json({ success: true, data: units });
         } catch (error: unknown) {
             next({ statusCode: 500, message: getErrorMessage(error) });
+        }
+    }
+
+    static async updateUnit(req: Request, res: Response, next: NextFunction) {
+        try {
+            const companyId = req.user!.companyId;
+            const unitId = parseInt(req.params.id, 10);
+            const {
+                name,
+                abbreviation,
+                measurementType,
+                systemFactor,
+                active
+            } = req.body as {
+                name?: string;
+                abbreviation?: string;
+                measurementType?: 'MASS' | 'VOLUME' | 'UNIT' | 'PACKAGE';
+                systemFactor?: number;
+                active?: boolean;
+            };
+
+            const existing = await prisma.unitOfMeasure.findFirst({
+                where: { id: unitId, companyId }
+            });
+            if (!existing) {
+                return next({ statusCode: 404, message: 'Unidad no encontrada' });
+            }
+
+            const data: {
+                name?: string;
+                abbreviation?: string;
+                measurementType?: 'MASS' | 'VOLUME' | 'UNIT' | 'PACKAGE';
+                systemFactor?: number;
+                active?: boolean;
+            } = {};
+
+            if (name !== undefined) {
+                const safeName = String(name).trim();
+                if (!safeName) {
+                    return next({ statusCode: 400, message: 'El nombre de la unidad es requerido' });
+                }
+                data.name = safeName;
+            }
+
+            if (abbreviation !== undefined) {
+                const safeAbbreviation = String(abbreviation).trim().toLowerCase();
+                if (!safeAbbreviation) {
+                    return next({ statusCode: 400, message: 'La abreviatura de la unidad es requerida' });
+                }
+                if (safeAbbreviation !== existing.abbreviation) {
+                    const duplicate = await prisma.unitOfMeasure.findUnique({
+                        where: { companyId_abbreviation: { companyId, abbreviation: safeAbbreviation } }
+                    });
+                    if (duplicate) {
+                        return next({
+                            statusCode: 409,
+                            message: `Ya existe una unidad con abreviatura "${safeAbbreviation}"`
+                        });
+                    }
+                }
+                data.abbreviation = safeAbbreviation;
+            }
+
+            if (measurementType !== undefined) {
+                if (!['MASS', 'VOLUME', 'UNIT', 'PACKAGE'].includes(measurementType)) {
+                    return next({ statusCode: 400, message: 'Tipo de medida invalido' });
+                }
+                data.measurementType = measurementType;
+            }
+
+            if (systemFactor !== undefined) {
+                const safeSystemFactor = Number(systemFactor);
+                if (!Number.isFinite(safeSystemFactor) || safeSystemFactor <= 0) {
+                    return next({ statusCode: 400, message: 'El factor del sistema debe ser mayor a 0' });
+                }
+                data.systemFactor = safeSystemFactor;
+            }
+
+            if (active !== undefined) {
+                if (active === false) {
+                    const productsUsingBase = await prisma.product.count({
+                        where: { companyId, baseUnitId: unitId, active: true }
+                    });
+                    if (productsUsingBase > 0) {
+                        return next({
+                            statusCode: 400,
+                            message: `No se puede inhabilitar: ${productsUsingBase} producto(s) la usan como unidad base`
+                        });
+                    }
+                }
+                data.active = active;
+            }
+
+            if (Object.keys(data).length === 0) {
+                return next({ statusCode: 400, message: 'No hay cambios para guardar' });
+            }
+
+            const unit = await prisma.unitOfMeasure.update({
+                where: { id: unitId },
+                data
+            });
+
+            res.json({ success: true, data: unit });
+        } catch (error: unknown) {
+            next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
 

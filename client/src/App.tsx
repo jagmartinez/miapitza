@@ -42,6 +42,8 @@ const Users = lazy(() => import('./pages/Users'));
 const Menu = lazy(() => import('./pages/Menu'));
 const Orders = lazy(() => import('./pages/Orders'));
 const Inventory = lazy(() => import('./pages/Inventory'));
+const UnitsOfMeasure = lazy(() => import('./pages/UnitsOfMeasure'));
+const ProductUnitSettings = lazy(() => import('./pages/ProductUnitSettings'));
 const Suppliers = lazy(() => import('./pages/Suppliers'));
 const PurchaseOrders = lazy(() => import('./pages/PurchaseOrders'));
 const PurchaseOrderForm = lazy(() => import('./pages/PurchaseOrderForm'));
@@ -106,6 +108,8 @@ function App() {
                                 <Route path="/categories" element={<RoleGuard roles={CHEF_MGMT}><Categories /></RoleGuard>} />
                                 <Route path="/promotions" element={<RoleGuard roles={ADMIN}><Promotions /></RoleGuard>} />
                                 <Route path="/inventory" element={<RoleGuard roles={WAREHOUSE}><Inventory /></RoleGuard>} />
+                                <Route path="/units-of-measure" element={<RoleGuard roles={WAREHOUSE}><UnitsOfMeasure /></RoleGuard>} />
+                                <Route path="/inventory/:productId/units" element={<RoleGuard roles={WAREHOUSE}><ProductUnitSettings /></RoleGuard>} />
                                 <Route path="/kardex" element={<RoleGuard roles={WAREHOUSE}><Kardex /></RoleGuard>} />
                                 <Route path="/suppliers" element={<RoleGuard roles={WAREHOUSE}><Suppliers /></RoleGuard>} />
                                 <Route path="/purchase-orders" element={<RoleGuard roles={WAREHOUSE}><PurchaseOrders /></RoleGuard>} />

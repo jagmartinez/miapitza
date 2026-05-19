@@ -779,6 +779,37 @@
     margin: 8px 0 4px 0;
 }
 
+.units-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    background: transparent;
+    color: var(--color-primary);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+    margin-bottom: 8px;
+}
+
+.product-units-page .premium-modal-content {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg);
+}
+
+.units-inline-link {
+    border: none;
+    background: transparent;
+    color: var(--color-primary);
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+}
+
 @media (max-width: 680px) {
     .units-config-controls {
         grid-template-columns: 1fr;

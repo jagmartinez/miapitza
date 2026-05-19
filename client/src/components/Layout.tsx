@@ -34,6 +34,7 @@ import {
     BarChart3,
     BookOpen,
     Zap,
+    Ruler,
     type LucideIcon
 } from 'lucide-react';
 import { getUserAccentColor, getUserRoleNames } from '../utils/authz';
@@ -78,6 +79,7 @@ const NAV_SECTIONS: NavSection[] = [
             { to: '/categories', icon: Tag, label: 'Categorías', roles: ['SUPERADMIN', 'ADMIN', 'CHEF'] },
             { to: '/promotions', icon: Ticket, label: 'Promociones', roles: ADMIN_ROLES },
             { to: '/inventory', icon: Package, label: 'Inventario', roles: ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'] },
+            { to: '/units-of-measure', icon: Ruler, label: 'Unidades de Medida', roles: ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'] },
             { to: '/suppliers', icon: Truck, label: 'Proveedores', roles: ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'] },
             { to: '/purchase-orders', icon: ClipboardList, label: 'Órdenes de Compra', roles: ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'] },
             { to: '/warehouses', icon: Warehouse, label: 'Bodegas', roles: ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'] },

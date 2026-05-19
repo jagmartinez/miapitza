@@ -343,6 +343,9 @@ export const productsAPI = {
     getLowStock: () =>
         api.get('/products/low-stock'),
 
+    getById: (id: number) =>
+        api.get(`/products/${id}`),
+
     create: (data: Record<string, unknown>) =>
         api.post('/products', data),
 
@@ -688,16 +691,28 @@ export const inventoryMovementsAPI = {
 
 // Units of Measure API
 export const unitsAPI = {
-    getAll: () =>
-        api.get('/units'),
+    getAll: (params?: { includeInactive?: boolean }) =>
+        api.get('/units', {
+            params: params?.includeInactive ? { includeInactive: true } : undefined
+        }),
 
     create: (data: {
         name: string;
         abbreviation: string;
         measurementType: 'MASS' | 'VOLUME' | 'UNIT' | 'PACKAGE';
         systemFactor: number;
+        active?: boolean;
     }) =>
         api.post('/units', data),
+
+    update: (id: number, data: {
+        name?: string;
+        abbreviation?: string;
+        measurementType?: 'MASS' | 'VOLUME' | 'UNIT' | 'PACKAGE';
+        systemFactor?: number;
+        active?: boolean;
+    }) =>
+        api.put(`/units/${id}`, data),
 
     getProductUnits: (productId: number) =>
         api.get(`/units/product/${productId}`),
