@@ -274,36 +274,80 @@
     margin-top: 2px;
 }
 
-.puc-conv-label {
-    display: block;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--color-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    margin-bottom: 8px;
+.puc-conv-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
 }
 
-.puc-conv-equation {
+.puc-conv-label {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+}
+
+.puc-conv-hint {
+    margin: 0 0 12px;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    line-height: 1.4;
+}
+
+.puc-conv-row {
     display: flex;
     gap: 8px;
     align-items: center;
     flex-wrap: wrap;
+    padding: 8px 10px;
+    background: var(--color-background);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    margin-bottom: 8px;
+}
+
+.puc-conv-row-inverse {
+    background: rgba(59, 130, 246, 0.05);
+    border-color: rgba(59, 130, 246, 0.25);
+}
+
+.dark .puc-conv-row {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.dark .puc-conv-row-inverse {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.35);
 }
 
 .puc-conv-token {
-    padding: 6px 10px;
-    background: var(--color-background);
+    padding: 6px 12px;
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
     font-size: 13px;
     font-weight: 600;
     color: var(--color-text);
     white-space: nowrap;
+    letter-spacing: 0.02em;
+    min-width: 70px;
+    text-align: center;
+}
+
+.dark .puc-conv-token {
+    background: var(--color-neutral-700);
+    border-color: var(--color-neutral-600);
+    color: var(--color-neutral-50);
 }
 
 .puc-conv-eq {
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 700;
     color: var(--color-text-secondary);
     padding: 0 2px;
@@ -312,7 +356,10 @@
 .puc-conv-input {
     flex: 1;
     min-width: 120px;
-    max-width: 200px;
+    max-width: 240px;
+    font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-weight: 600;
+    text-align: right;
 }
 
 .puc-suggest-btn {
@@ -334,36 +381,27 @@
     background: rgba(59, 130, 246, 0.16);
 }
 
-.puc-conv-inverse {
-    margin-top: 8px;
-    padding: 8px 10px;
-    background: rgba(34, 197, 94, 0.08);
-    border: 1px solid rgba(34, 197, 94, 0.25);
-    border-radius: var(--radius-sm);
-    font-size: 13px;
-    color: var(--color-text);
-}
-
-.puc-conv-warn {
+.puc-conv-tip {
     margin-top: 8px;
     display: flex;
     gap: 8px;
     align-items: flex-start;
-    padding: 8px 10px;
+    padding: 10px 12px;
     background: rgba(234, 179, 8, 0.1);
-    border: 1px solid rgba(234, 179, 8, 0.25);
+    border: 1px solid rgba(234, 179, 8, 0.28);
     border-radius: var(--radius-sm);
     font-size: 12px;
     color: var(--color-text);
     line-height: 1.5;
 }
 
-.puc-conv-warn svg {
+.puc-conv-tip svg {
     color: var(--color-warning);
     flex-shrink: 0;
     margin-top: 2px;
 }
 
-.puc-conv-warn strong {
+.puc-conv-tip strong {
     color: var(--color-warning);
+    font-weight: 700;
 }

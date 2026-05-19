@@ -182,6 +182,21 @@ export default function ProductUnitSettings() {
         ));
     };
 
+    const updateFactorByInverse = (unitId: number, inverseRaw: string) => {
+        if (inverseRaw === '') {
+            updateUnit(unitId, { conversionFactor: '' });
+            return;
+        }
+        const inv = Number(inverseRaw);
+        if (!Number.isFinite(inv) || inv <= 0) {
+            updateUnit(unitId, { conversionFactor: '' });
+            return;
+        }
+        const factor = 1 / inv;
+        const rounded = Number(factor.toPrecision(10));
+        updateUnit(unitId, { conversionFactor: String(rounded) });
+    };
+
     const removeAllowedUnit = (unitId: number) => {
         const parsedBase = Number(baseUnitId);
         if (unitId === parsedBase) {
@@ -448,54 +463,78 @@ export default function ProductUnitSettings() {
                                                     </div>
                                                 ) : (
                                                     <>
-                                                        <label className="puc-conv-label">
-                                                            ¿Cuántos <strong>{baseUnit?.abbreviation || 'base'}</strong> equivale 1 <strong>{unit.abbreviation}</strong>?
-                                                        </label>
-                                                        <div className="puc-conv-equation">
-                                                            <span className="puc-conv-token">1 {unit.abbreviation}</span>
-                                                            <span className="puc-conv-eq">=</span>
-                                                            <input
-                                                                type="number"
-                                                                min="0.000001"
-                                                                step="0.000001"
-                                                                className="modal-standard-input puc-conv-input"
-                                                                value={row.conversionFactor}
-                                                                onChange={(e) => updateUnit(unit.id, { conversionFactor: e.target.value })}
-                                                                placeholder="Factor"
-                                                                disabled={!canMutate}
-                                                            />
-                                                            <span className="puc-conv-token">{baseUnit?.abbreviation || 'base'}</span>
+                                                        <div className="puc-conv-header">
+                                                            <span className="puc-conv-label">Equivalencia</span>
                                                             {canSuggest && canMutate && (
                                                                 <button
                                                                     type="button"
                                                                     className="puc-suggest-btn"
                                                                     onClick={() => applySuggestion(unit.id)}
-                                                                    title={`Calcular automáticamente desde el catálogo (${formatNumber(suggestion!)})`}
+                                                                    title={`Calcular desde el catálogo global (${formatNumber(suggestion!)})`}
                                                                 >
                                                                     <Wand2 size={14} />
-                                                                    Sugerir
+                                                                    Sugerir desde catálogo
                                                                 </button>
                                                             )}
                                                         </div>
-                                                        {factorValid && baseUnit && inverseFactor != null && (
-                                                            <div className="puc-conv-inverse">
-                                                                Equivale a: <strong>1 {baseUnit.abbreviation} = {formatNumber(inverseFactor)} {unit.abbreviation}</strong>
-                                                            </div>
-                                                        )}
-                                                        {!canSuggest && baseUnit && unit.measurementType !== baseUnit.measurementType && (
-                                                            <div className="puc-conv-warn">
-                                                                <Info size={14} />
-                                                                Tipos distintos ({TYPE_LABEL[unit.measurementType]} ↔ {TYPE_LABEL[baseUnit.measurementType]}).
-                                                                Debes definir el factor manualmente.
-                                                            </div>
-                                                        )}
+
+                                                        <p className="puc-conv-hint">
+                                                            Edita cualquiera de las dos líneas, la otra se calcula automáticamente.
+                                                        </p>
+
+                                                        <div className="puc-conv-row">
+                                                            <span className="puc-conv-token">1 {unit.abbreviation}</span>
+                                                            <span className="puc-conv-eq">=</span>
+                                                            <input
+                                                                type="number"
+                                                                min="0.000001"
+                                                                step="any"
+                                                                className="modal-standard-input puc-conv-input"
+                                                                value={row.conversionFactor}
+                                                                onChange={(e) => updateUnit(unit.id, { conversionFactor: e.target.value })}
+                                                                placeholder="Ej. 0.2857"
+                                                                disabled={!canMutate}
+                                                            />
+                                                            <span className="puc-conv-token">{baseUnit?.abbreviation || 'base'}</span>
+                                                        </div>
+
+                                                        <div className="puc-conv-row puc-conv-row-inverse">
+                                                            <span className="puc-conv-token">1 {baseUnit?.abbreviation || 'base'}</span>
+                                                            <span className="puc-conv-eq">=</span>
+                                                            <input
+                                                                type="number"
+                                                                min="0.000001"
+                                                                step="any"
+                                                                className="modal-standard-input puc-conv-input"
+                                                                value={inverseFactor != null ? formatNumber(inverseFactor) : ''}
+                                                                onChange={(e) => updateFactorByInverse(unit.id, e.target.value)}
+                                                                placeholder="Ej. 3.5"
+                                                                disabled={!canMutate}
+                                                            />
+                                                            <span className="puc-conv-token">{unit.abbreviation}</span>
+                                                        </div>
+
                                                         {baseUnit?.measurementType === 'PACKAGE' && unit.measurementType !== 'PACKAGE' && (
-                                                            <div className="puc-conv-warn">
+                                                            <div className="puc-conv-tip">
                                                                 <Info size={14} />
-                                                                Si 1 paquete pesa, por ejemplo, 3.5 g, entonces
-                                                                <strong> 1 g = {formatNumber(1 / 3.5)} paquetes</strong>.
+                                                                <span>
+                                                                    Como tu base es un paquete, lo más fácil es escribir en la
+                                                                    segunda línea cuánto pesa 1 paquete (ej. <strong>3.5</strong> {unit.abbreviation}).
+                                                                </span>
                                                             </div>
                                                         )}
+                                                        {!canSuggest && baseUnit
+                                                            && unit.measurementType !== baseUnit.measurementType
+                                                            && baseUnit.measurementType !== 'PACKAGE'
+                                                            && unit.measurementType !== 'PACKAGE' && (
+                                                                <div className="puc-conv-tip">
+                                                                    <Info size={14} />
+                                                                    <span>
+                                                                        Tipos distintos ({TYPE_LABEL[unit.measurementType]} ↔ {TYPE_LABEL[baseUnit.measurementType]}).
+                                                                        Define el factor manualmente según tu caso.
+                                                                    </span>
+                                                                </div>
+                                                            )}
                                                     </>
                                                 )}
                                             </div>
