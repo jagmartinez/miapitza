@@ -14,7 +14,7 @@ import {
     Activity, ShoppingBag, Layers, Truck, DollarSign, FileText,
     Upload, Download
 } from 'lucide-react';
-import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, Warehouse } from '../types';
+import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, UnitOfMeasure, Warehouse } from '../types';
 import type { SingleValue } from 'react-select';
 import './Inventory.css';
 
@@ -38,6 +38,13 @@ type ProductInventory = Product & {
 };
 
 type StrOption = SingleValue<{ value: string; label: string }>;
+type MeasurementTypeOption = 'MASS' | 'VOLUME' | 'UNIT' | 'PACKAGE';
+
+interface EditableAllowedUnit {
+    unitId: number;
+    conversionFactor: string;
+    isDefault: boolean;
+}
 
 function apiErrorMessage(error: unknown): string {
     if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -76,7 +83,7 @@ export default function Inventory() {
     const [categories, setCategories] = useState<CategoryRow[]>([]);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-    const [activeTab, setActiveTab] = useState<'general' | 'stock' | 'finanzas'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'stock' | 'units' | 'finanzas'>('general');
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
     const [storageFilter, setStorageFilter] = useState<string>('all');
@@ -118,6 +125,16 @@ export default function Inventory() {
     const [adjustmentUnits, setAdjustmentUnits] = useState<ProductAllowedUnit[]>([]);
 
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+    const [allUnits, setAllUnits] = useState<UnitOfMeasure[]>([]);
+    const [baseUnitId, setBaseUnitId] = useState<string>('');
+    const [editableAllowedUnits, setEditableAllowedUnits] = useState<EditableAllowedUnit[]>([]);
+    const [newAllowedUnitId, setNewAllowedUnitId] = useState<string>('');
+    const [customUnitForm, setCustomUnitForm] = useState({
+        name: '',
+        abbreviation: '',
+        measurementType: 'PACKAGE' as MeasurementTypeOption,
+        systemFactor: '1'
+    });
 
     // Excel import state
     const [showImportSidebar, setShowImportSidebar] = useState(false);
@@ -139,7 +156,20 @@ export default function Inventory() {
         loadWarehouses();
         loadCategories();
         loadOperationalData();
+        loadUnitsCatalog();
     }, []);
+
+    const loadUnitsCatalog = async (): Promise<UnitOfMeasure[]> => {
+        try {
+            const res = await unitsAPI.getAll();
+            const units: UnitOfMeasure[] = res.data.data || [];
+            setAllUnits(units);
+            return units;
+        } catch (error) {
+            console.error('Error loading units:', error);
+            return [];
+        }
+    };
 
     const loadOperationalData = async () => {
         try {
@@ -194,7 +224,7 @@ export default function Inventory() {
         }
     };
 
-    const handleOpenSidebar = (product?: Product) => {
+    const handleOpenSidebar = async (product?: Product) => {
         if (product) {
             setEditingProduct(product);
             setFormData({
@@ -208,6 +238,32 @@ export default function Inventory() {
                 type: product.type,
                 storageType: product.storageType || ''
             });
+            const units = await loadUnitsCatalog();
+            try {
+                const unitsRes = await unitsAPI.getProductUnits(product.id);
+                const configuredUnits: ProductAllowedUnit[] = unitsRes.data.data || [];
+                const configuredBase = configuredUnits.find(u => u.isBase);
+                const normalizedAllowed = configuredUnits.map((u) => ({
+                    unitId: u.unitId,
+                    conversionFactor: String(u.conversionFactor),
+                    isDefault: Boolean(u.isDefault)
+                }));
+                setBaseUnitId(configuredBase?.unitId ? String(configuredBase.unitId) : '');
+                setEditableAllowedUnits(normalizedAllowed);
+            } catch {
+                const fallbackBase = units.find((u) => u.abbreviation === product.unit);
+                if (fallbackBase) {
+                    setBaseUnitId(String(fallbackBase.id));
+                    setEditableAllowedUnits([{
+                        unitId: fallbackBase.id,
+                        conversionFactor: '1',
+                        isDefault: true
+                    }]);
+                } else {
+                    setBaseUnitId('');
+                    setEditableAllowedUnits([]);
+                }
+            }
         } else {
             setEditingProduct(null);
             setFormData({
@@ -221,9 +277,120 @@ export default function Inventory() {
                 type: 'INGREDIENT',
                 storageType: ''
             });
+            const units = await loadUnitsCatalog();
+            const fallbackBase = units.find((u) => u.abbreviation === 'kg') || units.find((u) => u.abbreviation === formData.unit);
+            if (fallbackBase) {
+                setBaseUnitId(String(fallbackBase.id));
+                setEditableAllowedUnits([{
+                    unitId: fallbackBase.id,
+                    conversionFactor: '1',
+                    isDefault: true
+                }]);
+            } else {
+                setBaseUnitId('');
+                setEditableAllowedUnits([]);
+            }
         }
         setActiveTab('general');
         setIsSidebarOpen(true);
+    };
+
+    const unitLabelById = (unitId: number) => {
+        const unit = allUnits.find(u => u.id === unitId);
+        return unit ? `${unit.name} (${unit.abbreviation})` : `Unidad #${unitId}`;
+    };
+
+    const ensureBaseUnitIncluded = (nextBaseUnitId: number, units: EditableAllowedUnit[]) => {
+        const filtered = units.filter(u => u.unitId !== nextBaseUnitId);
+        const existingDefault = filtered.some(u => u.isDefault);
+        const baseEntry: EditableAllowedUnit = {
+            unitId: nextBaseUnitId,
+            conversionFactor: '1',
+            isDefault: !existingDefault
+        };
+        return [baseEntry, ...filtered];
+    };
+
+    const handleChangeBaseUnit = (nextBaseUnitId: string) => {
+        setBaseUnitId(nextBaseUnitId);
+        const parsedBase = Number(nextBaseUnitId);
+        if (!parsedBase) return;
+        setEditableAllowedUnits((prev) => ensureBaseUnitIncluded(parsedBase, prev));
+    };
+
+    const handleAddAllowedUnit = () => {
+        const parsedUnitId = Number(newAllowedUnitId);
+        if (!parsedUnitId) return;
+        if (editableAllowedUnits.some(u => u.unitId === parsedUnitId)) {
+            showWarning('Esa unidad ya esta agregada');
+            return;
+        }
+        setEditableAllowedUnits((prev) => [
+            ...prev,
+            { unitId: parsedUnitId, conversionFactor: '1', isDefault: prev.length === 0 }
+        ]);
+        setNewAllowedUnitId('');
+    };
+
+    const handleChangeAllowedFactor = (unitId: number, conversionFactor: string) => {
+        setEditableAllowedUnits((prev) => prev.map((unit) => {
+            if (unit.unitId !== unitId) return unit;
+            if (baseUnitId && Number(baseUnitId) === unitId) {
+                return { ...unit, conversionFactor: '1' };
+            }
+            return { ...unit, conversionFactor };
+        }));
+    };
+
+    const handleSetDefaultAllowedUnit = (unitId: number) => {
+        setEditableAllowedUnits((prev) => prev.map((unit) => ({
+            ...unit,
+            isDefault: unit.unitId === unitId
+        })));
+    };
+
+    const handleRemoveAllowedUnit = (unitId: number) => {
+        if (baseUnitId && Number(baseUnitId) === unitId) {
+            showWarning('La unidad base no se puede eliminar');
+            return;
+        }
+        setEditableAllowedUnits((prev) => prev.filter((unit) => unit.unitId !== unitId));
+    };
+
+    const handleCreateCustomUnit = async () => {
+        const name = customUnitForm.name.trim();
+        const abbreviation = customUnitForm.abbreviation.trim().toLowerCase();
+        const systemFactor = Number(customUnitForm.systemFactor);
+
+        if (!name || !abbreviation) {
+            showWarning('Completa nombre y abreviatura');
+            return;
+        }
+        if (!Number.isFinite(systemFactor) || systemFactor <= 0) {
+            showWarning('El factor del sistema debe ser mayor a 0');
+            return;
+        }
+
+        try {
+            const res = await unitsAPI.create({
+                name,
+                abbreviation,
+                measurementType: customUnitForm.measurementType,
+                systemFactor
+            });
+            const createdUnit = res.data.data as UnitOfMeasure;
+            showSuccess(`Unidad ${createdUnit.name} creada`);
+            setCustomUnitForm({
+                name: '',
+                abbreviation: '',
+                measurementType: customUnitForm.measurementType,
+                systemFactor: '1'
+            });
+            await loadUnitsCatalog();
+            setNewAllowedUnitId(String(createdUnit.id));
+        } catch (error: unknown) {
+            showError('Error: ' + apiErrorMessage(error));
+        }
     };
 
     const loadProductUnits = useCallback(async (productId: number) => {
@@ -298,6 +465,35 @@ export default function Inventory() {
         e.preventDefault();
         if (!canMutateProduct) return;
 
+        const parsedBaseUnitId = Number(baseUnitId);
+        const hasUnitSetup = parsedBaseUnitId > 0 && editableAllowedUnits.length > 0;
+
+        let normalizedAllowedUnits: Array<{ unitId: number; conversionFactor: number; isDefault?: boolean }> = [];
+        if (hasUnitSetup) {
+            const uniqueByUnit = new Map<number, { unitId: number; conversionFactor: number; isDefault?: boolean }>();
+            for (const unit of editableAllowedUnits) {
+                const factor = unit.unitId === parsedBaseUnitId ? 1 : Number(unit.conversionFactor);
+                if (!Number.isFinite(factor) || factor <= 0) {
+                    showWarning(`Factor invalido para ${unitLabelById(unit.unitId)}`);
+                    return;
+                }
+                uniqueByUnit.set(unit.unitId, {
+                    unitId: unit.unitId,
+                    conversionFactor: factor,
+                    isDefault: unit.isDefault
+                });
+            }
+            if (!uniqueByUnit.has(parsedBaseUnitId)) {
+                uniqueByUnit.set(parsedBaseUnitId, { unitId: parsedBaseUnitId, conversionFactor: 1, isDefault: true });
+            }
+            normalizedAllowedUnits = Array.from(uniqueByUnit.values());
+            const hasDefault = normalizedAllowedUnits.some((u) => u.isDefault);
+            if (!hasDefault) {
+                const baseEntry = normalizedAllowedUnits.find((u) => u.unitId === parsedBaseUnitId);
+                if (baseEntry) baseEntry.isDefault = true;
+            }
+        }
+
         try {
             const trimmedSku = formData.sku.trim();
             const data: Record<string, unknown> = {
@@ -311,12 +507,21 @@ export default function Inventory() {
                 active: true
             };
 
+            let savedProductId = editingProduct?.id || 0;
             if (editingProduct) {
                 await productsAPI.update(editingProduct.id, data);
                 showSuccess('Producto actualizado correctamente');
             } else {
-                await productsAPI.create(data);
+                const createRes = await productsAPI.create(data);
+                savedProductId = Number(createRes.data?.data?.id || createRes.data?.id || 0);
                 showSuccess('Producto creado correctamente');
+            }
+
+            if (hasUnitSetup && savedProductId) {
+                await unitsAPI.setProductUnits(savedProductId, {
+                    baseUnitId: parsedBaseUnitId,
+                    allowedUnits: normalizedAllowedUnits
+                });
             }
 
             setIsSidebarOpen(false);
@@ -818,6 +1023,13 @@ export default function Inventory() {
                             <span>Stock</span>
                         </div>
                         <div
+                            className={`modal-tab ${activeTab === 'units' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('units')}
+                        >
+                            <Layers size={18} />
+                            <span>Unidades</span>
+                        </div>
+                        <div
                             className={`modal-tab ${activeTab === 'finanzas' ? 'active' : ''}`}
                             onClick={() => setActiveTab('finanzas')}
                         >
@@ -918,7 +1130,7 @@ export default function Inventory() {
                                             <label className="modal-input-label">
                                                 SKU / Código
                                                 {!editingProduct && (
-                                                    <span className="label-note"> (Se genera automáticamente si lo dejas vacío)</span>
+                                                    <span className="label-note"> </span>
                                                 )}
                                             </label>
                                             <input
@@ -932,26 +1144,38 @@ export default function Inventory() {
                                         <Select
                                             variant="modal"
                                             label="Unidad de Medida"
-                                            options={[
-                                                { value: 'kg', label: 'Kilogramo (kg)' },
-                                                { value: 'g', label: 'Gramo (g)' },
-                                                { value: 'l', label: 'Litro (l)' },
-                                                { value: 'ml', label: 'Mililitro (ml)' },
-                                                { value: 'unidad', label: 'Unidad' },
-                                                { value: 'paquete', label: 'Paquete' }
-                                            ]}
+                                            options={allUnits.length > 0
+                                                ? allUnits.map((unit) => ({
+                                                    value: unit.abbreviation,
+                                                    label: `${unit.name} (${unit.abbreviation})`
+                                                }))
+                                                : [
+                                                    { value: 'kg', label: 'Kilogramo (kg)' },
+                                                    { value: 'g', label: 'Gramo (g)' },
+                                                    { value: 'l', label: 'Litro (l)' },
+                                                    { value: 'ml', label: 'Mililitro (ml)' },
+                                                    { value: 'unidad', label: 'Unidad' },
+                                                    { value: 'paquete', label: 'Paquete' }
+                                                ]}
                                             value={{
                                                 value: formData.unit,
-                                                label: {
-                                                    'kg': 'Kilogramo (kg)',
-                                                    'g': 'Gramo (g)',
-                                                    'l': 'Litro (l)',
-                                                    'ml': 'Mililitro (ml)',
-                                                    'unidad': 'Unidad',
-                                                    'paquete': 'Paquete'
-                                                }[formData.unit] || formData.unit
+                                                label: allUnits.find((unit) => unit.abbreviation === formData.unit)
+                                                    ? `${allUnits.find((unit) => unit.abbreviation === formData.unit)!.name} (${formData.unit})`
+                                                    : formData.unit
                                             }}
-                                            onChange={(option: StrOption) => option && setFormData({ ...formData, unit: option.value })}
+                                            onChange={(option: StrOption) => {
+                                                if (!option) return;
+                                                const selectedUnit = allUnits.find((unit) => unit.abbreviation === option.value);
+                                                setFormData({ ...formData, unit: option.value });
+                                                if (!editingProduct && selectedUnit && !baseUnitId) {
+                                                    setBaseUnitId(String(selectedUnit.id));
+                                                    setEditableAllowedUnits([{
+                                                        unitId: selectedUnit.id,
+                                                        conversionFactor: '1',
+                                                        isDefault: true
+                                                    }]);
+                                                }
+                                            }}
                                             isSearchable={false}
                                         />
                                     </div>
@@ -978,6 +1202,175 @@ export default function Inventory() {
                                             Se mostrará una alerta cuando el stock sea inferior a este valor.
                                         </small>
                                     </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'units' && (
+                                <div className="modal-section animate-slide-in">
+                                    <div className="modal-section-header">
+                                        <Layers size={18} />
+                                        <h3>Configuracion de Unidades y Conversiones</h3>
+                                    </div>
+
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label">Unidad base interna</label>
+                                        <Select
+                                            variant="modal"
+                                            options={allUnits.map((unit) => ({
+                                                value: String(unit.id),
+                                                label: `${unit.name} (${unit.abbreviation})`
+                                            }))}
+                                            value={baseUnitId
+                                                ? {
+                                                    value: baseUnitId,
+                                                    label: unitLabelById(Number(baseUnitId))
+                                                }
+                                                : null}
+                                            onChange={(option: StrOption) => handleChangeBaseUnit(option?.value || '')}
+                                            placeholder="Selecciona la unidad base..."
+                                        />
+                                        <small style={{ color: 'var(--color-neutral-500)', fontSize: '11px', marginTop: '4px', display: 'block' }}>
+                                            Toda existencia se guarda en esta unidad. Ejemplo recomendado para peso: gramos.
+                                        </small>
+                                    </div>
+
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label">Agregar unidad permitida</label>
+                                        <div className="units-row-inline">
+                                            <Select
+                                                variant="modal"
+                                                options={allUnits
+                                                    .filter((unit) => !editableAllowedUnits.some((u) => u.unitId === unit.id))
+                                                    .map((unit) => ({
+                                                        value: String(unit.id),
+                                                        label: `${unit.name} (${unit.abbreviation})`
+                                                    }))}
+                                                value={newAllowedUnitId
+                                                    ? { value: newAllowedUnitId, label: unitLabelById(Number(newAllowedUnitId)) }
+                                                    : null}
+                                                onChange={(option: StrOption) => setNewAllowedUnitId(option?.value || '')}
+                                                placeholder="Selecciona una unidad..."
+                                            />
+                                            <Button type="button" variant="secondary" onClick={handleAddAllowedUnit}>
+                                                Agregar
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    <div className="units-config-list">
+                                        {editableAllowedUnits.length === 0 && (
+                                            <div className="units-empty-state">Aun no hay unidades permitidas configuradas.</div>
+                                        )}
+                                        {editableAllowedUnits.map((unit) => {
+                                            const isBase = baseUnitId && Number(baseUnitId) === unit.unitId;
+                                            return (
+                                                <div key={unit.unitId} className="units-config-item">
+                                                    <div className="units-config-main">
+                                                        <strong>{unitLabelById(unit.unitId)}</strong>
+                                                        <span className="sku-tag">{isBase ? 'Base' : 'Permitida'}</span>
+                                                    </div>
+                                                    <div className="units-config-controls">
+                                                        <div className="units-factor-input">
+                                                            <label>Factor a base</label>
+                                                            <input
+                                                                type="number"
+                                                                min="0.000001"
+                                                                step="0.000001"
+                                                                className="modal-standard-input"
+                                                                value={isBase ? '1' : unit.conversionFactor}
+                                                                onChange={(e) => handleChangeAllowedFactor(unit.unitId, e.target.value)}
+                                                                disabled={Boolean(isBase)}
+                                                            />
+                                                        </div>
+                                                        <label className="units-default-checkbox">
+                                                            <input
+                                                                type="radio"
+                                                                name="productDefaultUnit"
+                                                                checked={unit.isDefault}
+                                                                onChange={() => handleSetDefaultAllowedUnit(unit.unitId)}
+                                                            />
+                                                            Por defecto
+                                                        </label>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            onClick={() => handleRemoveAllowedUnit(unit.unitId)}
+                                                            disabled={Boolean(isBase)}
+                                                        >
+                                                            Quitar
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="units-divider" />
+
+                                    <div className="modal-section-header" style={{ marginBottom: '8px' }}>
+                                        <Plus size={16} />
+                                        <h3>Crear unidad personalizada</h3>
+                                    </div>
+                                    <div className="modal-form-row">
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label">Nombre</label>
+                                            <input
+                                                type="text"
+                                                className="modal-standard-input"
+                                                value={customUnitForm.name}
+                                                onChange={(e) => setCustomUnitForm((prev) => ({ ...prev, name: e.target.value }))}
+                                                placeholder="Ej: Paquete Mozzarella 3.5g"
+                                            />
+                                        </div>
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label">Abreviatura</label>
+                                            <input
+                                                type="text"
+                                                className="modal-standard-input"
+                                                value={customUnitForm.abbreviation}
+                                                onChange={(e) => setCustomUnitForm((prev) => ({ ...prev, abbreviation: e.target.value }))}
+                                                placeholder="Ej: pkg_moz_3_5g"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="modal-form-row">
+                                        <Select
+                                            variant="modal"
+                                            label="Tipo de medida"
+                                            options={[
+                                                { value: 'MASS', label: 'Masa' },
+                                                { value: 'VOLUME', label: 'Volumen' },
+                                                { value: 'UNIT', label: 'Unidad' },
+                                                { value: 'PACKAGE', label: 'Paquete' }
+                                            ]}
+                                            value={{
+                                                value: customUnitForm.measurementType,
+                                                label: {
+                                                    MASS: 'Masa',
+                                                    VOLUME: 'Volumen',
+                                                    UNIT: 'Unidad',
+                                                    PACKAGE: 'Paquete'
+                                                }[customUnitForm.measurementType]
+                                            }}
+                                            onChange={(option: SingleValue<{ value: MeasurementTypeOption; label: string }>) =>
+                                                option && setCustomUnitForm((prev) => ({ ...prev, measurementType: option.value }))}
+                                            isSearchable={false}
+                                        />
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label">Factor del sistema</label>
+                                            <input
+                                                type="number"
+                                                min="0.000001"
+                                                step="0.000001"
+                                                className="modal-standard-input"
+                                                value={customUnitForm.systemFactor}
+                                                onChange={(e) => setCustomUnitForm((prev) => ({ ...prev, systemFactor: e.target.value }))}
+                                            />
+                                        </div>
+                                    </div>
+                                    <Button type="button" variant="secondary" onClick={handleCreateCustomUnit}>
+                                        Crear unidad
+                                    </Button>
                                 </div>
                             )}
 

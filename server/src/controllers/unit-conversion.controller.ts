@@ -5,6 +5,65 @@ import { getErrorMessage } from '../utils/error';
 
 export class UnitConversionController {
 
+    static async createUnit(req: Request, res: Response, next: NextFunction) {
+        try {
+            const companyId = req.user!.companyId;
+            const {
+                name,
+                abbreviation,
+                measurementType,
+                systemFactor
+            } = req.body as {
+                name?: string;
+                abbreviation?: string;
+                measurementType?: 'MASS' | 'VOLUME' | 'UNIT' | 'PACKAGE';
+                systemFactor?: number;
+            };
+
+            const safeName = String(name || '').trim();
+            const safeAbbreviation = String(abbreviation || '').trim().toLowerCase();
+            const safeMeasurementType = measurementType;
+            const safeSystemFactor = Number(systemFactor);
+
+            if (!safeName) {
+                return next({ statusCode: 400, message: 'El nombre de la unidad es requerido' });
+            }
+            if (!safeAbbreviation) {
+                return next({ statusCode: 400, message: 'La abreviatura de la unidad es requerida' });
+            }
+            if (!safeMeasurementType || !['MASS', 'VOLUME', 'UNIT', 'PACKAGE'].includes(safeMeasurementType)) {
+                return next({ statusCode: 400, message: 'Tipo de medida invalido' });
+            }
+            if (!Number.isFinite(safeSystemFactor) || safeSystemFactor <= 0) {
+                return next({ statusCode: 400, message: 'El factor del sistema debe ser mayor a 0' });
+            }
+
+            const exists = await prisma.unitOfMeasure.findUnique({
+                where: { companyId_abbreviation: { companyId, abbreviation: safeAbbreviation } }
+            });
+            if (exists) {
+                return next({
+                    statusCode: 409,
+                    message: `Ya existe una unidad con abreviatura "${safeAbbreviation}"`
+                });
+            }
+
+            const unit = await prisma.unitOfMeasure.create({
+                data: {
+                    companyId,
+                    name: safeName,
+                    abbreviation: safeAbbreviation,
+                    measurementType: safeMeasurementType,
+                    systemFactor: safeSystemFactor
+                }
+            });
+
+            res.status(201).json({ success: true, data: unit });
+        } catch (error: unknown) {
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
     static async getAllUnits(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;

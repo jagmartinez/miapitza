@@ -11,6 +11,32 @@ function generateToken(): string {
 
 const CSRF_EXEMPT_PATHS = ['/auth/login', '/auth/register', '/pedidosya/webhook'];
 
+function hasBearerAuth(req: Request): boolean {
+    const auth = req.headers.authorization;
+    return typeof auth === 'string' && auth.startsWith('Bearer ');
+}
+
+function ensureCsrfToken(req: Request, res: Response): string {
+    const cookies = parseCookies(req.headers.cookie || '');
+    let cookieToken = cookies[CSRF_COOKIE];
+
+    if (!cookieToken) {
+        cookieToken = generateToken();
+        const isSecure = process.env.NODE_ENV === 'production';
+        res.cookie(CSRF_COOKIE, cookieToken, {
+            httpOnly: false, // JS must read this on same-origin; cross-origin uses X-CSRF-Token header
+            secure: isSecure,
+            sameSite: 'lax',
+            path: '/',
+            maxAge: 8 * 60 * 60 * 1000,
+        });
+    }
+
+    // Cross-origin SPAs cannot read API cookies; expose token for credentialed clients
+    res.setHeader('X-CSRF-Token', cookieToken);
+    return cookieToken;
+}
+
 export function csrfProtection(req: Request, res: Response, next: NextFunction): void {
     // API key requests are stateless — skip CSRF
     if (req.headers['x-api-key']) {
@@ -24,20 +50,12 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
         return;
     }
 
-    // Ensure a CSRF cookie exists on every response
-    const cookies = parseCookies(req.headers.cookie || '');
-    let cookieToken = cookies[CSRF_COOKIE];
+    const cookieToken = ensureCsrfToken(req, res);
 
-    if (!cookieToken) {
-        cookieToken = generateToken();
-        const isSecure = process.env.NODE_ENV === 'production';
-        res.cookie(CSRF_COOKIE, cookieToken, {
-            httpOnly: false, // JS must read this to send in header
-            secure: isSecure,
-            sameSite: 'lax',
-            path: '/',
-            maxAge: 8 * 60 * 60 * 1000,
-        });
+    // JWT in Authorization is not sent automatically by the browser — CSRF does not apply
+    if (hasBearerAuth(req)) {
+        next();
+        return;
     }
 
     // Safe methods don't need validation

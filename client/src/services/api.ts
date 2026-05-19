@@ -12,6 +12,54 @@ declare module 'axios' {
     }
 }
 
+const CSRF_STORAGE_KEY = 'csrf_token';
+
+const readCsrfFromCookie = (): string | null => {
+    const raw = document.cookie
+        .split('; ')
+        .find((c) => c.startsWith('csrf_token='))
+        ?.split('=')[1];
+    return raw ? decodeURIComponent(raw) : null;
+};
+
+const getStoredCsrfToken = (): string | null => {
+    try {
+        return sessionStorage.getItem(CSRF_STORAGE_KEY);
+    } catch {
+        return null;
+    }
+};
+
+const storeCsrfToken = (token: string): void => {
+    try {
+        sessionStorage.setItem(CSRF_STORAGE_KEY, token);
+    } catch {
+        // sessionStorage unavailable — cookie/header path still used per request
+    }
+};
+
+const captureCsrfFromHeaders = (headers: Record<string, unknown> | undefined): void => {
+    const token = headers?.['x-csrf-token'];
+    if (typeof token === 'string' && token.length > 0) {
+        storeCsrfToken(token);
+    }
+};
+
+const resolveCsrfToken = async (): Promise<string | null> => {
+    const existing = getStoredCsrfToken() || readCsrfFromCookie();
+    if (existing) {
+        return existing;
+    }
+
+    try {
+        const health = await api.get('/health');
+        captureCsrfFromHeaders(health.headers as Record<string, unknown>);
+        return getStoredCsrfToken() || readCsrfFromCookie();
+    } catch {
+        return null;
+    }
+};
+
 const normalizeApiBaseUrl = () => {
     const envUrl = import.meta.env.VITE_API_URL as string | undefined;
     if (envUrl) {
@@ -49,24 +97,11 @@ api.interceptors.request.use(
             requestConfig.headers.Authorization = `Bearer ${token}`;
         }
 
-        // CSRF: read cookie and send as header on mutations
+        // CSRF: sessionStorage (cross-origin) or cookie (same-origin) on mutations
         if (requestConfig.method !== 'get' && requestConfig.method !== 'GET') {
-            let csrfToken = document.cookie
-                .split('; ')
-                .find(c => c.startsWith('csrf_token='))
-                ?.split('=')[1];
-            // If no CSRF cookie yet, fetch one via a lightweight GET
-            if (!csrfToken) {
-                try {
-                    await api.get('/health');
-                    csrfToken = document.cookie
-                        .split('; ')
-                        .find(c => c.startsWith('csrf_token='))
-                        ?.split('=')[1];
-                } catch { /* proceed without — server exempts login */ }
-            }
+            const csrfToken = await resolveCsrfToken();
             if (csrfToken) {
-                requestConfig.headers['x-csrf-token'] = decodeURIComponent(csrfToken);
+                requestConfig.headers['x-csrf-token'] = csrfToken;
             }
         }
 
@@ -97,6 +132,8 @@ api.interceptors.request.use(
 // Response interceptor for error handling and caching
 api.interceptors.response.use(
     async (response) => {
+        captureCsrfFromHeaders(response.headers as Record<string, unknown>);
+
         // Cache successful GET responses (skip auth endpoints and binary responses)
         const method = response.config.method?.toLowerCase();
         const url = response.config.url || '';
@@ -653,6 +690,14 @@ export const inventoryMovementsAPI = {
 export const unitsAPI = {
     getAll: () =>
         api.get('/units'),
+
+    create: (data: {
+        name: string;
+        abbreviation: string;
+        measurementType: 'MASS' | 'VOLUME' | 'UNIT' | 'PACKAGE';
+        systemFactor: number;
+    }) =>
+        api.post('/units', data),
 
     getProductUnits: (productId: number) =>
         api.get(`/units/product/${productId}`),

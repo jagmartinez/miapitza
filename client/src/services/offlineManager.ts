@@ -134,12 +134,20 @@ class OfflineManager {
         if (items.length === 0) return;
 
         const token = localStorage.getItem('token');
+        const csrfToken = (() => {
+            try {
+                return sessionStorage.getItem('csrf_token');
+            } catch {
+                return null;
+            }
+        })();
         const api = axios.create({
             baseURL: '/api',
             withCredentials: true,
             headers: {
                 'Content-Type': 'application/json',
                 ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                ...(csrfToken ? { 'x-csrf-token': csrfToken } : {}),
             }
         });
 

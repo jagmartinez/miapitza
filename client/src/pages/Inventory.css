@@ -712,3 +712,75 @@
     color: var(--color-text-secondary);
     margin-top: 4px;
 }
+
+/* ===== Units configuration ===== */
+.units-row-inline {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: end;
+}
+
+.units-config-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.units-empty-state {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    padding: 10px;
+    border: 1px dashed var(--color-border);
+    border-radius: 8px;
+    background: var(--color-neutral-50);
+}
+
+.units-config-item {
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.units-config-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.units-config-controls {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 10px;
+    align-items: end;
+}
+
+.units-factor-input label {
+    display: block;
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    margin-bottom: 4px;
+}
+
+.units-default-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--color-text);
+}
+
+.units-divider {
+    border-top: 1px dashed var(--color-border);
+    margin: 8px 0 4px 0;
+}
+
+@media (max-width: 680px) {
+    .units-config-controls {
+        grid-template-columns: 1fr;
+    }
+}
