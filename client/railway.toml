@@ -7,6 +7,8 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
+# Static SPA — no database. Overrides any shared/API preDeploy (e.g. prisma db push).
+preDeployCommand = "echo miapitza-web: no pre-deploy"
 healthcheckPath = "/"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
