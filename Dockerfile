@@ -10,6 +10,7 @@ COPY server/ ./
 RUN npx prisma generate && npm run build
 ENV NODE_ENV=production
 RUN npm prune --omit=dev
+RUN chmod +x docker-entrypoint.sh
 RUN mkdir -p uploads
 EXPOSE 3001
-CMD ["node", "dist/index.js"]
+CMD ["./docker-entrypoint.sh"]
