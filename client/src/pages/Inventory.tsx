@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Select from '../components/Select';
 import { autoPurchaseOrdersAPI, branchesAPI, productsAPI, inventoryMovementsAPI, categoriesAPI, stockAlertsAPI, suppliersAPI, unitsAPI } from '../services/api';
@@ -12,7 +12,7 @@ import { hasAnyRole } from '../utils/authz';
 import {
     AlertTriangle, Package, Plus, Edit2, Trash2,
     Activity, ShoppingBag, Layers, Truck, DollarSign, FileText,
-    Upload, Download
+    Upload, Download, FileSpreadsheet, Search
 } from 'lucide-react';
 import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, UnitOfMeasure, Warehouse } from '../types';
 import type { SingleValue } from 'react-select';
@@ -122,6 +122,9 @@ export default function Inventory() {
     // Excel import state
     const [showImportSidebar, setShowImportSidebar] = useState(false);
     const [importFile, setImportFile] = useState<File | null>(null);
+    const [importSearch, setImportSearch] = useState('');
+    const [importShowErrorsOnly, setImportShowErrorsOnly] = useState(false);
+    const importFileInputRef = useRef<HTMLInputElement>(null);
     const [importValidation, setImportValidation] = useState<{
         items: Array<{
             rowNumber: number; sku: string; name: string; category: string; unit: string;
@@ -394,6 +397,25 @@ export default function Inventory() {
         });
     };
 
+    const closeImportSidebar = () => {
+        setShowImportSidebar(false);
+        setImportSearch('');
+        setImportShowErrorsOnly(false);
+    };
+
+    const filteredImportItems = useMemo(() => {
+        if (!importValidation) return [];
+        const query = importSearch.trim().toLowerCase();
+        return importValidation.items.filter((item) => {
+            if (importShowErrorsOnly && item.isValid) return false;
+            if (!query) return true;
+            return (
+                item.sku.toLowerCase().includes(query) ||
+                item.name.toLowerCase().includes(query)
+            );
+        });
+    }, [importValidation, importSearch, importShowErrorsOnly]);
+
     const handleCreateAutoPurchaseOrder = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!canCreateAutoPO) return;
@@ -486,7 +508,7 @@ export default function Inventory() {
         try {
             const res = await productsAPI.confirmImport(validItems);
             showSuccess(res.data.message);
-            setShowImportSidebar(false);
+            closeImportSidebar();
             setImportFile(null);
             setImportValidation(null);
             loadInventory();
@@ -1252,7 +1274,7 @@ export default function Inventory() {
                             <div className="modal-section animate-slide-in">
                                 <div className="modal-section-header">
                                     <FileText size={18} />
-                                    <h3>Sugerencias de reposiciÃ³n</h3>
+                                    <h3>Sugerencias de reposición</h3>
                                 </div>
 
                                 <div className="modal-form-row">
@@ -1292,11 +1314,11 @@ export default function Inventory() {
                                     />
                                 </div>
 
-                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
-                                    <div style={{ color: 'var(--color-neutral-600)', fontSize: '0.9rem' }}>
+                                <div className="po-suggestion-toolbar">
+                                    <span className="po-suggestion-count">
                                         {selectedSuggestions.length} seleccionados de {autoPurchaseSuggestions.length} sugerencias
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                    </span>
+                                    <div className="po-suggestion-toolbar-actions">
                                         <Button type="button" variant="ghost" onClick={handleSelectUrgentSuggestions}>
                                             Seleccionar urgentes
                                         </Button>
@@ -1306,59 +1328,54 @@ export default function Inventory() {
                                     </div>
                                 </div>
 
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '420px', overflowY: 'auto' }}>
-                                    {autoPurchaseSuggestions.map((suggestion) => {
-                                        const key = getSuggestionKey(suggestion);
-                                        const checked = Boolean(selectedSuggestionKeys[key]);
-                                        return (
-                                            <label
-                                                key={key}
-                                                style={{
-                                                    display: 'grid',
-                                                    gridTemplateColumns: 'auto 1fr auto',
-                                                    gap: '12px',
-                                                    alignItems: 'center',
-                                                    padding: '12px',
-                                                    borderRadius: '12px',
-                                                    border: `1px solid ${checked ? 'var(--color-primary)' : 'var(--color-neutral-200)'}`,
-                                                    background: checked ? 'var(--color-primary-soft, rgba(37, 99, 235, 0.08))' : 'var(--color-neutral-50)',
-                                                    cursor: 'pointer'
-                                                }}
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={checked}
-                                                    onChange={() => handleToggleSuggestion(suggestion)}
-                                                />
-                                                <div>
-                                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                                        <strong>{suggestion.productName}</strong>
-                                                        <span className="sku-tag">{suggestion.warehouseName}</span>
-                                                        <span
-                                                            className="sku-tag"
-                                                            style={{
-                                                                background: suggestion.priority === 'URGENT' ? '#FEF2F2' : '#EFF6FF',
-                                                                color: suggestion.priority === 'URGENT' ? '#DC2626' : '#1D4ED8'
-                                                            }}
-                                                        >
-                                                            {suggestion.priority === 'URGENT' ? 'Urgente' : 'Normal'}
+                                <div className="po-suggestion-list">
+                                    {autoPurchaseSuggestions.length === 0 ? (
+                                        <div className="po-suggestion-empty">
+                                            No hay productos con stock bajo para sugerir compra.
+                                        </div>
+                                    ) : (
+                                        autoPurchaseSuggestions.map((suggestion) => {
+                                            const key = getSuggestionKey(suggestion);
+                                            const checked = Boolean(selectedSuggestionKeys[key]);
+                                            const isUrgent = suggestion.priority === 'URGENT';
+                                            const displayName = suggestion.productName?.trim() || `Producto #${suggestion.productId}`;
+                                            return (
+                                                <label
+                                                    key={key}
+                                                    className={`po-suggestion-card${checked ? ' is-selected' : ''}${isUrgent ? ' is-urgent' : ''}`}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        className="po-suggestion-checkbox"
+                                                        checked={checked}
+                                                        onChange={() => handleToggleSuggestion(suggestion)}
+                                                    />
+                                                    <div className="po-suggestion-body">
+                                                        <div className="po-suggestion-header">
+                                                            <span className="po-suggestion-name">{displayName}</span>
+                                                            <span className={`po-priority-badge${isUrgent ? ' po-priority-badge--urgent' : ' po-priority-badge--normal'}`}>
+                                                                {isUrgent ? 'Urgente' : 'Normal'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="po-suggestion-tags">
+                                                            <span className="sku-tag">{suggestion.warehouseName}</span>
+                                                        </div>
+                                                        <div className="po-suggestion-metrics">
+                                                            <span><strong>Actual:</strong> {Number(suggestion.currentStock || 0).toFixed(2)}</span>
+                                                            <span><strong>Mín:</strong> {Number(suggestion.minStock || 0).toFixed(2)}</span>
+                                                            <span><strong>Sugerido:</strong> {Number(suggestion.suggestedQuantity).toFixed(2)}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="po-suggestion-cost">
+                                                        <span className="po-suggestion-cost-value">
+                                                            ${Number(suggestion.estimatedCost || 0).toFixed(2)}
                                                         </span>
+                                                        <span className="po-suggestion-cost-label">estimado</span>
                                                     </div>
-                                                    <div style={{ marginTop: '6px', fontSize: '0.82rem', color: 'var(--color-neutral-600)' }}>
-                                                        Stock actual: {Number(suggestion.currentStock || 0).toFixed(2)} | Min: {Number(suggestion.minStock || 0).toFixed(2)} | Sugerido: {Number(suggestion.suggestedQuantity).toFixed(2)}
-                                                    </div>
-                                                </div>
-                                                <div style={{ textAlign: 'right' }}>
-                                                    <div style={{ fontWeight: 700 }}>
-                                                        ${Number(suggestion.estimatedCost || 0).toFixed(2)}
-                                                    </div>
-                                                    <div style={{ fontSize: '0.78rem', color: 'var(--color-neutral-500)' }}>
-                                                        estimado
-                                                    </div>
-                                                </div>
-                                            </label>
-                                        );
-                                    })}
+                                                </label>
+                                            );
+                                        })
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -1376,32 +1393,73 @@ export default function Inventory() {
             </Sidebar>
 
             {/* Import Excel Sidebar */}
-            <Sidebar isOpen={showImportSidebar} onClose={() => setShowImportSidebar(false)} title="Importar Productos desde Excel" width="wide">
-                <div className="premium-modal-content">
+            <Sidebar isOpen={showImportSidebar} onClose={closeImportSidebar} title="Importar Productos desde Excel" width="wide">
+                <div className="premium-modal-content product-import-modal">
                     <div className="modal-tab-content">
+                        <div className="import-steps" aria-label="Pasos de importación">
+                            <div className={`import-step${importFile ? ' is-done' : ' is-active'}`}>
+                                <span className="import-step-num">1</span>
+                                <span>Archivo</span>
+                            </div>
+                            <div className={`import-step${importValidation ? ' is-done' : importFile ? ' is-active' : ''}`}>
+                                <span className="import-step-num">2</span>
+                                <span>Validar</span>
+                            </div>
+                            <div className={`import-step${importValidation ? ' is-active' : ''}`}>
+                                <span className="import-step-num">3</span>
+                                <span>Confirmar</span>
+                            </div>
+                        </div>
+
                         <div className="import-info-banner">
                             <p>
-                                Sube un archivo Excel (.xlsx) con los productos a importar. Descarga la plantilla para ver el formato esperado.
-                                Los productos con SKU existente se actualizarán; los nuevos se crearán.
+                                Sube un archivo <strong>.xlsx</strong> con tus productos. Los SKU existentes se actualizan; los nuevos se crean.
+                                Usa la plantilla para el formato correcto.
                             </p>
                         </div>
 
-                        <div className="modal-input-group">
+                        <div className="import-upload-section">
                             <label className="modal-input-label">Archivo Excel</label>
                             <input
+                                ref={importFileInputRef}
                                 type="file"
                                 accept=".xlsx,.xls"
-                                onChange={(e) => { setImportFile(e.target.files?.[0] || null); setImportValidation(null); }}
-                                className="modal-standard-input"
+                                className="import-file-input-hidden"
+                                onChange={(e) => {
+                                    setImportFile(e.target.files?.[0] || null);
+                                    setImportValidation(null);
+                                    setImportSearch('');
+                                    setImportShowErrorsOnly(false);
+                                }}
                             />
+                            <button
+                                type="button"
+                                className={`import-file-zone${importFile ? ' has-file' : ''}`}
+                                onClick={() => importFileInputRef.current?.click()}
+                            >
+                                <FileSpreadsheet size={28} className="import-file-zone-icon" />
+                                <span className="import-file-zone-title">
+                                    {importFile ? importFile.name : 'Haz clic para elegir un archivo Excel'}
+                                </span>
+                                <span className="import-file-zone-hint">
+                                    {importFile
+                                        ? `${(importFile.size / 1024).toFixed(1)} KB · .xlsx / .xls`
+                                        : 'Formatos aceptados: .xlsx, .xls'}
+                                </span>
+                            </button>
                         </div>
 
                         <div className="import-actions-row">
-                            <Button variant="secondary" onClick={handleDownloadTemplate}>
-                                <Download size={16} /> Descargar Plantilla
+                            <Button type="button" variant="secondary" onClick={handleDownloadTemplate}>
+                                <Download size={16} /> Descargar plantilla
                             </Button>
-                            <Button onClick={handleImportValidate} disabled={!importFile || importLoading}>
-                                {importLoading ? 'Validando...' : 'Validar Archivo'}
+                            <Button
+                                type="button"
+                                variant="primary"
+                                onClick={handleImportValidate}
+                                disabled={!importFile || importLoading}
+                            >
+                                {importLoading ? 'Validando...' : 'Validar archivo'}
                             </Button>
                         </div>
 
@@ -1416,18 +1474,44 @@ export default function Inventory() {
                                         <div className="import-summary-value">{importValidation.summary.valid}</div>
                                         <div className="import-summary-label">Válidos</div>
                                     </div>
-                                    <div className={`import-summary-card ${importValidation.summary.invalid > 0 ? 'import-summary-error' : ''}`}>
+                                    <div className={`import-summary-card${importValidation.summary.invalid > 0 ? ' import-summary-error' : ''}`}>
                                         <div className="import-summary-value">{importValidation.summary.invalid}</div>
                                         <div className="import-summary-label">Con errores</div>
                                     </div>
-                                    <div className="import-summary-card">
+                                    <div className="import-summary-card import-summary-new">
                                         <div className="import-summary-value">{importValidation.summary.newProducts}</div>
                                         <div className="import-summary-label">Nuevos</div>
                                     </div>
                                 </div>
 
+                                <div className="import-table-toolbar">
+                                    <div className="import-search-wrap">
+                                        <Search size={16} aria-hidden />
+                                        <input
+                                            type="search"
+                                            className="import-search-input"
+                                            placeholder="Buscar por SKU o nombre..."
+                                            value={importSearch}
+                                            onChange={(e) => setImportSearch(e.target.value)}
+                                        />
+                                    </div>
+                                    {importValidation.summary.invalid > 0 && (
+                                        <label className="import-errors-toggle">
+                                            <input
+                                                type="checkbox"
+                                                checked={importShowErrorsOnly}
+                                                onChange={(e) => setImportShowErrorsOnly(e.target.checked)}
+                                            />
+                                            Solo errores
+                                        </label>
+                                    )}
+                                    <span className="import-table-count">
+                                        {filteredImportItems.length} de {importValidation.items.length} filas
+                                    </span>
+                                </div>
+
                                 <div className="import-table-wrap">
-                                    <table className="price-history-table">
+                                    <table className="price-history-table import-preview-table">
                                         <thead>
                                             <tr>
                                                 <th>#</th>
@@ -1438,43 +1522,56 @@ export default function Inventory() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {importValidation.items.map((item, idx) => (
-                                                <tr key={idx} className={item.isValid ? '' : 'import-row-error'}>
-                                                    <td>{item.rowNumber}</td>
-                                                    <td style={{ fontFamily: 'monospace' }}>{item.sku}</td>
-                                                    <td>{item.name}</td>
-                                                    <td>
-                                                        <span className={`report-status-badge ${item.isUpdate ? 'status-default' : 'status-ok'}`}>
-                                                            {item.isUpdate ? 'Actualizar' : 'Nuevo'}
-                                                        </span>
-                                                    </td>
-                                                    <td>
-                                                        {item.isValid ? (
-                                                            <span className="report-status-badge status-ok">✓ OK</span>
-                                                        ) : (
-                                                            <span className="report-status-badge status-critical" title={item.errors.join(', ')}>
-                                                                ✗ {item.errors[0]}
-                                                            </span>
-                                                        )}
+                                            {filteredImportItems.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={5} className="import-table-empty">
+                                                        No hay filas que coincidan con el filtro.
                                                     </td>
                                                 </tr>
-                                            ))}
+                                            ) : (
+                                                filteredImportItems.map((item) => (
+                                                    <tr key={`${item.rowNumber}-${item.sku}`} className={item.isValid ? '' : 'import-row-error'}>
+                                                        <td>{item.rowNumber}</td>
+                                                        <td className="import-cell-sku">{item.sku}</td>
+                                                        <td>{item.name}</td>
+                                                        <td>
+                                                            <span className={`report-status-badge ${item.isUpdate ? 'status-default' : 'status-ok'}`}>
+                                                                {item.isUpdate ? 'Actualizar' : 'Nuevo'}
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            {item.isValid ? (
+                                                                <span className="report-status-badge status-ok">✓ OK</span>
+                                                            ) : (
+                                                                <span className="report-status-badge status-critical" title={item.errors.join(', ')}>
+                                                                    ✗ {item.errors[0]}
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>
                             </>
                         )}
                     </div>
-                    {importValidation && (
-                        <div className="modal-footer">
+                    <div className="modal-footer">
+                        <Button type="button" variant="ghost" onClick={closeImportSidebar}>
+                            Cancelar
+                        </Button>
+                        {importValidation && (
                             <Button
+                                type="button"
+                                variant="primary"
                                 onClick={handleImportConfirm}
                                 disabled={importValidation.summary.valid === 0 || importLoading}
                             >
-                                {importLoading ? 'Importando...' : `Confirmar importación (${importValidation.summary.valid} productos)`}
+                                {importLoading ? 'Importando...' : `Confirmar importación (${importValidation.summary.valid})`}
                             </Button>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             </Sidebar>
 
