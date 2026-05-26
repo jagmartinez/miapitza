@@ -460,6 +460,7 @@ export default function Inventory() {
         if (!importFile) return;
         setImportLoading(true);
         try {
+            await categoriesAPI.ensureDefaults();
             const res = await productsAPI.validateImport(importFile);
             setImportValidation(res.data.data);
             if (res.data.data.summary.invalid > 0) {

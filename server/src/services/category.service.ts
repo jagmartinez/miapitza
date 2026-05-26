@@ -1,6 +1,96 @@
 import prisma from '../utils/prisma';
 
+const IMPORT_CATEGORY_DEFS: Record<string, {
+    name: string;
+    codePrefix: string;
+    description: string;
+    sortOrder: number;
+}> = {
+    congelados: { name: 'Congelados', codePrefix: 'CON', description: 'Productos congelados y refrigerados', sortOrder: 8 },
+    empaques: { name: 'Empaques', codePrefix: 'EMP', description: 'Empaques, envases y desechables', sortOrder: 6 },
+    limpieza: { name: 'Limpieza', codePrefix: 'LIM', description: 'Productos de limpieza y aseo', sortOrder: 5 },
+    miscelaneo: { name: 'Misceláneo', codePrefix: 'MIS', description: 'Productos varios y misceláneos', sortOrder: 7 },
+    vegetales: { name: 'Vegetales', codePrefix: 'VEG', description: 'Vegetales, verduras y hortalizas', sortOrder: 4 },
+    bebidas: { name: 'Bebidas', codePrefix: 'BEB', description: 'Bebidas y líquidos', sortOrder: 2 },
+    carnes: { name: 'Carnes', codePrefix: 'CAR', description: 'Carnes rojas, blancas y embutidos', sortOrder: 1 },
+    lacteos: { name: 'Lácteos', codePrefix: 'LAC', description: 'Productos lácteos y derivados', sortOrder: 3 },
+};
+
 export class CategoryService {
+    private static normalizeCategoryKey(name: string): string {
+        return name
+            .trim()
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+    }
+
+    private static buildCategoryMap(categories: Array<{ id: number; name: string }>): Map<string, number> {
+        const map = new Map<string, number>();
+        for (const category of categories) {
+            map.set(category.name.toLowerCase(), category.id);
+            map.set(this.normalizeCategoryKey(category.name), category.id);
+        }
+        return map;
+    }
+
+    static resolveCategoryId(categoryMap: Map<string, number>, categoryName: string): number | null {
+        const trimmed = categoryName.trim();
+        if (!trimmed) return null;
+
+        return categoryMap.get(trimmed.toLowerCase())
+            ?? categoryMap.get(this.normalizeCategoryKey(trimmed))
+            ?? null;
+    }
+
+    static async ensureImportCategories(companyId: number, requestedNames: string[]): Promise<Map<string, number>> {
+        await this.ensureDefaultCategories(companyId);
+
+        const reload = async () => {
+            const categories = await prisma.category.findMany({
+                where: { companyId, active: true },
+                select: { id: true, name: true },
+            });
+            return this.buildCategoryMap(categories);
+        };
+
+        let categoryMap = await reload();
+
+        for (const rawName of requestedNames) {
+            const trimmed = rawName.trim();
+            if (!trimmed) continue;
+            if (this.resolveCategoryId(categoryMap, trimmed)) continue;
+
+            const normalized = this.normalizeCategoryKey(trimmed);
+            const def = IMPORT_CATEGORY_DEFS[normalized];
+            const canonicalName = def?.name || trimmed;
+
+            const existing = await prisma.category.findFirst({
+                where: { companyId, name: canonicalName },
+            });
+            if (existing) {
+                categoryMap.set(existing.name.toLowerCase(), existing.id);
+                categoryMap.set(this.normalizeCategoryKey(existing.name), existing.id);
+                continue;
+            }
+
+            try {
+                const created = await this.create(companyId, {
+                    name: canonicalName,
+                    codePrefix: def?.codePrefix,
+                    description: def?.description,
+                    sortOrder: def?.sortOrder,
+                    active: true,
+                });
+                categoryMap.set(created.name.toLowerCase(), created.id);
+                categoryMap.set(this.normalizeCategoryKey(created.name), created.id);
+            } catch {
+                categoryMap = await reload();
+            }
+        }
+
+        return categoryMap;
+    }
     static async getAll(companyId: number) {
         return await prisma.category.findMany({
             where: { companyId },
@@ -119,6 +209,7 @@ export class CategoryService {
             { name: 'Limpieza', codePrefix: 'LIM', description: 'Productos de limpieza y aseo', sortOrder: 5 },
             { name: 'Empaques', codePrefix: 'EMP', description: 'Empaques, envases y desechables', sortOrder: 6 },
             { name: 'Misceláneo', codePrefix: 'MIS', description: 'Productos varios y misceláneos', sortOrder: 7 },
+            { name: 'Congelados', codePrefix: 'CON', description: 'Productos congelados y refrigerados', sortOrder: 8 },
         ];
 
         const created: string[] = [];

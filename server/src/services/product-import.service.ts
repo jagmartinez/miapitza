@@ -1,8 +1,11 @@
 import * as ExcelJS from 'exceljs';
 import prisma from '../utils/prisma';
+import { CategoryService } from './category.service';
 
 export class ProductImportService {
     static async generateTemplate(companyId: number): Promise<Buffer> {
+        await CategoryService.ensureDefaultCategories(companyId);
+
         const workbook = new ExcelJS.Workbook();
 
         const instructionsSheet = workbook.addWorksheet('Instrucciones');
@@ -105,14 +108,17 @@ export class ProductImportService {
             if (p.sku) skuMap.set(p.sku.toLowerCase(), p.id);
         }
 
-        const dbCategories = await prisma.category.findMany({
-            where: { companyId, active: true },
-            select: { id: true, name: true },
+        const requestedCategories = new Set<string>();
+        sheet.eachRow((row, rowNumber) => {
+            if (rowNumber === 1) return;
+            const category = row.getCell(3).value?.toString().trim() || '';
+            if (category) requestedCategories.add(category);
         });
-        const categoryMap = new Map<string, number>();
-        for (const c of dbCategories) {
-            categoryMap.set(c.name.toLowerCase(), c.id);
-        }
+
+        const categoryMap = await CategoryService.ensureImportCategories(
+            companyId,
+            Array.from(requestedCategories)
+        );
 
         const VALID_TYPES = ['INGREDIENT', 'PRODUCT_FOR_SALE', 'BOTH'];
         const VALID_STORAGE = ['PERISHABLE', 'FROZEN', 'NON_PERISHABLE'];
@@ -191,7 +197,7 @@ export class ProductImportService {
 
             let categoryId: number | null = null;
             if (category) {
-                categoryId = categoryMap.get(category.toLowerCase()) || null;
+                categoryId = CategoryService.resolveCategoryId(categoryMap, category);
                 if (!categoryId) {
                     errors.push(`Categoría "${category}" no existe`);
                 }

@@ -386,6 +386,9 @@ export const categoriesAPI = {
 
     delete: (id: number) =>
         api.delete(`/categories/${id}`),
+
+    ensureDefaults: () =>
+        api.post('/categories/ensure-defaults'),
 };
 
 // Warehouses API
