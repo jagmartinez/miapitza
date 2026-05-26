@@ -6,56 +6,62 @@ import prisma from '../utils/prisma';
  */
 export class StockAlertService {
     /**
-     * Get products with stock below minimum threshold
+     * Products at or below minimum stock (aggregated across warehouses).
+     * Matches ProductService.getLowStock so dashboard cards and the inventory grid stay in sync.
      */
     static async getLowStockProducts(companyId: number, warehouseId?: number) {
-        const where: { companyId: number; warehouseId?: number } = { companyId };
-
-        if (warehouseId) {
-            where.warehouseId = warehouseId;
-        }
-
-        const stocks = await prisma.stock.findMany({
-            where,
+        const products = await prisma.product.findMany({
+            where: { active: true, companyId },
             include: {
-                product: {
-                    select: {
-                        id: true,
-                        name: true,
-                        sku: true,
-                        unit: true,
-                        minStock: true,
-                        cost: true
-                    }
-                },
-                warehouse: {
-                    select: {
-                        id: true,
-                        name: true,
-                        branch: {
-                            select: { name: true }
+                stocks: {
+                    where: warehouseId ? { warehouseId } : undefined,
+                    include: {
+                        warehouse: {
+                            select: {
+                                id: true,
+                                name: true,
+                                branch: { select: { name: true } }
+                            }
                         }
                     }
                 }
             }
         });
 
-        // Filter products where quantity < minStock
-        return stocks.filter((stock) => {
-            if (!stock.product) return false;
-            return Number(stock.quantity) < Number(stock.product.minStock);
-        }).map((stock) => ({
-            productId: stock.product.id,
-            productName: stock.product.name,
-            sku: stock.product.sku,
-            unit: stock.product.unit,
-            currentStock: Number(stock.quantity),
-            minStock: Number(stock.product.minStock),
-            deficit: Number(stock.product.minStock) - Number(stock.quantity),
-            warehouseId: stock.warehouse.id,
-            warehouseName: stock.warehouse.name,
-            branchName: stock.warehouse.branch?.name
-        }));
+        return products
+            .filter((product) => StockAlertService.isBelowMinimum(product.stocks, product.minStock))
+            .map((product) => {
+                const minStock = Number(product.minStock);
+                const totalStock = product.stocks.reduce(
+                    (sum, stock) => sum + Number(stock.quantity),
+                    0
+                );
+                const primary = product.stocks[0];
+
+                return {
+                    productId: product.id,
+                    productName: product.name,
+                    sku: product.sku,
+                    unit: product.unit,
+                    currentStock: totalStock,
+                    minStock,
+                    deficit: Math.max(0, minStock - totalStock),
+                    warehouseId: primary?.warehouse.id ?? 0,
+                    warehouseName: primary?.warehouse.name ?? 'Sin bodega',
+                    branchName: primary?.warehouse.branch?.name
+                };
+            });
+    }
+
+    /** True when total quantity is at or below minStock (and minStock > 0). */
+    private static isBelowMinimum(
+        stocks: { quantity: unknown }[],
+        minStock: unknown
+    ): boolean {
+        const min = Number(minStock);
+        if (min <= 0) return false;
+        const total = stocks.reduce((sum, stock) => sum + Number(stock.quantity), 0);
+        return total <= min;
     }
 
     /**
@@ -76,31 +82,57 @@ export class StockAlertService {
      * Check if a specific product needs restocking
      */
     static async checkProductStock(productId: number, companyId: number) {
-        const stocks = await prisma.stock.findMany({
-            where: { productId, companyId },
-            include: {
-                product: {
-                    select: { minStock: true, name: true }
-                },
-                warehouse: {
-                    select: { name: true }
+        const product = await prisma.product.findFirst({
+            where: { id: productId, companyId },
+            select: {
+                name: true,
+                minStock: true,
+                stocks: {
+                    include: {
+                        warehouse: { select: { name: true } }
+                    }
                 }
             }
         });
 
-        const alerts = stocks
-            .filter((s) => s.product && Number(s.quantity) < Number(s.product.minStock))
-            .map((s) => ({
-                warehouse: s.warehouse.name,
-                current: Number(s.quantity),
-                minimum: Number(s.product.minStock),
-                needsRestock: true
-            }));
+        if (!product) {
+            return {
+                productId,
+                productName: 'Unknown',
+                hasAlerts: false,
+                alerts: [] as { warehouse: string; current: number; minimum: number; needsRestock: boolean }[]
+            };
+        }
+
+        const minStock = Number(product.minStock);
+        const totalStock = product.stocks.reduce(
+            (sum, stock) => sum + Number(stock.quantity),
+            0
+        );
+        const hasAlerts = StockAlertService.isBelowMinimum(product.stocks, product.minStock);
+
+        const alerts = hasAlerts
+            ? product.stocks.length > 0
+                ? product.stocks
+                      .filter((s) => Number(s.quantity) <= minStock)
+                      .map((s) => ({
+                          warehouse: s.warehouse.name,
+                          current: Number(s.quantity),
+                          minimum: minStock,
+                          needsRestock: true
+                      }))
+                : [{
+                      warehouse: 'Sin bodega',
+                      current: totalStock,
+                      minimum: minStock,
+                      needsRestock: true
+                  }]
+            : [];
 
         return {
             productId,
-            productName: stocks[0]?.product?.name || 'Unknown',
-            hasAlerts: alerts.length > 0,
+            productName: product.name,
+            hasAlerts,
             alerts
         };
     }

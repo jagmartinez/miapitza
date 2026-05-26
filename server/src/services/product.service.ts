@@ -352,14 +352,16 @@ export class ProductService {
                 }
             });
 
-            // Filter products where total stock is below minStock
+            // Filter products where total stock is at or below minStock (includes "mínimo alcanzado")
             // Only consider stocks from the specified branch if branchId is provided
             const lowStockProducts = products.filter((product) => {
+                const minStock = Number(product.minStock);
+                if (minStock <= 0) return false;
                 const totalStock = product.stocks.reduce(
                     (sum, stock) => sum + Number(stock.quantity),
                     0
                 );
-                return totalStock < Number(product.minStock);
+                return totalStock <= minStock;
             });
 
             return lowStockProducts;
