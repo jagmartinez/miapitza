@@ -73,11 +73,42 @@ export class UnitConversionService {
         );
 
         if (!productUnit) {
-            const allowed = product.allowedUnits.map(pu => pu.unit.abbreviation).join(', ');
-            throw new Error(
-                `Unidad "${unitAbbreviation}" no permitida para ${product.name}. ` +
-                `Unidades permitidas: ${allowed || baseUnit.abbreviation}`
-            );
+            // Dynamic fallback: allow any active unit from the same measurement type
+            // even if it was not explicitly configured in product.allowedUnits.
+            const dynamicUnit = await db.unitOfMeasure.findUnique({
+                where: {
+                    companyId_abbreviation: {
+                        companyId,
+                        abbreviation: abbr
+                    }
+                }
+            });
+
+            if (!dynamicUnit || !dynamicUnit.active) {
+                const allowed = product.allowedUnits.map(pu => pu.unit.abbreviation).join(', ');
+                throw new Error(
+                    `Unidad "${unitAbbreviation}" no permitida para ${product.name}. ` +
+                    `Unidades permitidas: ${allowed || baseUnit.abbreviation}`
+                );
+            }
+
+            if (dynamicUnit.measurementType !== baseUnit.measurementType) {
+                throw new Error(
+                    `Unidad "${unitAbbreviation}" no es compatible con la base "${baseUnit.abbreviation}" ` +
+                    `(${baseUnit.measurementType}).`
+                );
+            }
+
+            const dynamicFactor = Number(dynamicUnit.systemFactor) / Number(baseUnit.systemFactor);
+            const dynamicBaseQuantity = quantity * dynamicFactor;
+
+            return {
+                baseQuantity: dynamicBaseQuantity,
+                conversionFactor: dynamicFactor,
+                originalQuantity: quantity,
+                originalUnit: dynamicUnit.abbreviation,
+                baseUnit: baseUnit.abbreviation
+            };
         }
 
         const factor = Number(productUnit.conversionFactor);
@@ -168,6 +199,31 @@ export class UnitConversionService {
                 conversionFactor: 1,
                 isBase: true,
                 isDefault: units.length === 0
+            });
+        }
+
+        // Also expose all active units compatible with base measurement type,
+        // so recipe/inventory selectors are not limited to manually configured rows.
+        const compatibleUnits = await prisma.unitOfMeasure.findMany({
+            where: {
+                companyId,
+                active: true,
+                measurementType: product.baseUnit.measurementType
+            },
+            orderBy: { name: 'asc' }
+        });
+
+        const existingAbbr = new Set(units.map(u => u.abbreviation.toLowerCase()));
+        for (const u of compatibleUnits) {
+            if (existingAbbr.has(u.abbreviation.toLowerCase())) continue;
+            const factor = Number(u.systemFactor) / Number(product.baseUnit.systemFactor);
+            units.push({
+                unitId: u.id,
+                abbreviation: u.abbreviation,
+                name: u.name,
+                conversionFactor: factor,
+                isBase: u.id === product.baseUnit.id,
+                isDefault: false
             });
         }
 
