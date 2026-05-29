@@ -17,6 +17,40 @@ export interface CostConversionResult extends ConversionResult {
 }
 
 export class UnitConversionService {
+    private static normalizeLegacyAbbreviation(raw: string): string {
+        const abbr = String(raw || '').trim().toLowerCase();
+        const aliasMap: Record<string, string> = {
+            // Common legacy aliases
+            gl: 'gal',
+            galon: 'gal',
+            galones: 'gal',
+            lt: 'l',
+            litro: 'l',
+            litros: 'l',
+            und: 'unidad',
+            unid: 'unidad',
+        };
+        return aliasMap[abbr] || abbr;
+    }
+
+    private static async resolveBaseUnitFromLegacy(
+        companyId: number,
+        legacyUnit: string,
+        db: Prisma.TransactionClient | typeof prisma
+    ) {
+        const normalized = this.normalizeLegacyAbbreviation(legacyUnit);
+        const unit = await db.unitOfMeasure.findUnique({
+            where: {
+                companyId_abbreviation: {
+                    companyId,
+                    abbreviation: normalized
+                }
+            }
+        });
+        if (!unit || !unit.active) return null;
+        return unit;
+    }
+
     /**
      * Convert a quantity from one unit to the product's base unit.
      * Returns the converted quantity, the factor used, and traceability data.
@@ -47,17 +81,57 @@ export class UnitConversionService {
 
         const baseUnit = product.baseUnit;
         if (!baseUnit) {
-            // No unit conversion configured — use legacy 1:1
+            const inferredBase = await this.resolveBaseUnitFromLegacy(companyId, product.unit, db);
+            if (!inferredBase) {
+                // No unit conversion configured and no inferable base unit — legacy 1:1
+                return {
+                    baseQuantity: quantity,
+                    conversionFactor: 1,
+                    originalQuantity: quantity,
+                    originalUnit: unitAbbreviation,
+                    baseUnit: product.unit
+                };
+            }
+
+            const requestedAbbr = this.normalizeLegacyAbbreviation(unitAbbreviation);
+            if (requestedAbbr === inferredBase.abbreviation.toLowerCase()) {
+                return {
+                    baseQuantity: quantity,
+                    conversionFactor: 1,
+                    originalQuantity: quantity,
+                    originalUnit: inferredBase.abbreviation,
+                    baseUnit: inferredBase.abbreviation
+                };
+            }
+
+            const dynamicUnit = await db.unitOfMeasure.findUnique({
+                where: {
+                    companyId_abbreviation: {
+                        companyId,
+                        abbreviation: requestedAbbr
+                    }
+                }
+            });
+
+            if (!dynamicUnit || !dynamicUnit.active || dynamicUnit.measurementType !== inferredBase.measurementType) {
+                throw new Error(
+                    `Unidad "${unitAbbreviation}" no es compatible con la base "${inferredBase.abbreviation}" ` +
+                    `(${inferredBase.measurementType}).`
+                );
+            }
+
+            const dynamicFactor = Number(dynamicUnit.systemFactor) / Number(inferredBase.systemFactor);
+            const dynamicBaseQuantity = quantity * dynamicFactor;
             return {
-                baseQuantity: quantity,
-                conversionFactor: 1,
+                baseQuantity: dynamicBaseQuantity,
+                conversionFactor: dynamicFactor,
                 originalQuantity: quantity,
-                originalUnit: unitAbbreviation,
-                baseUnit: product.unit
+                originalUnit: dynamicUnit.abbreviation,
+                baseUnit: inferredBase.abbreviation
             };
         }
 
-        const abbr = unitAbbreviation.toLowerCase();
+        const abbr = this.normalizeLegacyAbbreviation(unitAbbreviation);
         if (abbr === baseUnit.abbreviation.toLowerCase()) {
             return {
                 baseQuantity: quantity,
@@ -170,14 +244,35 @@ export class UnitConversionService {
         }
 
         if (!product.baseUnit) {
-            return [{
-                unitId: 0,
-                abbreviation: product.unit,
-                name: product.unit,
-                conversionFactor: 1,
-                isBase: true,
-                isDefault: true
-            }];
+            const inferredBase = await this.resolveBaseUnitFromLegacy(companyId, product.unit, prisma);
+            if (!inferredBase) {
+                return [{
+                    unitId: 0,
+                    abbreviation: product.unit,
+                    name: product.unit,
+                    conversionFactor: 1,
+                    isBase: true,
+                    isDefault: true
+                }];
+            }
+
+            const compatibleUnits = await prisma.unitOfMeasure.findMany({
+                where: {
+                    companyId,
+                    active: true,
+                    measurementType: inferredBase.measurementType
+                },
+                orderBy: { name: 'asc' }
+            });
+
+            return compatibleUnits.map((u) => ({
+                unitId: u.id,
+                abbreviation: u.abbreviation,
+                name: u.name,
+                conversionFactor: Number(u.systemFactor) / Number(inferredBase.systemFactor),
+                isBase: u.id === inferredBase.id,
+                isDefault: u.id === inferredBase.id
+            }));
         }
 
         const units = product.allowedUnits.map(pu => ({
