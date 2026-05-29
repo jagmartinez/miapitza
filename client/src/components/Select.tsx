@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import Select, { Props as SelectProps, GroupBase } from 'react-select';
+import Select, { CSSObjectWithLabel, GroupBase, Props as SelectProps } from 'react-select';
 import './Select.css';
 
 interface CustomSelectProps<
@@ -22,9 +22,29 @@ export default function CustomSelect<
     variant = 'standard',
     className = '',
     classNamePrefix = 'react-select',
+    menuPlacement,
+    menuPosition,
+    menuPortalTarget,
+    styles,
     ...props
 }: CustomSelectProps<Option, IsMulti, Group>) {
     const combinedClassName = `select-group ${variant} ${className}`;
+    const isModal = variant === 'modal';
+    const resolvedMenuPlacement = isModal ? (menuPlacement ?? 'auto') : menuPlacement;
+    const resolvedMenuPosition = isModal ? (menuPosition ?? 'fixed') : menuPosition;
+    const resolvedMenuPortalTarget = isModal
+        ? (menuPortalTarget ?? (typeof document !== 'undefined' ? document.body : undefined))
+        : menuPortalTarget;
+    const resolvedStyles = isModal
+        ? {
+            ...styles,
+            menuPortal: (base: CSSObjectWithLabel, state: unknown) => ({
+                ...base,
+                zIndex: 9999,
+                ...(styles?.menuPortal ? styles.menuPortal(base, state as never) : {})
+            })
+        }
+        : styles;
 
     return (
         <div className={combinedClassName}>
@@ -32,6 +52,10 @@ export default function CustomSelect<
             <Select
                 classNamePrefix={classNamePrefix}
                 {...props}
+                menuPlacement={resolvedMenuPlacement}
+                menuPosition={resolvedMenuPosition}
+                menuPortalTarget={resolvedMenuPortalTarget}
+                styles={resolvedStyles}
             />
             {error && <span className="select-error-message">{error}</span>}
         </div>

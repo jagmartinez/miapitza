@@ -995,6 +995,7 @@ export default function Inventory() {
                                         <Select
                                             variant="modal"
                                             label="Unidad de referencia"
+                                            menuPlacement="top"
                                             options={allUnits.map((unit) => ({
                                                 value: unit.abbreviation,
                                                 label: `${unit.name} (${unit.abbreviation})`
