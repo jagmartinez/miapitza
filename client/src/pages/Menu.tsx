@@ -24,6 +24,7 @@ interface RecipeIngredient {
   quantity: number;
   unit: string;
   cost: number;
+  conversionFactor: number;
 }
 
 interface CategoryRow {
@@ -40,6 +41,7 @@ interface BranchPriceRow {
 interface RecipeApiRow {
   id: number;
   quantity: string | number;
+  unit?: string;
   product: Product;
 }
 
@@ -96,6 +98,11 @@ export default function Menu() {
   // Modal Tab State
   const [activeTab, setActiveTab] = useState<'info' | 'recipe' | 'gallery'>('info');
 
+  const calculateIngredientLineCost = (ingredient: RecipeIngredient) => {
+    const baseQuantity = Number(ingredient.quantity) * Number(ingredient.conversionFactor || 1);
+    return Number(ingredient.cost) * baseQuantity;
+  };
+
   useEffect(() => {
     loadData();
   }, []);
@@ -138,13 +145,34 @@ export default function Menu() {
           menuAPI.getImages(item.id)
         ]);
 
-        const loadedRecipes = recipesRes.data.data.map((r: RecipeApiRow) => ({
-          productId: r.product.id,
-          productName: r.product.name,
-          quantity: Number(r.quantity),
-          unit: r.product.unit,
-          cost: Number(r.product.cost)
+        const recipeRows: RecipeApiRow[] = recipesRes.data.data || [];
+        const uniqueProductIds = Array.from(new Set(recipeRows.map((r) => r.product.id)));
+        const productUnitsMap = new Map<number, ProductAllowedUnit[]>();
+
+        await Promise.all(uniqueProductIds.map(async (productId) => {
+          try {
+            const unitsRes = await unitsAPI.getProductUnits(productId);
+            productUnitsMap.set(productId, unitsRes.data.data || []);
+          } catch {
+            productUnitsMap.set(productId, []);
+          }
         }));
+
+        const loadedRecipes = recipeRows.map((r: RecipeApiRow) => {
+          const recipeUnit = r.unit || r.product.unit;
+          const allowedUnits = productUnitsMap.get(r.product.id) || [];
+          const matchedUnit = allowedUnits.find(
+            (u) => u.abbreviation.toLowerCase() === String(recipeUnit).toLowerCase()
+          );
+          return {
+            productId: r.product.id,
+            productName: r.product.name,
+            quantity: Number(r.quantity),
+            unit: recipeUnit,
+            cost: Number(r.product.cost),
+            conversionFactor: Number(matchedUnit?.conversionFactor || 1)
+          };
+        });
 
         const loadedImages = imagesRes.data.data.map((img: MenuImageRecord) => img.imageUrl);
 
@@ -239,7 +267,12 @@ export default function Menu() {
       productName: product.name,
       quantity: parseFloat(quantity),
       unit: selectedIngredientUnit || product.unit,
-      cost: Number(product.cost)
+      cost: Number(product.cost),
+      conversionFactor: Number(
+        ingredientUnits.find(
+          (u) => u.abbreviation.toLowerCase() === String(selectedIngredientUnit || product.unit).toLowerCase()
+        )?.conversionFactor || 1
+      )
     };
 
     setRecipe([...recipe, newIngredient]);
@@ -601,7 +634,7 @@ export default function Menu() {
                   {/* Compact Stats Dashboard (Adapted) */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '24px' }}>
                     {(() => {
-                      const totalCost = recipe.reduce((sum, ing) => sum + (ing.cost * ing.quantity), 0);
+                      const totalCost = recipe.reduce((sum, ing) => sum + calculateIngredientLineCost(ing), 0);
                       const price = parseFloat(formData.price) || 0;
                       const profit = price - totalCost;
                       const margin = price > 0 ? (profit / price) * 100 : 0;
@@ -695,7 +728,7 @@ export default function Menu() {
                               <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>{ing.quantity} {ing.unit}</div>
                             </div>
                             <div style={{ fontWeight: 600, fontSize: '13px', marginRight: '16px' }}>
-                              ${(ing.cost * ing.quantity).toFixed(2)}
+                              ${calculateIngredientLineCost(ing).toFixed(2)}
                             </div>
                             {canMutateMenu ? (
                               <button type="button" onClick={() => removeIngredient(i)} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer', padding: '4px' }}>

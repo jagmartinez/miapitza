@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { UnitConversionService } from './unit-conversion.service';
 
 export class MenuItemService {
     static async getAll(companyId: number, filters?: {
@@ -125,10 +126,29 @@ export class MenuItemService {
             throw new Error('Menu item not found');
         }
 
-        // Calculate total cost from recipes
-        const totalCost = menuItem.recipes.reduce((sum, recipe) => {
-            return sum + (Number(recipe.product.cost) * Number(recipe.quantity));
-        }, 0);
+        // Calculate total cost from recipes in product base units
+        const recipeCosts = await Promise.all(menuItem.recipes.map(async (recipe) => {
+            const recipeUnit = recipe.unit || recipe.product.unit;
+            const recipeQty = Number(recipe.quantity);
+            let baseQty = recipeQty;
+
+            try {
+                const conv = await UnitConversionService.convert(
+                    recipe.product.id,
+                    companyId,
+                    recipeQty,
+                    recipeUnit
+                );
+                baseQty = conv.baseQuantity;
+            } catch {
+                // If conversion config is missing, keep legacy 1:1 behavior
+            }
+
+            const unitCost = Number(recipe.product.cost || 0);
+            return unitCost * baseQty;
+        }));
+
+        const totalCost = recipeCosts.reduce((sum, value) => sum + value, 0);
 
         return {
             ...menuItem,

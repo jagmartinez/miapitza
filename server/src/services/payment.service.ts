@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma';
 import { OrderStatus } from '@prisma/client';
+import { UnitConversionService } from './unit-conversion.service';
 
 export class PaymentService {
     private static deriveOrderStatus(order: { items?: Array<{ sentAt?: Date | null; status?: string }> }): OrderStatus {
@@ -166,7 +167,29 @@ export class PaymentService {
                     if (warehouse) {
                         for (const item of order.items) {
                             for (const recipe of item.menuItem.recipes) {
-                                const requiredQty = Number(recipe.quantity) * item.quantity;
+                                const recipeUnit = recipe.unit || recipe.product.unit;
+                                let recipeQtyBase = Number(recipe.quantity);
+                                let originalQty: number | null = null;
+                                let originalUnit: string | null = null;
+                                let conversionFactor: number | null = null;
+
+                                try {
+                                    const conv = await UnitConversionService.convert(
+                                        recipe.productId,
+                                        companyId,
+                                        Number(recipe.quantity),
+                                        recipeUnit,
+                                        tx
+                                    );
+                                    recipeQtyBase = conv.baseQuantity;
+                                    originalQty = conv.originalQuantity;
+                                    originalUnit = conv.originalUnit;
+                                    conversionFactor = conv.conversionFactor;
+                                } catch {
+                                    // Fallback to legacy quantity when conversion is not configured
+                                }
+
+                                const requiredQty = recipeQtyBase * item.quantity;
                                 const stock = await tx.stock.findUnique({
                                     where: { warehouseId_productId: { warehouseId: warehouse.id, productId: recipe.productId } }
                                 });
@@ -181,7 +204,7 @@ export class PaymentService {
                                 }
 
                                 const newQty = currentQty - requiredQty;
-                                const unitCost = Number(recipe.product.cost || 0);
+                                const unitCost = Number(recipe.product.currentAverageCost || recipe.product.cost || 0);
 
                                 await tx.stock.update({
                                     where: { warehouseId_productId: { warehouseId: warehouse.id, productId: recipe.productId } },
@@ -196,6 +219,9 @@ export class PaymentService {
                                         userId,
                                         type: 'OUT',
                                         quantity: requiredQty,
+                                        originalQuantity: originalQty ? originalQty * item.quantity : null,
+                                        originalUnit,
+                                        conversionFactor,
                                         unitCost,
                                         totalCost: unitCost * requiredQty,
                                         balanceQty: newQty,

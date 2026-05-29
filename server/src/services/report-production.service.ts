@@ -1,4 +1,5 @@
 import prisma from '../utils/prisma';
+import { UnitConversionService } from './unit-conversion.service';
 
 export class ReportProductionService {
     /**
@@ -23,19 +24,35 @@ export class ReportProductionService {
             orderBy: { name: 'asc' }
         });
 
-        const items = menuItems.map(mi => {
-            const ingredients = mi.recipes.map(r => {
+        const items = await Promise.all(menuItems.map(async (mi) => {
+            const ingredients = await Promise.all(mi.recipes.map(async (r) => {
                 const unitCost = Number(r.product.currentAverageCost || r.product.cost || 0);
+                const recipeUnit = r.unit || r.product.unit;
                 const qty = Number(r.quantity);
+                let baseQty = qty;
+
+                try {
+                    const conv = await UnitConversionService.convert(
+                        r.product.id,
+                        companyId,
+                        qty,
+                        recipeUnit
+                    );
+                    baseQty = conv.baseQuantity;
+                } catch {
+                    // Fallback to legacy quantity when conversion is not configured
+                }
+
                 return {
                     productId: r.product.id,
                     productName: r.product.name,
-                    unit: r.unit || r.product.unit,
+                    unit: recipeUnit,
                     quantity: qty,
+                    baseQuantity: baseQty,
                     unitCost,
-                    lineCost: qty * unitCost,
+                    lineCost: baseQty * unitCost,
                 };
-            });
+            }));
 
             const totalCost = ingredients.reduce((sum, i) => sum + i.lineCost, 0);
             const price = Number(mi.price);
@@ -55,7 +72,7 @@ export class ReportProductionService {
                 ingredientCount: ingredients.length,
                 ingredients,
             };
-        });
+        }));
 
         const withRecipes = items.filter(i => i.ingredientCount > 0);
         const avgFoodCost = withRecipes.length > 0
@@ -100,33 +117,55 @@ export class ReportProductionService {
             orderBy: { name: 'asc' }
         });
 
-        const items = menuItems
-            .filter(mi => mi.recipes.length > 0)
-            .map(mi => {
-                let maxPortions = Infinity;
-                let limitingIngredient = '';
+        const items: Array<{
+            menuItemName: string;
+            category: string;
+            maxPortions: number;
+            limitingIngredient: string;
+            ingredientCount: number;
+        }> = [];
 
-                for (const recipe of mi.recipes) {
-                    const totalStock = recipe.product.stocks.reduce((s, st) => s + Number(st.quantity), 0);
-                    const needed = Number(recipe.quantity);
-                    const portions = needed > 0 ? Math.floor(totalStock / needed) : 0;
+        for (const mi of menuItems) {
+            if (mi.recipes.length === 0) continue;
 
-                    if (portions < maxPortions) {
-                        maxPortions = portions;
-                        limitingIngredient = recipe.product.name;
-                    }
+            let maxPortions = Infinity;
+            let limitingIngredient = '';
+
+            for (const recipe of mi.recipes) {
+                const totalStock = recipe.product.stocks.reduce((s, st) => s + Number(st.quantity), 0);
+                const recipeUnit = recipe.unit || recipe.product.unit;
+                let needed = Number(recipe.quantity);
+
+                try {
+                    const conv = await UnitConversionService.convert(
+                        recipe.product.id,
+                        companyId,
+                        Number(recipe.quantity),
+                        recipeUnit
+                    );
+                    needed = conv.baseQuantity;
+                } catch {
+                    // Fallback to legacy quantity when conversion is not configured
                 }
 
-                if (maxPortions === Infinity) maxPortions = 0;
+                const portions = needed > 0 ? Math.floor(totalStock / needed) : 0;
 
-                return {
-                    menuItemName: mi.name,
-                    category: mi.category?.name || 'Sin categoría',
-                    maxPortions,
-                    limitingIngredient,
-                    ingredientCount: mi.recipes.length,
-                };
+                if (portions < maxPortions) {
+                    maxPortions = portions;
+                    limitingIngredient = recipe.product.name;
+                }
+            }
+
+            if (maxPortions === Infinity) maxPortions = 0;
+
+            items.push({
+                menuItemName: mi.name,
+                category: mi.category?.name || 'Sin categoría',
+                maxPortions,
+                limitingIngredient,
+                ingredientCount: mi.recipes.length,
             });
+        }
 
         const totalPortions = items.reduce((s, i) => s + i.maxPortions, 0);
         const zeroStock = items.filter(i => i.maxPortions === 0).length;
@@ -171,7 +210,7 @@ export class ReportProductionService {
                 category: { select: { name: true } },
                 recipes: {
                     include: {
-                        product: { select: { currentAverageCost: true, cost: true } }
+                        product: { select: { id: true, unit: true, currentAverageCost: true, cost: true } }
                     }
                 }
             }
@@ -185,11 +224,25 @@ export class ReportProductionService {
             salesMap.set(oi.menuItemId, current);
         }
 
-        const analysis = menuItems.map(mi => {
+        const analysis = await Promise.all(menuItems.map(async (mi) => {
             const sales = salesMap.get(mi.id) || { qty: 0, revenue: 0 };
-            const recipeCost = mi.recipes.reduce((sum, r) => {
-                return sum + Number(r.quantity) * Number(r.product.currentAverageCost || r.product.cost || 0);
-            }, 0);
+            let recipeCost = 0;
+            for (const r of mi.recipes) {
+                const recipeUnit = r.unit || r.product.unit;
+                let qtyInBase = Number(r.quantity);
+                try {
+                    const conv = await UnitConversionService.convert(
+                        r.product.id,
+                        companyId,
+                        Number(r.quantity),
+                        recipeUnit
+                    );
+                    qtyInBase = conv.baseQuantity;
+                } catch {
+                    // Fallback to legacy quantity when conversion is not configured
+                }
+                recipeCost += qtyInBase * Number(r.product.currentAverageCost || r.product.cost || 0);
+            }
             const margin = Number(mi.price) - recipeCost;
 
             return {
@@ -203,12 +256,13 @@ export class ReportProductionService {
                 revenue: Math.round(sales.revenue * 100) / 100,
                 totalProfit: Math.round(margin * sales.qty * 100) / 100,
             };
-        }).filter(i => i.qtySold > 0);
+        }));
+        const filteredAnalysis = analysis.filter(i => i.qtySold > 0);
 
-        const avgQty = analysis.length > 0 ? analysis.reduce((s, i) => s + i.qtySold, 0) / analysis.length : 0;
-        const avgMargin = analysis.length > 0 ? analysis.reduce((s, i) => s + i.margin, 0) / analysis.length : 0;
+        const avgQty = filteredAnalysis.length > 0 ? filteredAnalysis.reduce((s, i) => s + i.qtySold, 0) / filteredAnalysis.length : 0;
+        const avgMargin = filteredAnalysis.length > 0 ? filteredAnalysis.reduce((s, i) => s + i.margin, 0) / filteredAnalysis.length : 0;
 
-        const classified = analysis.map(item => {
+        const classified = filteredAnalysis.map(item => {
             const highPop = item.qtySold >= avgQty;
             const highProfit = item.margin >= avgMargin;
 
@@ -264,13 +318,32 @@ export class ReportProductionService {
 
         const recipes = await prisma.recipe.findMany({
             where: { menuItem: { companyId } },
-            select: { menuItemId: true, productId: true, quantity: true }
+            select: {
+                menuItemId: true,
+                productId: true,
+                quantity: true,
+                unit: true,
+                product: { select: { unit: true } }
+            }
         });
 
         const productDemand = new Map<number, number>();
         for (const recipe of recipes) {
             const miSales = menuItemSales.get(recipe.menuItemId) || 0;
-            const dailyUsage = (miSales * Number(recipe.quantity)) / lookbackDays;
+            const recipeUnit = recipe.unit || recipe.product.unit;
+            let qtyInBase = Number(recipe.quantity);
+            try {
+                const conv = await UnitConversionService.convert(
+                    recipe.productId,
+                    companyId,
+                    Number(recipe.quantity),
+                    recipeUnit
+                );
+                qtyInBase = conv.baseQuantity;
+            } catch {
+                // Fallback to legacy quantity when conversion is not configured
+            }
+            const dailyUsage = (miSales * qtyInBase) / lookbackDays;
             productDemand.set(recipe.productId, (productDemand.get(recipe.productId) || 0) + dailyUsage);
         }
 

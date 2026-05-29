@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { UnitConversionService } from './unit-conversion.service';
 
 export class ReportService {
     static async getDashboardStats(companyId: number, branchId?: number) {
@@ -1063,7 +1064,8 @@ export class ReportService {
                                 recipes: {
                                     select: {
                                         quantity: true,
-                                        product: { select: { currentAverageCost: true } }
+                                        unit: true,
+                                        product: { select: { id: true, unit: true, currentAverageCost: true, cost: true } }
                                     }
                                 }
                             }
@@ -1079,7 +1081,21 @@ export class ReportService {
             totalRevenue += Number(order.total);
             for (const item of order.items) {
                 for (const recipe of (item.menuItem?.recipes || [])) {
-                    estimatedCOGS += Number(recipe.quantity) * item.quantity * Number(recipe.product.currentAverageCost);
+                    const recipeUnit = recipe.unit || recipe.product.unit;
+                    let qtyInBase = Number(recipe.quantity);
+                    try {
+                        const conv = await UnitConversionService.convert(
+                            recipe.product.id,
+                            companyId,
+                            Number(recipe.quantity),
+                            recipeUnit
+                        );
+                        qtyInBase = conv.baseQuantity;
+                    } catch {
+                        // Fallback to legacy quantity when conversion is not configured
+                    }
+                    const unitCost = Number(recipe.product.currentAverageCost || recipe.product.cost || 0);
+                    estimatedCOGS += qtyInBase * item.quantity * unitCost;
                 }
             }
         }

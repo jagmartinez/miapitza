@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { UnitConversionService } from './unit-conversion.service';
 
 export class ReportExtendedService {
     // ── PURCHASES: By Day ──
@@ -494,7 +495,13 @@ export class ReportExtendedService {
                         quantity: true, subtotal: true,
                         menuItem: {
                             select: {
-                                recipes: { select: { quantity: true, product: { select: { currentAverageCost: true } } } }
+                                recipes: {
+                                    select: {
+                                        quantity: true,
+                                        unit: true,
+                                        product: { select: { id: true, unit: true, currentAverageCost: true, cost: true } }
+                                    }
+                                }
                             }
                         }
                     }
@@ -530,7 +537,21 @@ export class ReportExtendedService {
 
             for (const item of order.items) {
                 for (const recipe of (item.menuItem?.recipes || [])) {
-                    channelMap[ch].estimatedCOGS += Number(recipe.quantity) * item.quantity * Number(recipe.product.currentAverageCost);
+                    const recipeUnit = recipe.unit || recipe.product.unit;
+                    let qtyInBase = Number(recipe.quantity);
+                    try {
+                        const conv = await UnitConversionService.convert(
+                            recipe.product.id,
+                            companyId,
+                            Number(recipe.quantity),
+                            recipeUnit
+                        );
+                        qtyInBase = conv.baseQuantity;
+                    } catch {
+                        // Fallback to legacy quantity when conversion is not configured
+                    }
+                    const unitCost = Number(recipe.product.currentAverageCost || recipe.product.cost || 0);
+                    channelMap[ch].estimatedCOGS += qtyInBase * item.quantity * unitCost;
                 }
             }
         }
@@ -615,7 +636,11 @@ export class ReportExtendedService {
                                 categoryId: true,
                                 category: { select: { name: true } },
                                 recipes: {
-                                    select: { quantity: true, product: { select: { currentAverageCost: true } } }
+                                    select: {
+                                        quantity: true,
+                                        unit: true,
+                                        product: { select: { id: true, unit: true, currentAverageCost: true, cost: true } }
+                                    }
                                 }
                             }
                         }
@@ -632,7 +657,21 @@ export class ReportExtendedService {
                 if (!catMap[catName]) catMap[catName] = { categoryName: catName, revenue: 0, cogs: 0 };
                 catMap[catName].revenue += Number(item.subtotal);
                 for (const recipe of (item.menuItem?.recipes || [])) {
-                    catMap[catName].cogs += Number(recipe.quantity) * item.quantity * Number(recipe.product.currentAverageCost);
+                    const recipeUnit = recipe.unit || recipe.product.unit;
+                    let qtyInBase = Number(recipe.quantity);
+                    try {
+                        const conv = await UnitConversionService.convert(
+                            recipe.product.id,
+                            companyId,
+                            Number(recipe.quantity),
+                            recipeUnit
+                        );
+                        qtyInBase = conv.baseQuantity;
+                    } catch {
+                        // Fallback to legacy quantity when conversion is not configured
+                    }
+                    const unitCost = Number(recipe.product.currentAverageCost || recipe.product.cost || 0);
+                    catMap[catName].cogs += qtyInBase * item.quantity * unitCost;
                 }
             }
         }
@@ -677,7 +716,11 @@ export class ReportExtendedService {
                                 id: true, name: true, categoryId: true,
                                 category: { select: { name: true } },
                                 recipes: {
-                                    select: { quantity: true, product: { select: { currentAverageCost: true } } }
+                                    select: {
+                                        quantity: true,
+                                        unit: true,
+                                        product: { select: { id: true, unit: true, currentAverageCost: true, cost: true } }
+                                    }
                                 }
                             }
                         }
@@ -705,7 +748,21 @@ export class ReportExtendedService {
                 prodMap[id].revenue += Number(item.subtotal);
                 prodMap[id].unitsSold += item.quantity;
                 for (const recipe of (item.menuItem.recipes || [])) {
-                    prodMap[id].cogs += Number(recipe.quantity) * item.quantity * Number(recipe.product.currentAverageCost);
+                    const recipeUnit = recipe.unit || recipe.product.unit;
+                    let qtyInBase = Number(recipe.quantity);
+                    try {
+                        const conv = await UnitConversionService.convert(
+                            recipe.product.id,
+                            companyId,
+                            Number(recipe.quantity),
+                            recipeUnit
+                        );
+                        qtyInBase = conv.baseQuantity;
+                    } catch {
+                        // Fallback to legacy quantity when conversion is not configured
+                    }
+                    const unitCost = Number(recipe.product.currentAverageCost || recipe.product.cost || 0);
+                    prodMap[id].cogs += qtyInBase * item.quantity * unitCost;
                 }
             }
         }

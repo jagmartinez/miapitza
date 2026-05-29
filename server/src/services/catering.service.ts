@@ -4,6 +4,7 @@ import { CateringStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { InventoryMovementService } from './inventory-movement.service';
 import { getErrorMessage } from '../utils/error';
+import { UnitConversionService } from './unit-conversion.service';
 
 export interface CateringServiceLineDto {
     cateringServiceId: number | string;
@@ -38,6 +39,36 @@ export interface CateringEventWriteBody {
 }
 
 export class CateringService {
+    private static async convertRecipeQuantityToBase(
+        recipe: { productId: number; quantity: Decimal | number | string; unit?: string | null; product: { unit: string } },
+        companyId: number,
+        tx?: Prisma.TransactionClient
+    ) {
+        const recipeUnit = recipe.unit || recipe.product.unit;
+        const recipeQty = Number(recipe.quantity);
+        let baseQuantity = recipeQty;
+        let originalQuantity: number | null = null;
+        let originalUnit: string | null = null;
+        let conversionFactor: number | null = null;
+
+        try {
+            const conv = await UnitConversionService.convert(
+                recipe.productId,
+                companyId,
+                recipeQty,
+                recipeUnit,
+                tx
+            );
+            baseQuantity = conv.baseQuantity;
+            originalQuantity = conv.originalQuantity;
+            originalUnit = conv.originalUnit;
+            conversionFactor = conv.conversionFactor;
+        } catch {
+            // Fallback to legacy 1:1 when conversion is not configured
+        }
+
+        return { baseQuantity, originalQuantity, originalUnit, conversionFactor, recipeUnit };
+    }
 
     static async getAllEvents(companyId: number, filters?: {
         branchId?: number;
@@ -372,7 +403,8 @@ export class CateringService {
 
         for (const cMenuItem of event.menuItems) {
             for (const recipe of cMenuItem.menuItem.recipes) {
-                const totalNeeded = new Decimal(recipe.quantity).mul(cMenuItem.quantity);
+                const conv = await this.convertRecipeQuantityToBase(recipe, companyId, tx);
+                const totalNeeded = conv.baseQuantity * cMenuItem.quantity;
 
                 // Inline stock deduction within the same transaction
                 const stock = await tx.stock.findUnique({
@@ -380,7 +412,7 @@ export class CateringService {
                 });
 
                 const currentQty = stock ? Number(stock.quantity) : 0;
-                const newQty = currentQty - totalNeeded.toNumber();
+                const newQty = currentQty - totalNeeded;
                 if (newQty < 0) {
                     throw new Error(`Stock insuficiente para ${recipe.product.name}`);
                 }
@@ -402,11 +434,14 @@ export class CateringService {
                         productId: recipe.productId,
                         userId,
                         type: 'OUT',
-                        quantity: totalNeeded.toNumber(),
+                        quantity: totalNeeded,
+                        originalQuantity: conv.originalQuantity ? conv.originalQuantity * cMenuItem.quantity : null,
+                        originalUnit: conv.originalUnit,
+                        conversionFactor: conv.conversionFactor,
                         reason: `Catering Event: ${event.title}`,
                         reference: `EVT-${event.id}`,
                         unitCost,
-                        totalCost: totalNeeded.toNumber() * unitCost,
+                        totalCost: totalNeeded * unitCost,
                         balanceQty: newQty,
                         balanceCost: newQty * unitCost
                     }
@@ -447,14 +482,13 @@ export class CateringService {
 
         for (const cMenuItem of event.menuItems) {
             for (const recipe of cMenuItem.menuItem.recipes) {
-                const totalNeeded = new Decimal(recipe.quantity).mul(cMenuItem.quantity);
-
                 await InventoryMovementService.create(companyId, {
                     warehouseId: warehouse.id,
                     productId: recipe.productId,
                     userId,
                     type: 'OUT',
-                    quantity: totalNeeded.toNumber(),
+                    quantity: Number(recipe.quantity) * cMenuItem.quantity,
+                    unit: recipe.unit || recipe.product.unit,
                     reason: `Catering Event: ${event.title}`,
                     reference: `EVT-${event.id}`
                 });
@@ -606,7 +640,8 @@ export class CateringService {
         for (const event of eventsOnDate) {
             for (const cMenuItem of event.menuItems) {
                 for (const recipe of cMenuItem.menuItem.recipes) {
-                    const totalNeeded = new Decimal(recipe.quantity).mul(cMenuItem.quantity);
+                    const conv = await this.convertRecipeQuantityToBase(recipe, companyId);
+                    const totalNeeded = new Decimal(conv.baseQuantity).mul(cMenuItem.quantity);
                     if (!requirements[recipe.productId]) {
                         requirements[recipe.productId] = {
                             name: recipe.product.name,

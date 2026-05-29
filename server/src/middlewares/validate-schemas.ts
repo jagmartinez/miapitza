@@ -98,6 +98,7 @@ export const addRecipe: ValidationSchema = {
     body: {
         productId: { type: 'number', required: true, min: 1 },
         quantity: { type: 'number', required: true, min: 0 },
+        unit: { type: 'string', required: false, min: 1, max: 20 },
     },
 };
 
