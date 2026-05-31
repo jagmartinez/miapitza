@@ -17,29 +17,76 @@ export interface CostConversionResult extends ConversionResult {
 }
 
 export class UnitConversionService {
+    private static sanitizeLegacyUnit(raw: string): string {
+        return String(raw || '').trim().toLowerCase().replace(/[.\s_-]+/g, '');
+    }
+
     private static normalizeLegacyAbbreviation(raw: string): string {
-        const abbr = String(raw || '').trim().toLowerCase();
+        const abbr = this.sanitizeLegacyUnit(raw);
         const aliasMap: Record<string, string> = {
             // Common legacy aliases
             gl: 'gal',
             galon: 'gal',
             galones: 'gal',
             lt: 'l',
+            ltr: 'l',
+            lts: 'l',
+            liter: 'l',
             litro: 'l',
             litros: 'l',
             gr: 'g',
             grs: 'g',
             gramo: 'g',
             gramos: 'g',
+            grams: 'g',
             kilo: 'kg',
             kilos: 'kg',
+            kgs: 'kg',
+            kilogram: 'kg',
+            kilograms: 'kg',
             kilogramo: 'kg',
             kilogramos: 'kg',
+            lbs: 'lb',
+            libra: 'lb',
+            libras: 'lb',
+            onza: 'oz',
+            onzas: 'oz',
+            ml: 'ml',
+            millilitro: 'ml',
+            millilitros: 'ml',
+            mililitro: 'ml',
+            mililitros: 'ml',
             und: 'unidad',
             unid: 'unidad',
             u: 'unidad',
+            unds: 'unidad',
+            paq: 'paquete',
+            paqte: 'paquete',
+            pkg: 'paquete',
+            pqt: 'paquete',
+            pq: 'paquete',
+            pk: 'paquete',
+            cja: 'caja',
+            sac: 'saco',
+            doc: 'docena',
         };
         return aliasMap[abbr] || abbr;
+    }
+
+    private static buildLegacyUnitCandidates(legacyUnit: string): string[] {
+        const raw = String(legacyUnit || '').trim().toLowerCase();
+        if (!raw) return [];
+
+        const sanitized = this.sanitizeLegacyUnit(raw);
+        const normalized = this.normalizeLegacyAbbreviation(raw);
+        const rawNoDots = raw.replace(/[.\s_-]+/g, '');
+
+        return [...new Set([
+            normalized,
+            sanitized,
+            rawNoDots,
+            raw
+        ].filter(Boolean))];
     }
 
     private static async resolveBaseUnitFromLegacy(
@@ -47,13 +94,8 @@ export class UnitConversionService {
         legacyUnit: string,
         db: Prisma.TransactionClient | typeof prisma
     ) {
-        const raw = String(legacyUnit || '').trim().toLowerCase();
-        if (!raw) return null;
-
-        const candidates = [...new Set([
-            this.normalizeLegacyAbbreviation(raw),
-            raw
-        ])];
+        const candidates = this.buildLegacyUnitCandidates(legacyUnit);
+        if (candidates.length === 0) return null;
 
         for (const abbreviation of candidates) {
             const unit = await db.unitOfMeasure.findUnique({
@@ -65,6 +107,20 @@ export class UnitConversionService {
                 }
             });
             if (unit?.active) return unit;
+        }
+
+        for (const abbreviation of candidates) {
+            const unit = await db.unitOfMeasure.findFirst({
+                where: {
+                    companyId,
+                    active: true,
+                    OR: [
+                        { abbreviation: { startsWith: abbreviation } },
+                        { name: abbreviation }
+                    ]
+                }
+            });
+            if (unit) return unit;
         }
 
         return null;
@@ -262,8 +318,33 @@ export class UnitConversionService {
             throw new Error('Producto no encontrado');
         }
 
-        if (!product.baseUnit) {
-            const inferredBase = await this.resolveBaseUnitFromLegacy(companyId, product.unit, prisma);
+        let baseUnit = product.baseUnit;
+        if (!baseUnit && product.baseUnitId) {
+            baseUnit = await prisma.unitOfMeasure.findFirst({
+                where: { id: product.baseUnitId, companyId, active: true }
+            });
+        }
+
+        if (!baseUnit) {
+            let inferredBase = await this.resolveBaseUnitFromLegacy(companyId, product.unit, prisma);
+
+            if (!inferredBase) {
+                const fuzzyCandidates = this.buildLegacyUnitCandidates(product.unit);
+                if (fuzzyCandidates.length > 0) {
+                    inferredBase = await prisma.unitOfMeasure.findFirst({
+                        where: {
+                            companyId,
+                            active: true,
+                            OR: fuzzyCandidates.flatMap((abbr) => ([
+                                { abbreviation: { contains: abbr } },
+                                { name: { contains: abbr } }
+                            ]))
+                        },
+                        orderBy: { name: 'asc' }
+                    });
+                }
+            }
+
             if (!inferredBase) {
                 return [{
                     unitId: 0,
@@ -273,6 +354,10 @@ export class UnitConversionService {
                     isBase: true,
                     isDefault: true
                 }];
+            }
+
+            if (!product.baseUnitId) {
+                await this.autoConfigureProduct(productId, companyId, product.unit).catch(() => undefined);
             }
 
             const compatibleUnits = await prisma.unitOfMeasure.findMany({
@@ -307,9 +392,9 @@ export class UnitConversionService {
         const hasBase = units.some(u => u.isBase);
         if (!hasBase) {
             units.unshift({
-                unitId: product.baseUnit.id,
-                abbreviation: product.baseUnit.abbreviation,
-                name: product.baseUnit.name,
+                unitId: baseUnit.id,
+                abbreviation: baseUnit.abbreviation,
+                name: baseUnit.name,
                 conversionFactor: 1,
                 isBase: true,
                 isDefault: units.length === 0
@@ -322,7 +407,7 @@ export class UnitConversionService {
             where: {
                 companyId,
                 active: true,
-                measurementType: product.baseUnit.measurementType
+                measurementType: baseUnit.measurementType
             },
             orderBy: { name: 'asc' }
         });
@@ -330,13 +415,13 @@ export class UnitConversionService {
         const existingAbbr = new Set(units.map(u => u.abbreviation.toLowerCase()));
         for (const u of compatibleUnits) {
             if (existingAbbr.has(u.abbreviation.toLowerCase())) continue;
-            const factor = Number(u.systemFactor) / Number(product.baseUnit.systemFactor);
+            const factor = Number(u.systemFactor) / Number(baseUnit.systemFactor);
             units.push({
                 unitId: u.id,
                 abbreviation: u.abbreviation,
                 name: u.name,
                 conversionFactor: factor,
-                isBase: u.id === product.baseUnit.id,
+                isBase: u.id === baseUnit.id,
                 isDefault: false
             });
         }
@@ -408,12 +493,16 @@ export class UnitConversionService {
             'g': { baseAbbr: 'g', relatedAbbrs: ['kg', 'lb', 'qq', 'oz'] },
             'gr': { baseAbbr: 'g', relatedAbbrs: ['kg', 'lb', 'qq', 'oz'] },
             'lb': { baseAbbr: 'lb', relatedAbbrs: ['kg', 'g', 'qq', 'oz'] },
+            'oz': { baseAbbr: 'oz', relatedAbbrs: ['g', 'kg', 'lb'] },
             'l': { baseAbbr: 'l', relatedAbbrs: ['ml', 'gal', 'oz_fl'] },
             'ml': { baseAbbr: 'ml', relatedAbbrs: ['l', 'gal', 'oz_fl'] },
             'gal': { baseAbbr: 'gal', relatedAbbrs: ['l', 'ml', 'oz_fl'] },
             'gl': { baseAbbr: 'gal', relatedAbbrs: ['l', 'ml', 'oz_fl'] },
             'unidad': { baseAbbr: 'unidad', relatedAbbrs: ['docena'] },
-            'paquete': { baseAbbr: 'paquete', relatedAbbrs: [] },
+            'paquete': { baseAbbr: 'paquete', relatedAbbrs: ['caja', 'saco', 'docena'] },
+            'caja': { baseAbbr: 'caja', relatedAbbrs: ['paquete', 'saco', 'docena'] },
+            'saco': { baseAbbr: 'saco', relatedAbbrs: ['paquete', 'caja', 'docena'] },
+            'docena': { baseAbbr: 'docena', relatedAbbrs: ['unidad', 'paquete'] },
         };
 
         const config = unitMap[this.normalizeLegacyAbbreviation(legacyUnit)] ?? unitMap[legacyUnit.toLowerCase()];
