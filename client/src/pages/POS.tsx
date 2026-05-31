@@ -13,12 +13,14 @@ import {
     canCreatePayment
 } from '../utils/authz';
 import { getOrderStatusLabel } from '../utils/orderStatus';
+import { useConfirmDialog } from '../context/ConfirmContext';
+import { useAppToast } from '../context/ToastContext';
 import TableSelectionModal from '../components/TableSelectionModal';
 import OrderCart from '../components/OrderCart';
 import PaymentModal from '../components/PaymentModal';
 import NumericKeypad from '../components/NumericKeypad';
-import Notification from '../components/Notification';
 import POSProductCard from '../components/POSProductCard';
+import { LoadingOverlay } from '../components/LoadingSpinner';
 import { Send, CreditCard, Printer, X, Search, Grid3x3, AlertTriangle, ChevronLeft } from 'lucide-react';
 import type { MenuItem, Order, Table } from '../types';
 import './POS.css';
@@ -64,6 +66,8 @@ interface ShiftStatus {
 export default function POS() {
     const navigate = useNavigate();
     const { user } = useAuth();
+    const { confirm } = useConfirmDialog();
+    const { success, error: showError, warning, info } = useAppToast();
     const canManageShift = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CAJERO']);
     const canSendToKitchen = canSendOrderToKitchen(user);
     const canCancelActive = canCancelOrder(user);
@@ -75,6 +79,9 @@ export default function POS() {
     const [cart, setCart] = useState<CartItem[]>([]);
     const [showMobileCart, setShowMobileCart] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [sendingToKitchen, setSendingToKitchen] = useState(false);
+    const [processingPayment, setProcessingPayment] = useState(false);
     const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
     const [activeTableOrder, setActiveTableOrder] = useState<Order | null>(null);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -90,10 +97,23 @@ export default function POS() {
     const searchInputRef = useRef<HTMLInputElement>(null);
     const [showKeypad, setShowKeypad] = useState(false);
     const [selectedItemForKeypad, setSelectedItemForKeypad] = useState<MenuItem | null>(null);
-    const [notification, setNotification] = useState<{ message: string, type: 'success' | 'info' | 'warning' | 'error' } | null>(null);
     const [shiftStatus, setShiftStatus] = useState<ShiftStatus | null>(null);
     const [showShiftWarning, setShowShiftWarning] = useState(false);
     const waiterAccentColor = getUserAccentColor(activeTableOrder?.user || user);
+
+    // Scope the local menu cache by company + branch so different tenants/branches
+    // don't read each other's cached menu from a shared localStorage key.
+    const menuCacheKey = useMemo(
+        () => `pos_menu_cache_${user?.companyId ?? 'anon'}_${user?.branchId ?? 'all'}`,
+        [user?.companyId, user?.branchId]
+    );
+
+    // Keep the latest selected table in a ref so the websocket subscription effect
+    // can stay mounted once instead of tearing down/re-subscribing on every change.
+    const selectedTableRef = useRef<Table | null>(null);
+    useEffect(() => {
+        selectedTableRef.current = selectedTable;
+    }, [selectedTable]);
 
     const clearDraftCart = useCallback((nextCustomerName: string = '') => {
         setCart([]);
@@ -111,8 +131,9 @@ export default function POS() {
     }, [clearDraftCart]);
 
     const loadData = useCallback(async () => {
+        setLoadError(null);
         try {
-            const cached = localStorage.getItem('pos_menu_cache');
+            const cached = localStorage.getItem(menuCacheKey);
             if (cached) {
                 const { data, timestamp } = JSON.parse(cached);
                 if (Date.now() - timestamp < 5 * 60 * 1000) {
@@ -136,11 +157,13 @@ export default function POS() {
             setSettings(settingsRes.data.data);
             setCategories(categoriesRes.data.data);
         } catch {
-            // Failed to load POS data
+            const message = 'No se pudieron cargar los datos del POS (mesas, menú o configuración). Revisa tu conexión e inténtalo de nuevo.';
+            setLoadError(message);
+            showError(message);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [menuCacheKey]);
 
     // Check if user has an active shift
     const checkShiftStatus = useCallback(async () => {
@@ -154,7 +177,7 @@ export default function POS() {
                 setShowShiftWarning(true);
             }
         } catch {
-            // Failed to check shift status
+            warning('No se pudo verificar el estado del turno de caja. Los cobros podrían no estar disponibles.');
         }
     }, []);
 
@@ -181,39 +204,35 @@ export default function POS() {
                 loadData();
             }
 
-            if (selectedTable && message.type === WS_EVENTS.ORDER_READY) {
+            const activeTable = selectedTableRef.current;
+
+            if (activeTable && message.type === WS_EVENTS.ORDER_READY) {
                 const readyTableNumber = String(message.payload?.tableNumber || '');
-                if (readyTableNumber && readyTableNumber === String(selectedTable.number)) {
-                    setNotification({
-                        message: `Mesa ${selectedTable.number}: la orden ya está lista para entregar.`,
-                        type: 'success'
-                    });
+                if (readyTableNumber && readyTableNumber === String(activeTable.number)) {
+                    success(`Mesa ${activeTable.number}: la orden ya está lista para entregar.`);
                 }
             }
 
-            if (selectedTable && message.type === WS_EVENTS.ORDER_IN_PREPARATION) {
+            if (activeTable && message.type === WS_EVENTS.ORDER_IN_PREPARATION) {
                 const preparingTableNumber = String(message.payload?.tableNumber || '');
-                if (preparingTableNumber && preparingTableNumber === String(selectedTable.number)) {
-                    setNotification({
-                        message: `Mesa ${selectedTable.number}: cocina ya inició la preparación.`,
-                        type: 'info'
-                    });
+                if (preparingTableNumber && preparingTableNumber === String(activeTable.number)) {
+                    info(`Mesa ${activeTable.number}: cocina ya inició la preparación.`);
                 }
             }
         });
 
         return unsubscribe;
-    }, [loadData, selectedTable]);
+    }, [loadData]);
 
     // Cache products in localStorage
     useEffect(() => {
         if (menuItems.length > 0) {
-            localStorage.setItem('pos_menu_cache', JSON.stringify({
+            localStorage.setItem(menuCacheKey, JSON.stringify({
                 data: menuItems,
                 timestamp: Date.now()
             }));
         }
-    }, [menuItems]);
+    }, [menuCacheKey, menuItems]);
 
     // Refs to avoid stale closures in keyboard handler
     const handlePaymentRef = useRef<() => Promise<void> | void>(() => {});
@@ -235,15 +254,17 @@ export default function POS() {
                 if (canSendToKitchen && cart.length > 0 && selectedTable) handleSendToKitchenRef.current();
             }
             if (e.key === 'Escape' && cart.length > 0) {
-                if (confirm('Â¿Limpiar carrito?')) {
-                    clearDraftCart(activeTableOrder?.customerName || '');
-                }
+                void (async () => {
+                    if (await confirm('¿Limpiar carrito?', { title: 'Confirmar acción' })) {
+                        clearDraftCart(activeTableOrder?.customerName || '');
+                    }
+                })();
             }
         };
 
         window.addEventListener('keydown', handleKeyPress);
         return () => window.removeEventListener('keydown', handleKeyPress);
-    }, [activeTableOrder?.customerName, canSendToKitchen, cart, clearDraftCart, currentOrderId, selectedTable]);
+    }, [activeTableOrder?.customerName, canSendToKitchen, cart, clearDraftCart, confirm, currentOrderId, selectedTable]);
 
     useEffect(() => {
         checkShiftStatus();
@@ -267,10 +288,7 @@ export default function POS() {
             setCustomerName(tableOrder?.customerName || '');
 
             if (tableOrder) {
-                setNotification({
-                    message: `Mesa ${table.number}: retomaste la orden #${tableOrder.id} (${tableOrder.status}).`,
-                    type: 'info'
-                });
+                info(`Mesa ${table.number}: retomaste la orden #${tableOrder.id} (${tableOrder.status}).`);
             }
         } catch {
             setCurrentOrderId(null);
@@ -285,7 +303,7 @@ export default function POS() {
         }
 
         if (cart.length > 0) {
-            const confirmChange = window.confirm('Hay productos pendientes en el carrito actual. Si cambias de mesa se limpiará este borrador. ¿Deseas continuar?');
+            const confirmChange = await confirm('Hay productos pendientes en el carrito actual. Si cambias de mesa se limpiará este borrador. ¿Deseas continuar?', { title: 'Confirmar acción' });
             if (!confirmChange) {
                 return;
             }
@@ -322,6 +340,11 @@ export default function POS() {
 
     const handleItemRightClick = useCallback((e: React.MouseEvent, item: MenuItem) => {
         e.preventDefault();
+        setSelectedItemForKeypad(item);
+        setShowKeypad(true);
+    }, []);
+
+    const handleQuantityEdit = useCallback((item: MenuItem) => {
         setSelectedItemForKeypad(item);
         setShowKeypad(true);
     }, []);
@@ -435,31 +458,26 @@ export default function POS() {
 
     const handleSendToKitchen = async () => {
         if (!canSendToKitchen) {
-            setNotification({
-                message: 'Tu rol no puede enviar órdenes a cocina. Pide apoyo a un mesero o administrador.',
-                type: 'warning'
-            });
+            warning('Tu rol no puede enviar órdenes a cocina. Pide apoyo a un mesero o administrador.');
             return;
         }
 
         if (!selectedTable) {
-            alert('Por favor selecciona una mesa');
+            warning('Por favor selecciona una mesa');
             return;
         }
 
         if (cart.length === 0) {
-            alert('El carrito está vacío');
+            warning('El carrito está vacío');
             return;
         }
 
+        setSendingToKitchen(true);
         try {
             const { orderId } = await persistCartToOrder();
 
             if (!orderId) {
-                setNotification({
-                    message: 'La orden quedó pendiente, pero no puede enviarse a cocina hasta existir en el servidor.',
-                    type: 'warning'
-                });
+                warning('La orden quedó pendiente, pero no puede enviarse a cocina hasta existir en el servidor.');
                 return;
             }
 
@@ -468,12 +486,11 @@ export default function POS() {
             });
             const queuedOffline = Boolean((response.data as OfflineResponse)._offline);
 
-            setNotification({
-                message: queuedOffline
-                    ? 'La orden quedó pendiente de sincronización para enviarse a cocina.'
-                    : 'Orden enviada a cocina exitosamente',
-                type: queuedOffline ? 'info' : 'success'
-            });
+            if (queuedOffline) {
+                info('La orden quedó pendiente de sincronización para enviarse a cocina.');
+            } else {
+                success('Orden enviada a cocina exitosamente');
+            }
 
             if (!queuedOffline) {
                 await syncOrderContext(orderId);
@@ -481,7 +498,9 @@ export default function POS() {
             }
         } catch (error: unknown) {
             const axiosErr = error as { response?: { data?: { message?: string } } };
-            alert(axiosErr.response?.data?.message || 'Error al enviar la orden');
+            showError(axiosErr.response?.data?.message || 'Error al enviar la orden');
+        } finally {
+            setSendingToKitchen(false);
         }
     };
 
@@ -491,15 +510,12 @@ export default function POS() {
 
     const handlePayment = async () => {
         if (!canPay) {
-            setNotification({
-                message: 'Tu rol no puede registrar pagos. Pide apoyo a un cajero o administrador.',
-                type: 'warning'
-            });
+            warning('Tu rol no puede registrar pagos. Pide apoyo a un cajero o administrador.');
             return;
         }
 
         if (cart.length === 0 && !currentOrderId) {
-            alert('El carrito está vacío');
+            warning('El carrito está vacío');
             return;
         }
 
@@ -507,11 +523,12 @@ export default function POS() {
             if (canManageShift) {
                 setShowShiftWarning(true);
             } else {
-                setNotification({ message: 'No hay turno de caja activo. Solicita al cajero que abra un turno para procesar pagos.', type: 'warning' });
+                warning('No hay turno de caja activo. Solicita al cajero que abra un turno para procesar pagos.');
             }
             return;
         }
 
+        setProcessingPayment(true);
         try {
             const requestedDiscountPercent = discount;
             const requestedDiscountOverride = discountAmountOverride;
@@ -519,18 +536,12 @@ export default function POS() {
             const { orderId, offlineQueued } = await persistCartToOrder();
 
             if (!orderId) {
-                setNotification({
-                    message: 'La orden quedó pendiente, pero el cobro está bloqueado hasta que exista en el servidor.',
-                    type: 'warning'
-                });
+                warning('La orden quedó pendiente, pero el cobro está bloqueado hasta que exista en el servidor.');
                 return;
             }
 
             if (offlineQueued) {
-                setNotification({
-                    message: 'Hay productos pendientes de sincronizar en esta orden. Espera conexión antes de cobrarla.',
-                    type: 'warning'
-                });
+                warning('Hay productos pendientes de sincronizar en esta orden. Espera conexión antes de cobrarla.');
                 return;
             }
 
@@ -561,11 +572,10 @@ export default function POS() {
             setCurrentOrderId(orderId);
             setShowPaymentModal(true);
         } catch {
-            setNotification({
-                message: 'No se pudo preparar la orden para cobrarla.',
-                type: 'error'
-            });
+            showError('No se pudo preparar la orden para cobrarla.');
             return;
+        } finally {
+            setProcessingPayment(false);
         }
     };
     handlePaymentRef.current = handlePayment;
@@ -578,20 +588,20 @@ export default function POS() {
             }
 
             setShowPaymentModal(false);
-            clearTableContext();
 
-            setNotification({
-                message: paymentData?.offlineQueued
-                    ? 'Pago pendiente de sincronización. La venta quedó marcada como pendiente.'
-                    : 'Pago procesado exitosamente',
-                type: paymentData?.offlineQueued ? 'info' : 'success'
-            });
-
-            if (!paymentData?.offlineQueued) {
-                await loadData();
+            // An offline-queued payment is NOT confirmed. Never clear the table or
+            // close the order as if paid — keep it open until the sync confirms it.
+            if (paymentData?.offlineQueued) {
+                warning('Pago pendiente de sincronización. La orden permanece ABIERTA y se marcará como pagada al confirmarse la conexión.');
+                return;
             }
+
+            clearTableContext();
+            success('Pago procesado exitosamente');
+
+            await loadData();
         } catch {
-            alert('Error al procesar el pago');
+            showError('Error al procesar el pago.');
         }
     };
 
@@ -604,16 +614,10 @@ export default function POS() {
             await ordersAPI.updateStatus(activeTableOrder.id, 'DELIVERED');
             await syncOrderContext(activeTableOrder.id);
             await loadData();
-            setNotification({
-                message: `Orden #${activeTableOrder.id} marcada como entregada.`,
-                type: 'success'
-            });
+            success(`Orden #${activeTableOrder.id} marcada como entregada.`);
         } catch (error: unknown) {
             const axiosErr = error as { response?: { data?: { message?: string } } };
-            setNotification({
-                message: axiosErr.response?.data?.message || 'No se pudo marcar la orden como entregada.',
-                type: 'error'
-            });
+            showError(axiosErr.response?.data?.message || 'No se pudo marcar la orden como entregada.');
         }
     }, [activeTableOrder, loadData, syncOrderContext]);
 
@@ -623,10 +627,11 @@ export default function POS() {
         }
 
         if (!canCancelActive) {
-            setNotification({
-                message: 'Tu rol no puede cancelar órdenes. Pide apoyo a un mesero o administrador.',
-                type: 'warning'
-            });
+            warning('Tu rol no puede cancelar órdenes. Pide apoyo a un mesero o administrador.');
+            return;
+        }
+
+        if (!(await confirm('¿Cancelar la orden activa de esta mesa?', { variant: 'warning', confirmText: 'Sí, cancelar' }))) {
             return;
         }
 
@@ -636,18 +641,12 @@ export default function POS() {
             await ordersAPI.cancel(activeTableOrder.id, reason);
             await loadData();
             clearTableContext();
-            setNotification({
-                message: `Orden #${activeTableOrder.id} cancelada correctamente.`,
-                type: 'success'
-            });
+            success(`Orden #${activeTableOrder.id} cancelada correctamente.`);
         } catch (error: unknown) {
             const axiosErr = error as { response?: { data?: { message?: string } } };
-            setNotification({
-                message: axiosErr.response?.data?.message || 'No se pudo cancelar la orden.',
-                type: 'error'
-            });
+            showError(axiosErr.response?.data?.message || 'No se pudo cancelar la orden.');
         }
-    }, [activeTableOrder, canCancelActive, clearTableContext, loadData]);
+    }, [activeTableOrder, canCancelActive, clearTableContext, confirm, loadData]);
     const handleApplyPromotion = async (code: string) => {
         try {
             const res = await promotionsAPI.validate(code, subtotal);
@@ -660,22 +659,13 @@ export default function POS() {
                 setDiscount(discountAsPercent);
                 setDiscountAmountOverride(discountAmount);
                 setAppliedPromotionCode(code.toUpperCase());
-                setNotification({
-                    message: result.message || 'Promoción aplicada',
-                    type: 'success'
-                });
+                success(result.message || 'Promoción aplicada');
             } else {
-                setNotification({
-                    message: result?.message || 'Promoción inválida',
-                    type: 'error'
-                });
+                showError(result?.message || 'Promoción inválida');
             }
         } catch (error: unknown) {
             const axiosErr = error as { response?: { data?: { message?: string } } };
-            setNotification({
-                message: axiosErr.response?.data?.message || 'Error al validar promoción',
-                type: 'error'
-            });
+            showError(axiosErr.response?.data?.message || 'Error al validar promoción');
         }
     };
 
@@ -690,10 +680,33 @@ export default function POS() {
     );
 
     if (loading) {
-        return <div className="pos-loading">Cargando...</div>;
+        return <LoadingOverlay text="Cargando POS..." />;
+    }
+
+    if (loadError) {
+        return (
+            <div className="pos-load-error">
+                <AlertTriangle size={48} />
+                <h2>No se pudo cargar el POS</h2>
+                <p>{loadError}</p>
+                <button
+                    type="button"
+                    className="header-action-btn primary"
+                    onClick={() => {
+                        setLoading(true);
+                        void loadData().finally(() => setLoading(false));
+                    }}
+                >
+                    Reintentar
+                </button>
+            </div>
+        );
     }
 
     const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const currencySymbol = settings.currency_symbol || '$';
+    const cartItemCount = cart.reduce((acc, item) => acc + item.quantity, 0);
+    const showMobileActions = cartItemCount > 0 || Boolean(currentOrderId);
     const discountAmount = Math.min(
         Math.max(0, discountAmountOverride ?? (subtotal * (discount / 100))),
         subtotal
@@ -747,20 +760,20 @@ export default function POS() {
                     <button
                         className="header-action-btn primary"
                         onClick={handlePayment}
-                        disabled={!canProcessPayment}
+                        disabled={!canProcessPayment || processingPayment}
                         title={canPay ? 'Pagar (Ctrl+P)' : 'Tu rol no puede registrar pagos'}
                     >
                         <CreditCard size={18} />
-                        <span>Pagar</span>
+                        <span>{processingPayment ? 'Preparando...' : 'Pagar'}</span>
                     </button>
                     <button
                         className="header-action-btn secondary"
                         onClick={handleSendToKitchen}
-                        disabled={!canSendToKitchen || cart.length === 0 || !selectedTable}
+                        disabled={!canSendToKitchen || cart.length === 0 || !selectedTable || sendingToKitchen}
                         title={canSendToKitchen ? 'Enviar a Cocina (Ctrl+K)' : 'Tu rol no puede enviar a cocina'}
                     >
                         <Send size={18} />
-                        <span>Cocina</span>
+                        <span>{sendingToKitchen ? 'Enviando...' : 'Cocina'}</span>
                     </button>
                     <button
                         className="header-action-btn secondary"
@@ -802,6 +815,8 @@ export default function POS() {
                                 item={item}
                                 onClick={handleItemClick}
                                 onContextMenu={handleItemRightClick}
+                                onQuantityEdit={handleQuantityEdit}
+                                currencySymbol={currencySymbol}
                             />
                         ))}
                         {filteredMenuItems.length === 0 && (
@@ -815,7 +830,16 @@ export default function POS() {
                 {/* Order Cart */}
                 <div className={`cart-area ${showMobileCart ? 'mobile-visible' : ''}`}>
                     {showMobileCart && (
-                        <div className="mobile-cart-header" style={{ marginBottom: '1rem' }}>
+                        <div className="mobile-cart-header">
+                            <div className="mobile-cart-search">
+                                <Search size={16} />
+                                <input
+                                    type="search"
+                                    placeholder="Buscar producto..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                            </div>
                             <button
                                 onClick={() => setShowMobileCart(false)}
                                 className="header-action-btn secondary"
@@ -829,7 +853,7 @@ export default function POS() {
                                 }}
                             >
                                 <ChevronLeft size={20} />
-                                Volver al MenÃº
+                                Volver al Menú
                             </button>
                         </div>
                     )}
@@ -899,32 +923,61 @@ export default function POS() {
                         }}
                         enablePromotions={settings.enablePromotions === 'true'}
                         onApplyPromotion={handleApplyPromotion}
-                        currencySymbol={settings.currency_symbol || '$'}
+                        currencySymbol={currencySymbol}
                     />
-                    {showMobileCart && (
-                        <div style={{ marginTop: '1rem' }}>
+                    {showMobileCart && showMobileActions && (
+                        <div className="pos-mobile-actions in-cart-panel">
                             <button
-                                className="header-action-btn primary"
-                                style={{ width: '100%', justifyContent: 'center' }}
-                                onClick={() => {
-                                    handlePayment();
-                                    setShowMobileCart(false);
-                                }}
-                                disabled={!canProcessPayment}
+                                type="button"
+                                className="pos-mobile-action-btn secondary"
+                                onClick={handleSendToKitchen}
+                                disabled={!canSendToKitchen || cart.length === 0 || !selectedTable || sendingToKitchen}
                             >
-                                <CreditCard size={18} />
-                                Pagar ${displayTotal.toFixed(2)}
+                                <Send size={20} />
+                                <span>{sendingToKitchen ? 'Enviando...' : 'Enviar'}</span>
+                            </button>
+                            <button
+                                type="button"
+                                className="pos-mobile-action-btn primary"
+                                onClick={handlePayment}
+                                disabled={!canProcessPayment || processingPayment}
+                            >
+                                <CreditCard size={20} />
+                                <span>{processingPayment ? 'Preparando...' : 'Cobrar'}</span>
                             </button>
                         </div>
                     )}
                 </div>
             </div>
 
+            {showMobileActions && !showMobileCart && (
+                <div className="pos-mobile-actions">
+                    <button
+                        type="button"
+                        className="pos-mobile-action-btn secondary"
+                        onClick={handleSendToKitchen}
+                        disabled={!canSendToKitchen || cart.length === 0 || !selectedTable || sendingToKitchen}
+                    >
+                        <Send size={20} />
+                        <span>{sendingToKitchen ? 'Enviando...' : 'Enviar'}</span>
+                    </button>
+                    <button
+                        type="button"
+                        className="pos-mobile-action-btn primary"
+                        onClick={handlePayment}
+                        disabled={!canProcessPayment || processingPayment}
+                    >
+                        <CreditCard size={20} />
+                        <span>{processingPayment ? 'Preparando...' : 'Cobrar'}</span>
+                    </button>
+                </div>
+            )}
+
             {/* Mobile Cart Summary Bar */}
             <div className="mobile-cart-summary">
                 <div className="cart-total-preview">
                     <span style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>Total:</span>
-                    <span style={{ fontSize: '1.2rem', fontWeight: 'bold', marginLeft: '0.5rem' }}>${displayTotal.toFixed(2)}</span>
+                    <span style={{ fontSize: '1.2rem', fontWeight: 'bold', marginLeft: '0.5rem' }}>{currencySymbol}{displayTotal.toFixed(2)}</span>
                 </div>
                 <button className="mobile-cart-btn" onClick={() => setShowMobileCart(true)}>
                     <span>Ver Orden ({cart.reduce((acc, item) => acc + item.quantity, 0) || activeTableOrder?.items?.length || 0})</span>
@@ -957,14 +1010,6 @@ export default function POS() {
                     onConfirm={handleKeypadConfirm}
                     onClose={() => setShowKeypad(false)}
                     initialValue={1}
-                />
-            )}
-
-            {notification && (
-                <Notification
-                    message={notification.message}
-                    type={notification.type}
-                    onClose={() => setNotification(null)}
                 />
             )}
 
@@ -1002,7 +1047,7 @@ export default function POS() {
                                     className="shift-warning-btn primary"
                                     onClick={() => setShowShiftWarning(false)}
                                 >
-                                    Continuar sin turno
+                                    Entendido
                                 </button>
                             )}
                         </div>

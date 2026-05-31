@@ -4,9 +4,10 @@ import Card from '../components/Card';
 import Button from '../components/Button';
 import EmptyState from '../components/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner';
+import Pagination from '../components/Pagination';
 import { ordersAPI, settingsAPI } from '../services/api';
 import type { Order } from '../types';
-import type { CurrencySettings } from '../utils/currency';
+import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import './InvoiceHistory.css';
 
 interface Invoice {
@@ -20,17 +21,24 @@ interface Invoice {
     status: string;
 }
 
+const PAGE_SIZE = 20;
+
 export default function InvoiceHistory() {
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [loading, setLoading] = useState(true);
     const [dateFilter, setDateFilter] = useState('today');
     const [searchTerm, setSearchTerm] = useState('');
     const [settings, setSettings] = useState<CurrencySettings>({});
+    const [page, setPage] = useState(1);
 
     useEffect(() => {
         loadInvoices();
         loadSettings();
     }, [dateFilter]);
+
+    useEffect(() => {
+        setPage(1);
+    }, [dateFilter, searchTerm]);
 
     const loadSettings = async () => {
         try {
@@ -48,7 +56,6 @@ export default function InvoiceHistory() {
                 status: 'PAID'
             });
 
-            // Transform orders to invoices
             const invoiceData = response.data.data
                 .filter((order: Order) => order.status === 'PAID')
                 .map((order: Order) => ({
@@ -78,14 +85,16 @@ export default function InvoiceHistory() {
         switch (dateFilter) {
             case 'today':
                 return invoiceDate >= today;
-            case 'week':
+            case 'week': {
                 const weekAgo = new Date(today);
                 weekAgo.setDate(weekAgo.getDate() - 7);
                 return invoiceDate >= weekAgo;
-            case 'month':
+            }
+            case 'month': {
                 const monthAgo = new Date(today);
                 monthAgo.setMonth(monthAgo.getMonth() - 1);
                 return invoiceDate >= monthAgo;
+            }
             default:
                 return true;
         }
@@ -100,6 +109,8 @@ export default function InvoiceHistory() {
         );
 
     const totalAmount = filteredInvoices.reduce((sum, inv) => sum + inv.total, 0);
+    const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / PAGE_SIZE));
+    const pagedInvoices = filteredInvoices.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
     if (loading) {
         return (
@@ -115,7 +126,7 @@ export default function InvoiceHistory() {
                 <div>
                     <h1><FileText size={32} /> Historial de Facturas</h1>
                     <p className="invoice-subtitle">
-                        {filteredInvoices.length} facturas • Total: {settings.currency_symbol || '$'}{totalAmount.toFixed(2)}
+                        {filteredInvoices.length} facturas • Total: {formatCurrency(totalAmount, settings)}
                     </p>
                 </div>
             </div>
@@ -166,75 +177,87 @@ export default function InvoiceHistory() {
                     />
                 </Card>
             ) : (
-                <div className="invoices-table-container">
-                    <table className="invoices-table">
-                        <thead>
-                            <tr>
-                                <th>Número</th>
-                                <th>Fecha</th>
-                                <th>Cliente</th>
-                                <th>Mesero</th>
-                                <th>Método de Pago</th>
-                                <th>Total</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredInvoices.map(invoice => (
-                                <tr key={invoice.id}>
-                                    <td className="invoice-number">{invoice.invoiceNumber}</td>
-                                    <td>
-                                        <div className="date-cell">
-                                            <Calendar size={14} />
-                                            {new Date(invoice.date).toLocaleDateString('es-ES')}
-                                            <span className="time">
-                                                {new Date(invoice.date).toLocaleTimeString('es-ES', {
-                                                    hour: '2-digit',
-                                                    minute: '2-digit'
-                                                })}
-                                            </span>
-                                        </div>
-                                    </td>
-                                    <td>{invoice.customerName || 'Cliente General'}</td>
-                                    <td>
-                                        <div className="waiter-cell">
-                                            <User size={14} />
-                                            {invoice.waiterName}
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <span className={`payment-badge payment-${invoice.paymentMethod.toLowerCase()}`}>
-                                            {invoice.paymentMethod}
-                                        </span>
-                                    </td>
-                                    <td className="total-cell">
-                                        <span style={{ fontSize: '14px', marginRight: '4px' }}>{settings.currency_symbol || '$'}</span>
-                                        {invoice.total.toFixed(2)}
-                                    </td>
-                                    <td>
-                                        <div className="action-buttons">
-                                            <Button
-                                                variant="secondary"
-                                                size="sm"
-                                                onClick={() => window.print()}
-                                            >
-                                                <Eye size={16} />
-                                                Ver
-                                            </Button>
-                                            <Button
-                                                variant="secondary"
-                                                size="sm"
-                                                onClick={() => window.print()}
-                                            >
-                                                <Download size={16} />
-                                                Descargar
-                                            </Button>
-                                        </div>
-                                    </td>
+                <div className="data-table-wrapper">
+                    <div className="data-table-header">
+                        <span>Facturas</span>
+                        <span className="data-table-count">{filteredInvoices.length} registros</span>
+                    </div>
+                    <div className="data-table-scroll">
+                        <table className="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Número</th>
+                                    <th>Fecha</th>
+                                    <th>Cliente</th>
+                                    <th>Mesero</th>
+                                    <th>Método de Pago</th>
+                                    <th className="text-right">Total</th>
+                                    <th>Acciones</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {pagedInvoices.map(invoice => (
+                                    <tr key={invoice.id}>
+                                        <td className="invoice-number">{invoice.invoiceNumber}</td>
+                                        <td>
+                                            <div className="date-cell">
+                                                <Calendar size={14} />
+                                                {new Date(invoice.date).toLocaleDateString('es-ES')}
+                                                <span className="time">
+                                                    {new Date(invoice.date).toLocaleTimeString('es-ES', {
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    })}
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td>{invoice.customerName || 'Cliente General'}</td>
+                                        <td>
+                                            <div className="waiter-cell">
+                                                <User size={14} />
+                                                {invoice.waiterName}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span className={`payment-badge payment-${invoice.paymentMethod.toLowerCase()}`}>
+                                                {invoice.paymentMethod}
+                                            </span>
+                                        </td>
+                                        <td className="text-right font-semibold total-cell">
+                                            {formatCurrency(invoice.total, settings)}
+                                        </td>
+                                        <td>
+                                            <div className="action-buttons">
+                                                <Button
+                                                    variant="secondary"
+                                                    size="sm"
+                                                    onClick={() => window.print()}
+                                                >
+                                                    <Eye size={16} />
+                                                    Ver
+                                                </Button>
+                                                <Button
+                                                    variant="secondary"
+                                                    size="sm"
+                                                    onClick={() => window.print()}
+                                                >
+                                                    <Download size={16} />
+                                                    Descargar
+                                                </Button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    <Pagination
+                        page={page}
+                        totalPages={totalPages}
+                        totalItems={filteredInvoices.length}
+                        pageSize={PAGE_SIZE}
+                        onPageChange={setPage}
+                    />
                 </div>
             )}
         </div>

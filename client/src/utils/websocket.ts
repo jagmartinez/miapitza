@@ -152,6 +152,9 @@ export const closeWebSocket = () => {
         socket = null;
     }
     isConnecting = false;
+    // Drop all subscribers so a manual close (logout/401) doesn't trigger a
+    // reconnect via lingering listeners and doesn't leak across sessions.
+    listeners.clear();
 };
 
 /** Manually trigger reconnection (e.g., after re-login) */

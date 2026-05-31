@@ -111,7 +111,7 @@ export const authMiddleware = auth;
 export const requireRole = (...roles: string[]) => {
     return (req: Request, res: Response, next: NextFunction) => {
         if (!req.user) {
-            return res.status(403).json({ success: false, message: 'Permisos insuficientes' });
+            return res.status(401).json({ success: false, message: 'No autenticado' });
         }
         const userRoles = req.user.roles || [req.user.role];
         const hasRole = userRoles.some(r => roles.includes(r));
@@ -122,5 +122,72 @@ export const requireRole = (...roles: string[]) => {
             });
         }
         next();
+    };
+};
+
+// Small in-memory TTL cache of the permission names granted to a user (via their roles).
+const PERMISSION_CACHE_TTL_MS = 60_000;
+const permissionCache = new Map<number, { permissions: Set<string>; expiresAt: number }>();
+
+async function getUserPermissions(userId: number): Promise<Set<string>> {
+    const cached = permissionCache.get(userId);
+    if (cached && cached.expiresAt > Date.now()) {
+        return cached.permissions;
+    }
+
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+            role: { select: { permissions: { select: { name: true } } } },
+            userRoles: { select: { role: { select: { permissions: { select: { name: true } } } } } }
+        }
+    });
+
+    const permissions = new Set<string>();
+    user?.role?.permissions?.forEach((p) => permissions.add(p.name));
+    user?.userRoles?.forEach((ur) => ur.role?.permissions?.forEach((p) => permissions.add(p.name)));
+
+    permissionCache.set(userId, { permissions, expiresAt: Date.now() + PERMISSION_CACHE_TTL_MS });
+    return permissions;
+}
+
+/** Clears the cached permissions for a user (call after role/permission changes). */
+export const invalidatePermissionCache = (userId?: number) => {
+    if (typeof userId === 'number') {
+        permissionCache.delete(userId);
+    } else {
+        permissionCache.clear();
+    }
+};
+
+/**
+ * Permission-based guard with role fallback.
+ *
+ * Grants access when the user holds the named permission OR has one of the
+ * provided fallback roles. The role fallback keeps existing deployments working
+ * even when role↔permission links have not been seeded yet, while allowing the
+ * permission model to grant access additively once configured.
+ */
+export const requirePermission = (permission: string, ...fallbackRoles: string[]) => {
+    return async (req: Request, res: Response, next: NextFunction) => {
+        if (!req.user) {
+            return res.status(401).json({ success: false, message: 'No autenticado' });
+        }
+
+        const userRoles = req.user.roles || [req.user.role];
+        if (fallbackRoles.length > 0 && userRoles.some((r) => fallbackRoles.includes(r))) {
+            return next();
+        }
+
+        try {
+            const permissions = await getUserPermissions(req.user.userId);
+            if (permissions.has(permission)) {
+                return next();
+            }
+        } catch {
+            // On lookup failure, deny by permission but rely on fallback roles already checked above.
+        }
+
+        return res.status(403).json({ success: false, message: 'Insufficient permissions' });
     };
 };

@@ -2,13 +2,15 @@ import { Router } from 'express';
 import { AuthController } from '../controllers/auth.controller';
 import { authMiddleware, requireRole } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
+import { ADMINS } from '../constants/roles';
+import { PASSWORD_REGEX } from '../services/auth.service';
 
 const router = Router();
 
 // Register requires authentication + admin role (no public self-registration)
 router.post('/register',
     authMiddleware,
-    requireRole('ADMIN', 'SUPERADMIN'),
+    requireRole(...ADMINS),
     validate({
         body: {
             name: { type: 'string', required: true, min: 1, max: 100 },
@@ -41,11 +43,14 @@ router.post('/change-password',
     validate({
         body: {
             oldPassword: { type: 'string', required: true },
-            newPassword: { type: 'string', required: true, min: 8, max: 128 },
+            newPassword: { type: 'string', required: true, min: 8, max: 128, pattern: PASSWORD_REGEX },
         },
     }),
     AuthController.changePassword
 );
+
+// Logout: revoke the current session and clear the auth cookie
+router.post('/logout', authMiddleware, AuthController.logout);
 
 // Sessions management
 router.get('/sessions', authMiddleware, AuthController.getSessions);

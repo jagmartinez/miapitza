@@ -15,6 +15,7 @@ function toPlatformApiStatus(mapped: string): DeliveryStatusUpdate['status'] {
     }
 }
 import { authMiddleware, requireRole } from '../middlewares/auth';
+import { OPERATIONS, ADMINS } from '../constants/roles';
 import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
 import { getErrorMessage } from '../utils/error';
@@ -48,15 +49,17 @@ router.post('/webhook/:platform', async (req: Request, res: Response, next: Next
         const companyId = Number(Array.isArray(companyIdHeader) ? companyIdHeader[0] : companyIdHeader);
         const branchId = Number(Array.isArray(branchIdHeader) ? branchIdHeader[0] : branchIdHeader);
 
-        // Validate webhook signature
-        if (!DeliveryService.validateWebhookSignature(platform, signature, payload)) {
-            return res.status(401).json({ error: 'Invalid signature' });
-        }
-
+        // Tenant identifiers must be present before we can bind the signature to a tenant.
         if (!Number.isInteger(companyId) || companyId <= 0 || !Number.isInteger(branchId) || branchId <= 0) {
             return res.status(400).json({
                 error: 'Missing or invalid tenant headers. x-company-id and x-branch-id are required.'
             });
+        }
+
+        // Validate the signature against the secret that belongs to THIS company.
+        // The branch is re-verified against the company inside processIncomingOrder.
+        if (!(await DeliveryService.validateWebhookSignature(platform, signature, payload, companyId))) {
+            return res.status(401).json({ error: 'Invalid signature' });
         }
 
         // Map platform name to enum
@@ -106,7 +109,7 @@ router.post('/webhook/:platform', async (req: Request, res: Response, next: Next
  *     security:
  *       - bearerAuth: []
  */
-router.put('/:orderId/status', authMiddleware, validate(s.updateDeliveryStatus), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:orderId/status', authMiddleware, requireRole(...OPERATIONS), validate(s.updateDeliveryStatus), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { status, platform, externalOrderId } = req.body;
 
@@ -136,7 +139,7 @@ router.put('/:orderId/status', authMiddleware, validate(s.updateDeliveryStatus),
  *     security:
  *       - bearerAuth: []
  */
-router.get('/config', authMiddleware, requireRole('ADMIN', 'SUPERADMIN'), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/config', authMiddleware, requireRole(...ADMINS), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const config = await DeliveryService.getConfiguration(companyId);

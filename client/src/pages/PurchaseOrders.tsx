@@ -7,7 +7,10 @@ import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import PurchaseOrderForm from './PurchaseOrderForm';
 import PurchaseOrderImport from '../components/PurchaseOrderImport';
+import Modal from '../components/Modal';
 import { useAuth } from '../hooks/useAuth';
+import { useConfirmDialog } from '../context/ConfirmContext';
+import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
 import { Plus, Eye, Zap, X, ShoppingCart, FileDown, FileText } from 'lucide-react';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
@@ -36,6 +39,8 @@ function errMsg(error: unknown, fallback: string): string {
 
 export default function PurchaseOrders() {
     const { user } = useAuth();
+    const { confirm } = useConfirmDialog();
+    const { error: showError, warning: showWarning } = useAppToast();
     const userRoleNames = getUserRoleNames(user);
     const canManagePurchaseOrders = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'BODEGA'].includes(role));
     const canDeletePurchaseOrders = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
@@ -92,7 +97,7 @@ export default function PurchaseOrders() {
 
     const loadAutoSuggestions = async () => {
         if (!canManagePurchaseOrders) {
-            alert('No tienes permisos para generar órdenes automáticamente');
+            showWarning('No tienes permisos para generar órdenes automáticamente');
             return;
         }
         setLoadingSuggestions(true);
@@ -101,7 +106,7 @@ export default function PurchaseOrders() {
             setSuggestions(response.data.data);
             setShowSuggestionsModal(true);
         } catch (error: unknown) {
-            alert('Error al cargar sugerencias: ' + errMsg(error, 'Error'));
+            showError('Error al cargar sugerencias: ' + errMsg(error, 'Error'));
         } finally {
             setLoadingSuggestions(false);
         }
@@ -171,7 +176,7 @@ export default function PurchaseOrders() {
 
     const handleOpenForm = (id?: number) => {
         if (!canManagePurchaseOrders) {
-            alert('No tienes permisos para gestionar órdenes de compra');
+            showWarning('No tienes permisos para gestionar órdenes de compra');
             return;
         }
         setEditingOrderId(id);
@@ -190,22 +195,22 @@ export default function PurchaseOrders() {
 
     const handleDeleteOrder = async (id: number) => {
         if (!canDeletePurchaseOrders) {
-            alert('No tienes permisos para eliminar órdenes');
+            showWarning('No tienes permisos para eliminar órdenes');
             return;
         }
         const order = orders.find(o => o.id === id);
         if (order?.status === 'RECEIVED') {
-            alert('No se pueden eliminar órdenes con estado RECIBIDA.');
+            showWarning('No se pueden eliminar órdenes con estado RECIBIDA.');
             return;
         }
 
-        if (!window.confirm('¿Está seguro de que desea eliminar esta orden de compra?')) return;
+        if (!(await confirm('¿Está seguro de que desea eliminar esta orden de compra?', { title: 'Confirmar acción' }))) return;
 
         try {
             await purchaseOrdersAPI.delete(id);
             loadOrders();
         } catch (error: unknown) {
-            alert('Error al eliminar orden: ' + errMsg(error, 'Error'));
+            showError('Error al eliminar orden: ' + errMsg(error, 'Error'));
         }
     };
 
@@ -425,94 +430,89 @@ export default function PurchaseOrders() {
                 )}
             </Card>
 
-            {/* Auto Suggestions Modal */}
-            {showSuggestionsModal && suggestions && (
-                <div className="modal-overlay" onClick={() => setShowSuggestionsModal(false)}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '800px' }}>
-                        <div className="modal-header">
-                            <h2>⚡ Sugerencias de Órdenes de Compra Automáticas</h2>
-                            <button className="close-btn" onClick={() => setShowSuggestionsModal(false)}>
-                                <X size={24} />
-                            </button>
-                        </div>
-
-                        <div className="modal-body">
-                            <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
-                                <div className="stat-card">
-                                    <div className="stat-icon">📦</div>
-                                    <div className="stat-content">
-                                        <div className="stat-label">Productos</div>
-                                        <div className="stat-value">{suggestions.summary.totalProducts}</div>
-                                    </div>
-                                </div>
-                                <div className="stat-card warning">
-                                    <div className="stat-icon">🚨</div>
-                                    <div className="stat-content">
-                                        <div className="stat-label">Urgentes</div>
-                                        <div className="stat-value">{suggestions.summary.urgentProducts}</div>
-                                    </div>
-                                </div>
-                                <div className="stat-card">
-                                    <div className="stat-icon">💰</div>
-                                    <div className="stat-content">
-                                        <div className="stat-label">Costo Estimado</div>
-                                        <div className="stat-value">{formatCurrency(Number(suggestions.summary.totalEstimatedCost) || 0, settings)}</div>
-                                    </div>
+            <Modal
+                isOpen={showSuggestionsModal && !!suggestions}
+                onClose={() => setShowSuggestionsModal(false)}
+                title="Sugerencias de Órdenes de Compra Automáticas"
+                size="lg"
+            >
+                {suggestions && (
+                    <>
+                        <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
+                            <div className="stat-card">
+                                <div className="stat-icon">📦</div>
+                                <div className="stat-content">
+                                    <div className="stat-label">Productos</div>
+                                    <div className="stat-value">{suggestions.summary.totalProducts}</div>
                                 </div>
                             </div>
+                            <div className="stat-card warning">
+                                <div className="stat-icon">🚨</div>
+                                <div className="stat-content">
+                                    <div className="stat-label">Urgentes</div>
+                                    <div className="stat-value">{suggestions.summary.urgentProducts}</div>
+                                </div>
+                            </div>
+                            <div className="stat-card">
+                                <div className="stat-icon">💰</div>
+                                <div className="stat-content">
+                                    <div className="stat-label">Costo Estimado</div>
+                                    <div className="stat-value">{formatCurrency(Number(suggestions.summary.totalEstimatedCost) || 0, settings)}</div>
+                                </div>
+                            </div>
+                        </div>
 
-                            <div className="table-container">
-                                <table className="data-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Prioridad</th>
-                                            <th>Producto</th>
-                                            <th>Stock Actual</th>
-                                            <th>Mínimo</th>
-                                            <th>Cantidad Sugerida</th>
-                                            <th>Costo Est.</th>
-                                            <th>Almacén</th>
+                        <div className="table-container">
+                            <table className="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Prioridad</th>
+                                        <th>Producto</th>
+                                        <th>Stock Actual</th>
+                                        <th>Mínimo</th>
+                                        <th>Cantidad Sugerida</th>
+                                        <th>Costo Est.</th>
+                                        <th>Almacén</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {suggestions.suggestions.map((item, idx: number) => (
+                                        <tr key={idx} className={item.priority === 'URGENT' ? 'warning' : ''}>
+                                            <td>
+                                                <span className={`badge ${item.priority === 'URGENT' ? 'error' : 'warning'}`}>
+                                                    {item.priority === 'URGENT' ? '🚨 URGENTE' : '⚠️ Normal'}
+                                                </span>
+                                            </td>
+                                            <td>{item.productName}</td>
+                                            <td>{Number(item.currentStock || 0).toFixed(2)} {item.unit}</td>
+                                            <td>{Number(item.minStock || 0).toFixed(2)} {item.unit}</td>
+                                            <td><strong>{item.suggestedQuantity.toFixed(2)} {item.unit}</strong></td>
+                                            <td>{formatCurrency(Number(item.estimatedCost) || 0, settings)}</td>
+                                            <td>{item.warehouseName}</td>
                                         </tr>
-                                    </thead>
-                                    <tbody>
-                                        {suggestions.suggestions.map((item, idx: number) => (
-                                            <tr key={idx} className={item.priority === 'URGENT' ? 'warning' : ''}>
-                                                <td>
-                                                    <span className={`badge ${item.priority === 'URGENT' ? 'error' : 'warning'}`}>
-                                                        {item.priority === 'URGENT' ? '🚨 URGENTE' : '⚠️ Normal'}
-                                                    </span>
-                                                </td>
-                                                <td>{item.productName}</td>
-                                                <td>{Number(item.currentStock || 0).toFixed(2)} {item.unit}</td>
-                                                <td>{Number(item.minStock || 0).toFixed(2)} {item.unit}</td>
-                                                <td><strong>{item.suggestedQuantity.toFixed(2)} {item.unit}</strong></td>
-                                                <td>{formatCurrency(Number(item.estimatedCost) || 0, settings)}</td>
-                                                <td>{item.warehouseName}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px' }}>
-                                <p><strong>💡 Nota:</strong> Estas sugerencias se basan en productos con stock bajo. Para crear una orden de compra, usa el botón "Nueva Orden" y selecciona los productos manualmente.</p>
-                            </div>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
 
-                        <div className="modal-footer">
-                            <button className="btn btn-secondary" onClick={() => setShowSuggestionsModal(false)}>
+                        <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px' }}>
+                            <p><strong>💡 Nota:</strong> Estas sugerencias se basan en productos con stock bajo. Para crear una orden de compra, usa el botón &quot;Nueva Orden&quot; y selecciona los productos manualmente.</p>
+                        </div>
+
+                        <div className="modal-footer" style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                            <button type="button" className="btn btn-secondary" onClick={() => setShowSuggestionsModal(false)}>
                                 Cerrar
                             </button>
-                            <button className="btn btn-primary" disabled={!canManagePurchaseOrders} onClick={() => {
+                            <button type="button" className="btn btn-primary" disabled={!canManagePurchaseOrders} onClick={() => {
                                 setShowSuggestionsModal(false);
                                 navigate('/purchase-orders/new');
                             }}>
                                 Crear Orden Manual
                             </button>
                         </div>
-                    </div>
-                </div>
-            )}
+                    </>
+                )}
+            </Modal>
             {/* Purchase Order Form Sidebar */}
             <Sidebar
                 isOpen={isSidebarOpen}

@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma';
 import { AuditLogService } from './audit-log.service';
+import { invalidatePermissionCache } from '../middlewares/auth';
 
 export class RoleService {
     static async getAll(companyId: number) {
@@ -72,6 +73,15 @@ export class RoleService {
     }, userId?: number) {
         const { permissionIds, ...roleData } = data;
 
+        // Tenant scoping: ensure the role belongs to this company before mutating it.
+        const existing = await prisma.role.findFirst({
+            where: { id, companyId },
+            select: { id: true }
+        });
+        if (!existing) {
+            throw new Error('Role not found');
+        }
+
         const role = await prisma.role.update({
             where: { id },
             data: {
@@ -84,6 +94,9 @@ export class RoleService {
                 permissions: true
             }
         });
+
+        // Role/permission links changed — drop cached permissions for affected users.
+        invalidatePermissionCache();
 
         if (userId) {
             AuditLogService.log({
@@ -117,8 +130,13 @@ export class RoleService {
             throw new Error('Cannot delete role with assigned users');
         }
 
-        return await prisma.role.delete({
+        const deleted = await prisma.role.delete({
             where: { id }
         });
+
+        // Role removed — drop cached permissions for any affected users.
+        invalidatePermissionCache();
+
+        return deleted;
     }
 }

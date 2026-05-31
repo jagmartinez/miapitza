@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useConfirmDialog } from '../context/ConfirmContext';
+import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import { rolesAPI, permissionsAPI } from '../services/api';
 import Button from '../components/Button';
@@ -23,6 +25,8 @@ interface RoleRow {
 
 export default function RolesPermissions() {
     const { user } = useAuth();
+    const { confirm } = useConfirmDialog();
+    const { error: showError, warning: showWarning } = useAppToast();
     const isSuperAdmin = hasAnyRole(user, ['SUPERADMIN']);
 
     const [roles, setRoles] = useState<RoleRow[]>([]);
@@ -80,16 +84,16 @@ export default function RolesPermissions() {
             loadData();
         } catch (error) {
             console.error('Error saving role:', error);
-            alert('Error al guardar el rol');
+            showError('Error al guardar el rol');
         }
     };
 
     const handleDelete = async (id: number) => {
         if (!isSuperAdmin) {
-            alert('Solo un superadministrador puede eliminar roles.');
+            showWarning('Solo un superadministrador puede eliminar roles.');
             return;
         }
-        if (!confirm('¿Estás seguro de eliminar este rol?')) return;
+        if (!(await confirm('¿Estás seguro de eliminar este rol?', { title: 'Confirmar acción' }))) return;
         try {
             await rolesAPI.delete(id);
             loadData();
@@ -97,7 +101,7 @@ export default function RolesPermissions() {
             const msg = typeof error === 'object' && error !== null && 'response' in error
                 ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
                 : undefined;
-            alert(msg || 'Error al eliminar el rol');
+            showError(msg || 'Error al eliminar el rol');
         }
     };
 

@@ -163,14 +163,16 @@ export class ReservationController {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
 
-            // Convert date string to Date object if provided
-            const data = {
-                ...req.body
-            };
-
-            if (data.date) {
-                data.date = new Date(data.date);
-            }
+            // Whitelist updatable fields. `status` is excluded on purpose; status
+            // changes must go through updateStatus() which validates transitions.
+            const { customerName, phone, email, date, peopleCount, notes } = req.body;
+            const data: Parameters<typeof ReservationService.update>[2] = {};
+            if (customerName !== undefined) data.customerName = customerName;
+            if (phone !== undefined) data.phone = phone;
+            if (email !== undefined) data.email = email;
+            if (notes !== undefined) data.notes = notes;
+            if (peopleCount !== undefined) data.peopleCount = peopleCount;
+            if (date !== undefined) data.date = new Date(date);
 
             const reservation = await ReservationService.update(id, companyId, data);
             res.json({

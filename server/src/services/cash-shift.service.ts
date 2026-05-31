@@ -191,42 +191,55 @@ export class CashShiftService {
     }
 
     static async close(id: number, companyId: number, endAmount: number, notes?: string) {
-        const shift = await prisma.cashShift.findFirst({
-            where: { id, companyId },
-            include: {
-                movements: true
+        // Read movements + update inside a single transaction, with a row lock on the
+        // shift so two concurrent closes can't both compute against the same state.
+        return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            // Lock the shift row (same FOR UPDATE pattern used in reservation.service).
+            await tx.$queryRaw`
+                SELECT id
+                FROM \`CashShift\`
+                WHERE id = ${id}
+                  AND companyId = ${companyId}
+                FOR UPDATE
+            `;
+
+            const shift = await tx.cashShift.findFirst({
+                where: { id, companyId },
+                include: {
+                    movements: true
+                }
+            });
+
+            if (!shift) {
+                throw new Error('Cash shift not found');
             }
-        });
 
-        if (!shift) {
-            throw new Error('Cash shift not found');
-        }
-
-        if (shift.endDate) {
-            throw new Error('Cash shift already closed');
-        }
-
-        // Calculate expected balance
-        const movementTotal = shift.movements.reduce((sum, m) => {
-            return sum + (m.type === 'IN' ? Number(m.amount) : -Number(m.amount));
-        }, 0);
-
-        const expectedBalance = Number(shift.startAmount) + movementTotal;
-        const difference = endAmount - expectedBalance;
-
-        return await prisma.cashShift.update({
-            where: { id },
-            data: {
-                endDate: new Date(),
-                endAmount,
-                difference,
-                notes
-            },
-            include: {
-                cashRegister: true,
-                user: true,
-                movements: true
+            if (shift.endDate) {
+                throw new Error('Cash shift already closed');
             }
+
+            // Calculate expected balance
+            const movementTotal = shift.movements.reduce((sum, m) => {
+                return sum + (m.type === 'IN' ? Number(m.amount) : -Number(m.amount));
+            }, 0);
+
+            const expectedBalance = Number(shift.startAmount) + movementTotal;
+            const difference = endAmount - expectedBalance;
+
+            return await tx.cashShift.update({
+                where: { id },
+                data: {
+                    endDate: new Date(),
+                    endAmount,
+                    difference,
+                    notes
+                },
+                include: {
+                    cashRegister: true,
+                    user: true,
+                    movements: true
+                }
+            });
         });
     }
 

@@ -1,6 +1,6 @@
 import prisma from '../utils/prisma';
 import { OrderStatus } from '@prisma/client';
-import { UnitConversionService } from './unit-conversion.service';
+import { InventoryConsumptionService } from './inventory-consumption.service';
 
 export class PaymentService {
     private static deriveOrderStatus(order: { items?: Array<{ sentAt?: Date | null; status?: string }> }): OrderStatus {
@@ -44,9 +44,13 @@ export class PaymentService {
             throw new Error('Amount must be a positive number');
         }
 
-        // Validate payment method before entering transaction
+        // Validate payment method before entering transaction (tenant-scoped:
+        // company-owned methods or system-wide methods with companyId = null)
         const paymentMethod = await prisma.paymentMethod.findFirst({
-            where: { id: data.paymentMethodId }
+            where: {
+                id: data.paymentMethodId,
+                OR: [{ companyId }, { companyId: null }]
+            }
         });
 
         if (!paymentMethod || !paymentMethod.active) {
@@ -149,15 +153,12 @@ export class PaymentService {
                     }
                 }
 
-                // Release table if assigned
-                if (order.tableId) {
-                    await tx.table.update({
-                        where: { id: order.tableId },
-                        data: { status: 'AVAILABLE' }
-                    });
-                }
+                // NOTE: table release intentionally happens on DELIVERED
+                // (OrderService.complete) or CANCELLED, not on PAID.
 
-                // Auto-deduct inventory: find default warehouse for the order's branch
+                // Auto-deduct inventory through the shared, idempotent consumption
+                // service. Skips automatically if the order was already consumed
+                // (e.g. OrderService.complete already ran).
                 const branchId = order.branchId;
                 if (branchId) {
                     const warehouse = await tx.warehouse.findFirst({
@@ -165,73 +166,12 @@ export class PaymentService {
                     });
 
                     if (warehouse) {
-                        for (const item of order.items) {
-                            for (const recipe of item.menuItem.recipes) {
-                                const recipeUnit = recipe.unit || recipe.product.unit;
-                                let recipeQtyBase = Number(recipe.quantity);
-                                let originalQty: number | null = null;
-                                let originalUnit: string | null = null;
-                                let conversionFactor: number | null = null;
-
-                                try {
-                                    const conv = await UnitConversionService.convert(
-                                        recipe.productId,
-                                        companyId,
-                                        Number(recipe.quantity),
-                                        recipeUnit,
-                                        tx
-                                    );
-                                    recipeQtyBase = conv.baseQuantity;
-                                    originalQty = conv.originalQuantity;
-                                    originalUnit = conv.originalUnit;
-                                    conversionFactor = conv.conversionFactor;
-                                } catch {
-                                    // Fallback to legacy quantity when conversion is not configured
-                                }
-
-                                const requiredQty = recipeQtyBase * item.quantity;
-                                const stock = await tx.stock.findUnique({
-                                    where: { warehouseId_productId: { warehouseId: warehouse.id, productId: recipe.productId } }
-                                });
-
-                                if (!stock) {
-                                    throw new Error(`Insufficient stock for ${recipe.product.name}. Required: ${requiredQty}, Available: 0`);
-                                }
-
-                                const currentQty = Number(stock.quantity);
-                                if (currentQty < requiredQty) {
-                                    throw new Error(`Insufficient stock for ${recipe.product.name}. Required: ${requiredQty}, Available: ${currentQty}`);
-                                }
-
-                                const newQty = currentQty - requiredQty;
-                                const unitCost = Number(recipe.product.currentAverageCost || recipe.product.cost || 0);
-
-                                await tx.stock.update({
-                                    where: { warehouseId_productId: { warehouseId: warehouse.id, productId: recipe.productId } },
-                                    data: { quantity: newQty }
-                                });
-
-                                await tx.inventoryMovement.create({
-                                    data: {
-                                        companyId,
-                                        warehouseId: warehouse.id,
-                                        productId: recipe.productId,
-                                        userId,
-                                        type: 'OUT',
-                                        quantity: requiredQty,
-                                        originalQuantity: originalQty ? originalQty * item.quantity : null,
-                                        originalUnit,
-                                        conversionFactor,
-                                        unitCost,
-                                        totalCost: unitCost * requiredQty,
-                                        balanceQty: newQty,
-                                        balanceCost: newQty * unitCost,
-                                        reason: 'Consumo por orden',
-                                        reference: `ORD-${order.id}`
-                                    }
-                                });
-                            }
-                        }
+                        await InventoryConsumptionService.consumeForOrder(tx, {
+                            order,
+                            warehouseId: warehouse.id,
+                            userId,
+                            companyId
+                        });
                     }
                 }
             }
@@ -240,7 +180,7 @@ export class PaymentService {
         });
     }
 
-    static async delete(id: number, companyId: number) {
+    static async delete(id: number, companyId: number, userId: number) {
         const payment = await prisma.payment.findFirst({
             where: { id, order: { companyId } },
             include: {
@@ -284,6 +224,29 @@ export class PaymentService {
                         where: { id: payment.orderId },
                         data: { status: newStatus }
                     });
+
+                    // Reverse any inventory that was consumed for this order so
+                    // stock is restored and the idempotency marker is cleared.
+                    await InventoryConsumptionService.reverseForOrder(tx, {
+                        orderId: payment.orderId,
+                        userId,
+                        companyId
+                    });
+
+                    // Roll back the promotion usage that was counted when the
+                    // order became PAID.
+                    if (payment.order.discountCode) {
+                        const promo = await tx.promotion.findFirst({
+                            where: { companyId, code: payment.order.discountCode.toUpperCase() },
+                            select: { id: true, usageCount: true }
+                        });
+                        if (promo && promo.usageCount > 0) {
+                            await tx.promotion.update({
+                                where: { id: promo.id },
+                                data: { usageCount: { decrement: 1 } }
+                            });
+                        }
+                    }
                 }
             }
 

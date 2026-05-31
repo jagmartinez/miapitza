@@ -12,6 +12,17 @@ import { ThemeProvider } from './context/ThemeContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { getUserRoleNames } from './utils/authz';
+import {
+    ADMIN,
+    PLATFORM_ADMIN,
+    OPS,
+    CASHIER,
+    WAITER_TABLE,
+    KITCHEN_ROLES,
+    HOST_ROLES,
+    WAREHOUSE,
+    CHEF_MGMT,
+} from './constants/roles';
 
 /** Route guard: redirects to /dashboard if none of the user's roles are in the allowed list */
 function RoleGuard({ roles, children }: { roles: string[]; children: React.ReactNode }) {
@@ -22,16 +33,6 @@ function RoleGuard({ roles, children }: { roles: string[]; children: React.React
     if (!hasAccess) return <Navigate to="/dashboard" replace />;
     return <>{children}</>;
 }
-
-// Role shorthands
-const ADMIN = ['SUPERADMIN', 'ADMIN'];
-const OPS = ['SUPERADMIN', 'ADMIN', 'CAJERO', 'MESERO'];
-const CASHIER = ['SUPERADMIN', 'ADMIN', 'CAJERO'];
-const WAITER_TABLE = ['SUPERADMIN', 'ADMIN', 'MESERO', 'HOST'];
-const KITCHEN_ROLES = ['SUPERADMIN', 'ADMIN', 'MESERO', 'COCINA', 'CHEF'];
-const HOST_ROLES = ['SUPERADMIN', 'ADMIN', 'HOST', 'CAJERO'];
-const WAREHOUSE = ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'];
-const CHEF_MGMT = ['SUPERADMIN', 'ADMIN', 'CHEF'];
 
 // Lazy-loaded pages (code-split per route)
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -68,6 +69,7 @@ const Reports = lazy(() => import('./pages/Reports'));
 const PedidosYaIntegration = lazy(() => import('./pages/PedidosYaIntegration'));
 const Profile = lazy(() => import('./pages/Profile'));
 const ChangePassword = lazy(() => import('./pages/ChangePassword'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 function App() {
     return (
@@ -113,8 +115,8 @@ function App() {
                                 <Route path="/kardex" element={<RoleGuard roles={WAREHOUSE}><Kardex /></RoleGuard>} />
                                 <Route path="/suppliers" element={<RoleGuard roles={WAREHOUSE}><Suppliers /></RoleGuard>} />
                                 <Route path="/purchase-orders" element={<RoleGuard roles={WAREHOUSE}><PurchaseOrders /></RoleGuard>} />
-                                <Route path="/purchase-orders/new" element={<RoleGuard roles={['SUPERADMIN', 'ADMIN', 'BODEGA']}><PurchaseOrderForm /></RoleGuard>} />
-                                <Route path="/purchase-orders/:id" element={<RoleGuard roles={['SUPERADMIN', 'ADMIN', 'BODEGA']}><PurchaseOrderForm /></RoleGuard>} />
+                                <Route path="/purchase-orders/new" element={<RoleGuard roles={WAREHOUSE}><PurchaseOrderForm /></RoleGuard>} />
+                                <Route path="/purchase-orders/:id" element={<RoleGuard roles={WAREHOUSE}><PurchaseOrderForm /></RoleGuard>} />
                                 <Route path="/warehouses" element={<RoleGuard roles={WAREHOUSE}><WarehousesPage /></RoleGuard>} />
                                 <Route path="/cost-report" element={<RoleGuard roles={ADMIN}><CostReport /></RoleGuard>} />
                                 <Route path="/reporteria" element={<RoleGuard roles={ADMIN}><Reports /></RoleGuard>} />
@@ -128,11 +130,11 @@ function App() {
                                 <Route path="/integraciones/pedidosya" element={<RoleGuard roles={ADMIN}><PedidosYaIntegration /></RoleGuard>} />
                                 <Route path="/settings" element={<RoleGuard roles={ADMIN}><Settings /></RoleGuard>} />
                                 <Route path="/roles-permissions" element={<RoleGuard roles={ADMIN}><RolesPermissions /></RoleGuard>} />
-                                <Route path="/companies" element={<RoleGuard roles={['SUPERADMIN']}><Companies /></RoleGuard>} />
+                                <Route path="/companies" element={<RoleGuard roles={PLATFORM_ADMIN}><Companies /></RoleGuard>} />
                             </Route>
 
                             <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                            <Route path="*" element={<NotFound />} />
                         </Routes>
                       </Suspense>
                     </BrowserRouter>

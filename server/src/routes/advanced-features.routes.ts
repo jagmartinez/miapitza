@@ -4,8 +4,9 @@ import { AutoPurchaseOrderService } from '../services/auto-purchase-order.servic
 import { DynamicPricingService } from '../services/dynamic-pricing.service';
 import { RecipeScalingService } from '../services/recipe-scaling.service';
 import { TicketPrintingService } from '../services/ticket-printing.service';
-import { BankReconciliationService } from '../services/bank-reconciliation.service';
+import { BankReconciliationService, NotImplementedError } from '../services/bank-reconciliation.service';
 import { authMiddleware, requireRole } from '../middlewares/auth';
+import { ADMINS, CASHIERS, INVENTORY } from '../constants/roles';
 import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
 import { getErrorMessage } from '../utils/error';
@@ -16,7 +17,7 @@ router.use(authMiddleware);
 
 // ==================== WASTE REPORTS ====================
 
-router.post('/waste', validate(s.recordWaste), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/waste', requireRole(...INVENTORY), validate(s.recordWaste), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const userId = req.user!.userId;
@@ -32,7 +33,7 @@ router.post('/waste', validate(s.recordWaste), async (req: Request, res: Respons
     }
 });
 
-router.get('/waste/report', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/waste/report', requireRole(...INVENTORY), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const { startDate, endDate, warehouseId, productId } = req.query;
@@ -183,7 +184,7 @@ router.get('/tickets/:orderId/formatted', async (req: Request, res: Response, ne
 
 // ==================== BANK RECONCILIATION ====================
 
-router.get('/reconciliation', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/reconciliation', requireRole(...CASHIERS), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const { startDate, endDate } = req.query;
@@ -199,7 +200,7 @@ router.get('/reconciliation', async (req: Request, res: Response, next: NextFunc
     }
 });
 
-router.get('/reconciliation/pending', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/reconciliation/pending', requireRole(...CASHIERS), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const pending = await BankReconciliationService.getPendingReconciliations(companyId);
@@ -209,27 +210,30 @@ router.get('/reconciliation/pending', async (req: Request, res: Response, next: 
     }
 });
 
-router.post('/reconciliation/deposit', requireRole('ADMIN', 'SUPERADMIN'), validate(s.recordDeposit), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/reconciliation/deposit', requireRole(...ADMINS), validate(s.recordDeposit), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const deposit = await BankReconciliationService.recordDeposit(companyId, req.body);
         res.json({ success: true, data: deposit });
     } catch (error: unknown) {
-        next({ statusCode: 500, message: getErrorMessage(error) });
+        // No BankDeposit persistence exists yet — report this honestly as 501.
+        const statusCode = error instanceof NotImplementedError ? 501 : 500;
+        next({ statusCode, message: getErrorMessage(error) });
     }
 });
 
-router.post('/reconciliation/mark-reconciled', requireRole('ADMIN', 'SUPERADMIN'), validate(s.markReconciled), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/reconciliation/mark-reconciled', requireRole(...ADMINS), validate(s.markReconciled), async (req: Request, res: Response, next: NextFunction) => {
     try {
+        const companyId = req.user!.companyId;
         const { shiftIds, depositReference } = req.body;
-        const result = await BankReconciliationService.markAsReconciled(shiftIds, depositReference);
+        const result = await BankReconciliationService.markAsReconciled(companyId, shiftIds, depositReference);
         res.json({ success: true, data: result });
     } catch (error: unknown) {
         next({ statusCode: 500, message: getErrorMessage(error) });
     }
 });
 
-router.get('/reconciliation/report/:month/:year', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/reconciliation/report/:month/:year', requireRole(...CASHIERS), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const month = parseInt(req.params.month);

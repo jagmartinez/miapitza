@@ -6,7 +6,7 @@ export class PedidosYaController {
         try {
             const companyId = req.user!.companyId;
             const branchId = req.query.branchId ? Number(req.query.branchId) : undefined;
-            const config = await PedidosYaService.getConfig(companyId, branchId);
+            const config = await PedidosYaService.getMaskedConfig(companyId, branchId);
             res.json({ success: true, data: config });
         } catch (error: unknown) {
             res.status(500).json({ success: false, message: (error as Error).message });
@@ -100,7 +100,7 @@ export class PedidosYaController {
     // ── Webhook Endpoint (public, signature-validated) ──
     static async webhook(req: Request, res: Response) {
         try {
-            const signature = req.headers['x-pedidosya-signature'] as string;
+            const signature = req.headers['x-pedidosya-signature'] as string | undefined;
             const companyId = Number(req.params.companyId);
 
             if (!companyId || isNaN(companyId)) {
@@ -114,8 +114,10 @@ export class PedidosYaController {
                 return;
             }
 
-            const rawBody = JSON.stringify(req.body);
-            if (signature && !PedidosYaService.validateWebhookSignature(rawBody, signature, config.webhookSecret)) {
+            // Signature is mandatory: reject if the header is missing or invalid.
+            const secret = PedidosYaService.decryptSecret(config.webhookSecret);
+            const rawBody = (req as Request & { rawBody?: string }).rawBody ?? JSON.stringify(req.body);
+            if (!signature || !secret || !PedidosYaService.validateWebhookSignature(rawBody, signature, secret)) {
                 res.status(401).json({ error: 'Invalid signature' });
                 return;
             }

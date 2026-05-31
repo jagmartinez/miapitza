@@ -71,7 +71,8 @@ export class PaymentController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
-            await PaymentService.delete(id, companyId);
+            const userId = req.user!.userId;
+            await PaymentService.delete(id, companyId, userId);
             res.json({
                 success: true,
                 message: 'Pago eliminado exitosamente'

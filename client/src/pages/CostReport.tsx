@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { reportsAPI, branchesAPI, categoriesAPI, suppliersAPI } from '../services/api';
+import { reportsAPI, branchesAPI, categoriesAPI, suppliersAPI, settingsAPI } from '../services/api';
 import Select from '../components/Select';
 import Button from '../components/Button';
+import Pagination from '../components/Pagination';
+import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import {
     DollarSign, TrendingUp, ShoppingCart, BarChart3,
     Search, RefreshCw, Calendar, Tag, Building2, Truck, Package
@@ -34,10 +36,14 @@ interface ProductCost {
     currentAvgCost: number;
 }
 
+const PAGE_SIZE = 20;
+
 export default function CostReport() {
     const [summary, setSummary] = useState<CostSummary | null>(null);
     const [products, setProducts] = useState<ProductCost[]>([]);
     const [loading, setLoading] = useState(false);
+    const [settings, setSettings] = useState<CurrencySettings>({});
+    const [page, setPage] = useState(1);
     const [branches, setBranches] = useState<Branch[]>([]);
     const [categories, setCategories] = useState<CategoryOption[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -54,11 +60,13 @@ export default function CostReport() {
         Promise.all([
             branchesAPI.getAll(),
             categoriesAPI.getAll(),
-            suppliersAPI.getAll()
-        ]).then(([bRes, cRes, sRes]) => {
+            suppliersAPI.getAll(),
+            settingsAPI.getAll().catch(() => ({ data: { data: {} } })),
+        ]).then(([bRes, cRes, sRes, settingsRes]) => {
             setBranches(bRes.data.data || []);
             setCategories(cRes.data.data || []);
             setSuppliers(sRes.data.data || []);
+            setSettings(settingsRes.data.data || {});
         });
     }, []);
 
@@ -75,6 +83,7 @@ export default function CostReport() {
             const res = await reportsAPI.getCostReport(params);
             setSummary(res.data.data.summary);
             setProducts(res.data.data.byProduct || []);
+            setPage(1);
         } catch (err) {
             console.error('Error loading cost report:', err);
         } finally {
@@ -86,9 +95,12 @@ export default function CostReport() {
         void loadReport();
     }, [loadReport]);
 
-    const fmt = (n: number) => new Intl.NumberFormat('es-NI', {
-        style: 'currency', currency: 'NIO', minimumFractionDigits: 2
-    }).format(n);
+    useEffect(() => {
+        setPage(1);
+    }, [filters.dateFrom, filters.dateTo, filters.branchId, filters.categoryId, filters.supplierId]);
+
+    const totalPages = Math.max(1, Math.ceil(products.length / PAGE_SIZE));
+    const pagedProducts = products.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
     const marginClass = summary
         ? summary.grossMargin >= 50 ? 'kpi-success' : summary.grossMargin >= 30 ? 'kpi-warning' : 'kpi-danger'
@@ -180,21 +192,21 @@ export default function CostReport() {
                         <div className="kpi-label">
                             <ShoppingCart size={14} /> Costo Total Compras
                         </div>
-                        <div className="kpi-value">{fmt(summary.totalPurchaseCost)}</div>
+                        <div className="kpi-value">{formatCurrency(summary.totalPurchaseCost, settings)}</div>
                         <div className="kpi-detail">{summary.purchaseOrderCount} órdenes de compra</div>
                     </div>
                     <div className="kpi-card kpi-warning">
                         <div className="kpi-label">
                             <DollarSign size={14} /> COGS Estimado
                         </div>
-                        <div className="kpi-value">{fmt(summary.estimatedCOGS)}</div>
+                        <div className="kpi-value">{formatCurrency(summary.estimatedCOGS, settings)}</div>
                         <div className="kpi-detail">Basado en recetas × costo promedio</div>
                     </div>
                     <div className="kpi-card kpi-success">
                         <div className="kpi-label">
                             <TrendingUp size={14} /> Ingresos
                         </div>
-                        <div className="kpi-value">{fmt(summary.totalRevenue)}</div>
+                        <div className="kpi-value">{formatCurrency(summary.totalRevenue, settings)}</div>
                     </div>
                     <div className={`kpi-card ${marginClass}`}>
                         <div className="kpi-label">
@@ -227,7 +239,7 @@ export default function CostReport() {
                             </tr>
                         </thead>
                         <tbody>
-                            {products.map(p => (
+                            {pagedProducts.map(p => (
                                 <tr key={p.productId}>
                                     <td>
                                         <div className="product-cell-name">{p.productName}</div>
@@ -235,9 +247,9 @@ export default function CostReport() {
                                     </td>
                                     <td className="text-secondary">{p.categoryName || '-'}</td>
                                     <td className="text-right">{p.totalQuantity.toFixed(2)} {p.unit}</td>
-                                    <td className="text-right font-semibold">{fmt(p.totalCost)}</td>
-                                    <td className="text-right">{fmt(p.avgUnitCost)}</td>
-                                    <td className="text-right">{fmt(p.currentAvgCost)}</td>
+                                    <td className="text-right font-semibold">{formatCurrency(p.totalCost, settings)}</td>
+                                    <td className="text-right">{formatCurrency(p.avgUnitCost, settings)}</td>
+                                    <td className="text-right">{formatCurrency(p.currentAvgCost, settings)}</td>
                                 </tr>
                             ))}
                             {products.length === 0 && !loading && (
@@ -251,6 +263,13 @@ export default function CostReport() {
                         </tbody>
                     </table>
                 </div>
+                <Pagination
+                    page={page}
+                    totalPages={totalPages}
+                    totalItems={products.length}
+                    pageSize={PAGE_SIZE}
+                    onPageChange={setPage}
+                />
             </div>
         </div>
     );

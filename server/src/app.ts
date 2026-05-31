@@ -101,13 +101,22 @@ app.use('/uploads', authMiddlewareForUploads, express.static(path.resolve(__dirn
 // Swagger docs — protected by basic auth in production
 const swaggerAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (process.env.NODE_ENV !== 'production') return next();
+
+    const docsUser = process.env.DOCS_USER || 'admin';
+    const docsPassword = process.env.DOCS_PASSWORD;
+
+    // Fail closed: never serve docs in production without an explicitly configured password.
+    if (!docsPassword) {
+        return res.status(503).send('API docs are disabled: DOCS_PASSWORD is not configured');
+    }
+
     const auth = req.headers.authorization;
     if (!auth || !auth.startsWith('Basic ')) {
         res.set('WWW-Authenticate', 'Basic realm="API Docs"');
         return res.status(401).send('Authentication required');
     }
     const [user, pass] = Buffer.from(auth.slice(6), 'base64').toString().split(':');
-    if (user === (process.env.DOCS_USER || 'admin') && pass === process.env.DOCS_PASSWORD) {
+    if (user === docsUser && pass === docsPassword) {
         return next();
     }
     res.set('WWW-Authenticate', 'Basic realm="API Docs"');
@@ -125,15 +134,15 @@ app.param('id', (req, res, next, value) => {
 });
 
 // Rate limiting for auth endpoints (prevent brute force).
-// Disabled in non-production to avoid getting locked out during local dev / e2e runs.
+// Always active; non-production uses a much higher ceiling so local dev / e2e
+// runs are not locked out while still exercising the limiter behaviour.
 const isProd = process.env.NODE_ENV === 'production';
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: isProd ? 20 : 1000,
     message: { success: false, message: 'Too many attempts, please try again later' },
     standardHeaders: true,
-    legacyHeaders: false,
-    skip: () => !isProd
+    legacyHeaders: false
 });
 
 // Routes

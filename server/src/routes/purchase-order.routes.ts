@@ -54,8 +54,8 @@ router.delete('/items/:itemId', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), Pu
 router.post('/:id/receive', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.idParam), PurchaseOrderController.receive);
 
 // Bulk import
-router.get('/import/template', PurchaseOrderImportController.getTemplate);
-router.post('/import/validate', upload.single('file'), PurchaseOrderImportController.validate);
+router.get('/import/template', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), PurchaseOrderImportController.getTemplate);
+router.post('/import/validate', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), upload.single('file'), PurchaseOrderImportController.validate);
 router.post('/import/confirm', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), PurchaseOrderImportController.confirm);
 
 export default router;

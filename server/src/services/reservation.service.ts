@@ -210,9 +210,24 @@ export class ReservationService {
         peopleCount?: number;
         notes?: string;
     }) {
+        // Always load the reservation scoped to the tenant before mutating it.
+        const current = await prisma.reservation.findFirst({ where: { id, companyId } });
+        if (!current) {
+            throw new Error('Reservation not found');
+        }
+
+        // Whitelist updatable fields. `status` is intentionally excluded so it can
+        // only change through updateStatus(), which enforces VALID_STATUS_TRANSITIONS.
+        const updateData: Prisma.ReservationUpdateInput = {};
+        if (data.customerName !== undefined) updateData.customerName = data.customerName;
+        if (data.phone !== undefined) updateData.phone = data.phone;
+        if (data.email !== undefined) updateData.email = data.email;
+        if (data.notes !== undefined) updateData.notes = data.notes;
+        if (data.date !== undefined) updateData.date = data.date;
+        if (data.peopleCount !== undefined) updateData.peopleCount = data.peopleCount;
+
         // If updating date or peopleCount, validate it's in the future and check availability
         if (data.date || data.peopleCount) {
-            const current = await this.getById(id, companyId);
             const newDate = data.date ? new Date(data.date) : current.date;
             const newPeopleCount = data.peopleCount || current.peopleCount;
 
@@ -228,7 +243,7 @@ export class ReservationService {
 
         return await prisma.reservation.update({
             where: { id },
-            data,
+            data: updateData,
             include: {
                 branch: {
                     select: {

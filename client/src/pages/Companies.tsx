@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { companiesAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
+import LoadingSpinner from '../components/LoadingSpinner';
 import { Plus, Building2, Edit2, CheckCircle, XCircle } from 'lucide-react';
+import { useAppToast } from '../context/ToastContext';
 import './Companies.css';
 
 interface Company {
@@ -19,6 +21,7 @@ interface Company {
 }
 
 export default function Companies() {
+    const { error: showError } = useAppToast();
     const [companies, setCompanies] = useState<Company[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<boolean | null>(null);
@@ -29,6 +32,7 @@ export default function Companies() {
         ruc: '',
         active: true
     });
+    const [saving, setSaving] = useState(false);
 
     useEffect(() => {
         loadCompanies();
@@ -47,6 +51,7 @@ export default function Companies() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setSaving(true);
         try {
             if (editingCompany) {
                 await companiesAPI.update(editingCompany.id, formData);
@@ -57,7 +62,9 @@ export default function Companies() {
             closeModal();
         } catch (error) {
             console.error('Error saving company:', error);
-            alert('Error al guardar la empresa');
+            showError('Error al guardar la empresa');
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -99,7 +106,7 @@ export default function Companies() {
         : companies;
 
 
-    if (loading) return <div className="loading">Cargando empresas...</div>;
+    if (loading) return <LoadingSpinner text="Cargando empresas..." />;
 
     return (
         <div className="companies-page">
@@ -223,31 +230,34 @@ export default function Companies() {
                 onClose={closeModal}
                 title={editingCompany ? 'Editar Empresa' : 'Nueva Empresa'}
             >
-                <form onSubmit={handleSubmit} className="company-form">
-                    <div className="form-group">
-                        <label>Nombre de la Empresa</label>
+                <form onSubmit={handleSubmit} className="modal-form-new">
+                    <div className="modal-input-group">
+                        <label className="modal-input-label" htmlFor="company-name">Nombre de la Empresa</label>
                         <input
+                            id="company-name"
                             type="text"
-                            className="form-control"
+                            className="modal-standard-input"
                             value={formData.name}
                             onChange={e => setFormData({ ...formData, name: e.target.value })}
                             placeholder="Ej: Restaurante Mi Casa"
                             required
+                            autoFocus
                         />
                     </div>
-                    <div className="form-group">
-                        <label>RUC (Registro Único de Contribuyente)</label>
+                    <div className="modal-input-group">
+                        <label className="modal-input-label" htmlFor="company-ruc">RUC (Registro Único de Contribuyente)</label>
                         <input
+                            id="company-ruc"
                             type="text"
-                            className="form-control"
+                            className="modal-standard-input"
                             value={formData.ruc}
                             onChange={e => setFormData({ ...formData, ruc: e.target.value })}
                             placeholder="Ej: J0310000123456"
                         />
                     </div>
                     {editingCompany && (
-                        <div className="form-group">
-                            <label className="checkbox-label">
+                        <div className="modal-input-group">
+                            <label className="modal-input-label checkbox-label">
                                 <input
                                     type="checkbox"
                                     checked={formData.active}
@@ -257,12 +267,12 @@ export default function Companies() {
                             </label>
                         </div>
                     )}
-                    <div className="form-actions">
-                        <Button variant="secondary" onClick={closeModal} type="button" fullWidth>
+                    <div className="modal-footer">
+                        <Button variant="ghost" onClick={closeModal} type="button">
                             Cancelar
                         </Button>
-                        <Button variant="primary" type="submit" fullWidth>
-                            {editingCompany ? 'Guardar Cambios' : 'Crear Empresa'}
+                        <Button variant="primary" type="submit" disabled={saving}>
+                            {saving ? 'Guardando...' : editingCompany ? 'Guardar Cambios' : 'Crear Empresa'}
                         </Button>
                     </div>
                 </form>

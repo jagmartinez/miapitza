@@ -9,7 +9,7 @@ function generateToken(): string {
     return crypto.randomBytes(32).toString('hex');
 }
 
-const CSRF_EXEMPT_PATHS = ['/auth/login', '/auth/register', '/pedidosya/webhook'];
+const CSRF_EXEMPT_PATHS = ['/auth/login', '/auth/register', '/pedidosya/webhook', '/delivery/webhook'];
 
 function hasBearerAuth(req: Request): boolean {
     const auth = req.headers.authorization;

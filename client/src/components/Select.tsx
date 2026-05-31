@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useId } from 'react';
 import Select, { CSSObjectWithLabel, GroupBase, Props as SelectProps } from 'react-select';
 import './Select.css';
 
@@ -26,8 +26,11 @@ export default function CustomSelect<
     menuPosition,
     menuPortalTarget,
     styles,
+    inputId,
     ...props
 }: CustomSelectProps<Option, IsMulti, Group>) {
+    const generatedId = useId();
+    const resolvedInputId = inputId ?? generatedId;
     const combinedClassName = `select-group ${variant} ${className}`;
     const isModal = variant === 'modal';
     const resolvedMenuPlacement = isModal ? (menuPlacement ?? 'auto') : menuPlacement;
@@ -48,8 +51,9 @@ export default function CustomSelect<
 
     return (
         <div className={combinedClassName}>
-            {label && <label className="select-label">{label}</label>}
+            {label && <label className="select-label" htmlFor={resolvedInputId}>{label}</label>}
             <Select
+                inputId={resolvedInputId}
                 classNamePrefix={classNamePrefix}
                 {...props}
                 menuPlacement={resolvedMenuPlacement}

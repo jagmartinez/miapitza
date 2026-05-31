@@ -715,12 +715,13 @@
 .item-action-btn {
     border: none;
     border-radius: 6px;
-    padding: 4px 8px;
+    padding: 10px 16px;
+    min-height: 44px;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     gap: 3px;
-    font-size: 0.75rem;
+    font-size: 0.875rem;
     font-weight: 600;
     color: #fff;
     transition: filter var(--transition-fast);

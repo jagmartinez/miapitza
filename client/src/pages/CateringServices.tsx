@@ -5,8 +5,11 @@ import {
 } from 'lucide-react';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
+import LoadingSpinner from '../components/LoadingSpinner';
 import { cateringAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
+import { useConfirmDialog } from '../context/ConfirmContext';
+import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
 import './CateringMod.css';
 
@@ -20,6 +23,8 @@ interface CateringServiceRow {
 
 export default function CateringServices() {
     const { user } = useAuth();
+    const { confirm } = useConfirmDialog();
+    const { warning: showWarning } = useAppToast();
     const userRoleNames = getUserRoleNames(user);
     const canManageCatering = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [services, setServices] = useState<CateringServiceRow[]>([]);
@@ -53,7 +58,7 @@ export default function CateringServices() {
 
     const handleOpenSidebar = (service?: CateringServiceRow) => {
         if (!canManageCatering) {
-            alert('No tienes permisos para gestionar servicios de catering');
+            showWarning('No tienes permisos para gestionar servicios de catering');
             return;
         }
         if (service) {
@@ -78,7 +83,7 @@ export default function CateringServices() {
 
     const handleSave = async () => {
         if (!canManageCatering) {
-            alert('No tienes permisos para guardar servicios');
+            showWarning('No tienes permisos para guardar servicios');
             return;
         }
         try {
@@ -103,10 +108,10 @@ export default function CateringServices() {
 
     const handleDelete = async (id: number) => {
         if (!canManageCatering) {
-            alert('No tienes permisos para eliminar servicios');
+            showWarning('No tienes permisos para eliminar servicios');
             return;
         }
-        if (!window.confirm('¿Está seguro de eliminar este servicio del catálogo?')) return;
+        if (!(await confirm('¿Está seguro de eliminar este servicio del catálogo?', { title: 'Confirmar acción' }))) return;
         try {
             await cateringAPI.deleteService(id);
             loadServices();
@@ -149,7 +154,7 @@ export default function CateringServices() {
             </div>
 
             {loading ? (
-                <div className="loading-state">Cargando catálogo...</div>
+                <LoadingSpinner text="Cargando catálogo..." />
             ) : filteredServices.length === 0 ? (
                 <div className="empty-state">
                     <ClipboardList size={64} opacity={0.2} />

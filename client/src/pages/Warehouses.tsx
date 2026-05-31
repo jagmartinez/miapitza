@@ -2,10 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { warehousesAPI, inventoryMovementsAPI, branchesAPI, productsAPI, unitsAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
+import PageHeader from '../components/PageHeader';
 import Select from '../components/Select';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
+import { useConfirmDialog } from '../context/ConfirmContext';
 import { hasAnyRole } from '../utils/authz';
 import {
     Warehouse as WarehouseIcon, Plus, ArrowRightLeft, Package, MapPin,
@@ -35,6 +37,7 @@ interface StockItem {
 
 export default function Warehouses() {
     const { user } = useAuth();
+    const { confirm } = useConfirmDialog();
     const { toasts, removeToast, success: showSuccess, error: showError } = useToast();
 
     /** Backend: POST/PUT /warehouses — SUPERADMIN | ADMIN */
@@ -66,6 +69,7 @@ export default function Warehouses() {
         fromWarehouseId: '', toWarehouseId: '', productId: '', quantity: '', reference: '', unit: ''
     });
     const [transferUnits, setTransferUnits] = useState<ProductAllowedUnit[]>([]);
+    const [saving, setSaving] = useState(false);
 
     // Transfer history
     const [showHistory, setShowHistory] = useState(false);
@@ -93,6 +97,7 @@ export default function Warehouses() {
     const handleCreateUpdate = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!canMutateWarehouse) return;
+        setSaving(true);
         try {
             const payload = {
                 name: formData.name,
@@ -111,12 +116,14 @@ export default function Warehouses() {
             loadData();
         } catch (err: unknown) {
             showError(axiosMessage(err, 'Error al guardar'));
+        } finally {
+            setSaving(false);
         }
     };
 
     const handleDelete = async (id: number) => {
         if (!canDeleteWarehouse) return;
-        if (!confirm('¿Eliminar esta bodega?')) return;
+        if (!(await confirm('¿Eliminar esta bodega?', { title: 'Confirmar acción' }))) return;
         try {
             await warehousesAPI.delete(id);
             showSuccess('Bodega eliminada');
@@ -161,6 +168,7 @@ export default function Warehouses() {
     const handleTransfer = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!canTransferStock) return;
+        setSaving(true);
         try {
             await inventoryMovementsAPI.transfer({
                 fromWarehouseId: parseInt(transferData.fromWarehouseId),
@@ -177,6 +185,8 @@ export default function Warehouses() {
             loadData();
         } catch (err: unknown) {
             showError(axiosMessage(err, 'Error en traslado'));
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -232,26 +242,27 @@ export default function Warehouses() {
         <div className="inventory-page">
             <ToastContainer toasts={toasts} onRemove={removeToast} />
 
-            <div className="inventory-header-new">
-                <div className="header-title-section">
-                    <h1><WarehouseIcon size={32} /> Gestión de Bodegas</h1>
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                    <Button variant="secondary" onClick={viewTransferHistory}>
-                        <ArrowRightLeft size={18} /> Historial Traslados
-                    </Button>
-                    {canTransferStock && (
-                        <Button variant="secondary" onClick={() => setShowTransfer(true)}>
-                            <ArrowRightLeft size={18} /> Nuevo Traslado
+            <PageHeader
+                title="Gestión de Bodegas"
+                icon={WarehouseIcon}
+                actions={
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        <Button variant="secondary" onClick={viewTransferHistory}>
+                            <ArrowRightLeft size={18} /> Historial Traslados
                         </Button>
-                    )}
-                    {canMutateWarehouse && (
-                        <Button onClick={openCreate}>
-                            <Plus size={18} /> Nueva Bodega
-                        </Button>
-                    )}
-                </div>
-            </div>
+                        {canTransferStock && (
+                            <Button variant="secondary" onClick={() => setShowTransfer(true)}>
+                                <ArrowRightLeft size={18} /> Nuevo Traslado
+                            </Button>
+                        )}
+                        {canMutateWarehouse && (
+                            <Button onClick={openCreate}>
+                                <Plus size={18} /> Nueva Bodega
+                            </Button>
+                        )}
+                    </div>
+                }
+            />
 
             <div className="inventory-filters-row" style={{ marginBottom: '1rem' }}>
                 <div className="inventory-status-filters">
@@ -329,14 +340,14 @@ export default function Warehouses() {
                     <form onSubmit={handleCreateUpdate} className="modal-form-new">
                         <div className="modal-tab-content">
                             <div className="modal-input-group">
-                                <label className="modal-input-label">Nombre</label>
-                                <input type="text" className="modal-standard-input" value={formData.name}
+                                <label className="modal-input-label" htmlFor="warehouse-name">Nombre</label>
+                                <input id="warehouse-name" type="text" className="modal-standard-input" value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Ej: Bodega Central" required autoFocus />
                             </div>
                             <div className="modal-form-row">
                                 <div className="modal-input-group">
-                                    <label className="modal-input-label">Código</label>
-                                    <input type="text" className="modal-standard-input" value={formData.code}
+                                    <label className="modal-input-label" htmlFor="warehouse-code">Código</label>
+                                    <input id="warehouse-code" type="text" className="modal-standard-input" value={formData.code}
                                         onChange={e => setFormData({ ...formData, code: e.target.value.toUpperCase() })} placeholder="Ej: CENTRAL-MAIN" required />
                                 </div>
                                 <div className="modal-input-group">
@@ -361,7 +372,7 @@ export default function Warehouses() {
                         </div>
                         <div className="modal-footer">
                             <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancelar</Button>
-                            <Button type="submit">{editingWarehouse ? 'Guardar' : 'Crear'}</Button>
+                            <Button type="submit" disabled={saving}>{saving ? 'Guardando...' : editingWarehouse ? 'Guardar' : 'Crear'}</Button>
                         </div>
                     </form>
                 </div>
@@ -429,8 +440,8 @@ export default function Warehouses() {
                             </div>
                             <div className="modal-form-row">
                                 <div className="modal-input-group" style={{ flex: 2 }}>
-                                    <label className="modal-input-label">Cantidad</label>
-                                    <input type="number" step="0.001" className="modal-standard-input" value={transferData.quantity}
+                                    <label className="modal-input-label" htmlFor="transfer-quantity">Cantidad</label>
+                                    <input id="transfer-quantity" type="number" step="0.001" className="modal-standard-input" value={transferData.quantity}
                                         onChange={e => setTransferData({ ...transferData, quantity: e.target.value })} required min="0.001" />
                                 </div>
                                 {transferUnits.length > 0 && (
@@ -449,14 +460,14 @@ export default function Warehouses() {
                                 )}
                             </div>
                             <div className="modal-input-group">
-                                <label className="modal-input-label">Referencia (opcional)</label>
-                                <input type="text" className="modal-standard-input" value={transferData.reference}
+                                <label className="modal-input-label" htmlFor="transfer-reference">Referencia (opcional)</label>
+                                <input id="transfer-reference" type="text" className="modal-standard-input" value={transferData.reference}
                                     onChange={e => setTransferData({ ...transferData, reference: e.target.value })} placeholder="Ej: TRF-001" />
                             </div>
                         </div>
                         <div className="modal-footer">
                             <Button type="button" variant="ghost" onClick={() => setShowTransfer(false)}>Cancelar</Button>
-                            <Button type="submit">Realizar Traslado</Button>
+                            <Button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Realizar Traslado'}</Button>
                         </div>
                     </form>
                 </div>

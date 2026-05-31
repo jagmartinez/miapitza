@@ -2,8 +2,35 @@ import prisma from '../utils/prisma';
 import crypto from 'crypto';
 import type { Prisma } from '@prisma/client';
 import { AuditLogService } from './audit-log.service';
+import { encrypt, decrypt, isEncrypted } from '../utils/encryption';
+
+const SECRET_FIELDS = ['clientSecret', 'webhookSecret', 'accessToken', 'refreshToken'] as const;
 
 export class PedidosYaService {
+    // ── Secret handling (encrypt at rest, never expose in client responses) ──
+    /** Decrypts a stored secret, tolerating legacy plaintext values. */
+    static decryptSecret(value: string | null | undefined): string | null {
+        if (!value) return null;
+        try {
+            return isEncrypted(value) ? decrypt(value) : value;
+        } catch {
+            return value;
+        }
+    }
+
+    /** Encrypts a secret for storage; passes through empty values. */
+    private static encryptSecret(value: string | null | undefined): string | null | undefined {
+        if (value === null || value === undefined || value === '') return value;
+        return isEncrypted(value) ? value : encrypt(value);
+    }
+
+    /** Masks a secret for client responses, exposing only the last 4 chars. */
+    private static maskSecret(value: string | null | undefined): string | null {
+        if (!value) return null;
+        const plain = this.decryptSecret(value) || '';
+        return `••••${plain.slice(-4)}`;
+    }
+
     // ── Configuration ──
     static async getConfig(companyId: number, branchId?: number) {
         return prisma.pedidosYaConfig.findFirst({
@@ -13,6 +40,23 @@ export class PedidosYaService {
                 warehouse: { select: { id: true, name: true } },
             },
         });
+    }
+
+    /** Config for client responses: secrets are masked/redacted, never returned in full. */
+    static async getMaskedConfig(companyId: number, branchId?: number) {
+        const config = await this.getConfig(companyId, branchId);
+        if (!config) return null;
+        return {
+            ...config,
+            clientSecret: this.maskSecret(config.clientSecret),
+            webhookSecret: this.maskSecret(config.webhookSecret),
+            accessToken: this.maskSecret(config.accessToken),
+            refreshToken: this.maskSecret(config.refreshToken),
+            clientSecretSet: !!config.clientSecret,
+            webhookSecretSet: !!config.webhookSecret,
+            accessTokenSet: !!config.accessToken,
+            refreshTokenSet: !!config.refreshToken,
+        };
     }
 
     static async upsertConfig(companyId: number, data: {
@@ -29,6 +73,14 @@ export class PedidosYaService {
     }, userId?: number) {
         const branchId = data.branchId || null;
 
+        // Encrypt integration secrets at rest before persisting.
+        const payload: Record<string, unknown> = { ...data };
+        for (const field of SECRET_FIELDS) {
+            if (field in payload) {
+                payload[field] = this.encryptSecret(payload[field] as string | null | undefined);
+            }
+        }
+
         const existing = await prisma.pedidosYaConfig.findFirst({
             where: { companyId, branchId },
         });
@@ -37,11 +89,11 @@ export class PedidosYaService {
         if (existing) {
             config = await prisma.pedidosYaConfig.update({
                 where: { id: existing.id },
-                data,
+                data: payload as Prisma.PedidosYaConfigUpdateInput,
             });
         } else {
             config = await prisma.pedidosYaConfig.create({
-                data: { ...data, companyId, branchId },
+                data: { ...payload, companyId, branchId } as Prisma.PedidosYaConfigUncheckedCreateInput,
             });
         }
 
@@ -76,7 +128,7 @@ export class PedidosYaService {
             body: JSON.stringify({
                 grant_type: 'client_credentials',
                 client_id: config.clientId,
-                client_secret: config.clientSecret,
+                client_secret: this.decryptSecret(config.clientSecret),
             }),
         });
 
@@ -90,8 +142,8 @@ export class PedidosYaService {
         await prisma.pedidosYaConfig.update({
             where: { id: config.id },
             data: {
-                accessToken: tokenData.access_token,
-                refreshToken: tokenData.refresh_token || config.refreshToken,
+                accessToken: this.encryptSecret(tokenData.access_token),
+                refreshToken: tokenData.refresh_token ? this.encryptSecret(tokenData.refresh_token) : config.refreshToken,
                 tokenExpiresAt: expiresAt,
             },
         });
@@ -107,7 +159,7 @@ export class PedidosYaService {
         if (!config) throw new Error('PedidosYa no configurado');
 
         if (config.accessToken && config.tokenExpiresAt && config.tokenExpiresAt > new Date()) {
-            return config.accessToken;
+            return this.decryptSecret(config.accessToken) || '';
         }
 
         return this.refreshAccessToken(companyId);

@@ -6,6 +6,8 @@ export class StockService {
         warehouseId?: number;
         branchId?: number;
         productId?: number;
+        page?: number;
+        limit?: number;
     }) {
         const where: Prisma.StockWhereInput = { companyId };
 
@@ -22,6 +24,10 @@ export class StockService {
         if (filters?.productId) {
             where.productId = filters.productId;
         }
+
+        const page = filters?.page || 1;
+        const limit = Math.min(filters?.limit || 100, 500);
+        const skip = (page - 1) * limit;
 
         return await prisma.stock.findMany({
             where,
@@ -48,7 +54,9 @@ export class StockService {
             },
             orderBy: {
                 quantity: 'desc'
-            }
+            },
+            skip,
+            take: limit
         });
     }
 

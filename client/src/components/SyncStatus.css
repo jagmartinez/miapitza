@@ -168,3 +168,9 @@
 .animate-spin {
     animation: spin 1s linear infinite;
 }
+
+@media (max-width: 768px) {
+  .sync-status-panel {
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  }
+}

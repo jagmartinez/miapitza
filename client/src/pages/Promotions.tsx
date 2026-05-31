@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { promotionsAPI } from '../services/api';
+import { useConfirmDialog } from '../context/ConfirmContext';
+import { useAppToast } from '../context/ToastContext';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
-import { Plus, Edit, Percent, DollarSign, Ticket, XCircle } from 'lucide-react';
+import { Plus, Edit, Percent, DollarSign, Ticket, XCircle, Calendar, FileText } from 'lucide-react';
 import './Promotions.css';
 
 interface PromotionRow {
@@ -47,6 +49,8 @@ function toApiPayload(payload: PromotionPayload): Record<string, unknown> {
 }
 
 export default function Promotions() {
+    const { confirm } = useConfirmDialog();
+    const { error: showError } = useAppToast();
     const [promotions, setPromotions] = useState<PromotionRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -57,6 +61,8 @@ export default function Promotions() {
         value: '', minOrderAmount: '', maxDiscount: '',
         validFrom: '', validTo: '', usageLimit: '',
     });
+    const [saving, setSaving] = useState(false);
+    const [activeTab, setActiveTab] = useState<'identidad' | 'reglas' | 'vigencia'>('identidad');
 
     useEffect(() => { loadData(); }, []);
 
@@ -89,6 +95,7 @@ export default function Promotions() {
                 maxDiscount: '', validFrom: '', validTo: '', usageLimit: '',
             });
         }
+        setActiveTab('identidad');
         setIsSidebarOpen(true);
     };
 
@@ -106,6 +113,7 @@ export default function Promotions() {
             validTo: formData.validTo ? new Date(formData.validTo) : null,
             usageLimit: formData.usageLimit ? parseInt(formData.usageLimit) : null,
         };
+        setSaving(true);
         try {
             if (editing) {
                 await promotionsAPI.update(editing.id, toApiPayload(payload));
@@ -115,17 +123,19 @@ export default function Promotions() {
             setIsSidebarOpen(false);
             loadData();
         } catch (err: unknown) {
-            alert(axiosMsg(err, 'Error al guardar'));
+            showError(axiosMsg(err, 'Error al guardar'));
+        } finally {
+            setSaving(false);
         }
     };
 
     const handleDeactivate = async (id: number) => {
-        if (!confirm('¿Desactivar esta promoción?')) return;
+        if (!(await confirm('¿Desactivar esta promoción?', { title: 'Confirmar acción' }))) return;
         try {
             await promotionsAPI.deactivate(id);
             loadData();
         } catch (err: unknown) {
-            alert(axiosMsg(err, 'Error'));
+            showError(axiosMsg(err, 'Error'));
         }
     };
 
@@ -230,85 +240,141 @@ export default function Promotions() {
                 </div>
             )}
 
-            <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} title={editing ? 'Editar Promoción' : 'Nueva Promoción'}>
-                <form onSubmit={handleSubmit} className="promo-form">
-                    <div className="promo-form-row">
-                        <div className="promo-form-group">
-                            <label>Código</label>
-                            <input className="promo-input" value={formData.code} style={{ textTransform: 'uppercase', fontFamily: 'monospace' }}
-                                onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="PROMO10" required />
-                        </div>
-                        <div className="promo-form-group">
-                            <label>Nombre</label>
-                            <input className="promo-input" value={formData.name}
-                                onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Happy Hour" required />
-                        </div>
+            <Sidebar isOpen={isSidebarOpen} onClose={() => { setIsSidebarOpen(false); setActiveTab('identidad'); }} title={editing ? 'Editar Promoción' : 'Nueva Promoción'}>
+                <div className="premium-modal-content">
+                    <div className="modal-tabs">
+                        <button
+                            type="button"
+                            className={`modal-tab ${activeTab === 'identidad' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('identidad')}
+                        >
+                            <FileText size={18} />
+                            <span>Identidad</span>
+                        </button>
+                        <button
+                            type="button"
+                            className={`modal-tab ${activeTab === 'reglas' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('reglas')}
+                        >
+                            <Percent size={18} />
+                            <span>Reglas</span>
+                        </button>
+                        <button
+                            type="button"
+                            className={`modal-tab ${activeTab === 'vigencia' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('vigencia')}
+                        >
+                            <Calendar size={18} />
+                            <span>Vigencia</span>
+                        </button>
                     </div>
 
-                    <div className="promo-form-group">
-                        <label>Descripción</label>
-                        <input className="promo-input" value={formData.description}
-                            onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Opcional..." />
-                    </div>
+                    <form onSubmit={handleSubmit} className="modal-form-new">
+                        <div className="modal-tab-content">
+                            {activeTab === 'identidad' && (
+                                <div className="modal-section animate-slide-in">
+                                    <div className="modal-section-header">
+                                        <FileText size={16} />
+                                        <h3>Identidad de la Promoción</h3>
+                                    </div>
+                                    <div className="modal-form-row">
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label" htmlFor="promo-code">Código</label>
+                                            <input id="promo-code" className="modal-standard-input" value={formData.code} style={{ textTransform: 'uppercase', fontFamily: 'monospace' }}
+                                                onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="PROMO10" required autoFocus />
+                                        </div>
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label" htmlFor="promo-name">Nombre</label>
+                                            <input id="promo-name" className="modal-standard-input" value={formData.name}
+                                                onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Happy Hour" required />
+                                        </div>
+                                    </div>
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label" htmlFor="promo-description">Descripción</label>
+                                        <input id="promo-description" className="modal-standard-input" value={formData.description}
+                                            onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Opcional..." />
+                                    </div>
+                                </div>
+                            )}
 
-                    <div className="promo-form-group">
-                        <label>Tipo de Descuento</label>
-                        <div className="promo-type-toggle">
-                            <button type="button" className={`promo-type-btn ${formData.type === 'PERCENTAGE' ? 'active' : ''}`}
-                                onClick={() => setFormData({ ...formData, type: 'PERCENTAGE' })}>
-                                <Percent size={14} /> Porcentaje
-                            </button>
-                            <button type="button" className={`promo-type-btn ${formData.type === 'FIXED_AMOUNT' ? 'active' : ''}`}
-                                onClick={() => setFormData({ ...formData, type: 'FIXED_AMOUNT' })}>
-                                <DollarSign size={14} /> Monto Fijo
-                            </button>
-                        </div>
-                    </div>
+                            {activeTab === 'reglas' && (
+                                <div className="modal-section animate-slide-in">
+                                    <div className="modal-section-header">
+                                        <Percent size={16} />
+                                        <h3>Reglas de Descuento</h3>
+                                    </div>
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label" id="promo-discount-type-label">Tipo de Descuento</label>
+                                        <div className="promo-type-toggle" role="group" aria-labelledby="promo-discount-type-label">
+                                            <button type="button" className={`promo-type-btn ${formData.type === 'PERCENTAGE' ? 'active' : ''}`}
+                                                onClick={() => setFormData({ ...formData, type: 'PERCENTAGE' })}>
+                                                <Percent size={14} /> Porcentaje
+                                            </button>
+                                            <button type="button" className={`promo-type-btn ${formData.type === 'FIXED_AMOUNT' ? 'active' : ''}`}
+                                                onClick={() => setFormData({ ...formData, type: 'FIXED_AMOUNT' })}>
+                                                <DollarSign size={14} /> Monto Fijo
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="modal-form-row">
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label" htmlFor="promo-value">{formData.type === 'PERCENTAGE' ? 'Porcentaje (%)' : 'Monto ($)'}</label>
+                                            <input id="promo-value" className="modal-standard-input" type="number" step="0.01" min="0" value={formData.value}
+                                                onChange={e => setFormData({ ...formData, value: e.target.value })} required />
+                                        </div>
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label" htmlFor="promo-min-order">Mínimo de Orden ($)</label>
+                                            <input id="promo-min-order" className="modal-standard-input" type="number" step="0.01" min="0" value={formData.minOrderAmount}
+                                                onChange={e => setFormData({ ...formData, minOrderAmount: e.target.value })} placeholder="Opcional" />
+                                        </div>
+                                    </div>
+                                    <div className="modal-form-row">
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label" htmlFor="promo-max-discount">Desc. Máximo ($)</label>
+                                            <input id="promo-max-discount" className="modal-standard-input" type="number" step="0.01" min="0" value={formData.maxDiscount}
+                                                onChange={e => setFormData({ ...formData, maxDiscount: e.target.value })} placeholder="Opcional" />
+                                        </div>
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label" htmlFor="promo-usage-limit">Límite de Usos</label>
+                                            <input id="promo-usage-limit" className="modal-standard-input" type="number" min="0" value={formData.usageLimit}
+                                                onChange={e => setFormData({ ...formData, usageLimit: e.target.value })} placeholder="Ilimitado" />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
-                    <div className="promo-form-row">
-                        <div className="promo-form-group">
-                            <label>{formData.type === 'PERCENTAGE' ? 'Porcentaje (%)' : 'Monto ($)'}</label>
-                            <input className="promo-input" type="number" step="0.01" min="0" value={formData.value}
-                                onChange={e => setFormData({ ...formData, value: e.target.value })} required />
+                            {activeTab === 'vigencia' && (
+                                <div className="modal-section animate-slide-in">
+                                    <div className="modal-section-header">
+                                        <Calendar size={16} />
+                                        <h3>Período de Vigencia</h3>
+                                    </div>
+                                    <div className="modal-form-row">
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label" htmlFor="promo-valid-from">Vigente Desde</label>
+                                            <input id="promo-valid-from" className="modal-standard-input" type="date" value={formData.validFrom}
+                                                onChange={e => setFormData({ ...formData, validFrom: e.target.value })} />
+                                        </div>
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label" htmlFor="promo-valid-to">Vigente Hasta</label>
+                                            <input id="promo-valid-to" className="modal-standard-input" type="date" value={formData.validTo}
+                                                onChange={e => setFormData({ ...formData, validTo: e.target.value })} />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
-                        <div className="promo-form-group">
-                            <label>Mínimo de Orden ($)</label>
-                            <input className="promo-input" type="number" step="0.01" min="0" value={formData.minOrderAmount}
-                                onChange={e => setFormData({ ...formData, minOrderAmount: e.target.value })} placeholder="Opcional" />
-                        </div>
-                    </div>
 
-                    <div className="promo-form-row">
-                        <div className="promo-form-group">
-                            <label>Desc. Máximo ($)</label>
-                            <input className="promo-input" type="number" step="0.01" min="0" value={formData.maxDiscount}
-                                onChange={e => setFormData({ ...formData, maxDiscount: e.target.value })} placeholder="Opcional" />
+                        <div className="modal-footer">
+                            <Button type="button" variant="ghost" onClick={() => { setIsSidebarOpen(false); setActiveTab('identidad'); }}>
+                                Cancelar
+                            </Button>
+                            <Button type="submit" variant="primary" disabled={saving}>
+                                {saving ? 'Guardando...' : editing ? 'Actualizar' : 'Crear Promoción'}
+                            </Button>
                         </div>
-                        <div className="promo-form-group">
-                            <label>Límite de Usos</label>
-                            <input className="promo-input" type="number" min="0" value={formData.usageLimit}
-                                onChange={e => setFormData({ ...formData, usageLimit: e.target.value })} placeholder="Ilimitado" />
-                        </div>
-                    </div>
-
-                    <div className="promo-form-row">
-                        <div className="promo-form-group">
-                            <label>Vigente Desde</label>
-                            <input className="promo-input" type="date" value={formData.validFrom}
-                                onChange={e => setFormData({ ...formData, validFrom: e.target.value })} />
-                        </div>
-                        <div className="promo-form-group">
-                            <label>Vigente Hasta</label>
-                            <input className="promo-input" type="date" value={formData.validTo}
-                                onChange={e => setFormData({ ...formData, validTo: e.target.value })} />
-                        </div>
-                    </div>
-
-                    <div className="promo-form-actions">
-                        <Button type="button" variant="secondary" onClick={() => setIsSidebarOpen(false)} fullWidth>Cancelar</Button>
-                        <Button type="submit" fullWidth>{editing ? 'Actualizar' : 'Crear Promoción'}</Button>
-                    </div>
-                </form>
+                    </form>
+                </div>
             </Sidebar>
         </div>
     );

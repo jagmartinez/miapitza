@@ -1,9 +1,16 @@
 import { useEffect, useState, Fragment, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { reportsAPI, reservationsAPI } from '../services/api';
+import { reportsAPI, reservationsAPI, productsAPI } from '../services/api';
+import { hasAnyRole } from '../utils/authz';
+import { getOrderStatusLabel } from '../utils/orderStatus';
+import type { Order } from '../types';
+import { ADMIN } from '../constants/roles';
+import { formatCurrencyIntl } from '../utils/currency';
 import Select from 'react-select';
 import Modal from '../components/Modal';
+import EmptyState from '../components/EmptyState';
+import { LoadingOverlay } from '../components/LoadingSpinner';
 import {
     DollarSign,
     Users,
@@ -225,13 +232,12 @@ interface CategoryOption {
 export default function Dashboard() {
     const navigate = useNavigate();
     const { user } = useAuth();
-    const isAdmin = ['SUPERADMIN', 'ADMIN'].includes(user?.role?.name || '');
+    const isAdmin = hasAnyRole(user, ADMIN);
     const [stats, setStats] = useState({
         todaySales: 0,
         activeOrders: 0,
         pendingPurchaseOrders: 0
     });
-    const [, setSalesData] = useState<IncomeDataPoint[]>([]);
     const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
     const [incomeData, setIncomeData] = useState<IncomeDataPoint[]>([]);
     const [scatterTipsData, setScatterTipsData] = useState<ScatterDataPoint[]>([]);
@@ -243,7 +249,7 @@ export default function Dashboard() {
     const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
     const [myStats, setMyStats] = useState<MyStats | null>(null);
     const [loading, setLoading] = useState(true);
-    const [period] = useState<'week' | 'month'>('week');
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [currentTime, setCurrentTime] = useState(new Date());
 
     // Individual period states for BI charts
@@ -289,9 +295,16 @@ export default function Dashboard() {
     const [selectedOrder, setSelectedOrder] = useState<RecentOrder | null>(null);
     const [selectedInvoice, setSelectedInvoice] = useState<RecentInvoice | null>(null);
     const [selectedReservation, setSelectedReservation] = useState<ReservationSummary | null>(null);
+    const [stockAlerts, setStockAlerts] = useState<{ name: string }[]>([]);
+
+    const formatOrderStatus = (status: string) => {
+        const normalized = status.toUpperCase().replace(/-/g, '_') as Order['status'];
+        return getOrderStatusLabel(normalized);
+    };
 
     const loadData = useCallback(async () => {
         try {
+            setLoadError(null);
             const timeout = (ms: number) => new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('Request timeout')), ms)
             );
@@ -303,6 +316,7 @@ export default function Dashboard() {
                     Promise.race([reservationsAPI.getUpcoming(7), timeout(5000)]),
                 ]);
                 if (myStatsRes.status === 'fulfilled') setMyStats((myStatsRes.value as ApiResponse).data.data as MyStats);
+                else setLoadError('No se pudieron cargar las estadísticas del panel.');
                 if (reservationsRes.status === 'fulfilled') {
                     const reservations = ((reservationsRes.value as ApiResponse).data.data as UpcomingReservation[]) || [];
                     const mapped: ReservationSummary[] = reservations.map((reservation) => ({
@@ -322,9 +336,8 @@ export default function Dashboard() {
             }
 
             // Full BI dashboard for admin roles
-            const [statsRes, chartRes, topProductsRes, ordersRes, invoicesRes, reservationsRes, incomeRes, heatmapRes, radarRes, trendsRes] = await Promise.allSettled([
+            const [statsRes, topProductsRes, ordersRes, invoicesRes, reservationsRes, incomeRes, heatmapRes, radarRes, trendsRes, lowStockRes] = await Promise.allSettled([
                 Promise.race([reportsAPI.getDashboardStats(), timeout(5000)]),
-                Promise.race([reportsAPI.getSalesChart(period), timeout(5000)]),
                 Promise.race([reportsAPI.getTopProducts(undefined, 40), timeout(5000)]),
                 Promise.race([reportsAPI.getRecentOrders(undefined, 50), timeout(5000)]),
                 Promise.race([reportsAPI.getRecentInvoices(undefined, 50, true), timeout(5000)]),
@@ -332,16 +345,15 @@ export default function Dashboard() {
                 Promise.race([reportsAPI.getIncomeBreakdown(incomePeriod), timeout(5000)]),
                 Promise.race([reportsAPI.getOccupancyHeatmap(), timeout(5000)]),
                 Promise.race([reportsAPI.getShiftEvaluation(), timeout(5000)]),
-                Promise.race([reportsAPI.getServiceTrends(), timeout(5000)])
+                Promise.race([reportsAPI.getServiceTrends(), timeout(5000)]),
+                Promise.race([productsAPI.getLowStock(), timeout(5000)]),
             ]);
 
             if (statsRes.status === 'fulfilled') {
                 const data = (statsRes.value as ApiResponse).data.data as DashboardStats;
                 setStats(data);
-            }
-
-            if (chartRes.status === 'fulfilled') {
-                setSalesData((chartRes.value as ApiResponse).data.data as IncomeDataPoint[]);
+            } else {
+                setLoadError('No se pudieron cargar las estadísticas del panel.');
             }
 
             if (topProductsRes.status === 'fulfilled') {
@@ -378,12 +390,19 @@ export default function Dashboard() {
                 setScatterSpendData(data.spend);
             }
 
+            if (lowStockRes.status === 'fulfilled') {
+                const items = (lowStockRes.value as ApiResponse).data.data as { name: string }[];
+                setStockAlerts(items || []);
+            } else {
+                setStockAlerts([]);
+            }
+
         } catch {
-            // Failed to load dashboard data
+            setLoadError('No se pudieron cargar los datos del panel.');
         } finally {
             setLoading(false);
         }
-    }, [incomePeriod, isAdmin, period]);
+    }, [incomePeriod, isAdmin]);
 
     useEffect(() => {
         void loadData();
@@ -394,19 +413,36 @@ export default function Dashboard() {
         return () => clearInterval(timer);
     }, []);
 
-    const formatCurrency = (value: number) => {
-        return new Intl.NumberFormat('es-MX', {
-            style: 'currency',
-            currency: 'MXN'
-        }).format(value);
-    };
+    // Currency/locale fall back to app-wide defaults (NIO / es-NI). Wiring these
+    // to company settings requires a shared settings source (see report).
+    const formatCurrency = (value: number) => formatCurrencyIntl(value);
 
     const occupancyRate = (stats as DashboardStats).occupancyRate || 0;
     const averageTicket = (stats as DashboardStats).averageTicket || 0;
     const customersCount = (stats as DashboardStats).clientsCount || 0;
 
     if (loading) {
-        return <div className="dashboard-loading">Cargando...</div>;
+        return <LoadingOverlay text="Cargando panel..." />;
+    }
+
+    const retryLoad = () => {
+        setLoading(true);
+        void loadData();
+    };
+
+    if (loadError && !isAdmin && !myStats) {
+        return (
+            <div className="dashboard">
+                <div className="dashboard-load-error">
+                    <AlertTriangle size={48} />
+                    <h2>Error al cargar el panel</h2>
+                    <p>{loadError}</p>
+                    <button type="button" className="dashboard-retry-btn" onClick={retryLoad}>
+                        Reintentar
+                    </button>
+                </div>
+            </div>
+        );
     }
 
     // ═══════════════════════════════════════════════════
@@ -462,7 +498,12 @@ export default function Dashboard() {
                         <div className="section-header"><h3>Cola de Cocina</h3><ChefHat size={16} className="text-warning" /></div>
                         <div className="orders-list">
                             {(!myStats.kitchenQueue || myStats.kitchenQueue.length === 0) ? (
-                                <div className="widget-empty">Sin órdenes en cola</div>
+                                <div className="dashboard-widget-empty">
+                                    <EmptyState
+                                        icon={<ChefHat size={32} />}
+                                        title="Sin órdenes en cola"
+                                    />
+                                </div>
                             ) : myStats.kitchenQueue.map((ord: KitchenQueueItem) => (
                                 <div key={ord.id} className="ord-row">
                                     <div className="ord-meta">
@@ -751,11 +792,16 @@ export default function Dashboard() {
                         <div className="section-header"><h3>Mis Órdenes Activas</h3><ClipboardList size={16} className="text-primary" /></div>
                         <div className="orders-list">
                             {(!myStats.myOrders || myStats.myOrders.length === 0) ? (
-                                <div className="widget-empty">Sin órdenes activas</div>
+                                <div className="dashboard-widget-empty">
+                                    <EmptyState
+                                        icon={<ClipboardList size={32} />}
+                                        title="Sin órdenes activas"
+                                    />
+                                </div>
                             ) : myStats.myOrders.map((ord: RecentOrder) => (
                                 <div key={ord.id} className="ord-row clickable" onClick={() => setSelectedOrder(ord)}>
                                     <div className="ord-meta"><span className="ord-id">{ord.id}</span><span className="ord-table">{ord.table}</span></div>
-                                    <div className="ord-right"><span className="ord-total">${ord.total}</span><span className={`ord-status status-${ord.status}`}>{ord.status}</span></div>
+                                    <div className="ord-right"><span className="ord-total">{formatCurrency(ord.total)}</span><span className={`ord-status status-${ord.status}`}>{ord.status}</span></div>
                                 </div>
                             ))}
                         </div>
@@ -779,7 +825,12 @@ export default function Dashboard() {
                         <div className="section-header"><h3>Reservas Próximas</h3><CalendarCheck size={16} className="text-primary" /></div>
                         <div className="reservations-list">
                             {todaysReservations.length === 0 ? (
-                                <div className="widget-empty">Sin reservas próximas</div>
+                                <div className="dashboard-widget-empty">
+                                    <EmptyState
+                                        icon={<CalendarCheck size={32} />}
+                                        title="Sin reservas próximas"
+                                    />
+                                </div>
                             ) : todaysReservations.slice(0, 5).map(res => (
                                 <div key={res.id} className="res-row">
                                     <div className="res-time">{res.day || res.time}</div>
@@ -794,7 +845,7 @@ export default function Dashboard() {
                 <Modal isOpen={!!selectedOrder} onClose={() => setSelectedOrder(null)} title="Detalle de Orden" size="sm" variant="sidebar">
                     {selectedOrder && (
                         <div className="detail-modal-content">
-                            <div className="detail-header-section"><h3 className="detail-main-title">{selectedOrder.id}</h3><span className="detail-main-value">${selectedOrder.total}</span></div>
+                            <div className="detail-header-section"><h3 className="detail-main-title">{selectedOrder.id}</h3><span className="detail-main-value">{formatCurrency(selectedOrder.total)}</span></div>
                             <div className="detail-row"><span className="detail-label">Mesa</span><span className="detail-value">{selectedOrder.table}</span></div>
                             <div className="detail-row"><span className="detail-label">Estado</span><span className={`detail-badge status-${selectedOrder.status}`}>{selectedOrder.status}</span></div>
                         </div>
@@ -822,8 +873,8 @@ export default function Dashboard() {
                         <button className="cmd-btn" onClick={() => navigate('/pos')} title="Punto de Venta">
                             <CreditCard size={18} /> <span className="cmd-label">POS</span>
                         </button>
-                        <button className="cmd-btn" onClick={() => navigate('/orders')} title="Cocina">
-                            <Utensils size={18} /> <span className="cmd-label">Cocina</span>
+                        <button className="cmd-btn" onClick={() => navigate('/kitchen')} title="Cocina">
+                            <ChefHat size={18} /> <span className="cmd-label">Cocina</span>
                         </button>
                         <button className="cmd-btn" onClick={() => navigate('/inventory')} title="Inventario">
                             <Package size={18} /> <span className="cmd-label">Stock</span>
@@ -834,12 +885,14 @@ export default function Dashboard() {
                     </div>
 
                     <div className="header-meta-group">
-                        <div className="compact-alert-ticker" onClick={() => navigate('/inventory')}>
-                            <AlertCircle size={16} className="text-danger" />
-                            <span className="ticker-label text-danger">CRÍTICO:</span>
-                            <span className="ticker-message">Tomate, Cebolla (0 stock)</span>
-                            <ChevronRight size={14} />
-                        </div>
+                        {stockAlerts.length > 0 && (
+                            <div className="compact-alert-ticker" onClick={() => navigate('/inventory')}>
+                                <AlertCircle size={16} className="text-danger" />
+                                <span className="ticker-label text-danger">CRÍTICO:</span>
+                                <span className="ticker-message">{stockAlerts.map(a => a.name).join(', ')} (stock bajo)</span>
+                                <ChevronRight size={14} />
+                            </div>
+                        )}
 
                         <div className="header-time">
                             <Clock size={16} className="text-primary" />
@@ -852,13 +905,22 @@ export default function Dashboard() {
                 </div>
             </header>
 
+            {loadError && (
+                <div className="dashboard-error-banner" role="alert">
+                    <AlertTriangle size={20} />
+                    <span>{loadError}</span>
+                    <button type="button" className="dashboard-retry-btn" onClick={retryLoad}>
+                        Reintentar
+                    </button>
+                </div>
+            )}
+
             <div className="bento-grid final-layout">
 
                 {/* --- ROW 1: KPI CARDS --- */}
                 <div className="bento-item stat-card-modern">
                     <div className="stat-header">
                         <div className="stat-icon-bg bg-primary"><DollarSign size={20} className="text-primary" /></div>
-                        <span className="stat-percentage positive">+15%</span>
                     </div>
                     <div className="stat-body">
                         <h3>Ventas</h3>
@@ -868,7 +930,6 @@ export default function Dashboard() {
                 <div className="bento-item stat-card-modern">
                     <div className="stat-header">
                         <div className="stat-icon-bg bg-orange"><Ticket size={20} className="text-orange" /></div>
-                        <span className="stat-percentage positive">OK</span>
                     </div>
                     <div className="stat-body">
                         <h3>Ticket Prom.</h3>
@@ -878,7 +939,6 @@ export default function Dashboard() {
                 <div className="bento-item stat-card-modern">
                     <div className="stat-header">
                         <div className="stat-icon-bg bg-purple"><Activity size={20} className="text-purple" /></div>
-                        <span className="stat-percentage warning">Alto</span>
                     </div>
                     <div className="stat-body">
                         <h3>Ocupación</h3>
@@ -889,7 +949,6 @@ export default function Dashboard() {
                 <div className="bento-item stat-card-modern">
                     <div className="stat-header">
                         <div className="stat-icon-bg bg-green"><Users size={20} className="text-green" /></div>
-                        <span className="stat-percentage neutral">Hoy</span>
                     </div>
                     <div className="stat-body">
                         <h3>Clientes</h3>
@@ -1131,7 +1190,12 @@ export default function Dashboard() {
                     </div>
                     <div className="orders-list">
                         {recentOrders.length === 0 ? (
-                            <div className="widget-empty">Sin ordenes activas</div>
+                            <div className="dashboard-widget-empty">
+                                <EmptyState
+                                    icon={<ClipboardList size={32} />}
+                                    title="Sin órdenes activas"
+                                />
+                            </div>
                         ) : recentOrders.slice(ordersPage * WIDGET_PAGE_SIZE, (ordersPage + 1) * WIDGET_PAGE_SIZE).map(ord => (
                             <div key={ord.id} className="ord-row clickable" onClick={() => setSelectedOrder(ord)}>
                                 <div className="ord-meta">
@@ -1139,8 +1203,8 @@ export default function Dashboard() {
                                     <span className="ord-table">{ord.table}</span>
                                 </div>
                                 <div className="ord-right">
-                                    <span className="ord-total">${ord.total}</span>
-                                    <span className={`ord-status status-${ord.status}`}>{ord.status}</span>
+                                    <span className="ord-total">{formatCurrency(ord.total)}</span>
+                                    <span className={`ord-status status-${ord.status}`}>{formatOrderStatus(ord.status)}</span>
                                 </div>
                             </div>
                         ))}
@@ -1162,7 +1226,12 @@ export default function Dashboard() {
                     </div>
                     <div className="invoices-list">
                         {recentInvoices.length === 0 ? (
-                            <div className="widget-empty">Sin facturas hoy</div>
+                            <div className="dashboard-widget-empty">
+                                <EmptyState
+                                    icon={<FileText size={32} />}
+                                    title="Sin facturas hoy"
+                                />
+                            </div>
                         ) : recentInvoices.slice(invoicesPage * WIDGET_PAGE_SIZE, (invoicesPage + 1) * WIDGET_PAGE_SIZE).map(inv => (
                             <div key={inv.id} className="invoice-row clickable" onClick={() => setSelectedInvoice(inv)}>
                                 <div className="invoice-info">
@@ -1170,7 +1239,7 @@ export default function Dashboard() {
                                     <span className="inv-meta">{inv.time}</span>
                                 </div>
                                 <div className="invoice-right">
-                                    <span className="inv-amount">${inv.amount}</span>
+                                    <span className="inv-amount">{formatCurrency(inv.amount)}</span>
                                     <span className={`inv-status status-${inv.status}`}>{inv.status}</span>
                                 </div>
                             </div>
@@ -1193,7 +1262,12 @@ export default function Dashboard() {
                     </div>
                     <div className="reservations-list">
                         {todaysReservations.length === 0 ? (
-                            <div className="widget-empty">Sin reservas próximas</div>
+                            <div className="dashboard-widget-empty">
+                                <EmptyState
+                                    icon={<CalendarCheck size={32} />}
+                                    title="Sin reservas próximas"
+                                />
+                            </div>
                         ) : todaysReservations.slice(reservationsPage * WIDGET_PAGE_SIZE, (reservationsPage + 1) * WIDGET_PAGE_SIZE).map(res => (
                             <div key={res.id} className="res-row clickable" onClick={() => setSelectedReservation(res)}>
                                 <div className="res-time">{res.day || res.time}</div>
@@ -1271,7 +1345,7 @@ export default function Dashboard() {
                     <div className="detail-modal-content">
                         <div className="detail-header-section">
                             <h3 className="detail-main-title">{selectedOrder.id}</h3>
-                            <span className="detail-main-value">${selectedOrder.total}</span>
+                            <span className="detail-main-value">{formatCurrency(selectedOrder.total)}</span>
                         </div>
                         <div className="detail-stats-grid">
                             <div className="detail-stat">
@@ -1285,7 +1359,7 @@ export default function Dashboard() {
                         </div>
                         <div className="detail-row">
                             <span className="detail-label">Estado</span>
-                            <span className={`detail-badge status-${selectedOrder.status}`}>{selectedOrder.status}</span>
+                            <span className={`detail-badge status-${selectedOrder.status}`}>{formatOrderStatus(selectedOrder.status)}</span>
                         </div>
                         {selectedOrder.waiter && (
                             <div className="detail-row">
@@ -1306,7 +1380,7 @@ export default function Dashboard() {
                                     {selectedOrder.items.map((item: OrderItemSummary) => (
                                         <div key={item.id || item.menuItemId} className="detail-item-row">
                                             <span>{item.quantity}x {item.name}</span>
-                                            <span>${item.subtotal || item.price * item.quantity}</span>
+                                            <span>{formatCurrency(item.subtotal ?? item.price * item.quantity)}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -1331,7 +1405,7 @@ export default function Dashboard() {
                     <div className="detail-modal-content">
                         <div className="detail-header-section">
                             <h3 className="detail-main-title">{selectedInvoice.id}</h3>
-                            <span className="detail-main-value">${selectedInvoice.amount}</span>
+                            <span className="detail-main-value">{formatCurrency(selectedInvoice.amount)}</span>
                         </div>
                         <div className="detail-stats-grid">
                             <div className="detail-stat">
@@ -1357,7 +1431,7 @@ export default function Dashboard() {
                         )}
                         <div className="detail-row">
                             <span className="detail-label">Propina Sugerida (15%)</span>
-                            <span className="detail-value">${(selectedInvoice.amount * 0.15).toFixed(2)}</span>
+                            <span className="detail-value">{formatCurrency(selectedInvoice.amount * 0.15)}</span>
                         </div>
                         <div className="detail-note">
                             <span>🧾 Factura generada automáticamente. Disponible para reimpresión.</span>

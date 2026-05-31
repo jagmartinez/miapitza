@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { CashArqueoService } from '../services/cash-arqueo.service';
 import { authMiddleware, requireRole } from '../middlewares/auth';
+import { CASHIERS } from '../constants/roles';
 import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
 import { getErrorMessage } from '../utils/error';
@@ -8,7 +9,8 @@ import { getErrorMessage } from '../utils/error';
 const router = Router();
 
 router.use(authMiddleware);
-router.use(requireRole('SUPERADMIN', 'ADMIN', 'CAJERO'));
+// Cash counting/closing is cash-handling: restrict to cashiers and admins.
+router.use(requireRole(...CASHIERS));
 
 /**
  * @swagger

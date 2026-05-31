@@ -6,9 +6,10 @@ interface NumericKeypadProps {
     onConfirm: (quantity: number) => void;
     onClose: () => void;
     initialValue?: number;
+    closeOnOverlayClick?: boolean;
 }
 
-export default function NumericKeypad({ onConfirm, onClose, initialValue = 1 }: NumericKeypadProps) {
+export default function NumericKeypad({ onConfirm, onClose, initialValue = 1, closeOnOverlayClick = false }: NumericKeypadProps) {
     const [display, setDisplay] = useState(initialValue.toString());
 
     const handleNumber = (num: string) => {
@@ -51,7 +52,7 @@ export default function NumericKeypad({ onConfirm, onClose, initialValue = 1 }: 
     };
 
     return (
-        <div className="keypad-overlay" onClick={onClose}>
+        <div className="keypad-overlay" onClick={closeOnOverlayClick ? onClose : undefined}>
             <div className="keypad-container" onClick={(e) => e.stopPropagation()} onKeyDown={handleKeyPress}>
                 <div className="keypad-header">
                     <h3>Cantidad</h3>

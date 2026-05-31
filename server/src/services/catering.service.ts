@@ -2,7 +2,6 @@ import prisma from '../utils/prisma';
 import type { CateringPaymentType, Prisma } from '@prisma/client';
 import { CateringStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { InventoryMovementService } from './inventory-movement.service';
 import { getErrorMessage } from '../utils/error';
 import { UnitConversionService } from './unit-conversion.service';
 
@@ -134,6 +133,12 @@ export class CateringService {
         const branchId = parseInt(String(eventData.branchId), 10);
         if (isNaN(branchId)) throw new Error('Valid branchId is required');
 
+        // Validate the branch belongs to this tenant before creating the event.
+        const branch = await prisma.branch.findFirst({
+            where: { id: branchId, companyId }
+        });
+        if (!branch) throw new Error('Sucursal no encontrada para esta empresa');
+
         let customerId = cid != null && cid !== '' ? parseInt(String(cid), 10) : undefined;
 
         // If no customerId but name is provided, find or create
@@ -198,32 +203,38 @@ export class CateringService {
         delete cleanEventData.customerId;
 
         try {
-            const event = await prisma.cateringEvent.create({
-                data: {
-                    ...cleanEventData,
-                    branch: { connect: { id: branchId } },
-                    company: { connect: { id: companyId } },
-                    customer: customerId ? { connect: { id: customerId } } : undefined,
-                    totalAmount,
-                    balance: totalAmount,
-                    services: { create: servicesToCreate },
-                    menuItems: { create: menuItemsToCreate },
-                    date:
-                        eventData.date != null
-                            ? new Date(eventData.date as string | number | Date)
-                            : undefined
-                } as Prisma.CateringEventCreateInput,
-                include: {
-                    customer: true,
-                    services: true,
-                    menuItems: true
-                }
-            });
+            // Create the event and (if it starts FINISHED) deduct inventory in the
+            // SAME transaction so a deduction failure rolls back the event.
+            const event = await prisma.$transaction(async (tx) => {
+                const created = await tx.cateringEvent.create({
+                    data: {
+                        ...cleanEventData,
+                        branch: { connect: { id: branchId } },
+                        company: { connect: { id: companyId } },
+                        customer: customerId ? { connect: { id: customerId } } : undefined,
+                        totalAmount,
+                        balance: totalAmount,
+                        services: { create: servicesToCreate },
+                        menuItems: { create: menuItemsToCreate },
+                        date:
+                            eventData.date != null
+                                ? new Date(eventData.date as string | number | Date)
+                                : undefined
+                    } as Prisma.CateringEventCreateInput,
+                    include: {
+                        customer: true,
+                        services: true,
+                        menuItems: true
+                    }
+                });
 
-            // Trigger inventory deduction if status is FINISHED upon creation
-            if (event.status === 'FINISHED') {
-                await this.deductInventory(event.id, companyId, userId);
-            }
+                // Trigger inventory deduction if status is FINISHED upon creation
+                if (created.status === 'FINISHED') {
+                    await this.deductInventoryTx(tx, created.id, companyId, userId);
+                }
+
+                return created;
+            });
 
             return event;
         } catch (error: unknown) {
@@ -235,10 +246,13 @@ export class CateringService {
     static async updateEvent(id: number, companyId: number, userId: number, data: CateringEventWriteBody) {
         const { services, menuItems, customerName, customerPhone, customerTaxId, customerId: cid, ...eventData } = data;
 
-        const oldEvent = await prisma.cateringEvent.findUnique({
-            where: { id },
+        // Tenant-scoped load: never operate on another company's event.
+        const oldEvent = await prisma.cateringEvent.findFirst({
+            where: { id, companyId },
             select: { status: true, customerId: true }
         });
+
+        if (!oldEvent) throw new Error('Catering event not found');
 
         // Validate status transition if status is changing
         if (data.status && oldEvent && data.status !== oldEvent.status) {
@@ -282,9 +296,9 @@ export class CateringService {
                 customerId = newCustomer.id;
             }
         } else if (customerId && (customerName || customerPhone || customerTaxId)) {
-            // Update existing customer info
-            await prisma.customer.update({
-                where: { id: customerId },
+            // Update existing customer info (tenant-scoped)
+            await prisma.customer.updateMany({
+                where: { id: customerId, companyId },
                 data: {
                     name: customerName,
                     phone: customerPhone,
@@ -450,52 +464,6 @@ export class CateringService {
         }
     }
 
-    private static async deductInventory(eventId: number, companyId: number, userId: number) {
-        const event = await prisma.cateringEvent.findUnique({
-            where: { id: eventId },
-            include: {
-                branch: true,
-                menuItems: {
-                    include: {
-                        menuItem: {
-                            include: {
-                                recipes: {
-                                    include: { product: true }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        if (!event) return;
-
-        // Default warehouse for the branch or first available
-        const warehouse = await prisma.warehouse.findFirst({
-            where: { branchId: event.branchId, companyId }
-        }) || await prisma.warehouse.findFirst({
-            where: { companyId }
-        });
-
-        if (!warehouse) throw new Error('No warehouse found for inventory deduction');
-
-        for (const cMenuItem of event.menuItems) {
-            for (const recipe of cMenuItem.menuItem.recipes) {
-                await InventoryMovementService.create(companyId, {
-                    warehouseId: warehouse.id,
-                    productId: recipe.productId,
-                    userId,
-                    type: 'OUT',
-                    quantity: Number(recipe.quantity) * cMenuItem.quantity,
-                    unit: recipe.unit || recipe.product.unit,
-                    reason: `Catering Event: ${event.title}`,
-                    reference: `EVT-${event.id}`
-                });
-            }
-        }
-    }
-
     static async deleteEvent(id: number, companyId: number) {
         const event = await this.getEventById(id, companyId);
 
@@ -535,23 +503,38 @@ export class CateringService {
             reference?: string | null;
         }
     ) {
-        const event = await this.getEventById(eventId, companyId);
-
-        if (event.status === 'CANCELLED') {
-            throw new Error('No se pueden agregar pagos a eventos cancelados');
-        }
-
         const amount = Number(paymentData.amount);
         if (!amount || amount <= 0) {
             throw new Error('El monto debe ser mayor a 0');
         }
 
-        const currentBalance = Number(event.balance);
-        if (amount > currentBalance + 0.01) {
-            throw new Error(`El monto excede el saldo pendiente de ${currentBalance.toFixed(2)}`);
-        }
-
         return await prisma.$transaction(async (tx) => {
+            // Pessimistic lock: serialize concurrent payments on the same event
+            // so the balance check and update cannot race.
+            await tx.$queryRaw`SELECT id FROM \`CateringEvent\` WHERE id = ${eventId} AND companyId = ${companyId} FOR UPDATE`;
+
+            const event = await tx.cateringEvent.findFirst({
+                where: { id: eventId, companyId },
+                include: { payments: true }
+            });
+
+            if (!event) {
+                throw new Error('Catering event not found');
+            }
+
+            if (event.status === 'CANCELLED') {
+                throw new Error('No se pueden agregar pagos a eventos cancelados');
+            }
+
+            // Recompute balance from the authoritative total minus paid amounts
+            // INSIDE the locked transaction (do not trust the stored balance).
+            const paid = event.payments.reduce((sum, p) => sum.add(new Decimal(p.amount)), new Decimal(0));
+            const currentBalance = new Decimal(event.totalAmount).sub(paid);
+
+            if (amount > Number(currentBalance) + 0.01) {
+                throw new Error(`El monto excede el saldo pendiente de ${Number(currentBalance).toFixed(2)}`);
+            }
+
             const payment = await tx.cateringPayment.create({
                 data: {
                     amount: paymentData.amount,
@@ -562,7 +545,7 @@ export class CateringService {
                 }
             });
 
-            const newBalance = new Decimal(currentBalance).sub(new Decimal(amount));
+            const newBalance = currentBalance.sub(new Decimal(amount));
             await tx.cateringEvent.update({
                 where: { id: eventId },
                 data: {

@@ -82,10 +82,13 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
 }) => {
   const [ticketData, setTicketData] = useState<CustomerTicketData | KitchenTicketData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [printError, setPrintError] = useState<string | null>(null);
   const [printerWidth, setPrinterWidth] = useState<58 | 80>(80);
 
   const loadTicketData = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const endpoint = type === 'kitchen'
         ? `/advanced/tickets/${orderId}/kitchen`
@@ -95,7 +98,7 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
       setTicketData(response.data.data);
     } catch (error: unknown) {
       console.error('Error loading ticket:', error);
-      alert('Error al cargar el ticket: ' + ticketLoadErrorMessage(error));
+      setLoadError('Error al cargar el ticket: ' + ticketLoadErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -108,9 +111,10 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
   }, [isOpen, loadTicketData]);
 
   const handlePrint = () => {
+    setPrintError(null);
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      alert('Por favor permite ventanas emergentes para imprimir');
+      setPrintError('Por favor permite ventanas emergentes para imprimir');
       return;
     }
 
@@ -321,6 +325,16 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
         </div>
 
         <div className="modal-body">
+          {loadError && (
+            <div style={{ color: 'var(--color-error, #d32f2f)', padding: '0.75rem', marginBottom: '1rem', borderRadius: '8px', background: 'rgba(211, 47, 47, 0.08)' }}>
+              {loadError}
+            </div>
+          )}
+          {printError && (
+            <div style={{ color: 'var(--color-error, #d32f2f)', padding: '0.75rem', marginBottom: '1rem', borderRadius: '8px', background: 'rgba(211, 47, 47, 0.08)' }}>
+              {printError}
+            </div>
+          )}
           {loading ? (
             <div style={{ textAlign: 'center', padding: '2rem' }}>
               Cargando ticket...

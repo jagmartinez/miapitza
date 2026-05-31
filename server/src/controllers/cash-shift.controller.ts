@@ -90,7 +90,18 @@ export class CashShiftController {
                 startAmount: parseFloat(req.body.startAmount)
             };
 
-            const branchId = req.user!.branchId || 0;
+            // Require a branch scope. Non-SUPERADMIN users must have an assigned
+            // branch; SUPERADMIN may target a branch explicitly via the request body.
+            // Never silently fall back to branch 0.
+            let branchId = req.user!.branchId;
+            if (!branchId) {
+                if (req.user!.role === 'SUPERADMIN' && req.body.branchId) {
+                    branchId = parseInt(req.body.branchId);
+                } else {
+                    return next({ statusCode: 400, message: 'ID de sucursal requerido' });
+                }
+            }
+
             const shift = await CashShiftService.open(companyId, branchId, data);
             res.status(201).json({
                 success: true,

@@ -3,6 +3,7 @@ import type { InternalAxiosRequestConfig } from 'axios';
 import type { LoginResponse } from '../types';
 import { db, type SyncItem } from './db';
 import { offlineManager } from './offlineManager';
+import { closeWebSocket } from '../utils/websocket';
 
 type OfflineRequestMeta = Pick<SyncItem, 'operationType' | 'dependencyKey' | 'entityTempId'>;
 
@@ -60,7 +61,7 @@ const resolveCsrfToken = async (): Promise<string | null> => {
     }
 };
 
-const normalizeApiBaseUrl = () => {
+export const normalizeApiBaseUrl = () => {
     const envUrl = import.meta.env.VITE_API_URL as string | undefined;
     if (envUrl) {
         return envUrl.replace(/\/+$/, '');
@@ -77,8 +78,35 @@ const normalizeApiBaseUrl = () => {
     return '/api';
 };
 
+/** Resolved base URL shared with the offline sync queue so queued mutations hit the same server. */
+export const API_BASE_URL = normalizeApiBaseUrl();
+
+/**
+ * Build a stable cache key from an axios request's path + sorted query string.
+ * Without the query string, filtered GET endpoints (e.g. `/orders?startDate=...`,
+ * `/reports/*`, `/tables?branchId=...`) would all collide on the same cache id.
+ */
+export const buildCacheKey = (config: { url?: string; params?: unknown }): string => {
+    const url = config.url || '';
+    const params = config.params;
+    if (!params || typeof params !== 'object') {
+        return url;
+    }
+    const entries = Object.entries(params as Record<string, unknown>)
+        .filter(([, value]) => value !== undefined && value !== null && value !== '')
+        .map(([key, value]) => [key, String(value)] as [string, string])
+        .sort(([a], [b]) => a.localeCompare(b));
+    if (entries.length === 0) {
+        return url;
+    }
+    const query = entries
+        .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+        .join('&');
+    return `${url}?${query}`;
+};
+
 const api = axios.create({
-    baseURL: normalizeApiBaseUrl(),
+    baseURL: API_BASE_URL,
     withCredentials: true,
     headers: {
         'Content-Type': 'application/json',
@@ -140,7 +168,7 @@ api.interceptors.response.use(
         if (method === 'get' && !url.startsWith('/auth/') && response.config.responseType !== 'arraybuffer') {
             try {
                 await db.caches.put({
-                    id: url,
+                    id: buildCacheKey(response.config),
                     data: response.data,
                     timestamp: Date.now()
                 });
@@ -167,9 +195,17 @@ api.interceptors.response.use(
             const isLoginRequest = requestUrl.startsWith('/auth/login');
             const isOnLoginPage = window.location.pathname === '/login';
 
+            // Tear down auth state consistently with logout: kill the socket first,
+            // then clear persisted auth before redirecting.
+            closeWebSocket();
             localStorage.removeItem('token');
             localStorage.removeItem('user');
             localStorage.removeItem('authFlags');
+            try {
+                sessionStorage.removeItem(CSRF_STORAGE_KEY);
+            } catch {
+                // sessionStorage unavailable — ignore
+            }
 
             if (!isLoginRequest && !isOnLoginPage) {
                 window.location.href = '/login';
@@ -178,8 +214,8 @@ api.interceptors.response.use(
 
         // Handle GET failure due to network (offline fallback with TTL check)
         if (!error.response && (error.config?.method === 'get' || error.config?.method === 'GET')) {
-            const url = error.config.url!;
-            const cachedData = await offlineManager.getCachedData(url);
+            const cacheKey = buildCacheKey(error.config);
+            const cachedData = await offlineManager.getCachedData(cacheKey);
             if (cachedData !== null) {
                 return {
                     data: cachedData,

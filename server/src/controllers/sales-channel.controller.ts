@@ -16,7 +16,9 @@ export class SalesChannelController {
     static async upsert(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const { channel, name, priceMarkupPct, commissionPct, active } = req.body;
+            const { channel, name, priceMarkupPct, commissionPct } = req.body;
+            // Client sends `isActive`; accept it with `active` as a fallback.
+            const active = req.body.isActive ?? req.body.active;
 
             if (!channel || !name) {
                 return next({ statusCode: 400, message: 'channel y name son requeridos' });

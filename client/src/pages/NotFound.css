@@ -1,0 +1,26 @@
+.not-found-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    gap: var(--spacing-lg);
+    padding: var(--spacing-xl);
+    text-align: center;
+    color: var(--color-text-secondary);
+}
+
+.not-found-page h1 {
+    font-size: var(--font-size-2xl);
+    color: var(--color-text);
+    margin: 0;
+}
+
+.not-found-page p {
+    margin: 0;
+    max-width: 28rem;
+}
+
+.not-found-page svg {
+    color: var(--color-text-tertiary);
+}

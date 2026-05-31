@@ -1,5 +1,14 @@
+import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { getErrorMessage } from '../utils/error';
+
+/**
+ * A Prisma client surface that works both with the global client and inside a
+ * `$transaction` callback. Costing writes that happen as part of a larger flow
+ * (e.g. receiving a purchase order) MUST use the caller's transaction client so
+ * the cost mutations commit/rollback atomically with the stock changes.
+ */
+type Db = Prisma.TransactionClient;
 
 /**
  * Service for handling product costing calculations
@@ -29,26 +38,29 @@ export class CostingService {
     }
 
     /**
-     * Update product cost when receiving a purchase order
-     * This is called automatically when a purchase order is received
+     * Update product cost when receiving a purchase order.
+     *
+     * This is called automatically when a purchase order is received. It MUST run
+     * inside the same transaction as the stock mutation, so the caller passes its
+     * `tx` client (`db`). The caller also passes the PRE-receipt stock quantity for
+     * this warehouse (captured before the stock update) so the weighted-average
+     * computation is deterministic regardless of read isolation level.
      */
     static async updateProductCost(
+        db: Db,
         productId: number,
         companyId: number,
         purchaseOrderItemId: number,
         quantity: number,
         unitCost: number,
-        warehouseId: number
+        warehouseId: number,
+        previousStock: number
     ): Promise<void> {
         try {
-            // Get current product data
-            const product = await prisma.product.findUnique({
-                where: { id: productId },
-                include: {
-                    stocks: {
-                        where: { warehouseId }
-                    }
-                }
+            // Get current product data (tenant-scoped)
+            const product = await db.product.findFirst({
+                where: { id: productId, companyId },
+                select: { currentAverageCost: true }
             });
 
             if (!product) {
@@ -56,15 +68,15 @@ export class CostingService {
             }
 
             // Get company costing method
-            const company = await prisma.company.findUnique({
+            const company = await db.company.findUnique({
                 where: { id: companyId },
                 select: { costingMethod: true }
             });
 
             const costingMethod = company?.costingMethod || 'WEIGHTED_AVERAGE';
 
-            // Calculate current stock in this warehouse
-            const currentStock = product.stocks.reduce((sum, stock) => sum + Number(stock.quantity), 0);
+            // Pre-receipt stock for this warehouse, supplied by the caller.
+            const currentStock = previousStock;
 
             const previousAvgCost = Number(product.currentAverageCost);
             let newAvgCost: number;
@@ -81,14 +93,14 @@ export class CostingService {
                 // FIFO - new purchase simply adds a batch at its own cost.
                 // The "average cost" stored on the product reflects the FIFO-weighted
                 // average across all remaining batches for display purposes.
-                const batches = await this.getFifoBatches(productId, companyId);
+                const batches = await this.getFifoBatches(productId, companyId, db);
                 // Add the new batch to the list for the average calculation
                 batches.push({ quantity, unitCost });
                 newAvgCost = this.calculateBatchWeightedAverage(batches);
             }
 
             // Update product costs
-            await prisma.product.update({
+            await db.product.update({
                 where: { id: productId },
                 data: {
                     currentAverageCost: newAvgCost,
@@ -99,7 +111,7 @@ export class CostingService {
             });
 
             // Record cost history
-            await prisma.productCostHistory.create({
+            await db.productCostHistory.create({
                 data: {
                     productId,
                     companyId,
@@ -228,10 +240,11 @@ export class CostingService {
      */
     static async getFifoBatches(
         productId: number,
-        companyId: number
+        companyId: number,
+        db: Db = prisma
     ): Promise<Array<{ quantity: number; unitCost: number }>> {
         // Get all purchase batches ordered oldest first
-        const purchaseHistory = await prisma.productCostHistory.findMany({
+        const purchaseHistory = await db.productCostHistory.findMany({
             where: { productId, companyId },
             orderBy: { createdAt: 'asc' }
         });
@@ -243,7 +256,7 @@ export class CostingService {
         }));
 
         // Get total consumed quantity from OUT movements
-        const outMovements = await prisma.inventoryMovement.findMany({
+        const outMovements = await db.inventoryMovement.findMany({
             where: {
                 productId,
                 companyId,
@@ -279,9 +292,10 @@ export class CostingService {
     static async calculateFifoCostOfGoods(
         productId: number,
         companyId: number,
-        quantityToConsume: number
+        quantityToConsume: number,
+        db: Db = prisma
     ): Promise<{ totalCost: number; costPerUnit: number; batchesUsed: Array<{ quantity: number; unitCost: number }> }> {
-        const batches = await this.getFifoBatches(productId, companyId);
+        const batches = await this.getFifoBatches(productId, companyId, db);
 
         let remaining = quantityToConsume;
         let totalCost = 0;

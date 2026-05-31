@@ -128,6 +128,30 @@ export class PurchaseOrderService {
             throw new Error('Branch not found or unauthorized');
         }
 
+        // Verify supplier belongs to this company
+        const supplier = await prisma.supplier.findFirst({
+            where: { id: data.supplierId, companyId }
+        });
+
+        if (!supplier) {
+            throw new Error('Supplier not found or unauthorized');
+        }
+
+        // Verify every product belongs to this company
+        const productIds = [...new Set(data.items.map((item) => item.productId))];
+        if (productIds.length === 0) {
+            throw new Error('A purchase order requires at least one item');
+        }
+
+        const products = await prisma.product.findMany({
+            where: { id: { in: productIds }, companyId },
+            select: { id: true }
+        });
+
+        if (products.length !== productIds.length) {
+            throw new Error('One or more products not found or unauthorized');
+        }
+
         // Calculate total
         const total = data.items.reduce((sum, item) => {
             return sum + (item.quantity * item.cost);
@@ -323,7 +347,10 @@ export class PurchaseOrderService {
                     });
                 }
 
-                const newBalanceQty = Number(stock.quantity) + stockQty;
+                // Capture the pre-receipt stock for this warehouse BEFORE mutating it,
+                // so the weighted-average cost calculation is deterministic.
+                const previousStock = Number(stock.quantity);
+                const newBalanceQty = previousStock + stockQty;
 
                 await tx.stock.update({
                     where: {
@@ -358,14 +385,17 @@ export class PurchaseOrderService {
                     }
                 });
 
-                // Update product cost using base-unit values
+                // Update product cost using base-unit values, inside this transaction
+                // so cost writes commit/rollback atomically with the stock changes.
                 await CostingService.updateProductCost(
+                    tx,
                     item.productId,
                     companyId,
                     item.id,
                     stockQty,
                     costPerBase,
-                    warehouseId
+                    warehouseId,
+                    previousStock
                 );
             }
 

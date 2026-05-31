@@ -64,8 +64,10 @@ export class ProductController {
         try {
             const companyId = req.user!.companyId;
             const branchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
+            const page = req.query.page ? parseInt(req.query.page as string) : undefined;
+            const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
 
-            const products = await ProductService.getLowStock(companyId, branchId);
+            const products = await ProductService.getLowStock(companyId, branchId, page, limit);
 
             res.json({
                 success: true,

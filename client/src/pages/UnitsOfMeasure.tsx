@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { unitsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
+import { useConfirmDialog } from '../context/ConfirmContext';
 import { hasAnyRole } from '../utils/authz';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
@@ -115,6 +116,7 @@ function apiErrorMessage(error: unknown): string {
 export default function UnitsOfMeasurePage() {
     const navigate = useNavigate();
     const { user } = useAuth();
+    const { confirm } = useConfirmDialog();
     const { toasts, removeToast, success: showSuccess, error: showError } = useToast();
     const canMutate = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'BODEGA']);
 
@@ -239,7 +241,7 @@ export default function UnitsOfMeasurePage() {
     const handleToggleActive = async (unit: UnitOfMeasure) => {
         if (!canMutate) return;
         const nextActive = !unit.active;
-        if (!confirm(`¿${nextActive ? 'Habilitar' : 'Inhabilitar'} la unidad "${unit.name}"?`)) return;
+        if (!(await confirm(`¿${nextActive ? 'Habilitar' : 'Inhabilitar'} la unidad "${unit.name}"?`, { title: 'Confirmar acción' }))) return;
 
         try {
             await unitsAPI.update(unit.id, { active: nextActive });
@@ -432,8 +434,9 @@ export default function UnitsOfMeasurePage() {
                             </div>
                             <div className="modal-form-row">
                                 <div className="modal-input-group">
-                                    <label className="modal-input-label">Nombre</label>
+                                    <label className="modal-input-label" htmlFor="unit-name">Nombre</label>
                                     <input
+                                        id="unit-name"
                                         type="text"
                                         className="modal-standard-input"
                                         value={formData.name}
@@ -448,8 +451,9 @@ export default function UnitsOfMeasurePage() {
                                     />
                                 </div>
                                 <div className="modal-input-group">
-                                    <label className="modal-input-label">Abreviatura</label>
+                                    <label className="modal-input-label" htmlFor="unit-abbreviation">Abreviatura</label>
                                     <input
+                                        id="unit-abbreviation"
                                         type="text"
                                         className="modal-standard-input"
                                         value={formData.abbreviation}
@@ -476,10 +480,11 @@ export default function UnitsOfMeasurePage() {
                                 </div>
                             </div>
                             <div className="modal-input-group">
-                                <label className="modal-input-label">{currentTypeMeta.factorLabel}</label>
+                                <label className="modal-input-label" htmlFor="unit-factor">{currentTypeMeta.factorLabel}</label>
                                 <div className="unit-factor-row">
                                     <span className="unit-factor-prefix">1 {formData.abbreviation || 'unidad'} =</span>
                                     <input
+                                        id="unit-factor"
                                         type="number"
                                         min="0.000001"
                                         step="0.000001"

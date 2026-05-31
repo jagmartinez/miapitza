@@ -9,6 +9,29 @@ import { stopAuthCleanup } from './services/auth.service';
 
 const PORT = process.env.PORT || 3001;
 
+// Validate required environment before accepting traffic. prisma.ts already
+// validates DATABASE_URL; here we guarantee a usable JWT secret so the server
+// never boots with auth that can be trivially forged.
+function validateEnv(): void {
+    const errors: string[] = [];
+
+    const jwtSecret = process.env.JWT_SECRET;
+    const WEAK_JWT_SECRETS = new Set(['change-me-in-production', 'changeme', 'secret']);
+    if (!jwtSecret || jwtSecret.trim() === '') {
+        errors.push('JWT_SECRET is required but not set.');
+    } else if (WEAK_JWT_SECRETS.has(jwtSecret.trim())) {
+        errors.push('JWT_SECRET is set to a known-weak default; use a long random secret.');
+    }
+
+    if (errors.length > 0) {
+        console.error('FATAL: invalid environment configuration:');
+        for (const e of errors) console.error(`  - ${e}`);
+        process.exit(1);
+    }
+}
+
+validateEnv();
+
 // Create HTTP server
 const server = http.createServer(app);
 

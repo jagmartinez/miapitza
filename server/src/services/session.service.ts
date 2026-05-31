@@ -17,8 +17,9 @@ function parseDevice(ua: string): string {
 export class SessionService {
     /** Create a session record after login */
     static async create(userId: number, token: string, ip?: string, userAgent?: string) {
+        // Keep session lifetime aligned with the JWT expiry (8h) issued in AuthService.login.
         const expiresAt = new Date();
-        expiresAt.setHours(expiresAt.getHours() + 24);
+        expiresAt.setHours(expiresAt.getHours() + 8);
 
         return prisma.userSession.create({
             data: {
@@ -55,6 +56,22 @@ export class SessionService {
         const currentHash = hashToken(currentToken);
         return prisma.userSession.updateMany({
             where: { userId, tokenHash: { not: currentHash }, revoked: false },
+            data: { revoked: true },
+        });
+    }
+
+    /** Revoke every active session for a user (e.g. after a password change) */
+    static async revokeAll(userId: number) {
+        return prisma.userSession.updateMany({
+            where: { userId, revoked: false },
+            data: { revoked: true },
+        });
+    }
+
+    /** Revoke the session identified by a raw token (e.g. on logout) */
+    static async revokeByToken(token: string) {
+        return prisma.userSession.updateMany({
+            where: { tokenHash: hashToken(token), revoked: false },
             data: { revoked: true },
         });
     }

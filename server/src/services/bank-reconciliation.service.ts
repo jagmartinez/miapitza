@@ -2,10 +2,27 @@ import prisma from '../utils/prisma';
 import { formatCurrency } from '../utils/currency';
 
 /**
+ * Thrown by endpoints whose backing persistence does not yet exist. Routes map
+ * this to HTTP 501 Not Implemented so callers are not given a fake success.
+ */
+export class NotImplementedError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'NotImplementedError';
+    }
+}
+
+/**
  * Bank Reconciliation Service
  * Handles matching cash register totals with bank deposits
  */
 export class BankReconciliationService {
+    // Tolerances for treating a cash difference as "balanced". These are reasonable
+    // defaults; ideally they would become per-company configuration (e.g. a Setting).
+    private static readonly OVERALL_TOLERANCE_RATIO = 0.005; // 0.5% of expected cash
+    private static readonly OVERALL_TOLERANCE_MAX = 1.0; // or $1, whichever is smaller
+    private static readonly SHIFT_TOLERANCE = 0.5; // per-shift variance tolerance
+
     /**
      * Get reconciliation status for a date range
      */
@@ -66,6 +83,7 @@ export class BankReconciliationService {
         let totalSales = 0;
         let totalExpenses = 0;
         let totalCash = 0;
+        let totalExpectedCash = 0;
 
         const shiftDetails: Array<{
             shiftId: number;
@@ -97,6 +115,7 @@ export class BankReconciliationService {
             totalCash += endAmt;
 
             const shiftExpectedCash = Number(shift.startAmount) + shiftSalesIn - shiftCashOut;
+            totalExpectedCash += shiftExpectedCash;
             const shiftDiff = endAmt - shiftExpectedCash;
 
             shiftDetails.push({
@@ -128,8 +147,14 @@ export class BankReconciliationService {
             }
         }
 
-        const cashDifference = totalCash - totalsByMethod.cash;
-        const overallStatus = this.calculateReconciliationStatus(cashDifference, totalsByMethod.cash);
+        // Reconcile like-for-like: expected cash (start + cash IN - cash OUT, per shift)
+        // versus the cash actually counted/closed (shift endAmounts), over the same
+        // set of shifts. Payment totals by method are reported separately as sales
+        // context, not used as the cash comparison population.
+        const expectedCash = Math.round(totalExpectedCash * 100) / 100;
+        const countedCash = Math.round(totalCash * 100) / 100;
+        const cashDifference = countedCash - expectedCash;
+        const overallStatus = this.calculateReconciliationStatus(cashDifference, expectedCash);
 
         return {
             period: {
@@ -146,8 +171,8 @@ export class BankReconciliationService {
                 cashInRegisters: totalCash
             },
             reconciliation: {
-                cashExpected: totalsByMethod.cash,
-                cashActual: totalCash,
+                cashExpected: expectedCash,
+                cashActual: countedCash,
                 difference: Math.round(cashDifference * 100) / 100,
                 status: overallStatus
             }
@@ -157,28 +182,21 @@ export class BankReconciliationService {
     /**
      * Create bank deposit record
      */
-    static async recordDeposit(companyId: number, data: {
+    static async recordDeposit(_companyId: number, _data: {
         date: Date;
         amount: number;
         bankAccount: string;
         reference: string;
         notes?: string;
         shiftIds?: number[];
-    }) {
-        // This would normally create a record in a BankDeposit table
-        // For now, returning a simulated response
-        return {
-            id: Date.now(),
-            companyId,
-            date: data.date,
-            amount: data.amount,
-            bankAccount: data.bankAccount,
-            reference: data.reference,
-            notes: data.notes,
-            status: 'PENDING_VERIFICATION',
-            linkedShifts: data.shiftIds || [],
-            createdAt: new Date()
-        };
+    }): Promise<never> {
+        // There is no BankDeposit model in the schema yet, so we cannot persist a
+        // deposit. Rather than fabricate a success response (which previously returned
+        // a fake `id: Date.now()`), surface this clearly as not implemented. The route
+        // maps NotImplementedError to HTTP 501.
+        throw new NotImplementedError(
+            'El registro de depósitos bancarios no está implementado: falta el modelo BankDeposit en la base de datos.'
+        );
     }
 
     /**
@@ -242,20 +260,20 @@ export class BankReconciliationService {
     /**
      * Mark shifts as reconciled
      */
-    static async markAsReconciled(shiftIds: number[], depositReference: string) {
-        const results = await Promise.all(
-            shiftIds.map(id =>
-                prisma.cashShift.update({
-                    where: { id },
-                    data: {
-                        notes: `RECONCILED - Depósito: ${depositReference}`
-                    }
-                })
-            )
-        );
+    static async markAsReconciled(companyId: number, shiftIds: number[], depositReference: string) {
+        // Scope by companyId so a tenant can never reconcile another tenant's shifts.
+        const result = await prisma.cashShift.updateMany({
+            where: {
+                id: { in: shiftIds },
+                companyId
+            },
+            data: {
+                notes: `RECONCILED - Depósito: ${depositReference}`
+            }
+        });
 
         return {
-            reconciled: results.length,
+            reconciled: result.count,
             shiftIds,
             depositReference
         };
@@ -270,7 +288,7 @@ export class BankReconciliationService {
         if (absDiff === 0) return 'RECONCILED';
 
         // Tolerance: 0.5% of expected cash or $1, whichever is smaller
-        const tolerance = Math.min(expected * 0.005, 1.0);
+        const tolerance = Math.min(expected * this.OVERALL_TOLERANCE_RATIO, this.OVERALL_TOLERANCE_MAX);
         if (absDiff <= tolerance) return 'RECONCILED';
         if (difference > 0) return 'SURPLUS';
         return 'DEFICIT';
@@ -281,7 +299,7 @@ export class BankReconciliationService {
      */
     private static calculateShiftStatus(variance: number): string {
         const absVariance = Math.abs(variance);
-        if (absVariance <= 0.50) return 'BALANCED';
+        if (absVariance <= this.SHIFT_TOLERANCE) return 'BALANCED';
         if (variance > 0) return 'SURPLUS';
         return 'DEFICIT';
     }

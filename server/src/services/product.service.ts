@@ -198,7 +198,7 @@ export class ProductService {
             AuditLogService.log({
                 companyId, userId, entityType: 'Product', entityId: product.id,
                 action: 'CREATE', details: { name: product.name, sku: product.sku }
-            }).catch(() => {});
+            }).catch((err) => console.error('[ProductService] Failed to write audit log:', err));
         }
 
         return product;
@@ -268,7 +268,7 @@ export class ProductService {
                 AuditLogService.log({
                     companyId, userId, entityType: 'Product', entityId: id,
                     action: 'UPDATE', details: diff
-                }).catch(() => {});
+                }).catch((err) => console.error('[ProductService] Failed to write audit log:', err));
             }
         }
 
@@ -305,21 +305,27 @@ export class ProductService {
             AuditLogService.log({
                 companyId, userId, entityType: 'Product', entityId: id,
                 action: 'DELETE', details: { name: product.name, sku: (product as Record<string, unknown>).sku }
-            }).catch(() => {});
+            }).catch((err) => console.error('[ProductService] Failed to write audit log:', err));
         }
 
         return deleted;
     }
 
-    static async getLowStock(companyId: number, branchId?: number) {
+    static async getLowStock(companyId: number, branchId?: number, page?: number, limit?: number) {
         try {
             const where: Prisma.ProductWhereInput = {
                 active: true,
                 companyId
             };
 
+            const resolvedPage = page || 1;
+            const resolvedLimit = Math.min(limit || 100, 500);
+            const skip = (resolvedPage - 1) * resolvedLimit;
+
             const products = await prisma.product.findMany({
                 where,
+                skip,
+                take: resolvedLimit,
                 include: {
                     stocks: {
                         where: branchId ? {

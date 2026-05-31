@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { X, Clock, DollarSign, FileText, Printer } from 'lucide-react';
 import type { Order, OrderItem } from '../types';
 import { escapeHtml } from '../utils/escapeHtml';
 import { getUserAccentColor } from '../utils/authz';
 import { getOrderStatusClassName, getOrderStatusLabel } from '../utils/orderStatus';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 import './TableOrdersModal.css';
 
 interface TableOrdersModalProps {
@@ -14,6 +15,8 @@ interface TableOrdersModalProps {
 }
 
 export default function TableOrdersModal({ isOpen, onClose, tableNumber, orders }: TableOrdersModalProps) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const { titleId } = useDialogA11y(isOpen, onClose, containerRef);
     // Modal Tab State
     const [activeTab, setActiveTab] = useState<'orders' | 'bill'>('orders');
 
@@ -103,34 +106,48 @@ export default function TableOrdersModal({ isOpen, onClose, tableNumber, orders 
 
     return (
         <div className="modal-overlay-orders" onClick={onClose}>
-            <div className="orders-modal" onClick={(e) => e.stopPropagation()}>
+            <div
+                ref={containerRef}
+                className="orders-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
+                tabIndex={-1}
+                onClick={(e) => e.stopPropagation()}
+            >
                 {/* Header */}
                 <div className="orders-modal-header">
                     <div className="header-title">
-                        <h2>Mesa {tableNumber}</h2>
+                        <h2 id={titleId}>Mesa {tableNumber}</h2>
                         <span className="header-subtitle">Órdenes Activas</span>
                     </div>
-                    <button className="close-btn-orders" onClick={onClose}>
-                        <X size={24} />
+                    <button type="button" className="close-btn-orders" onClick={onClose} aria-label="Cerrar">
+                        <X size={24} aria-hidden="true" />
                     </button>
                 </div>
 
                 {/* Tabs Navigation */}
-                <div className="modal-tabs">
-                    <div
+                <div className="modal-tabs" role="tablist">
+                    <button
+                        type="button"
+                        role="tab"
+                        aria-selected={activeTab === 'orders'}
                         className={`modal-tab ${activeTab === 'orders' ? 'active' : ''}`}
                         onClick={() => setActiveTab('orders')}
                     >
                         <FileText size={18} />
                         <span>Órdenes <span className="tab-badge">{orders.length}</span></span>
-                    </div>
-                    <div
+                    </button>
+                    <button
+                        type="button"
+                        role="tab"
+                        aria-selected={activeTab === 'bill'}
                         className={`modal-tab ${activeTab === 'bill' ? 'active' : ''}`}
                         onClick={() => setActiveTab('bill')}
                     >
                         <DollarSign size={18} />
                         <span>Cuenta</span>
-                    </div>
+                    </button>
                 </div>
 
                 {/* Content */}

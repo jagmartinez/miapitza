@@ -6,16 +6,16 @@ services:
     container_name: restaurant_db
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required (see .env.example)}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-restaurante}
       MYSQL_USER: ${MYSQL_USER:-restaurant_user}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required (see .env.example)}
     ports:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required (see .env.example)}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -30,13 +30,18 @@ services:
     ports:
       - "${SERVER_PORT:-3000}:3000"
     environment:
-      DATABASE_URL: mysql://${MYSQL_USER:-restaurant_user}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-restaurante}
+      DATABASE_URL: mysql://${MYSQL_USER:-restaurant_user}:${MYSQL_PASSWORD:?MYSQL_PASSWORD is required (see .env.example)}@db:3306/${MYSQL_DATABASE:-restaurante}
       NODE_ENV: ${NODE_ENV:-production}
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required (see .env.example)}
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:5173}
       PORT: 3000
     depends_on:
       db:
         condition: service_healthy
+    # NOTE: these bind mounts are a DEVELOPMENT convenience (live source + isolated
+    # node_modules). There is no separate dev override file, so they are kept here to
+    # avoid breaking local dev. For a hardened production deploy, remove these volumes
+    # so the image's built artifacts are used instead of the host source tree.
     volumes:
       - ./server:/app
       - /app/node_modules
@@ -54,6 +59,8 @@ services:
       VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:3000}
     depends_on:
       - server
+    # NOTE: DEVELOPMENT bind mounts (see the server service note above). Remove for
+    # a hardened production deploy so the built image is used instead of host source.
     volumes:
       - ./client:/app
       - /app/node_modules

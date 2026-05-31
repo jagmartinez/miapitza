@@ -30,11 +30,10 @@ export class PromotionService {
     /**
      * Get promotion by code
      */
-    static async getByCode(code: string, companyId?: number) {
-        const where: Prisma.PromotionWhereInput = { code: code.toUpperCase() };
-        if (companyId) where.companyId = companyId;
+    static async getByCode(code: string, companyId: number) {
+        // companyId is required so a code belonging to another tenant can never be returned.
         return await prisma.promotion.findFirst({
-            where
+            where: { code: code.toUpperCase(), companyId }
         });
     }
 
@@ -77,7 +76,7 @@ export class PromotionService {
     /**
      * Validate and apply promotion to an order
      */
-    static async validateAndApply(code: string, orderTotal: number, companyId?: number): Promise<{
+    static async validateAndApply(code: string, orderTotal: number, companyId: number): Promise<{
         valid: boolean;
         discount: number;
         message: string;

@@ -10,13 +10,15 @@ import {
     GitCompare, Activity, CreditCard, Building2, Tag, Warehouse, ChevronRight
 } from 'lucide-react';
 import type { Branch, Supplier } from '../types';
+import { formatCurrencyIntl } from '../utils/currency';
 import './Reports.css';
 
 interface CategoryOption { id: number; name: string }
 interface WarehouseOption { id: number; name: string }
 
-const fmtCurrency = (n: number) =>
-    new Intl.NumberFormat('es-NI', { style: 'currency', currency: 'NIO', minimumFractionDigits: 2 }).format(n);
+// Currency/locale fall back to app-wide defaults (NIO / es-NI). Wiring these to
+// company settings requires a shared settings source (see report).
+const fmtCurrency = (n: number) => formatCurrencyIntl(n);
 
 const fmtNumber = (n: number) =>
     new Intl.NumberFormat('es-NI', { maximumFractionDigits: 2 }).format(n);

@@ -1,5 +1,8 @@
+import { useRef } from 'react';
 import { X } from 'lucide-react';
 import type { Table } from '../types';
+import { useDialogA11y } from '../hooks/useDialogA11y';
+import './Modal.css';
 import './TableSelectionModal.css';
 
 interface TableSelectionModalProps {
@@ -9,16 +12,26 @@ interface TableSelectionModalProps {
 }
 
 export default function TableSelectionModal({ tables, onSelectTable, onClose }: TableSelectionModalProps) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const { titleId } = useDialogA11y(true, onClose, containerRef);
     const availableTables = tables.filter(t => t.status === 'AVAILABLE');
     const occupiedTables = tables.filter(t => t.status === 'OCCUPIED');
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div className="table-selection-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div
+                ref={containerRef}
+                className="table-selection-modal-content"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
+                tabIndex={-1}
+                onClick={(e) => e.stopPropagation()}
+            >
                 <div className="table-selection-modal-header">
-                    <h2>Seleccionar Mesa</h2>
-                    <button className="close-btn" onClick={onClose}>
-                        <X size={24} />
+                    <h2 id={titleId}>Seleccionar Mesa</h2>
+                    <button type="button" className="close-btn" onClick={onClose} aria-label="Cerrar">
+                        <X size={24} aria-hidden="true" />
                     </button>
                 </div>
 

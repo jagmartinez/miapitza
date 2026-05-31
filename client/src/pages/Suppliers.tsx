@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
-import { suppliersAPI } from '../services/api';
+import { suppliersAPI, settingsAPI } from '../services/api';
+import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import { useAuth } from '../hooks/useAuth';
+import { useConfirmDialog } from '../context/ConfirmContext';
+import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
+import PageHeader from '../components/PageHeader';
 import Select from '../components/Select';
 import type { SingleValue } from 'react-select';
 import { Plus, Trash2, Phone, Mail, MapPin, Truck, Search, Users, Info, Building2, Tag, History, X } from 'lucide-react'; // Tag kept for use inside modal
@@ -26,6 +30,8 @@ interface PriceHistoryRow {
 
 export default function Suppliers() {
     const { user } = useAuth();
+    const { confirm } = useConfirmDialog();
+    const { error: showError } = useAppToast();
     /** Backend: POST/PUT /suppliers — SUPERADMIN | ADMIN */
     const canManageSupplier = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'BODEGA']);
     /** Backend: DELETE /suppliers — SUPERADMIN only */
@@ -47,12 +53,14 @@ export default function Suppliers() {
     const [searchTerm, setSearchTerm] = useState('');
     const [supplyTypeFilter, setSupplyTypeFilter] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'empresa' | 'contacto' | 'ubicacion'>('empresa');
+    const [saving, setSaving] = useState(false);
 
     // Price history
     const [showPriceHistory, setShowPriceHistory] = useState(false);
     const [priceHistorySupplier, setPriceHistorySupplier] = useState<Supplier | null>(null);
     const [priceHistory, setPriceHistory] = useState<PriceHistoryRow[]>([]);
     const [priceHistoryLoading, setPriceHistoryLoading] = useState(false);
+    const [settings, setSettings] = useState<CurrencySettings>({});
 
     const viewPriceHistory = async (supplier: Supplier) => {
         setPriceHistorySupplier(supplier);
@@ -70,6 +78,9 @@ export default function Suppliers() {
 
     useEffect(() => {
         loadSuppliers();
+        settingsAPI.getAll()
+            .then((res) => setSettings(res.data.data || {}))
+            .catch((err) => console.error('Error loading settings:', err));
     }, []);
 
     const loadSuppliers = async () => {
@@ -115,6 +126,7 @@ export default function Suppliers() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!canManageSupplier) return;
+        setSaving(true);
         try {
             if (editingSupplier) {
                 await suppliersAPI.update(editingSupplier.id, formData);
@@ -125,19 +137,21 @@ export default function Suppliers() {
             loadSuppliers();
         } catch (error) {
             console.error('Error saving supplier:', error);
-            alert('Error al guardar proveedor');
+            showError('Error al guardar proveedor');
+        } finally {
+            setSaving(false);
         }
     };
 
     const handleDelete = async (id: number) => {
         if (!canDeleteSupplier) return;
-        if (!window.confirm('¿Estás seguro de eliminar este proveedor?')) return;
+        if (!(await confirm('¿Estás seguro de eliminar este proveedor?', { title: 'Confirmar acción' }))) return;
         try {
             await suppliersAPI.delete(id);
             loadSuppliers();
         } catch (error) {
             console.error('Error deleting supplier:', error);
-            alert('Error al eliminar proveedor');
+            showError('Error al eliminar proveedor');
         }
     };
 
@@ -162,17 +176,16 @@ export default function Suppliers() {
 
     return (
         <div className="suppliers-page">
-            <div className="suppliers-header-new">
-                <div className="header-title-section">
-                    <h1><Truck size={32} /> Proveedores</h1>
-                </div>
-                {canManageSupplier && (
+            <PageHeader
+                title="Proveedores"
+                icon={Truck}
+                actions={canManageSupplier ? (
                     <Button onClick={() => handleOpenModal()}>
                         <Plus size={20} />
                         Nuevo Proveedor
                     </Button>
-                )}
-            </div>
+                ) : undefined}
+            />
 
             {/* Filters Row */}
             <div className="suppliers-filters-row">
@@ -326,6 +339,7 @@ export default function Suppliers() {
                 <div className="premium-modal-content">
                     <div className="modal-tabs">
                         <button
+                            type="button"
                             className={`modal-tab ${activeTab === 'empresa' ? 'active' : ''}`}
                             onClick={() => setActiveTab('empresa')}
                         >
@@ -333,6 +347,7 @@ export default function Suppliers() {
                             <span>Empresa</span>
                         </button>
                         <button
+                            type="button"
                             className={`modal-tab ${activeTab === 'contacto' ? 'active' : ''}`}
                             onClick={() => setActiveTab('contacto')}
                         >
@@ -340,6 +355,7 @@ export default function Suppliers() {
                             <span>Contacto</span>
                         </button>
                         <button
+                            type="button"
                             className={`modal-tab ${activeTab === 'ubicacion' ? 'active' : ''}`}
                             onClick={() => setActiveTab('ubicacion')}
                         >
@@ -357,23 +373,23 @@ export default function Suppliers() {
                                         <h3>Información Principal</h3>
                                     </div>
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Nombre de la Empresa</label>
-                                        <input type="text" className="modal-standard-input" value={formData.name}
+                                        <label className="modal-input-label" htmlFor="supplier-name">Nombre de la Empresa</label>
+                                        <input id="supplier-name" type="text" className="modal-standard-input" value={formData.name}
                                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                             required placeholder="Ej: Distribuidora Central S.A." />
                                     </div>
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">RUC / NIT (Opcional)</label>
-                                        <input type="text" className="modal-standard-input" value={formData.taxId}
+                                        <label className="modal-input-label" htmlFor="supplier-tax-id">RUC / NIT (Opcional)</label>
+                                        <input id="supplier-tax-id" type="text" className="modal-standard-input" value={formData.taxId}
                                             onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
                                             placeholder="Ej: J031000000123" />
                                     </div>
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">
+                                        <label className="modal-input-label" id="supplier-supply-type-label">
                                             <Tag size={14} />
                                             Tipo de Suministro
                                         </label>
-                                        <div className="supply-type-chips">
+                                        <div className="supply-type-chips" role="group" aria-labelledby="supplier-supply-type-label">
                                             {FIXED_SUPPLY_TYPES.map(type => (
                                                 <button
                                                     key={type}
@@ -396,21 +412,21 @@ export default function Suppliers() {
                                         <h3>Datos de Contacto</h3>
                                     </div>
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Nombre del Contacto</label>
-                                        <input type="text" className="modal-standard-input" value={formData.contact}
+                                        <label className="modal-input-label" htmlFor="supplier-contact">Nombre del Contacto</label>
+                                        <input id="supplier-contact" type="text" className="modal-standard-input" value={formData.contact}
                                             onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
                                             placeholder="Ej: Juan Pérez" />
                                     </div>
                                     <div className="modal-form-row">
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label">Teléfono</label>
-                                            <input type="text" className="modal-standard-input" value={formData.phone}
+                                            <label className="modal-input-label" htmlFor="supplier-phone">Teléfono</label>
+                                            <input id="supplier-phone" type="text" className="modal-standard-input" value={formData.phone}
                                                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                                                 placeholder="Ej: +505 8888 8888" />
                                         </div>
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label">Email</label>
-                                            <input type="email" className="modal-standard-input" value={formData.email}
+                                            <label className="modal-input-label" htmlFor="supplier-email">Email</label>
+                                            <input id="supplier-email" type="email" className="modal-standard-input" value={formData.email}
                                                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                                                 placeholder="Ej: contacto@empresa.com" />
                                         </div>
@@ -425,8 +441,9 @@ export default function Suppliers() {
                                         <h3>Ubicación Física</h3>
                                     </div>
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Dirección Completa</label>
+                                        <label className="modal-input-label" htmlFor="supplier-address">Dirección Completa</label>
                                         <textarea
+                                            id="supplier-address"
                                             className="modal-textarea"
                                             rows={4}
                                             value={formData.address}
@@ -442,8 +459,8 @@ export default function Suppliers() {
                             <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>
                                 Cancelar
                             </Button>
-                            <Button type="submit">
-                                {editingSupplier ? 'Actualizar Proveedor' : 'Guardar Proveedor'}
+                            <Button type="submit" disabled={saving}>
+                                {saving ? 'Guardando...' : editingSupplier ? 'Actualizar Proveedor' : 'Guardar Proveedor'}
                             </Button>
                         </div>
                     </form>
@@ -478,9 +495,9 @@ export default function Suppliers() {
                                                     <div className="product-cell-name">{item.productName}</div>
                                                     {item.productSku && <div className="product-cell-sku">{item.productSku}</div>}
                                                 </td>
-                                                <td className="text-right" style={{ fontWeight: 600 }}>${item.unitCost.toFixed(2)}/{item.unit}</td>
+                                                <td className="text-right" style={{ fontWeight: 600 }}>{formatCurrency(item.unitCost, settings)}/{item.unit}</td>
                                                 <td className="text-right">{item.quantity.toFixed(2)}</td>
-                                                <td className="text-right">${item.subtotal.toFixed(2)}</td>
+                                                <td className="text-right">{formatCurrency(item.subtotal, settings)}</td>
                                                 <td>{new Date(item.date).toLocaleDateString('es-ES')}</td>
                                                 <td>#{item.purchaseOrderId}</td>
                                                 <td>{item.branchName || '-'}</td>

@@ -6,6 +6,8 @@ import Sidebar from '../components/Sidebar';
 import { reservationsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { getUserRoleNames } from '../utils/authz';
+import { useConfirmDialog } from '../context/ConfirmContext';
+import { useAppToast } from '../context/ToastContext';
 import Select from '../components/Select';
 import type { SingleValue } from 'react-select';
 import './Reservations.css';
@@ -22,8 +24,23 @@ interface Reservation {
     createdAt: string;
 }
 
+// Allowed status transitions. The current status is always selectable; any
+// target not listed here (for a given source) is disabled in the UI.
+const RESERVATION_TRANSITIONS: Record<string, Reservation['status'][]> = {
+    PENDING: ['CONFIRMED', 'CANCELLED', 'NO_SHOW'],
+    CONFIRMED: ['COMPLETED', 'CANCELLED', 'NO_SHOW'],
+    COMPLETED: ['PENDING'],
+    CANCELLED: ['PENDING'],
+    NO_SHOW: ['PENDING'],
+};
+
+const canTransitionReservation = (from: string, to: string): boolean =>
+    from === to || (RESERVATION_TRANSITIONS[from]?.includes(to as Reservation['status']) ?? false);
+
 export default function Reservations() {
     const { user } = useAuth();
+    const { success, error: showError, warning: showWarning } = useAppToast();
+    const { confirm } = useConfirmDialog();
     const userRoleNames = getUserRoleNames(user);
     const canManageReservations = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'HOST'].includes(role));
     const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -47,6 +64,7 @@ export default function Reservations() {
         notes: ''
     });
     const [activeTab, setActiveTab] = useState<'cliente' | 'reserva' | 'notas'>('cliente');
+    const [saving, setSaving] = useState(false);
 
 
     const loadReservations = useCallback(async () => {
@@ -66,7 +84,7 @@ export default function Reservations() {
 
     const handleOpenSidebar = (reservation?: Reservation) => {
         if (!reservation && !canManageReservations) {
-            alert('No tienes permisos para gestionar reservaciones');
+            showWarning('No tienes permisos para gestionar reservaciones');
             return;
         }
 
@@ -102,11 +120,16 @@ export default function Reservations() {
 
     const handleUpdateStatus = async (id: number, status: string) => {
         if (!canManageReservations) {
-            alert('No tienes permisos para actualizar reservaciones');
+            showWarning('No tienes permisos para actualizar reservaciones');
             return;
         }
+        if (status === 'CANCELLED') {
+            if (!(await confirm('¿Cancelar esta reservación?', { variant: 'warning', confirmText: 'Sí, cancelar' }))) {
+                return;
+            }
+        }
         try {
-            await reservationsAPI.update(id, { status });
+            await reservationsAPI.updateStatus(id, status);
             loadReservations();
         } catch (error: unknown) {
             console.error('Error updating status:', error);
@@ -114,23 +137,56 @@ export default function Reservations() {
                 ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
                 : undefined;
             const errorMessage = apiMsg || (error instanceof Error ? error.message : '') || 'Error al actualizar el estado';
-            alert(errorMessage);
+            showError(errorMessage);
         }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!canManageReservations) {
-            alert('No tienes permisos para guardar reservaciones');
+            showWarning('No tienes permisos para guardar reservaciones');
             return;
         }
+
+        if (!formData.customerName?.trim()) {
+            showError('El nombre del cliente es obligatorio');
+            setActiveTab('cliente');
+            return;
+        }
+        if (!formData.customerPhone?.trim()) {
+            showError('El teléfono es obligatorio');
+            setActiveTab('cliente');
+            return;
+        }
+        if (!formData.date) {
+            showError('La fecha es obligatoria');
+            setActiveTab('reserva');
+            return;
+        }
+        if (!formData.time) {
+            showError('La hora es obligatoria');
+            setActiveTab('reserva');
+            return;
+        }
+        if (!formData.guests || parseInt(formData.guests, 10) < 1) {
+            showError('Indica el número de personas');
+            setActiveTab('reserva');
+            return;
+        }
+
+        setSaving(true);
         try {
             const payload = {
-                customerName: formData.customerName,
-                phone: formData.customerPhone,
+                customerName: formData.customerName.trim(),
+                phone: formData.customerPhone.trim(),
                 email: formData.customerEmail || undefined,
-                date: `${formData.date}T${formData.time}:00.000Z`,
-                peopleCount: parseInt(formData.guests),
+                // Interpret the picked date+time as LOCAL wall-clock time. Building a
+                // Date without a trailing "Z" uses the browser's timezone, and
+                // toISOString() converts that exact instant to UTC — preserving the
+                // wall-clock the host selected (the old `...Z` suffix forced the local
+                // time to be treated as UTC, shifting it by the timezone offset).
+                date: new Date(`${formData.date}T${formData.time}:00`).toISOString(),
+                peopleCount: parseInt(formData.guests, 10),
                 notes: formData.notes || undefined
             };
 
@@ -142,6 +198,7 @@ export default function Reservations() {
 
             setIsSidebarOpen(false);
             loadReservations();
+            success(editingReservation ? 'Reservación actualizada' : 'Reservación creada');
         } catch (error: unknown) {
             console.error('Error saving reservation:', error);
             const resp = typeof error === 'object' && error !== null && 'response' in error
@@ -150,7 +207,9 @@ export default function Reservations() {
             const detail = resp?.errors?.map(e => `${e.field}: ${e.message}`).join('\n');
             const apiMsg = resp?.message;
             const baseMsg = apiMsg || (error instanceof Error ? error.message : '') || 'Error al guardar la reservación';
-            alert(detail ? `${baseMsg}\n\n${detail}` : baseMsg);
+            showError(detail ? `${baseMsg}\n\n${detail}` : baseMsg);
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -700,28 +759,37 @@ export default function Reservations() {
             >
                 <div className="premium-modal-content reservation-modal-content">
                     {/* Tabs Navigation */}
-                    <div className="modal-tabs">
-                        <div
+                    <div className="modal-tabs" role="tablist">
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'cliente'}
                             className={`modal-tab ${activeTab === 'cliente' ? 'active' : ''}`}
                             onClick={() => setActiveTab('cliente')}
                         >
                             <Users size={18} />
                             <span>Cliente</span>
-                        </div>
-                        <div
+                        </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'reserva'}
                             className={`modal-tab ${activeTab === 'reserva' ? 'active' : ''}`}
                             onClick={() => setActiveTab('reserva')}
                         >
                             <Calendar size={18} />
                             <span>Reserva</span>
-                        </div>
-                        <div
+                        </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'notas'}
                             className={`modal-tab ${activeTab === 'notas' ? 'active' : ''}`}
                             onClick={() => setActiveTab('notas')}
                         >
                             <MessageSquare size={18} />
                             <span>Notas</span>
-                        </div>
+                        </button>
                     </div>
 
                     <form onSubmit={handleSubmit} className="modal-form-new">
@@ -734,8 +802,9 @@ export default function Reservations() {
                                     </div>
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Nombre del Cliente</label>
+                                        <label className="modal-input-label" htmlFor="reservation-customer-name">Nombre del Cliente</label>
                                         <input
+                                            id="reservation-customer-name"
                                             type="text"
                                             className="modal-standard-input"
                                             value={formData.customerName}
@@ -747,8 +816,9 @@ export default function Reservations() {
 
                                     <div className="modal-form-row">
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label">Teléfono</label>
+                                            <label className="modal-input-label" htmlFor="reservation-phone">Teléfono</label>
                                             <input
+                                                id="reservation-phone"
                                                 type="tel"
                                                 className="modal-standard-input"
                                                 value={formData.customerPhone}
@@ -758,8 +828,9 @@ export default function Reservations() {
                                             />
                                         </div>
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label">Email (opcional)</label>
+                                            <label className="modal-input-label" htmlFor="reservation-email">Email (opcional)</label>
                                             <input
+                                                id="reservation-email"
                                                 type="email"
                                                 className="modal-standard-input"
                                                 value={formData.customerEmail}
@@ -780,8 +851,9 @@ export default function Reservations() {
 
                                     <div className="modal-form-row">
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label">Fecha</label>
+                                            <label className="modal-input-label" htmlFor="reservation-date">Fecha</label>
                                             <input
+                                                id="reservation-date"
                                                 type="date"
                                                 className="modal-standard-input"
                                                 value={formData.date}
@@ -790,8 +862,9 @@ export default function Reservations() {
                                             />
                                         </div>
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label">Hora</label>
+                                            <label className="modal-input-label" htmlFor="reservation-time">Hora</label>
                                             <input
+                                                id="reservation-time"
                                                 type="time"
                                                 className="modal-standard-input"
                                                 value={formData.time}
@@ -803,8 +876,9 @@ export default function Reservations() {
 
                                     <div className="modal-form-row">
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label">Número de Personas</label>
+                                            <label className="modal-input-label" htmlFor="reservation-guests">Número de Personas</label>
                                             <input
+                                                id="reservation-guests"
                                                 type="number"
                                                 className="modal-standard-input"
                                                 min="1"
@@ -817,13 +891,16 @@ export default function Reservations() {
                                             <Select
                                                 variant="modal"
                                                 label="Estado"
-                                                options={[
+                                                options={([
                                                     { value: 'PENDING', label: 'Pendiente' },
                                                     { value: 'CONFIRMED', label: 'Confirmada' },
                                                     { value: 'COMPLETED', label: 'Completada' },
                                                     { value: 'CANCELLED', label: 'Cancelada' },
                                                     { value: 'NO_SHOW', label: 'No Asistió' }
-                                                ]}
+                                                ] as { value: Reservation['status']; label: string }[]).map((opt) => ({
+                                                    ...opt,
+                                                    isDisabled: !canTransitionReservation(editingReservation.status, opt.value)
+                                                }))}
                                                 value={{
                                                     value: editingReservation.status,
                                                     label: getStatusText(editingReservation.status)
@@ -831,10 +908,14 @@ export default function Reservations() {
                                                 onChange={async (option: SingleValue<{ value: Reservation['status']; label: string }>) => {
                                                     if (!option) return;
                                                     if (!canManageReservations) return;
+                                                    if (!canTransitionReservation(editingReservation.status, option.value)) return;
+                                                    if (option.value === 'CANCELLED') {
+                                                        if (!(await confirm('¿Cancelar esta reservación?', { variant: 'warning', confirmText: 'Sí, cancelar' }))) {
+                                                            return;
+                                                        }
+                                                    }
                                                     try {
-                                                        await reservationsAPI.update(editingReservation.id, {
-                                                            status: option.value
-                                                        });
+                                                        await reservationsAPI.updateStatus(editingReservation.id, option.value);
                                                         loadReservations();
                                                         setIsSidebarOpen(false);
                                                     } catch (err) {
@@ -856,8 +937,9 @@ export default function Reservations() {
                                     </div>
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Notas Adicionales</label>
+                                        <label className="modal-input-label" htmlFor="reservation-notes">Notas Adicionales</label>
                                         <textarea
+                                            id="reservation-notes"
                                             className="modal-textarea"
                                             rows={8}
                                             value={formData.notes}
@@ -874,8 +956,8 @@ export default function Reservations() {
                                 Cancelar
                             </Button>
                             {canManageReservations && (
-                                <Button type="submit" variant="primary">
-                                    {editingReservation ? 'Actualizar Reservación' : 'Crear Reservación'}
+                                <Button type="submit" variant="primary" disabled={saving}>
+                                    {saving ? 'Guardando...' : editingReservation ? 'Actualizar Reservación' : 'Crear Reservación'}
                                 </Button>
                             )}
                         </div>

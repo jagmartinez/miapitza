@@ -1,5 +1,7 @@
+import { useRef } from 'react';
 import { X } from 'lucide-react';
 import Button from './Button';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 import './ConfirmDialog.css';
 
 interface ConfirmDialogProps {
@@ -21,21 +23,33 @@ export default function ConfirmDialog({
     cancelText = 'Cancelar',
     variant = 'danger',
     onConfirm,
-    onCancel
+    onCancel,
 }: ConfirmDialogProps) {
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const { titleId, descriptionId } = useDialogA11y(isOpen, onCancel, dialogRef);
+
     if (!isOpen) return null;
 
     return (
         <div className="confirm-dialog-overlay" onClick={onCancel}>
-            <div className="confirm-dialog" onClick={event => event.stopPropagation()}>
+            <div
+                ref={dialogRef}
+                className="confirm-dialog"
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
+                aria-describedby={descriptionId}
+                tabIndex={-1}
+                onClick={event => event.stopPropagation()}
+            >
                 <div className="confirm-dialog-header">
-                    <h3 className="confirm-dialog-title">{title}</h3>
-                    <button className="confirm-dialog-close" onClick={onCancel}>
-                        <X size={20} />
+                    <h3 id={titleId} className="confirm-dialog-title">{title}</h3>
+                    <button type="button" className="confirm-dialog-close" onClick={onCancel} aria-label="Cerrar">
+                        <X size={20} aria-hidden="true" />
                     </button>
                 </div>
                 <div className="confirm-dialog-body">
-                    <p className="confirm-dialog-message">{message}</p>
+                    <p id={descriptionId} className="confirm-dialog-message">{message}</p>
                 </div>
                 <div className="confirm-dialog-footer">
                     <Button variant="ghost" onClick={onCancel}>
@@ -43,10 +57,7 @@ export default function ConfirmDialog({
                     </Button>
                     <Button
                         variant={variant === 'danger' ? 'danger' : 'primary'}
-                        onClick={() => {
-                            onConfirm();
-                            onCancel();
-                        }}
+                        onClick={onConfirm}
                         className={`confirm-btn-${variant}`}
                     >
                         {confirmText}

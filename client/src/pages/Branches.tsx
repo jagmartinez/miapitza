@@ -7,11 +7,15 @@ import { Plus, MapPin, Phone, Edit2, Trash2, Building2, Store } from 'lucide-rea
 import type { Branch, Company } from '../types';
 import type { SingleValue } from 'react-select';
 import { useAuth } from '../hooks/useAuth';
+import { useConfirmDialog } from '../context/ConfirmContext';
+import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import './Branches.css';
 
 export default function Branches() {
     const { user } = useAuth();
+    const { confirm } = useConfirmDialog();
+    const { error: showError, warning: showWarning } = useAppToast();
     const isSuperAdmin = hasAnyRole(user, ['SUPERADMIN']);
 
     const [branches, setBranches] = useState<Branch[]>([]);
@@ -29,6 +33,7 @@ export default function Branches() {
         companyId: ''
     });
     const [activeTab, setActiveTab] = useState<'general' | 'ubicacion'>('general');
+    const [saving, setSaving] = useState(false);
 
     const loadData = useCallback(async () => {
         try {
@@ -55,9 +60,10 @@ export default function Branches() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!editingBranch && !isSuperAdmin) {
-            alert('Solo un superadministrador puede crear sucursales.');
+            showWarning('Solo un superadministrador puede crear sucursales.');
             return;
         }
+        setSaving(true);
         try {
             const payload = {
                 ...formData,
@@ -73,28 +79,30 @@ export default function Branches() {
             closeModal();
         } catch (error) {
             console.error('Error saving branch:', error);
-            alert('Error al guardar la sucursal');
+            showError('Error al guardar la sucursal');
+        } finally {
+            setSaving(false);
         }
     };
 
     const handleDelete = async (id: number) => {
         if (!isSuperAdmin) {
-            alert('Solo un superadministrador puede desactivar sucursales.');
+            showWarning('Solo un superadministrador puede desactivar sucursales.');
             return;
         }
-        if (!confirm('¿Estás seguro de desactivar esta sucursal?')) return;
+        if (!(await confirm('¿Estás seguro de desactivar esta sucursal?', { title: 'Confirmar acción' }))) return;
         try {
             await branchesAPI.delete(id);
             await loadData();
         } catch (error) {
             console.error('Error deleting branch:', error);
-            alert('Error al desactivar la sucursal');
+            showError('Error al desactivar la sucursal');
         }
     };
 
     const openModal = (branch?: Branch) => {
         if (!branch && !isSuperAdmin) {
-            alert('Solo un superadministrador puede crear sucursales.');
+            showWarning('Solo un superadministrador puede crear sucursales.');
             return;
         }
         if (branch) {
@@ -272,20 +280,22 @@ export default function Branches() {
                 <div className="premium-modal-content branches-modal-content">
                     {/* Tabs Navigation */}
                     <div className="modal-tabs">
-                        <div
+                        <button
+                            type="button"
                             className={`modal-tab ${activeTab === 'general' ? 'active' : ''}`}
                             onClick={() => setActiveTab('general')}
                         >
                             <Store size={18} />
                             <span>General</span>
-                        </div>
-                        <div
+                        </button>
+                        <button
+                            type="button"
                             className={`modal-tab ${activeTab === 'ubicacion' ? 'active' : ''}`}
                             onClick={() => setActiveTab('ubicacion')}
                         >
                             <MapPin size={18} />
                             <span>Ubicación</span>
-                        </div>
+                        </button>
                     </div>
 
                     <form onSubmit={handleSubmit} className="modal-form-new">
@@ -299,8 +309,9 @@ export default function Branches() {
                                     </div>
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Nombre de la Sucursal</label>
+                                        <label className="modal-input-label" htmlFor="branch-name">Nombre de la Sucursal</label>
                                         <input
+                                            id="branch-name"
                                             type="text"
                                             className="modal-standard-input"
                                             value={formData.name}
@@ -313,8 +324,9 @@ export default function Branches() {
 
                                     <div className="modal-form-row">
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label">Código</label>
+                                            <label className="modal-input-label" htmlFor="branch-code">Código</label>
                                             <input
+                                                id="branch-code"
                                                 type="text"
                                                 className="modal-standard-input"
                                                 value={formData.code}
@@ -324,10 +336,11 @@ export default function Branches() {
                                             />
                                         </div>
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label">Teléfono</label>
+                                            <label className="modal-input-label" htmlFor="branch-phone">Teléfono</label>
                                             <div style={{ position: 'relative' }}>
                                                 <Phone size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-neutral-400)' }} />
                                                 <input
+                                                    id="branch-phone"
                                                     type="text"
                                                     className="modal-standard-input"
                                                     style={{ paddingLeft: '36px' }}
@@ -379,8 +392,9 @@ export default function Branches() {
                                     )}
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Dirección Completa</label>
+                                        <label className="modal-input-label" htmlFor="branch-address">Dirección Completa</label>
                                         <textarea
+                                            id="branch-address"
                                             className="modal-standard-input"
                                             style={{ minHeight: '100px', paddingTop: '12px', resize: 'vertical' }}
                                             value={formData.address}
@@ -396,8 +410,8 @@ export default function Branches() {
                             <Button variant="ghost" type="button" onClick={closeModal}>
                                 Cancelar
                             </Button>
-                            <Button variant="primary" type="submit">
-                                {editingBranch ? 'Guardar Cambios' : 'Crear Sucursal'}
+                            <Button variant="primary" type="submit" disabled={saving}>
+                                {saving ? 'Guardando...' : editingBranch ? 'Guardar Cambios' : 'Crear Sucursal'}
                             </Button>
                         </div>
                     </form>

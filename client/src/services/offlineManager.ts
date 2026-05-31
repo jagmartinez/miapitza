@@ -1,5 +1,6 @@
 import { db, SyncItem } from './db';
 import axios from 'axios';
+import { normalizeApiBaseUrl } from './api';
 
 const CACHE_TTL: Record<string, number> = {
     '/products': 5 * 60 * 1000,
@@ -142,7 +143,7 @@ class OfflineManager {
             }
         })();
         const api = axios.create({
-            baseURL: '/api',
+            baseURL: normalizeApiBaseUrl(),
             withCredentials: true,
             headers: {
                 'Content-Type': 'application/json',

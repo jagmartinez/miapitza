@@ -4,11 +4,13 @@ import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import type { SingleValue } from 'react-select';
 import Select from '../components/Select';
 import Button from '../components/Button';
+import Pagination from '../components/Pagination';
 import {
     Trash2, AlertTriangle, FileText, Search, RefreshCw,
     Calendar, Warehouse as WarehouseIcon, Package, Tag,
     DollarSign, BarChart3, Save
 } from 'lucide-react';
+import { useAppToast } from '../context/ToastContext';
 
 type StrOption = { value: string; label: string };
 
@@ -59,8 +61,12 @@ interface Product {
     unit: string;
 }
 
+const PAGE_SIZE = 20;
+
 const WasteReport: React.FC = () => {
+    const { error: showError, success } = useAppToast();
     const [activeTab, setActiveTab] = useState<'record' | 'report'>('record');
+    const [page, setPage] = useState(1);
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [wasteReasons, setWasteReasons] = useState<string[]>([]);
@@ -118,7 +124,7 @@ const WasteReport: React.FC = () => {
                 reason: formData.reason,
                 notes: formData.notes
             });
-            alert('Merma registrada exitosamente');
+            success('Merma registrada exitosamente');
             setFormData({
                 warehouseId: '',
                 productId: '',
@@ -128,7 +134,7 @@ const WasteReport: React.FC = () => {
             });
             if (activeTab === 'report') loadReport();
         } catch (error: unknown) {
-            alert('Error al registrar merma: ' + errMsg(error));
+            showError('Error al registrar merma: ' + errMsg(error));
         } finally {
             setLoading(false);
         }
@@ -145,8 +151,9 @@ const WasteReport: React.FC = () => {
 
             const response = await api.get(`/advanced/waste/report?${params.toString()}`);
             setReport(response.data.data);
+            setPage(1);
         } catch (error: unknown) {
-            alert('Error al cargar reporte: ' + errMsg(error));
+            showError('Error al cargar reporte: ' + errMsg(error));
         } finally {
             setLoading(false);
         }
@@ -160,6 +167,14 @@ const WasteReport: React.FC = () => {
     useEffect(() => {
         if (activeTab === 'report') void loadReport();
     }, [activeTab, loadReport]);
+
+    useEffect(() => {
+        setPage(1);
+    }, [filters.startDate, filters.endDate, filters.warehouseId, filters.productId]);
+
+    const detailEntries = report?.details ?? [];
+    const totalPages = Math.max(1, Math.ceil(detailEntries.length / PAGE_SIZE));
+    const pagedDetails = detailEntries.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
     return (
         <div className="page-wrapper">
@@ -246,8 +261,9 @@ const WasteReport: React.FC = () => {
 
                             <div className="modal-form-row">
                                 <div className="modal-input-group">
-                                    <label className="modal-input-label">Cantidad *</label>
+                                    <label className="modal-input-label" htmlFor="waste-quantity">Cantidad *</label>
                                     <input
+                                        id="waste-quantity"
                                         type="number"
                                         step="0.001"
                                         className="modal-standard-input"
@@ -275,8 +291,9 @@ const WasteReport: React.FC = () => {
                             </div>
 
                             <div className="modal-input-group">
-                                <label className="modal-input-label">Notas</label>
+                                <label className="modal-input-label" htmlFor="waste-notes">Notas</label>
                                 <textarea
+                                    id="waste-notes"
                                     className="modal-textarea"
                                     value={formData.notes}
                                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
@@ -440,7 +457,7 @@ const WasteReport: React.FC = () => {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {report.details.map((entry) => (
+                                            {pagedDetails.map((entry) => (
                                                 <tr key={entry.id}>
                                                     <td>{new Date(entry.date).toLocaleDateString()}</td>
                                                     <td>{entry.product}</td>
@@ -453,12 +470,19 @@ const WasteReport: React.FC = () => {
                                                     <td>{entry.user}</td>
                                                 </tr>
                                             ))}
-                                            {report.details.length === 0 && (
+                                            {detailEntries.length === 0 && (
                                                 <tr><td colSpan={7} className="data-table-empty">Sin registros de merma en el período seleccionado</td></tr>
                                             )}
                                         </tbody>
                                     </table>
                                 </div>
+                                <Pagination
+                                    page={page}
+                                    totalPages={totalPages}
+                                    totalItems={detailEntries.length}
+                                    pageSize={PAGE_SIZE}
+                                    onPageChange={setPage}
+                                />
                             </div>
                         </>
                     )}

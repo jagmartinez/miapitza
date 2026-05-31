@@ -11,6 +11,8 @@ export class InventoryMovementService {
         type?: 'IN' | 'OUT' | 'ADJUSTMENT' | 'TRANSFER';
         startDate?: Date;
         endDate?: Date;
+        page?: number;
+        limit?: number;
     }) {
         const where: Prisma.InventoryMovementWhereInput = { companyId };
 
@@ -41,6 +43,10 @@ export class InventoryMovementService {
                 where.createdAt.lte = filters.endDate;
             }
         }
+
+        const page = filters?.page || 1;
+        const limit = Math.min(filters?.limit || 100, 500);
+        const skip = (page - 1) * limit;
 
         return await prisma.inventoryMovement.findMany({
             where,
@@ -75,7 +81,9 @@ export class InventoryMovementService {
             },
             orderBy: {
                 createdAt: 'desc'
-            }
+            },
+            skip,
+            take: limit
         });
     }
 
@@ -285,7 +293,7 @@ export class InventoryMovementService {
                 entityType: 'InventoryMovement', entityId: movement.id,
                 action: data.type === 'TRANSFER' ? 'TRANSFER' : 'CREATE',
                 details: { type: data.type, productId: data.productId, warehouseId: data.warehouseId, quantity: baseQuantity, reason: data.reason }
-            }).catch(() => {});
+            }).catch((err) => console.error('[InventoryMovementService] Failed to write audit log:', err));
 
             return movement;
         });
@@ -348,6 +356,16 @@ export class InventoryMovementService {
 
         if (data.quantity <= 0) {
             throw new Error('Transfer quantity must be positive');
+        }
+
+        // Verify both warehouses belong to this company
+        const warehouses = await prisma.warehouse.findMany({
+            where: { id: { in: [data.fromWarehouseId, data.toWarehouseId] }, companyId },
+            select: { id: true }
+        });
+
+        if (warehouses.length !== 2) {
+            throw new Error('Warehouse not found or unauthorized');
         }
 
         // Convert unit before transaction

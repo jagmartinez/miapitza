@@ -262,7 +262,16 @@ export class ReportExtendedService {
     static async getSalesByCategory(companyId: number, filters?: {
         dateFrom?: Date; dateTo?: Date; branchId?: number;
     }) {
-        const orderWhere = this.buildOrderWhere(companyId, filters);
+        // Avoid an unbounded scan of all paid orders: default to the current month
+        // when no date window is supplied, consistent with other report defaults.
+        let effectiveFilters = filters;
+        if (!filters?.dateFrom && !filters?.dateTo) {
+            const now = new Date();
+            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+            const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+            effectiveFilters = { ...filters, dateFrom: monthStart, dateTo: monthEnd };
+        }
+        const orderWhere = this.buildOrderWhere(companyId, effectiveFilters);
         const orders = await prisma.order.findMany({
             where: orderWhere,
             include: {

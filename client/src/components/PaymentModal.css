@@ -65,6 +65,37 @@
     margin: 0;
 }
 
+.payment-mode-toggle {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.payment-mode-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.85rem;
+    background: var(--color-neutral-100);
+    color: var(--color-neutral-600);
+    transition: all var(--transition-fast);
+}
+
+.payment-mode-btn.active {
+    background: var(--color-primary, #2563eb);
+    color: #fff;
+}
+
+.payment-mode-btn:hover:not(.active) {
+    background: var(--color-neutral-200);
+}
+
 .close-btn-new {
     display: flex;
     align-items: center;
@@ -77,6 +108,11 @@
     color: var(--color-text-secondary);
     cursor: pointer;
     transition: all var(--transition-fast);
+}
+
+.close-btn-new:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .close-btn-new:hover {

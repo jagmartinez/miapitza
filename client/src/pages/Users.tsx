@@ -3,6 +3,7 @@ import Select from '../components/Select';
 import { usersAPI, branchesAPI, companiesAPI, rolesAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
+import PageHeader from '../components/PageHeader';
 import { Users as UsersIcon, Plus, Edit2, Trash2, Shield, MapPin, Building2, Mail, User as UserIcon, Lock, Palette } from 'lucide-react';
 import type { User, Branch, Company } from '../types';
 import type { SingleValue } from 'react-select';
@@ -20,6 +21,8 @@ interface UserSavePayload {
     companyId?: number;
 }
 import { useAuth } from '../hooks/useAuth';
+import { useConfirmDialog } from '../context/ConfirmContext';
+import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import './Users.css';
 
@@ -29,6 +32,8 @@ function toApiPayload(payload: UserSavePayload): Record<string, unknown> {
 
 export default function Users() {
     const { user: currentUser } = useAuth();
+    const { confirm } = useConfirmDialog();
+    const { error: showError, warning: showWarning } = useAppToast();
     const isSuperAdmin = hasAnyRole(currentUser, ['SUPERADMIN']);
 
     const [users, setUsers] = useState<User[]>([]);
@@ -58,6 +63,7 @@ export default function Users() {
         color: ''
     });
     const [activeTab, setActiveTab] = useState<'perfil' | 'acceso'>('perfil');
+    const [saving, setSaving] = useState(false);
 
     const roleOptions = [
         { value: 'all', label: 'Todos los Roles' },
@@ -135,15 +141,51 @@ export default function Users() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        try {
-            const selectedRoleIds = formData.roleIds.length > 0
-                ? formData.roleIds.map(id => parseInt(id))
-                : [parseInt(formData.roleId)];
 
+        if (!formData.name?.trim()) {
+            showError('El nombre es obligatorio');
+            setActiveTab('perfil');
+            return;
+        }
+        if (!formData.email?.trim()) {
+            showError('El email es obligatorio');
+            setActiveTab('perfil');
+            return;
+        }
+        if (!formData.username?.trim()) {
+            showError('El nombre de usuario es obligatorio');
+            setActiveTab('perfil');
+            return;
+        }
+
+        const selectedRoleIds = formData.roleIds.length > 0
+            ? formData.roleIds.map(id => parseInt(id))
+            : [parseInt(formData.roleId)];
+
+        if (selectedRoleIds.length === 0 || selectedRoleIds.some(Number.isNaN)) {
+            showError('Selecciona al menos un rol');
+            setActiveTab('acceso');
+            return;
+        }
+
+        if (isSuperAdmin && !editingUser && !formData.companyId) {
+            showError('Selecciona una empresa');
+            setActiveTab('acceso');
+            return;
+        }
+
+        if (!editingUser && !formData.password?.trim()) {
+            showWarning('La contraseña es obligatoria para nuevos usuarios');
+            setActiveTab('perfil');
+            return;
+        }
+
+        setSaving(true);
+        try {
             const payload: UserSavePayload = {
-                name: formData.name,
-                email: formData.email,
-                username: formData.username,
+                name: formData.name.trim(),
+                email: formData.email.trim(),
+                username: formData.username.trim(),
                 password: formData.password || undefined,
                 roleId: selectedRoleIds[0],
                 roleIds: selectedRoleIds,
@@ -154,11 +196,6 @@ export default function Users() {
 
             if (isSuperAdmin && formData.companyId) {
                 payload.companyId = parseInt(formData.companyId);
-            }
-
-            if (!payload.password && !editingUser) {
-                alert('La contraseña es obligatoria para nuevos usuarios');
-                return;
             }
 
             if (!payload.password) {
@@ -179,22 +216,24 @@ export default function Users() {
                 ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
                 : undefined;
             const fallback = 'Error al guardar usuario';
-            alert(`Error: ${msg || fallback}`);
+            showError(`Error: ${msg || fallback}`);
+        } finally {
+            setSaving(false);
         }
     };
 
     const handleDelete = async (id: number) => {
         if (!isSuperAdmin) {
-            alert('Solo un superadministrador puede desactivar usuarios.');
+            showWarning('Solo un superadministrador puede desactivar usuarios.');
             return;
         }
-        if (!window.confirm('¿Estás seguro de desactivar este usuario?')) return;
+        if (!(await confirm('¿Estás seguro de desactivar este usuario?', { title: 'Confirmar acción' }))) return;
         try {
             await usersAPI.delete(id);
             loadData(formData.companyId);
         } catch (error) {
             console.error('Error deleting user:', error);
-            alert('Error al eliminar usuario');
+            showError('Error al eliminar usuario');
         }
     };
 
@@ -254,16 +293,16 @@ export default function Users() {
 
     return (
         <div className="users-page">
-            {/* Header */}
-            <div className="users-header">
-                <div>
-                    <h1><UsersIcon size={32} /> Gestión de Usuarios</h1>
-                </div>
-                <Button onClick={() => handleOpenSidebar()}>
-                    <Plus size={20} />
-                    Nuevo Usuario
-                </Button>
-            </div>
+            <PageHeader
+                title="Gestión de Usuarios"
+                icon={UsersIcon}
+                actions={
+                    <Button onClick={() => handleOpenSidebar()}>
+                        <Plus size={20} />
+                        Nuevo Usuario
+                    </Button>
+                }
+            />
 
             {/* Filters */}
             <div className="users-filters">
@@ -388,20 +427,22 @@ export default function Users() {
                 <div className="premium-modal-content users-modal-content">
                     {/* Tabs Navigation */}
                     <div className="modal-tabs">
-                        <div
+                        <button
+                            type="button"
                             className={`modal-tab ${activeTab === 'perfil' ? 'active' : ''}`}
                             onClick={() => setActiveTab('perfil')}
                         >
                             <UserIcon size={18} />
                             <span>Perfil</span>
-                        </div>
-                        <div
+                        </button>
+                        <button
+                            type="button"
                             className={`modal-tab ${activeTab === 'acceso' ? 'active' : ''}`}
                             onClick={() => setActiveTab('acceso')}
                         >
                             <Shield size={18} />
                             <span>Rol y Acceso</span>
-                        </div>
+                        </button>
                     </div>
 
                     <form onSubmit={handleSubmit} className="modal-form-new">
@@ -415,8 +456,9 @@ export default function Users() {
                                     </div>
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Nombre Completo</label>
+                                        <label className="modal-input-label" htmlFor="user-name">Nombre Completo</label>
                                         <input
+                                            id="user-name"
                                             type="text"
                                             className="modal-standard-input"
                                             value={formData.name}
@@ -429,8 +471,9 @@ export default function Users() {
 
                                     <div className="modal-form-row">
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label">Email</label>
+                                            <label className="modal-input-label" htmlFor="user-email">Email</label>
                                             <input
+                                                id="user-email"
                                                 type="email"
                                                 className="modal-standard-input"
                                                 value={formData.email}
@@ -440,8 +483,9 @@ export default function Users() {
                                             />
                                         </div>
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label">Nombre de Usuario</label>
+                                            <label className="modal-input-label" htmlFor="user-username">Nombre de Usuario</label>
                                             <input
+                                                id="user-username"
                                                 type="text"
                                                 className="modal-standard-input"
                                                 value={formData.username}
@@ -453,12 +497,13 @@ export default function Users() {
                                     </div>
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">
+                                        <label className="modal-input-label" htmlFor="user-password">
                                             {editingUser ? "Nueva Contraseña (dejar en blanco para no cambiar)" : "Contraseña"}
                                         </label>
                                         <div style={{ position: 'relative' }}>
                                             <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-neutral-400)' }} />
                                             <input
+                                                id="user-password"
                                                 type="password"
                                                 className="modal-standard-input"
                                                 style={{ paddingLeft: '36px' }}
@@ -503,8 +548,8 @@ export default function Users() {
                                     )}
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Roles del Sistema (puede tener varios)</label>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '8px 0' }}>
+                                        <label className="modal-input-label" id="user-roles-label">Roles del Sistema (puede tener varios)</label>
+                                        <div role="group" aria-labelledby="user-roles-label" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '8px 0' }}>
                                             {availableRoles.map(r => {
                                                 const isChecked = formData.roleIds.includes(r.id.toString());
                                                 return (
@@ -557,9 +602,10 @@ export default function Users() {
                                         />
 
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label"><Palette size={14} style={{ marginRight: 4 }} />Color Identificador</label>
+                                            <label className="modal-input-label" htmlFor="user-color"><Palette size={14} style={{ marginRight: 4 }} />Color Identificador</label>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                 <input
+                                                    id="user-color"
                                                     type="color"
                                                     value={formData.color || '#6B7280'}
                                                     onChange={e => setFormData({ ...formData, color: e.target.value })}
@@ -597,8 +643,8 @@ export default function Users() {
                             <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>
                                 Cancelar
                             </Button>
-                            <Button type="submit" variant="primary">
-                                {editingUser ? 'Guardar Cambios' : 'Crear Usuario'}
+                            <Button type="submit" variant="primary" disabled={saving}>
+                                {saving ? 'Guardando...' : editingUser ? 'Guardar Cambios' : 'Crear Usuario'}
                             </Button>
                         </div>
                     </form>

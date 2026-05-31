@@ -66,6 +66,38 @@ async function main() {
     }
     console.log('Permissions created');
 
+    // 3b. Link permissions to roles so the permission model is actually usable.
+    // Without these connections every role would have zero permissions.
+    console.log('Linking permissions to roles...');
+    const rolePermissionMap: Record<string, string[]> = {
+        // Full access
+        SUPERADMIN: permissions,
+        ADMIN: permissions,
+        // Cashier: manage orders + read-only menu/reports
+        CAJERO: ['view_orders', 'create_order', 'edit_order', 'view_menu', 'view_reports'],
+        // Waiter: take and edit orders
+        MESERO: ['view_orders', 'create_order', 'edit_order', 'view_menu'],
+        // Kitchen: read orders only
+        COCINA: ['view_orders', 'view_menu'],
+        // Host/receptionist: read orders + menu
+        HOST: ['view_orders', 'view_menu'],
+    };
+
+    for (const [roleName, permNames] of Object.entries(rolePermissionMap)) {
+        const role = roles[roleName];
+        if (!role) continue;
+        await prisma.role.update({
+            where: { id: role.id },
+            data: {
+                permissions: {
+                    // `set` makes re-seeding idempotent (resets to the defined list).
+                    set: permNames.map((name) => ({ name })),
+                },
+            },
+        });
+    }
+    console.log('Role permissions linked');
+
     // 4. Create Branch (compound unique: companyId + code)
     console.log('Creating branch...');
     const branch = await findOrCreate<any>(prisma.branch, { companyId, code: 'MAIN' }, {
@@ -105,8 +137,7 @@ async function main() {
     // 6. Create Payment Methods
     console.log('Creating payment methods...');
     for (const method of ['Efectivo', 'Tarjeta', 'Transferencia']) {
-        await findOrCreate<any>(prisma.paymentMethod, { name: method }, {
-            companyId,
+        await findOrCreate<any>(prisma.paymentMethod, { companyId, name: method }, {
             active: true
         });
     }

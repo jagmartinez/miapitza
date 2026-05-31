@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useConfirmDialog } from '../context/ConfirmContext';
 import { useTheme } from '../hooks/useTheme';
 import { useLanguage } from '../hooks/useLanguage';
 import { usersAPI, reportsAPI, authAPI } from '../services/api';
@@ -154,13 +155,14 @@ export default function Profile() {
 
     return (
         <div className="profile-page">
+            <h1 className="sr-only">Mi perfil</h1>
             {/* ── Left Sidebar ── */}
             <aside className="profile-sidebar">
                 <div className="profile-identity-card">
                     <div className={`profile-avatar role-${roleLower}`}>{initials}</div>
                     <h2 className="profile-user-name">{user?.name}</h2>
                     <p className="profile-user-email">{user?.email}</p>
-                    <span className="profile-role-badge">{user?.role.name}</span>
+                    <span className="profile-role-badge">{user?.role?.name ?? ''}</span>
 
                     <div className="profile-meta-list">
                         <div className="profile-meta-item">
@@ -333,7 +335,7 @@ export default function Profile() {
                     {/* PERMISSIONS */}
                     {activeTab === 'permissions' && (
                         <div className="profile-tab-fade">
-                            <h3 className="profile-section-title"><Shield size={20} /> Capacidades del Rol: {user?.role.name}</h3>
+                            <h3 className="profile-section-title"><Shield size={20} /> Capacidades del Rol: {user?.role?.name ?? ''}</h3>
                             <p className="permissions-summary">{fullUserData?.role?.description || 'Este rol define tus acciones permitidas en el sistema.'}</p>
                             <div className="permissions-list">
                                 {(() => {
@@ -554,6 +556,7 @@ function SecuritySection({ logout, passwordInfo }: { logout: () => void; passwor
 
 /** Sessions management */
 function SessionsSection() {
+    const { confirm } = useConfirmDialog();
     const [sessions, setSessions] = useState<SessionRow[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -568,6 +571,7 @@ function SessionsSection() {
     useEffect(() => { void loadSessions(); }, [loadSessions]);
 
     const handleRevoke = async (id: string) => {
+        if (!(await confirm('¿Cerrar esta sesión?', { title: 'Confirmar acción' }))) return;
         try {
             await authAPI.revokeSession(id);
             loadSessions();
@@ -575,6 +579,7 @@ function SessionsSection() {
     };
 
     const handleRevokeAll = async () => {
+        if (!(await confirm('¿Cerrar todas las demás sesiones?', { title: 'Confirmar acción' }))) return;
         try {
             await authAPI.revokeAllSessions();
             loadSessions();

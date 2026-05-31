@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import Button from '../components/Button';
+import Pagination from '../components/Pagination';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import {
@@ -58,9 +59,12 @@ interface PendingReconciliation {
 
 type TabKey = 'status' | 'pending' | 'deposit';
 
+const PAGE_SIZE = 20;
+
 const BankReconciliation: React.FC = () => {
     const { toasts, removeToast, success: showSuccess, error: showError } = useToast();
     const [activeTab, setActiveTab] = useState<TabKey>('status');
+    const [pendingPage, setPendingPage] = useState(1);
     const [status, setStatus] = useState<ReconciliationStatus | null>(null);
     const [pending, setPending] = useState<PendingReconciliation[]>([]);
     const [selectedShifts, setSelectedShifts] = useState<number[]>([]);
@@ -120,6 +124,13 @@ const BankReconciliation: React.FC = () => {
     useEffect(() => {
         void loadReconciliationStatus();
     }, [loadReconciliationStatus]);
+
+    useEffect(() => {
+        setPendingPage(1);
+    }, [pending.length]);
+
+    const pendingTotalPages = Math.max(1, Math.ceil(pending.length / PAGE_SIZE));
+    const pagedPending = pending.slice((pendingPage - 1) * PAGE_SIZE, pendingPage * PAGE_SIZE);
 
     const handleRecordDeposit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -356,8 +367,9 @@ const BankReconciliation: React.FC = () => {
                         )}
                     </div>
                     {pending.length > 0 ? (
-                        <div className="data-table-scroll">
-                            <table className="data-table">
+                        <>
+                            <div className="data-table-scroll">
+                                <table className="data-table">
                                 <thead>
                                     <tr>
                                         <th style={{ width: 36 }}>
@@ -379,7 +391,7 @@ const BankReconciliation: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {pending.map((shift) => (
+                                    {pagedPending.map((shift) => (
                                         <tr key={shift.shiftId}>
                                             <td>
                                                 <input
@@ -407,7 +419,15 @@ const BankReconciliation: React.FC = () => {
                                     ))}
                                 </tbody>
                             </table>
-                        </div>
+                            </div>
+                            <Pagination
+                                page={pendingPage}
+                                totalPages={pendingTotalPages}
+                                totalItems={pending.length}
+                                pageSize={PAGE_SIZE}
+                                onPageChange={setPendingPage}
+                            />
+                        </>
                     ) : (
                         <div className="state-placeholder" style={{ borderTop: 'none', borderRadius: 0 }}>
                             <Hourglass size={48} />
@@ -426,8 +446,9 @@ const BankReconciliation: React.FC = () => {
                     <form onSubmit={handleRecordDeposit} className="modal-form-new" style={{ padding: 0 }}>
                         <div className="modal-form-row">
                             <div className="modal-input-group">
-                                <label className="modal-input-label">Fecha del depósito *</label>
+                                <label className="modal-input-label" htmlFor="deposit-date">Fecha del depósito *</label>
                                 <input
+                                    id="deposit-date"
                                     type="date"
                                     className="modal-standard-input"
                                     value={depositForm.date}
@@ -436,8 +457,9 @@ const BankReconciliation: React.FC = () => {
                                 />
                             </div>
                             <div className="modal-input-group">
-                                <label className="modal-input-label">Monto *</label>
+                                <label className="modal-input-label" htmlFor="deposit-amount">Monto *</label>
                                 <input
+                                    id="deposit-amount"
                                     type="number"
                                     step="0.01"
                                     className="modal-standard-input"
@@ -452,8 +474,9 @@ const BankReconciliation: React.FC = () => {
 
                         <div className="modal-form-row">
                             <div className="modal-input-group">
-                                <label className="modal-input-label">Cuenta bancaria *</label>
+                                <label className="modal-input-label" htmlFor="deposit-bank-account">Cuenta bancaria *</label>
                                 <input
+                                    id="deposit-bank-account"
                                     type="text"
                                     className="modal-standard-input"
                                     value={depositForm.bankAccount}
@@ -463,8 +486,9 @@ const BankReconciliation: React.FC = () => {
                                 />
                             </div>
                             <div className="modal-input-group">
-                                <label className="modal-input-label">Referencia / Boleta *</label>
+                                <label className="modal-input-label" htmlFor="deposit-reference">Referencia / Boleta *</label>
                                 <input
+                                    id="deposit-reference"
                                     type="text"
                                     className="modal-standard-input"
                                     value={depositForm.reference}
@@ -476,8 +500,9 @@ const BankReconciliation: React.FC = () => {
                         </div>
 
                         <div className="modal-input-group">
-                            <label className="modal-input-label">Notas</label>
+                            <label className="modal-input-label" htmlFor="deposit-notes">Notas</label>
                             <textarea
+                                id="deposit-notes"
                                 className="modal-textarea"
                                 value={depositForm.notes}
                                 onChange={(e) => setDepositForm({ ...depositForm, notes: e.target.value })}
@@ -488,8 +513,8 @@ const BankReconciliation: React.FC = () => {
 
                         {pending.length > 0 && (
                             <div className="modal-input-group">
-                                <label className="modal-input-label">Turnos asociados (opcional)</label>
-                                <div style={{
+                                <label className="modal-input-label" id="deposit-shifts-label">Turnos asociados (opcional)</label>
+                                <div role="group" aria-labelledby="deposit-shifts-label" style={{
                                     maxHeight: 200,
                                     overflowY: 'auto',
                                     border: '1px solid var(--color-border)',

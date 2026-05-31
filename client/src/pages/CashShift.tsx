@@ -12,6 +12,8 @@ import { ArrowLeft, Lock, Plus, Minus, Calendar, User, Banknote, Coins, Printer,
 import type { CashMovement, CashShift, Supplier } from '../types';
 import type { SingleValue } from 'react-select';
 import { hasAnyRole } from '../utils/authz';
+import { useAppToast } from '../context/ToastContext';
+import { DEFAULT_EXCHANGE_RATE } from '../utils/currency';
 import './CashShift.css';
 
 interface DenomCountRow {
@@ -56,7 +58,6 @@ const BILL_DENOMINATIONS = [1000, 500, 200, 100, 50, 20, 10];
 const COIN_DENOMINATIONS = [10, 5, 1, 0.5, 0.25];
 const USD_BILL_DENOMINATIONS = [100, 50, 20, 10, 5, 1];
 const ITEMS_PER_PAGE = 8;
-const DEFAULT_EXCHANGE_RATE = 36.50; // Default NIO per USD
 
 const DOCUMENT_TYPES = [
     { value: 'FACTURA', label: 'Factura' },
@@ -85,6 +86,7 @@ export default function CashShiftPage() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
+    const { error: showError, warning: showWarning, success } = useAppToast();
     const [shift, setShift] = useState<CashShift | null>(null);
     const [summary, setSummary] = useState<ShiftSummaryState | null>(null);
     const [arqueoDetails, setArqueoDetails] = useState<ArqueoDetailsState | null>(null);
@@ -175,8 +177,6 @@ export default function CashShiftPage() {
 
     const loadData = useCallback(async () => {
         try {
-            console.log('[CASH-SHIFT-PAGE] Loading data for shift:', id);
-
             const [shiftRes, summaryRes, arqueoRes] = await Promise.all([
                 cashShiftsAPI.getById(Number(id)).catch(e => {
                     console.error('[CASH-SHIFT-PAGE] Error loading shift:', e);
@@ -192,13 +192,12 @@ export default function CashShiftPage() {
                 })
             ]);
 
-            console.log('[CASH-SHIFT-PAGE] Data loaded successfully');
             setShift(shiftRes.data.data);
             setSummary(summaryRes.data.data.summary); // Access the nested summary object
             setArqueoDetails(arqueoRes.data.data);
         } catch (error: unknown) {
             console.error('[CASH-SHIFT-PAGE] Error loading shift data:', error);
-            alert(`Error cargando datos del turno: ${error instanceof Error ? error.message : 'Error'}`);
+            showError(`Error cargando datos del turno: ${error instanceof Error ? error.message : 'Error'}`);
         } finally {
             setLoading(false);
         }
@@ -298,7 +297,7 @@ export default function CashShiftPage() {
             loadData();
         } catch (error) {
             console.error('Error adding movement:', error);
-            alert('Error al registrar movimiento');
+            showError('Error al registrar movimiento');
         }
     };
 
@@ -310,7 +309,7 @@ export default function CashShiftPage() {
             setClosePreview(response.data.data);
         } catch (error: unknown) {
             console.error('Error previewing close:', error);
-            alert('Error al validar arqueo: ' + errMsg(error, 'Error'));
+            showError('Error al validar arqueo: ' + errMsg(error, 'Error'));
         } finally {
             setPreviewLoading(false);
         }
@@ -323,17 +322,17 @@ export default function CashShiftPage() {
             setClosePreview(preview);
 
             if (preview.requiresNote && !closeNotes.trim()) {
-                alert('Debes agregar una observación cuando exista una diferencia dentro de tolerancia.');
+                showWarning('Debes agregar una observación cuando exista una diferencia dentro de tolerancia.');
                 return;
             }
 
             if (preview.exceedsTolerance && !canForceClose) {
-                alert(`La diferencia excede la tolerancia de C$ ${formatCurrency(closeTolerance)}.`);
+                showWarning(`La diferencia excede la tolerancia de C$ ${formatCurrency(closeTolerance)}.`);
                 return;
             }
 
             if (preview.exceedsTolerance && canForceClose && !closeNotes.trim()) {
-                alert('El cierre forzado requiere una observación obligatoria.');
+                showWarning('El cierre forzado requiere una observación obligatoria.');
                 return;
             }
 
@@ -343,10 +342,10 @@ export default function CashShiftPage() {
             });
             setIsCloseModalOpen(false);
             loadData();
-            alert('Turno cerrado correctamente');
+            success('Turno cerrado correctamente');
         } catch (error: unknown) {
             console.error('Error closing shift:', error);
-            alert('Error al cerrar turno: ' + errMsg(error, 'Error'));
+            showError('Error al cerrar turno: ' + errMsg(error, 'Error'));
         }
     };
 
@@ -508,7 +507,7 @@ export default function CashShiftPage() {
             }
         } catch (error) {
             console.error('Error printing report:', error);
-            alert('Error al generar el reporte');
+            showError('Error al generar el reporte');
         }
     };
 
@@ -952,8 +951,9 @@ export default function CashShiftPage() {
                                     required
                                 />
                                 <div className="modal-input-group">
-                                    <label className="modal-input-label">Descripción</label>
+                                    <label className="modal-input-label" htmlFor="movement-description">Descripción</label>
                                     <textarea
+                                        id="movement-description"
                                         className="modal-textarea"
                                         rows={3}
                                         value={movementForm.description}
@@ -1243,7 +1243,7 @@ export default function CashShiftPage() {
                     <form onSubmit={async (e) => {
                         e.preventDefault();
                         if (!canCreateSupplier) {
-                            alert('Solo administradores pueden registrar nuevos proveedores.');
+                            showWarning('Solo administradores pueden registrar nuevos proveedores.');
                             return;
                         }
                         try {
@@ -1254,7 +1254,7 @@ export default function CashShiftPage() {
                             setIsNewSupplierModalOpen(false);
                         } catch (error) {
                             console.error('Error creating supplier:', error);
-                            alert('Error al crear proveedor');
+                            showError('Error al crear proveedor');
                         }
                     }} className="modal-form-new">
                         <div className="modal-tab-content">

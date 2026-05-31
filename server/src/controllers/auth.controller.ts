@@ -64,6 +64,7 @@ export class AuthController {
             if (!resolvedCompanyId || typeof resolvedCompanyId !== 'number') {
                 return next({ statusCode: 400, message: 'companyId válido requerido' });
             }
+            const actingRoles = requestUser.roles || [requestUser.role];
             // Only pass allowed fields — prevent mass assignment
             const user = await AuthService.register({
                 name,
@@ -73,7 +74,7 @@ export class AuthController {
                 roleId,
                 branchId,
                 companyId: resolvedCompanyId
-            });
+            }, actingRoles);
             res.status(201).json({
                 success: true,
                 message: 'Usuario registrado exitosamente',
@@ -115,7 +116,8 @@ export class AuthController {
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             if (msg.includes('JWT_SECRET')) {
-                return next({ statusCode: 401, message: 'JWT_SECRET environment variable is not configured' });
+                // Missing server configuration is not a client auth failure.
+                return next({ statusCode: 503, message: 'Servicio no disponible: configuración del servidor incompleta' });
             }
             if (/prisma|ECONNREFUSED|P1001|P1017|can.t reach database/i.test(msg)) {
                 return next({
@@ -138,9 +140,24 @@ export class AuthController {
             }
 
             await AuthService.changePassword(userId, oldPassword, newPassword);
+            // All sessions were revoked server-side; clear the current auth cookie too.
+            res.clearCookie('auth_token', { path: '/' });
             res.json({ success: true, message: 'Contraseña actualizada exitosamente' });
         } catch (error) {
             next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
+        }
+    }
+
+    static async logout(req: Request, res: Response, next: NextFunction) {
+        try {
+            const token = AuthController.extractToken(req);
+            if (token) {
+                await SessionService.revokeByToken(token);
+            }
+            res.clearCookie('auth_token', { path: '/' });
+            res.json({ success: true, message: 'Sesión cerrada' });
+        } catch (error) {
+            next({ statusCode: 500, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
 

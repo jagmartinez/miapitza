@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { categoriesAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
+import { useConfirmDialog } from '../context/ConfirmContext';
+import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
+import PageHeader from '../components/PageHeader';
 import { Plus, Tag, Edit2, Trash2, List } from 'lucide-react';
 import './Categories.css';
 
@@ -21,6 +24,8 @@ interface CategoryRow {
 
 export default function Categories() {
     const { user } = useAuth();
+    const { confirm } = useConfirmDialog();
+    const { error: showError } = useAppToast();
     /** Backend: category mutations require SUPERADMIN | ADMIN (CHEF can list only) */
     const canMutateCategory = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CHEF']);
 
@@ -36,6 +41,7 @@ export default function Categories() {
         active: true
     });
     const [activeTab, setActiveTab] = useState<'info' | 'config'>('info');
+    const [saving, setSaving] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -55,6 +61,7 @@ export default function Categories() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!canMutateCategory) return;
+        setSaving(true);
         try {
             if (editingCategory) {
                 await categoriesAPI.update(editingCategory.id, formData);
@@ -65,13 +72,15 @@ export default function Categories() {
             closeModal();
         } catch (error) {
             console.error('Error saving category:', error);
-            alert('Error al guardar la categoría');
+            showError('Error al guardar la categoría');
+        } finally {
+            setSaving(false);
         }
     };
 
     const handleDelete = async (id: number) => {
         if (!canMutateCategory) return;
-        if (!confirm('¿Estás seguro de eliminar esta categoría? Solo se puede eliminar si no tiene platos asociados.')) return;
+        if (!(await confirm('¿Estás seguro de eliminar esta categoría? Solo se puede eliminar si no tiene platos asociados.', { title: 'Confirmar acción' }))) return;
         try {
             await categoriesAPI.delete(id);
             loadData();
@@ -80,7 +89,7 @@ export default function Categories() {
             const apiMsg = typeof error === 'object' && error !== null && 'response' in error
                 ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
                 : undefined;
-            alert(apiMsg || 'Error al eliminar la categoría');
+            showError(apiMsg || 'Error al eliminar la categoría');
         }
     };
 
@@ -117,18 +126,17 @@ export default function Categories() {
 
     return (
         <div className="categories-page">
-            <div className="categories-header">
-                <div>
-                    <h1><Tag size={32} /> Categorías</h1>
-                    <p className="categories-subtitle">{categories.length} categorías configuradas</p>
-                </div>
-                {canMutateCategory && (
+            <PageHeader
+                title="Categorías"
+                subtitle={`${categories.length} categorías configuradas`}
+                icon={Tag}
+                actions={canMutateCategory ? (
                     <Button variant="primary" onClick={() => openModal()}>
                         <Plus size={20} />
                         Nueva Categoría
                     </Button>
-                )}
-            </div>
+                ) : undefined}
+            />
 
             <div className="categories-grid-new">
                 {categories.map((category) => (
@@ -207,20 +215,22 @@ export default function Categories() {
                 <div className="premium-modal-content categories-modal-content">
                     {/* NAVIGATION TABS */}
                     <div className="modal-tabs">
-                        <div
+                        <button
+                            type="button"
                             className={`modal-tab ${activeTab === 'info' ? 'active' : ''}`}
                             onClick={() => setActiveTab('info')}
                         >
                             <Tag size={18} />
                             <span>Información</span>
-                        </div>
-                        <div
+                        </button>
+                        <button
+                            type="button"
                             className={`modal-tab ${activeTab === 'config' ? 'active' : ''}`}
                             onClick={() => setActiveTab('config')}
                         >
                             <List size={18} />
                             <span>Configuración</span>
-                        </div>
+                        </button>
                     </div>
 
                     <form onSubmit={handleSubmit} className="modal-form-new">
@@ -234,8 +244,9 @@ export default function Categories() {
                                     </div>
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Nombre de la Categoría</label>
+                                        <label className="modal-input-label" htmlFor="category-name">Nombre de la Categoría</label>
                                         <input
+                                            id="category-name"
                                             type="text"
                                             className="modal-standard-input"
                                             value={formData.name}
@@ -247,8 +258,9 @@ export default function Categories() {
                                     </div>
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Prefijo de Código (SKU)</label>
+                                        <label className="modal-input-label" htmlFor="category-code-prefix">Prefijo de Código (SKU)</label>
                                         <input
+                                            id="category-code-prefix"
                                             type="text"
                                             className="modal-standard-input"
                                             value={formData.codePrefix}
@@ -262,8 +274,9 @@ export default function Categories() {
                                     </div>
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Descripción (Opcional)</label>
+                                        <label className="modal-input-label" htmlFor="category-description">Descripción (Opcional)</label>
                                         <textarea
+                                            id="category-description"
                                             className="modal-standard-input"
                                             style={{ minHeight: '120px', paddingTop: '12px', resize: 'vertical' }}
                                             value={formData.description}
@@ -283,8 +296,12 @@ export default function Categories() {
                                     </div>
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Estado de la Categoría</label>
+                                        <label className="modal-input-label" id="category-active-label">Estado de la Categoría</label>
                                         <div
+                                            id="category-active"
+                                            role="switch"
+                                            aria-checked={formData.active}
+                                            aria-labelledby="category-active-label"
                                             className={`modal-toggle-card ${formData.active ? 'active' : ''}`}
                                             onClick={() => setFormData({ ...formData, active: !formData.active })}
                                             style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--color-background)', borderRadius: '8px', border: '1px solid var(--color-border)' }}
@@ -297,9 +314,10 @@ export default function Categories() {
                                     </div>
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Orden de Visualización</label>
+                                        <label className="modal-input-label" htmlFor="category-sort-order">Orden de Visualización</label>
                                         <div style={{ position: 'relative' }}>
                                             <input
+                                                id="category-sort-order"
                                                 type="number"
                                                 className="modal-standard-input"
                                                 value={formData.sortOrder}
@@ -319,8 +337,8 @@ export default function Categories() {
                             <Button variant="ghost" type="button" onClick={closeModal}>
                                 Cancelar
                             </Button>
-                            <Button variant="primary" type="submit">
-                                {editingCategory ? 'Guardar Cambios' : 'Crear Categoría'}
+                            <Button variant="primary" type="submit" disabled={saving}>
+                                {saving ? 'Guardando...' : editingCategory ? 'Guardar Cambios' : 'Crear Categoría'}
                             </Button>
                         </div>
                     </form>

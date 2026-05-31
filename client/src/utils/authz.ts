@@ -1,4 +1,5 @@
 import type { User } from '../types';
+import { ROLES } from '../constants/roles';
 
 const ROLE_COLORS: Record<string, string> = {
     SUPERADMIN: '#7C3AED',
@@ -60,19 +61,19 @@ export const hasAnyRole = (user: User | null | undefined, roles: string[]): bool
 
 /** POST /orders/:id/send-to-kitchen */
 export const canSendOrderToKitchen = (user: User | null | undefined): boolean =>
-    hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'MESERO']);
+    hasAnyRole(user, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.MESERO]);
 
 /** POST /orders/:id/cancel */
 export const canCancelOrder = (user: User | null | undefined): boolean =>
-    hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'MESERO']);
+    hasAnyRole(user, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.MESERO]);
 
 /** POST /payments (registrar cobro) */
 export const canCreatePayment = (user: User | null | undefined): boolean =>
-    hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CAJERO']);
+    hasAnyRole(user, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.CAJERO]);
 
 /** PATCH items start/finish, POST report-problem */
 export const canOperateKitchenLineItems = (user: User | null | undefined): boolean =>
-    hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'COCINA', 'CHEF']);
+    hasAnyRole(user, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.COCINA, ROLES.CHEF]);
 
 export const getPrimaryRoleName = (user?: User | null): string => {
     return getUserRoleNames(user)[0] || user?.role?.name || '';

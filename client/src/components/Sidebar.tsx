@@ -1,5 +1,6 @@
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useRef } from 'react';
 import { X } from 'lucide-react';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 import './Sidebar.css';
 
 interface SidebarProps {
@@ -11,26 +12,26 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ isOpen, onClose, title, children, width = 'normal' }: SidebarProps) {
-    useEffect(() => {
-        if (isOpen) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = 'unset';
-        }
-        return () => {
-            document.body.style.overflow = 'unset';
-        };
-    }, [isOpen]);
+    const panelRef = useRef<HTMLDivElement>(null);
+    const { titleId } = useDialogA11y(isOpen, onClose, panelRef);
 
     return (
         <>
-            {isOpen && <div className="sidebar-overlay" onClick={onClose} />}
+            {isOpen && <div className="sidebar-overlay" onClick={onClose} aria-hidden="true" />}
 
-            <div className={`sidebar-panel sidebar-${width} ${isOpen ? 'sidebar-open' : ''}`}>
+            <div
+                ref={panelRef}
+                className={`sidebar-panel sidebar-${width} ${isOpen ? 'sidebar-open' : ''}`}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
+                aria-hidden={!isOpen}
+                tabIndex={-1}
+            >
                 <div className="sidebar-header">
-                    <h2>{title}</h2>
-                    <button className="sidebar-close" onClick={onClose}>
-                        <X size={24} />
+                    <h2 id={titleId}>{title}</h2>
+                    <button type="button" className="sidebar-close" onClick={onClose} aria-label="Cerrar">
+                        <X size={24} aria-hidden="true" />
                     </button>
                 </div>
                 <div className="sidebar-body">

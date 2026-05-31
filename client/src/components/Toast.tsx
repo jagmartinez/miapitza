@@ -44,6 +44,7 @@ export default function Toast({ message, type = 'info', duration = 3000, onClose
             <div className="toast-message">{message}</div>
             <button
                 className="toast-close"
+                aria-label="Cerrar"
                 onClick={() => {
                     setIsVisible(false);
                     setTimeout(onClose, 300);
@@ -62,7 +63,7 @@ interface ToastContainerProps {
 
 export function ToastContainer({ toasts, onRemove }: ToastContainerProps) {
     return (
-        <div className="toast-container">
+        <div className="toast-container" role="status" aria-live="polite">
             {toasts.map(toast => (
                 <Toast
                     key={toast.id}

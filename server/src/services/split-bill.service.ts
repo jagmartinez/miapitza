@@ -72,47 +72,88 @@ export class SplitBillService {
             throw new Error('Orden no encontrada');
         }
 
-        const splits = itemAssignments.map(assignment => {
+        // Each person's share is driven by their item subtotal. We then split the
+        // order-level discount, tax and tip proportionally by that same share so the
+        // pieces always sum back to the order's amounts (no dumping on the last payer).
+        const perPerson = itemAssignments.map((assignment) => {
             const personItems = order.items.filter((item) => assignment.itemIds.includes(item.id));
-
             // item.subtotal already includes modifier prices — do not double-count
-            const itemsSubtotal = personItems.reduce((sum, item) => {
-                return sum + Number(item.subtotal);
-            }, 0);
+            const itemsSubtotal = personItems.reduce((sum, item) => sum + Number(item.subtotal), 0);
+            return { assignment, personItems, itemsSubtotal };
+        });
 
-            const orderTotal = Number(order.total);
-            const proportion = orderTotal > 0 ? itemsSubtotal / orderTotal : 0;
-            const proportionalTotal = Math.round((orderTotal * proportion) * 100) / 100;
+        const weights = perPerson.map((p) => p.itemsSubtotal);
+        const discount = Number(order.discount || 0);
+        const tax = Number(order.tax || 0);
+        const tip = Number(order.tipAmount || 0);
+
+        const discountShares = this.distributeProportionally(discount, weights);
+        const taxShares = this.distributeProportionally(tax, weights);
+        const tipShares = this.distributeProportionally(tip, weights);
+
+        const splits = perPerson.map((p, idx) => {
+            const subtotal = Math.round(p.itemsSubtotal * 100) / 100;
+            const personDiscount = discountShares[idx];
+            const personTax = taxShares[idx];
+            const personTip = tipShares[idx];
+            const total = Math.round((subtotal - personDiscount + personTax + personTip) * 100) / 100;
 
             return {
-                personName: assignment.personName,
-                items: personItems.map((item) => ({
+                personName: p.assignment.personName,
+                items: p.personItems.map((item) => ({
                     name: item.menuItem.name,
                     quantity: item.quantity,
                     price: Number(item.price),
                     subtotal: Number(item.subtotal)
                 })),
-                subtotal: itemsSubtotal,
-                tip: 0,
-                discount: 0,
-                total: proportionalTotal,
+                subtotal,
+                discount: personDiscount,
+                tax: personTax,
+                tip: personTip,
+                total,
                 paid: false
             };
         });
 
-        const expectedTotal = Number(order.total);
-        const currentTotal = splits.reduce((sum, split) => sum + split.total, 0);
-        const delta = Math.round((expectedTotal - currentTotal) * 100) / 100;
-        if (splits.length > 0 && Math.abs(delta) > 0) {
-            const lastIndex = splits.length - 1;
-            splits[lastIndex].total = Math.round((splits[lastIndex].total + delta) * 100) / 100;
-        }
-
         return {
             orderId: order.id,
             originalTotal: Number(order.total),
+            discount,
+            tax,
+            tip,
+            splitTotal: Math.round(splits.reduce((sum, s) => sum + s.total, 0) * 100) / 100,
             splits
         };
+    }
+
+    /**
+     * Distribute a monetary amount across the given weights, proportionally to each
+     * weight, in whole cents. Any rounding remainder is allocated using the
+     * largest-remainder method so the parts always sum exactly to `amount`.
+     */
+    private static distributeProportionally(amount: number, weights: number[]): number[] {
+        const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+        const totalCents = Math.round(amount * 100);
+
+        if (weights.length === 0 || totalWeight <= 0 || totalCents === 0) {
+            return weights.map(() => 0);
+        }
+
+        const rawCents = weights.map((w) => (totalCents * w) / totalWeight);
+        const floorCents = rawCents.map((c) => Math.floor(c));
+        const remainder = totalCents - floorCents.reduce((sum, c) => sum + c, 0);
+
+        // Hand the leftover cents to the largest fractional parts first.
+        const byFraction = rawCents
+            .map((c, i) => ({ i, frac: c - Math.floor(c) }))
+            .sort((a, b) => b.frac - a.frac);
+
+        const result = [...floorCents];
+        for (let k = 0; k < remainder && k < byFraction.length; k++) {
+            result[byFraction[k].i] += 1;
+        }
+
+        return result.map((c) => c / 100);
     }
 
     /**

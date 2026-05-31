@@ -3,8 +3,11 @@ import axios from 'axios';
 import { tablesAPI, ordersAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
+import PageHeader from '../components/PageHeader';
 import TableOrdersModal from '../components/TableOrdersModal';
 import { useAuth } from '../hooks/useAuth';
+import { useConfirmDialog } from '../context/ConfirmContext';
+import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
 import { Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin } from 'lucide-react';
 import type { Table, Order } from '../types';
@@ -31,6 +34,8 @@ function extractApiError(error: unknown, fallback: string): string {
 
 export default function Tables() {
     const { user } = useAuth();
+    const { confirm } = useConfirmDialog();
+    const { error: showError, warning: showWarning } = useAppToast();
     const userRoleNames = getUserRoleNames(user);
     const canCreateTable = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const canEditTable = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'HOST'].includes(role));
@@ -72,11 +77,11 @@ export default function Tables() {
 
     const handleOpenSidebar = (table?: Table) => {
         if (table && !canEditTable) {
-            alert('No tienes permisos para editar mesas');
+            showWarning('No tienes permisos para editar mesas');
             return;
         }
         if (!table && !canCreateTable) {
-            alert('No tienes permisos para crear mesas');
+            showWarning('No tienes permisos para crear mesas');
             return;
         }
 
@@ -104,11 +109,11 @@ export default function Tables() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (editingTable && !canEditTable) {
-            alert('No tienes permisos para editar mesas');
+            showWarning('No tienes permisos para editar mesas');
             return;
         }
         if (!editingTable && !canCreateTable) {
-            alert('No tienes permisos para crear mesas');
+            showWarning('No tienes permisos para crear mesas');
             return;
         }
         try {
@@ -127,22 +132,22 @@ export default function Tables() {
             loadTables();
         } catch (error) {
             console.error('Error saving table:', error);
-            alert(extractApiError(error, 'Error al guardar la mesa'));
+            showError(extractApiError(error, 'Error al guardar la mesa'));
         }
     };
 
     const handleDelete = async (id: number) => {
         if (!canDeleteTable) {
-            alert('No tienes permisos para eliminar mesas');
+            showWarning('No tienes permisos para eliminar mesas');
             return;
         }
-        if (!window.confirm('¿Estás seguro de eliminar esta mesa?')) return;
+        if (!(await confirm('¿Estás seguro de eliminar esta mesa?', { title: 'Confirmar acción' }))) return;
         try {
             await tablesAPI.delete(id);
             loadTables();
         } catch (error) {
             console.error('Error deleting table:', error);
-            alert(extractApiError(error, 'Error al eliminar la mesa'));
+            showError(extractApiError(error, 'Error al eliminar la mesa'));
         }
     };
 
@@ -189,17 +194,16 @@ export default function Tables() {
 
     return (
         <div className="tables-page">
-            <div className="tables-header-new">
-                <div className="header-title-section">
-                    <h1><Grid3x3 size={32} /> Gestión de Mesas</h1>
-                </div>
-                {canCreateTable && (
+            <PageHeader
+                title="Gestión de Mesas"
+                icon={Grid3x3}
+                actions={canCreateTable ? (
                     <Button onClick={() => handleOpenSidebar()}>
                         <Plus size={20} />
                         Nueva Mesa
                     </Button>
-                )}
-            </div>
+                ) : undefined}
+            />
 
             {/* Filters Row */}
             <div className="tables-filters-row">
@@ -351,8 +355,9 @@ export default function Tables() {
 
                                     <div className="modal-form-row">
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label">Número/Nombre</label>
+                                            <label className="modal-input-label" htmlFor="table-number">Número/Nombre</label>
                                             <input
+                                                id="table-number"
                                                 type="text"
                                                 className="modal-standard-input"
                                                 value={formData.number}
@@ -362,8 +367,9 @@ export default function Tables() {
                                             />
                                         </div>
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label">Capacidad (Personas)</label>
+                                            <label className="modal-input-label" htmlFor="table-capacity">Capacidad (Personas)</label>
                                             <input
+                                                id="table-capacity"
                                                 type="number"
                                                 className="modal-standard-input"
                                                 value={formData.capacity}
@@ -384,8 +390,9 @@ export default function Tables() {
                                     </div>
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Área / Ubicación</label>
+                                        <label className="modal-input-label" htmlFor="table-location">Área / Ubicación</label>
                                         <input
+                                            id="table-location"
                                             type="text"
                                             className="modal-standard-input"
                                             value={formData.location}

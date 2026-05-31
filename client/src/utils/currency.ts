@@ -7,6 +7,25 @@ export interface CurrencySettings {
     currency_symbol?: string;
     currency_code?: string;
     currency_name?: string;
+    currency_locale?: string;
+}
+
+/**
+ * Sensible app-wide defaults. The system is Nicaragua-based (Córdoba / NIO),
+ * so these are used as fallbacks whenever company settings are unavailable.
+ */
+export const DEFAULT_CURRENCY_CODE = 'NIO';
+export const DEFAULT_CURRENCY_LOCALE = 'es-NI';
+/** Fallback NIO per USD exchange rate when no setting is provided. */
+export const DEFAULT_EXCHANGE_RATE = 36.5;
+
+export interface CurrencyFormatOptions {
+    /** ISO 4217 currency code, e.g. 'NIO', 'MXN', 'USD'. */
+    currency?: string;
+    /** BCP-47 locale, e.g. 'es-NI'. */
+    locale?: string;
+    minimumFractionDigits?: number;
+    maximumFractionDigits?: number;
 }
 
 /**
@@ -18,6 +37,30 @@ export interface CurrencySettings {
 export const formatCurrency = (amount: number, settings: CurrencySettings = {}): string => {
     const symbol = settings.currency_symbol || 'C$';
     return `${symbol} ${amount.toFixed(2)}`;
+};
+
+/**
+ * Configurable currency formatter backed by Intl.NumberFormat. Currency code and
+ * locale are sourced from settings/options with app-wide fallbacks, so pages no
+ * longer need to hardcode them.
+ */
+export const formatCurrencyIntl = (amount: number, options: CurrencyFormatOptions = {}): string => {
+    const {
+        currency = DEFAULT_CURRENCY_CODE,
+        locale = DEFAULT_CURRENCY_LOCALE,
+        minimumFractionDigits = 2,
+        maximumFractionDigits = 2,
+    } = options;
+    try {
+        return new Intl.NumberFormat(locale, {
+            style: 'currency',
+            currency,
+            minimumFractionDigits,
+            maximumFractionDigits,
+        }).format(amount);
+    } catch {
+        return `${amount.toFixed(maximumFractionDigits)}`;
+    }
 };
 
 /**

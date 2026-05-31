@@ -7,10 +7,13 @@ import { escapeHtml } from '../utils/escapeHtml';
 import { useDebounce } from '../utils/useDebounce';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
 import { getUserAccentColor, canOperateKitchenLineItems } from '../utils/authz';
+import { useAppToast } from '../context/ToastContext';
 import './Kitchen.css';
 import { getOrderStatusLabel, getOrderTimeline } from '../utils/orderStatus';
+import { useConfirmDialog } from '../context/ConfirmContext';
 import Select from '../components/Select';
 import Modal from '../components/Modal';
+import EmptyState from '../components/EmptyState';
 import type { SingleValue } from 'react-select';
 import type { Order, OrderItem } from '../types';
 
@@ -29,8 +32,24 @@ const dateFilterOptions = [
     { value: 'all', label: 'Todas' }
 ];
 
+function formatKitchenItemPreview(items: OrderItem[] | undefined, maxNames = 3): string {
+    if (!items?.length) return 'Sin productos';
+    const names = items
+        .map((item) => {
+            const qty = item.quantity > 1 ? `${item.quantity}x ` : '';
+            return `${qty}${item.menuItem?.name || 'Producto'}`;
+        })
+        .slice(0, maxNames);
+    const preview = names.join(', ');
+    const extra = items.length > maxNames ? ` +${items.length - maxNames}` : '';
+    const truncated = preview.length > 72 ? `${preview.slice(0, 69)}…` : preview;
+    return truncated + extra;
+}
+
 export default function Kitchen() {
     const { user } = useAuth();
+    const { error: showError, warning: showWarning, success } = useAppToast();
+    const { confirm } = useConfirmDialog();
     const canKitchenLineOps = canOperateKitchenLineItems(user);
 
     const [orders, setOrders] = useState<Order[]>([]);
@@ -98,6 +117,9 @@ export default function Kitchen() {
     }, [loadOrders]);
 
     const handleMarkReady = async (orderId: number) => {
+        if (!(await confirm('¿Marcar toda la orden como lista?', { variant: 'warning' }))) {
+            return;
+        }
         try {
             await ordersAPI.updateStatus(orderId, 'READY');
             const order = orders.find(o => o.id === orderId);
@@ -107,26 +129,26 @@ export default function Kitchen() {
             loadOrders();
         } catch (error) {
             console.error('Error updating order:', error);
-            alert('Error al actualizar orden');
+            showError('Error al actualizar orden');
         }
     };
 
     const handleStartItem = async (orderId: number, itemId: number) => {
         if (!canKitchenLineOps) {
-            alert('Tu rol no puede iniciar ítems en cocina. Esta vista es de consulta; coordina con cocina o un administrador.');
+            showWarning('Tu rol no puede iniciar ítems en cocina. Esta vista es de consulta; coordina con cocina o un administrador.');
             return;
         }
         try {
             await ordersAPI.startItem(orderId, itemId);
             loadOrders();
         } catch (error: unknown) {
-            alert(axiosMsg(error, 'Error al iniciar ítem'));
+            showError(axiosMsg(error, 'Error al iniciar ítem'));
         }
     };
 
     const handleFinishItem = async (orderId: number, itemId: number) => {
         if (!canKitchenLineOps) {
-            alert('Tu rol no puede finalizar ítems en cocina. Esta vista es de consulta; coordina con cocina o un administrador.');
+            showWarning('Tu rol no puede finalizar ítems en cocina. Esta vista es de consulta; coordina con cocina o un administrador.');
             return;
         }
         try {
@@ -137,7 +159,7 @@ export default function Kitchen() {
             }
             loadOrders();
         } catch (error: unknown) {
-            alert(axiosMsg(error, 'Error al finalizar ítem'));
+            showError(axiosMsg(error, 'Error al finalizar ítem'));
         }
     };
 
@@ -192,7 +214,7 @@ export default function Kitchen() {
 
     const handleReportProblem = (orderId: number) => {
         if (!canKitchenLineOps) {
-            alert('Tu rol no puede reportar problemas de cocina desde aquí. Coordina con cocina o un administrador.');
+            showWarning('Tu rol no puede reportar problemas de cocina desde aquí. Coordina con cocina o un administrador.');
             return;
         }
         setSelectedOrderId(orderId);
@@ -201,19 +223,19 @@ export default function Kitchen() {
 
     const submitProblemReport = async () => {
         if (!canKitchenLineOps) {
-            alert('Tu rol no puede reportar problemas de cocina desde aquí. Coordina con cocina o un administrador.');
+            showWarning('Tu rol no puede reportar problemas de cocina desde aquí. Coordina con cocina o un administrador.');
             return;
         }
         if (problemDescription.trim() && selectedOrderId) {
             try {
                 await ordersAPI.reportProblem(selectedOrderId, problemDescription.trim());
-                alert(`Problema reportado para orden #${selectedOrderId}.\nSe ha notificado al gerente.`);
+                success(`Problema reportado para orden #${selectedOrderId}. Se ha notificado al gerente.`);
                 setShowProblemModal(false);
                 setProblemDescription('');
                 setSelectedOrderId(null);
             } catch (error: unknown) {
                 console.error('Error reporting problem:', error);
-                alert(axiosMsg(error, 'Error al reportar problema'));
+                showError(axiosMsg(error, 'Error al reportar problema'));
             }
         }
     };
@@ -344,8 +366,6 @@ export default function Kitchen() {
                     const waiterAccent = getUserAccentColor(order.user);
 
 
-                    const itemsCount = order.items?.reduce((acc, it) => acc + (it.quantity || 1), 0) || 0;
-
                     return (
                         <div
                             key={order.id}
@@ -435,8 +455,8 @@ export default function Kitchen() {
                                     <span className="kitchen-items-summary-icon">
                                         <ListOrdered size={14} />
                                     </span>
-                                    <span className="kitchen-items-summary-text">
-                                        {itemsCount} {itemsCount === 1 ? 'producto' : 'productos'}
+                                    <span className="kitchen-items-summary-text" title={formatKitchenItemPreview(order.items, 10)}>
+                                        {formatKitchenItemPreview(order.items)}
                                     </span>
                                     <span className="kitchen-items-summary-hint">Ver detalle</span>
                                 </div>
@@ -478,12 +498,16 @@ export default function Kitchen() {
                     );
                 })}
 
-                {orders.length === 0 && (
-                    <div className="no-orders-new">
-                        <ChefHat size={48} />
-                        <p>No hay órdenes pendientes</p>
-                        <small>Las nuevas órdenes aparecerán aquí automáticamente</small>
-                    </div>
+                {sortedOrders.length === 0 && (
+                    <EmptyState
+                        icon={<ChefHat size={48} />}
+                        title={orders.length === 0 ? 'No hay órdenes pendientes' : 'Ninguna orden coincide con los filtros'}
+                        description={
+                            orders.length === 0
+                                ? 'Las nuevas órdenes aparecerán aquí automáticamente'
+                                : 'Prueba otro estado, mesa o rango de fecha'
+                        }
+                    />
                 )}
             </div>
 
@@ -637,39 +661,45 @@ export default function Kitchen() {
                 );
             })()}
 
-            {/* Problem Report Modal */}
-            {showProblemModal && (
-                <div className="modal-overlay-problem" onClick={() => setShowProblemModal(false)}>
-                    <div className="problem-modal" onClick={(e) => e.stopPropagation()}>
-                        <h3>Reportar Problema</h3>
-                        <p>Orden #{selectedOrderId}</p>
-                        <textarea
-                            className="problem-textarea"
-                            value={problemDescription}
-                            onChange={(e) => setProblemDescription(e.target.value)}
-                            placeholder="Describe el problema con esta orden..."
-                            autoFocus
-                        />
-                        <div className="problem-modal-actions">
-                            <button
-                                className="btn-cancel-problem"
-                                onClick={() => {
-                                    setShowProblemModal(false);
-                                    setProblemDescription('');
-                                }}
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                className="btn-submit-problem"
-                                onClick={submitProblemReport}
-                            >
-                                Reportar
-                            </button>
-                        </div>
-                    </div>
+            <Modal
+                isOpen={showProblemModal}
+                onClose={() => {
+                    setShowProblemModal(false);
+                    setProblemDescription('');
+                }}
+                title="Reportar Problema"
+                size="sm"
+            >
+                <p style={{ margin: '0 0 var(--spacing-md) 0', color: 'var(--color-text-secondary)', fontSize: 'var(--font-size-sm)' }}>
+                    Orden #{selectedOrderId}
+                </p>
+                <textarea
+                    className="problem-textarea"
+                    value={problemDescription}
+                    onChange={(e) => setProblemDescription(e.target.value)}
+                    placeholder="Describe el problema con esta orden..."
+                    autoFocus
+                />
+                <div className="problem-modal-actions">
+                    <button
+                        type="button"
+                        className="btn-cancel-problem"
+                        onClick={() => {
+                            setShowProblemModal(false);
+                            setProblemDescription('');
+                        }}
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        type="button"
+                        className="btn-submit-problem"
+                        onClick={submitProblemReport}
+                    >
+                        Reportar
+                    </button>
                 </div>
-            )}
+            </Modal>
         </div>
     );
 }

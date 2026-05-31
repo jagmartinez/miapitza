@@ -4,11 +4,12 @@ import crypto from 'crypto';
 import prisma from '../utils/prisma';
 import { SessionService } from './session.service';
 import { TwoFactorService } from './twoFactor.service';
+import { ROLES } from '../constants/roles';
 
 /** Password strength regex: min 8 chars, 1 upper, 1 lower, 1 digit, 1 symbol */
-const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
+export const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
 
-const BCRYPT_ROUNDS = 12;
+export const BCRYPT_ROUNDS = 12;
 
 /** In-memory login attempt tracker for account lockout */
 const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
@@ -44,8 +45,12 @@ const pending2FATokens = new Map<string, { userId: number; expiresAt: number }>(
 export function resolve2FAToken(tempToken: string): number | null {
     const entry = pending2FATokens.get(tempToken);
     if (!entry) return null;
+    // Check expiry before consuming so an expired token is never treated as valid.
+    if (entry.expiresAt < Date.now()) {
+        pending2FATokens.delete(tempToken);
+        return null;
+    }
     pending2FATokens.delete(tempToken);
-    if (entry.expiresAt < Date.now()) return null;
     return entry.userId;
 }
 
@@ -98,7 +103,7 @@ export class AuthService {
         roleId: number;
         branchId?: number;
         companyId?: number;
-    }) {
+    }, actingRoles: string[] = []) {
         // Validate password strength on registration
         if (!PASSWORD_REGEX.test(data.password)) {
             throw new Error('La contraseña debe tener mínimo 8 caracteres, incluyendo mayúscula, minúscula, número y símbolo');
@@ -112,8 +117,19 @@ export class AuthService {
             throw new Error('Role not found');
         }
 
-        if (data.companyId && role.companyId && role.companyId !== data.companyId) {
+        // Privilege guard: only a SUPERADMIN caller may assign global (companyId === null)
+        // roles such as SUPERADMIN. Without a SUPERADMIN context, the role must belong to
+        // the same company and must not be the SUPERADMIN role.
+        const isSuperAdmin = actingRoles.includes(ROLES.SUPERADMIN);
+        if (role.companyId === null) {
+            if (!isSuperAdmin) {
+                throw new Error('No autorizado para asignar un rol global');
+            }
+        } else if (role.companyId !== data.companyId) {
             throw new Error('Role does not belong to the target company');
+        }
+        if (role.name === ROLES.SUPERADMIN && !isSuperAdmin) {
+            throw new Error('No autorizado para asignar el rol SUPERADMIN');
         }
 
         if (data.branchId) {
@@ -265,6 +281,10 @@ export class AuthService {
             where: { id: userId },
             data: { password: hashed, mustChangePassword: false, passwordChangedAt: new Date() }
         });
+
+        // A password change invalidates all existing sessions; force re-authentication
+        // everywhere. The controller also clears the current auth cookie.
+        await SessionService.revokeAll(userId);
 
         return { success: true };
     }

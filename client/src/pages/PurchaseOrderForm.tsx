@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import Select from '../components/Select';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useConfirmDialog } from '../context/ConfirmContext';
+import { useAppToast } from '../context/ToastContext';
 import { purchaseOrdersAPI, suppliersAPI, productsAPI, branchesAPI, warehousesAPI, unitsAPI } from '../services/api';
 import Button from '../components/Button';
 import Input from '../components/Input';
@@ -30,6 +32,8 @@ interface PurchaseOrderFormProps {
 export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: PurchaseOrderFormProps) {
     const { id: paramId } = useParams();
     const navigate = useNavigate();
+    const { confirm } = useConfirmDialog();
+    const { success, error: showError, warning: showWarning } = useAppToast();
 
     // Use sidebarId if provided, otherwise fallback to URL params (for standalone page compatibility)
     const effectiveId = sidebarId || (paramId ? parseInt(paramId) : undefined);
@@ -66,6 +70,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
     const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
     const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
     const [isItemSidebarOpen, setIsItemSidebarOpen] = useState(false);
+    const [saving, setSaving] = useState(false);
 
     const loadDependencies = useCallback(async () => {
         try {
@@ -148,7 +153,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
 
     const handleAddItem = async () => {
         if (!itemForm.productId || itemForm.quantity <= 0 || itemForm.cost < 0) {
-            alert('Por favor complete los datos del ítem correctamente');
+            showWarning('Por favor complete los datos del ítem correctamente');
             return;
         }
 
@@ -178,7 +183,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 setItemUnits([]);
             } catch (error) {
                 console.error('Error adding item:', error);
-                alert('Error al agregar ítem');
+                showError('Error al agregar ítem');
             }
         }
     };
@@ -187,28 +192,32 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
         if (isNew) {
             setNewItems(newItems.filter((_, i) => i !== indexOrId));
         } else {
-            if (!window.confirm('¿Eliminar ítem?')) return;
+            if (!(await confirm('¿Eliminar ítem?', { title: 'Confirmar acción' }))) return;
             try {
                 await purchaseOrdersAPI.removeItem(indexOrId);
                 loadOrder(Number(effectiveId));
             } catch (error) {
                 console.error('Error removing item:', error);
-                alert('Error al eliminar ítem');
+                showError('Error al eliminar ítem');
             }
         }
     };
 
-    const handleSave = async () => {
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
         if (!formData.branchId || !formData.supplierId) {
-            alert('Complete los campos obligatorios');
+            showWarning('Complete los campos obligatorios');
+            setActiveTab('general');
             return;
         }
 
         if (isNew && newItems.length === 0) {
-            alert('Agregue al menos un ítem');
+            showWarning('Agregue al menos un ítem');
+            setActiveTab('items');
             return;
         }
 
+        setSaving(true);
         try {
             const payload = new FormData();
             payload.append('branchId', formData.branchId);
@@ -234,7 +243,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 }
             } else {
                 await purchaseOrdersAPI.update(Number(effectiveId), payload);
-                alert('Cambios guardados');
+                success('Cambios guardados');
                 if (onSaved) {
                     onSaved();
                 } else {
@@ -243,34 +252,36 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
             }
         } catch (error) {
             console.error('Error saving order:', error);
-            alert('Error al guardar orden');
+            showError('Error al guardar orden');
+        } finally {
+            setSaving(false);
         }
     };
 
     const handleStatusChange = async (newStatus: string) => {
-        if (!window.confirm(`¿Cambiar estado a ${newStatus}?`)) return;
+        if (!(await confirm(`¿Cambiar estado a ${newStatus}?`, { title: 'Confirmar acción' }))) return;
         try {
             await purchaseOrdersAPI.update(Number(effectiveId), { status: newStatus });
             loadOrder(Number(effectiveId));
         } catch (error) {
             console.error('Error updating status:', error);
-            alert('Error al actualizar estado');
+            showError('Error al actualizar estado');
         }
     };
 
     const handleReceive = async () => {
         if (!selectedWarehouseId) {
-            alert('Seleccione un almacén');
+            showWarning('Seleccione un almacén');
             return;
         }
         try {
             await purchaseOrdersAPI.receive(Number(effectiveId), Number(selectedWarehouseId));
             setIsReceiveModalOpen(false);
             loadOrder(Number(effectiveId));
-            alert('Orden recibida e inventario actualizado');
+            success('Orden recibida e inventario actualizado');
         } catch (error) {
             console.error('Error receiving order:', error);
-            alert('Error al recibir orden');
+            showError('Error al recibir orden');
         }
     };
 
@@ -281,22 +292,25 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
     return (
         <div className="premium-modal-content po-sidebar-form">
             <div className="modal-tabs">
-                <div
+                <button
+                    type="button"
                     className={`modal-tab ${activeTab === 'general' ? 'active' : ''}`}
                     onClick={() => setActiveTab('general')}
                 >
                     <Info size={18} />
                     <span>Información General</span>
-                </div>
-                <div
+                </button>
+                <button
+                    type="button"
                     className={`modal-tab ${activeTab === 'items' ? 'active' : ''}`}
                     onClick={() => setActiveTab('items')}
                 >
                     <Package size={18} />
                     <span>Ítems de la Orden</span>
-                </div>
+                </button>
             </div>
 
+            <form onSubmit={handleSave} className="modal-form-new">
             <div className="modal-tab-content">
                 {activeTab === 'general' ? (
                     <div className="modal-section animate-slide-in">
@@ -306,11 +320,12 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                         </div>
                         <div className="form-grid-modern">
                             <div className="modal-input-group">
-                                <label className="modal-input-label"><Building2 size={14} /> Sucursal</label>
+                                <label className="modal-input-label" htmlFor="po-branch"><Building2 size={14} /> Sucursal</label>
                                 {(() => {
                                     const branch = branches.find(b => b.id.toString() === formData.branchId);
                                     return (
                                         <Select
+                                            inputId="po-branch"
                                             options={branches.map(b => ({ value: b.id.toString(), label: b.name }))}
                                             value={branch ? { value: formData.branchId, label: branch.name } : null}
                                             onChange={(option: SingleValue<StrOption>) => option && setFormData({ ...formData, branchId: option.value })}
@@ -322,11 +337,12 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                 })()}
                             </div>
                             <div className="modal-input-group">
-                                <label className="modal-input-label"><MapPin size={14} /> Proveedor</label>
+                                <label className="modal-input-label" htmlFor="po-supplier"><MapPin size={14} /> Proveedor</label>
                                 {(() => {
                                     const supplier = suppliers.find(s => s.id.toString() === formData.supplierId);
                                     return (
                                         <Select
+                                            inputId="po-supplier"
                                             options={suppliers.map(s => ({ value: s.id.toString(), label: s.name }))}
                                             value={supplier ? { value: formData.supplierId, label: supplier.name } : null}
                                             onChange={(option: SingleValue<StrOption>) => option && setFormData({ ...formData, supplierId: option.value })}
@@ -338,8 +354,9 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                 })()}
                             </div>
                             <div className="modal-input-group">
-                                <label className="modal-input-label"><FileText size={14} /> Nº Factura de Proveedor</label>
+                                <label className="modal-input-label" htmlFor="po-invoice-number"><FileText size={14} /> Nº Factura de Proveedor</label>
                                 <Input
+                                    id="po-invoice-number"
                                     value={formData.invoiceNumber}
                                     onChange={e => setFormData({ ...formData, invoiceNumber: e.target.value })}
                                     disabled={!isDraft}
@@ -348,7 +365,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                 />
                             </div>
                             <div className="modal-input-group">
-                                <label className="modal-input-label"><FileText size={14} /> Factura PDF/Imagen</label>
+                                <label className="modal-input-label" htmlFor="invoice-pdf"><FileText size={14} /> Factura PDF/Imagen</label>
                                 <div className="file-upload-wrapper">
                                     <input
                                         type="file"
@@ -375,8 +392,9 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                 </div>
                             </div>
                             <div className="modal-input-group full-width">
-                                <label className="modal-input-label"><FileText size={14} /> Notas Adicionales</label>
+                                <label className="modal-input-label" htmlFor="po-notes"><FileText size={14} /> Notas Adicionales</label>
                                 <textarea
+                                    id="po-notes"
                                     value={formData.notes}
                                     onChange={e => setFormData({ ...formData, notes: e.target.value })}
                                     disabled={!isDraft}
@@ -479,27 +497,28 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                     )}
                 </div>
                 <div className="action-buttons" style={{ display: 'flex', gap: '8px' }}>
-                    <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+                    <Button variant="secondary" type="button" onClick={onClose}>Cancelar</Button>
                     {isDraft && (
-                        <Button onClick={handleSave} className="save-btn-premium">
+                        <Button type="submit" className="save-btn-premium" disabled={saving}>
                             <Save size={20} />
-                            <span>Guardar</span>
+                            <span>{saving ? 'Guardando...' : 'Guardar'}</span>
                         </Button>
                     )}
                     {!isNew && order?.status === 'DRAFT' && (
-                        <Button variant="secondary" onClick={() => handleStatusChange('ISSUED')}>
+                        <Button variant="secondary" type="button" onClick={() => handleStatusChange('ISSUED')}>
                             <CheckCircle size={20} />
                             <span>Emitir</span>
                         </Button>
                     )}
                     {!isNew && order?.status === 'ISSUED' && (
-                        <Button variant="secondary" onClick={() => setIsReceiveModalOpen(true)}>
+                        <Button variant="secondary" type="button" onClick={() => setIsReceiveModalOpen(true)}>
                             <Package size={20} />
                             <span>Recibir</span>
                         </Button>
                     )}
                 </div>
             </div>
+            </form>
 
             <Modal
                 isOpen={isReceiveModalOpen}
@@ -516,13 +535,14 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                     </div>
 
                     <div className="modal-input-group">
-                        <label className="modal-input-label">
+                        <label className="modal-input-label" htmlFor="po-warehouse">
                             <Building2 size={16} /> Almacén de Destino
                         </label>
                         {(() => {
                             const warehouse = warehouses.find(w => w.id.toString() === selectedWarehouseId);
                             return (
                                 <Select
+                                    inputId="po-warehouse"
                                     variant="modal"
                                     options={warehouses.map(w => ({ value: w.id.toString(), label: `${w.name} (${w.branch?.name})` }))}
                                     value={warehouse ? { value: selectedWarehouseId, label: `${warehouse.name} (${warehouse.branch?.name})` } : null}

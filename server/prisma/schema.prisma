@@ -29,6 +29,7 @@ model Company {
   branches           Branch[]
   settings           Setting[]
   users              User[]
+  auditLogs          AuditLog[]
   tables             Table[]
   reservations       Reservation[]
   categories         Category[]
@@ -156,6 +157,15 @@ model User {
   movements  InventoryMovement[]
   auditLogs  AuditLog[]
   apiKeys    ApiKey[]     @relation("ApiKeyCreator")
+
+  // DEFERRED (require data migration / backfill - NOT done in this additive pass):
+  //  - email/username are globally @unique; making them tenant-scoped composite
+  //    (@@unique([companyId, email]) / @@unique([companyId, username])) needs
+  //    de-duplication of existing data first.
+  //  - companyId is nullable for backward compatibility; making it required needs
+  //    backfilling existing NULL rows before adding NOT NULL.
+  @@index([companyId])
+  @@index([branchId])
 }
 
 model UserSession {
@@ -442,6 +452,8 @@ model Product {
 
   @@unique([companyId, sku])
   @@index([categoryId])
+  @@index([companyId])
+  @@index([companyId, active])
 }
 
 enum ProductType {
@@ -469,6 +481,8 @@ model Recipe {
   unitOfMeasure UnitOfMeasure?  @relation("RecipeUnit", fields: [unitId], references: [id])
 
   @@unique([menuItemId, productId])
+  @@index([menuItemId])
+  @@index([productId])
 }
 
 model MenuItemImage {
@@ -607,6 +621,7 @@ model PurchaseOrder {
   @@index([supplierId])
   @@index([status])
   @@index([companyId])
+  @@index([companyId, branchId])
 }
 
 enum PurchaseOrderStatus {
@@ -895,6 +910,8 @@ model ModifierGroup {
   company   Company    @relation(fields: [companyId], references: [id])
   menuItems MenuItem[]
   modifiers Modifier[]
+
+  @@index([companyId])
 }
 
 model Modifier {
@@ -1108,7 +1125,9 @@ enum CateringPaymentType {
 
 model AuditLog {
   id         Int      @id @default(autoincrement())
-  companyId  Int
+  // Nullable + optional relation so the FK can be added without backfilling
+  // pre-existing rows. DEFERRED: making companyId required again needs a backfill.
+  companyId  Int?
   entityType String   // Order, Payment, InventoryMovement, etc.
   entityId   Int
   action     String   // CANCEL, CREATE, UPDATE, DELETE, TRANSFER, etc.
@@ -1116,7 +1135,8 @@ model AuditLog {
   details    Json?    // Additional context (reason, old/new values, etc.)
   createdAt  DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id])
+  user    User     @relation(fields: [userId], references: [id])
+  company Company? @relation(fields: [companyId], references: [id])
 
   @@index([companyId, entityType, entityId])
   @@index([companyId, createdAt])

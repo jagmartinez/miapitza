@@ -2,6 +2,8 @@ import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../hooks/useLanguage';
+import { ConfirmProvider } from '../context/ConfirmContext';
+import { ToastProvider } from '../context/ToastContext';
 import ThemeToggle from './ThemeToggle';
 import LanguageSelector from './LanguageSelector';
 import NetworkStatus from './NetworkStatus';
@@ -35,26 +37,43 @@ import {
     BookOpen,
     Zap,
     Ruler,
+    Menu,
+    X,
+    ArrowUpDown,
+    TrendingDown,
+    FileText,
+    ShoppingBag,
     type LucideIcon
 } from 'lucide-react';
 import { getUserAccentColor, getUserRoleNames } from '../utils/authz';
+import {
+    ROLES,
+    ADMIN,
+    PLATFORM_ADMIN,
+    OPS,
+    CASHIER,
+    WAITER_TABLE,
+    KITCHEN_ROLES,
+    HOST_ROLES,
+    WAREHOUSE,
+    CHEF_MGMT,
+} from '../constants/roles';
 import './Layout.css';
 
 // Role-based navigation items
 type NavItem = { to: string; icon: LucideIcon; label: string; roles: string[] };
 type NavSection = { section: string; items: NavItem[] };
 
-const ALL_ROLES = ['SUPERADMIN', 'ADMIN', 'CAJERO', 'MESERO', 'HOST', 'COCINA', 'BODEGA', 'CHEF'];
-const ADMIN_ROLES = ['SUPERADMIN', 'ADMIN'];
+const ALL_ROLES: string[] = Object.values(ROLES);
 
 // Quick-access bottom nav for mobile (max 6 items, role-filtered)
 const MOBILE_QUICK_NAV: NavItem[] = [
     { to: '/dashboard', icon: BarChart3, label: 'BI', roles: ALL_ROLES },
-    { to: '/pos', icon: CreditCard, label: 'POS', roles: ['SUPERADMIN', 'ADMIN', 'CAJERO', 'MESERO'] },
-    { to: '/kitchen', icon: ChefHat, label: 'Cocina', roles: ['SUPERADMIN', 'ADMIN', 'MESERO', 'COCINA', 'CHEF'] },
-    { to: '/reservations', icon: Calendar, label: 'Reservas', roles: ['SUPERADMIN', 'ADMIN', 'HOST', 'CAJERO'] },
-    { to: '/orders', icon: ShoppingCart, label: 'Órdenes', roles: ['SUPERADMIN', 'ADMIN', 'CAJERO', 'MESERO'] },
-    // { to: '/menu', icon: UtensilsCrossed, label: 'Menú', roles: ['SUPERADMIN', 'ADMIN', 'CHEF'] },
+    { to: '/pos', icon: CreditCard, label: 'POS', roles: OPS },
+    { to: '/kitchen', icon: ChefHat, label: 'Cocina', roles: KITCHEN_ROLES },
+    { to: '/reservations', icon: Calendar, label: 'Reservaciones', roles: HOST_ROLES },
+    { to: '/orders', icon: ShoppingCart, label: 'Órdenes', roles: OPS },
+    // { to: '/menu', icon: UtensilsCrossed, label: 'Menú', roles: CHEF_MGMT },
 ];
 
 const NAV_SECTIONS: NavSection[] = [
@@ -62,39 +81,44 @@ const NAV_SECTIONS: NavSection[] = [
         section: 'Operaciones',
         items: [
             { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ALL_ROLES },
-            { to: '/pos', icon: CreditCard, label: 'POS', roles: ['SUPERADMIN', 'ADMIN', 'CAJERO', 'MESERO'] },
-            { to: '/tables', icon: Utensils, label: 'Mesas', roles: ['SUPERADMIN', 'ADMIN', 'MESERO', 'HOST'] },
-            { to: '/kitchen', icon: ChefHat, label: 'Cocina', roles: ['SUPERADMIN', 'ADMIN', 'MESERO', 'COCINA', 'CHEF'] },
-            { to: '/reservations', icon: Calendar, label: 'Reservaciones', roles: ['SUPERADMIN', 'ADMIN', 'HOST', 'CAJERO'] },
-            { to: '/catering', icon: ConciergeBell, label: 'Catering', roles: ['SUPERADMIN', 'ADMIN', 'CAJERO'] },
-            { to: '/orders', icon: ShoppingCart, label: 'Órdenes', roles: ['SUPERADMIN', 'ADMIN', 'CAJERO', 'MESERO'] },
-            { to: '/cash-registers', icon: Wallet, label: 'Caja', roles: ['SUPERADMIN', 'ADMIN', 'CAJERO'] },
+            { to: '/pos', icon: CreditCard, label: 'POS', roles: OPS },
+            { to: '/tables', icon: Utensils, label: 'Mesas', roles: WAITER_TABLE },
+            { to: '/kitchen', icon: ChefHat, label: 'Cocina', roles: KITCHEN_ROLES },
+            { to: '/reservations', icon: Calendar, label: 'Reservaciones', roles: HOST_ROLES },
+            { to: '/catering', icon: ConciergeBell, label: 'Catering', roles: CASHIER },
+            { to: '/orders', icon: ShoppingCart, label: 'Órdenes', roles: OPS },
+            { to: '/cash-registers', icon: Wallet, label: 'Caja', roles: CASHIER },
         ],
     },
     {
         section: 'Gestión',
         items: [
-            { to: '/menu', icon: UtensilsCrossed, label: 'Menú', roles: ['SUPERADMIN', 'ADMIN', 'CHEF'] },
-            { to: '/catering-services', icon: Library, label: 'Servicios Catering', roles: ['SUPERADMIN', 'ADMIN', 'CAJERO'] },
-            { to: '/categories', icon: Tag, label: 'Categorías', roles: ['SUPERADMIN', 'ADMIN', 'CHEF'] },
-            { to: '/promotions', icon: Ticket, label: 'Promociones', roles: ADMIN_ROLES },
-            { to: '/inventory', icon: Package, label: 'Inventario', roles: ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'] },
-            { to: '/units-of-measure', icon: Ruler, label: 'Unidades de Medida', roles: ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'] },
-            { to: '/suppliers', icon: Truck, label: 'Proveedores', roles: ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'] },
-            { to: '/purchase-orders', icon: ClipboardList, label: 'Órdenes de Compra', roles: ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'] },
-            { to: '/warehouses', icon: Warehouse, label: 'Bodegas', roles: ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'] },
-            { to: '/cost-report', icon: BarChart3, label: 'Reporte Costos', roles: ADMIN_ROLES },
-            { to: '/reporteria', icon: ClipboardList, label: 'Reportería', roles: ADMIN_ROLES },
-            { to: '/users', icon: Users, label: 'Usuarios', roles: ADMIN_ROLES },
+            { to: '/menu', icon: UtensilsCrossed, label: 'Menú', roles: CHEF_MGMT },
+            { to: '/catering-services', icon: Library, label: 'Catálogo Catering', roles: CASHIER },
+            { to: '/categories', icon: Tag, label: 'Categorías', roles: CHEF_MGMT },
+            { to: '/promotions', icon: Ticket, label: 'Promociones', roles: ADMIN },
+            { to: '/inventory', icon: Package, label: 'Inventario', roles: WAREHOUSE },
+            { to: '/units-of-measure', icon: Ruler, label: 'Unidades de Medida', roles: WAREHOUSE },
+            { to: '/suppliers', icon: Truck, label: 'Proveedores', roles: WAREHOUSE },
+            { to: '/purchase-orders', icon: ShoppingBag, label: 'Órdenes de Compra', roles: WAREHOUSE },
+            { to: '/warehouses', icon: Warehouse, label: 'Bodegas', roles: WAREHOUSE },
+            { to: '/cost-report', icon: BarChart3, label: 'Reporte Costos', roles: ADMIN },
+            { to: '/kardex', icon: ArrowUpDown, label: 'Kardex', roles: WAREHOUSE },
+            { to: '/waste-report', icon: TrendingDown, label: 'Reporte Mermas', roles: ADMIN },
+            { to: '/bank-reconciliation', icon: Wallet, label: 'Conciliación Bancaria', roles: ADMIN },
+            { to: '/invoices', icon: FileText, label: 'Facturas', roles: ADMIN },
+            { to: '/reporteria', icon: ClipboardList, label: 'Reportería', roles: ADMIN },
+            { to: '/users', icon: Users, label: 'Usuarios', roles: ADMIN },
         ],
     },
     {
         section: 'Configuración',
         items: [
-            { to: '/branches', icon: MapPin, label: 'Sucursales', roles: ADMIN_ROLES },
-            { to: '/integraciones/pedidosya', icon: Zap, label: 'PedidosYa', roles: ADMIN_ROLES },
-            { to: '/companies', icon: Building2, label: 'Empresas', roles: ['SUPERADMIN'] },
-            { to: '/settings', icon: Grid3x3, label: 'Configuración', roles: ADMIN_ROLES },
+            { to: '/branches', icon: MapPin, label: 'Sucursales', roles: ADMIN },
+            { to: '/integraciones/pedidosya', icon: Zap, label: 'PedidosYa', roles: ADMIN },
+            { to: '/companies', icon: Building2, label: 'Empresas', roles: PLATFORM_ADMIN },
+            { to: '/roles-permissions', icon: Users, label: 'Roles y Permisos', roles: ADMIN },
+            { to: '/settings', icon: Grid3x3, label: 'Configuración', roles: ADMIN },
         ],
     },
     {
@@ -109,7 +133,10 @@ export default function Layout() {
     const { user, logout } = useAuth();
     const { t } = useLanguage();
     const navigate = useNavigate();
-    const [isCollapsed, setIsCollapsed] = useState(true);
+    const [isCollapsed, setIsCollapsed] = useState(() => {
+        try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
+    });
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     const userRoleNames = getUserRoleNames(user);
     const userAccentColor = getUserAccentColor(user);
@@ -119,7 +146,41 @@ export default function Layout() {
         navigate('/login');
     };
 
+    const toggleSidebar = () => {
+        setIsCollapsed(prev => {
+            const next = !prev;
+            try { localStorage.setItem('sidebar-collapsed', String(next)); } catch { /* ignore */ }
+            return next;
+        });
+    };
+
+    const renderNavSections = (onNavigate?: () => void) =>
+        NAV_SECTIONS.map((section, sIdx) => {
+            const visibleItems = section.items.filter(item => userRoleNames.some(r => item.roles.includes(r)));
+            if (visibleItems.length === 0) return null;
+            return (
+                <div key={section.section}>
+                    {sIdx > 0 && <div className="nav-section-divider"></div>}
+                    <div className="nav-section-title">{section.section}</div>
+                    {visibleItems.map(item => (
+                        <NavLink
+                            key={item.to}
+                            to={item.to}
+                            className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}
+                            title={item.label}
+                            onClick={onNavigate}
+                        >
+                            <item.icon size={20} />
+                            <span>{item.label}</span>
+                        </NavLink>
+                    ))}
+                </div>
+            );
+        });
+
     return (
+        <ConfirmProvider>
+        <ToastProvider>
         <div className="layout">
             <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
                 <div className="sidebar-header">
@@ -131,7 +192,7 @@ export default function Layout() {
 
                         <button
                             className="sidebar-toggle"
-                            onClick={() => setIsCollapsed(!isCollapsed)}
+                            onClick={toggleSidebar}
                             title={isCollapsed ? 'Expandir menú' : 'Contraer menú'}
                         >
                             {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
@@ -147,27 +208,7 @@ export default function Layout() {
                 </div>
 
                 <nav className="sidebar-nav">
-                    {NAV_SECTIONS.map((section, sIdx) => {
-                        const visibleItems = section.items.filter(item => userRoleNames.some(r => item.roles.includes(r)));
-                        if (visibleItems.length === 0) return null;
-                        return (
-                            <div key={section.section}>
-                                {sIdx > 0 && <div className="nav-section-divider"></div>}
-                                <div className="nav-section-title">{section.section}</div>
-                                {visibleItems.map(item => (
-                                    <NavLink
-                                        key={item.to}
-                                        to={item.to}
-                                        className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}
-                                        title={item.label}
-                                    >
-                                        <item.icon size={20} />
-                                        <span>{item.label}</span>
-                                    </NavLink>
-                                ))}
-                            </div>
-                        );
-                    })}
+                    {renderNavSections()}
                 </nav>
 
                 <div className="sidebar-footer">
@@ -221,17 +262,70 @@ export default function Layout() {
                         ))}
                         <button
                             type="button"
-                            onClick={handleLogout}
-                            className="mobile-bottom-nav-item mobile-bottom-nav-logout"
-                            title={t('common.logout')}
-                            aria-label={t('common.logout')}
+                            onClick={() => setMobileMenuOpen(true)}
+                            className="mobile-bottom-nav-item"
+                            aria-label="Más opciones"
                         >
-                            <LogOut size={22} />
-                            <span>Salir</span>
+                            <Menu size={22} />
+                            <span>Más</span>
                         </button>
                     </nav>
                 );
             })()}
+
+            {mobileMenuOpen && (
+                <>
+                    <div
+                        className="mobile-menu-overlay"
+                        onClick={() => setMobileMenuOpen(false)}
+                        aria-hidden="true"
+                    />
+                    <aside className="mobile-menu-drawer" aria-label="Menú de navegación">
+                        <div className="mobile-menu-header">
+                            <h2>Menú</h2>
+                            <button
+                                type="button"
+                                className="mobile-menu-close"
+                                onClick={() => setMobileMenuOpen(false)}
+                                aria-label="Cerrar menú"
+                            >
+                                <X size={22} />
+                            </button>
+                        </div>
+                        <div className="header-controls-row mobile-menu-controls">
+                            <ThemeToggle />
+                            <LanguageSelector />
+                            <NetworkStatus />
+                        </div>
+                        <nav className="mobile-menu-nav">
+                            {renderNavSections(() => setMobileMenuOpen(false))}
+                        </nav>
+                        <div className="mobile-menu-footer">
+                            <Link
+                                to="/profile"
+                                className="user-profile-section-link"
+                                onClick={() => setMobileMenuOpen(false)}
+                            >
+                                <div className="user-profile-section">
+                                    <div className="user-avatar-mini" style={{ background: userAccentColor }}>
+                                        <Users size={18} />
+                                    </div>
+                                    <div className="user-text-info">
+                                        <div className="user-name">{user?.name}</div>
+                                        <div className="user-role">{userRoleNames.join(' / ')}</div>
+                                    </div>
+                                </div>
+                            </Link>
+                            <button onClick={handleLogout} className="logout-btn-premium" title={t('common.logout')}>
+                                <LogOut size={18} />
+                                <span>{t('common.logout')}</span>
+                            </button>
+                        </div>
+                    </aside>
+                </>
+            )}
         </div>
+        </ToastProvider>
+        </ConfirmProvider>
     );
 }

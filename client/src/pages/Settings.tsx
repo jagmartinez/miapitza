@@ -5,6 +5,7 @@ import Card from '../components/Card';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import { Settings as SettingsIcon, Building2, FileText, Users, Database, Upload, Truck } from 'lucide-react';
+import { useAppToast } from '../context/ToastContext';
 import './Settings.css';
 
 interface SalesChannelConfig {
@@ -19,6 +20,7 @@ type SettingsTab = 'general' | 'company' | 'invoice' | 'roles' | 'channels' | 's
 
 export default function Settings() {
     const navigate = useNavigate();
+    const { error: showError, success } = useAppToast();
     const [activeTab, setActiveTab] = useState<SettingsTab>('general');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -105,7 +107,7 @@ export default function Settings() {
             await salesChannelsAPI.ensureDefaults();
             await loadChannels();
         } catch {
-            alert('Error al crear canales por defecto');
+            showError('Error al crear canales por defecto');
         }
     };
 
@@ -119,7 +121,7 @@ export default function Settings() {
             });
             await loadChannels();
         } catch {
-            alert('Error al guardar configuración del canal');
+            showError('Error al guardar configuración del canal');
         }
     };
 
@@ -152,11 +154,11 @@ export default function Settings() {
             }
 
             await settingsAPI.update(formData);
-            alert('Configuración guardada correctamente');
+            success('Configuración guardada correctamente');
             loadSettings();
         } catch (error) {
             console.error('Error saving settings:', error);
-            alert('Error al guardar la configuración');
+            showError('Error al guardar la configuración');
         } finally {
             setSaving(false);
         }
@@ -165,10 +167,10 @@ export default function Settings() {
     const handleCreateBackup = async () => {
         try {
             const res = await backupAPI.create();
-            alert(`Respaldo creado exitosamente: ${res.data.data.filename}`);
+            success(`Respaldo creado exitosamente: ${res.data.data.filename}`);
         } catch (error) {
             console.error('Error creating backup:', error);
-            alert('Error al crear el respaldo');
+            showError('Error al crear el respaldo');
         }
     };
 
@@ -196,6 +198,7 @@ export default function Settings() {
                 {tabs.map(tab => (
                     <button
                         key={tab.id}
+                        type="button"
                         className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
                         onClick={() => setActiveTab(tab.id)}
                     >

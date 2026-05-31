@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useConfirmDialog } from '../context/ConfirmContext';
+import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import { useNavigate } from 'react-router-dom';
 import { cashRegistersAPI, cashShiftsAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
+import LoadingSpinner from '../components/LoadingSpinner';
 import {
     Wallet, Unlock, History, Plus,
     Search, Calendar, User, ArrowRight,
@@ -15,6 +18,8 @@ import './CashRegisters.css';
 
 export default function CashRegisters() {
     const { user } = useAuth();
+    const { confirm } = useConfirmDialog();
+    const { error: showError, warning: showWarning } = useAppToast();
     const navigate = useNavigate();
     const canCreateRegister = hasAnyRole(user, ['ADMIN', 'SUPERADMIN']);
     const [registers, setRegisters] = useState<CashRegister[]>([]);
@@ -81,7 +86,7 @@ export default function CashRegisters() {
     const handleCreateRegister = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!canCreateRegister) {
-            alert('Solo administradores pueden crear cajas registradoras.');
+            showWarning('Solo administradores pueden crear cajas registradoras.');
             return;
         }
         try {
@@ -91,7 +96,7 @@ export default function CashRegisters() {
             loadRegisters();
         } catch (error) {
             console.error('Error creating register:', error);
-            alert('Error al crear caja');
+            showError('Error al crear caja');
         }
     };
 
@@ -118,13 +123,13 @@ export default function CashRegisters() {
                 : undefined;
             const errorMessage = apiMsg || 'Error al abrir turno';
             if (errorMessage.includes('already has an open shift')) {
-                const confirmNavigate = window.confirm('Esta caja ya tiene un turno abierto. ¿Deseas ir al turno activo?');
+                const confirmNavigate = await confirm('Esta caja ya tiene un turno abierto. ¿Deseas ir al turno activo?', { title: 'Confirmar acción' });
                 if (confirmNavigate && selectedRegisterId) {
                     handleViewActiveShift(undefined, selectedRegisterId);
                 }
                 setIsModalOpen(false);
             } else {
-                alert(errorMessage);
+                showError(errorMessage);
             }
         }
     };
@@ -137,7 +142,7 @@ export default function CashRegisters() {
             if (res.data.data) {
                 navigate(`/cash-shifts/${res.data.data.id}`);
             } else {
-                alert('No hay turno activo (error de sincronización)');
+                showError('No hay turno activo (error de sincronización)');
                 loadRegisters();
             }
         } catch (error) {
@@ -236,7 +241,7 @@ export default function CashRegisters() {
             </div>
 
             {loading ? (
-                <div className="loading-state" style={{ padding: '80px', textAlign: 'center' }}>Cargando datos...</div>
+                <LoadingSpinner text="Cargando datos..." />
             ) : (
                 <>
                     {viewTab === 'registers' ? (
@@ -372,8 +377,8 @@ export default function CashRegisters() {
                         <div className="modal-section">
                             <h3 className="section-title-v2">Saldo de Apertura</h3>
                             <div className="modal-input-group">
-                                <label className="modal-input-label">Monto Inicial en Efectivo</label>
-                                <input type="number" className="modal-standard-input" value={startAmount} onChange={(e) => setStartAmount(e.target.value)} placeholder="0.00" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void confirmOpenShift(); } }} />
+                                <label className="modal-input-label" htmlFor="register-start-amount">Monto Inicial en Efectivo</label>
+                                <input id="register-start-amount" type="number" className="modal-standard-input" value={startAmount} onChange={(e) => setStartAmount(e.target.value)} placeholder="0.00" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void confirmOpenShift(); } }} />
                                 <span className="modal-input-hint">Ingrese la cantidad total de efectivo disponible al iniciar.</span>
                             </div>
                         </div>
@@ -402,8 +407,8 @@ export default function CashRegisters() {
                             <div className="modal-section">
                                 <h3 className="section-title-v2">Identificación</h3>
                                 <div className="modal-input-group">
-                                    <label className="modal-input-label">Nombre de la Caja</label>
-                                    <input type="text" className="modal-standard-input" value={newRegisterName} onChange={(e) => setNewRegisterName(e.target.value)} placeholder="Ej: Caja Barra..." autoFocus />
+                                    <label className="modal-input-label" htmlFor="register-name">Nombre de la Caja</label>
+                                    <input id="register-name" type="text" className="modal-standard-input" value={newRegisterName} onChange={(e) => setNewRegisterName(e.target.value)} placeholder="Ej: Caja Barra..." autoFocus />
                                 </div>
                             </div>
                         )}
@@ -411,8 +416,8 @@ export default function CashRegisters() {
                             <div className="modal-section">
                                 <h3 className="section-title-v2">Ubicación</h3>
                                 <div className="modal-input-group">
-                                    <label className="modal-input-label">Sucursal</label>
-                                    <input type="text" className="modal-standard-input" value={user?.branch?.name || 'Sucursal Principal'} disabled />
+                                    <label className="modal-input-label" htmlFor="register-branch">Sucursal</label>
+                                    <input id="register-branch" type="text" className="modal-standard-input" value={user?.branch?.name || 'Sucursal Principal'} disabled />
                                 </div>
                             </div>
                         )}

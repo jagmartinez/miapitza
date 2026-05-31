@@ -39,7 +39,8 @@ export class UserController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
-            const user = await UserService.update(id, companyId, req.body);
+            const actingRoles = req.user!.roles || [req.user!.role];
+            const user = await UserService.update(id, companyId, req.body, actingRoles);
             res.json({
                 success: true,
                 message: 'Usuario actualizado exitosamente',
@@ -57,6 +58,7 @@ export class UserController {
             // Prevent users from changing their own role or status through this endpoint
             const updateData = { ...req.body };
             delete updateData.roleId;
+            delete updateData.roleIds;
             delete updateData.status;
             delete updateData.companyId;
 
@@ -92,7 +94,8 @@ export class UserController {
             if (cRoles.includes('SUPERADMIN') && req.body.companyId) {
                 companyId = parseInt(req.body.companyId);
             }
-            const user = await UserService.create(companyId, req.body);
+            const actingRoles = req.user?.roles || [req.user?.role as string];
+            const user = await UserService.create(companyId, req.body, actingRoles);
             res.status(201).json({
                 success: true,
                 message: 'Usuario creado exitosamente',

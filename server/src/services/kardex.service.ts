@@ -85,8 +85,14 @@ export class KardexService {
                 }
             });
 
-            // Calculate opening balance (stock before first movement in range)
+            // Calculate opening balance (stock before first movement in range).
+            //
+            // Balances (balanceQty/balanceCost) are stored PER WAREHOUSE on each
+            // movement. When no warehouseId filter is applied the report spans
+            // multiple warehouses, so the opening balance must be the sum of the
+            // last pre-range balance of EACH warehouse — not a single global movement.
             const openingBalance = { quantity: 0, cost: 0 };
+            const openingByWarehouse = new Map<number, { quantity: number; cost: number }>();
 
             if (filters.dateFrom) {
                 const openingWhere: Prisma.InventoryMovementWhereInput = {
@@ -100,41 +106,66 @@ export class KardexService {
                     openingWhere.warehouseId = filters.warehouseId;
                 }
 
+                // Walk movements oldest-first so the last entry per warehouse wins.
                 const previousMovements = await prisma.inventoryMovement.findMany({
                     where: openingWhere,
                     orderBy: {
-                        createdAt: 'desc'
+                        createdAt: 'asc'
                     },
-                    take: 1
+                    select: {
+                        warehouseId: true,
+                        balanceQty: true,
+                        balanceCost: true
+                    }
                 });
 
-                if (previousMovements.length > 0) {
-                    const lastMovement = previousMovements[0];
-                    openingBalance.quantity = Number(lastMovement.balanceQty || 0);
-                    openingBalance.cost = Number(lastMovement.balanceCost || 0);
+                for (const mv of previousMovements) {
+                    openingByWarehouse.set(mv.warehouseId, {
+                        quantity: Number(mv.balanceQty || 0),
+                        cost: Number(mv.balanceCost || 0)
+                    });
+                }
+
+                for (const bal of openingByWarehouse.values()) {
+                    openingBalance.quantity += bal.quantity;
+                    openingBalance.cost += bal.cost;
                 }
             }
 
-            // Calculate running balances if not already stored
-            let runningBalance = openingBalance.quantity;
-            let runningCost = openingBalance.cost;
+            // Track a running balance PER WAREHOUSE, seeded from the opening balances.
+            // Prefer the stored per-warehouse balance on each movement (authoritative)
+            // and only fall back to a computed running balance when it is missing,
+            // which avoids double-counting when movements from several warehouses are
+            // interleaved in a single chronological report.
+            const runningByWarehouse = new Map<number, { quantity: number; cost: number }>();
+            for (const [warehouseId, bal] of openingByWarehouse) {
+                runningByWarehouse.set(warehouseId, { quantity: bal.quantity, cost: bal.cost });
+            }
 
             const enrichedMovements = movements.map((movement) => {
                 const quantity = Number(movement.quantity);
                 const unitCost = Number(movement.unitCost || product.currentAverageCost || 0);
 
-                // Calculate balance if not stored
-                if (movement.type === 'IN' || movement.type === 'ADJUSTMENT') {
-                    runningBalance += quantity;
-                    runningCost += quantity * unitCost;
+                let balance: number;
+                let balanceCost: number;
+
+                if (movement.balanceQty !== null && movement.balanceCost !== null) {
+                    // Stored per-warehouse balance is authoritative.
+                    balance = Number(movement.balanceQty);
+                    balanceCost = Number(movement.balanceCost);
                 } else {
-                    runningBalance -= quantity;
-                    runningCost -= quantity * unitCost;
+                    // Fall back to a per-warehouse running computation.
+                    const prev = runningByWarehouse.get(movement.warehouseId) || { quantity: 0, cost: 0 };
+                    if (movement.type === 'IN' || movement.type === 'ADJUSTMENT') {
+                        balance = prev.quantity + quantity;
+                        balanceCost = prev.cost + quantity * unitCost;
+                    } else {
+                        balance = prev.quantity - quantity;
+                        balanceCost = prev.cost - quantity * unitCost;
+                    }
                 }
 
-                // Use stored balance if available, otherwise use calculated
-                const balance = movement.balanceQty !== null ? Number(movement.balanceQty) : runningBalance;
-                const balanceCost = movement.balanceCost !== null ? Number(movement.balanceCost) : runningCost;
+                runningByWarehouse.set(movement.warehouseId, { quantity: balance, cost: balanceCost });
 
                 return {
                     id: movement.id,
@@ -163,14 +194,14 @@ export class KardexService {
                     .reduce((sum, m) => sum + (m.out || 0), 0)
             };
 
-            const closingBalance = {
-                quantity: enrichedMovements.length > 0
-                    ? enrichedMovements[enrichedMovements.length - 1].balance
-                    : openingBalance.quantity,
-                cost: enrichedMovements.length > 0
-                    ? enrichedMovements[enrichedMovements.length - 1].balanceCost
-                    : openingBalance.cost
-            };
+            // Closing balance is the aggregate of the latest balance across every
+            // warehouse touched (opening balances + movements in range). For a
+            // single-warehouse report this equals that warehouse's last balance.
+            const closingBalance = { quantity: 0, cost: 0 };
+            for (const bal of runningByWarehouse.values()) {
+                closingBalance.quantity += bal.quantity;
+                closingBalance.cost += bal.cost;
+            }
 
             return {
                 product,

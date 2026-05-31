@@ -41,6 +41,14 @@ export class InventoryMovementController {
                 filters.endDate = new Date(req.query.endDate as string);
             }
 
+            if (req.query.page) {
+                filters.page = parseInt(req.query.page as string);
+            }
+
+            if (req.query.limit) {
+                filters.limit = parseInt(req.query.limit as string);
+            }
+
             const movements = await InventoryMovementService.getAll(companyId, filters);
             res.json({
                 success: true,

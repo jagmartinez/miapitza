@@ -145,6 +145,14 @@ export class InvoiceService {
         const subtotal = Math.max(0, itemSubtotal - discount);
         const tax = Number(order.tax || 0);
 
+        // Display the rate that actually matches the stored tax amount so the PDF is
+        // internally consistent (a stored tax of 0, or a rate that differs from the
+        // current setting, will no longer show a misleading percentage). Fall back to
+        // the configured IVA rate only when we can't derive it from the amounts.
+        const taxRatePercent = subtotal > 0
+            ? Math.round((tax / subtotal) * 10000) / 100
+            : Math.round(ivaRate * 10000) / 100;
+
         const invoiceData: InvoiceData = {
             orderId: order.id,
             customerName: order.customerName || 'Consumidor Final',
@@ -165,7 +173,7 @@ export class InvoiceService {
             companyRuc: order.branch.company.ruc ?? undefined,
             date: order.createdAt,
             invoiceNumber,
-            taxRatePercent: Math.round(ivaRate * 10000) / 100
+            taxRatePercent
         };
 
         return invoiceData;

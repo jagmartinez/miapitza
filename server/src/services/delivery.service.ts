@@ -1,5 +1,7 @@
+import crypto from 'crypto';
 import prisma from '../utils/prisma';
 import { SalesChannelService } from './sales-channel.service';
+import { decrypt, isEncrypted } from '../utils/encryption';
 
 /**
  * Delivery Platform Integration Service
@@ -42,6 +44,15 @@ export class DeliveryService {
         branchId: number,
         deliveryOrder: DeliveryOrder
     ) {
+        // Never trust a caller-supplied branch: ensure it belongs to the tenant.
+        const branch = await prisma.branch.findFirst({
+            where: { id: branchId, companyId },
+            select: { id: true }
+        });
+        if (!branch) {
+            throw new Error('Branch not found for company');
+        }
+
         // Check for duplicate order by matching external ID embedded in customerName
         const externalIdTag = `ID:${deliveryOrder.externalId}`;
         const existing = await prisma.order.findFirst({
@@ -166,36 +177,63 @@ export class DeliveryService {
     }
 
     /**
-     * Validate webhook signature (platform-specific)
+     * Resolve the webhook secret bound to a specific tenant + platform.
+     *
+     * For PedidosYa we use the per-company secret stored (encrypted) in
+     * PedidosYaConfig, so a valid signature can only be produced by a party
+     * that knows THAT company's secret — closing the tenant-spoofing hole.
+     *
+     * For Uber Eats / Rappi there is no per-company secret model yet, so we
+     * fall back to a global env secret. RESIDUAL GAP: the env secret is shared
+     * across tenants, so a holder of the global secret could still target an
+     * arbitrary companyId. Needs a per-company secret store for those platforms
+     * (see report).
      */
-    static validateWebhookSignature(
+    private static async resolveWebhookSecret(platform: string, companyId: number): Promise<string | null> {
+        if (platform === 'pedidosya') {
+            const config = await prisma.pedidosYaConfig.findFirst({
+                where: { companyId, active: true },
+                select: { webhookSecret: true }
+            });
+            if (!config?.webhookSecret) return null;
+            try {
+                return isEncrypted(config.webhookSecret)
+                    ? decrypt(config.webhookSecret)
+                    : config.webhookSecret;
+            } catch {
+                return config.webhookSecret;
+            }
+        }
+
+        const envSecrets: Record<string, string | undefined> = {
+            'uber-eats': process.env.UBER_EATS_WEBHOOK_SECRET,
+            'rappi': process.env.RAPPI_WEBHOOK_SECRET,
+        };
+        return envSecrets[platform] ?? null;
+    }
+
+    /**
+     * Validate webhook signature against the tenant's configured secret.
+     * The companyId is required so the HMAC is verified against a secret that
+     * provably belongs to that tenant, rather than a global shared secret.
+     */
+    static async validateWebhookSignature(
         platform: string,
         signature: string,
-        payload: string
-    ): boolean {
-        // Each platform uses its own signature method (HMAC-SHA256 for Uber Eats, etc.)
+        payload: string,
+        companyId: number
+    ): Promise<boolean> {
         // Reject if no signature is provided
         if (!signature) {
             return false;
         }
 
-        // TODO: Implement per-platform HMAC verification with stored secrets
-        // For now, require at minimum that a signature header is present
-        // In production: compare HMAC of payload with signature using platform secret from DB
-        const platformSecrets: Record<string, string | undefined> = {
-            'uber-eats': process.env.UBER_EATS_WEBHOOK_SECRET,
-            'rappi': process.env.RAPPI_WEBHOOK_SECRET,
-            'pedidosya': process.env.PEDIDOSYA_WEBHOOK_SECRET,
-        };
-
-        const secret = platformSecrets[platform];
+        const secret = await this.resolveWebhookSecret(platform, companyId);
         if (!secret) {
-            // No secret configured = platform not enabled, reject
+            // No secret configured for this tenant/platform = reject
             return false;
         }
 
-        // Basic HMAC-SHA256 verification
-        const crypto = require('crypto');
         const expectedSignature = crypto
             .createHmac('sha256', secret)
             .update(payload)

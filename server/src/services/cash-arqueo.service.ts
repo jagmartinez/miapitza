@@ -6,6 +6,9 @@ import prisma from '../utils/prisma';
  * Detailed cash counting and reconciliation
  */
 export class CashArqueoService {
+    // Acceptable cash count difference (in córdobas) before a shift is flagged.
+    // TODO: ideally this becomes per-company configuration (a Setting) rather than a
+    // hardcoded constant, since tolerance expectations vary by business.
     private static readonly TOLERANCE = 1.0;
 
     private static calculateCountedAmount(breakdown: {

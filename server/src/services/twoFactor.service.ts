@@ -5,9 +5,9 @@ import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { encrypt, decrypt, isEncrypted } from '../utils/encryption';
+import { BCRYPT_ROUNDS } from './auth.service';
 
 const RECOVERY_CODE_COUNT = 10;
-const BCRYPT_ROUNDS = 10;
 
 function decryptSecret(stored: string): string {
     if (!stored) return stored;
@@ -54,11 +54,13 @@ export class TwoFactorService {
         });
         const qrCodeDataUrl = await qrcode.toDataURL(otpAuthUrl);
 
+        // Never persist the TOTP secret in plaintext. If encryption is unavailable,
+        // fail the setup rather than storing a recoverable secret.
         let storedSecret: string;
         try {
             storedSecret = encrypt(secret);
         } catch {
-            storedSecret = secret;
+            throw new Error('No se puede configurar 2FA: el cifrado no está disponible');
         }
 
         await prisma.user.update({

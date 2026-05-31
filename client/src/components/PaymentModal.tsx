@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 import { X, DollarSign, Users, CreditCard, Banknote, Smartphone, Calculator, Plus, Trash2, type LucideIcon } from 'lucide-react';
 import { paymentsAPI, splitBillAPI } from '../services/api';
 import { calculateTipAmount, calculateTotalWithTip, splitTotalEvenly } from '../utils/payment';
@@ -10,6 +11,28 @@ interface PaymentMethodOption {
     name: string;
     icon: LucideIcon;
 }
+
+/** Resolve a display icon from the (company-defined) payment method name. */
+const resolveMethodIcon = (name: string): LucideIcon => {
+    const normalized = name.toLowerCase();
+    if (normalized.includes('efectivo') || normalized.includes('cash')) return Banknote;
+    if (
+        normalized.includes('tarjeta') || normalized.includes('card') ||
+        normalized.includes('crédito') || normalized.includes('credito') ||
+        normalized.includes('débito') || normalized.includes('debito')
+    ) return CreditCard;
+    if (
+        normalized.includes('transfer') || normalized.includes('móvil') ||
+        normalized.includes('movil') || normalized.includes('qr') || normalized.includes('billetera')
+    ) return Smartphone;
+    return DollarSign;
+};
+
+/** A cash-like method requires the "amount tendered" / change workflow. */
+const isCashMethodName = (name: string): boolean => {
+    const normalized = name.toLowerCase();
+    return normalized.includes('efectivo') || normalized.includes('cash');
+};
 
 interface SplitEntry {
     payerName: string;
@@ -40,20 +63,29 @@ interface PaymentModalProps {
     currencySymbol?: string;
 }
 
-const PAYMENT_METHODS: PaymentMethodOption[] = [
-    { id: 1, name: 'Efectivo', icon: Banknote },
-    { id: 2, name: 'Tarjeta', icon: CreditCard },
-    { id: 3, name: 'Transferencia', icon: Smartphone },
-];
-
 const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSuccess, currencySymbol = '$' }: PaymentModalProps) => {
     const [mode, setMode] = useState<'single' | 'split'>('single');
 
+    // Payment methods are validated server-side against the company's DB rows;
+    // the available IDs are NOT guaranteed to be {1,2,3}, so load them at runtime.
+    const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
+    const [methodsLoading, setMethodsLoading] = useState(false);
+    const [methodsError, setMethodsError] = useState('');
+    const cashMethodId = useMemo(
+        () => paymentMethods.find((m) => isCashMethodName(m.name))?.id ?? null,
+        [paymentMethods]
+    );
+    const defaultMethodId = useMemo(
+        () => cashMethodId ?? paymentMethods[0]?.id ?? null,
+        [cashMethodId, paymentMethods]
+    );
+
     // Single mode state
-    const [selectedMethod, setSelectedMethod] = useState<number>(1);
+    const [selectedMethod, setSelectedMethod] = useState<number | null>(null);
     const [amountTendered, setAmountTendered] = useState<string>('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [pendingNotice, setPendingNotice] = useState('');
     const [tipPercentage, setTipPercentage] = useState<number>(0);
     const [customTip, setCustomTip] = useState<string>('');
     const [showCustomTipInput, setShowCustomTipInput] = useState(false);
@@ -63,15 +95,61 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
     const [splitStrategy, setSplitStrategy] = useState<SplitStrategy>('evenly');
     const [itemAssignments, setItemAssignments] = useState<Record<number, number>>({});
     const [previewLoading, setPreviewLoading] = useState(false);
+    // Indexes of splits already charged successfully, so a retry after a partial
+    // failure does NOT double-charge the diners who already paid.
+    const [paidSplitIndexes, setPaidSplitIndexes] = useState<number[]>([]);
+    const dialogRef = useRef<HTMLDivElement>(null);
+
+    const handleClose = useCallback(() => {
+        if (loading) return;
+        onClose();
+    }, [loading, onClose]);
+
+    const { titleId } = useDialogA11y(isOpen, handleClose, dialogRef as RefObject<HTMLElement | null>, {
+        closeOnEscape: !loading,
+    });
+
+    const isCashSelected = selectedMethod !== null && selectedMethod === cashMethodId;
 
     const orderItems = useMemo(() => order?.items || [], [order]);
+
+    // Load the company's payment methods whenever the modal opens.
+    useEffect(() => {
+        if (!isOpen) return;
+        let cancelled = false;
+        setMethodsLoading(true);
+        setMethodsError('');
+        paymentsAPI.getPaymentMethods()
+            .then((res) => {
+                if (cancelled) return;
+                const rows = (res.data?.data || []) as Array<{ id: number; name: string; active?: boolean }>;
+                const options = rows
+                    .filter((row) => row.active !== false)
+                    .map((row) => ({ id: row.id, name: row.name, icon: resolveMethodIcon(row.name) }));
+                setPaymentMethods(options);
+                setSelectedMethod((prev) => (prev !== null && options.some((o) => o.id === prev)
+                    ? prev
+                    : options.find((o) => isCashMethodName(o.name))?.id ?? options[0]?.id ?? null));
+                if (options.length === 0) {
+                    setMethodsError('No hay métodos de pago configurados. Contacta a un administrador.');
+                }
+            })
+            .catch(() => {
+                if (cancelled) return;
+                setMethodsError('No se pudieron cargar los métodos de pago. Verifica tu conexión e inténtalo de nuevo.');
+            })
+            .finally(() => {
+                if (!cancelled) setMethodsLoading(false);
+            });
+        return () => { cancelled = true; };
+    }, [isOpen]);
 
     useEffect(() => {
         if (isOpen) {
             const total = orderTotal;
             setAmountTendered(total.toFixed(2));
-            setSelectedMethod(1);
             setError('');
+            setPendingNotice('');
             setTipPercentage(0);
             setCustomTip('');
             setShowCustomTipInput(false);
@@ -80,6 +158,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
             setSplitStrategy('evenly');
             setItemAssignments({});
             setPreviewLoading(false);
+            setPaidSplitIndexes([]);
         }
     }, [isOpen, orderTotal]);
 
@@ -101,11 +180,11 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
     const buildSplitEntries = useCallback((count: number, amounts?: number[]) => {
         return Array.from({ length: count }, (_, index) => ({
             payerName: splits[index]?.payerName || `Comensal ${index + 1}`,
-            paymentMethodId: splits[index]?.paymentMethodId || 1,
+            paymentMethodId: splits[index]?.paymentMethodId || defaultMethodId || 0,
             amount: (amounts?.[index] ?? 0).toFixed(2),
             reference: splits[index]?.reference || ''
         }));
-    }, [splits]);
+    }, [defaultMethodId, splits]);
 
     const handleQuickAmount = (multiplier: number) => {
         const rounded = Math.ceil(totalWithTip / multiplier) * multiplier;
@@ -117,11 +196,13 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
         const nextCount = splits.length + 1;
         const amounts = splitTotalEvenly(totalWithTip, nextCount);
         setSplits(buildSplitEntries(nextCount, amounts));
+        setPaidSplitIndexes([]);
     };
 
     const removeSplit = (index: number) => {
         const nextSplits = splits.filter((_, i) => i !== index);
         setSplits(nextSplits);
+        setPaidSplitIndexes([]);
         setItemAssignments((prev) => Object.fromEntries(
             Object.entries(prev).map(([itemId, payerIndex]) => {
                 const numericIndex = Number(payerIndex);
@@ -145,6 +226,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
     const splitEvenlyAmong = (count: number) => {
         const amounts = splitTotalEvenly(totalWithTip, count);
         setSplits(buildSplitEntries(count, amounts));
+        setPaidSplitIndexes([]);
         setItemAssignments((prev) => {
             const nextAssignments: Record<number, number> = {};
             Object.entries(prev).forEach(([itemId, payerIndex]) => {
@@ -162,6 +244,11 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
         setItemAssignments(nextAssignments);
     }, [orderItems]);
 
+    // Monotonic id used to ignore stale split-preview responses. Each invocation
+    // claims the latest id; if a newer call starts before this one resolves, this
+    // call's results are discarded (it neither updates state nor returns entries).
+    const previewSeqRef = useRef(0);
+
     const recalculateSplitPreview = useCallback(async (
         strategy: SplitStrategy,
         entries: SplitEntry[] = splits,
@@ -171,12 +258,15 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
             return entries;
         }
 
+        const seq = ++previewSeqRef.current;
+        const isStale = () => seq !== previewSeqRef.current;
         setPreviewLoading(true);
         setError('');
 
         try {
             if (strategy === 'evenly') {
                 const response = await splitBillAPI.splitEvenly(orderId, entries.length);
+                if (isStale()) return null;
                 const nextAmounts = response.data.data.splits.map((split: { amount: number }) => Number(split.amount));
                 const nextEntries = buildSplitEntries(entries.length, nextAmounts);
                 setSplits(nextEntries);
@@ -198,6 +288,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                 }
 
                 const response = await splitBillAPI.splitByItems(orderId, assignmentsPayload);
+                if (isStale()) return null;
                 const amountByName = new Map<string, number>(
                     response.data.data.splits.map((split: { personName: string; total: number }) => [split.personName, Number(split.total)])
                 );
@@ -213,6 +304,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                 personName: entry.payerName,
                 amount: parseFloat(entry.amount) || 0
             })));
+            if (isStale()) return null;
 
             if (response.data.data.valid === false) {
                 setError(response.data.data.error);
@@ -226,10 +318,11 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
             setSplits(nextEntries);
             return nextEntries;
         } catch (err: unknown) {
+            if (isStale()) return null;
             setError(axiosErrorMessage(err, 'No se pudo recalcular la división.'));
             return null;
         } finally {
-            setPreviewLoading(false);
+            if (!isStale()) setPreviewLoading(false);
         }
     }, [buildSplitEntries, itemAssignments, orderId, orderItems, splits]);
 
@@ -243,9 +336,15 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
             return;
         }
 
-        if (orderId) {
-            void recalculateSplitPreview(splitStrategy);
+        if (!orderId) {
+            return;
         }
+
+        // Debounce: avoid firing a preview request on every keystroke/edit.
+        const handle = setTimeout(() => {
+            void recalculateSplitPreview(splitStrategy);
+        }, 350);
+        return () => clearTimeout(handle);
     }, [initializeItemAssignments, isOpen, itemAssignments, mode, orderId, orderItems.length, recalculateSplitPreview, splitStrategy, splits.length]);
 
     const getSplitTotal = () => splits.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
@@ -255,13 +354,19 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
         const tendered = parseFloat(amountTendered) || 0;
         const total = totalWithTip;
 
-        if (selectedMethod === 1 && tendered < total) {
+        if (selectedMethod === null) {
+            setError('Selecciona un método de pago');
+            return;
+        }
+
+        if (isCashSelected && tendered < total) {
             setError('El monto ingresado es menor al total');
             return;
         }
 
         setLoading(true);
         setError('');
+        setPendingNotice('');
 
         try {
             if (!orderId) { setError('No se ha creado la orden'); setLoading(false); return; }
@@ -275,10 +380,16 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                 entityTempId: `payment-${Date.now()}`
             });
 
-            onPaymentSuccess({
-                offlineQueued: Boolean((response.data as ApiEnvelope)._offline)
-            });
-            onClose();
+            // Offline: the request was only queued, NOT confirmed by the server.
+            // Do not report success or close the order — keep it open until sync.
+            if ((response.data as ApiEnvelope)._offline) {
+                setPendingNotice('Sin conexión: el pago quedó en cola de sincronización. La orden permanece ABIERTA y solo se marcará como pagada cuando se confirme al reconectar.');
+                setLoading(false);
+                return;
+            }
+
+            onPaymentSuccess({ offlineQueued: false });
+            handleClose();
         } catch (err: unknown) {
             setError(axiosErrorMessage(err, 'Error al procesar el pago'));
         } finally {
@@ -294,6 +405,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
 
         setLoading(true);
         setError('');
+        setPendingNotice('');
 
         try {
             if (!orderId) { setError('No se ha creado la orden'); setLoading(false); return; }
@@ -308,29 +420,66 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                 return;
             }
 
-            let queuedCount = 0;
+            // There is no atomic batch/split payment endpoint, so charges are
+            // applied sequentially. We track which ones succeed and, on any
+            // failure, STOP and report the partial state explicitly instead of
+            // claiming overall success. A subsequent click retries only the
+            // remaining diners (already-paid indexes are skipped).
+            const succeeded = [...paidSplitIndexes];
+            const nameOf = (idx: number) => effectiveSplits[idx]?.payerName || `Pago ${idx + 1}`;
 
-            for (const split of effectiveSplits) {
-                const response = await paymentsAPI.create({
-                    orderId,
-                    paymentMethodId: split.paymentMethodId,
-                    amount: parseFloat(split.amount) || 0,
-                    reference: split.reference || undefined,
-                    payerName: split.payerName,
-                }, {
-                    operationType: 'CREATE_PAYMENT',
-                    entityTempId: `payment-${Date.now()}-${queuedCount}`
-                });
+            for (let i = 0; i < effectiveSplits.length; i++) {
+                if (succeeded.includes(i)) continue;
+                const split = effectiveSplits[i];
 
-                if ((response.data as ApiEnvelope)._offline) {
-                    queuedCount++;
+                let response;
+                try {
+                    response = await paymentsAPI.create({
+                        orderId,
+                        paymentMethodId: split.paymentMethodId,
+                        amount: parseFloat(split.amount) || 0,
+                        reference: split.reference || undefined,
+                        payerName: split.payerName,
+                    }, {
+                        operationType: 'CREATE_PAYMENT',
+                        entityTempId: `payment-${orderId}-${i}`
+                    });
+                } catch (err: unknown) {
+                    setPaidSplitIndexes(succeeded);
+                    const okNames = succeeded.map(nameOf);
+                    const pendingNames = effectiveSplits
+                        .map((_, idx) => idx)
+                        .filter((idx) => idx > i || (idx !== i && !succeeded.includes(idx)));
+                    setError(
+                        `Falló el cobro de "${nameOf(i)}": ${axiosErrorMessage(err, 'error al procesar el pago')}. ` +
+                        (okNames.length ? `Ya se cobraron: ${okNames.join(', ')}. ` : '') +
+                        (pendingNames.length ? `Pendientes: ${pendingNames.map(nameOf).join(', ')}. ` : '') +
+                        'Vuelve a presionar "Confirmar" para reintentar solo los pagos pendientes.'
+                    );
+                    setLoading(false);
+                    return;
                 }
+
+                // Offline-queued split payments are not confirmed; stop and keep
+                // the order open rather than reporting success.
+                if ((response.data as ApiEnvelope)._offline) {
+                    setPaidSplitIndexes(succeeded);
+                    const okNames = succeeded.map(nameOf);
+                    setPendingNotice(
+                        `Sin conexión: el cobro de "${nameOf(i)}" quedó en cola de sincronización, por lo que la división no pudo completarse. ` +
+                        (okNames.length ? `Ya se cobraron: ${okNames.join(', ')}. ` : '') +
+                        'La orden permanece ABIERTA hasta poder cobrar el resto con conexión.'
+                    );
+                    setLoading(false);
+                    return;
+                }
+
+                succeeded.push(i);
+                setPaidSplitIndexes([...succeeded]);
             }
 
-            onPaymentSuccess({
-                offlineQueued: queuedCount > 0
-            });
-            onClose();
+            onPaymentSuccess({ offlineQueued: false });
+            handleClose();
         } catch (err: unknown) {
             setError(axiosErrorMessage(err, 'Error al procesar pagos'));
         } finally {
@@ -343,23 +492,32 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
     const change = calculateChange();
 
     return (
-        <div className="modal-overlay-new" onClick={onClose}>
-            <div className="payment-modal-new" onClick={(e) => e.stopPropagation()}>
+        <div
+            className="modal-overlay-new"
+            onClick={loading ? undefined : handleClose}
+        >
+            <div
+                ref={dialogRef}
+                className="payment-modal-new"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
+                onClick={(e) => e.stopPropagation()}
+            >
                 {/* Header */}
                 <div className="payment-header">
-                    <h2>Procesar Pago</h2>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <h2 id={titleId}>Procesar Pago</h2>
+                    <div className="payment-mode-toggle">
                         <button
+                            type="button"
+                            className={`payment-mode-btn ${mode === 'single' ? 'active' : ''}`}
                             onClick={() => setMode('single')}
-                            style={{
-                                padding: '6px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer',
-                                fontWeight: 600, fontSize: '0.85rem',
-                                background: mode === 'single' ? 'var(--color-primary, #2563eb)' : 'var(--color-neutral-100)',
-                                color: mode === 'single' ? '#fff' : 'var(--color-neutral-600)'
-                            }}>
+                        >
                             Pago Único
                         </button>
                         <button
+                            type="button"
+                            className={`payment-mode-btn ${mode === 'split' ? 'active' : ''}`}
                             onClick={() => {
                                 setMode('split');
                                 setSplitStrategy('evenly');
@@ -367,16 +525,19 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                                     splitEvenlyAmong(2);
                                 }
                             }}
-                            style={{
-                                padding: '6px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer',
-                                fontWeight: 600, fontSize: '0.85rem',
-                                background: mode === 'split' ? 'var(--color-primary, #2563eb)' : 'var(--color-neutral-100)',
-                                color: mode === 'split' ? '#fff' : 'var(--color-neutral-600)'
-                            }}>
-                            <Users size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                        >
+                            <Users size={14} />
                             Dividir Cuenta
                         </button>
-                        <button className="close-btn-new" onClick={onClose}><X size={24} /></button>
+                        <button
+                            type="button"
+                            className="close-btn-new"
+                            onClick={handleClose}
+                            disabled={loading}
+                            aria-label="Cerrar modal de pago"
+                        >
+                            <X size={24} />
+                        </button>
                     </div>
                 </div>
 
@@ -393,21 +554,29 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
 
                                 <div className="section">
                                     <div className="section-title">Método de Pago</div>
-                                    <div className="payment-methods-grid">
-                                        {PAYMENT_METHODS.map(method => {
-                                            const Icon = method.icon;
-                                            return (
-                                                <button key={method.id}
-                                                    className={`payment-method-card ${selectedMethod === method.id ? 'active' : ''}`}
-                                                    onClick={() => setSelectedMethod(method.id)}>
-                                                    <Icon size={24} /><span>{method.name}</span>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
+                                    {methodsLoading && paymentMethods.length === 0 ? (
+                                        <div style={{ padding: '10px 12px', color: 'var(--color-neutral-600)', fontSize: '0.85rem' }}>
+                                            Cargando métodos de pago...
+                                        </div>
+                                    ) : methodsError ? (
+                                        <div className="error-message-new">{methodsError}</div>
+                                    ) : (
+                                        <div className="payment-methods-grid">
+                                            {paymentMethods.map(method => {
+                                                const Icon = method.icon;
+                                                return (
+                                                    <button key={method.id}
+                                                        className={`payment-method-card ${selectedMethod === method.id ? 'active' : ''}`}
+                                                        onClick={() => setSelectedMethod(method.id)}>
+                                                        <Icon size={24} /><span>{method.name}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
 
-                                {selectedMethod === 1 && (
+                                {isCashSelected && (
                                     <div className="section">
                                         <div className="section-title">Monto Recibido</div>
                                         <div className="cash-input-group">
@@ -478,7 +647,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                                     )}
                                 </div>
 
-                                {selectedMethod === 1 && parseFloat(amountTendered) >= totalWithTip && (
+                                {isCashSelected && parseFloat(amountTendered) >= totalWithTip && (
                                     <div className="section change-section">
                                         <div className="section-title">Cambio</div>
                                         <div className="change-display-reorganized">
@@ -597,7 +766,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                                                 border: '1px solid var(--color-neutral-200)', fontSize: '0.85rem',
                                                 background: 'var(--bg-primary, #fff)', cursor: 'pointer'
                                             }}>
-                                            {PAYMENT_METHODS.map(m => (
+                                            {paymentMethods.map(m => (
                                                 <option key={m.id} value={m.id}>{m.name}</option>
                                             ))}
                                         </select>
@@ -702,12 +871,38 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                 {/* Footer */}
                 <div className="payment-footer">
                     {error && <div className="error-message-new">{error}</div>}
+                    {pendingNotice && (
+                        <div style={{
+                            padding: '10px 12px',
+                            borderRadius: '10px',
+                            background: 'var(--color-warning, #f59e0b)18',
+                            border: '1px solid var(--color-warning, #f59e0b)',
+                            color: 'var(--color-warning, #b45309)',
+                            fontSize: '0.85rem',
+                            fontWeight: 600,
+                            marginBottom: '8px'
+                        }}>
+                            {pendingNotice}
+                        </div>
+                    )}
                     <div className="footer-actions">
-                        <button className="btn-cancel" onClick={onClose} disabled={loading}>Cancelar</button>
+                        <button className="btn-cancel" onClick={handleClose} disabled={loading}>Cancelar</button>
                         <button className="btn-confirm"
                             onClick={mode === 'single' ? handleSinglePayment : handleSplitPayment}
-                            disabled={loading || previewLoading || (mode === 'single' && selectedMethod === 1 && parseFloat(amountTendered) < totalWithTip) || (mode === 'split' && Math.abs(getSplitRemaining()) > 0.02)}>
-                            {loading ? 'Procesando...' : previewLoading ? 'Calculando...' : mode === 'split' ? `Confirmar ${splits.length} Pagos` : 'Confirmar Pago'}
+                            disabled={
+                                loading || previewLoading ||
+                                (mode === 'single' && (selectedMethod === null || (isCashSelected && parseFloat(amountTendered) < totalWithTip))) ||
+                                (mode === 'split' && Math.abs(getSplitRemaining()) > 0.02)
+                            }>
+                            {loading
+                                ? 'Procesando...'
+                                : previewLoading
+                                    ? 'Calculando...'
+                                    : mode === 'split'
+                                        ? (paidSplitIndexes.length > 0
+                                            ? `Reintentar ${Math.max(splits.length - paidSplitIndexes.length, 0)} Pagos`
+                                            : `Confirmar ${splits.length} Pagos`)
+                                        : 'Confirmar Pago'}
                         </button>
                     </div>
                 </div>

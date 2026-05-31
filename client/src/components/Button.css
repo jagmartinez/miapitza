@@ -73,7 +73,7 @@
 }
 
 .btn-ghost:hover:not(:disabled) {
-    background-color: var(--color-neutral-100);
+    background-color: var(--color-surface-hover);
 }
 
 .btn-full {

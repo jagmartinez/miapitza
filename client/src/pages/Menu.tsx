@@ -3,6 +3,8 @@ import Select from '../components/Select';
 import ReactSelect from 'react-select';
 import { branchPricingAPI, menuAPI, productsAPI, categoriesAPI, branchesAPI, unitsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
+import { useConfirmDialog } from '../context/ConfirmContext';
+import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
@@ -54,6 +56,8 @@ type StrOption = { value: string; label: string };
 
 export default function Menu() {
   const { user } = useAuth();
+  const { confirm } = useConfirmDialog();
+  const { error: showError, warning: showWarning } = useAppToast();
   /** Backend: menu/recipe/image mutations require SUPERADMIN | ADMIN */
   const canMutateMenu = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CHEF']);
   /** Backend: branch price overrides via /advanced/pricing require SUPERADMIN | ADMIN */
@@ -97,6 +101,7 @@ export default function Menu() {
 
   // Modal Tab State
   const [activeTab, setActiveTab] = useState<'info' | 'recipe' | 'gallery'>('info');
+  const [saving, setSaving] = useState(false);
 
   const calculateIngredientLineCost = (ingredient: RecipeIngredient) => {
     const baseQuantity = Number(ingredient.quantity) * Number(ingredient.conversionFactor || 1);
@@ -206,7 +211,7 @@ export default function Menu() {
 
     const nextPrice = parseFloat(branchPriceDrafts[branchId] || '');
     if (!Number.isFinite(nextPrice) || nextPrice <= 0) {
-      alert('Ingresa un precio válido para la sucursal.');
+      showWarning('Ingresa un precio válido para la sucursal.');
       return;
     }
 
@@ -223,7 +228,7 @@ export default function Menu() {
       );
     } catch (error) {
       console.error('Error saving branch price:', error);
-      alert('No se pudo guardar el precio por sucursal');
+      showError('No se pudo guardar el precio por sucursal');
     } finally {
       setSavingBranchPriceId(null);
     }
@@ -311,6 +316,7 @@ export default function Menu() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canMutateMenu) return;
+    setSaving(true);
     try {
       const menuData = {
         name: formData.name,
@@ -361,18 +367,20 @@ export default function Menu() {
       loadData();
     } catch (error: unknown) {
       console.error('Error saving menu item:', error);
-      alert('Error al guardar el plato');
+      showError('Error al guardar el plato');
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDelete = async (id: number) => {
     if (!canMutateMenu) return;
-    if (!confirm('¿Eliminar este plato?')) return;
+    if (!(await confirm('¿Eliminar este plato?', { title: 'Confirmar acción' }))) return;
     try {
       await menuAPI.delete(id);
       loadData();
     } catch {
-      alert('Error al eliminar');
+      showError('Error al eliminar');
     }
   };
 
@@ -515,27 +523,30 @@ export default function Menu() {
         <div className="premium-modal-content menu-item-modal-content">
           {/* NAVIGATION TABS */}
           <div className="modal-tabs">
-            <div
+            <button
+              type="button"
               className={`modal-tab ${activeTab === 'info' ? 'active' : ''}`}
               onClick={() => setActiveTab('info')}
             >
               <Info size={18} />
               <span>Información</span>
-            </div>
-            <div
+            </button>
+            <button
+              type="button"
               className={`modal-tab ${activeTab === 'recipe' ? 'active' : ''}`}
               onClick={() => setActiveTab('recipe')}
             >
               <PieChart size={18} />
               <span>Costos <span className="tab-badge">{recipe.length}</span></span>
-            </div>
-            <div
+            </button>
+            <button
+              type="button"
               className={`modal-tab ${activeTab === 'gallery' ? 'active' : ''}`}
               onClick={() => setActiveTab('gallery')}
             >
               <ImageIcon size={18} />
               <span>Galería <span className="tab-badge">{images.length}/3</span></span>
-            </div>
+            </button>
           </div>
 
           <form onSubmit={handleSubmit} className="modal-form-new">
@@ -549,8 +560,9 @@ export default function Menu() {
                   </div>
 
                   <div className="modal-input-group">
-                    <label className="modal-input-label">Nombre del Plato</label>
+                    <label className="modal-input-label" htmlFor="menu-item-name">Nombre del Plato</label>
                     <input
+                      id="menu-item-name"
                       autoFocus
                       className="modal-standard-input"
                       placeholder="Ej: Pasta Carbonara Premium"
@@ -589,10 +601,11 @@ export default function Menu() {
                     />
 
                     <div className="modal-input-group">
-                      <label className="modal-input-label">Precio Final</label>
+                      <label className="modal-input-label" htmlFor="menu-item-price">Precio Final</label>
                       <div style={{ position: 'relative' }}>
                         <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-tertiary)', fontWeight: 600 }}>$</span>
                         <input
+                          id="menu-item-price"
                           type="number"
                           step="0.01"
                           className="modal-standard-input"
@@ -609,8 +622,9 @@ export default function Menu() {
                   </div>
 
                   <div className="modal-input-group">
-                    <label className="modal-input-label">Descripción</label>
+                    <label className="modal-input-label" htmlFor="menu-item-description">Descripción</label>
                     <textarea
+                      id="menu-item-description"
                       className="modal-textarea"
                       style={{ minHeight: '100px' }}
                       placeholder="Detalles sobre sabores, ingredientes o preparación..."
@@ -662,11 +676,12 @@ export default function Menu() {
 
                   {/* Add Tool */}
                   <div className="modal-input-group">
-                    <label className="modal-input-label">Incorporar Ingrediente</label>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <label className="modal-input-label" id="menu-ingredient-add-label">Incorporar Ingrediente</label>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }} role="group" aria-labelledby="menu-ingredient-add-label">
                       <div style={{ flex: 2, minWidth: '140px' }}>
                         <Select
                           variant="modal"
+                          inputId="menu-ingredient-product"
                           options={products.map(p => ({
                             value: p.id.toString(), label: p.name, cost: p.cost, unit: p.unit
                           }))}
@@ -681,6 +696,7 @@ export default function Menu() {
                         />
                       </div>
                       <input
+                        id="menu-ingredient-quantity"
                         type="number"
                         className="modal-standard-input"
                         style={{ width: '80px', textAlign: 'center' }}
@@ -718,8 +734,8 @@ export default function Menu() {
 
                   {/* Ingredients Table (Adapted) */}
                   <div className="modal-input-group" style={{ marginTop: '16px' }}>
-                    <label className="modal-input-label">Ingredientes Seleccionados</label>
-                    <div style={{ border: '1px solid var(--color-border)', borderRadius: '8px', overflow: 'hidden' }}>
+                    <label className="modal-input-label" id="menu-ingredients-list-label">Ingredientes Seleccionados</label>
+                    <div id="menu-ingredients-list" aria-labelledby="menu-ingredients-list-label" style={{ border: '1px solid var(--color-border)', borderRadius: '8px', overflow: 'hidden' }}>
                       {recipe.length > 0 ? (
                         recipe.map((ing, i) => (
                           <div key={i} className="recipe-ingredient-row">
@@ -870,8 +886,8 @@ export default function Menu() {
                 {canMutateMenu ? 'Cancelar' : 'Cerrar'}
               </Button>
               {canMutateMenu && (
-                <Button type="submit" variant="primary" disabled={!formData.name}>
-                  {editingItem ? 'Actualizar Plato' : 'Guardar en Catálogo'}
+                <Button type="submit" variant="primary" disabled={!formData.name || saving}>
+                  {saving ? 'Guardando...' : editingItem ? 'Actualizar Plato' : 'Guardar en Catálogo'}
                 </Button>
               )}
             </div>

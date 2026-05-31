@@ -1,21 +1,26 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { ordersAPI, settingsAPI } from '../services/api';
+import { ordersAPI, settingsAPI, cashShiftsAPI } from '../services/api';
 import { canSendOrderToKitchen, canCancelOrder, canCreatePayment } from '../utils/authz';
 import { useDebounce } from '../utils/useDebounce';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import PaymentModal from '../components/PaymentModal';
+import Modal from '../components/Modal';
 import Select from '../components/Select';
+import { NoResultsEmptyState } from '../components/EmptyState';
+import { LoadingOverlay } from '../components/LoadingSpinner';
 import { escapeHtml } from '../utils/escapeHtml';
 import {
     Send, CheckCircle, XCircle, CreditCard,
-    Search, Clock, User, Printer, Package, Info, ClipboardList
+    Clock, User, Printer, Package, Info, ClipboardList
 } from 'lucide-react';
 import type { Order } from '../types';
 import type { CurrencySettings } from '../utils/currency';
 import type { SingleValue } from 'react-select';
 import { getOrderStatusClassName, getOrderStatusLabel } from '../utils/orderStatus';
+import { useAppToast } from '../context/ToastContext';
+import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
 import './Orders.css';
 
 type CompanyDisplaySettings = CurrencySettings & {
@@ -28,6 +33,7 @@ type CompanyDisplaySettings = CurrencySettings & {
 
 export default function Orders() {
     const { user } = useAuth();
+    const { error: showError, warning: showWarning } = useAppToast();
     const canSendKitchen = canSendOrderToKitchen(user);
     const canCancel = canCancelOrder(user);
     const canPayOrder = canCreatePayment(user);
@@ -50,6 +56,8 @@ export default function Orders() {
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
     const [settings, setSettings] = useState<CompanyDisplaySettings>({});
+    // null = unknown/not yet checked
+    const [hasActiveShift, setHasActiveShift] = useState<boolean | null>(null);
 
     // Cancel modal state
     const [showCancelModal, setShowCancelModal] = useState(false);
@@ -107,12 +115,40 @@ export default function Orders() {
         }
     }, [customEndDate, customStartDate, dateRange]);
 
+    const loadShiftStatus = useCallback(async () => {
+        try {
+            const res = await cashShiftsAPI.getActiveStatus();
+            setHasActiveShift(Boolean(res.data.data?.hasActiveShift));
+        } catch {
+            setHasActiveShift(false);
+        }
+    }, []);
+
     useEffect(() => {
         void loadSettings();
-    }, [loadSettings]);
+        void loadShiftStatus();
+    }, [loadSettings, loadShiftStatus]);
 
     useEffect(() => {
         void loadOrders();
+    }, [loadOrders]);
+
+    useEffect(() => {
+        initializeWebSocket();
+        const unsubscribe = subscribeWebSocket((message) => {
+            if (!message?.type) return;
+            if (
+                message.type === WS_EVENTS.ORDER_CREATED ||
+                message.type === WS_EVENTS.ORDER_SENT_TO_KITCHEN ||
+                message.type === WS_EVENTS.ORDER_IN_PREPARATION ||
+                message.type === WS_EVENTS.ORDER_READY ||
+                message.type === WS_EVENTS.ORDER_COMPLETED ||
+                message.type === WS_EVENTS.ORDER_UPDATE
+            ) {
+                void loadOrders();
+            }
+        });
+        return unsubscribe;
     }, [loadOrders]);
 
     const handleViewDetails = (order: Order) => {
@@ -123,7 +159,7 @@ export default function Orders() {
 
     const handleUpdateStatus = async (orderId: number, newStatus: string) => {
         if (newStatus === 'SENT_TO_KITCHEN' && !canSendKitchen) {
-            alert('Tu rol no puede enviar órdenes a cocina. Pide apoyo a un mesero o administrador.');
+            showWarning('Tu rol no puede enviar órdenes a cocina. Pide apoyo a un mesero o administrador.');
             return;
         }
         try {
@@ -132,13 +168,18 @@ export default function Orders() {
             setIsSidebarOpen(false);
         } catch (error) {
             console.error('Error updating order status:', error);
-            alert('Error al actualizar el estado de la orden');
+            showError('Error al actualizar el estado de la orden');
         }
     };
 
     const handlePaymentClick = (order: Order) => {
         if (!canPayOrder) {
-            alert('Tu rol no puede registrar pagos. Pide apoyo a un cajero o administrador.');
+            showWarning('Tu rol no puede registrar pagos. Pide apoyo a un cajero o administrador.');
+            return;
+        }
+        // Mirror the POS guard: payments require an active cash shift.
+        if (hasActiveShift === false) {
+            showWarning('No hay un turno de caja activo. Solicita al cajero o administrador que abra un turno para procesar pagos.');
             return;
         }
         setPaymentOrder(order);
@@ -157,7 +198,7 @@ export default function Orders() {
 
     const openCancelModal = (orderId: number) => {
         if (!canCancel) {
-            alert('Tu rol no puede cancelar órdenes. Pide apoyo a un mesero o administrador.');
+            showWarning('Tu rol no puede cancelar órdenes. Pide apoyo a un mesero o administrador.');
             return;
         }
         setCancelOrderId(orderId);
@@ -168,7 +209,7 @@ export default function Orders() {
     const handleCancelOrder = async () => {
         if (!cancelOrderId) return;
         if (!canCancel) {
-            alert('Tu rol no puede cancelar órdenes. Pide apoyo a un mesero o administrador.');
+            showWarning('Tu rol no puede cancelar órdenes. Pide apoyo a un mesero o administrador.');
             return;
         }
         try {
@@ -180,7 +221,7 @@ export default function Orders() {
             setCancelReason('');
         } catch (error) {
             console.error('Error cancelling order:', error);
-            alert('Error al cancelar la orden');
+            showError('Error al cancelar la orden');
         }
     };
 
@@ -188,7 +229,7 @@ export default function Orders() {
         // Open print dialog with order details
         const printWindow = window.open('', '_blank');
         if (!printWindow) {
-            alert('Por favor permite ventanas emergentes para imprimir');
+            showWarning('Por favor permite ventanas emergentes para imprimir');
             return;
         }
 
@@ -335,16 +376,8 @@ export default function Orders() {
 
         if (order.status === 'READY') {
             buttons.push(
-                <Button key="delivered" variant="secondary" onClick={() => handleUpdateStatus(order.id, 'DELIVERED')}>
-                    <Package size={16} /> Marcar Entregada
-                </Button>
-            );
-        }
-
-        if (order.status === 'READY') {
-            buttons.push(
-                <Button key="deliver" variant="primary" onClick={() => handleUpdateStatus(order.id, 'DELIVERED')}>
-                    <CheckCircle size={16} /> Entregar
+                <Button key="delivered" variant="primary" onClick={() => handleUpdateStatus(order.id, 'DELIVERED')}>
+                    <Package size={16} /> Entregar
                 </Button>
             );
         }
@@ -388,7 +421,7 @@ export default function Orders() {
         return matchStatus && matchSearch;
     });
 
-    if (loading) return <div className="loading-state">Sincronizando Órdenes...</div>;
+    if (loading) return <LoadingOverlay text="Sincronizando órdenes..." />;
 
     return (
         <div className="orders-page">
@@ -563,13 +596,7 @@ export default function Orders() {
                         </div>
                     ))
                 ) : (
-                    <div className="no-results">
-                        <div className="icon-circle">
-                            <Search size={32} />
-                        </div>
-                        <h3>No se encontraron órdenes</h3>
-                        <p>Intenta ajustar los filtros de búsqueda</p>
-                    </div>
+                    <NoResultsEmptyState />
                 )}
             </div>
 
@@ -583,21 +610,27 @@ export default function Orders() {
                 {selectedOrder && (
                     <div className="order-detail-content">
                         {/* Tabs */}
-                        <div className="modal-tabs">
-                            <div
+                        <div className="modal-tabs" role="tablist">
+                            <button
+                                type="button"
+                                role="tab"
+                                aria-selected={activeTab === 'info'}
                                 className={`modal-tab ${activeTab === 'info' ? 'active' : ''}`}
                                 onClick={() => setActiveTab('info')}
                             >
                                 <Info size={18} />
                                 <span>Información</span>
-                            </div>
-                            <div
+                            </button>
+                            <button
+                                type="button"
+                                role="tab"
+                                aria-selected={activeTab === 'items'}
                                 className={`modal-tab ${activeTab === 'items' ? 'active' : ''}`}
                                 onClick={() => setActiveTab('items')}
                             >
                                 <Package size={18} />
                                 <span>Productos <span className="tab-badge">{selectedOrder.items?.length || 0}</span></span>
-                            </div>
+                            </button>
                         </div>
 
                         <div className="tab-content-scroll">
@@ -720,41 +753,39 @@ export default function Orders() {
                 )
             }
 
-            {/* Cancel Order Modal */}
-            {showCancelModal && (
-                <div className="modal-overlay-problem" onClick={() => setShowCancelModal(false)}>
-                    <div className="problem-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px' }}>
-                        <h3 style={{ margin: '0 0 8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <XCircle size={20} color="var(--color-error)" />
-                            Cancelar Orden #{cancelOrderId}
-                        </h3>
-                        <p style={{ fontSize: '0.9rem', color: 'var(--color-neutral-500)', margin: '0 0 16px' }}>
-                            Esta acción quedará registrada en el historial de auditoría.
-                        </p>
-                        <textarea
-                            className="problem-textarea"
-                            value={cancelReason}
-                            onChange={(e) => setCancelReason(e.target.value)}
-                            placeholder="Motivo de cancelación (requerido)..."
-                            autoFocus
-                            style={{ minHeight: '80px' }}
-                        />
-                        <div className="problem-modal-actions">
-                            <button className="btn-cancel-problem" onClick={() => { setShowCancelModal(false); setCancelReason(''); }}>
-                                Volver
-                            </button>
-                            <button
-                                className="btn-submit-problem"
-                                onClick={handleCancelOrder}
-                                disabled={!cancelReason.trim()}
-                                style={{ background: 'var(--color-error)', opacity: cancelReason.trim() ? 1 : 0.5 }}
-                            >
-                                Confirmar Cancelación
-                            </button>
-                        </div>
-                    </div>
+            <Modal
+                isOpen={showCancelModal}
+                onClose={() => { setShowCancelModal(false); setCancelReason(''); }}
+                title={`Cancelar Orden #${cancelOrderId}`}
+                size="sm"
+            >
+                <p style={{ fontSize: '0.9rem', color: 'var(--color-neutral-500)', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <XCircle size={20} color="var(--color-error)" aria-hidden="true" />
+                    Esta acción quedará registrada en el historial de auditoría.
+                </p>
+                <textarea
+                    className="problem-textarea"
+                    value={cancelReason}
+                    onChange={(e) => setCancelReason(e.target.value)}
+                    placeholder="Motivo de cancelación (requerido)..."
+                    autoFocus
+                    style={{ minHeight: '80px' }}
+                />
+                <div className="problem-modal-actions">
+                    <button type="button" className="btn-cancel-problem" onClick={() => { setShowCancelModal(false); setCancelReason(''); }}>
+                        Volver
+                    </button>
+                    <button
+                        type="button"
+                        className="btn-submit-problem"
+                        onClick={handleCancelOrder}
+                        disabled={!cancelReason.trim()}
+                        style={{ background: 'var(--color-error)', opacity: cancelReason.trim() ? 1 : 0.5 }}
+                    >
+                        Confirmar Cancelación
+                    </button>
                 </div>
-            )}
+            </Modal>
         </div >
     );
 }

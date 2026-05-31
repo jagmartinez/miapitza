@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 
 interface CachedResponse {
     status: number;
@@ -20,6 +21,48 @@ const cleanupTimer = setInterval(() => {
 }, CLEANUP_INTERVAL_MS);
 if (cleanupTimer.unref) cleanupTimer.unref();
 
+/**
+ * Derives a tenant namespace for idempotency keys.
+ *
+ * This middleware is mounted on /api BEFORE per-route authentication runs, so
+ * req.user is usually undefined here. Falling back to a single 'anon' namespace
+ * would let requests from different tenants collide on the same idempotency key.
+ * To keep keys tenant-scoped we fall back to a hash of the caller's auth token
+ * (Authorization header or auth_token cookie), which is unique per session/tenant.
+ */
+function resolveNamespace(req: Request): string {
+    if (req.user?.companyId) {
+        return `c:${req.user.companyId}`;
+    }
+
+    const token = extractAuthToken(req);
+    if (token) {
+        return `t:${crypto.createHash('sha256').update(token).digest('hex')}`;
+    }
+
+    return 'anon';
+}
+
+function extractAuthToken(req: Request): string | null {
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+        return authHeader.slice(7);
+    }
+
+    const cookieHeader = req.headers.cookie;
+    if (!cookieHeader) return null;
+
+    for (const rawCookie of cookieHeader.split(';')) {
+        const [name, ...valueParts] = rawCookie.trim().split('=');
+        if (name === 'auth_token') {
+            const value = valueParts.join('=');
+            if (value) return value;
+        }
+    }
+
+    return null;
+}
+
 export function idempotency(req: Request, res: Response, next: NextFunction): void {
     const key = req.headers['x-idempotency-key'] as string | undefined;
 
@@ -28,7 +71,7 @@ export function idempotency(req: Request, res: Response, next: NextFunction): vo
         return;
     }
 
-    const fullKey = `${req.user?.companyId || 'anon'}:${key}`;
+    const fullKey = `${resolveNamespace(req)}:${key}`;
 
     const cached = store.get(fullKey);
     if (cached) {

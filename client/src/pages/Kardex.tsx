@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { warehousesAPI, reportsAPI } from '../services/api';
+import { warehousesAPI, reportsAPI, settingsAPI } from '../services/api';
 import Select from '../components/Select';
 import Button from '../components/Button';
+import Pagination from '../components/Pagination';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
+import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import { FileText, Download, Calendar, Filter, ArrowLeft } from 'lucide-react';
 import type { SingleValue } from 'react-select';
 import './Kardex.css';
@@ -61,6 +63,8 @@ interface KardexData {
     };
 }
 
+const PAGE_SIZE = 20;
+
 export default function Kardex() {
     const navigate = useNavigate();
     const { toasts, removeToast, success: showSuccess, error: showError } = useToast();
@@ -78,7 +82,16 @@ export default function Kardex() {
     const [dateTo, setDateTo] = useState('');
     const [movementType, setMovementType] = useState<string>('');
     const [currentPage, setCurrentPage] = useState(1);
-    const pageSize = 10;
+    const [settings, setSettings] = useState<CurrencySettings>({});
+
+    const loadSettings = useCallback(async () => {
+        try {
+            const res = await settingsAPI.getAll();
+            setSettings(res.data.data || {});
+        } catch (error) {
+            console.error('Error loading settings:', error);
+        }
+    }, []);
 
     const loadWarehouses = useCallback(async () => {
         try {
@@ -118,19 +131,28 @@ export default function Kardex() {
 
     useEffect(() => {
         void loadWarehouses();
+        void loadSettings();
 
         const params = new URLSearchParams(window.location.search);
         const productId = params.get('productId');
         if (productId) {
             setSelectedProduct(parseInt(productId));
         }
-    }, [loadWarehouses]);
+    }, [loadWarehouses, loadSettings]);
 
     useEffect(() => {
         if (selectedProduct) {
             void loadKardex();
         }
     }, [loadKardex, selectedProduct]);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [dateFrom, dateTo, movementType, selectedWarehouse, kardexData?.movements.length]);
+
+    const movements = kardexData?.movements ?? [];
+    const totalPages = Math.max(1, Math.ceil(movements.length / PAGE_SIZE));
+    const pagedMovements = movements.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
     const handleExport = async () => {
         if (!selectedProduct) {
@@ -245,7 +267,7 @@ export default function Kardex() {
                         <div className="balance-card opening">
                             <span className="balance-label">Saldo Inicial</span>
                             <span className="balance-qty">{kardexData.openingBalance.quantity.toFixed(3)} {kardexData.product.unit}</span>
-                            <span className="balance-cost">${kardexData.openingBalance.cost.toFixed(2)}</span>
+                            <span className="balance-cost">{formatCurrency(kardexData.openingBalance.cost, settings)}</span>
                         </div>
 
                         <div className="balance-card total-in">
@@ -261,7 +283,7 @@ export default function Kardex() {
                         <div className="balance-card closing">
                             <span className="balance-label">Saldo Final</span>
                             <span className="balance-qty">{kardexData.closingBalance.quantity.toFixed(3)} {kardexData.product.unit}</span>
-                            <span className="balance-cost">${kardexData.closingBalance.cost.toFixed(2)}</span>
+                            <span className="balance-cost">{formatCurrency(kardexData.closingBalance.cost, settings)}</span>
                         </div>
                     </div>
                 </div>
@@ -269,26 +291,29 @@ export default function Kardex() {
 
             {/* Movements Table */}
             {kardexData && kardexData.movements.length > 0 ? (
-                <div className="kardex-table-container">
-                    <table className="kardex-table">
-                        <thead>
-                            <tr>
-                                <th>Fecha</th>
-                                <th>Tipo</th>
-                                <th>Referencia</th>
-                                <th className="text-right">Entrada</th>
-                                <th className="text-right">Salida</th>
-                                <th className="text-right">Saldo</th>
-                                <th className="text-right">Costo Unit.</th>
-                                <th className="text-right">Costo Total</th>
-                                <th>Almacén</th>
-                                <th>Usuario</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {kardexData.movements
-                                .slice((currentPage - 1) * pageSize, currentPage * pageSize)
-                                .map((movement) => (
+                <div className="data-table-wrapper kardex-table-container">
+                    <div className="data-table-header">
+                        <span>Movimientos</span>
+                        <span className="data-table-count">{movements.length} registros</span>
+                    </div>
+                    <div className="data-table-scroll">
+                        <table className="data-table kardex-table">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Tipo</th>
+                                    <th>Referencia</th>
+                                    <th className="text-right">Entrada</th>
+                                    <th className="text-right">Salida</th>
+                                    <th className="text-right">Saldo</th>
+                                    <th className="text-right">Costo Unit.</th>
+                                    <th className="text-right">Costo Total</th>
+                                    <th>Almacén</th>
+                                    <th>Usuario</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {pagedMovements.map((movement) => (
                                     <tr key={movement.id}>
                                         <td>{new Date(movement.date).toLocaleDateString()}</td>
                                         <td>
@@ -304,38 +329,22 @@ export default function Kardex() {
                                             {movement.out ? movement.out.toFixed(3) : '-'}
                                         </td>
                                         <td className="text-right font-bold">{movement.balance.toFixed(3)}</td>
-                                        <td className="text-right">${movement.unitCost.toFixed(2)}</td>
-                                        <td className="text-right">${movement.totalCost.toFixed(2)}</td>
+                                        <td className="text-right">{formatCurrency(movement.unitCost, settings)}</td>
+                                        <td className="text-right">{formatCurrency(movement.totalCost, settings)}</td>
                                         <td>{movement.warehouse}</td>
                                         <td>{movement.user}</td>
                                     </tr>
                                 ))}
-                        </tbody>
-                    </table>
-
-                    {/* Pagination */}
-                    {kardexData.movements.length > pageSize && (
-                        <div className="kardex-pagination">
-                            <Button
-                                variant="secondary"
-                                disabled={currentPage === 1}
-                                onClick={() => setCurrentPage(prev => prev - 1)}
-                            >
-                                Anterior
-                            </Button>
-                            <span className="pagination-info">
-                                Página {currentPage} de {Math.ceil(kardexData.movements.length / pageSize)}
-                                <span className="total-records">({kardexData.movements.length} movimientos)</span>
-                            </span>
-                            <Button
-                                variant="secondary"
-                                disabled={currentPage >= Math.ceil(kardexData.movements.length / pageSize)}
-                                onClick={() => setCurrentPage(prev => prev + 1)}
-                            >
-                                Siguiente
-                            </Button>
-                        </div>
-                    )}
+                            </tbody>
+                        </table>
+                    </div>
+                    <Pagination
+                        page={currentPage}
+                        totalPages={totalPages}
+                        totalItems={movements.length}
+                        pageSize={PAGE_SIZE}
+                        onPageChange={setCurrentPage}
+                    />
                 </div>
             ) : kardexData && kardexData.movements.length === 0 ? (
                 <div className="no-movements">

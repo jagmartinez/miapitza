@@ -1,55 +1,29 @@
-import { useState } from 'react';
-import ConfirmDialog from '../components/ConfirmDialog';
+import { useCallback } from 'react';
+import { useConfirmDialog } from '../context/ConfirmContext';
+
+export { useConfirmDialog, type ConfirmOptions } from '../context/ConfirmContext';
 
 type ConfirmVariant = 'danger' | 'warning' | 'info';
 
+/** @deprecated Prefer useConfirmDialog from ConfirmContext */
 export function useConfirm() {
-    const [dialog, setDialog] = useState<{
-        isOpen: boolean;
-        title: string;
-        message: string;
-        variant: ConfirmVariant;
-        onConfirm: () => void;
-    }>({
-        isOpen: false,
-        title: '',
-        message: '',
-        variant: 'danger',
-        onConfirm: () => {}
-    });
+    const { confirm: confirmDialog } = useConfirmDialog();
 
-    const confirm = (
+    const confirm = useCallback((
         title: string,
         message: string,
         onConfirm: () => void,
         variant: ConfirmVariant = 'danger'
     ) => {
-        setDialog({
-            isOpen: true,
-            title,
-            message,
-            variant,
-            onConfirm
+        void confirmDialog(message, { title, variant }).then((ok) => {
+            if (ok) onConfirm();
         });
-    };
+    }, [confirmDialog]);
 
-    const closeDialog = () => {
-        setDialog(prev => ({ ...prev, isOpen: false }));
-    };
-
-    const ConfirmDialogComponent = () => (
-        <ConfirmDialog
-            isOpen={dialog.isOpen}
-            title={dialog.title}
-            message={dialog.message}
-            variant={dialog.variant}
-            onConfirm={dialog.onConfirm}
-            onCancel={closeDialog}
-        />
-    );
+    const ConfirmDialogComponent = () => null;
 
     return {
         confirm,
-        ConfirmDialog: ConfirmDialogComponent
+        ConfirmDialog: ConfirmDialogComponent,
     };
 }

@@ -2,6 +2,8 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
 
+const CHART_COLORS = ['#60a5fa', '#34d399', '#818cf8', '#fbbf24', '#f87171', '#a78bfa'];
+
 export class ReportService {
     static async getDashboardStats(companyId: number, branchId?: number) {
         const branchFilter: { branchId?: number } = branchId ? { branchId } : {};
@@ -102,12 +104,11 @@ export class ReportService {
 
         // Fetch categories for these menu items
         const menuItems = await prisma.menuItem.findMany({
-            where: { id: { in: breakdown.map((b) => b.menuItemId) } },
+            where: { id: { in: breakdown.map((b) => b.menuItemId) }, companyId },
             include: { category: true }
         });
 
         const categoryData: Record<string, { value: number, fill: string }> = {};
-        const colors = ['#60a5fa', '#34d399', '#818cf8', '#fbbf24', '#f87171', '#a78bfa'];
 
         breakdown.forEach((item) => {
             const menuItem = menuItems.find((m) => m.id === item.menuItemId);
@@ -115,7 +116,7 @@ export class ReportService {
             if (!categoryData[categoryName]) {
                 categoryData[categoryName] = {
                     value: 0,
-                    fill: colors[Object.keys(categoryData).length % colors.length]
+                    fill: CHART_COLORS[Object.keys(categoryData).length % CHART_COLORS.length]
                 };
             }
             categoryData[categoryName].value += Number(item._sum.subtotal || 0);
@@ -629,11 +630,16 @@ export class ReportService {
                 orderBy: { _sum: { quantity: 'desc' } },
                 take: 5
             });
-            const topDishes = [];
-            for (const td of topDishData) {
-                const mi = await prisma.menuItem.findUnique({ where: { id: td.menuItemId }, select: { name: true } });
-                topDishes.push({ menuItemId: td.menuItemId, name: mi?.name || '?', totalQuantity: td._sum.quantity || 0 });
-            }
+            const topDishMenuItems = await prisma.menuItem.findMany({
+                where: { id: { in: topDishData.map((td) => td.menuItemId) }, companyId },
+                select: { id: true, name: true }
+            });
+            const topDishNameById = new Map(topDishMenuItems.map((mi) => [mi.id, mi.name]));
+            const topDishes = topDishData.map((td) => ({
+                menuItemId: td.menuItemId,
+                name: topDishNameById.get(td.menuItemId) || '?',
+                totalQuantity: td._sum.quantity || 0
+            }));
 
             const queue = await prisma.order.findMany({
                 where: { companyId, status: { in: ['SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] } },
@@ -667,11 +673,16 @@ export class ReportService {
                 orderBy: { _sum: { quantity: 'desc' } },
                 take: 5
             });
-            const topDishes = [];
-            for (const td of topDishData) {
-                const mi = await prisma.menuItem.findUnique({ where: { id: td.menuItemId }, select: { name: true } });
-                topDishes.push({ menuItemId: td.menuItemId, name: mi?.name || '?', totalQuantity: td._sum.quantity || 0 });
-            }
+            const topDishMenuItems = await prisma.menuItem.findMany({
+                where: { id: { in: topDishData.map((td) => td.menuItemId) }, companyId },
+                select: { id: true, name: true }
+            });
+            const topDishNameById = new Map(topDishMenuItems.map((mi) => [mi.id, mi.name]));
+            const topDishes = topDishData.map((td) => ({
+                menuItemId: td.menuItemId,
+                name: topDishNameById.get(td.menuItemId) || '?',
+                totalQuantity: td._sum.quantity || 0
+            }));
 
             // Inventory metrics
             const stocks = await prisma.stock.findMany({
@@ -691,11 +702,15 @@ export class ReportService {
                 orderBy: { _sum: { quantity: 'desc' } },
                 take: 5
             });
-            const topConsumed = [];
-            for (const tc of topConsumedData) {
-                const prod = await prisma.product.findUnique({ where: { id: tc.productId }, select: { name: true, unit: true } });
-                topConsumed.push({ name: prod?.name || '?', consumed: Number(tc._sum.quantity || 0), unit: prod?.unit || '' });
-            }
+            const topConsumedProducts = await prisma.product.findMany({
+                where: { id: { in: topConsumedData.map((tc) => tc.productId) }, companyId },
+                select: { id: true, name: true, unit: true }
+            });
+            const topConsumedProductById = new Map(topConsumedProducts.map((p) => [p.id, p]));
+            const topConsumed = topConsumedData.map((tc) => {
+                const prod = topConsumedProductById.get(tc.productId);
+                return { name: prod?.name || '?', consumed: Number(tc._sum.quantity || 0), unit: prod?.unit || '' };
+            });
 
             return {
                 role: 'CHEF', pendingOrders, readyOrders, dishesToday,
@@ -733,11 +748,15 @@ export class ReportService {
                 orderBy: { _sum: { quantity: 'desc' } },
                 take: 5
             });
-            const topConsumed = [];
-            for (const tc of topConsumedData) {
-                const prod = await prisma.product.findUnique({ where: { id: tc.productId }, select: { name: true, unit: true } });
-                topConsumed.push({ name: prod?.name || '?', consumed: Number(tc._sum.quantity || 0), unit: prod?.unit || '' });
-            }
+            const topConsumedProducts = await prisma.product.findMany({
+                where: { id: { in: topConsumedData.map((tc) => tc.productId) }, companyId },
+                select: { id: true, name: true, unit: true }
+            });
+            const topConsumedProductById = new Map(topConsumedProducts.map((p) => [p.id, p]));
+            const topConsumed = topConsumedData.map((tc) => {
+                const prod = topConsumedProductById.get(tc.productId);
+                return { name: prod?.name || '?', consumed: Number(tc._sum.quantity || 0), unit: prod?.unit || '' };
+            });
 
             const pendingPOs = await prisma.purchaseOrder.count({
                 where: { companyId, status: { in: ['DRAFT', 'ISSUED'] } }
@@ -817,11 +836,17 @@ export class ReportService {
             orderBy: { _sum: { quantity: 'desc' } },
             take: 5
         });
-        const topProducts = [];
-        for (const tp of topProductData) {
-            const mi = await prisma.menuItem.findUnique({ where: { id: tp.menuItemId }, select: { name: true } });
-            topProducts.push({ menuItemId: tp.menuItemId, name: mi?.name || '?', totalQuantity: tp._sum.quantity || 0, totalRevenue: Number(tp._sum.subtotal || 0) });
-        }
+        const topProductMenuItems = await prisma.menuItem.findMany({
+            where: { id: { in: topProductData.map((tp) => tp.menuItemId) }, companyId },
+            select: { id: true, name: true }
+        });
+        const topProductNameById = new Map(topProductMenuItems.map((mi) => [mi.id, mi.name]));
+        const topProducts = topProductData.map((tp) => ({
+            menuItemId: tp.menuItemId,
+            name: topProductNameById.get(tp.menuItemId) || '?',
+            totalQuantity: tp._sum.quantity || 0,
+            totalRevenue: Number(tp._sum.subtotal || 0)
+        }));
 
         const activeOrders = await prisma.order.findMany({
                 where: { companyId, userId, status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED'] } },

@@ -1,7 +1,7 @@
 import prisma from '../utils/prisma';
 import { Prisma } from '@prisma/client';
-import { UnitConversionService } from './unit-conversion.service';
 import { PedidosYaService } from './pedidosya.service';
+import { InventoryConsumptionService } from './inventory-consumption.service';
 
 /** Valid state transitions for orders */
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -267,8 +267,6 @@ export class OrderService {
                 if (existingOrder) {
                     // Merge items into existing order
                     if (data.items && data.items.length > 0) {
-                        let totalAmount = 0;
-
                         for (const item of data.items) {
                             const menuItem = await tx.menuItem.findFirst({
                                 where: { id: item.menuItemId, companyId, active: true }
@@ -279,8 +277,6 @@ export class OrderService {
 
                             const unitPrice = Number(menuItem.price);
                             const subtotal = unitPrice * item.quantity;
-                            totalAmount += subtotal;
-
                             await tx.orderItem.create({
                                 data: {
                                     orderId: existingOrder.id,
@@ -518,20 +514,21 @@ export class OrderService {
     }
 
     static async removeItem(itemId: number, companyId: number) {
-        const item = await prisma.orderItem.findUnique({
-            where: { id: itemId },
-            include: { order: true }
-        });
-
-        if (!item || item.order.companyId !== companyId) {
-            throw new Error('Item not found');
-        }
-
-        if (item.order.status === 'PAID' || item.order.status === 'CANCELLED') {
-            throw new Error('Cannot remove items from paid or cancelled orders');
-        }
-
         return await prisma.$transaction(async (tx) => {
+            // Re-check ownership and status INSIDE the transaction to prevent a TOCTOU race.
+            const item = await tx.orderItem.findUnique({
+                where: { id: itemId },
+                include: { order: true }
+            });
+
+            if (!item || item.order.companyId !== companyId) {
+                throw new Error('Item not found');
+            }
+
+            if (item.order.status === 'PAID' || item.order.status === 'CANCELLED') {
+                throw new Error('Cannot remove items from paid or cancelled orders');
+            }
+
             await tx.orderItem.delete({
                 where: { id: itemId }
             });
@@ -616,39 +613,42 @@ export class OrderService {
         });
 
         if (updatedOrder.salesChannel === 'PEDIDOSYA') {
-            PedidosYaService.syncOrderStatus(companyId, id, status).catch(() => {});
+            PedidosYaService.syncOrderStatus(companyId, id, status).catch((err) => {
+                console.error(`[OrderService] Failed to sync PedidosYa status for order ${id}:`, err);
+            });
         }
 
         return this.withTimeline(updatedOrder);
     }
 
     static async sendToKitchen(id: number, companyId: number) {
-        const order = await prisma.order.findFirst({
-            where: { id, companyId },
-            include: { items: true }
-        });
-
-        if (!order) {
-            throw new Error('Order not found');
-        }
-
-        if (order.status === 'PAID' || order.status === 'CANCELLED') {
-            throw new Error(`Cannot send order to kitchen when status is ${order.status}`);
-        }
-
-        if (order.items.length === 0) {
-            throw new Error('Cannot send empty order to kitchen');
-        }
-
-        const unsentItems = order.items.filter((item) => item.sentAt == null);
-
-        if (unsentItems.length === 0) {
-            throw new Error('No hay productos nuevos pendientes por enviar a cocina');
-        }
-
         const now = new Date();
 
         return await prisma.$transaction(async (tx) => {
+            // Re-check status INSIDE the transaction to prevent a TOCTOU race.
+            const order = await tx.order.findFirst({
+                where: { id, companyId },
+                include: { items: true }
+            });
+
+            if (!order) {
+                throw new Error('Order not found');
+            }
+
+            if (order.status === 'PAID' || order.status === 'CANCELLED') {
+                throw new Error(`Cannot send order to kitchen when status is ${order.status}`);
+            }
+
+            if (order.items.length === 0) {
+                throw new Error('Cannot send empty order to kitchen');
+            }
+
+            const unsentItems = order.items.filter((item) => item.sentAt == null);
+
+            if (unsentItems.length === 0) {
+                throw new Error('No hay productos nuevos pendientes por enviar a cocina');
+            }
+
             await tx.order.update({
                 where: { id },
                 data: { status: 'SENT_TO_KITCHEN' }
@@ -836,84 +836,24 @@ export class OrderService {
         }
 
         return await prisma.$transaction(async (tx) => {
-            // Deduct inventory for each item
-            for (const item of order.items) {
-                for (const recipe of item.menuItem.recipes) {
-                    const stock = await tx.stock.findUnique({
-                        where: {
-                            warehouseId_productId: {
-                                warehouseId,
-                                productId: recipe.productId
-                            }
-                        }
-                    });
+            // Validate the target warehouse belongs to this tenant and branch
+            // before touching stock (warehouseId comes from the request body).
+            const warehouse = await tx.warehouse.findFirst({
+                where: { id: warehouseId, companyId, branchId: order.branchId }
+            });
 
-                    if (!stock) {
-                        throw new Error(`Product ${recipe.product.name} not found in warehouse`);
-                    }
-
-                    // Convert recipe quantity to product base unit
-                    const recipeUnit = recipe.unit || recipe.product.unit;
-                    let recipeQtyBase = Number(recipe.quantity);
-                    let origUnit: string | null = null;
-                    let origQty: number | null = null;
-                    let convFactor: number | null = null;
-
-                    try {
-                        const conv = await UnitConversionService.convert(
-                            recipe.productId, companyId, Number(recipe.quantity), recipeUnit, tx
-                        );
-                        recipeQtyBase = conv.baseQuantity;
-                        origUnit = conv.originalUnit;
-                        origQty = conv.originalQuantity;
-                        convFactor = conv.conversionFactor;
-                    } catch {
-                        // Fallback: if conversion not configured, use raw quantity
-                    }
-
-                    const requiredQty = recipeQtyBase * item.quantity;
-                    const newQty = Number(stock.quantity) - requiredQty;
-
-                    if (newQty < 0) {
-                        throw new Error(`Stock insuficiente para ${recipe.product.name}. Requerido: ${requiredQty}, Disponible: ${stock.quantity}`);
-                    }
-
-                    await tx.stock.update({
-                        where: {
-                            warehouseId_productId: {
-                                warehouseId,
-                                productId: recipe.productId
-                            }
-                        },
-                        data: { quantity: newQty }
-                    });
-
-                    const productData = await tx.product.findUnique({ where: { id: recipe.productId } });
-                    const unitCost = Number(productData?.currentAverageCost || productData?.cost || 0);
-                    const totalCost = unitCost * requiredQty;
-                    const newBalanceCost = newQty * unitCost;
-
-                    await tx.inventoryMovement.create({
-                        data: {
-                            companyId,
-                            warehouseId,
-                            productId: recipe.productId,
-                            userId: order.userId,
-                            type: 'OUT',
-                            quantity: requiredQty,
-                            originalQuantity: origQty ? origQty * item.quantity : null,
-                            originalUnit: origUnit,
-                            conversionFactor: convFactor,
-                            unitCost,
-                            totalCost,
-                            balanceQty: newQty,
-                            balanceCost: newBalanceCost,
-                            reason: 'Order consumption',
-                            reference: `ORD-${order.id}`
-                        }
-                    });
-                }
+            if (!warehouse) {
+                throw new Error('Almacén no encontrado para esta empresa/sucursal');
             }
+
+            // Deduct inventory through the shared, idempotent consumption service.
+            // Skips automatically if the order was already consumed when it became PAID.
+            await InventoryConsumptionService.consumeForOrder(tx, {
+                order,
+                warehouseId,
+                userId: order.userId,
+                companyId
+            });
 
             // Update order status
             const updatedOrder = await tx.order.update({

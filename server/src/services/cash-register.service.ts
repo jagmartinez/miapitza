@@ -134,6 +134,9 @@ export class CashRegisterService {
     }
 
     static async delete(id: number, companyId: number) {
+        // Verify ownership before any destructive action (prevents cross-tenant delete)
+        await this.getById(id, companyId);
+
         // Check if has active shifts
         const activeShift = await prisma.cashShift.findFirst({
             where: {

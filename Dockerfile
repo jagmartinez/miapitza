@@ -12,5 +12,8 @@ ENV NODE_ENV=production
 RUN npm prune --omit=dev
 RUN chmod +x docker-entrypoint.sh
 RUN mkdir -p uploads
-EXPOSE 3001
+# Run as the unprivileged `node` user (built into the base image) instead of root.
+RUN chown -R node:node /app
+USER node
+EXPOSE 3000
 CMD ["./docker-entrypoint.sh"]

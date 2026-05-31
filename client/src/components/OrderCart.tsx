@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Plus, Minus, Trash2, Tag } from 'lucide-react';
+import { useConfirmDialog } from '../context/ConfirmContext';
 import { promotionsAPI } from '../services/api';
 import type { MenuItem } from '../types';
 import './OrderCart.css';
@@ -35,6 +36,13 @@ export default function OrderCart({
     onApplyPromotion,
     currencySymbol = '$'
 }: OrderCartProps) {
+    const { confirm } = useConfirmDialog();
+
+    const handleRemove = async (itemId: number) => {
+        if (!(await confirm('¿Eliminar este producto del carrito?', { variant: 'warning' }))) return;
+        onRemoveItem(itemId);
+    };
+
     const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     const discountAmount = subtotal * (discount / 100);
     const tax = (subtotal - discountAmount) * (taxRate / 100);
@@ -76,7 +84,7 @@ export default function OrderCart({
                                 </button>
                                 <button
                                     className="remove-btn-compact"
-                                    onClick={() => onRemoveItem(item.menuItemId)}
+                                    onClick={() => void handleRemove(item.menuItemId)}
                                 >
                                     <Trash2 size={14} />
                                 </button>
@@ -148,11 +156,23 @@ function PromotionSelector({ onApply, currencySymbol = '$' }: { onApply?: (code:
     const [selected, setSelected] = useState('');
     const [manualCode, setManualCode] = useState('');
     const [mode, setMode] = useState<'select' | 'manual'>('select');
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
 
     useEffect(() => {
+        let cancelled = false;
+        setLoading(true);
+        setLoadError(false);
         promotionsAPI.getAll(true).then(res => {
+            if (cancelled) return;
             setPromos(res.data.data || []);
-        }).catch(() => {});
+        }).catch(() => {
+            if (cancelled) return;
+            setLoadError(true);
+        }).finally(() => {
+            if (!cancelled) setLoading(false);
+        });
+        return () => { cancelled = true; };
     }, []);
 
     const handleApply = () => {
@@ -173,13 +193,25 @@ function PromotionSelector({ onApply, currencySymbol = '$' }: { onApply?: (code:
                 </div>
             </div>
 
+            {loadError && (
+                <div style={{ fontSize: '0.78rem', color: 'var(--color-error, #ef4444)', margin: '4px 0' }}>
+                    No se pudieron cargar las promociones. Usa un código manual.
+                </div>
+            )}
+            {!loadError && !loading && promos.length === 0 && (
+                <div style={{ fontSize: '0.78rem', color: 'var(--color-neutral-500)', margin: '4px 0' }}>
+                    No hay promociones activas disponibles.
+                </div>
+            )}
+
             {mode === 'select' ? (
                 <select
                     className="promo-select"
                     value={selected}
                     onChange={e => setSelected(e.target.value)}
+                    disabled={loading || loadError || promos.length === 0}
                 >
-                    <option value="">Seleccionar promoción...</option>
+                    <option value="">{loading ? 'Cargando promociones...' : 'Seleccionar promoción...'}</option>
                     {promos.map(p => (
                         <option key={p.id} value={p.code}>
                             {p.code} — {p.name} ({p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : `${currencySymbol}${Number(p.value)}`})

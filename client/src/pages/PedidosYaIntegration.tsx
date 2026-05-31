@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { pedidosYaAPI, menuAPI } from '../services/api';
+import { useConfirmDialog } from '../context/ConfirmContext';
+import { useAppToast } from '../context/ToastContext';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import Input from '../components/Input';
@@ -57,6 +59,8 @@ interface MenuItemOption { id: number; name: string; price: number }
 type ActiveTab = 'config' | 'mappings' | 'orders' | 'logs';
 
 export default function PedidosYaIntegration() {
+    const { confirm } = useConfirmDialog();
+    const { success, error: showError } = useAppToast();
     const [activeTab, setActiveTab] = useState<ActiveTab>('config');
     const [loading, setLoading] = useState(true);
     const [config, setConfig] = useState<PYConfig>({
@@ -124,9 +128,9 @@ export default function PedidosYaIntegration() {
         setSaving(true);
         try {
             await pedidosYaAPI.upsertConfig(config as unknown as Record<string, unknown>);
-            alert('Configuración guardada');
+            success('Configuración guardada');
         } catch {
-            alert('Error al guardar');
+            showError('Error al guardar');
         }
         setSaving(false);
     };
@@ -144,10 +148,10 @@ export default function PedidosYaIntegration() {
     const handleSyncMenu = async () => {
         try {
             const res = await pedidosYaAPI.syncMenu();
-            alert(`Menú sincronizado: ${res.data.data.synced} items`);
+            success(`Menú sincronizado: ${res.data.data.synced} items`);
             loadAll();
         } catch {
-            alert('Error al sincronizar menú');
+            showError('Error al sincronizar menú');
         }
     };
 
@@ -162,17 +166,17 @@ export default function PedidosYaIntegration() {
             setMappingForm({ externalId: '', externalName: '', menuItemId: '' });
             loadMappings();
         } catch {
-            alert('Error al guardar mapeo');
+            showError('Error al guardar mapeo');
         }
     };
 
     const handleDeleteMapping = async (id: number) => {
-        if (!confirm('¿Eliminar este mapeo de producto?')) return;
+        if (!(await confirm('¿Eliminar este mapeo de producto?', { title: 'Confirmar acción' }))) return;
         try {
             await pedidosYaAPI.deleteMapping(id);
             loadMappings();
         } catch {
-            alert('Error al eliminar');
+            showError('Error al eliminar');
         }
     };
 
@@ -510,8 +514,9 @@ export default function PedidosYaIntegration() {
                                     <h3>Producto Externo</h3>
                                 </div>
                                 <div className="modal-input-group">
-                                    <label className="modal-input-label">ID en PedidosYa</label>
+                                    <label className="modal-input-label" htmlFor="pedidosya-external-id">ID en PedidosYa</label>
                                     <input
+                                        id="pedidosya-external-id"
                                         type="text"
                                         className="modal-standard-input"
                                         value={mappingForm.externalId}
@@ -521,8 +526,9 @@ export default function PedidosYaIntegration() {
                                     />
                                 </div>
                                 <div className="modal-input-group">
-                                    <label className="modal-input-label">Nombre en PedidosYa</label>
+                                    <label className="modal-input-label" htmlFor="pedidosya-external-name">Nombre en PedidosYa</label>
                                     <input
+                                        id="pedidosya-external-name"
                                         type="text"
                                         className="modal-standard-input"
                                         value={mappingForm.externalName}
@@ -532,8 +538,9 @@ export default function PedidosYaIntegration() {
                                     />
                                 </div>
                                 <div className="modal-input-group">
-                                    <label className="modal-input-label">Producto Interno (Menú)</label>
+                                    <label className="modal-input-label" htmlFor="pedidosya-menu-item">Producto Interno (Menú)</label>
                                     <select
+                                        id="pedidosya-menu-item"
                                         className="modal-standard-input"
                                         value={mappingForm.menuItemId}
                                         onChange={e => setMappingForm({ ...mappingForm, menuItemId: e.target.value })}

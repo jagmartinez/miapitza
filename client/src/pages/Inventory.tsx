@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Select from '../components/Select';
-import { autoPurchaseOrdersAPI, branchesAPI, productsAPI, inventoryMovementsAPI, categoriesAPI, stockAlertsAPI, suppliersAPI, unitsAPI } from '../services/api';
+import { autoPurchaseOrdersAPI, branchesAPI, productsAPI, inventoryMovementsAPI, categoriesAPI, stockAlertsAPI, suppliersAPI, unitsAPI, settingsAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 // import Input from '../components/Input';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
+import { useConfirmDialog } from '../context/ConfirmContext';
 import { hasAnyRole } from '../utils/authz';
 import {
     AlertTriangle, Package, Plus, Edit2, Trash2,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, UnitOfMeasure, Warehouse } from '../types';
 import type { SingleValue } from 'react-select';
+import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import './Inventory.css';
 
 interface CategoryRow {
@@ -57,6 +59,7 @@ const STORAGE_TYPE_OPTIONS: { value: '' | 'PERISHABLE' | 'FROZEN' | 'NON_PERISHA
 export default function Inventory() {
     const navigate = useNavigate();
     const { user } = useAuth();
+    const { confirm } = useConfirmDialog();
     const { toasts, removeToast, success: showSuccess, error: showError, warning: showWarning } = useToast();
 
     /** Backend: POST/PUT /products — SUPERADMIN | ADMIN */
@@ -76,6 +79,7 @@ export default function Inventory() {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [activeTab, setActiveTab] = useState<'general' | 'stock' | 'finanzas'>('general');
+    const [saving, setSaving] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
     const [storageFilter, setStorageFilter] = useState<string>('all');
@@ -118,6 +122,7 @@ export default function Inventory() {
 
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [allUnits, setAllUnits] = useState<UnitOfMeasure[]>([]);
+    const [settings, setSettings] = useState<CurrencySettings>({});
 
     // Excel import state
     const [showImportSidebar, setShowImportSidebar] = useState(false);
@@ -143,6 +148,9 @@ export default function Inventory() {
         loadCategories();
         loadOperationalData();
         loadUnitsCatalog();
+        settingsAPI.getAll()
+            .then((res) => setSettings(res.data.data || {}))
+            .catch((err) => console.error('Error loading settings:', err));
     }, []);
 
     const loadUnitsCatalog = async (): Promise<UnitOfMeasure[]> => {
@@ -315,11 +323,25 @@ export default function Inventory() {
         e.preventDefault();
         if (!canMutateProduct) return;
 
-        if (!formData.unit) {
-            showWarning('Selecciona una unidad de referencia. Crea unidades en Unidades de Medida si el catálogo está vacío.');
+        if (!formData.name?.trim()) {
+            showWarning('El nombre del producto es obligatorio');
+            setActiveTab('general');
             return;
         }
 
+        if (!formData.unit) {
+            showWarning('Selecciona una unidad de referencia. Crea unidades en Unidades de Medida si el catálogo está vacío.');
+            setActiveTab('general');
+            return;
+        }
+
+        if (!formData.cost?.trim() || Number.isNaN(parseFloat(formData.cost))) {
+            showWarning('Indica un costo válido');
+            setActiveTab('finanzas');
+            return;
+        }
+
+        setSaving(true);
         try {
             const trimmedSku = formData.sku.trim();
             const data: Record<string, unknown> = {
@@ -355,12 +377,14 @@ export default function Inventory() {
             loadInventory();
         } catch (error: unknown) {
             showError('Error: ' + apiErrorMessage(error));
+        } finally {
+            setSaving(false);
         }
     };
 
     const handleDelete = async (id: number) => {
         if (!canDeleteProduct) return;
-        if (!confirm('¿Eliminar este producto?')) return;
+        if (!(await confirm('¿Eliminar este producto?', { title: 'Confirmar acción' }))) return;
 
         try {
             await productsAPI.delete(id);
@@ -765,12 +789,12 @@ export default function Inventory() {
                                 <div className="product-pricing-new">
                                     <div className="pricing-item">
                                         <span className="pricing-label">Costo Prom.</span>
-                                        <span className="pricing-value">${Number((product as ProductInventory).currentAverageCost ?? product.cost).toFixed(2)}</span>
+                                        <span className="pricing-value">{formatCurrency(Number((product as ProductInventory).currentAverageCost ?? product.cost), settings)}</span>
                                     </div>
                                     <div className="pricing-item">
                                         <span className="pricing-label">Precio</span>
                                         <span className="pricing-value price">
-                                            {product.price ? `$${Number(product.price).toFixed(2)}` : '-'}
+                                            {product.price ? formatCurrency(Number(product.price), settings) : '-'}
                                         </span>
                                     </div>
                                     <div className="pricing-item">
@@ -866,27 +890,30 @@ export default function Inventory() {
                 <div className="premium-modal-content product-modal-content">
                     {/* Tabs Navigation */}
                     <div className="modal-tabs">
-                        <div
+                        <button
+                            type="button"
                             className={`modal-tab ${activeTab === 'general' ? 'active' : ''}`}
                             onClick={() => setActiveTab('general')}
                         >
                             <Package size={18} />
                             <span>General</span>
-                        </div>
-                        <div
+                        </button>
+                        <button
+                            type="button"
                             className={`modal-tab ${activeTab === 'stock' ? 'active' : ''}`}
                             onClick={() => setActiveTab('stock')}
                         >
                             <Truck size={18} />
                             <span>Stock</span>
-                        </div>
-                        <div
+                        </button>
+                        <button
+                            type="button"
                             className={`modal-tab ${activeTab === 'finanzas' ? 'active' : ''}`}
                             onClick={() => setActiveTab('finanzas')}
                         >
                             <DollarSign size={18} />
                             <span>Finanzas</span>
-                        </div>
+                        </button>
                     </div>
 
                     <form onSubmit={handleSubmit} className="modal-form-new">
@@ -899,8 +926,9 @@ export default function Inventory() {
                                     </div>
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Nombre del Producto</label>
+                                        <label className="modal-input-label" htmlFor="inventory-product-name">Nombre del Producto</label>
                                         <input
+                                            id="inventory-product-name"
                                             type="text"
                                             className="modal-standard-input"
                                             value={formData.name}
@@ -911,9 +939,10 @@ export default function Inventory() {
                                     </div>
 
                                     <div className={`modal-input-group ${formData.type === 'INGREDIENT' ? 'disabled-group' : ''}`}>
-                                        <label className="modal-input-label">Categoría del Producto {formData.type === 'INGREDIENT' && <span className="label-note">(No aplica para ingredientes)</span>}</label>
+                                        <label className="modal-input-label" htmlFor="inventory-product-category">Categoría del Producto {formData.type === 'INGREDIENT' && <span className="label-note">(No aplica para ingredientes)</span>}</label>
                                         <Select
                                             variant="modal"
+                                            inputId="inventory-product-category"
                                             options={categories.filter(c => c.active).map(c => ({ value: c.id.toString(), label: c.name }))}
                                             value={categories.filter(c => c.active).map(c => ({ value: c.id.toString(), label: c.name })).find(opt => opt.value === formData.categoryId) || null}
                                             onChange={(option: StrOption) => setFormData({ ...formData, categoryId: option ? option.value : '' })}
@@ -924,8 +953,8 @@ export default function Inventory() {
                                     </div>
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Tipo de Producto</label>
-                                        <div className="type-selector-grid">
+                                        <label className="modal-input-label" id="inventory-product-type-label">Tipo de Producto</label>
+                                        <div className="type-selector-grid" role="group" aria-labelledby="inventory-product-type-label">
                                             <div
                                                 className={`type-option ${formData.type === 'INGREDIENT' ? 'active' : ''}`}
                                                 onClick={() => setFormData({ ...formData, type: 'INGREDIENT', categoryId: '' })}
@@ -960,8 +989,8 @@ export default function Inventory() {
                                     </div>
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Tipo de Almacenamiento</label>
-                                        <div className="type-selector-grid type-selector-grid--storage">
+                                        <label className="modal-input-label" id="inventory-storage-type-label">Tipo de Almacenamiento</label>
+                                        <div className="type-selector-grid type-selector-grid--storage" role="group" aria-labelledby="inventory-storage-type-label">
                                             {STORAGE_TYPE_OPTIONS.map((opt) => (
                                                 <div key={opt.value || 'none'}
                                                     className={`type-option ${formData.storageType === opt.value ? 'active' : ''}`}
@@ -978,13 +1007,14 @@ export default function Inventory() {
 
                                     <div className="modal-form-row">
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label">
+                                            <label className="modal-input-label" htmlFor="inventory-product-sku">
                                                 SKU / Código
                                                 {!editingProduct && (
                                                     <span className="label-note"> </span>
                                                 )}
                                             </label>
                                             <input
+                                                id="inventory-product-sku"
                                                 type="text"
                                                 className="modal-standard-input"
                                                 value={formData.sku}
@@ -1040,8 +1070,9 @@ export default function Inventory() {
                                     </div>
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Stock Mínimo (Alerta)</label>
+                                        <label className="modal-input-label" htmlFor="inventory-min-stock">Stock Mínimo (Alerta)</label>
                                         <input
+                                            id="inventory-min-stock"
                                             type="number"
                                             className="modal-standard-input"
                                             value={formData.minStock}
@@ -1096,10 +1127,11 @@ export default function Inventory() {
                                     {!editingProduct && (
                                         <div className="modal-form-row">
                                             <div className="modal-input-group">
-                                                <label className="modal-input-label">Costo Inicial ($)</label>
+                                                <label className="modal-input-label" htmlFor="inventory-initial-cost">Costo Inicial ($)</label>
                                                 <div style={{ position: 'relative' }}>
                                                     <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-neutral-400)', fontWeight: 600 }}>$</span>
                                                     <input
+                                                        id="inventory-initial-cost"
                                                         type="number"
                                                         step="0.01"
                                                         className="modal-standard-input"
@@ -1117,10 +1149,11 @@ export default function Inventory() {
                                     )}
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label">Precio de Venta ($)</label>
+                                        <label className="modal-input-label" htmlFor="inventory-sale-price">Precio de Venta ($)</label>
                                         <div style={{ position: 'relative' }}>
                                             <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-neutral-400)', fontWeight: 600 }}>$</span>
                                             <input
+                                                id="inventory-sale-price"
                                                 type="number"
                                                 step="0.01"
                                                 className="modal-standard-input"
@@ -1139,8 +1172,8 @@ export default function Inventory() {
                             <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>
                                 Cancelar
                             </Button>
-                            <Button type="submit" variant="primary">
-                                {editingProduct ? 'Guardar Cambios' : 'Crear Producto'}
+                            <Button type="submit" variant="primary" disabled={saving}>
+                                {saving ? 'Guardando...' : editingProduct ? 'Guardar Cambios' : 'Crear Producto'}
                             </Button>
                         </div>
                     </form>
@@ -1203,8 +1236,9 @@ export default function Inventory() {
 
                                 <div className="modal-form-row">
                                     <div className="modal-input-group" style={{ flex: 2 }}>
-                                        <label className="modal-input-label">Cantidad</label>
+                                        <label className="modal-input-label" htmlFor="inventory-adjustment-quantity">Cantidad</label>
                                         <input
+                                            id="inventory-adjustment-quantity"
                                             type="number"
                                             step="0.001"
                                             className="modal-standard-input"
@@ -1238,8 +1272,9 @@ export default function Inventory() {
                                 </div>
 
                                 <div className="modal-input-group">
-                                    <label className="modal-input-label">Motivo / Notas</label>
+                                    <label className="modal-input-label" htmlFor="inventory-adjustment-reason">Motivo / Notas</label>
                                     <textarea
+                                        id="inventory-adjustment-reason"
                                         className="modal-textarea"
                                         rows={3}
                                         value={adjustmentData.reason}
@@ -1420,8 +1455,9 @@ export default function Inventory() {
                         </div>
 
                         <div className="import-upload-section">
-                            <label className="modal-input-label">Archivo Excel</label>
+                            <label className="modal-input-label" htmlFor="inventory-import-file">Archivo Excel</label>
                             <input
+                                id="inventory-import-file"
                                 ref={importFileInputRef}
                                 type="file"
                                 accept=".xlsx,.xls"

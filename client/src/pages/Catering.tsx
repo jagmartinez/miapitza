@@ -10,8 +10,11 @@ import Select from 'react-select';
 import type { SingleValue } from 'react-select';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
+import LoadingSpinner from '../components/LoadingSpinner';
 import { cateringAPI, menuAPI, paymentsAPI, branchesAPI, settingsAPI, categoriesAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
+import { useConfirmDialog } from '../context/ConfirmContext';
+import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
 import type { Branch, MenuItem, PaymentMethod } from '../types';
 import type { CurrencySettings } from '../utils/currency';
@@ -92,6 +95,8 @@ type CateringEventDetail = CateringEvent & {
 
 export default function Catering() {
     const { user } = useAuth();
+    const { confirm } = useConfirmDialog();
+    const { error: showError, warning: showWarning } = useAppToast();
     const userRoleNames = getUserRoleNames(user);
     const canManageCatering = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [events, setEvents] = useState<CateringEvent[]>([]);
@@ -168,7 +173,7 @@ export default function Catering() {
             window.URL.revokeObjectURL(url);
         } catch (error) {
             console.error('Error generating contract PDF:', error);
-            alert('Error al generar el contrato en PDF');
+            showError('Error al generar el contrato en PDF');
         }
     }, [settings]);
 
@@ -284,7 +289,7 @@ export default function Catering() {
 
     const handleSave = async () => {
         if (!canManageCatering) {
-            alert('No tienes permisos para guardar eventos de catering');
+            showWarning('No tienes permisos para guardar eventos de catering');
             return;
         }
         try {
@@ -327,7 +332,7 @@ export default function Catering() {
 
     const handleAddPayment = async () => {
         if (!canManageCatering) {
-            alert('No tienes permisos para registrar pagos');
+            showWarning('No tienes permisos para registrar pagos');
             return;
         }
         if (!selectedEvent || !paymentData.amount || !paymentData.paymentMethodId) return;
@@ -532,7 +537,7 @@ export default function Catering() {
             )}
 
             {loading ? (
-                <div className="loading-state">Cargando eventos...</div>
+                <LoadingSpinner text="Cargando eventos..." />
             ) : viewMode === 'calendar' ? (
                 <div className="calendar-container">
                     <div className="calendar-header">
@@ -753,7 +758,7 @@ export default function Catering() {
                                     <button
                                         className="action-btn-new delete"
                                         onClick={async () => {
-                                            if (window.confirm('¿Estás seguro de eliminar este evento?')) {
+                                            if (await confirm('¿Estás seguro de eliminar este evento?', { title: 'Confirmar acción' })) {
                                                 try {
                                                     await cateringAPI.deleteEvent(event.id);
                                                     loadEvents();
