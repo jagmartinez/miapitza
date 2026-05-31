@@ -706,17 +706,34 @@ export default function Menu() {
                         readOnly={!canMutateMenu}
                         disabled={!canMutateMenu}
                       />
-                      {ingredientUnits.length > 0 && (
-                        <div style={{ minWidth: '100px' }}>
+                      {selectedProductId && (
+                        <div style={{ minWidth: '120px' }}>
                           <Select
                             variant="modal"
-                            options={ingredientUnits.map(u => ({ value: u.abbreviation, label: u.abbreviation }))}
+                            inputId="menu-ingredient-unit"
+                            options={ingredientUnits.map((u) => ({
+                              value: u.abbreviation,
+                              label: u.name && u.name !== u.abbreviation
+                                ? `${u.name} (${u.abbreviation})`
+                                : u.abbreviation
+                            }))}
                             value={selectedIngredientUnit
-                              ? { value: selectedIngredientUnit, label: selectedIngredientUnit }
+                              ? {
+                                  value: selectedIngredientUnit,
+                                  label: (() => {
+                                    const match = ingredientUnits.find(
+                                      (u) => u.abbreviation === selectedIngredientUnit
+                                    );
+                                    return match?.name && match.name !== match.abbreviation
+                                      ? `${match.name} (${match.abbreviation})`
+                                      : selectedIngredientUnit;
+                                  })()
+                                }
                               : null}
                             onChange={(opt: SingleValue<StrOption>) => setSelectedIngredientUnit(opt?.value || '')}
-                            isSearchable={false}
-                            isDisabled={!canMutateMenu}
+                            isSearchable={ingredientUnits.length > 6}
+                            isDisabled={!canMutateMenu || ingredientUnits.length === 0}
+                            placeholder="Unidad"
                           />
                         </div>
                       )}

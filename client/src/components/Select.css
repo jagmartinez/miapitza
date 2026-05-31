@@ -79,10 +79,11 @@
     font-size: var(--font-size-base);
     cursor: pointer;
     transition: background-color 0.2s;
+    color: var(--color-text);
 }
 
 .select-group .react-select__option--is-focused {
-    background-color: var(--color-background);
+    background-color: var(--color-surface-hover);
     color: var(--color-text);
 }
 
@@ -97,25 +98,73 @@
     margin-top: 4px;
 }
 
-/* Dark Mode support - Redundant with semantic variables but kept for specific overrides if needed */
-.dark .select-group .react-select__control {
-    background-color: var(--color-surface);
-    border-color: var(--color-border);
+/*
+ * Portaled menus render under document.body (outside .select-group).
+ * Inline defaults from react-select must be overridden globally.
+ */
+.react-select__menu-portal .react-select__menu {
+    background-color: var(--color-surface) !important;
+    border: 1px solid var(--color-border) !important;
+    color: var(--color-text) !important;
 }
 
-.dark .select-group.modal .react-select__control {
-    background-color: var(--color-background);
+.react-select__menu-portal .react-select__option {
+    color: var(--color-text) !important;
+    background-color: transparent !important;
 }
 
-.dark .select-group .react-select__single-value {
-    color: var(--color-neutral-100);
+.react-select__menu-portal .react-select__option--is-focused {
+    background-color: var(--color-surface-hover) !important;
+    color: var(--color-text) !important;
 }
 
-.dark .select-group .react-select__menu {
-    background-color: var(--color-neutral-800);
-    border-color: var(--color-neutral-700);
+.react-select__menu-portal .react-select__option--is-selected {
+    background-color: var(--color-primary) !important;
+    color: #ffffff !important;
 }
 
-.dark .select-group .react-select__option--is-focused {
-    background-color: var(--color-neutral-700);
+.react-select__menu-portal .react-select__menu-notice {
+    color: var(--color-text-secondary) !important;
+}
+
+/* Shared react-select containers used outside CustomSelect */
+.react-select-container .react-select__menu,
+.category-select-container .react-select__menu,
+.date-filter-group .react-select__menu {
+    background-color: var(--color-surface) !important;
+    border: 1px solid var(--color-border) !important;
+    color: var(--color-text) !important;
+}
+
+.react-select-container .react-select__option,
+.category-select-container .react-select__option,
+.date-filter-group .react-select__option {
+    color: var(--color-text) !important;
+    background-color: transparent !important;
+}
+
+.react-select-container .react-select__option--is-focused,
+.category-select-container .react-select__option--is-focused,
+.date-filter-group .react-select__option--is-focused {
+    background-color: var(--color-surface-hover) !important;
+    color: var(--color-text) !important;
+}
+
+.react-select-container .react-select__option--is-selected,
+.category-select-container .react-select__option--is-selected,
+.date-filter-group .react-select__option--is-selected {
+    background-color: var(--color-primary) !important;
+    color: #ffffff !important;
+}
+
+.react-select-container .react-select__single-value,
+.category-select-container .react-select__single-value,
+.date-filter-group .react-select__single-value {
+    color: var(--color-text) !important;
+}
+
+.react-select-container .react-select__input-container,
+.category-select-container .react-select__input-container,
+.date-filter-group .react-select__input-container {
+    color: var(--color-text) !important;
 }

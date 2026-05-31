@@ -27,8 +27,17 @@ export class UnitConversionService {
             lt: 'l',
             litro: 'l',
             litros: 'l',
+            gr: 'g',
+            grs: 'g',
+            gramo: 'g',
+            gramos: 'g',
+            kilo: 'kg',
+            kilos: 'kg',
+            kilogramo: 'kg',
+            kilogramos: 'kg',
             und: 'unidad',
             unid: 'unidad',
+            u: 'unidad',
         };
         return aliasMap[abbr] || abbr;
     }
@@ -38,17 +47,27 @@ export class UnitConversionService {
         legacyUnit: string,
         db: Prisma.TransactionClient | typeof prisma
     ) {
-        const normalized = this.normalizeLegacyAbbreviation(legacyUnit);
-        const unit = await db.unitOfMeasure.findUnique({
-            where: {
-                companyId_abbreviation: {
-                    companyId,
-                    abbreviation: normalized
+        const raw = String(legacyUnit || '').trim().toLowerCase();
+        if (!raw) return null;
+
+        const candidates = [...new Set([
+            this.normalizeLegacyAbbreviation(raw),
+            raw
+        ])];
+
+        for (const abbreviation of candidates) {
+            const unit = await db.unitOfMeasure.findUnique({
+                where: {
+                    companyId_abbreviation: {
+                        companyId,
+                        abbreviation
+                    }
                 }
-            }
-        });
-        if (!unit || !unit.active) return null;
-        return unit;
+            });
+            if (unit?.active) return unit;
+        }
+
+        return null;
     }
 
     /**
@@ -387,14 +406,17 @@ export class UnitConversionService {
         const unitMap: Record<string, { baseAbbr: string; relatedAbbrs: string[] }> = {
             'kg': { baseAbbr: 'kg', relatedAbbrs: ['g', 'lb', 'qq', 'oz'] },
             'g': { baseAbbr: 'g', relatedAbbrs: ['kg', 'lb', 'qq', 'oz'] },
+            'gr': { baseAbbr: 'g', relatedAbbrs: ['kg', 'lb', 'qq', 'oz'] },
             'lb': { baseAbbr: 'lb', relatedAbbrs: ['kg', 'g', 'qq', 'oz'] },
             'l': { baseAbbr: 'l', relatedAbbrs: ['ml', 'gal', 'oz_fl'] },
             'ml': { baseAbbr: 'ml', relatedAbbrs: ['l', 'gal', 'oz_fl'] },
+            'gal': { baseAbbr: 'gal', relatedAbbrs: ['l', 'ml', 'oz_fl'] },
+            'gl': { baseAbbr: 'gal', relatedAbbrs: ['l', 'ml', 'oz_fl'] },
             'unidad': { baseAbbr: 'unidad', relatedAbbrs: ['docena'] },
             'paquete': { baseAbbr: 'paquete', relatedAbbrs: [] },
         };
 
-        const config = unitMap[legacyUnit.toLowerCase()];
+        const config = unitMap[this.normalizeLegacyAbbreviation(legacyUnit)] ?? unitMap[legacyUnit.toLowerCase()];
         if (!config) return null;
 
         const baseUom = await db.unitOfMeasure.findUnique({
