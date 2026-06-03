@@ -113,6 +113,20 @@ const api = axios.create({
     },
 });
 
+/** Drop stale GET cache entries after a mutation so lists refresh correctly. */
+export async function invalidateApiCacheForPath(pathPrefix: string): Promise<void> {
+    try {
+        const entries = await db.caches.toArray();
+        await Promise.all(
+            entries
+                .filter((e) => e.id === pathPrefix || e.id.startsWith(`${pathPrefix}?`))
+                .map((e) => db.caches.delete(e.id))
+        );
+    } catch {
+        // IndexedDB unavailable — non-critical
+    }
+}
+
 // Request interceptor to handle offline mutations
 api.interceptors.request.use(
     async (config) => {
@@ -176,6 +190,11 @@ api.interceptors.response.use(
                 // IndexedDB quota exceeded or unavailable — non-critical
             }
         }
+
+        if (method && method !== 'get' && (url === '/products' || url.startsWith('/products/'))) {
+            await invalidateApiCacheForPath('/products');
+        }
+
         return response;
     },
     async (error) => {

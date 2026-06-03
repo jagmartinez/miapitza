@@ -198,24 +198,35 @@ export default function Inventory() {
     };
 
     const loadInventory = async () => {
-        try {
-            const [productsRes, lowStockRes, alertsRes, alertSummaryRes, suggestionsRes] = await Promise.all([
-                productsAPI.getAll({ active: true }),
-                productsAPI.getLowStock(),
-                stockAlertsAPI.getAll(),
-                stockAlertsAPI.getSummary(),
-                autoPurchaseOrdersAPI.getSuggestions()
-            ]);
-            setProducts(productsRes.data.data);
-            setLowStock(lowStockRes.data.data);
-            setStockAlerts(alertsRes.data.data || []);
-            setStockAlertSummary(alertSummaryRes.data.data || null);
-            setAutoPurchaseSuggestions(suggestionsRes.data.data?.suggestions || []);
-        } catch (error) {
-            console.error('Error loading inventory:', error);
-        } finally {
-            setLoading(false);
+        const results = await Promise.allSettled([
+            productsAPI.getAll({ active: true, limit: 500 }),
+            productsAPI.getLowStock(),
+            stockAlertsAPI.getAll(),
+            stockAlertsAPI.getSummary(),
+            autoPurchaseOrdersAPI.getSuggestions()
+        ]);
+
+        const [productsRes, lowStockRes, alertsRes, alertSummaryRes, suggestionsRes] = results;
+
+        if (productsRes.status === 'fulfilled') {
+            setProducts(productsRes.value.data.data || []);
+        } else {
+            console.error('Error loading products:', productsRes.reason);
         }
+        if (lowStockRes.status === 'fulfilled') {
+            setLowStock(lowStockRes.value.data.data || []);
+        }
+        if (alertsRes.status === 'fulfilled') {
+            setStockAlerts(alertsRes.value.data.data || []);
+        }
+        if (alertSummaryRes.status === 'fulfilled') {
+            setStockAlertSummary(alertSummaryRes.value.data.data || null);
+        }
+        if (suggestionsRes.status === 'fulfilled') {
+            setAutoPurchaseSuggestions(suggestionsRes.value.data.data?.suggestions || []);
+        }
+
+        setLoading(false);
     };
 
     const handleOpenSidebar = async (product?: Product) => {
@@ -356,13 +367,30 @@ export default function Inventory() {
             };
 
             let savedProductId = editingProduct?.id || 0;
+            let createdProduct: Product | null = null;
+
             if (editingProduct) {
-                await productsAPI.update(editingProduct.id, data);
+                const updateRes = await productsAPI.update(editingProduct.id, data);
+                if (updateRes.data?._offline) {
+                    showWarning('Sin conexión: los cambios se sincronizarán al restablecer la red.');
+                    setIsSidebarOpen(false);
+                    return;
+                }
                 showSuccess('Producto actualizado correctamente');
             } else {
                 const createRes = await productsAPI.create(data);
-                savedProductId = Number(createRes.data?.data?.id || createRes.data?.id || 0);
+                if (createRes.data?._offline) {
+                    showWarning('Sin conexión: el producto se guardará cuando vuelva la conexión.');
+                    setIsSidebarOpen(false);
+                    return;
+                }
+                createdProduct = (createRes.data?.data as Product) || null;
+                savedProductId = Number(createdProduct?.id || 0);
                 showSuccess('Producto creado correctamente');
+                setFilter('all');
+                setSelectedCategory('all');
+                setStorageFilter('all');
+                setSearchQuery('');
             }
 
             if (savedProductId) {
@@ -373,8 +401,15 @@ export default function Inventory() {
                 }
             }
 
+            if (createdProduct?.id) {
+                setProducts((prev) => {
+                    if (prev.some((p) => p.id === createdProduct!.id)) return prev;
+                    return [...prev, createdProduct!].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+                });
+            }
+
             setIsSidebarOpen(false);
-            loadInventory();
+            await loadInventory();
         } catch (error: unknown) {
             showError('Error: ' + apiErrorMessage(error));
         } finally {
