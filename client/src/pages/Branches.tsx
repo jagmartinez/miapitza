@@ -129,10 +129,15 @@ export default function Branches() {
         setIsModalOpen(true);
     };
 
-    const closeModal = () => {
+    const closeModal = useCallback(() => {
         setIsModalOpen(false);
         setEditingBranch(null);
-    };
+    }, []);
+
+    const handleSidebarClose = useCallback(() => {
+        closeModal();
+        setActiveTab('general');
+    }, [closeModal]);
 
     const filteredBranches = statusFilter
         ? branches.filter(b => b.status === statusFilter)
@@ -274,7 +279,7 @@ export default function Branches() {
 
             <Sidebar
                 isOpen={isModalOpen}
-                onClose={() => { closeModal(); setActiveTab('general'); }}
+                onClose={handleSidebarClose}
                 title={editingBranch ? 'Editar Sucursal' : 'Nueva Sucursal'}
             >
                 <div className="premium-modal-content branches-modal-content">
@@ -318,7 +323,6 @@ export default function Branches() {
                                             onChange={e => setFormData({ ...formData, name: e.target.value })}
                                             placeholder="Ej: Sucursal Central"
                                             required
-                                            autoFocus
                                         />
                                     </div>
 

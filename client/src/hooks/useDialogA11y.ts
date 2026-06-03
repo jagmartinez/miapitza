@@ -18,9 +18,12 @@ export function useDialogA11y(
     const titleId = useId();
     const descriptionId = useId();
     const previousFocusRef = useRef<HTMLElement | null>(null);
+    const onCloseRef = useRef(onClose);
+    onCloseRef.current = onClose;
     const closeOnEscape = options?.closeOnEscape ?? true;
     const lockScroll = options?.lockScroll ?? true;
 
+    // Run only when the dialog opens/closes — not when onClose identity changes on parent re-render.
     useEffect(() => {
         if (!isOpen) return;
 
@@ -33,13 +36,27 @@ export function useDialogA11y(
         const container = containerRef.current;
         if (container) {
             const focusables = getFocusableElements(container);
-            (focusables[0] ?? container).focus();
+            const firstField = focusables.find(
+                (el) => el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT'
+            );
+            (firstField ?? focusables[0] ?? container).focus();
         }
+
+        return () => {
+            if (lockScroll) {
+                document.body.style.overflow = 'unset';
+            }
+            previousFocusRef.current?.focus?.();
+        };
+    }, [isOpen, containerRef, lockScroll]);
+
+    useEffect(() => {
+        if (!isOpen) return;
 
         const handleKeyDown = (event: KeyboardEvent) => {
             if (closeOnEscape && event.key === 'Escape') {
                 event.preventDefault();
-                onClose();
+                onCloseRef.current();
                 return;
             }
 
@@ -68,12 +85,8 @@ export function useDialogA11y(
 
         return () => {
             document.removeEventListener('keydown', handleKeyDown);
-            if (lockScroll) {
-                document.body.style.overflow = 'unset';
-            }
-            previousFocusRef.current?.focus?.();
         };
-    }, [isOpen, onClose, containerRef, closeOnEscape, lockScroll]);
+    }, [isOpen, containerRef, closeOnEscape]);
 
     return { titleId, descriptionId };
 }
