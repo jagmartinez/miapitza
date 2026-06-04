@@ -645,8 +645,9 @@ export default function Users() {
                                                     <label key={r.id} style={{
                                                         display: 'flex', alignItems: 'center', gap: '6px',
                                                         padding: '6px 12px', borderRadius: '8px', cursor: 'pointer',
-                                                        background: isChecked ? getRoleColor(r.name) + '20' : 'var(--color-neutral-100)',
-                                                        border: `1.5px solid ${isChecked ? getRoleColor(r.name) : 'var(--color-neutral-200)'}`,
+                                                        background: isChecked ? getRoleColor(r.name) + '20' : 'var(--color-background)',
+                                                        border: `1.5px solid ${isChecked ? getRoleColor(r.name) : 'var(--color-border)'}`,
+                                                        color: 'var(--color-text)',
                                                         fontSize: '0.85rem', fontWeight: isChecked ? 600 : 400,
                                                         transition: 'all 0.15s ease'
                                                     }}>
@@ -725,8 +726,9 @@ export default function Users() {
                                                             <label key={b.id} style={{
                                                                 display: 'flex', alignItems: 'center', gap: '6px',
                                                                 padding: '6px 12px', borderRadius: '8px', cursor: 'pointer',
-                                                                background: isChecked ? 'var(--color-primary-100, #e0e7ff)' : 'var(--color-neutral-100)',
-                                                                border: `1.5px solid ${isChecked ? 'var(--color-primary, #6366f1)' : 'var(--color-neutral-200)'}`,
+                                                                background: isChecked ? 'color-mix(in srgb, var(--color-primary) 18%, transparent)' : 'var(--color-background)',
+                                                                border: `1.5px solid ${isChecked ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                                                                color: isChecked ? 'var(--color-primary)' : 'var(--color-text)',
                                                                 fontSize: '0.85rem', fontWeight: isChecked ? 600 : 400,
                                                             }}>
                                                                 <input
