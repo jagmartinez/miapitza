@@ -4,6 +4,9 @@ import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import PageHeader from '../components/PageHeader';
 import Select from '../components/Select';
+import ViewToggle from '../components/ViewToggle';
+import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
+import { useViewMode } from '../hooks/useViewMode';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
@@ -51,6 +54,7 @@ export default function Warehouses() {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [warehouseTypeFilter, setWarehouseTypeFilter] = useState<'ALL' | 'CENTRAL' | 'BRANCH'>('ALL');
+    const { viewMode, setViewMode } = useViewMode('warehouses');
 
     // Sidebar states
     const [showForm, setShowForm] = useState(false);
@@ -246,7 +250,8 @@ export default function Warehouses() {
                 title="Gestión de Bodegas"
                 icon={WarehouseIcon}
                 actions={
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <ViewToggle value={viewMode} onChange={setViewMode} />
                         <Button variant="secondary" onClick={viewTransferHistory}>
                             <ArrowRightLeft size={18} /> Historial Traslados
                         </Button>
@@ -282,7 +287,54 @@ export default function Warehouses() {
                 </div>
             </div>
 
+            {/* Table view */}
+            {viewMode === 'table' && filteredWarehouses.length > 0 && (
+                <CatalogTable<Warehouse>
+                    rows={filteredWarehouses}
+                    rowKey={(w) => w.id}
+                    resetKey={warehouseTypeFilter}
+                    columns={[
+                        {
+                            key: 'name',
+                            header: 'Bodega',
+                            render: (w) => (
+                                <div className="catalog-cell-stack">
+                                    <span className="cell-title">{w.name}</span>
+                                    {w.code && <span className="cell-sub">{w.code}</span>}
+                                </div>
+                            )
+                        },
+                        { key: 'location', header: 'Ubicación', render: (w) => w.type === 'CENTRAL' ? 'Bodega central' : (w.branch?.name || 'Sin sucursal') },
+                        { key: 'products', header: 'Productos', align: 'center', render: (w) => w._count?.stocks || 0 },
+                        { key: 'movements', header: 'Movimientos', align: 'center', render: (w) => w._count?.movements || 0 },
+                        {
+                            key: 'actions',
+                            header: 'Acciones',
+                            align: 'right',
+                            render: (w) => (
+                                <div className="catalog-table-actions">
+                                    <button className="catalog-action-btn" onClick={() => viewStock(w)} title="Ver Stock">
+                                        <Eye size={16} />
+                                    </button>
+                                    {canMutateWarehouse && (
+                                        <button className="catalog-action-btn" onClick={() => openEdit(w)} title="Editar">
+                                            <Edit2 size={16} />
+                                        </button>
+                                    )}
+                                    {canDeleteWarehouse && (
+                                        <button className="catalog-action-btn danger" onClick={() => handleDelete(w.id)} title="Eliminar">
+                                            <Trash2 size={16} />
+                                        </button>
+                                    )}
+                                </div>
+                            )
+                        }
+                    ] as CatalogColumn<Warehouse>[]}
+                />
+            )}
+
             {/* Warehouses Grid */}
+            {viewMode === 'cards' && (
             <div className="inventory-grid-new">
                 {filteredWarehouses.map(wh => (
                     <div key={wh.id} className="inventory-card-new">
@@ -323,16 +375,18 @@ export default function Warehouses() {
                         </div>
                     </div>
                 ))}
-                {filteredWarehouses.length === 0 && (
-                    <div className="no-products-message">
-                        <WarehouseIcon size={48} />
-                        <p>No hay bodegas registradas</p>
-                        {canMutateWarehouse && (
-                            <Button onClick={openCreate}>Crear primera bodega</Button>
-                        )}
-                    </div>
-                )}
             </div>
+            )}
+
+            {filteredWarehouses.length === 0 && (
+                <div className="no-products-message">
+                    <WarehouseIcon size={48} />
+                    <p>No hay bodegas registradas</p>
+                    {canMutateWarehouse && (
+                        <Button onClick={openCreate}>Crear primera bodega</Button>
+                    )}
+                </div>
+            )}
 
             {/* Create/Edit Warehouse */}
             <Sidebar isOpen={showForm} onClose={() => setShowForm(false)} title={editingWarehouse ? 'Editar Bodega' : 'Nueva Bodega'}>

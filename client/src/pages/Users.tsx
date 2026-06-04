@@ -4,6 +4,9 @@ import { usersAPI, branchesAPI, companiesAPI, rolesAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import PageHeader from '../components/PageHeader';
+import ViewToggle from '../components/ViewToggle';
+import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
+import { useViewMode } from '../hooks/useViewMode';
 import { Users as UsersIcon, Plus, Edit2, Trash2, Shield, MapPin, Building2, Mail, User as UserIcon, Lock, Palette } from 'lucide-react';
 import type { User, Branch, Company } from '../types';
 import type { SingleValue } from 'react-select';
@@ -47,6 +50,7 @@ export default function Users() {
     const [searchQuery, setSearchQuery] = useState('');
     const [roleFilter, setRoleFilter] = useState<string>('all');
     const [statusFilter, setStatusFilter] = useState<string>('all');
+    const { viewMode, setViewMode } = useViewMode('users');
 
     // Sidebar State
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -313,10 +317,13 @@ export default function Users() {
                 title="Gestión de Usuarios"
                 icon={UsersIcon}
                 actions={
-                    <Button onClick={() => handleOpenSidebar()}>
-                        <Plus size={20} />
-                        Nuevo Usuario
-                    </Button>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <ViewToggle value={viewMode} onChange={setViewMode} />
+                        <Button onClick={() => handleOpenSidebar()}>
+                            <Plus size={20} />
+                            Nuevo Usuario
+                        </Button>
+                    </div>
                 }
             />
 
@@ -355,8 +362,72 @@ export default function Users() {
                 </div>
             </div>
 
+            {/* Table view */}
+            {viewMode === 'table' && filteredUsers.length > 0 && (
+                <CatalogTable<User>
+                    rows={filteredUsers}
+                    rowKey={(u) => u.id}
+                    resetKey={`${searchQuery}|${roleFilter}|${statusFilter}`}
+                    columns={[
+                        {
+                            key: 'name',
+                            header: 'Usuario',
+                            render: (u) => (
+                                <div className="catalog-cell-stack">
+                                    <span className="cell-title">{u.name}</span>
+                                    <span className="cell-sub">@{u.username}</span>
+                                </div>
+                            )
+                        },
+                        { key: 'email', header: 'Email', render: (u) => u.email || '-' },
+                        {
+                            key: 'roles',
+                            header: 'Rol',
+                            render: (u) => {
+                                const roles = u.userRoles ? u.userRoles.map(ur => ur.role.name) : [u.role?.name || ''];
+                                return (
+                                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                        {roles.filter(Boolean).map((rn, i) => (
+                                            <span key={i} className="user-role-badge" style={{ background: getRoleColor(rn), position: 'relative', top: 0, right: 0 }}>{rn}</span>
+                                        ))}
+                                    </div>
+                                );
+                            }
+                        },
+                        { key: 'branch', header: 'Sucursal', render: (u) => u.branch?.name || 'Todas las Sucursales' },
+                        ...(isSuperAdmin ? [{
+                            key: 'company',
+                            header: 'Empresa',
+                            render: (u: User) => u.company?.name || '-'
+                        }] : []),
+                        {
+                            key: 'status',
+                            header: 'Estado',
+                            render: (u) => <span className={`catalog-pill ${u.status === 'ACTIVE' ? 'ok' : 'neutral'}`}>{u.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}</span>
+                        },
+                        {
+                            key: 'actions',
+                            header: 'Acciones',
+                            align: 'right',
+                            render: (u) => (
+                                <div className="catalog-table-actions">
+                                    <button className="catalog-action-btn" onClick={() => handleOpenSidebar(u)} title="Editar">
+                                        <Edit2 size={16} />
+                                    </button>
+                                    {isSuperAdmin && u.status === 'ACTIVE' && (
+                                        <button className="catalog-action-btn danger" onClick={() => handleDelete(u.id)} title="Desactivar">
+                                            <Trash2 size={16} />
+                                        </button>
+                                    )}
+                                </div>
+                            )
+                        }
+                    ] as CatalogColumn<User>[]}
+                />
+            )}
+
             {/* Users Grid */}
-            {filteredUsers.length > 0 ? (
+            {viewMode === 'cards' && filteredUsers.length > 0 && (
                 <div className="users-grid">
                     {filteredUsers.map(user => {
                         const userAllRoles = user.userRoles
@@ -427,7 +498,9 @@ export default function Users() {
                         );
                     })}
                 </div>
-            ) : (
+            )}
+
+            {filteredUsers.length === 0 && (
                 <div className="users-empty">
                     <UsersIcon size={64} />
                     <h3>No se encontraron usuarios</h3>

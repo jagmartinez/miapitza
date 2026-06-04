@@ -6,6 +6,9 @@ import {
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import LoadingSpinner from '../components/LoadingSpinner';
+import ViewToggle from '../components/ViewToggle';
+import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
+import { useViewMode } from '../hooks/useViewMode';
 import { cateringAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
@@ -21,6 +24,12 @@ interface CateringServiceRow {
     salePrice: number;
 }
 
+const marginPct = (s: { internalCost: number; salePrice: number }) =>
+    s.salePrice > 0 ? ((s.salePrice - s.internalCost) / s.salePrice) * 100 : 0;
+const marginColor = (pct: number) =>
+    pct >= 50 ? 'var(--color-success)' : pct >= 20 ? 'var(--color-warning)' : 'var(--color-danger)';
+const money = (n: number) => `$${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+
 export default function CateringServices() {
     const { user } = useAuth();
     const { confirm } = useConfirmDialog();
@@ -32,6 +41,7 @@ export default function CateringServices() {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editingService, setEditingService] = useState<CateringServiceRow | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const { viewMode, setViewMode } = useViewMode('catering-services', 'table');
 
     const [formData, setFormData] = useState({
         name: '',
@@ -132,10 +142,13 @@ export default function CateringServices() {
                     <h1><Library size={32} /> Catálogo de Servicios</h1>
                     <p className="catering-subtitle">Gestiona servicios, costos y precios de catering</p>
                 </div>
-                <Button onClick={() => handleOpenSidebar()} disabled={!canManageCatering}>
-                    <Plus size={20} />
-                    Nuevo Servicio
-                </Button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <ViewToggle value={viewMode} onChange={setViewMode} />
+                    <Button onClick={() => handleOpenSidebar()} disabled={!canManageCatering}>
+                        <Plus size={20} />
+                        Nuevo Servicio
+                    </Button>
+                </div>
             </div>
 
             <div className="catering-filters">
@@ -160,54 +173,57 @@ export default function CateringServices() {
                     <ClipboardList size={64} opacity={0.2} />
                     <p>No hay servicios registrados en el catálogo</p>
                 </div>
+            ) : viewMode === 'table' ? (
+                <CatalogTable<CateringServiceRow>
+                    rows={filteredServices}
+                    rowKey={(s) => s.id}
+                    resetKey={searchQuery}
+                    columns={[
+                        {
+                            key: 'name',
+                            header: 'Servicio',
+                            render: (s) => (
+                                <div className="catalog-cell-stack">
+                                    <span className="cell-title">{s.name}</span>
+                                    {s.description && <span className="cell-sub">{s.description}</span>}
+                                </div>
+                            )
+                        },
+                        { key: 'cost', header: 'Costo', align: 'right', render: (s) => money(s.internalCost) },
+                        { key: 'sale', header: 'Venta', align: 'right', render: (s) => <span style={{ color: 'var(--color-success)' }}>{money(s.salePrice)}</span> },
+                        { key: 'margin', header: 'Margen', align: 'right', render: (s) => { const m = marginPct(s); return <span style={{ fontWeight: 700, color: marginColor(m) }}>{m.toFixed(1)}%</span>; } },
+                        ...(canManageCatering ? [{
+                            key: 'actions',
+                            header: 'Acciones',
+                            align: 'right' as const,
+                            render: (s: CateringServiceRow) => (
+                                <div className="catalog-table-actions">
+                                    <button className="catalog-action-btn" onClick={() => handleOpenSidebar(s)} title="Editar"><Edit2 size={16} /></button>
+                                    <button className="catalog-action-btn danger" onClick={() => handleDelete(s.id)} title="Eliminar"><Trash2 size={16} /></button>
+                                </div>
+                            )
+                        }] : [])
+                    ] as CatalogColumn<CateringServiceRow>[]}
+                />
             ) : (
-                <div className="items-table catalog-table" style={{ marginTop: '24px' }}>
-                    <div className="items-table-header">
-                        <span>Servicio y Descripción</span>
-                        <span>Costo</span>
-                        <span>Venta</span>
-                        <span>Margen</span>
-                        <span>Acciones</span>
-                    </div>
+                <div className="catalog-cards" style={{ marginTop: '24px' }}>
                     {filteredServices.map((service) => {
-                        const margin = service.salePrice - service.internalCost;
-                        const marginPercent = service.salePrice > 0 ? (margin / service.salePrice) * 100 : 0;
-
-                        let marginColor = 'var(--color-danger)';
-                        if (marginPercent >= 50) marginColor = 'var(--color-success)';
-                        else if (marginPercent >= 20) marginColor = 'var(--color-warning)';
-
+                        const m = marginPct(service);
                         return (
-                            <div key={service.id} className="items-table-row">
-                                <div className="service-name-container">
-                                    <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--color-text)' }}>{service.name}</div>
-                                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{service.description || 'Sin descripción'}</div>
+                            <div key={service.id} className="catalog-card">
+                                <div>
+                                    <div className="catalog-card-title">{service.name}</div>
+                                    <div className="catalog-card-sub">{service.description || 'Sin descripción'}</div>
                                 </div>
-                                <div className="service-price-text">
-                                    ${Number(service.internalCost).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                </div>
-                                <div className="service-price-text" style={{ color: 'var(--color-success)' }}>
-                                    ${Number(service.salePrice).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                </div>
-                                <div style={{ fontWeight: 700, color: marginColor }}>
-                                    {marginPercent.toFixed(1)}%
+                                <div className="catalog-card-rows">
+                                    <div className="catalog-card-row"><span className="label">Costo</span><span className="value">{money(service.internalCost)}</span></div>
+                                    <div className="catalog-card-row"><span className="label">Venta</span><span className="value" style={{ color: 'var(--color-success)' }}>{money(service.salePrice)}</span></div>
+                                    <div className="catalog-card-row"><span className="label">Margen</span><span className="value" style={{ color: marginColor(m) }}>{m.toFixed(1)}%</span></div>
                                 </div>
                                 {canManageCatering && (
-                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                        <button
-                                            className="action-btn-mini"
-                                            onClick={() => handleOpenSidebar(service)}
-                                            title="Editar"
-                                        >
-                                            <Edit2 size={15} />
-                                        </button>
-                                        <button
-                                            className="action-btn-mini delete"
-                                            onClick={() => handleDelete(service.id)}
-                                            title="Eliminar"
-                                        >
-                                            <Trash2 size={15} />
-                                        </button>
+                                    <div className="catalog-card-actions">
+                                        <button className="action-btn-mini" onClick={() => handleOpenSidebar(service)} title="Editar"><Edit2 size={15} /></button>
+                                        <button className="action-btn-mini delete" onClick={() => handleDelete(service.id)} title="Eliminar"><Trash2 size={15} /></button>
                                     </div>
                                 )}
                             </div>

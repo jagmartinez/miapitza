@@ -4,6 +4,9 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
+import ViewToggle from '../components/ViewToggle';
+import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
+import { useViewMode } from '../hooks/useViewMode';
 import { Plus, Edit, Percent, DollarSign, Ticket, XCircle, Calendar, FileText } from 'lucide-react';
 import './Promotions.css';
 
@@ -63,6 +66,7 @@ export default function Promotions() {
     });
     const [saving, setSaving] = useState(false);
     const [activeTab, setActiveTab] = useState<'identidad' | 'reglas' | 'vigencia'>('identidad');
+    const { viewMode, setViewMode } = useViewMode('promotions');
 
     useEffect(() => { loadData(); }, []);
 
@@ -156,17 +160,69 @@ export default function Promotions() {
                     <h1><Ticket size={28} /> Promociones</h1>
                     <p>Gestiona códigos de descuento y ofertas especiales</p>
                 </div>
-                <Button onClick={() => handleOpen()}>
-                    <Plus size={18} /> Nueva Promoción
-                </Button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <ViewToggle value={viewMode} onChange={setViewMode} />
+                    <Button onClick={() => handleOpen()}>
+                        <Plus size={18} /> Nueva Promoción
+                    </Button>
+                </div>
             </div>
+
+            {viewMode === 'table' && promotions.length > 0 && (
+                <CatalogTable<PromotionRow>
+                    rows={promotions}
+                    rowKey={(p) => p.id}
+                    columns={[
+                        {
+                            key: 'name',
+                            header: 'Promoción',
+                            render: (p) => (
+                                <div className="catalog-cell-stack">
+                                    <span className="cell-title">{p.name}</span>
+                                    <span className="cell-sub">{p.code}</span>
+                                </div>
+                            )
+                        },
+                        { key: 'type', header: 'Tipo', render: (p) => p.type === 'PERCENTAGE' ? 'Porcentaje' : 'Monto Fijo' },
+                        { key: 'value', header: 'Valor', align: 'right', render: (p) => p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : `$${Number(p.value).toFixed(0)}` },
+                        { key: 'validity', header: 'Vigencia', render: (p) => `${formatDate(p.validFrom)} — ${formatDate(p.validTo)}` },
+                        { key: 'usage', header: 'Usos', align: 'center', render: (p) => `${p.usageCount || 0}${p.usageLimit ? ` / ${p.usageLimit}` : ''}` },
+                        {
+                            key: 'status',
+                            header: 'Estado',
+                            render: (p) => {
+                                const status = getStatus(p);
+                                const tone = status === 'active' ? 'ok' : status === 'expired' ? 'warning' : 'neutral';
+                                return <span className={`catalog-pill ${tone}`}>{status === 'active' ? 'Activa' : status === 'expired' ? 'Expirada' : 'Inactiva'}</span>;
+                            }
+                        },
+                        {
+                            key: 'actions',
+                            header: 'Acciones',
+                            align: 'right',
+                            render: (p) => (
+                                <div className="catalog-table-actions">
+                                    <button className="catalog-action-btn" onClick={() => handleOpen(p)} title="Editar">
+                                        <Edit size={16} />
+                                    </button>
+                                    {p.active && (
+                                        <button className="catalog-action-btn danger" onClick={() => handleDeactivate(p.id)} title="Desactivar">
+                                            <XCircle size={16} />
+                                        </button>
+                                    )}
+                                </div>
+                            )
+                        }
+                    ] as CatalogColumn<PromotionRow>[]}
+                />
+            )}
 
             {promotions.length === 0 ? (
                 <div className="promo-empty">
                     <Ticket size={64} />
                     <p>No hay promociones creadas</p>
                 </div>
-            ) : (
+            ) : viewMode === 'cards' ? (
                 <div className="promo-grid">
                     {promotions.map(p => {
                         const status = getStatus(p);
@@ -238,7 +294,7 @@ export default function Promotions() {
                         );
                     })}
                 </div>
-            )}
+            ) : null}
 
             <Sidebar isOpen={isSidebarOpen} onClose={() => { setIsSidebarOpen(false); setActiveTab('identidad'); }} title={editing ? 'Editar Promoción' : 'Nueva Promoción'}>
                 <div className="premium-modal-content">

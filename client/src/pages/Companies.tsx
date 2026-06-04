@@ -3,6 +3,9 @@ import { companiesAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import Select from '../components/Select';
+import ViewToggle from '../components/ViewToggle';
+import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
+import { useViewMode } from '../hooks/useViewMode';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { Plus, Building2, Edit2, CheckCircle, XCircle, FileText } from 'lucide-react';
 import type { SingleValue } from 'react-select';
@@ -27,6 +30,7 @@ export default function Companies() {
     const [companies, setCompanies] = useState<Company[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<boolean | null>(null);
+    const { viewMode, setViewMode } = useViewMode('companies');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCompany, setEditingCompany] = useState<Company | null>(null);
     const [formData, setFormData] = useState({
@@ -117,10 +121,13 @@ export default function Companies() {
                 <div className="header-title-section">
                     <h1><Building2 size={32} /> Gestión de Empresas</h1>
                 </div>
-                <Button variant="primary" onClick={() => openModal()}>
-                    <Plus size={20} />
-                    Nueva Empresa
-                </Button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <ViewToggle value={viewMode} onChange={setViewMode} />
+                    <Button variant="primary" onClick={() => openModal()}>
+                        <Plus size={20} />
+                        Nueva Empresa
+                    </Button>
+                </div>
             </div>
 
             {/* Filters Row */}
@@ -148,7 +155,55 @@ export default function Companies() {
 
             </div>
 
+            {/* Table view */}
+            {viewMode === 'table' && filteredCompanies.length > 0 && (
+                <CatalogTable<Company>
+                    rows={filteredCompanies}
+                    rowKey={(c) => c.id}
+                    resetKey={statusFilter}
+                    columns={[
+                        {
+                            key: 'name',
+                            header: 'Empresa',
+                            render: (c) => (
+                                <div className="catalog-cell-stack">
+                                    <span className="cell-title">{c.name}</span>
+                                    <span className="cell-sub">RUC: {c.ruc || 'No registrado'}</span>
+                                </div>
+                            )
+                        },
+                        { key: 'branches', header: 'Sucursales', align: 'center', render: (c) => c._count?.branches || 0 },
+                        { key: 'users', header: 'Usuarios', align: 'center', render: (c) => c._count?.users || 0 },
+                        {
+                            key: 'status',
+                            header: 'Estado',
+                            render: (c) => <span className={`catalog-pill ${c.active ? 'ok' : 'neutral'}`}>{c.active ? 'Activa' : 'Inactiva'}</span>
+                        },
+                        {
+                            key: 'actions',
+                            header: 'Acciones',
+                            align: 'right',
+                            render: (c) => (
+                                <div className="catalog-table-actions">
+                                    <button className="catalog-action-btn" onClick={() => openModal(c)} title="Editar">
+                                        <Edit2 size={16} />
+                                    </button>
+                                    <button
+                                        className={`catalog-action-btn ${c.active ? 'danger' : ''}`}
+                                        onClick={() => toggleActive(c)}
+                                        title={c.active ? 'Desactivar' : 'Activar'}
+                                    >
+                                        {c.active ? <XCircle size={16} /> : <CheckCircle size={16} />}
+                                    </button>
+                                </div>
+                            )
+                        }
+                    ] as CatalogColumn<Company>[]}
+                />
+            )}
+
             {/* Enhanced Companies Grid */}
+            {viewMode === 'cards' && (
             <div className="companies-grid-new">
                 {filteredCompanies.map((company) => (
                     <div key={company.id} className={`company-card-new ${company.active ? 'active' : 'inactive'}`}>
@@ -216,6 +271,7 @@ export default function Companies() {
                     </div>
                 ))}
             </div>
+            )}
 
             {filteredCompanies.length === 0 && (
                 <div className="no-companies-message">

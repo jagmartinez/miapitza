@@ -7,6 +7,9 @@ import { hasAnyRole } from '../utils/authz';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import PageHeader from '../components/PageHeader';
+import ViewToggle from '../components/ViewToggle';
+import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
+import { useViewMode } from '../hooks/useViewMode';
 import { Plus, Tags, Edit2, Trash2, List } from 'lucide-react';
 import type { MenuBrand } from '../types';
 import './Categories.css';
@@ -31,6 +34,7 @@ export default function Brands() {
         active: true
     });
     const [saving, setSaving] = useState(false);
+    const { viewMode, setViewMode } = useViewMode('brands');
 
     const loadData = useCallback(async () => {
         try {
@@ -126,14 +130,68 @@ export default function Brands() {
                 title="Marcas"
                 subtitle={`${brands.length} marcas configuradas`}
                 icon={Tags}
-                actions={canMutate ? (
-                    <Button variant="primary" onClick={() => openModal()}>
-                        <Plus size={20} />
-                        Nueva Marca
-                    </Button>
-                ) : undefined}
+                actions={(
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <ViewToggle value={viewMode} onChange={setViewMode} />
+                        {canMutate && (
+                            <Button variant="primary" onClick={() => openModal()}>
+                                <Plus size={20} />
+                                Nueva Marca
+                            </Button>
+                        )}
+                    </div>
+                )}
             />
 
+            {viewMode === 'table' && brands.length > 0 && (
+                <CatalogTable<MenuBrand>
+                    rows={brands}
+                    rowKey={(b) => b.id}
+                    columns={[
+                        {
+                            key: 'name',
+                            header: 'Marca',
+                            render: (b) => (
+                                <div className="catalog-cell-stack">
+                                    <span className="cell-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ width: 12, height: 12, borderRadius: '50%', background: b.color || DEFAULT_COLOR, display: 'inline-block', flexShrink: 0 }} />
+                                        {b.name}
+                                    </span>
+                                </div>
+                            )
+                        },
+                        { key: 'items', header: 'Platos', align: 'center', render: (b) => b._count?.menuItems || 0 },
+                        { key: 'order', header: 'Orden', align: 'center', render: (b) => b.sortOrder ?? 0 },
+                        {
+                            key: 'status',
+                            header: 'Estado',
+                            render: (b) => <span className={`catalog-pill ${b.active ? 'ok' : 'neutral'}`}>{b.active ? 'Activa' : 'Inactiva'}</span>
+                        },
+                        ...(canMutate ? [{
+                            key: 'actions',
+                            header: 'Acciones',
+                            align: 'right' as const,
+                            render: (b: MenuBrand) => (
+                                <div className="catalog-table-actions">
+                                    <button className="catalog-action-btn" onClick={() => openModal(b)} title="Editar">
+                                        <Edit2 size={16} />
+                                    </button>
+                                    <button
+                                        className="catalog-action-btn danger"
+                                        onClick={() => handleDelete(b)}
+                                        title="Eliminar"
+                                        disabled={Number(b._count?.menuItems || 0) > 0}
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            )
+                        }] : [])
+                    ] as CatalogColumn<MenuBrand>[]}
+                />
+            )}
+
+            {viewMode === 'cards' && (
             <div className="categories-grid-new">
                 {brands.map((brand) => (
                     <div key={brand.id} className="category-card-new">
@@ -188,6 +246,7 @@ export default function Brands() {
                     </div>
                 ))}
             </div>
+            )}
 
             {brands.length === 0 && (
                 <div className="no-categories-message">

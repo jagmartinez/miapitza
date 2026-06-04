@@ -9,8 +9,11 @@ import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import PageHeader from '../components/PageHeader';
 import Select from '../components/Select';
+import ViewToggle from '../components/ViewToggle';
+import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
+import { useViewMode } from '../hooks/useViewMode';
 import type { SingleValue } from 'react-select';
-import { Plus, Trash2, Phone, Mail, MapPin, Truck, Search, Users, Info, Building2, Tag, History, X } from 'lucide-react'; // Tag kept for use inside modal
+import { Plus, Trash2, Phone, Mail, MapPin, Truck, Search, Users, Info, Building2, Tag, History, X, Edit2 } from 'lucide-react'; // Tag kept for use inside modal
 import type { Supplier } from '../types';
 import './Suppliers.css';
 
@@ -52,6 +55,7 @@ export default function Suppliers() {
     });
     const [searchTerm, setSearchTerm] = useState('');
     const [supplyTypeFilter, setSupplyTypeFilter] = useState<string | null>(null);
+    const { viewMode, setViewMode } = useViewMode('suppliers');
     const [activeTab, setActiveTab] = useState<'empresa' | 'contacto' | 'ubicacion'>('empresa');
     const [saving, setSaving] = useState(false);
 
@@ -179,12 +183,17 @@ export default function Suppliers() {
             <PageHeader
                 title="Proveedores"
                 icon={Truck}
-                actions={canManageSupplier ? (
-                    <Button onClick={() => handleOpenModal()}>
-                        <Plus size={20} />
-                        Nuevo Proveedor
-                    </Button>
-                ) : undefined}
+                actions={(
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <ViewToggle value={viewMode} onChange={setViewMode} />
+                        {canManageSupplier && (
+                            <Button onClick={() => handleOpenModal()}>
+                                <Plus size={20} />
+                                Nuevo Proveedor
+                            </Button>
+                        )}
+                    </div>
+                )}
             />
 
             {/* Filters Row */}
@@ -243,7 +252,55 @@ export default function Suppliers() {
                 </div>
             </div>
 
+            {/* Table view */}
+            {viewMode === 'table' && filteredSuppliers.length > 0 && (
+                <CatalogTable<Supplier>
+                    rows={filteredSuppliers}
+                    rowKey={(s) => s.id}
+                    resetKey={`${searchTerm}|${supplyTypeFilter}`}
+                    columns={[
+                        {
+                            key: 'name',
+                            header: 'Proveedor',
+                            render: (s) => (
+                                <div className="catalog-cell-stack">
+                                    <span className="cell-title">{s.name}</span>
+                                    {s.taxId && <span className="cell-sub">RUC/NIT: {s.taxId}</span>}
+                                </div>
+                            )
+                        },
+                        { key: 'type', header: 'Tipo', render: (s) => s.supplyType || '-' },
+                        { key: 'contact', header: 'Contacto', render: (s) => s.contact || '-' },
+                        { key: 'phone', header: 'Teléfono', render: (s) => s.phone || '-' },
+                        { key: 'email', header: 'Email', render: (s) => s.email || '-' },
+                        {
+                            key: 'actions',
+                            header: 'Acciones',
+                            align: 'right',
+                            render: (s) => (
+                                <div className="catalog-table-actions">
+                                    <button className="catalog-action-btn" onClick={() => viewPriceHistory(s)} title="Historial de Precios">
+                                        <History size={16} />
+                                    </button>
+                                    {canManageSupplier && (
+                                        <button className="catalog-action-btn" onClick={() => handleOpenModal(s)} title="Editar">
+                                            <Edit2 size={16} />
+                                        </button>
+                                    )}
+                                    {canDeleteSupplier && (
+                                        <button className="catalog-action-btn danger" onClick={() => handleDelete(s.id)} title="Eliminar">
+                                            <Trash2 size={16} />
+                                        </button>
+                                    )}
+                                </div>
+                            )
+                        }
+                    ] as CatalogColumn<Supplier>[]}
+                />
+            )}
+
             {/* Enhanced Suppliers Grid */}
+            {viewMode === 'cards' && (
             <div className="suppliers-grid-new">
                 {filteredSuppliers.map(supplier => (
                     <div key={supplier.id} className="supplier-card-new">
@@ -319,6 +376,7 @@ export default function Suppliers() {
                     </div>
                 ))}
             </div>
+            )}
 
             {filteredSuppliers.length === 0 && (
                 <div className="no-suppliers-message">

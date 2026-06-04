@@ -3,6 +3,9 @@ import Select from '../components/Select';
 import { branchesAPI, companiesAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
+import ViewToggle from '../components/ViewToggle';
+import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
+import { useViewMode } from '../hooks/useViewMode';
 import { Plus, MapPin, Phone, Edit2, Trash2, Building2, Store } from 'lucide-react';
 import type { Branch, Company } from '../types';
 import type { SingleValue } from 'react-select';
@@ -24,6 +27,7 @@ export default function Branches() {
     const [statusFilter, setStatusFilter] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
+    const { viewMode, setViewMode } = useViewMode('branches');
     const [formData, setFormData] = useState({
         name: '',
         code: '',
@@ -153,12 +157,15 @@ export default function Branches() {
                 <div className="header-title-section">
                     <h1><Store size={32} /> Gestión de Sucursales</h1>
                 </div>
-                {isSuperAdmin && (
-                    <Button variant="primary" onClick={() => openModal()}>
-                        <Plus size={20} />
-                        Nueva Sucursal
-                    </Button>
-                )}
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <ViewToggle value={viewMode} onChange={setViewMode} />
+                    {isSuperAdmin && (
+                        <Button variant="primary" onClick={() => openModal()}>
+                            <Plus size={20} />
+                            Nueva Sucursal
+                        </Button>
+                    )}
+                </div>
             </div>
 
             {/* Filters Row */}
@@ -186,7 +193,60 @@ export default function Branches() {
 
             </div>
 
+            {/* Table view */}
+            {viewMode === 'table' && filteredBranches.length > 0 && (
+                <CatalogTable<Branch>
+                    rows={filteredBranches}
+                    rowKey={(b) => b.id}
+                    resetKey={statusFilter}
+                    columns={[
+                        {
+                            key: 'name',
+                            header: 'Sucursal',
+                            render: (b) => (
+                                <div className="catalog-cell-stack">
+                                    <span className="cell-title">{b.name}</span>
+                                    {b.code && <span className="cell-sub">{b.code}</span>}
+                                </div>
+                            )
+                        },
+                        ...(isSuperAdmin ? [{
+                            key: 'company',
+                            header: 'Empresa',
+                            render: (b: Branch) => b.company?.name || '-'
+                        }] : []),
+                        { key: 'phone', header: 'Teléfono', render: (b) => b.phone || '-' },
+                        { key: 'address', header: 'Dirección', render: (b) => b.address || '-' },
+                        { key: 'users', header: 'Usuarios', align: 'center', render: (b) => b._count?.users || 0 },
+                        { key: 'tables', header: 'Mesas', align: 'center', render: (b) => b._count?.tables || 0 },
+                        {
+                            key: 'status',
+                            header: 'Estado',
+                            render: (b) => <span className={`catalog-pill ${b.status === 'ACTIVE' ? 'ok' : 'neutral'}`}>{b.status === 'ACTIVE' ? 'Activa' : 'Inactiva'}</span>
+                        },
+                        {
+                            key: 'actions',
+                            header: 'Acciones',
+                            align: 'right',
+                            render: (b) => (
+                                <div className="catalog-table-actions">
+                                    <button className="catalog-action-btn" onClick={() => openModal(b)} title="Editar">
+                                        <Edit2 size={16} />
+                                    </button>
+                                    {isSuperAdmin && b.status === 'ACTIVE' && (
+                                        <button className="catalog-action-btn danger" onClick={() => handleDelete(b.id)} title="Desactivar">
+                                            <Trash2 size={16} />
+                                        </button>
+                                    )}
+                                </div>
+                            )
+                        }
+                    ] as CatalogColumn<Branch>[]}
+                />
+            )}
+
             {/* Enhanced Branch Grid */}
+            {viewMode === 'cards' && (
             <div className="branches-grid-new">
                 {filteredBranches.map((branch) => (
                     <div key={branch.id} className={`branch-card-new ${branch.status.toLowerCase()}`}>
@@ -259,6 +319,7 @@ export default function Branches() {
                     </div>
                 ))}
             </div>
+            )}
 
             {filteredBranches.length === 0 && (
                 <div className="no-branches-message">

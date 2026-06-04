@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Calendar, Clock, Users, Phone, Plus, CheckCircle, XCircle, Mail, MessageSquare, Grid3x3, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, Clock, Users, Phone, Plus, CheckCircle, XCircle, Mail, MessageSquare, Grid3x3, CalendarDays, ChevronLeft, ChevronRight, List, Edit2 } from 'lucide-react';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
+import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 // import Input from '../components/Input';
 import { reservationsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
@@ -48,7 +49,7 @@ export default function Reservations() {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editingReservation, setEditingReservation] = useState<Reservation | null>(null);
     const [filterStatus, setFilterStatus] = useState<string>('all');
-    const [viewMode, setViewMode] = useState<'cards' | 'calendar'>('cards');
+    const [viewMode, setViewMode] = useState<'cards' | 'table' | 'calendar'>('cards');
     const [calendarViewMode, setCalendarViewMode] = useState<'month' | 'week' | 'day'>('month');
     const [searchQuery, setSearchQuery] = useState('');
     const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -377,6 +378,13 @@ export default function Reservations() {
                             <Grid3x3 size={18} />
                         </button>
                         <button
+                            className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+                            onClick={() => setViewMode('table')}
+                            title="Vista de Tabla"
+                        >
+                            <List size={18} />
+                        </button>
+                        <button
                             className={`view-toggle-btn ${viewMode === 'calendar' ? 'active' : ''}`}
                             onClick={() => setViewMode('calendar')}
                             title="Vista de Calendario"
@@ -393,8 +401,8 @@ export default function Reservations() {
                 </div>
             </div>
 
-            {/* Filters - Only show in cards view */}
-            {viewMode === 'cards' && (
+            {/* Filters - show in cards and table views */}
+            {viewMode !== 'calendar' && (
                 <div className="reservations-filters">
                     {/* Status Filters */}
                     <div className="filter-buttons">
@@ -749,6 +757,88 @@ export default function Reservations() {
                         </div>
                     )}
                 </>
+            )}
+
+            {/* Table View */}
+            {viewMode === 'table' && (
+                sortedReservations.length === 0 ? (
+                    <div className="reservations-empty">
+                        <Calendar size={64} />
+                        <p>No hay reservaciones</p>
+                        <small>{searchQuery ? 'No se encontraron resultados para tu búsqueda' : 'Crea una nueva reservación para comenzar'}</small>
+                    </div>
+                ) : (
+                    <CatalogTable<Reservation>
+                        rows={sortedReservations}
+                        rowKey={(r) => r.id}
+                        resetKey={`${filterStatus}|${searchQuery}`}
+                        columns={[
+                            {
+                                key: 'customer',
+                                header: 'Cliente',
+                                render: (r) => (
+                                    <div className="catalog-cell-stack">
+                                        <span className="cell-title">{r.customerName}</span>
+                                        {r.phone && <span className="cell-sub">{r.phone}</span>}
+                                    </div>
+                                )
+                            },
+                            { key: 'people', header: 'Personas', align: 'center', render: (r) => r.peopleCount },
+                            { key: 'date', header: 'Fecha y hora', render: (r) => `${formatDate(r.date)} • ${formatTime(r.date)}` },
+                            { key: 'email', header: 'Email', render: (r) => r.email || '-' },
+                            {
+                                key: 'status',
+                                header: 'Estado',
+                                render: (r) => {
+                                    const tone = r.status === 'CONFIRMED' ? 'ok'
+                                        : r.status === 'PENDING' ? 'warning'
+                                        : r.status === 'COMPLETED' ? 'neutral'
+                                        : 'danger';
+                                    return <span className={`catalog-pill ${tone}`}>{getStatusText(r.status)}</span>;
+                                }
+                            },
+                            {
+                                key: 'actions',
+                                header: 'Acciones',
+                                align: 'right',
+                                render: (r) => (
+                                    <div className="catalog-table-actions">
+                                        {canManageReservations && r.status === 'PENDING' && (
+                                            <>
+                                                <button className="catalog-action-btn" onClick={() => handleUpdateStatus(r.id, 'CONFIRMED')} title="Confirmar">
+                                                    <CheckCircle size={16} />
+                                                </button>
+                                                <button className="catalog-action-btn danger" onClick={() => handleUpdateStatus(r.id, 'CANCELLED')} title="Cancelar">
+                                                    <XCircle size={16} />
+                                                </button>
+                                            </>
+                                        )}
+                                        {canManageReservations && r.status === 'CONFIRMED' && (
+                                            <>
+                                                <button className="catalog-action-btn" onClick={() => handleUpdateStatus(r.id, 'COMPLETED')} title="Completar">
+                                                    <Users size={16} />
+                                                </button>
+                                                <button className="catalog-action-btn danger" onClick={() => handleUpdateStatus(r.id, 'CANCELLED')} title="Cancelar">
+                                                    <XCircle size={16} />
+                                                </button>
+                                            </>
+                                        )}
+                                        {canManageReservations && (r.status === 'COMPLETED' || r.status === 'CANCELLED') && (
+                                            <button className="catalog-action-btn" onClick={() => handleUpdateStatus(r.id, 'PENDING')} title="Reabrir">
+                                                <Clock size={16} />
+                                            </button>
+                                        )}
+                                        {canManageReservations && (
+                                            <button className="catalog-action-btn" onClick={() => handleOpenSidebar(r)} title="Editar">
+                                                <Edit2 size={16} />
+                                            </button>
+                                        )}
+                                    </div>
+                                )
+                            }
+                        ] as CatalogColumn<Reservation>[]}
+                    />
+                )
             )}
 
             {/* Sidebar Form */}

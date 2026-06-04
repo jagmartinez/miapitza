@@ -7,6 +7,9 @@ import { hasAnyRole } from '../utils/authz';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import PageHeader from '../components/PageHeader';
+import ViewToggle from '../components/ViewToggle';
+import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
+import { useViewMode } from '../hooks/useViewMode';
 import { Plus, Tag, Edit2, Trash2, List } from 'lucide-react';
 import './Categories.css';
 
@@ -42,6 +45,7 @@ export default function Categories() {
     });
     const [activeTab, setActiveTab] = useState<'info' | 'config'>('info');
     const [saving, setSaving] = useState(false);
+    const { viewMode, setViewMode } = useViewMode('categories');
 
     useEffect(() => {
         loadData();
@@ -130,14 +134,67 @@ export default function Categories() {
                 title="Categorías"
                 subtitle={`${categories.length} categorías configuradas`}
                 icon={Tag}
-                actions={canMutateCategory ? (
-                    <Button variant="primary" onClick={() => openModal()}>
-                        <Plus size={20} />
-                        Nueva Categoría
-                    </Button>
-                ) : undefined}
+                actions={(
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <ViewToggle value={viewMode} onChange={setViewMode} />
+                        {canMutateCategory && (
+                            <Button variant="primary" onClick={() => openModal()}>
+                                <Plus size={20} />
+                                Nueva Categoría
+                            </Button>
+                        )}
+                    </div>
+                )}
             />
 
+            {viewMode === 'table' && categories.length > 0 && (
+                <CatalogTable<CategoryRow>
+                    rows={categories}
+                    rowKey={(c) => c.id}
+                    columns={[
+                        {
+                            key: 'name',
+                            header: 'Categoría',
+                            render: (c) => (
+                                <div className="catalog-cell-stack">
+                                    <span className="cell-title">{c.name}</span>
+                                    {c.description && <span className="cell-sub">{c.description}</span>}
+                                </div>
+                            )
+                        },
+                        { key: 'prefix', header: 'Prefijo', render: (c) => c.codePrefix || '-' },
+                        { key: 'items', header: 'Platos', align: 'center', render: (c) => c._count?.menuItems || 0 },
+                        { key: 'order', header: 'Orden', align: 'center', render: (c) => c.sortOrder ?? 0 },
+                        {
+                            key: 'status',
+                            header: 'Estado',
+                            render: (c) => <span className={`catalog-pill ${c.active ? 'ok' : 'neutral'}`}>{c.active ? 'Activa' : 'Inactiva'}</span>
+                        },
+                        ...(canMutateCategory ? [{
+                            key: 'actions',
+                            header: 'Acciones',
+                            align: 'right' as const,
+                            render: (c: CategoryRow) => (
+                                <div className="catalog-table-actions">
+                                    <button className="catalog-action-btn" onClick={() => openModal(c)} title="Editar">
+                                        <Edit2 size={16} />
+                                    </button>
+                                    <button
+                                        className="catalog-action-btn danger"
+                                        onClick={() => handleDelete(c.id)}
+                                        title="Eliminar"
+                                        disabled={Number(c._count?.menuItems || 0) > 0}
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            )
+                        }] : [])
+                    ] as CatalogColumn<CategoryRow>[]}
+                />
+            )}
+
+            {viewMode === 'cards' && (
             <div className="categories-grid-new">
                 {categories.map((category) => (
                     <div key={category.id} className="category-card-new">
@@ -196,6 +253,7 @@ export default function Categories() {
                     </div>
                 ))}
             </div>
+            )}
 
             {categories.length === 0 && (
                 <div className="no-categories-message">
