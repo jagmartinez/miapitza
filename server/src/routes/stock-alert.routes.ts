@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { StockAlertService } from '../services/stock-alert.service';
 import { authMiddleware } from '../middlewares/auth';
 import { getErrorMessage } from '../utils/error';
+import { resolveBranchScope, BranchScopeError } from '../utils/branch-scope';
 
 const router = Router();
 
@@ -20,14 +21,17 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const warehouseId = req.query.warehouseId ? parseInt(req.query.warehouseId as string) : undefined;
+        const requested = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
+        const branchId = resolveBranchScope(req.user!, requested);
 
-        const alerts = await StockAlertService.getLowStockProducts(companyId, warehouseId);
+        const alerts = await StockAlertService.getLowStockProducts(companyId, warehouseId, branchId);
 
         res.json({
             success: true,
             data: alerts
         });
     } catch (error: unknown) {
+        if (error instanceof BranchScopeError) return next(error);
         next({ statusCode: 500, message: getErrorMessage(error) });
     }
 });
@@ -44,13 +48,16 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
 router.get('/summary', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
-        const summary = await StockAlertService.getAlertSummary(companyId);
+        const requested = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
+        const branchId = resolveBranchScope(req.user!, requested);
+        const summary = await StockAlertService.getAlertSummary(companyId, branchId);
 
         res.json({
             success: true,
             data: summary
         });
     } catch (error: unknown) {
+        if (error instanceof BranchScopeError) return next(error);
         next({ statusCode: 500, message: getErrorMessage(error) });
     }
 });

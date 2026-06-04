@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { InvoiceService } from '../services/invoice.service';
+import { OrderService } from '../services/order.service';
 import { getErrorMessage } from '../utils/error';
+import { assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
 
 export class InvoiceController {
 
@@ -8,6 +10,8 @@ export class InvoiceController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            const order = await OrderService.getById(id, companyId);
+            assertBranchAccess(req.user!, order.branchId);
             const invoiceData = await InvoiceService.generateInvoice(id, companyId);
 
             res.json({
@@ -15,6 +19,7 @@ export class InvoiceController {
                 data: invoiceData
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 404, message: getErrorMessage(error) });
         }
     }
@@ -23,12 +28,15 @@ export class InvoiceController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            const order = await OrderService.getById(id, companyId);
+            assertBranchAccess(req.user!, order.branchId);
             const pdfBuffer = await InvoiceService.generateInvoicePDF(id, companyId);
 
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename=invoice-${id}.pdf`);
             res.send(pdfBuffer);
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }

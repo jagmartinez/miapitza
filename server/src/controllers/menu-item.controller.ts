@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { MenuItemService } from '../services/menu-item.service';
 import { getErrorMessage } from '../utils/error';
+import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
 
 export class MenuItemController {
 
@@ -9,18 +10,16 @@ export class MenuItemController {
             const companyId = req.user!.companyId;
             type MenuItemFilters = NonNullable<Parameters<typeof MenuItemService.getAll>[1]>;
             const filters: MenuItemFilters = {};
-            const isSuperAdmin = (req.user?.roles || [req.user?.role]).includes('SUPERADMIN');
 
-            if (isSuperAdmin) {
-                if (req.query.branchId) {
-                    filters.branchId = parseInt(req.query.branchId as string);
-                }
-            } else {
-                filters.branchId = req.user?.branchId;
-            }
+            const requested = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
+            filters.branchId = resolveBranchScope(req.user!, requested);
 
             if (req.query.categoryId) {
                 filters.categoryId = parseInt(req.query.categoryId as string);
+            }
+
+            if (req.query.brandId) {
+                filters.brandId = parseInt(req.query.brandId as string);
             }
 
             if (req.query.active !== undefined) {
@@ -40,6 +39,7 @@ export class MenuItemController {
                 data: menuItems
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
@@ -49,11 +49,14 @@ export class MenuItemController {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
             const menuItem = await MenuItemService.getById(id, companyId);
+            // Global items (branchId null) are shared across branches.
+            assertBranchAccess(req.user!, (menuItem as { branchId: number | null }).branchId, { allowGlobal: true });
             res.json({
                 success: true,
                 data: menuItem
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 404, message: getErrorMessage(error) });
         }
     }

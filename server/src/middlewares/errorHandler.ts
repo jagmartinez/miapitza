@@ -52,6 +52,8 @@ function isSafeMessage(msg: string): boolean {
         'ID inválido',
         'Cuenta bloqueada temporalmente',
         'No hay turno de caja activo',
+        'No autorizado',
+        'Su usuario no tiene',
         'Producto ',
         'Transición de estado de orden',
         'La orden tiene pagos existentes',

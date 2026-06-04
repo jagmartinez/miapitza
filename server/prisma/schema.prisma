@@ -33,6 +33,7 @@ model Company {
   tables             Table[]
   reservations       Reservation[]
   categories         Category[]
+  menuBrands         MenuBrand[]
   menuItems          MenuItem[]
   products           Product[]
   warehouses         Warehouse[]
@@ -85,6 +86,7 @@ model Branch {
   // Relations
   company        Company               @relation(fields: [companyId], references: [id])
   users          User[]
+  allowedUsers   UserBranch[]
   tables         Table[]
   reservations   Reservation[]
   warehouses     Warehouse[]
@@ -149,6 +151,7 @@ model User {
   branch   Branch?        @relation(fields: [branchId], references: [id])
   sessions UserSession[]
   userRoles UserRole[]
+  allowedBranches UserBranch[] // Branches a SUPERADMIN permits this user to be assigned to
 
   // Operational relations
   orders          Order[]  @relation("OrderCreator")
@@ -165,6 +168,22 @@ model User {
   //  - companyId is nullable for backward compatibility; making it required needs
   //    backfilling existing NULL rows before adding NOT NULL.
   @@index([companyId])
+  @@index([branchId])
+}
+
+// Branches a user is permitted to work in. The user's currently active branch
+// is `User.branchId` (set by a SUPERADMIN during rotation); it must be one of
+// these permitted branches. Non-SUPERADMIN users only ever see their active branch.
+model UserBranch {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  branchId  Int
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, branchId])
   @@index([branchId])
 }
 
@@ -310,10 +329,30 @@ model Category {
   @@unique([companyId, codePrefix])
 }
 
+// A "marca" / brand groups menu items belonging to the same business line
+// served from a single physical location (e.g. two product lines under one RUC).
+model MenuBrand {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  name      String
+  color     String? // accent color for the POS brand switcher (hex)
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company    @relation(fields: [companyId], references: [id])
+  menuItems MenuItem[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
 model MenuItem {
   id          Int          @id @default(autoincrement())
   companyId   Int
   branchId    Int? // Optional: null means global menu item (for the company)
+  brandId     Int? // Optional: null means item is shared across all brands ("común")
   categoryId  Int
   name        String
   description String?
@@ -326,9 +365,10 @@ model MenuItem {
   availableTo   String? // Time format "HH:mm" e.g. "11:00"
   menuType      MenuTimeType? // Breakfast, Lunch, Dinner, All Day
 
-  company  Company  @relation(fields: [companyId], references: [id])
-  category Category @relation(fields: [categoryId], references: [id])
-  branch   Branch?  @relation(fields: [branchId], references: [id])
+  company  Company    @relation(fields: [companyId], references: [id])
+  category Category   @relation(fields: [categoryId], references: [id])
+  branch   Branch?    @relation(fields: [branchId], references: [id])
+  brand    MenuBrand? @relation(fields: [brandId], references: [id])
 
   recipes        Recipe[]
   images         MenuItemImage[]
@@ -340,6 +380,7 @@ model MenuItem {
 
   @@index([companyId, categoryId])
   @@index([branchId])
+  @@index([brandId])
 }
 
 enum MenuTimeType {
@@ -435,6 +476,7 @@ model Product {
   price              Decimal?    @db.Decimal(10, 2)
   type               ProductType  @default(INGREDIENT)
   storageType        StorageType?
+  observation        String?      @db.Text
   active             Boolean     @default(true)
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt

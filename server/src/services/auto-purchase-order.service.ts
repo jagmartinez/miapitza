@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma';
 import { StockAlertService } from './stock-alert.service';
+import { UnitConversionService } from './unit-conversion.service';
 
 type LowStockProductRow = Awaited<ReturnType<typeof StockAlertService.getLowStockProducts>>[number];
 
@@ -118,6 +119,53 @@ export class AutoPurchaseOrderService {
 
             const total = items.reduce((sum, item) => sum + (item.quantity * item.cost), 0);
 
+            // Resolve a purchase unit for every product so the conversion to base
+            // unit stays explicit. Suggested quantities come from stock (already in
+            // base unit), so we prefer the product's base unit to keep factor 1 and
+            // avoid altering the resulting quantities; this change is purely about
+            // traceability/consistency.
+            const purchaseUnitByProduct = new Map<number, string | null>();
+            for (const productId of uniqueProductIds) {
+                try {
+                    const allowedUnits = await UnitConversionService.getAllowedUnits(productId, companyId);
+                    const baseUnit = allowedUnits.find(u => u.isBase)
+                        ?? allowedUnits.find(u => u.isDefault)
+                        ?? allowedUnits[0];
+                    purchaseUnitByProduct.set(productId, baseUnit ? baseUnit.abbreviation : null);
+                } catch {
+                    purchaseUnitByProduct.set(productId, null);
+                }
+            }
+
+            const itemCreates = [];
+            for (const item of items) {
+                let purchaseUnit: string | null = purchaseUnitByProduct.get(item.productId) ?? null;
+                let conversionFactor: number | null = null;
+                let baseQuantity: number | null = null;
+                let baseCost: number | null = null;
+
+                if (purchaseUnit) {
+                    const conv = await UnitConversionService.convertWithCost(
+                        item.productId, companyId, item.quantity, purchaseUnit, item.cost, tx
+                    );
+                    conversionFactor = conv.conversionFactor;
+                    baseQuantity = conv.baseQuantity;
+                    baseCost = conv.baseCost;
+                    purchaseUnit = conv.originalUnit;
+                }
+
+                itemCreates.push({
+                    productId: item.productId,
+                    quantity: item.quantity,
+                    cost: item.cost,
+                    subtotal: item.quantity * item.cost,
+                    purchaseUnit,
+                    conversionFactor,
+                    baseQuantity,
+                    baseCost
+                });
+            }
+
             return await tx.purchaseOrder.create({
                 data: {
                     companyId,
@@ -126,12 +174,7 @@ export class AutoPurchaseOrderService {
                     status: 'DRAFT',
                     total,
                     items: {
-                        create: items.map(item => ({
-                            productId: item.productId,
-                            quantity: item.quantity,
-                            cost: item.cost,
-                            subtotal: item.quantity * item.cost
-                        }))
+                        create: itemCreates
                     }
                 },
                 include: {

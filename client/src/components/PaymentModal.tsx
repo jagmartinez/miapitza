@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import { X, DollarSign, Users, CreditCard, Banknote, Smartphone, Calculator, Plus, Trash2, type LucideIcon } from 'lucide-react';
 import { paymentsAPI, splitBillAPI } from '../services/api';
+import Select from './Select';
+import type { SingleValue } from 'react-select';
 import { calculateTipAmount, calculateTotalWithTip, splitTotalEvenly } from '../utils/payment';
 import type { Order } from '../types';
 import './PaymentModal.css';
@@ -759,17 +761,18 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                                                 background: 'var(--bg-primary, #fff)'
                                             }} />
 
-                                        <select value={split.paymentMethodId}
-                                            onChange={(e) => updateSplit(idx, 'paymentMethodId', parseInt(e.target.value))}
-                                            style={{
-                                                padding: '6px 8px', borderRadius: '6px',
-                                                border: '1px solid var(--color-neutral-200)', fontSize: '0.85rem',
-                                                background: 'var(--bg-primary, #fff)', cursor: 'pointer'
-                                            }}>
-                                            {paymentMethods.map(m => (
-                                                <option key={m.id} value={m.id}>{m.name}</option>
-                                            ))}
-                                        </select>
+                                        <Select
+                                            className="payment-split-select"
+                                            value={
+                                                paymentMethods.find((m) => m.id === split.paymentMethodId)
+                                                    ? { value: split.paymentMethodId, label: paymentMethods.find((m) => m.id === split.paymentMethodId)!.name }
+                                                    : null
+                                            }
+                                            onChange={(option: SingleValue<{ value: number; label: string }>) =>
+                                                option && updateSplit(idx, 'paymentMethodId', option.value)}
+                                            options={paymentMethods.map((m) => ({ value: m.id, label: m.name }))}
+                                            isSearchable={false}
+                                        />
 
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
                                             <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{currencySymbol}</span>
@@ -826,24 +829,23 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                                                     {currencySymbol}{Number(item.subtotal).toFixed(2)}
                                                 </div>
                                             </div>
-                                            <select
-                                                value={itemAssignments[item.id] ?? 0}
-                                                onChange={(e) => setItemAssignments((prev) => ({
-                                                    ...prev,
-                                                    [item.id]: Number(e.target.value)
-                                                }))}
-                                                style={{
-                                                    minWidth: '150px',
-                                                    padding: '6px 8px',
-                                                    borderRadius: '6px',
-                                                    border: '1px solid var(--color-neutral-200)',
-                                                    background: 'var(--bg-primary, #fff)'
+                                            <Select
+                                                className="payment-split-assign-select"
+                                                value={{
+                                                    value: itemAssignments[item.id] ?? 0,
+                                                    label: splits[itemAssignments[item.id] ?? 0]?.payerName || splits[0]?.payerName || ''
                                                 }}
-                                            >
-                                                {splits.map((split, index) => (
-                                                    <option key={`${item.id}-${index}`} value={index}>{split.payerName}</option>
-                                                ))}
-                                            </select>
+                                                onChange={(option: SingleValue<{ value: number; label: string }>) =>
+                                                    option && setItemAssignments((prev) => ({
+                                                        ...prev,
+                                                        [item.id]: option.value
+                                                    }))}
+                                                options={splits.map((split, index) => ({
+                                                    value: index,
+                                                    label: split.payerName
+                                                }))}
+                                                isSearchable={false}
+                                            />
                                         </div>
                                     ))}
                                 </div>

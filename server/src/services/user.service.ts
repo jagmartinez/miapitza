@@ -54,6 +54,19 @@ export class UserService {
         }
     }
 
+    /** Ensure every branch in the permitted set belongs to the target company. */
+    private static async assertBranchesAssignable(companyId: number, branchIds: number[]) {
+        const unique = Array.from(new Set(branchIds));
+        if (unique.length === 0) return;
+        const found = await prisma.branch.findMany({
+            where: { id: { in: unique }, companyId },
+            select: { id: true }
+        });
+        if (found.length !== unique.length) {
+            throw new Error('Una o más sucursales no pertenecen a esta empresa');
+        }
+    }
+
     /** Resolve a sane default role for the company when none is supplied. */
     private static async resolveDefaultRoleId(companyId: number): Promise<number> {
         const role = await prisma.role.findFirst({
@@ -101,6 +114,9 @@ export class UserService {
                         name: true,
                         code: true
                     }
+                },
+                allowedBranches: {
+                    select: { branch: { select: { id: true, name: true, code: true } } }
                 },
                 company: {
                     select: {
@@ -161,6 +177,9 @@ export class UserService {
                         address: true
                     }
                 },
+                allowedBranches: {
+                    select: { branch: { select: { id: true, name: true, code: true } } }
+                },
                 company: {
                     select: {
                         id: true,
@@ -185,6 +204,7 @@ export class UserService {
         roleId?: number;
         roleIds?: number[];
         branchId?: number;
+        branchIds?: number[];
         status?: 'ACTIVE' | 'INACTIVE';
         color?: string | null;
         nif?: string;
@@ -198,7 +218,29 @@ export class UserService {
 
         await this.getById(id, companyId);
 
-        const { roleIds, ...rest } = data;
+        const { roleIds, branchIds, ...rest } = data;
+
+        const isSuperAdmin = actingRoles.includes(ROLES.SUPERADMIN);
+
+        // Branch assignment / rotation (active branch + permitted set) is a
+        // SUPERADMIN-only action.
+        if ((rest.branchId !== undefined || branchIds !== undefined) && !isSuperAdmin) {
+            throw new Error('No autorizado para asignar o rotar la sucursal del usuario');
+        }
+
+        if (branchIds !== undefined) {
+            await this.assertBranchesAssignable(companyId, branchIds);
+        }
+
+        // The active branch must be one of the user's permitted branches.
+        if (rest.branchId !== undefined && rest.branchId !== null) {
+            const permitted = branchIds !== undefined
+                ? branchIds
+                : (await prisma.userBranch.findMany({ where: { userId: id }, select: { branchId: true } })).map((b) => b.branchId);
+            if (!permitted.includes(rest.branchId)) {
+                throw new Error('La sucursal activa debe estar dentro de las sucursales permitidas del usuario');
+            }
+        }
 
         // Guard any role assignment (single roleId or roleIds) against cross-tenant
         // and privilege-escalation attempts.
@@ -243,6 +285,16 @@ export class UserService {
                 }
             });
 
+            // Replace the permitted branch set when provided.
+            if (branchIds !== undefined) {
+                await tx.userBranch.deleteMany({ where: { userId: id } });
+                if (branchIds.length > 0) {
+                    await tx.userBranch.createMany({
+                        data: Array.from(new Set(branchIds)).map((branchId: number) => ({ userId: id, branchId }))
+                    });
+                }
+            }
+
             if (roleIds && roleIds.length > 0) {
                 await tx.userRole.deleteMany({ where: { userId: id } });
                 await tx.userRole.createMany({
@@ -277,10 +329,29 @@ export class UserService {
         roleId: number;
         roleIds?: number[];
         branchId?: number;
+        branchIds?: number[];
         color?: string;
     }, actingRoles: string[] = []) {
         this.validatePassword(data.password);
         const hashedPassword = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
+
+        const isSuperAdmin = actingRoles.includes(ROLES.SUPERADMIN);
+        // Only a SUPERADMIN may define a multi-branch permitted set.
+        if (data.branchIds !== undefined && !isSuperAdmin) {
+            throw new Error('No autorizado para asignar las sucursales permitidas del usuario');
+        }
+
+        // Permitted set: explicit list, or just the active branch when omitted.
+        const permittedBranchIds = Array.from(new Set(
+            data.branchIds && data.branchIds.length > 0
+                ? data.branchIds
+                : (data.branchId ? [data.branchId] : [])
+        ));
+        await this.assertBranchesAssignable(companyId, permittedBranchIds);
+
+        if (data.branchId && permittedBranchIds.length > 0 && !permittedBranchIds.includes(data.branchId)) {
+            throw new Error('La sucursal activa debe estar dentro de las sucursales permitidas del usuario');
+        }
 
         // Replace the previous hardcoded fallback (roleId || 3), which could point at a
         // role in another tenant, with a company-scoped default role lookup.
@@ -314,6 +385,12 @@ export class UserService {
             await tx.userRole.createMany({
                 data: roleIds.map((roleId: number) => ({ userId: user.id, roleId }))
             });
+
+            if (permittedBranchIds.length > 0) {
+                await tx.userBranch.createMany({
+                    data: permittedBranchIds.map((branchId: number) => ({ userId: user.id, branchId }))
+                });
+            }
 
             return await tx.user.findUnique({
                 where: { id: user.id },

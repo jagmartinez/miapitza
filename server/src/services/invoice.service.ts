@@ -32,13 +32,18 @@ export class InvoiceService {
 
     private static async ensureInvoiceNumber(orderId: number, companyId: number, branchId: number): Promise<string> {
         return prisma.$transaction(async (tx) => {
-            const currentOrder = await tx.order.findFirst({
-                where: { id: orderId, companyId },
-                select: { invoiceNumber: true }
-            });
+            // Lock the order row FOR UPDATE so two concurrent invoice generations for the
+            // SAME order can't each consume a sequence number / assign a different invoice.
+            const locked = await tx.$queryRaw<{ id: number; invoiceNumber: string | null }[]>`
+                SELECT \`id\`, \`invoiceNumber\` FROM \`Order\`
+                WHERE \`id\` = ${orderId} AND \`companyId\` = ${companyId}
+                FOR UPDATE`;
 
-            if (currentOrder?.invoiceNumber) {
-                return currentOrder.invoiceNumber;
+            if (locked.length === 0) {
+                throw new Error('Order not found or unauthorized');
+            }
+            if (locked[0].invoiceNumber) {
+                return locked[0].invoiceNumber;
             }
 
             await tx.invoiceSequence.upsert({

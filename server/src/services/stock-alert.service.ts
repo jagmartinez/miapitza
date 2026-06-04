@@ -9,12 +9,17 @@ export class StockAlertService {
      * Products at or below minimum stock (aggregated across warehouses).
      * Matches ProductService.getLowStock so dashboard cards and the inventory grid stay in sync.
      */
-    static async getLowStockProducts(companyId: number, warehouseId?: number) {
+    static async getLowStockProducts(companyId: number, warehouseId?: number, branchId?: number) {
+        const stockWhere = {
+            ...(warehouseId ? { warehouseId } : {}),
+            // Branch-scoped users only count stock in their branch + shared CENTRAL warehouses.
+            ...(branchId ? { warehouse: { OR: [{ branchId }, { branchId: null }] } } : {})
+        };
         const products = await prisma.product.findMany({
             where: { active: true, companyId },
             include: {
                 stocks: {
-                    where: warehouseId ? { warehouseId } : undefined,
+                    where: Object.keys(stockWhere).length ? stockWhere : undefined,
                     include: {
                         warehouse: {
                             select: {
@@ -67,8 +72,8 @@ export class StockAlertService {
     /**
      * Get stock alert summary for dashboard
      */
-    static async getAlertSummary(companyId: number) {
-        const lowStockProducts = await this.getLowStockProducts(companyId);
+    static async getAlertSummary(companyId: number, branchId?: number) {
+        const lowStockProducts = await this.getLowStockProducts(companyId, undefined, branchId);
 
         return {
             totalAlerts: lowStockProducts.length,

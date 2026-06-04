@@ -1292,6 +1292,7 @@ export class ReportService {
         dateTo?: Date;
         branchId?: number;
         categoryId?: number;
+        brandId?: number;
         userId?: number;
         paymentMethodId?: number;
     }) {
@@ -1320,8 +1321,9 @@ export class ReportService {
                     include: {
                         menuItem: {
                             select: {
-                                name: true, categoryId: true,
-                                category: { select: { name: true } }
+                                name: true, categoryId: true, brandId: true,
+                                category: { select: { name: true } },
+                                brand: { select: { name: true } }
                             }
                         }
                     }
@@ -1331,15 +1333,18 @@ export class ReportService {
                         paymentMethod: { select: { name: true } }
                     }
                 },
-                user: { select: { name: true } }
+                user: { select: { name: true } },
+                branch: { select: { name: true } },
+                company: { select: { name: true } }
             },
             orderBy: { createdAt: 'desc' }
         });
 
         const items: {
             date: Date; orderNumber: string; productName: string;
-            categoryName: string | null; quantity: number; unitPrice: number;
+            categoryName: string | null; brandName: string | null; quantity: number; unitPrice: number;
             discount: number; totalSale: number; paymentMethod: string; userName: string;
+            branchName: string | null; companyName: string | null;
         }[] = [];
 
         let totalSales = 0;
@@ -1352,6 +1357,7 @@ export class ReportService {
 
             for (const item of order.items) {
                 if (filters?.categoryId && item.menuItem?.categoryId !== filters.categoryId) continue;
+                if (filters?.brandId && item.menuItem?.brandId !== filters.brandId) continue;
                 const subtotal = Math.round(Number(item.subtotal) * 100) / 100;
                 totalSales += subtotal;
                 items.push({
@@ -1359,12 +1365,15 @@ export class ReportService {
                     orderNumber: order.invoiceNumber || String(order.id),
                     productName: item.menuItem?.name || 'Unknown',
                     categoryName: item.menuItem?.category?.name || null,
+                    brandName: item.menuItem?.brand?.name || null,
                     quantity: item.quantity,
                     unitPrice: Math.round(Number(item.price) * 100) / 100,
                     discount: orderDiscount,
                     totalSale: subtotal,
                     paymentMethod: paymentMethodName,
-                    userName: order.user?.name || 'Unknown'
+                    userName: order.user?.name || 'Unknown',
+                    branchName: order.branch?.name || null,
+                    companyName: order.company?.name || null
                 });
             }
         }
@@ -1396,25 +1405,57 @@ export class ReportService {
             include: {
                 category: { select: { name: true } },
                 recipes: {
-                    include: {
-                        product: {
-                            select: { currentAverageCost: true }
-                        }
+                    select: {
+                        quantity: true,
+                        unit: true,
+                        product: { select: { id: true, unit: true, currentAverageCost: true, cost: true } }
                     }
                 }
             }
         });
 
-        const items = menuItems.map(mi => {
+        const items: Array<{
+            menuItemName: string;
+            categoryName: string | null;
+            price: number;
+            estimatedCost: number;
+            grossMargin: number;
+            marginPercent: number;
+            status: 'HIGH' | 'MEDIUM' | 'LOW';
+        }> = [];
+
+        for (const mi of menuItems) {
             const price = Math.round(Number(mi.price) * 100) / 100;
-            const estimatedCost = Math.round(
-                mi.recipes.reduce((sum, r) => sum + Number(r.quantity) * Number(r.product.currentAverageCost), 0) * 100
-            ) / 100;
+
+            // Cost per portion: convert each recipe quantity to the product's base
+            // unit (the unit `currentAverageCost`/`cost` are expressed in) before
+            // multiplying by the unit cost. Without this, a "200 g" recipe over a
+            // product costed per kg would massively overstate the cost.
+            let rawCost = 0;
+            for (const r of mi.recipes) {
+                const recipeUnit = r.unit || r.product.unit;
+                let qtyInBase = Number(r.quantity);
+                try {
+                    const conv = await UnitConversionService.convert(
+                        r.product.id,
+                        companyId,
+                        Number(r.quantity),
+                        recipeUnit
+                    );
+                    qtyInBase = conv.baseQuantity;
+                } catch {
+                    // Legacy products without configured units fall back to 1:1.
+                }
+                const unitCost = Number(r.product.currentAverageCost || r.product.cost || 0);
+                rawCost += qtyInBase * unitCost;
+            }
+
+            const estimatedCost = Math.round(rawCost * 100) / 100;
             const grossMargin = Math.round((price - estimatedCost) * 100) / 100;
             const marginPercent = price > 0 ? Math.round(((price - estimatedCost) / price) * 10000) / 100 : 0;
             const status: 'HIGH' | 'MEDIUM' | 'LOW' = marginPercent > 60 ? 'HIGH' : marginPercent >= 30 ? 'MEDIUM' : 'LOW';
 
-            return {
+            items.push({
                 menuItemName: mi.name,
                 categoryName: mi.category?.name || null,
                 price,
@@ -1422,8 +1463,8 @@ export class ReportService {
                 grossMargin,
                 marginPercent,
                 status
-            };
-        });
+            });
+        }
 
         const avgMargin = items.length > 0
             ? Math.round(items.reduce((s, i) => s + i.marginPercent, 0) / items.length * 100) / 100

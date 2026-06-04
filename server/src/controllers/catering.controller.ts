@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { CateringStatus } from '@prisma/client';
 import { CateringService } from '../services/catering.service';
 import { getErrorMessage } from '../utils/error';
+import { resolveBranchScope, assertBranchAccess, isCompanyWide, BranchScopeError } from '../utils/branch-scope';
 
 const CATERING_STATUSES: readonly CateringStatus[] = [
     'QUOTED',
@@ -18,11 +19,19 @@ function parseCateringStatus(value: unknown): CateringStatus | undefined {
 
 export class CateringController {
 
+    /** Load a catering event and assert the caller's branch may access it. */
+    private static async assertEventBranch(req: Request, eventId: number) {
+        const event = await CateringService.getEventById(eventId, req.user!.companyId);
+        assertBranchAccess(req.user!, (event as { branchId: number | null }).branchId, { allowGlobal: true });
+        return event;
+    }
+
     static async getAllEvents(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
+            const requested = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
             const filters = {
-                branchId: req.query.branchId ? parseInt(req.query.branchId as string) : undefined,
+                branchId: resolveBranchScope(req.user!, requested),
                 status: parseCateringStatus(req.query.status),
                 startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
                 endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
@@ -31,6 +40,7 @@ export class CateringController {
             const events = await CateringService.getAllEvents(companyId, filters);
             res.json({ success: true, data: events });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
@@ -38,10 +48,10 @@ export class CateringController {
     static async getEventById(req: Request, res: Response, next: NextFunction) {
         try {
             const id = parseInt(req.params.id);
-            const companyId = req.user!.companyId;
-            const event = await CateringService.getEventById(id, companyId);
+            const event = await CateringController.assertEventBranch(req, id);
             res.json({ success: true, data: event });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 404, message: getErrorMessage(error) });
         }
     }
@@ -50,9 +60,17 @@ export class CateringController {
         try {
             const companyId = req.user!.companyId;
             const userId = req.user!.userId;
+            // Non-superadmin users create events only in their active branch.
+            if (!isCompanyWide(req.user!)) {
+                if (!req.user!.branchId) {
+                    return next({ statusCode: 400, message: 'Su usuario no tiene una sucursal activa asignada.' });
+                }
+                req.body.branchId = req.user!.branchId;
+            }
             const event = await CateringService.createEvent(companyId, userId, req.body);
             res.status(201).json({ success: true, data: event });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -62,9 +80,14 @@ export class CateringController {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
             const userId = req.user!.userId;
+            await CateringController.assertEventBranch(req, id);
+            if (req.body.branchId !== undefined && req.body.branchId !== null) {
+                assertBranchAccess(req.user!, Number(req.body.branchId), { allowGlobal: true });
+            }
             const event = await CateringService.updateEvent(id, companyId, userId, req.body);
             res.json({ success: true, data: event });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -73,9 +96,11 @@ export class CateringController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            await CateringController.assertEventBranch(req, id);
             await CateringService.deleteEvent(id, companyId);
             res.json({ success: true, message: 'Evento eliminado exitosamente' });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -84,9 +109,11 @@ export class CateringController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            await CateringController.assertEventBranch(req, id);
             const payment = await CateringService.addPayment(id, companyId, req.body);
             res.status(201).json({ success: true, data: payment });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }

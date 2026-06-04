@@ -96,11 +96,18 @@ export class InventoryConsumptionService {
         for (const item of order.items) {
             for (const recipe of item.menuItem.recipes) {
                 const recipeUnit = recipe.unit || recipe.product.unit;
-                let recipeQtyBase = Number(recipe.quantity);
+                let recipeQtyBase: number;
                 let originalQuantity: number | null = null;
                 let originalUnit: string | null = null;
                 let conversionFactor: number | null = null;
 
+                // NOTE: do NOT silently fall back to the raw recipe quantity when a
+                // conversion fails. For legacy products without a base unit,
+                // `convert` already returns a safe 1:1 result; it only throws when a
+                // base unit IS configured and the recipe unit is incompatible. In
+                // that case deducting the raw quantity would corrupt stock (e.g.
+                // subtract 200 from a stock kept in kg for a "200 g" recipe), so we
+                // surface a clear error and abort the consumption transaction.
                 try {
                     const conv = await UnitConversionService.convert(
                         recipe.productId,
@@ -113,8 +120,12 @@ export class InventoryConsumptionService {
                     originalQuantity = conv.originalQuantity;
                     originalUnit = conv.originalUnit;
                     conversionFactor = conv.conversionFactor;
-                } catch {
-                    // Fallback to legacy quantity when conversion is not configured
+                } catch (err) {
+                    const detail = err instanceof Error ? err.message : 'conversión de unidad no válida';
+                    throw new Error(
+                        `No se pudo descontar inventario de "${recipe.product.name}": ${detail}. ` +
+                        `Revise la unidad de la receta y la configuración de unidades del producto.`
+                    );
                 }
 
                 const requiredQty = recipeQtyBase * item.quantity;

@@ -1,5 +1,6 @@
 import * as ExcelJS from 'exceljs';
 import prisma from '../utils/prisma';
+import { UnitConversionService } from './unit-conversion.service';
 
 export class PurchaseOrderImportService {
     /**
@@ -19,8 +20,9 @@ export class PurchaseOrderImportService {
         instructionsSheet.addRows([
             { field: 'SKU', description: 'Código único del producto (Insumo o Producto)', required: 'SÍ' },
             { field: 'Nombre', description: 'Nombre descriptivo (solo referencia)', required: 'NO' },
-            { field: 'Cantidad', description: 'Cantidad a comprar (número mayor a 0)', required: 'SÍ' },
-            { header: 'Costo Unitario', description: 'Precio por unidad (número mayor o igual a 0)', required: 'SÍ' }
+            { field: 'Cantidad', description: 'Cantidad a comprar (número mayor a 0), expresada en la unidad de compra indicada', required: 'SÍ' },
+            { field: 'Costo Unitario', description: 'Precio por unidad de compra (número mayor o igual a 0)', required: 'SÍ' },
+            { field: 'Unidad de compra', description: 'Unidad en que se compra (ej: caja, kg, l). Si se omite, se usa la unidad por defecto del producto.', required: 'NO' }
         ]);
 
         instructionsSheet.getRow(1).font = { bold: true };
@@ -33,7 +35,8 @@ export class PurchaseOrderImportService {
             { header: 'SKU', key: 'sku', width: 20 },
             { header: 'Nombre (Ref)', key: 'name', width: 40 },
             { header: 'Cantidad', key: 'quantity', width: 15 },
-            { header: 'Costo Unitario', key: 'unitCost', width: 20 }
+            { header: 'Costo Unitario', key: 'unitCost', width: 20 },
+            { header: 'Unidad de compra', key: 'unit', width: 18 }
         ];
 
         // Style header
@@ -44,8 +47,8 @@ export class PurchaseOrderImportService {
             fgColor: { argb: 'FFE0E0E0' }
         };
 
-        // Add some sample data
-        dataSheet.addRow(['SKU-EJEMPLO', 'Producto de Ejemplo', 10, 5.50]);
+        // Add some sample data (la unidad de compra es opcional)
+        dataSheet.addRow(['SKU-EJEMPLO', 'Producto de Ejemplo', 10, 5.50, 'caja']);
 
         // 3. Products Catalog Sheet (for reference)
         const productsSheet = workbook.addWorksheet('Catálogo de Productos');
@@ -94,6 +97,7 @@ export class PurchaseOrderImportService {
             name: string;
             productId: number | null;
             unit: string;
+            purchaseUnit: string | null;
             quantity: number;
             unitCost: number;
             total: number;
@@ -130,6 +134,8 @@ export class PurchaseOrderImportService {
             const nameRef = row.getCell(2).value?.toString().trim();
             const quantity = parseFloat(row.getCell(3).value?.toString() || '0');
             const unitCost = parseFloat(row.getCell(4).value?.toString() || '0');
+            const purchaseUnitRaw = row.getCell(5).value?.toString().trim();
+            const purchaseUnit = purchaseUnitRaw ? purchaseUnitRaw : null;
 
             // Skip empty rows
             if (!sku && !quantity && !unitCost) return;
@@ -166,6 +172,7 @@ export class PurchaseOrderImportService {
                 name: product ? product.name : (nameRef || 'N/A'),
                 productId: product ? product.id : null,
                 unit: product ? product.unit : 'N/A',
+                purchaseUnit,
                 quantity,
                 unitCost,
                 total: isValid ? (quantity * unitCost) : 0,
@@ -192,10 +199,46 @@ export class PurchaseOrderImportService {
             productId: number;
             quantity: number;
             unitCost: number;
+            purchaseUnit?: string | null;
         }>;
     }) {
         // Dynamic import to avoid circular dependency
         const { PurchaseOrderService } = await import('./purchase-order.service');
+
+        // Resolve a purchase unit for every item so the conversion to base unit is
+        // always explicit. If the Excel cell was empty, fall back to the product's
+        // default allowed unit (or its base unit), which keeps factor 1.
+        const resolvedItems = await Promise.all(
+            data.items.map(async (item) => {
+                const productId = Number(item.productId);
+                let purchaseUnit = item.purchaseUnit?.toString().trim() || null;
+
+                if (!purchaseUnit) {
+                    try {
+                        const allowedUnits = await UnitConversionService.getAllowedUnits(productId, companyId);
+                        // Prefer the BASE unit (factor 1) when the Excel cell is empty so
+                        // imported quantities are never inflated — the column is optional and
+                        // sheets are assumed to be in the inventory (base) unit. A non-base
+                        // default could carry a factor != 1 and silently multiply stock.
+                        const defaultUnit = allowedUnits.find(u => u.isBase)
+                            ?? allowedUnits.find(u => u.isDefault)
+                            ?? allowedUnits[0];
+                        purchaseUnit = defaultUnit ? defaultUnit.abbreviation : null;
+                    } catch {
+                        // If units can't be resolved, leave it null and let create() treat
+                        // the quantity as already being in base unit (legacy behavior).
+                        purchaseUnit = null;
+                    }
+                }
+
+                return {
+                    productId,
+                    quantity: Number(item.quantity),
+                    cost: Number(item.unitCost),
+                    ...(purchaseUnit ? { purchaseUnit } : {})
+                };
+            })
+        );
 
         // Map data to structure expected by PurchaseOrderService.create
         const poData = {
@@ -203,11 +246,7 @@ export class PurchaseOrderImportService {
             supplierId: Number(data.supplierId),
             invoiceNumber: data.invoiceNumber,
             notes: data.notes,
-            items: data.items.map(item => ({
-                productId: Number(item.productId),
-                quantity: Number(item.quantity),
-                cost: Number(item.unitCost)
-            }))
+            items: resolvedItems
         };
 
         return await PurchaseOrderService.create(companyId, poData);

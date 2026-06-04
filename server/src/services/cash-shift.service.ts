@@ -8,11 +8,16 @@ export class CashShiftService {
         status?: 'OPEN' | 'CLOSED';
         startDate?: string;
         endDate?: string;
+        branchId?: number;
     }) {
         const where: Prisma.CashShiftWhereInput = { companyId };
 
         if (filters?.cashRegisterId) {
             where.cashRegisterId = filters.cashRegisterId;
+        }
+
+        if (filters?.branchId) {
+            where.cashRegister = { branchId: filters.branchId };
         }
 
         if (filters?.userId) {
@@ -154,7 +159,7 @@ export class CashShiftService {
             });
 
             if (activeShift) {
-                throw new Error('Cash register already has an open shift');
+                throw new Error('Esta caja ya tiene un turno abierto');
             }
 
             return await tx.cashShift.create({
@@ -271,6 +276,15 @@ export class CashShiftService {
 
         if (shift.endDate) {
             throw new Error('No se pueden agregar movimientos a turnos cerrados');
+        }
+
+        // If a supplier is referenced, it must belong to this company.
+        if (data.supplierId) {
+            const supplier = await prisma.supplier.findFirst({
+                where: { id: data.supplierId, companyId },
+                select: { id: true }
+            });
+            if (!supplier) throw new Error('Proveedor no encontrado para esta empresa');
         }
 
         // Build creation data

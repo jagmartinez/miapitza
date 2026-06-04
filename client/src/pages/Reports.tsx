@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { reportsAPI, branchesAPI, categoriesAPI, suppliersAPI, warehousesAPI } from '../services/api';
+import { reportsAPI, branchesAPI, categoriesAPI, suppliersAPI, warehousesAPI, menuBrandsAPI } from '../services/api';
 import Button from '../components/Button';
 import Select from '../components/Select';
+import type { SingleValue } from 'react-select';
 import {
     Package, ShoppingCart, DollarSign, TrendingUp, BarChart3, AlertTriangle,
     ArrowLeft, Download, Search, FileSpreadsheet, Truck,
@@ -15,6 +16,7 @@ import './Reports.css';
 
 interface CategoryOption { id: number; name: string }
 interface WarehouseOption { id: number; name: string }
+interface BrandOption { id: number; name: string }
 
 // Currency/locale fall back to app-wide defaults (NIO / es-NI). Wiring these to
 // company settings requires a shared settings source (see report).
@@ -63,6 +65,7 @@ const REPORT_CATALOG: ReportDef[] = [
     { id: 'sales-daily', name: 'Ventas Diarias', description: 'Resumen de ventas día a día con ticket promedio.', icon: Calendar, category: 'Ventas', hiddenInHub: true },
     { id: 'sales-monthly', name: 'Ventas Mensuales', description: 'Ventas por mes con variación mes a mes.', icon: BarChart3, category: 'Ventas', hiddenInHub: true },
     { id: 'sales-by-category', name: 'Ventas por Categoría', description: 'Distribución de ventas por categoría con porcentaje del total.', icon: PieChart, category: 'Ventas', hiddenInHub: true },
+    { id: 'sales-by-brand', name: 'Ventas por Empresa', description: 'Distribución de ventas por empresa/marca con porcentaje del total. El arqueo de caja sigue siendo único.', icon: Building2, category: 'Ventas', hiddenInHub: true },
     { id: 'sales-by-payment-method', name: 'Ventas por Método de Pago', description: 'Desglose de pagos: efectivo, tarjeta, transferencia, etc.', icon: CreditCard, category: 'Ventas', hiddenInHub: true },
     { id: 'sales-by-waiter', name: 'Ventas por Mesero', description: 'Rendimiento de ventas por usuario/mesero.', icon: Users, category: 'Ventas', hiddenInHub: true },
     { id: 'sales-by-channel', name: 'Ventas por Canal', description: 'Restaurante vs Delivery vs PedidosYa con comisiones y margen.', icon: Activity, category: 'Ventas', hiddenInHub: true },
@@ -89,7 +92,7 @@ const CATEGORIES_ORDER = ['Inventario', 'Compras', 'Ventas', 'Costos', 'Producci
 const REPORT_GROUPS: Array<{ key: string; reports: string[] }> = [
     { key: 'inventory', reports: ['inventory', 'low-stock'] },
     { key: 'purchases', reports: ['purchases', 'purchases-by-day', 'purchases-by-month', 'purchases-by-supplier', 'price-comparison', 'most-purchased'] },
-    { key: 'sales', reports: ['sales', 'sales-daily', 'sales-monthly', 'sales-by-category', 'sales-by-payment-method', 'sales-by-waiter', 'sales-by-channel', 'sales-by-hour'] },
+    { key: 'sales', reports: ['sales', 'sales-daily', 'sales-monthly', 'sales-by-category', 'sales-by-brand', 'sales-by-payment-method', 'sales-by-waiter', 'sales-by-channel', 'sales-by-hour'] },
     { key: 'costs-analytics', reports: ['profitability', 'food-cost-by-category', 'margin-by-product'] },
     { key: 'production', reports: ['recipe-cost', 'production-yield', 'menu-engineering', 'purchase-projection'] },
 ];
@@ -192,6 +195,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
     const [categories, setCategories] = useState<CategoryOption[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
+    const [brands, setBrands] = useState<BrandOption[]>([]);
 
     const [filters, setFilters] = useState<Record<string, string>>({
         dateFrom: monthStartStr(),
@@ -200,6 +204,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
         categoryId: '',
         supplierId: '',
         branchId: '',
+        brandId: '',
         lowStockOnly: '',
     });
 
@@ -209,11 +214,13 @@ function ReportDetail({ reportId }: { reportId: string }) {
             categoriesAPI.getAll().catch(() => ({ data: { data: [] } })),
             suppliersAPI.getAll().catch(() => ({ data: { data: [] } })),
             warehousesAPI.getAll().catch(() => ({ data: { data: [] } })),
-        ]).then(([bRes, cRes, sRes, wRes]) => {
+            menuBrandsAPI.getAll().catch(() => ({ data: { data: [] } })),
+        ]).then(([bRes, cRes, sRes, wRes, brRes]) => {
             setBranches(bRes.data.data || []);
             setCategories(cRes.data.data || []);
             setSuppliers(sRes.data.data || []);
             setWarehouses(wRes.data.data || []);
+            setBrands(brRes.data.data || []);
         });
     }, []);
 
@@ -244,6 +251,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
                 case 'most-purchased': res = await reportsAPI.getMostPurchased(params); break;
                 case 'purchases-by-supplier': res = await reportsAPI.getPurchasesBySupplier(params); break;
                 case 'sales-by-category': res = await reportsAPI.getSalesByCategory(params); break;
+                case 'sales-by-brand': res = await reportsAPI.getSalesByBrand(params); break;
                 case 'sales-daily': res = await reportsAPI.getSalesDaily(params); break;
                 case 'sales-monthly': res = await reportsAPI.getSalesMonthly(params); break;
                 case 'sales-by-payment-method': res = await reportsAPI.getSalesByPaymentMethod(params); break;
@@ -289,6 +297,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
                 case 'most-purchased': res = await reportsAPI.exportMostPurchased(params); break;
                 case 'purchases-by-supplier': res = await reportsAPI.exportPurchasesBySupplier(params); break;
                 case 'sales-by-category': res = await reportsAPI.exportSalesByCategory(params); break;
+                case 'sales-by-brand': res = await reportsAPI.exportSalesByBrand(params); break;
                 case 'sales-daily': res = await reportsAPI.exportSalesDaily(params); break;
                 case 'sales-monthly': res = await reportsAPI.exportSalesMonthly(params); break;
                 case 'sales-by-payment-method': res = await reportsAPI.exportSalesByPaymentMethod(params); break;
@@ -315,7 +324,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
     };
 
     const clearFilters = () => {
-        setFilters({ dateFrom: monthStartStr(), dateTo: todayStr(), warehouseId: '', categoryId: '', supplierId: '', branchId: '', lowStockOnly: '' });
+        setFilters({ dateFrom: monthStartStr(), dateTo: todayStr(), warehouseId: '', categoryId: '', supplierId: '', branchId: '', brandId: '', lowStockOnly: '' });
     };
 
     if (!reportDef) {
@@ -361,18 +370,18 @@ function ReportDetail({ reportId }: { reportId: string }) {
                 </div>
                 <div className="page-header-actions">
                     {groupedReports.length > 1 && (
-                        <div className="filter-field filter-field-wide">
-                            <label className="filter-field-label">Vista</label>
-                            <select
-                                className="filter-input"
-                                value={reportId}
-                                onChange={(e) => navigate(`/reporteria/${e.target.value}`)}
-                            >
-                                {groupedReports.map(r => (
-                                    <option key={r.id} value={r.id}>{r.name}</option>
-                                ))}
-                            </select>
-                        </div>
+                        <Select
+                            label="Vista"
+                            className="filter-field-wide"
+                            value={{
+                                value: reportId,
+                                label: groupedReports.find((r) => r.id === reportId)?.name || reportId
+                            }}
+                            onChange={(option: SingleValue<{ value: string; label: string }>) =>
+                                option && navigate(`/reporteria/${option.value}`)}
+                            options={groupedReports.map((r) => ({ value: r.id, label: r.name }))}
+                            isSearchable={false}
+                        />
                     )}
                     <Button onClick={handleExport} disabled={exporting || !data}>
                         {exporting ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
@@ -425,6 +434,18 @@ function ReportDetail({ reportId }: { reportId: string }) {
                             options={[{ value: '', label: 'Todas las Categorías' }, ...categories.map(c => ({ value: c.id.toString(), label: c.name }))]}
                             value={{ value: filters.categoryId, label: filters.categoryId ? categories.find(c => c.id.toString() === filters.categoryId)?.name || '' : 'Todas las Categorías' }}
                             onChange={(opt) => opt && set('categoryId', (opt as { value: string }).value)}
+                            isSearchable={false}
+                        />
+                    </div>
+                )}
+
+                {hasBrandFilter(reportId) && (
+                    <div className="filter-field">
+                        <Select
+                            label={<><Building2 size={12} /> Empresa/Marca</>}
+                            options={[{ value: '', label: 'Todas las Empresas' }, ...brands.map(b => ({ value: b.id.toString(), label: b.name }))]}
+                            value={{ value: filters.brandId, label: filters.brandId ? brands.find(b => b.id.toString() === filters.brandId)?.name || '' : 'Todas las Empresas' }}
+                            onChange={(opt) => opt && set('brandId', (opt as { value: string }).value)}
                             isSearchable={false}
                         />
                     </div>
@@ -577,14 +598,14 @@ function ReportDetail({ reportId }: { reportId: string }) {
 // ── Filter visibility helpers ──
 const DATE_FILTER_REPORTS = new Set([
     'purchases', 'sales', 'purchases-by-day', 'purchases-by-month', 'price-comparison',
-    'most-purchased', 'purchases-by-supplier', 'sales-by-category', 'sales-daily',
+    'most-purchased', 'purchases-by-supplier', 'sales-by-category', 'sales-by-brand', 'sales-daily',
     'sales-monthly', 'sales-by-payment-method', 'sales-by-waiter', 'sales-by-channel',
     'sales-by-hour', 'food-cost-by-category', 'margin-by-product', 'audit', 'day-analysis',
     'menu-engineering', 'purchase-projection',
 ]);
 const BRANCH_FILTER_REPORTS = new Set([
     'purchases', 'sales', 'purchases-by-day', 'purchases-by-month', 'most-purchased',
-    'purchases-by-supplier', 'sales-by-category', 'sales-daily', 'sales-monthly',
+    'purchases-by-supplier', 'sales-by-category', 'sales-by-brand', 'sales-daily', 'sales-monthly',
     'sales-by-payment-method', 'sales-by-waiter', 'sales-by-channel', 'sales-by-hour',
     'food-cost-by-category', 'margin-by-product', 'day-analysis', 'month-comparison',
     'recipe-cost', 'production-yield', 'menu-engineering', 'purchase-projection',
@@ -597,11 +618,15 @@ const CATEGORY_FILTER_REPORTS = new Set([
 const SUPPLIER_FILTER_REPORTS = new Set([
     'purchases', 'purchases-by-day', 'purchases-by-month', 'price-comparison',
 ]);
+const BRAND_FILTER_REPORTS = new Set([
+    'sales',
+]);
 
 function hasDateFilter(id: string) { return DATE_FILTER_REPORTS.has(id); }
 function hasBranchFilter(id: string) { return BRANCH_FILTER_REPORTS.has(id); }
 function hasCategoryFilter(id: string) { return CATEGORY_FILTER_REPORTS.has(id); }
 function hasSupplierFilter(id: string) { return SUPPLIER_FILTER_REPORTS.has(id); }
+function hasBrandFilter(id: string) { return BRAND_FILTER_REPORTS.has(id); }
 
 // ── KPI Icons / variants ──
 function getKpiIcon(key: string) {
@@ -656,12 +681,15 @@ function getColumns(reportId: string): ColDef[] {
             { key: 'orderNumber', header: 'Orden #' },
             { key: 'productName', header: 'Producto' },
             { key: 'categoryName', header: 'Categoría' },
+            { key: 'brandName', header: 'Empresa/Marca' },
             { key: 'quantity', header: 'Cant.', align: 'right', format: 'number' },
             { key: 'unitPrice', header: 'Precio Unit.', align: 'right', format: 'currency' },
             { key: 'discount', header: 'Descuento', align: 'right', format: 'currency' },
             { key: 'totalSale', header: 'Total', align: 'right', format: 'currency' },
             { key: 'paymentMethod', header: 'Método Pago' },
             { key: 'userName', header: 'Usuario' },
+            { key: 'branchName', header: 'Sucursal' },
+            { key: 'companyName', header: 'Empresa' },
         ];
         case 'profitability': return [
             { key: 'menuItemName', header: 'Producto / Menú' },
@@ -728,6 +756,13 @@ function getColumns(reportId: string): ColDef[] {
             { key: 'itemCount', header: '# Items', align: 'right', format: 'number' },
             { key: 'unitsSold', header: 'Unidades', align: 'right', format: 'number' },
         ];
+        case 'sales-by-brand': return [
+            { key: 'brandName', header: 'Empresa / Marca' },
+            { key: 'totalSales', header: 'Ventas Totales', align: 'right', format: 'currency' },
+            { key: 'percentOfTotal', header: '% del Total', align: 'right', format: 'number' },
+            { key: 'itemCount', header: '# Items', align: 'right', format: 'number' },
+            { key: 'unitsSold', header: 'Unidades', align: 'right', format: 'number' },
+        ];
         case 'sales-daily': return [
             { key: 'date', header: 'Fecha', format: 'date' },
             { key: 'totalSales', header: 'Ventas', align: 'right', format: 'currency' },
@@ -751,6 +786,8 @@ function getColumns(reportId: string): ColDef[] {
         case 'sales-by-waiter': return [
             { key: 'userName', header: 'Usuario' },
             { key: 'roleName', header: 'Rol' },
+            { key: 'branchName', header: 'Sucursal' },
+            { key: 'companyName', header: 'Empresa' },
             { key: 'totalSales', header: 'Ventas', align: 'right', format: 'currency' },
             { key: 'orderCount', header: '# Órdenes', align: 'right', format: 'number' },
             { key: 'avgTicket', header: 'Ticket Prom.', align: 'right', format: 'currency' },
@@ -892,6 +929,7 @@ function formatSummaryLabel(key: string): string {
         avgVariation: 'Variación Promedio', totalSpent: 'Total Gastado',
         totalSuppliers: 'Total Proveedores', topSupplier: 'Top Proveedor',
         totalCategories: 'Total Categorías', topCategory: 'Top Categoría',
+        totalBrands: 'Total Empresas', topBrand: 'Top Empresa',
         avgDailySales: 'Promedio Diario', avgTicket: 'Ticket Promedio',
         totalMethods: 'Métodos de Pago', dominantMethod: 'Método Dominante',
         totalUsers: 'Total Usuarios', topWaiter: 'Top Mesero',

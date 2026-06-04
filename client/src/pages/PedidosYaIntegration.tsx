@@ -5,6 +5,8 @@ import { useAppToast } from '../context/ToastContext';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import Input from '../components/Input';
+import Select from '../components/Select';
+import type { SingleValue } from 'react-select';
 import {
     Settings, Zap, Link2, RefreshCw, CheckCircle, XCircle,
     Package, AlertTriangle, Clock, ArrowRightLeft, Search, Plus, Trash2
@@ -248,17 +250,21 @@ export default function PedidosYaIntegration() {
                                     onChange={e => setConfig({ ...config, restaurantId: e.target.value })}
                                     placeholder="ID del restaurante en PedidosYa"
                                 />
-                                <div className="input-group">
-                                    <label className="input-label">Ambiente</label>
-                                    <select
-                                        className="modal-standard-input"
-                                        value={config.environment}
-                                        onChange={e => setConfig({ ...config, environment: e.target.value })}
-                                    >
-                                        <option value="sandbox">Sandbox (Pruebas)</option>
-                                        <option value="production">Producción</option>
-                                    </select>
-                                </div>
+                                <Select
+                                    variant="modal"
+                                    label="Ambiente"
+                                    value={{
+                                        value: config.environment,
+                                        label: config.environment === 'production' ? 'Producción' : 'Sandbox (Pruebas)'
+                                    }}
+                                    onChange={(option: SingleValue<{ value: string; label: string }>) =>
+                                        option && setConfig({ ...config, environment: option.value })}
+                                    options={[
+                                        { value: 'sandbox', label: 'Sandbox (Pruebas)' },
+                                        { value: 'production', label: 'Producción' }
+                                    ]}
+                                    isSearchable={false}
+                                />
                             </div>
                         </div>
 
@@ -537,20 +543,30 @@ export default function PedidosYaIntegration() {
                                         required
                                     />
                                 </div>
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label" htmlFor="pedidosya-menu-item">Producto Interno (Menú)</label>
-                                    <select
-                                        id="pedidosya-menu-item"
-                                        className="modal-standard-input"
-                                        value={mappingForm.menuItemId}
-                                        onChange={e => setMappingForm({ ...mappingForm, menuItemId: e.target.value })}
-                                    >
-                                        <option value="">-- Sin mapear --</option>
-                                        {menuItems.map(mi => (
-                                            <option key={mi.id} value={mi.id}>{mi.name} (C$ {Number(mi.price).toFixed(2)})</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                <Select
+                                    variant="modal"
+                                    inputId="pedidosya-menu-item"
+                                    label="Producto Interno (Menú)"
+                                    value={
+                                        mappingForm.menuItemId
+                                            ? (() => {
+                                                const mi = menuItems.find((m) => m.id.toString() === mappingForm.menuItemId);
+                                                return mi
+                                                    ? { value: mappingForm.menuItemId, label: `${mi.name} (C$ ${Number(mi.price).toFixed(2)})` }
+                                                    : null;
+                                            })()
+                                            : null
+                                    }
+                                    onChange={(option: SingleValue<{ value: string; label: string }>) =>
+                                        setMappingForm({ ...mappingForm, menuItemId: option?.value || '' })}
+                                    options={menuItems.map((mi) => ({
+                                        value: mi.id.toString(),
+                                        label: `${mi.name} (C$ ${Number(mi.price).toFixed(2)})`
+                                    }))}
+                                    placeholder="-- Sin mapear --"
+                                    isClearable
+                                    isSearchable
+                                />
                             </div>
                         </div>
                         <div className="modal-footer">

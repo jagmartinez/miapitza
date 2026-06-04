@@ -315,6 +315,61 @@ export class ReportExtendedService {
         };
     }
 
+    // ── SALES: by Brand (empresa/marca) ──
+    static async getSalesByBrand(companyId: number, filters?: {
+        dateFrom?: Date; dateTo?: Date; branchId?: number;
+    }) {
+        let effectiveFilters = filters;
+        if (!filters?.dateFrom && !filters?.dateTo) {
+            const now = new Date();
+            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+            const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+            effectiveFilters = { ...filters, dateFrom: monthStart, dateTo: monthEnd };
+        }
+        const orderWhere = this.buildOrderWhere(companyId, effectiveFilters);
+        const orders = await prisma.order.findMany({
+            where: orderWhere,
+            include: {
+                items: {
+                    include: {
+                        menuItem: { select: { brand: { select: { id: true, name: true } } } }
+                    }
+                }
+            }
+        });
+
+        const brandMap: Record<string, { brandName: string; totalSales: number; itemCount: number; unitsSold: number }> = {};
+        let grandTotal = 0;
+
+        for (const order of orders) {
+            for (const item of order.items) {
+                const brandName = item.menuItem?.brand?.name || 'Sin Marca (Común)';
+                if (!brandMap[brandName]) brandMap[brandName] = { brandName, totalSales: 0, itemCount: 0, unitsSold: 0 };
+                brandMap[brandName].totalSales += Number(item.subtotal);
+                brandMap[brandName].itemCount += 1;
+                brandMap[brandName].unitsSold += item.quantity;
+                grandTotal += Number(item.subtotal);
+            }
+        }
+
+        const items = Object.values(brandMap)
+            .sort((a, b) => b.totalSales - a.totalSales)
+            .map(c => ({
+                ...c,
+                totalSales: Math.round(c.totalSales * 100) / 100,
+                percentOfTotal: grandTotal > 0 ? Math.round(c.totalSales / grandTotal * 10000) / 100 : 0
+            }));
+
+        return {
+            items,
+            summary: {
+                totalBrands: items.length,
+                totalSales: Math.round(grandTotal * 100) / 100,
+                topBrand: items[0]?.brandName || 'N/A'
+            }
+        };
+    }
+
     // ── SALES: Daily ──
     static async getSalesDaily(companyId: number, filters?: {
         dateFrom?: Date; dateTo?: Date; branchId?: number; salesChannel?: string;
@@ -452,24 +507,32 @@ export class ReportExtendedService {
         const orders = await prisma.order.findMany({
             where: orderWhere,
             include: {
-                user: { select: { id: true, name: true, role: { select: { name: true } } } }
+                user: { select: { id: true, name: true, role: { select: { name: true } } } },
+                branch: { select: { name: true } },
+                company: { select: { name: true } }
             }
         });
 
-        const userMap: Record<number, {
-            userName: string; roleName: string; totalSales: number; orderCount: number;
+        // Group by user AND branch so each row makes the branch/company explicit
+        // (a cashier/waiter rotates across branches over time).
+        const userMap: Record<string, {
+            userName: string; roleName: string; branchName: string; companyName: string;
+            totalSales: number; orderCount: number;
         }> = {};
 
         for (const order of orders) {
-            if (!userMap[order.userId]) {
-                userMap[order.userId] = {
+            const key = `${order.userId}-${order.branchId}`;
+            if (!userMap[key]) {
+                userMap[key] = {
                     userName: order.user?.name || 'Unknown',
                     roleName: order.user?.role?.name || 'N/A',
+                    branchName: order.branch?.name || 'N/A',
+                    companyName: order.company?.name || 'N/A',
                     totalSales: 0, orderCount: 0
                 };
             }
-            userMap[order.userId].totalSales += Number(order.total);
-            userMap[order.userId].orderCount += 1;
+            userMap[key].totalSales += Number(order.total);
+            userMap[key].orderCount += 1;
         }
 
         const items = Object.values(userMap)

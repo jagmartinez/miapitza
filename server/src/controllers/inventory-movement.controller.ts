@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { InventoryMovementService } from '../services/inventory-movement.service';
+import { WarehouseService } from '../services/warehouse.service';
 import { getErrorMessage } from '../utils/error';
+import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
 
 export class InventoryMovementController {
 
@@ -10,13 +12,8 @@ export class InventoryMovementController {
             type MovementFilters = NonNullable<Parameters<typeof InventoryMovementService.getAll>[1]>;
             const filters: MovementFilters = {};
 
-            if (req.user?.role === 'SUPERADMIN') {
-                if (req.query.branchId) {
-                    filters.branchId = parseInt(req.query.branchId as string);
-                }
-            } else {
-                filters.branchId = req.user?.branchId;
-            }
+            const requested = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
+            filters.branchId = resolveBranchScope(req.user!, requested);
 
             if (req.query.warehouseId) {
                 filters.warehouseId = parseInt(req.query.warehouseId as string);
@@ -55,6 +52,7 @@ export class InventoryMovementController {
                 data: movements
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
@@ -79,12 +77,8 @@ export class InventoryMovementController {
             const companyId = req.user!.companyId;
             const warehouseId = req.query.warehouseId ? parseInt(req.query.warehouseId as string) : undefined;
 
-            let branchId: number | undefined;
-            if (req.user?.role === 'SUPERADMIN') {
-                branchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            } else {
-                branchId = req.user?.branchId;
-            }
+            const requested = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
+            const branchId = resolveBranchScope(req.user!, requested);
 
             const kardex = await InventoryMovementService.getKardex(productId, companyId, warehouseId, branchId);
             res.json({
@@ -92,6 +86,7 @@ export class InventoryMovementController {
                 data: kardex
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
@@ -99,7 +94,12 @@ export class InventoryMovementController {
     static async create(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            // Add userId from authenticated user
+
+            // The target warehouse must be accessible to the caller's branch
+            // (own branch, or a shared CENTRAL warehouse).
+            const warehouse = await WarehouseService.getById(parseInt(String(req.body.warehouseId)), companyId);
+            assertBranchAccess(req.user!, (warehouse as { branchId: number | null }).branchId, { allowGlobal: true });
+
             const data = {
                 ...req.body,
                 userId: req.user?.userId!
@@ -112,6 +112,7 @@ export class InventoryMovementController {
                 data: movement
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -119,6 +120,13 @@ export class InventoryMovementController {
     static async transfer(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
+
+            // Both source and destination warehouses must be accessible to the caller.
+            const from = await WarehouseService.getById(parseInt(String(req.body.fromWarehouseId)), companyId);
+            const to = await WarehouseService.getById(parseInt(String(req.body.toWarehouseId)), companyId);
+            assertBranchAccess(req.user!, (from as { branchId: number | null }).branchId, { allowGlobal: true });
+            assertBranchAccess(req.user!, (to as { branchId: number | null }).branchId, { allowGlobal: true });
+
             const data = {
                 ...req.body,
                 userId: req.user?.userId!
@@ -131,6 +139,7 @@ export class InventoryMovementController {
                 data: result
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }

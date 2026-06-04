@@ -42,6 +42,11 @@ const router = Router();
 // All purchase order routes require authentication
 router.use(authMiddleware);
 
+// Bulk import — must be registered BEFORE '/:id' so '/import/*' isn't captured as an id
+router.get('/import/template', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), PurchaseOrderImportController.getTemplate);
+router.post('/import/validate', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), upload.single('file'), PurchaseOrderImportController.validate);
+router.post('/import/confirm', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), PurchaseOrderImportController.confirm);
+
 router.get('/', PurchaseOrderController.getAll);
 router.get('/:id', validate(s.idParam), PurchaseOrderController.getById);
 router.post('/', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), uploadInvoice.single('invoicePdf'), PurchaseOrderController.create);
@@ -52,10 +57,5 @@ router.post('/:id/items', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate
 router.delete('/items/:itemId', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), PurchaseOrderController.removeItem);
 
 router.post('/:id/receive', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.idParam), PurchaseOrderController.receive);
-
-// Bulk import
-router.get('/import/template', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), PurchaseOrderImportController.getTemplate);
-router.post('/import/validate', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), upload.single('file'), PurchaseOrderImportController.validate);
-router.post('/import/confirm', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), PurchaseOrderImportController.confirm);
 
 export default router;

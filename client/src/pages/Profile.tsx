@@ -6,6 +6,8 @@ import { useLanguage } from '../hooks/useLanguage';
 import { usersAPI, reportsAPI, authAPI } from '../services/api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import Button from '../components/Button';
+import Select from '../components/Select';
+import type { SingleValue } from 'react-select';
 import {
     User, Lock, Save, Eye, EyeOff, Check, X, ShieldCheck,
     Calendar, TrendingUp, Shield, Smartphone, Monitor, LogOut,
@@ -382,10 +384,17 @@ export default function Profile() {
                                         <Languages size={22} />
                                         <div><h4>Idioma</h4><p>Idioma de la interfaz</p></div>
                                     </div>
-                                    <select value={language} onChange={e => setLanguage(e.target.value as Language)} className="profile-select">
-                                        <option value="es">Español</option>
-                                        <option value="en">English</option>
-                                    </select>
+                                    <Select
+                                        className="profile-select"
+                                        value={{ value: language, label: language === 'es' ? 'Español' : 'English' }}
+                                        onChange={(option: SingleValue<{ value: Language; label: string }>) =>
+                                            option && setLanguage(option.value)}
+                                        options={[
+                                            { value: 'es' as Language, label: 'Español' },
+                                            { value: 'en' as Language, label: 'English' }
+                                        ]}
+                                        isSearchable={false}
+                                    />
                                 </div>
                                 <div className="preference-box">
                                     <div className="pref-info">

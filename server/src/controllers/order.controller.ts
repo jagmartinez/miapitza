@@ -1,8 +1,16 @@
 import { Request, Response, NextFunction } from 'express';
 import { OrderService } from '../services/order.service';
 import { WebSocketService } from '../services/websocket.service';
+import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
 
 export class OrderController {
+    /** Load an order and assert the caller's branch may access it. */
+    private static async assertOrderBranch(req: Request, orderId: number) {
+        const order = await OrderService.getById(orderId, req.user!.companyId);
+        assertBranchAccess(req.user!, order.branchId);
+        return order;
+    }
+
     static async getAll(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
@@ -16,14 +24,8 @@ export class OrderController {
                 limit?: number;
             } = {};
 
-            const userRoles = req.user?.roles || [req.user?.role];
-            if (userRoles.includes('SUPERADMIN')) {
-                if (req.query.branchId) {
-                    filters.branchId = parseInt(req.query.branchId as string);
-                }
-            } else {
-                filters.branchId = req.user?.branchId;
-            }
+            const requested = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
+            filters.branchId = resolveBranchScope(req.user!, requested);
 
             if (req.query.tableId) {
                 filters.tableId = parseInt(req.query.tableId as string);
@@ -56,6 +58,7 @@ export class OrderController {
                 pagination: result.pagination
             });
         } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
@@ -63,19 +66,15 @@ export class OrderController {
     static async getActive(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            let branchId: number | undefined;
-            const activeRoles = req.user?.roles || [req.user?.role];
-            if (activeRoles.includes('SUPERADMIN')) {
-                branchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            } else {
-                branchId = req.user?.branchId;
-            }
+            const requested = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
+            const branchId = resolveBranchScope(req.user!, requested);
             const orders = await OrderService.getActiveOrders(companyId, branchId);
             res.json({
                 success: true,
                 data: orders
             });
         } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
@@ -85,11 +84,13 @@ export class OrderController {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
             const order = await OrderService.getById(id, companyId);
+            assertBranchAccess(req.user!, order.branchId);
             res.json({
                 success: true,
                 data: order
             });
         } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 404, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
@@ -98,8 +99,10 @@ export class OrderController {
         try {
             const companyId = req.user!.companyId;
 
-            // Use branchId from request body, or fallback to user's branchId
-            const branchId = req.body.branchId || req.user?.branchId;
+            // Non-superadmin users can only create orders in their active branch.
+            // SUPERADMIN must specify the target branch.
+            const requested = req.body.branchId ? Number(req.body.branchId) : req.user?.branchId;
+            const branchId = resolveBranchScope(req.user!, requested);
 
             if (!branchId) {
                 return next({ statusCode: 400, message: 'branchId es requerido' });
@@ -129,6 +132,7 @@ export class OrderController {
                 data: order
             });
         } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
@@ -137,6 +141,7 @@ export class OrderController {
         try {
             const orderId = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            await OrderController.assertOrderBranch(req, orderId);
             const item = await OrderService.addItem(orderId, companyId, req.body);
             res.status(201).json({
                 success: true,
@@ -144,6 +149,7 @@ export class OrderController {
                 data: item
             });
         } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
@@ -172,6 +178,7 @@ export class OrderController {
                 return next({ statusCode: 400, message: 'Estado es requerido' });
             }
 
+            await OrderController.assertOrderBranch(req, id);
             const order = await OrderService.updateStatus(id, companyId, status);
 
             // Broadcast status update
@@ -194,6 +201,7 @@ export class OrderController {
                 data: order
             });
         } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
@@ -204,6 +212,7 @@ export class OrderController {
             const companyId = req.user!.companyId;
             const { discount, discountCode, tax, tipAmount } = req.body;
 
+            await OrderController.assertOrderBranch(req, id);
             const order = await OrderService.updatePricing(id, companyId, {
                 discount: discount !== undefined ? Number(discount) : undefined,
                 discountCode: discountCode !== undefined ? String(discountCode || '') : undefined,
@@ -222,6 +231,7 @@ export class OrderController {
                 data: order
             });
         } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
@@ -230,6 +240,7 @@ export class OrderController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            await OrderController.assertOrderBranch(req, id);
             const order = await OrderService.sendToKitchen(id, companyId);
 
             // Broadcast to kitchen
@@ -245,6 +256,7 @@ export class OrderController {
                 data: order
             });
         } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
@@ -259,6 +271,7 @@ export class OrderController {
                 return next({ statusCode: 400, message: 'warehouseId es requerido' });
             }
 
+            await OrderController.assertOrderBranch(req, id);
             const order = await OrderService.complete(id, companyId, warehouseId);
 
             // Broadcast completion
@@ -282,6 +295,7 @@ export class OrderController {
             const orderId = parseInt(req.params.id);
             const itemId = parseInt(req.params.itemId);
             const companyId = req.user!.companyId;
+            await OrderController.assertOrderBranch(req, orderId);
             const result = await OrderService.startItem(orderId, itemId, companyId);
 
             WebSocketService.broadcastOrderUpdate(orderId, 'ITEM_STARTED', { orderId, item: result.item, order: result.order }, {
@@ -296,6 +310,7 @@ export class OrderController {
 
             res.json({ success: true, message: 'Artículo iniciado', data: result });
         } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
@@ -305,6 +320,7 @@ export class OrderController {
             const orderId = parseInt(req.params.id);
             const itemId = parseInt(req.params.itemId);
             const companyId = req.user!.companyId;
+            await OrderController.assertOrderBranch(req, orderId);
             const result = await OrderService.finishItem(orderId, itemId, companyId);
 
             WebSocketService.broadcastOrderUpdate(orderId, 'ITEM_FINISHED', { orderId, item: result.item, order: result.order }, {
@@ -321,6 +337,7 @@ export class OrderController {
 
             res.json({ success: true, message: result.allDone ? 'Todos los artículos listos - orden lista' : 'Artículo terminado', data: result });
         } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
@@ -336,6 +353,7 @@ export class OrderController {
                 return next({ statusCode: 400, message: 'Descripción del problema es requerida' });
             }
 
+            await OrderController.assertOrderBranch(req, orderId);
             const result = await OrderService.reportProblem(orderId, companyId, userId, description.trim());
 
             WebSocketService.broadcastOrderUpdate(orderId, 'PROBLEM_REPORTED', {
@@ -353,6 +371,7 @@ export class OrderController {
                 data: result
             });
         } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
@@ -364,6 +383,7 @@ export class OrderController {
             const cancelledById = req.user!.userId;
             const cancelReason = req.body.cancelReason || null;
 
+            await OrderController.assertOrderBranch(req, id);
             const order = await OrderService.cancel(id, companyId, cancelledById, cancelReason);
 
             WebSocketService.broadcastOrderUpdate(id, 'CANCELLED', order, {
@@ -377,6 +397,7 @@ export class OrderController {
                 data: order
             });
         } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }

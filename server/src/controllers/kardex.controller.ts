@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { KardexService } from '../services/kardex.service';
 import { getErrorMessage } from '../utils/error';
+import { resolveBranchScope, BranchScopeError } from '../utils/branch-scope';
 
 export class KardexController {
     /**
@@ -12,6 +13,8 @@ export class KardexController {
             const companyId = req.user!.companyId;
             const productId = parseInt(req.query.productId as string);
             const warehouseId = req.query.warehouseId ? parseInt(req.query.warehouseId as string) : undefined;
+            const requestedBranch = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
+            const branchId = resolveBranchScope(req.user!, requestedBranch);
             const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom as string) : undefined;
             const dateTo = req.query.dateTo ? new Date(req.query.dateTo as string) : undefined;
             const type = req.query.type as 'IN' | 'OUT' | 'ADJUSTMENT' | 'TRANSFER' | undefined;
@@ -23,6 +26,7 @@ export class KardexController {
             const kardex = await KardexService.generateKardex(companyId, {
                 productId,
                 warehouseId,
+                branchId,
                 dateFrom,
                 dateTo,
                 type
@@ -30,6 +34,9 @@ export class KardexController {
 
             res.json(kardex);
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) {
+                return res.status(error.statusCode).json({ error: error.message });
+            }
             console.error('[KardexController] Error getting kardex:', error);
             res.status(500).json({ error: getErrorMessage(error) });
         }
@@ -44,18 +51,24 @@ export class KardexController {
             const companyId = req.user!.companyId;
             const warehouseId = req.query.warehouseId ? parseInt(req.query.warehouseId as string) : undefined;
             const categoryId = req.query.categoryId ? parseInt(req.query.categoryId as string) : undefined;
+            const requestedBranch = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
+            const branchId = resolveBranchScope(req.user!, requestedBranch);
             const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom as string) : undefined;
             const dateTo = req.query.dateTo ? new Date(req.query.dateTo as string) : undefined;
 
             const summary = await KardexService.generateKardexSummary(companyId, {
                 warehouseId,
                 categoryId,
+                branchId,
                 dateFrom,
                 dateTo
             });
 
             res.json(summary);
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) {
+                return res.status(error.statusCode).json({ error: error.message });
+            }
             console.error('[KardexController] Error getting kardex summary:', error);
             res.status(500).json({ error: getErrorMessage(error) });
         }
@@ -70,6 +83,8 @@ export class KardexController {
             const companyId = req.user!.companyId;
             const productId = parseInt(req.query.productId as string);
             const warehouseId = req.query.warehouseId ? parseInt(req.query.warehouseId as string) : undefined;
+            const requestedBranch = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
+            const branchId = resolveBranchScope(req.user!, requestedBranch);
             const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom as string) : undefined;
             const dateTo = req.query.dateTo ? new Date(req.query.dateTo as string) : undefined;
 
@@ -80,6 +95,7 @@ export class KardexController {
             const buffer = await KardexService.exportToExcel(companyId, {
                 productId,
                 warehouseId,
+                branchId,
                 dateFrom,
                 dateTo
             });

@@ -84,6 +84,14 @@ export const createCategory: ValidationSchema = {
     },
 };
 
+// ── Menu Brands (marcas) ──
+export const createMenuBrand: ValidationSchema = {
+    body: {
+        name: { type: 'string', required: true, min: 1, max: 100 },
+        color: { type: 'string', required: false, max: 20 },
+    },
+};
+
 // ── Menu Items ──
 export const createMenuItem: ValidationSchema = {
     body: {
@@ -243,8 +251,11 @@ export const addPOItem: ValidationSchema = {
     params: { id: { type: 'number', required: true, min: 1 } },
     body: {
         productId: { type: 'number', required: true, min: 1 },
-        quantity: { type: 'number', required: true, min: 1 },
-        unitPrice: { type: 'number', required: true, min: 0 },
+        // Allow fractional purchase quantities (e.g. 0.5 kg, 2.5 L).
+        quantity: { type: 'number', required: true, min: 0.0001 },
+        // The service and client use `cost` (cost per purchase unit), not `unitPrice`.
+        cost: { type: 'number', required: true, min: 0 },
+        purchaseUnit: { type: 'string', required: false, max: 20 },
     },
 };
 

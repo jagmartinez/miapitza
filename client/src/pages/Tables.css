@@ -356,6 +356,39 @@
     }
 }
 
+/* Branch selector / filter for multi-branch management */
+.tables-branch-filter {
+    min-width: 220px;
+    margin-left: auto;
+}
+
+.table-branch-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-primary);
+    background: var(--color-primary-50, rgba(37, 99, 235, 0.08));
+    border: 1px solid var(--color-border);
+    width: fit-content;
+}
+
+.modal-static-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--color-border);
+    background: var(--color-background);
+    color: var(--color-text);
+    font-size: var(--font-size-base);
+}
+
 /* Legacy styles (keep for sidebar compatibility) */
 .tables-header {
     display: flex;

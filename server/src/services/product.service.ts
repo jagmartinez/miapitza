@@ -10,10 +10,17 @@ export class ProductService {
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE';
         categoryId?: number;
         active?: boolean;
+        branchId?: number;
         page?: number;
         limit?: number;
     }) {
         const where: Prisma.ProductWhereInput = { companyId };
+
+        // When the caller is scoped to a branch, the aggregate stock should only
+        // reflect that branch's warehouses (plus shared CENTRAL warehouses).
+        const stockWhere: Prisma.StockWhereInput | undefined = filters?.branchId
+            ? { warehouse: { OR: [{ branchId: filters.branchId }, { branchId: null }] } }
+            : undefined;
 
         if (filters?.type) {
             where.type = filters.type;
@@ -45,6 +52,10 @@ export class ProductService {
                             name: true
                         }
                     },
+                    stocks: {
+                        where: stockWhere,
+                        select: { quantity: true }
+                    },
                     _count: {
                         select: {
                             stocks: true,
@@ -61,7 +72,16 @@ export class ProductService {
             prisma.product.count({ where })
         ]);
 
-        return { data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+        // Expose an aggregate current stock so the UI can display and sort by it
+        // without an extra round trip per product.
+        const mapped = data.map((product) => {
+            const totalStock = product.stocks.reduce((sum, s) => sum + Number(s.quantity), 0);
+            const { stocks, ...rest } = product;
+            void stocks;
+            return { ...rest, totalStock };
+        });
+
+        return { data: mapped, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
     }
 
     static async getById(id: number, companyId: number) {
@@ -161,6 +181,7 @@ export class ProductService {
         price?: number;
         type?: 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH';
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE';
+        observation?: string | null;
     }, userId?: number) {
         if (!data.sku || data.sku.trim() === '') {
             data.sku = await this.generateSku(companyId, data.categoryId, data.type);
@@ -214,6 +235,7 @@ export class ProductService {
         price?: number;
         type?: 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH';
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE' | null;
+        observation?: string | null;
         active?: boolean;
     }, userId?: number) {
         const existing = await this.getById(id, companyId);

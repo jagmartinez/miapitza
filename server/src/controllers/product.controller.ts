@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { ProductService } from '../services/product.service';
 import { getErrorMessage } from '../utils/error';
+import { resolveBranchScope, BranchScopeError } from '../utils/branch-scope';
 
 export class ProductController {
 
@@ -9,6 +10,9 @@ export class ProductController {
             const companyId = req.user!.companyId;
             type ProductFilters = NonNullable<Parameters<typeof ProductService.getAll>[1]>;
             const filters: ProductFilters = {};
+
+            const requestedBranch = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
+            filters.branchId = resolveBranchScope(req.user!, requestedBranch);
 
             if (req.query.type) {
                 const t = req.query.type as string;
@@ -42,6 +46,7 @@ export class ProductController {
                 pagination: result.pagination
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
@@ -63,7 +68,8 @@ export class ProductController {
     static async getLowStock(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const branchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
+            const requestedBranch = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
+            const branchId = resolveBranchScope(req.user!, requestedBranch);
             const page = req.query.page ? parseInt(req.query.page as string) : undefined;
             const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
 
@@ -74,6 +80,7 @@ export class ProductController {
                 data: products
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             console.error('[ProductController.getLowStock] Error:', error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }

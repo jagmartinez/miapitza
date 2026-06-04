@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { tablesAPI, menuAPI, ordersAPI, settingsAPI, cashShiftsAPI, promotionsAPI, categoriesAPI } from '../services/api';
+import { tablesAPI, menuAPI, ordersAPI, settingsAPI, cashShiftsAPI, promotionsAPI, categoriesAPI, menuBrandsAPI } from '../services/api';
 import { offlineManager } from '../services/offlineManager';
 import { useDebounce } from '../utils/useDebounce';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
@@ -44,6 +44,13 @@ interface Category {
     active: boolean;
 }
 
+interface Brand {
+    id: number;
+    name: string;
+    color?: string | null;
+    active: boolean;
+}
+
 interface POSSettings {
     taxRate?: string;
     currency_symbol?: string;
@@ -75,6 +82,8 @@ export default function POS() {
     const [tables, setTables] = useState<Table[]>([]);
     const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
+    const [brands, setBrands] = useState<Brand[]>([]);
+    const [selectedBrand, setSelectedBrand] = useState<number | null>(null);
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
     const [cart, setCart] = useState<CartItem[]>([]);
     const [showMobileCart, setShowMobileCart] = useState(false);
@@ -141,11 +150,12 @@ export default function POS() {
                 }
             }
 
-            const [tablesRes, menuRes, settingsRes, categoriesRes] = await Promise.all([
+            const [tablesRes, menuRes, settingsRes, categoriesRes, brandsRes] = await Promise.all([
                 tablesAPI.getAll(),
                 menuAPI.getAll({ active: true }),
                 settingsAPI.getAll(),
-                categoriesAPI.getAll()
+                categoriesAPI.getAll(),
+                menuBrandsAPI.getAll()
             ]);
             setTables(tablesRes.data.data);
             setSelectedTable(prevTable =>
@@ -156,6 +166,7 @@ export default function POS() {
             setMenuItems(menuRes.data.data);
             setSettings(settingsRes.data.data);
             setCategories(categoriesRes.data.data);
+            setBrands(brandsRes.data.data || []);
         } catch {
             const message = 'No se pudieron cargar los datos del POS (mesas, menú o configuración). Revisa tu conexión e inténtalo de nuevo.';
             setLoadError(message);
@@ -671,12 +682,18 @@ export default function POS() {
 
     const filteredMenuItems = useMemo(() =>
         menuItems.filter(item => {
+            // Brand switcher: show the selected brand's items plus shared ("común") items.
+            const matchesBrand = selectedBrand === null
+                || item.brandId === selectedBrand
+                || item.brandId === null
+                || item.brandId === undefined;
+            if (!matchesBrand) return false;
             const matchesSearch = item.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
                 item.category?.name.toLowerCase().includes(debouncedSearch.toLowerCase());
             const matchesCategory = selectedCategory ? item.categoryId === Number(selectedCategory) : true;
             return matchesSearch && matchesCategory;
         }),
-        [menuItems, debouncedSearch, selectedCategory]
+        [menuItems, debouncedSearch, selectedCategory, selectedBrand]
     );
 
     if (loading) {
@@ -808,6 +825,34 @@ export default function POS() {
 
                 {/* Product Grid */}
                 <div className="product-area">
+                    {brands.filter(b => b.active).length > 0 && (
+                        <div className="pos-brand-switcher">
+                            <button
+                                className={`pos-brand-tab ${selectedBrand === null ? 'active' : ''}`}
+                                onClick={() => setSelectedBrand(null)}
+                            >
+                                Todas
+                            </button>
+                            {brands.filter(b => b.active).map(brand => (
+                                <button
+                                    key={brand.id}
+                                    className={`pos-brand-tab ${selectedBrand === brand.id ? 'active' : ''}`}
+                                    onClick={() => setSelectedBrand(brand.id)}
+                                    style={selectedBrand === brand.id && brand.color
+                                        ? { background: brand.color, borderColor: brand.color, color: '#fff' }
+                                        : brand.color
+                                            ? { borderColor: brand.color }
+                                            : undefined}
+                                >
+                                    <span
+                                        className="pos-brand-dot"
+                                        style={{ background: brand.color || 'var(--color-primary)' }}
+                                    />
+                                    {brand.name}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                     <div className="products-grid-new">
                         {filteredMenuItems.map(item => (
                             <POSProductCard

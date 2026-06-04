@@ -15,7 +15,8 @@ interface UserSavePayload {
     password?: string;
     roleId: number;
     roleIds: number[];
-    branchId: number | null;
+    branchId?: number | null;
+    branchIds?: number[];
     status: string;
     color: string | null;
     companyId?: number;
@@ -59,6 +60,7 @@ export default function Users() {
         roleIds: [] as string[],
         companyId: '',
         branchId: '',
+        branchIds: [] as string[],
         status: 'ACTIVE',
         color: ''
     });
@@ -109,6 +111,9 @@ export default function Users() {
             const userRoleIds = user.userRoles
                 ? user.userRoles.map(ur => ur.role.id.toString())
                 : [user.role.id.toString()];
+            const allowedIds = user.allowedBranches && user.allowedBranches.length > 0
+                ? user.allowedBranches.map(ab => ab.branch.id.toString())
+                : (user.branchId ? [user.branchId.toString()] : []);
             setFormData({
                 name: user.name,
                 email: user.email,
@@ -118,6 +123,7 @@ export default function Users() {
                 roleIds: userRoleIds,
                 companyId: user.companyId?.toString() || '',
                 branchId: user.branchId?.toString() || '',
+                branchIds: allowedIds,
                 status: user.status,
                 color: user.color || ''
             });
@@ -132,6 +138,7 @@ export default function Users() {
                 roleIds: [],
                 companyId: '',
                 branchId: '',
+                branchIds: [],
                 status: 'ACTIVE',
                 color: ''
             });
@@ -189,10 +196,19 @@ export default function Users() {
                 password: formData.password || undefined,
                 roleId: selectedRoleIds[0],
                 roleIds: selectedRoleIds,
-                branchId: formData.branchId ? parseInt(formData.branchId) : null,
                 status: formData.status,
                 color: formData.color || null
             };
+
+            // Branch assignment/rotation is SUPERADMIN-only. A SUPERADMIN sends the
+            // permitted set + active branch. A non-superadmin may only set the
+            // active branch when CREATING a user (it becomes the permitted set).
+            if (isSuperAdmin) {
+                payload.branchId = formData.branchId ? parseInt(formData.branchId) : null;
+                payload.branchIds = formData.branchIds.map(id => parseInt(id));
+            } else if (!editingUser) {
+                payload.branchId = formData.branchId ? parseInt(formData.branchId) : null;
+            }
 
             if (isSuperAdmin && formData.companyId) {
                 payload.companyId = parseInt(formData.companyId);
@@ -624,17 +640,70 @@ export default function Users() {
                                         </div>
                                     </div>
 
-                                    <Select
-                                        variant="modal"
-                                        label="Asignar Sucursal"
-                                        placeholder="Ninguna (Global / Superadmin)"
-                                        options={[
-                                            { value: '', label: 'Ninguna (Global / Superadmin)' },
-                                            ...branches.map(b => ({ value: b.id.toString(), label: b.name }))
-                                        ]}
-                                        value={formData.branchId ? { value: formData.branchId, label: branches.find(b => b.id.toString() === formData.branchId)?.name || '' } : { value: '', label: 'Ninguna (Global / Superadmin)' }}
-                                        onChange={(option: SingleValue<{ value: string; label: string }>) => option && setFormData({ ...formData, branchId: option.value })}
-                                    />
+                                    {isSuperAdmin ? (
+                                        <>
+                                            <div className="modal-input-group">
+                                                <label className="modal-input-label" id="user-branches-label">Sucursales permitidas (rotación)</label>
+                                                <div role="group" aria-labelledby="user-branches-label" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '8px 0' }}>
+                                                    {branches.map(b => {
+                                                        const bid = b.id.toString();
+                                                        const isChecked = formData.branchIds.includes(bid);
+                                                        return (
+                                                            <label key={b.id} style={{
+                                                                display: 'flex', alignItems: 'center', gap: '6px',
+                                                                padding: '6px 12px', borderRadius: '8px', cursor: 'pointer',
+                                                                background: isChecked ? 'var(--color-primary-100, #e0e7ff)' : 'var(--color-neutral-100)',
+                                                                border: `1.5px solid ${isChecked ? 'var(--color-primary, #6366f1)' : 'var(--color-neutral-200)'}`,
+                                                                fontSize: '0.85rem', fontWeight: isChecked ? 600 : 400,
+                                                            }}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isChecked}
+                                                                    onChange={() => {
+                                                                        const next = isChecked
+                                                                            ? formData.branchIds.filter(id => id !== bid)
+                                                                            : [...formData.branchIds, bid];
+                                                                        // If the active branch is removed from the permitted set, clear it.
+                                                                        const nextActive = next.includes(formData.branchId) ? formData.branchId : '';
+                                                                        setFormData({ ...formData, branchIds: next, branchId: nextActive });
+                                                                    }}
+                                                                />
+                                                                <span>{b.name}</span>
+                                                            </label>
+                                                        );
+                                                    })}
+                                                </div>
+                                                <small style={{ color: 'var(--color-neutral-500)' }}>El usuario solo verá información de su sucursal activa. El superadmin rota la sucursal activa entre las permitidas.</small>
+                                            </div>
+
+                                            <Select
+                                                variant="modal"
+                                                label="Sucursal activa"
+                                                placeholder="Ninguna (Global / Superadmin)"
+                                                options={[
+                                                    { value: '', label: 'Ninguna (Global / Superadmin)' },
+                                                    ...branches
+                                                        .filter(b => formData.branchIds.includes(b.id.toString()))
+                                                        .map(b => ({ value: b.id.toString(), label: b.name }))
+                                                ]}
+                                                value={formData.branchId ? { value: formData.branchId, label: branches.find(b => b.id.toString() === formData.branchId)?.name || '' } : { value: '', label: 'Ninguna (Global / Superadmin)' }}
+                                                onChange={(option: SingleValue<{ value: string; label: string }>) => option && setFormData({ ...formData, branchId: option.value })}
+                                            />
+                                        </>
+                                    ) : (
+                                        <Select
+                                            variant="modal"
+                                            label="Sucursal activa"
+                                            placeholder="Seleccionar sucursal"
+                                            options={[
+                                                { value: '', label: 'Sin sucursal' },
+                                                ...branches.map(b => ({ value: b.id.toString(), label: b.name }))
+                                            ]}
+                                            value={formData.branchId ? { value: formData.branchId, label: branches.find(b => b.id.toString() === formData.branchId)?.name || '' } : { value: '', label: 'Sin sucursal' }}
+                                            onChange={(option: SingleValue<{ value: string; label: string }>) => option && setFormData({ ...formData, branchId: option.value })}
+                                            isDisabled={!!editingUser}
+                                        />
+                                    )}
                                 </div>
                             )}
                         </div>

@@ -1,8 +1,16 @@
 import { Request, Response, NextFunction } from 'express';
 import { PurchaseOrderService } from '../services/purchase-order.service';
 import { getErrorMessage } from '../utils/error';
+import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
 
 export class PurchaseOrderController {
+
+    /** Load a purchase order and assert the caller's branch may access it. */
+    private static async assertOrderBranch(req: Request, orderId: number) {
+        const order = await PurchaseOrderService.getById(orderId, req.user!.companyId);
+        assertBranchAccess(req.user!, (order as { branchId: number | null }).branchId);
+        return order;
+    }
 
     static async getAll(req: Request, res: Response, next: NextFunction) {
         try {
@@ -14,13 +22,8 @@ export class PurchaseOrderController {
                 search?: string;
             } = {};
 
-            if (req.user?.role === 'SUPERADMIN') {
-                if (req.query.branchId) {
-                    filters.branchId = parseInt(req.query.branchId as string);
-                }
-            } else {
-                filters.branchId = req.user?.branchId;
-            }
+            const requested = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
+            filters.branchId = resolveBranchScope(req.user!, requested);
 
             if (req.query.supplierId) {
                 filters.supplierId = parseInt(req.query.supplierId as string);
@@ -40,6 +43,7 @@ export class PurchaseOrderController {
                 data: orders
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
@@ -49,11 +53,13 @@ export class PurchaseOrderController {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
             const order = await PurchaseOrderService.getById(id, companyId);
+            assertBranchAccess(req.user!, (order as { branchId: number | null }).branchId);
             res.json({
                 success: true,
                 data: order
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 404, message: getErrorMessage(error) });
         }
     }
@@ -84,13 +90,13 @@ export class PurchaseOrderController {
                 }));
             }
 
-            // Ensure branchId is set
-            if (!req.body.branchId) {
-                if (!req.user?.branchId) {
-                    return next({ statusCode: 400, message: 'ID de sucursal requerido' });
-                }
-                req.body.branchId = req.user.branchId;
+            // Non-superadmin users are pinned to their active branch.
+            const requestedBranch = req.body.branchId ? Number(req.body.branchId) : req.user?.branchId;
+            const branchId = resolveBranchScope(req.user!, requestedBranch);
+            if (!branchId) {
+                return next({ statusCode: 400, message: 'ID de sucursal requerido' });
             }
+            req.body.branchId = branchId;
 
             if (req.file) {
                 req.body.invoicePdf = `/uploads/invoices/${req.file.filename}`;
@@ -103,6 +109,7 @@ export class PurchaseOrderController {
                 data: order
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -138,6 +145,11 @@ export class PurchaseOrderController {
                 req.body.invoicePdf = `/uploads/invoices/${req.file.filename}`;
             }
 
+            await PurchaseOrderController.assertOrderBranch(req, id);
+            // A branch-scoped user cannot move a PO to another branch.
+            if (req.body.branchId !== undefined) {
+                assertBranchAccess(req.user!, Number(req.body.branchId));
+            }
             const order = await PurchaseOrderService.update(id, companyId, req.body);
             res.json({
                 success: true,
@@ -145,6 +157,7 @@ export class PurchaseOrderController {
                 data: order
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -153,12 +166,14 @@ export class PurchaseOrderController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            await PurchaseOrderController.assertOrderBranch(req, id);
             await PurchaseOrderService.delete(id, companyId);
             res.json({
                 success: true,
                 message: 'Orden de compra eliminada exitosamente'
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -173,6 +188,7 @@ export class PurchaseOrderController {
                 return next({ statusCode: 400, message: 'warehouseId es requerido' });
             }
 
+            await PurchaseOrderController.assertOrderBranch(req, id);
             const order = await PurchaseOrderService.receive(id, companyId, req.user?.userId!, warehouseId);
             res.json({
                 success: true,
@@ -180,6 +196,7 @@ export class PurchaseOrderController {
                 data: order
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -188,6 +205,7 @@ export class PurchaseOrderController {
         try {
             const orderId = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            await PurchaseOrderController.assertOrderBranch(req, orderId);
             const item = await PurchaseOrderService.addItem(orderId, companyId, req.body);
             res.status(201).json({
                 success: true,
@@ -195,6 +213,7 @@ export class PurchaseOrderController {
                 data: item
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }

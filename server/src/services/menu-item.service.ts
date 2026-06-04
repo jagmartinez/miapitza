@@ -6,6 +6,7 @@ export class MenuItemService {
     static async getAll(companyId: number, filters?: {
         branchId?: number;
         categoryId?: number;
+        brandId?: number;
         active?: boolean;
         type?: 'PREPARED' | 'DIRECT';
     }) {
@@ -20,6 +21,10 @@ export class MenuItemService {
 
         if (filters?.categoryId) {
             where.categoryId = filters.categoryId;
+        }
+
+        if (filters?.brandId) {
+            where.brandId = filters.brandId;
         }
 
         if (filters?.active !== undefined) {
@@ -37,6 +42,13 @@ export class MenuItemService {
                     select: {
                         id: true,
                         name: true
+                    }
+                },
+                brand: {
+                    select: {
+                        id: true,
+                        name: true,
+                        color: true
                     }
                 },
                 branch: {
@@ -157,14 +169,38 @@ export class MenuItemService {
         };
     }
 
+    // Ensure foreign keys provided by the client actually belong to the caller's
+    // company. Prisma only validates FKs by global id, so without this an item
+    // could be linked to another tenant's category/brand/branch.
+    private static async assertScopedRefs(companyId: number, refs: {
+        categoryId?: number | null;
+        brandId?: number | null;
+        branchId?: number | null;
+    }) {
+        if (refs.categoryId !== undefined && refs.categoryId !== null) {
+            const category = await prisma.category.findFirst({ where: { id: refs.categoryId, companyId }, select: { id: true } });
+            if (!category) throw new Error('Categoría no encontrada para esta empresa');
+        }
+        if (refs.brandId !== undefined && refs.brandId !== null) {
+            const brand = await prisma.menuBrand.findFirst({ where: { id: refs.brandId, companyId }, select: { id: true } });
+            if (!brand) throw new Error('Marca no encontrada para esta empresa');
+        }
+        if (refs.branchId !== undefined && refs.branchId !== null) {
+            const branch = await prisma.branch.findFirst({ where: { id: refs.branchId, companyId }, select: { id: true } });
+            if (!branch) throw new Error('Sucursal no encontrada para esta empresa');
+        }
+    }
+
     static async create(companyId: number, data: {
         branchId?: number;
+        brandId?: number | null;
         categoryId: number;
         name: string;
         description?: string;
         price: number;
         type?: 'PREPARED' | 'DIRECT';
     }) {
+        await this.assertScopedRefs(companyId, { categoryId: data.categoryId, brandId: data.brandId, branchId: data.branchId });
         return await prisma.menuItem.create({
             data: {
                 ...data,
@@ -184,6 +220,7 @@ export class MenuItemService {
 
     static async update(id: number, companyId: number, data: {
         branchId?: number | null;
+        brandId?: number | null;
         categoryId?: number;
         name?: string;
         description?: string;
@@ -198,6 +235,8 @@ export class MenuItemService {
                 throw new Error('El precio debe ser un número válido mayor o igual a 0');
             }
         }
+
+        await this.assertScopedRefs(companyId, { categoryId: data.categoryId, brandId: data.brandId, branchId: data.branchId });
 
         return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const item = await tx.menuItem.findFirst({ where: { id, companyId } });
@@ -229,6 +268,23 @@ export class MenuItemService {
         });
     }
 
+    /**
+     * Resolve a unit abbreviation to its `UnitOfMeasure` id within the company so
+     * recipes keep referential integrity (`Recipe.unitId`) alongside the legacy
+     * `unit` string. Returns null when the abbreviation is empty or unknown
+     * (kept non-blocking to avoid breaking legacy products without a catalog).
+     */
+    private static async resolveUnitId(companyId: number, unit?: string | null): Promise<number | null> {
+        if (!unit) return null;
+        const abbr = unit.trim();
+        if (!abbr) return null;
+        const uom = await prisma.unitOfMeasure.findFirst({
+            where: { companyId, abbreviation: abbr },
+            select: { id: true }
+        });
+        return uom?.id ?? null;
+    }
+
     // Recipe management
     static async addRecipe(menuItemId: number, companyId: number, data: {
         productId: number;
@@ -237,6 +293,9 @@ export class MenuItemService {
     }) {
         // Verify menu item belongs to company
         await this.getById(menuItemId, companyId);
+        // Verify the product also belongs to the company (avoid cross-tenant recipe links)
+        const product = await prisma.product.findFirst({ where: { id: data.productId, companyId }, select: { id: true } });
+        if (!product) throw new Error('Producto no encontrado para esta empresa');
         // Check if recipe already exists
         const existing = await prisma.recipe.findFirst({
             where: {
@@ -249,10 +308,15 @@ export class MenuItemService {
             throw new Error('Recipe for this product already exists in this menu item');
         }
 
+        const unitId = await this.resolveUnitId(companyId, data.unit);
+
         return await prisma.recipe.create({
             data: {
                 menuItemId,
-                ...data
+                productId: data.productId,
+                quantity: data.quantity,
+                unit: data.unit,
+                unitId
             },
             include: {
                 product: {
@@ -271,12 +335,23 @@ export class MenuItemService {
         quantity?: number;
         unit?: string;
     }) {
+        const updateData: Prisma.RecipeUpdateInput = {};
+        if (data.quantity !== undefined) updateData.quantity = data.quantity;
+        if (data.unit !== undefined) {
+            updateData.unit = data.unit;
+            // Keep the FK in sync with the abbreviation.
+            const unitId = await this.resolveUnitId(companyId, data.unit);
+            updateData.unitOfMeasure = unitId
+                ? { connect: { id: unitId } }
+                : { disconnect: true };
+        }
+
         return await prisma.recipe.update({
             where: {
                 id: recipeId,
                 menuItem: { companyId }
             },
-            data,
+            data: updateData,
             include: {
                 product: {
                     select: {

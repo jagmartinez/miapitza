@@ -62,6 +62,7 @@ const Kardex = lazy(() => import('./pages/Kardex'));
 const Catering = lazy(() => import('./pages/Catering'));
 const CateringServices = lazy(() => import('./pages/CateringServices'));
 const Categories = lazy(() => import('./pages/Categories'));
+const Brands = lazy(() => import('./pages/Brands'));
 const Promotions = lazy(() => import('./pages/Promotions'));
 const WarehousesPage = lazy(() => import('./pages/Warehouses'));
 const CostReport = lazy(() => import('./pages/CostReport'));
@@ -108,6 +109,7 @@ function App() {
                                 <Route path="/catering" element={<RoleGuard roles={CASHIER}><Catering /></RoleGuard>} />
                                 <Route path="/catering-services" element={<RoleGuard roles={CASHIER}><CateringServices /></RoleGuard>} />
                                 <Route path="/categories" element={<RoleGuard roles={CHEF_MGMT}><Categories /></RoleGuard>} />
+                                <Route path="/menu-brands" element={<RoleGuard roles={CHEF_MGMT}><Brands /></RoleGuard>} />
                                 <Route path="/promotions" element={<RoleGuard roles={ADMIN}><Promotions /></RoleGuard>} />
                                 <Route path="/inventory" element={<RoleGuard roles={WAREHOUSE}><Inventory /></RoleGuard>} />
                                 <Route path="/units-of-measure" element={<RoleGuard roles={WAREHOUSE}><UnitsOfMeasure /></RoleGuard>} />

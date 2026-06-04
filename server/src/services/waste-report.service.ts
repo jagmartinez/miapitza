@@ -19,6 +19,20 @@ export class WasteReportService {
     }) {
         // Wrap in transaction for atomicity
         return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            // Ensure both warehouse and product belong to the caller's company
+            // before touching any stock (stock lookup is keyed only by ids).
+            const warehouse = await tx.warehouse.findFirst({
+                where: { id: data.warehouseId, companyId },
+                select: { id: true }
+            });
+            if (!warehouse) throw new Error('Bodega no encontrada para esta empresa');
+
+            const product = await tx.product.findFirst({
+                where: { id: data.productId, companyId },
+                select: { id: true }
+            });
+            if (!product) throw new Error('Producto no encontrado para esta empresa');
+
             // Check stock availability first
             const stock = await tx.stock.findUnique({
                 where: {

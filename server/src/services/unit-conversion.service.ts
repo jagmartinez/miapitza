@@ -195,6 +195,17 @@ export class UnitConversionService {
                 );
             }
 
+            // PACKAGE units (caja, saco, paquete, ...) all share systemFactor = 1, so a
+            // dynamic fallback would silently assume 1:1 (e.g. 1 caja = 1 paquete),
+            // corrupting inventory. Require an explicit per-product factor instead.
+            if (inferredBase.measurementType === 'PACKAGE') {
+                throw new Error(
+                    `La unidad de empaque "${unitAbbreviation}" requiere un factor de conversión ` +
+                    `configurado para este producto (ej. 1 ${dynamicUnit.abbreviation} = N ${inferredBase.abbreviation}). ` +
+                    `Configúrelo en "Conversiones" del producto.`
+                );
+            }
+
             const dynamicFactor = Number(dynamicUnit.systemFactor) / Number(inferredBase.systemFactor);
             const dynamicBaseQuantity = quantity * dynamicFactor;
             return {
@@ -245,6 +256,17 @@ export class UnitConversionService {
                 throw new Error(
                     `Unidad "${unitAbbreviation}" no es compatible con la base "${baseUnit.abbreviation}" ` +
                     `(${baseUnit.measurementType}).`
+                );
+            }
+
+            // PACKAGE units share systemFactor = 1; a dynamic ratio would assume
+            // 1:1 between packages (1 caja = 1 paquete), silently corrupting stock.
+            // Force an explicit per-product conversion factor for packaging units.
+            if (baseUnit.measurementType === 'PACKAGE') {
+                throw new Error(
+                    `La unidad de empaque "${unitAbbreviation}" requiere un factor de conversión ` +
+                    `configurado para este producto (ej. 1 ${dynamicUnit.abbreviation} = N ${baseUnit.abbreviation}). ` +
+                    `Configúrelo en "Conversiones" del producto.`
                 );
             }
 
@@ -513,9 +535,12 @@ export class UnitConversionService {
         });
         if (!baseUom) return null;
 
+        // Pin baseUnitId and align the legacy `unit` string to the resolved base
+        // abbreviation so listings/kardex (which still display `product.unit`)
+        // stay consistent with the configured base unit (e.g. "gr" -> "g").
         await db.product.update({
             where: { id: productId },
-            data: { baseUnitId: baseUom.id }
+            data: { baseUnitId: baseUom.id, unit: baseUom.abbreviation }
         });
 
         // Add base unit as allowed (factor 1)
@@ -538,6 +563,12 @@ export class UnitConversionService {
                 where: { companyId_abbreviation: { companyId, abbreviation: abbr } }
             });
             if (!relatedUom) continue;
+
+            // Skip PACKAGE-type related units (caja, saco, paquete, ...). Their
+            // systemFactor is 1, so an auto-derived factor would be a bogus 1:1
+            // conversion (e.g. 1 caja = 1 base). Packaging factors are product
+            // specific and must be configured manually in "Conversiones".
+            if (relatedUom.measurementType === 'PACKAGE') continue;
 
             // conversionFactor = how many base units per 1 of this unit
             // systemFactor is in reference units (g for MASS, ml for VOLUME)

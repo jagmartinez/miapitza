@@ -159,6 +159,13 @@ export class InventoryMovementService {
             throw new Error('Product not found or unauthorized');
         }
 
+        // A single-warehouse movement cannot be a TRANSFER: that would only
+        // subtract from the source and never credit the destination, leaving
+        // inventory inconsistent. Transfers must go through transfer().
+        if (data.type === 'TRANSFER') {
+            throw new Error('Las transferencias deben realizarse mediante la operación de traslado entre bodegas');
+        }
+
         // Validate quantity
         if (data.quantity <= 0) {
             throw new Error('Quantity must be greater than 0');

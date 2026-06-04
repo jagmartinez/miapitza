@@ -71,7 +71,10 @@ export class TicketPrintingService {
             throw new Error('Orden no encontrada');
         }
 
-        const settings = await SettingService.getAll(companyId);
+        const [settings, company] = await Promise.all([
+            SettingService.getAll(companyId),
+            prisma.company.findUnique({ where: { id: companyId }, select: { ruc: true } })
+        ]);
 
         const getSettingValue = (key: string, defaultValue: string) => {
             let value = settings[key];
@@ -87,11 +90,11 @@ export class TicketPrintingService {
         };
 
 
-        // Format ticket data
+        // Single source of truth for the tax id: Company.ruc (settings only as fallback).
         const ticket = {
             header: {
                 businessName: getSettingValue('business_name', 'Restaurante'),
-                ruc: getSettingValue('ruc', ''),
+                ruc: company?.ruc || getSettingValue('ruc', ''),
                 address: getSettingValue('address', ''),
                 phone: getSettingValue('phone', ''),
                 branch: order.branch?.name || '',

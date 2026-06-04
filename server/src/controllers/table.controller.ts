@@ -2,55 +2,21 @@ import { Request, Response, NextFunction } from 'express';
 import { TableService } from '../services/table.service';
 import { WebSocketService } from '../services/websocket.service';
 import { getErrorMessage } from '../utils/error';
+import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
 
 export class TableController {
-    private static resolveBranchScope(req: Request, requestedBranchId?: number): number | undefined {
-        const isSuperAdmin = req.user?.role === 'SUPERADMIN';
-        if (isSuperAdmin) {
-            return requestedBranchId;
-        }
-
-        const userBranchId = req.user?.branchId;
-        if (!userBranchId) {
-            throw new Error('Usuario sin sucursal asignada');
-        }
-
-        if (requestedBranchId && requestedBranchId !== userBranchId) {
-            throw new Error('No autorizado para consultar otra sucursal');
-        }
-
-        return userBranchId;
-    }
-
     static async getAll(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const currentRole = req.user?.role;
-            let branchId: number | undefined;
-            if (req.user?.role === 'SUPERADMIN') {
-                branchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            } else {
-                branchId = req.user?.branchId;
-            }
-            let tables = await TableService.getAll(companyId, branchId);
-
-            // Defensive fallback:
-            // if branch-scoped users (e.g. waiter/host/cashier) get an empty list due
-            // inconsistent branch assignment, return company tables so POS remains operable.
-            if (
-                tables.length === 0 &&
-                branchId &&
-                !req.query.branchId &&
-                currentRole &&
-                ['MESERO', 'HOST', 'CAJERO'].includes(currentRole)
-            ) {
-                tables = await TableService.getAll(companyId, undefined);
-            }
+            const requested = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
+            const branchId = resolveBranchScope(req.user!, requested);
+            const tables = await TableService.getAll(companyId, branchId);
             res.json({
                 success: true,
                 data: tables
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
@@ -60,11 +26,13 @@ export class TableController {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
             const table = await TableService.getById(id, companyId);
+            assertBranchAccess(req.user!, table.branchId);
             res.json({
                 success: true,
                 data: table
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 404, message: getErrorMessage(error) });
         }
     }
@@ -73,7 +41,7 @@ export class TableController {
         try {
             const requestedBranchId = parseInt(req.params.branchId);
             const companyId = req.user!.companyId;
-            const branchId = TableController.resolveBranchScope(req, requestedBranchId);
+            const branchId = resolveBranchScope(req.user!, requestedBranchId);
             if (!branchId) {
                 return next({ statusCode: 400, message: 'ID de sucursal requerido' });
             }
@@ -83,6 +51,7 @@ export class TableController {
                 data: tables
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
@@ -91,14 +60,13 @@ export class TableController {
         try {
             const companyId = req.user!.companyId;
 
-            // Ensure branchId is set - use from body if provided, otherwise use user's branchId
-            if (!req.body.branchId) {
-                if (!req.user?.branchId) {
-                    return next({ statusCode: 400, message: 'ID de sucursal requerido' });
-                }
-                req.body.branchId = req.user.branchId;
+            // Resolve target branch: non-superadmin users are pinned to their active branch.
+            const requested = req.body.branchId ? Number(req.body.branchId) : req.user?.branchId;
+            const branchId = resolveBranchScope(req.user!, requested);
+            if (!branchId) {
+                return next({ statusCode: 400, message: 'ID de sucursal requerido' });
             }
-            req.body.branchId = TableController.resolveBranchScope(req, Number(req.body.branchId));
+            req.body.branchId = branchId;
 
             const table = await TableService.create(companyId, req.body);
             res.status(201).json({
@@ -107,6 +75,7 @@ export class TableController {
                 data: table
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -115,6 +84,8 @@ export class TableController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            const existing = await TableService.getById(id, companyId);
+            assertBranchAccess(req.user!, existing.branchId);
             const table = await TableService.update(id, companyId, req.body);
             res.json({
                 success: true,
@@ -122,6 +93,7 @@ export class TableController {
                 data: table
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -130,12 +102,15 @@ export class TableController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            const existing = await TableService.getById(id, companyId);
+            assertBranchAccess(req.user!, existing.branchId);
             await TableService.delete(id, companyId);
             res.json({
                 success: true,
                 message: 'Mesa eliminada exitosamente'
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -150,6 +125,8 @@ export class TableController {
                 return next({ statusCode: 400, message: 'Estado es requerido' });
             }
 
+            const existing = await TableService.getById(id, companyId);
+            assertBranchAccess(req.user!, existing.branchId);
             const table = await TableService.updateStatus(id, companyId, status);
 
             // Broadcast table status change

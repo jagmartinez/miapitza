@@ -33,6 +33,7 @@ interface ImportItem {
     name: string;
     productId: number | null;
     unit: string;
+    purchaseUnit: string | null;
     quantity: number;
     unitCost: number;
     total: number;
@@ -148,7 +149,8 @@ export default function PurchaseOrderImport({ onClose, onSaved, settings }: Purc
                 items: validItems.map(item => ({
                     productId: item.productId,
                     quantity: item.quantity,
-                    unitCost: item.unitCost
+                    unitCost: item.unitCost,
+                    purchaseUnit: item.purchaseUnit
                 }))
             });
             onSaved();
@@ -193,6 +195,7 @@ export default function PurchaseOrderImport({ onClose, onSaved, settings }: Purc
                     <div className="template-download-section">
                         <h3>1. Descargar Plantilla</h3>
                         <p>Use nuestra plantilla Excel para asegurarse de que los datos tengan el formato correcto.</p>
+                        <p className="file-hint">Opcional: puede incluir una columna <strong>"Unidad de compra"</strong> (ej: caja, kg, l) para que la cantidad se convierta a la unidad base del inventario. Si la deja vacía, se usará la unidad por defecto del producto.</p>
                         <Button variant="secondary" onClick={handleDownloadTemplate} className="w-full">
                             <Download size={18} />
                             Descargar Plantilla.xlsx
@@ -271,6 +274,7 @@ export default function PurchaseOrderImport({ onClose, onSaved, settings }: Purc
                                     <th>SKU</th>
                                     <th>Producto</th>
                                     <th>Cantidad</th>
+                                    <th>Unidad Compra</th>
                                     <th>Costo Unit.</th>
                                     <th>Subtotal</th>
                                     <th>Errores</th>
@@ -289,6 +293,7 @@ export default function PurchaseOrderImport({ onClose, onSaved, settings }: Purc
                                         <td>{item.sku}</td>
                                         <td>{item.name}</td>
                                         <td>{item.quantity} {item.unit}</td>
+                                        <td>{item.purchaseUnit || <span className="file-hint">Por defecto</span>}</td>
                                         <td>{formatCurrency(item.unitCost, settings)}</td>
                                         <td>{formatCurrency(item.total, settings)}</td>
                                         <td className="cell-errors">

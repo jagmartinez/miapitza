@@ -306,6 +306,47 @@ export class ReportExtendedController {
         }
     }
 
+    static async getSalesByBrand(req: Request, res: Response, next: NextFunction) {
+        try {
+            const companyId = req.user!.companyId;
+            const filters = ReportExtendedController.parseFilters(req);
+            const data = await ReportExtendedService.getSalesByBrand(companyId, filters);
+            res.json({ success: true, data });
+        } catch (error: unknown) {
+            next({ statusCode: 500, message: getErrorMessage(error) });
+        }
+    }
+
+    static async exportSalesByBrand(req: Request, res: Response, next: NextFunction) {
+        try {
+            const companyId = req.user!.companyId;
+            const filters = ReportExtendedController.parseFilters(req);
+            const data = await ReportExtendedService.getSalesByBrand(companyId, filters);
+            const buffer = await ExcelExporter.generateReport({
+                title: 'Ventas por Empresa (Marca)',
+                sheetName: 'Por Empresa',
+                columns: [
+                    { header: 'Empresa / Marca', key: 'brandName', width: 24 },
+                    { header: 'Ventas Totales', key: 'totalSales', width: 16, style: 'currency' },
+                    { header: '% del Total', key: 'percentOfTotal', width: 12, style: 'number' },
+                    { header: '# Items', key: 'itemCount', width: 12, style: 'number' },
+                    { header: 'Unidades', key: 'unitsSold', width: 12, style: 'number' },
+                ],
+                data: data.items,
+                filters: ReportExtendedController.buildAppliedFilters(req),
+                summary: {
+                    'Total Empresas': data.summary.totalBrands,
+                    'Ventas Totales': data.summary.totalSales,
+                    'Top Empresa': data.summary.topBrand,
+                },
+                userName: ReportExtendedController.userName(req),
+            });
+            sendExcelResponse(res, buffer, `ventas_por_empresa_${ReportExtendedController.dateStamp()}.xlsx`);
+        } catch (error: unknown) {
+            next({ statusCode: 500, message: getErrorMessage(error) });
+        }
+    }
+
     static async getSalesDaily(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
@@ -451,6 +492,8 @@ export class ReportExtendedController {
                 columns: [
                     { header: 'Usuario', key: 'userName', width: 22 },
                     { header: 'Rol', key: 'roleName', width: 16 },
+                    { header: 'Sucursal', key: 'branchName', width: 18 },
+                    { header: 'Empresa', key: 'companyName', width: 18 },
                     { header: 'Ventas Totales', key: 'totalSales', width: 16, style: 'currency' },
                     { header: '# Órdenes', key: 'orderCount', width: 12, style: 'number' },
                     { header: 'Ticket Prom.', key: 'avgTicket', width: 14, style: 'currency' },

@@ -61,6 +61,9 @@ export class UserController {
             delete updateData.roleIds;
             delete updateData.status;
             delete updateData.companyId;
+            // Branch assignment/rotation is a SUPERADMIN-only action, never self-service.
+            delete updateData.branchId;
+            delete updateData.branchIds;
 
             const user = await UserService.update(id, companyId, updateData);
             res.json({

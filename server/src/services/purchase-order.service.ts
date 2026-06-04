@@ -237,6 +237,21 @@ export class PurchaseOrderService {
             throw new Error(`Cannot update purchase order with status ${existing.status}`);
         }
 
+        // Receiving must go through the receive() flow so stock movements and costs
+        // are generated. Block marking RECEIVED via a plain edit.
+        if (data.status === 'RECEIVED') {
+            throw new Error('Para recibir una orden use la acción de recepción, no la edición');
+        }
+
+        // If reassigning the supplier, ensure it belongs to this company.
+        if (data.supplierId !== undefined) {
+            const supplier = await prisma.supplier.findFirst({
+                where: { id: data.supplierId, companyId },
+                select: { id: true }
+            });
+            if (!supplier) throw new Error('Proveedor no encontrado para esta empresa');
+        }
+
         return await prisma.purchaseOrder.update({
             where: { id },
             data,
@@ -434,6 +449,13 @@ export class PurchaseOrderService {
         if (order.status !== 'DRAFT') {
             throw new Error('Can only add items to draft orders');
         }
+
+        // Ensure the product belongs to this company (avoid cross-tenant items).
+        const product = await prisma.product.findFirst({
+            where: { id: data.productId, companyId },
+            select: { id: true }
+        });
+        if (!product) throw new Error('Producto no encontrado para esta empresa');
 
         return await prisma.$transaction(async (tx: Tx) => {
             let purchaseUnit: string | null = data.purchaseUnit || null;

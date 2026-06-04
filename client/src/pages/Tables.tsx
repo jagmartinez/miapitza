@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { tablesAPI, ordersAPI } from '../services/api';
+import { tablesAPI, ordersAPI, branchesAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import PageHeader from '../components/PageHeader';
@@ -9,8 +9,8 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
-import { Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin } from 'lucide-react';
-import type { Table, Order } from '../types';
+import { Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin, Building2 } from 'lucide-react';
+import type { Table, Order, Branch } from '../types';
 import type { SingleValue } from 'react-select';
 import Select from '../components/Select';
 import { ACTIVE_ORDER_STATUSES } from '../utils/orderStatus';
@@ -40,7 +40,11 @@ export default function Tables() {
     const canCreateTable = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const canEditTable = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'HOST'].includes(role));
     const canDeleteTable = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
+    // Managers (company-wide) may create/list tables across branches of their company.
+    const canChooseBranch = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [tables, setTables] = useState<Table[]>([]);
+    const [branches, setBranches] = useState<Branch[]>([]);
+    const [branchFilter, setBranchFilter] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
@@ -51,7 +55,8 @@ export default function Tables() {
         number: '',
         capacity: '4',
         location: '',
-        status: 'AVAILABLE' as 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'OUT_OF_SERVICE'
+        status: 'AVAILABLE' as 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'OUT_OF_SERVICE',
+        branchId: ''
     });
     const [activeTab, setActiveTab] = useState<'general' | 'ubicacion'>('general');
 
@@ -60,20 +65,27 @@ export default function Tables() {
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
     const [tableOrders, setTableOrders] = useState<Order[]>([]);
 
-    useEffect(() => {
-        loadTables();
-    }, []);
-
-    const loadTables = async () => {
+    const loadTables = useCallback(async () => {
         try {
-            const response = await tablesAPI.getAll();
+            const response = await tablesAPI.getAll(branchFilter ?? undefined);
             setTables(response.data.data);
         } catch (error) {
             console.error('Error loading tables:', error);
         } finally {
             setLoading(false);
         }
-    };
+    }, [branchFilter]);
+
+    useEffect(() => {
+        loadTables();
+    }, [loadTables]);
+
+    useEffect(() => {
+        if (!canChooseBranch) return;
+        branchesAPI.getAll()
+            .then((res) => setBranches(res.data.data || []))
+            .catch((error) => console.error('Error loading branches:', error));
+    }, [canChooseBranch]);
 
     const handleOpenSidebar = (table?: Table) => {
         if (table && !canEditTable) {
@@ -91,15 +103,20 @@ export default function Tables() {
                 number: table.number,
                 capacity: table.capacity.toString(),
                 location: table.location || '',
-                status: table.status
+                status: table.status,
+                branchId: table.branchId?.toString() || ''
             });
         } else {
             setEditingTable(null);
+            const defaultBranchId = branchFilter?.toString()
+                || user?.branchId?.toString()
+                || (branches.length === 1 ? branches[0].id.toString() : '');
             setFormData({
                 number: '',
                 capacity: '4',
                 location: '',
-                status: 'AVAILABLE'
+                status: 'AVAILABLE',
+                branchId: defaultBranchId
             });
         }
         setActiveTab('general');
@@ -116,16 +133,28 @@ export default function Tables() {
             showWarning('No tienes permisos para crear mesas');
             return;
         }
-        try {
-            const data = {
-                ...formData,
-                capacity: parseInt(formData.capacity)
-            };
+        if (!editingTable && canChooseBranch && !formData.branchId) {
+            showWarning('Selecciona la sucursal a la que pertenece la mesa.');
+            return;
+        }
 
+        try {
             if (editingTable) {
-                await tablesAPI.update(editingTable.id, data);
+                // La sucursal de una mesa no se reasigna desde la edición.
+                await tablesAPI.update(editingTable.id, {
+                    number: formData.number,
+                    capacity: parseInt(formData.capacity),
+                    location: formData.location,
+                    status: formData.status
+                });
             } else {
-                await tablesAPI.create(data);
+                await tablesAPI.create({
+                    number: formData.number,
+                    capacity: parseInt(formData.capacity),
+                    location: formData.location,
+                    status: formData.status,
+                    ...(formData.branchId ? { branchId: parseInt(formData.branchId) } : {})
+                });
             }
 
             setIsSidebarOpen(false);
@@ -234,6 +263,25 @@ export default function Tables() {
                     </button>
                 </div>
 
+                {canChooseBranch && branches.length > 1 && (
+                    <div className="tables-branch-filter">
+                        <Select
+                            placeholder="Todas las sucursales"
+                            options={[
+                                { value: 'all', label: 'Todas las sucursales' },
+                                ...branches.map((b) => ({ value: b.id.toString(), label: b.name }))
+                            ]}
+                            value={
+                                branchFilter
+                                    ? { value: branchFilter.toString(), label: branches.find((b) => b.id === branchFilter)?.name || 'Sucursal' }
+                                    : { value: 'all', label: 'Todas las sucursales' }
+                            }
+                            onChange={(option: SingleValue<{ value: string; label: string }>) =>
+                                setBranchFilter(option && option.value !== 'all' ? parseInt(option.value) : null)}
+                            isSearchable={branches.length > 6}
+                        />
+                    </div>
+                )}
             </div>
 
             {/* Enhanced Table Grid */}
@@ -249,6 +297,13 @@ export default function Tables() {
                             {/* Table Info */}
                             <div className="table-card-body-new">
                                 <div className="table-number-new">Mesa {table.number}</div>
+
+                                {canChooseBranch && table.branch && (
+                                    <div className="table-branch-tag">
+                                        <Building2 size={12} />
+                                        <span>{table.branch.name}</span>
+                                    </div>
+                                )}
 
                                 <div className="table-details-new">
                                     <div className="detail-item">
@@ -352,6 +407,36 @@ export default function Tables() {
                                         <Users size={18} />
                                         <h3>Información de la Mesa</h3>
                                     </div>
+
+                                    {editingTable ? (
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label">Sucursal</label>
+                                            <div className="modal-static-field">
+                                                <Building2 size={16} />
+                                                <span>{editingTable.branch?.name || `Sucursal #${editingTable.branchId}`}</span>
+                                            </div>
+                                        </div>
+                                    ) : canChooseBranch && (
+                                        <div className="modal-input-group">
+                                            <Select
+                                                variant="modal"
+                                                label="Sucursal"
+                                                placeholder="Selecciona la sucursal..."
+                                                options={branches.map((b) => ({ value: b.id.toString(), label: b.name }))}
+                                                value={
+                                                    formData.branchId
+                                                        ? {
+                                                            value: formData.branchId,
+                                                            label: branches.find((b) => b.id.toString() === formData.branchId)?.name || ''
+                                                        }
+                                                        : null
+                                                }
+                                                onChange={(option: SingleValue<{ value: string; label: string }>) =>
+                                                    setFormData({ ...formData, branchId: option?.value || '' })}
+                                                isSearchable={branches.length > 6}
+                                            />
+                                        </div>
+                                    )}
 
                                     <div className="modal-form-row">
                                         <div className="modal-input-group">

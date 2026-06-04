@@ -7,7 +7,8 @@ import { getOrderStatusLabel } from '../utils/orderStatus';
 import type { Order } from '../types';
 import { ADMIN } from '../constants/roles';
 import { formatCurrencyIntl } from '../utils/currency';
-import Select from 'react-select';
+import Select from '../components/Select';
+import type { SingleValue } from 'react-select';
 import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
 import { LoadingOverlay } from '../components/LoadingSpinner';
@@ -1047,47 +1048,15 @@ export default function Dashboard() {
                         <div className="treemap-filters" style={{ width: '250px' }}>
                             <Select
                                 className="category-select-container"
-                                classNamePrefix="react-select"
                                 value={treemapCategory}
-                                onChange={(val) => setTreemapCategory(val as CategoryOption)}
+                                onChange={(val: SingleValue<CategoryOption>) => val && setTreemapCategory(val)}
                                 options={[
                                     { value: 'all', label: 'Todas las Categorías' },
                                     ...Array.from(new Set(topProducts?.map(p => p.category) || []))
                                         .filter(cat => cat && cat !== 'N/A')
                                         .map(cat => ({ value: cat, label: cat }))
                                 ]}
-                                styles={{
-                                    control: (base) => ({
-                                        ...base,
-                                        background: 'var(--color-background)',
-                                        borderColor: 'var(--color-border)',
-                                        borderRadius: '8px',
-                                        fontSize: '0.8rem',
-                                        minHeight: '34px',
-                                        boxShadow: 'none',
-                                        '&:hover': {
-                                            borderColor: 'var(--color-primary)'
-                                        }
-                                    }),
-                                    menu: (base) => ({
-                                        ...base,
-                                        background: 'var(--color-surface)',
-                                        border: '1px solid var(--color-border)',
-                                        borderRadius: '8px',
-                                        zIndex: 100
-                                    }),
-                                    option: (base, state) => ({
-                                        ...base,
-                                        background: state.isSelected ? 'var(--color-primary)' : state.isFocused ? 'var(--color-background)' : 'transparent',
-                                        color: state.isSelected ? '#fff' : 'var(--color-text)',
-                                        fontSize: '0.8rem',
-                                        cursor: 'pointer'
-                                    }),
-                                    singleValue: (base) => ({
-                                        ...base,
-                                        color: 'var(--color-text)'
-                                    })
-                                }}
+                                isSearchable={false}
                             />
                         </div>
                     </div>

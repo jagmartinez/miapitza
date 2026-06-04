@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import Select from '../components/Select';
-import ReactSelect from 'react-select';
-import { branchPricingAPI, menuAPI, productsAPI, categoriesAPI, branchesAPI, unitsAPI } from '../services/api';
+import { branchPricingAPI, menuAPI, productsAPI, categoriesAPI, branchesAPI, unitsAPI, menuBrandsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
@@ -12,7 +11,7 @@ import {
   Plus, Utensils, Trash2, Image as ImageIcon,
   Info, PieChart, ImagePlus
 } from 'lucide-react';
-import type { Branch, MenuItem, Product, ProductAllowedUnit } from '../types';
+import type { Branch, MenuItem, MenuBrand, Product, ProductAllowedUnit } from '../types';
 import type { SingleValue } from 'react-select';
 
 type CatFilterOption = { value: string; label: string };
@@ -71,6 +70,8 @@ export default function Menu() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const [brands, setBrands] = useState<MenuBrand[]>([]);
+  const [selectedBrand, setSelectedBrand] = useState<string>('all');
 
   // Sidebar State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -81,7 +82,8 @@ export default function Menu() {
     description: '',
     price: '',
     categoryId: '',
-    branchId: ''
+    branchId: '',
+    brandId: ''
   });
 
   const [recipe, setRecipe] = useState<RecipeIngredient[]>([]);
@@ -114,14 +116,16 @@ export default function Menu() {
 
   const loadData = async () => {
     try {
-      const [menuRes, productsRes, categoriesRes, branchesRes] = await Promise.all([
+      const [menuRes, productsRes, categoriesRes, branchesRes, brandsRes] = await Promise.all([
         menuAPI.getAll({ active: true }),
         productsAPI.getAll({ active: true }),
         categoriesAPI.getAll(),
-        branchesAPI.getAll()
+        branchesAPI.getAll(),
+        menuBrandsAPI.getAll()
       ]);
       setMenuItems(menuRes.data.data);
       setBranches(branchesRes.data.data || []);
+      setBrands(brandsRes.data.data || []);
       setProducts(productsRes.data.data.filter((p: Product) =>
         p.type === 'INGREDIENT' || p.type === 'BOTH'
       ));
@@ -141,7 +145,8 @@ export default function Menu() {
         description: item.description || '',
         price: item.price.toString(),
         categoryId: item.categoryId.toString(),
-        branchId: item.branchId?.toString() || ''
+        branchId: item.branchId?.toString() || '',
+        brandId: item.brandId?.toString() || ''
       });
 
       try {
@@ -196,7 +201,7 @@ export default function Menu() {
       }
     } else {
       setEditingItem(null);
-      setFormData({ name: '', description: '', price: '', categoryId: '', branchId: '' });
+      setFormData({ name: '', description: '', price: '', categoryId: '', branchId: '', brandId: '' });
       setRecipe([]);
       setImages([]);
       setBranchPricing([]);
@@ -324,6 +329,7 @@ export default function Menu() {
         price: parseFloat(formData.price),
         categoryId: parseInt(formData.categoryId),
         branchId: formData.branchId ? parseInt(formData.branchId) : null,
+        brandId: formData.brandId ? parseInt(formData.brandId) : null,
         type: 'PREPARED',
         active: true
       };
@@ -389,7 +395,9 @@ export default function Menu() {
     const matchesSearch = !searchQuery || item.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'all' || item.category?.name === selectedCategory;
     const matchesBranch = selectedBranch === 'all' || !item.branchId || item.branchId?.toString() === selectedBranch;
-    return matchesSearch && matchesCategory && matchesBranch;
+    const matchesBrand = selectedBrand === 'all'
+      || (selectedBrand === 'none' ? !item.brandId : item.brandId?.toString() === selectedBrand);
+    return matchesSearch && matchesCategory && matchesBranch && matchesBrand;
   });
 
   // Stats calculations
@@ -431,9 +439,8 @@ export default function Menu() {
       {/* Modern Filter Row */}
       <div className="menu-filters-bar">
         <div className="menu-filters-row">
-          <ReactSelect
+          <Select
             className="category-select-container"
-            classNamePrefix="react-select"
             value={selectedCategory === 'all'
               ? { value: 'all', label: 'Todas las Categorías' }
               : { value: selectedCategory, label: selectedCategory }}
@@ -444,50 +451,42 @@ export default function Menu() {
             ]}
             placeholder="Filtrar por categoría..."
             isSearchable
-            styles={{
-              control: (base) => ({
-                ...base,
-                background: 'var(--color-surface)',
-                borderColor: 'var(--color-border)',
-                borderRadius: '10px',
-                fontSize: '0.875rem',
-                minHeight: '40px',
-                minWidth: '250px',
-                boxShadow: 'none',
-                '&:hover': { borderColor: 'var(--color-primary)' }
-              }),
-              menu: (base) => ({
-                ...base,
-                background: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
-                borderRadius: '10px',
-                zIndex: 100
-              }),
-              option: (base, state) => ({
-                ...base,
-                background: state.isSelected ? 'var(--color-primary)' : state.isFocused ? 'var(--color-background)' : 'transparent',
-                color: state.isSelected ? '#fff' : 'var(--color-text)',
-                fontSize: '0.875rem',
-                cursor: 'pointer'
-              }),
-              singleValue: (base) => ({ ...base, color: 'var(--color-text)' }),
-              input: (base) => ({ ...base, color: 'var(--color-text)' }),
-            }}
           />
 
-          <select
-            value={selectedBranch}
-            onChange={(e) => setSelectedBranch(e.target.value)}
-            style={{
-              padding: '8px 12px', borderRadius: '10px', fontSize: '0.875rem',
-              border: '1px solid var(--color-border)', background: 'var(--color-surface)',
-              color: 'var(--color-text)', minHeight: '40px', cursor: 'pointer'
-            }}>
-            <option value="all">Todas las Sucursales</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id.toString()}>{b.name}</option>
-            ))}
-          </select>
+          <Select
+            className="branch-select-container"
+            value={
+              selectedBranch === 'all'
+                ? { value: 'all', label: 'Todas las Sucursales' }
+                : { value: selectedBranch, label: branches.find((b) => b.id.toString() === selectedBranch)?.name || 'Sucursal' }
+            }
+            onChange={(val: SingleValue<CatFilterOption>) => setSelectedBranch(val?.value || 'all')}
+            options={[
+              { value: 'all', label: 'Todas las Sucursales' },
+              ...branches.map((b) => ({ value: b.id.toString(), label: b.name }))
+            ]}
+            placeholder="Sucursal..."
+            isSearchable={false}
+          />
+
+          {brands.length > 0 && (
+            <Select
+              className="branch-select-container"
+              value={
+                selectedBrand === 'all'
+                  ? { value: 'all', label: 'Todas las Marcas' }
+                  : { value: selectedBrand, label: brands.find((b) => b.id.toString() === selectedBrand)?.name || 'Marca' }
+              }
+              onChange={(val: SingleValue<CatFilterOption>) => setSelectedBrand(val?.value || 'all')}
+              options={[
+                { value: 'all', label: 'Todas las Marcas' },
+                { value: 'none', label: 'Sin marca (común)' },
+                ...brands.map((b) => ({ value: b.id.toString(), label: b.name }))
+              ]}
+              placeholder="Marca..."
+              isSearchable={false}
+            />
+          )}
 
           <input
             type="text"
@@ -597,6 +596,20 @@ export default function Menu() {
                         ? { value: formData.branchId, label: branches.find((b) => b.id.toString() === formData.branchId)?.name || '' }
                         : { value: '', label: 'Todas las Sucursales (Global)' }}
                       onChange={(opt: SingleValue<StrOption>) => setFormData({ ...formData, branchId: opt ? opt.value : '' })}
+                      isDisabled={!canMutateMenu}
+                    />
+
+                    <Select
+                      variant="modal"
+                      label="Marca"
+                      options={[
+                        { value: '', label: 'Común (todas las marcas)' },
+                        ...brands.filter(b => b.active || b.id.toString() === formData.brandId).map((b) => ({ value: b.id.toString(), label: b.name }))
+                      ]}
+                      value={formData.brandId
+                        ? { value: formData.brandId, label: brands.find((b) => b.id.toString() === formData.brandId)?.name || '' }
+                        : { value: '', label: 'Común (todas las marcas)' }}
+                      onChange={(opt: SingleValue<StrOption>) => setFormData({ ...formData, brandId: opt ? opt.value : '' })}
                       isDisabled={!canMutateMenu}
                     />
 

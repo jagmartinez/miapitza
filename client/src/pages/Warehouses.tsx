@@ -480,8 +480,10 @@ export default function Warehouses() {
                         <div className="stock-items-list">
                             {Object.entries(groupedTransferHistory).map(([groupId, movements]) => {
                                 const ordered = [...movements].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-                                const source = ordered.find((movement) => movement.type === 'TRANSFER');
-                                const destination = ordered.find((movement) => movement.type === 'IN');
+                                // Both legs of a transfer are stored as TRANSFER movements
+                                // distinguished by their reason ("Transfer out" / "Transfer in").
+                                const source = ordered.find((m) => (m.reason || '').toLowerCase().startsWith('transfer out')) || ordered[0];
+                                const destination = ordered.find((m) => (m.reason || '').toLowerCase().startsWith('transfer in')) || ordered[1];
 
                                 return (
                                     <div key={groupId} className="stock-item-row">

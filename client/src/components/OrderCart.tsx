@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Plus, Minus, Trash2, Tag } from 'lucide-react';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { promotionsAPI } from '../services/api';
+import Select from './Select';
+import type { SingleValue } from 'react-select';
 import type { MenuItem } from '../types';
 import './OrderCart.css';
 
@@ -205,19 +207,30 @@ function PromotionSelector({ onApply, currencySymbol = '$' }: { onApply?: (code:
             )}
 
             {mode === 'select' ? (
-                <select
+                <Select
                     className="promo-select"
-                    value={selected}
-                    onChange={e => setSelected(e.target.value)}
-                    disabled={loading || loadError || promos.length === 0}
-                >
-                    <option value="">{loading ? 'Cargando promociones...' : 'Seleccionar promoción...'}</option>
-                    {promos.map(p => (
-                        <option key={p.id} value={p.code}>
-                            {p.code} — {p.name} ({p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : `${currencySymbol}${Number(p.value)}`})
-                        </option>
-                    ))}
-                </select>
+                    value={
+                        selected
+                            ? (() => {
+                                const p = promos.find((promo) => promo.code === selected);
+                                return p
+                                    ? {
+                                        value: p.code,
+                                        label: `${p.code} — ${p.name} (${p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : `${currencySymbol}${Number(p.value)}`})`
+                                    }
+                                    : { value: selected, label: selected };
+                            })()
+                            : null
+                    }
+                    onChange={(option: SingleValue<{ value: string; label: string }>) => setSelected(option?.value || '')}
+                    options={promos.map((p) => ({
+                        value: p.code,
+                        label: `${p.code} — ${p.name} (${p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : `${currencySymbol}${Number(p.value)}`})`
+                    }))}
+                    placeholder={loading ? 'Cargando promociones...' : 'Seleccionar promoción...'}
+                    isDisabled={loading || loadError || promos.length === 0}
+                    isSearchable
+                />
             ) : (
                 <input
                     type="text"

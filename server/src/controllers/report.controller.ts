@@ -2,24 +2,13 @@ import { Request, Response, NextFunction } from 'express';
 import { ReportService } from '../services/report.service';
 import { ExcelExporter, sendExcelResponse } from '../utils/excel-export';
 import { getErrorMessage } from '../utils/error';
+import { resolveBranchScope } from '../utils/branch-scope';
 
 export class ReportController {
     private static resolveBranchScope(req: Request, requestedBranchId?: number): number | undefined {
-        const isSuperAdmin = req.user?.role === 'SUPERADMIN';
-        if (isSuperAdmin) {
-            return requestedBranchId;
-        }
-
-        const userBranchId = req.user?.branchId;
-        if (!userBranchId) {
-            throw new Error('Usuario sin sucursal asignada');
-        }
-
-        if (requestedBranchId && requestedBranchId !== userBranchId) {
-            throw new Error('No autorizado para consultar otra sucursal');
-        }
-
-        return userBranchId;
+        // Centralised rule: SUPERADMIN is company-wide; everyone else is pinned to
+        // their active branch.
+        return resolveBranchScope(req.user!, requestedBranchId);
     }
 
     static async getDashboardStats(req: Request, res: Response, next: NextFunction) {
@@ -422,6 +411,7 @@ export class ReportController {
                 filters.branchId = ReportController.resolveBranchScope(req, undefined);
             }
             if (req.query.categoryId) filters.categoryId = parseInt(req.query.categoryId as string);
+            if (req.query.brandId) filters.brandId = parseInt(req.query.brandId as string);
             if (req.query.userId) filters.userId = parseInt(req.query.userId as string);
 
             const data = await ReportService.getSalesReport(companyId, filters as any);
@@ -443,6 +433,7 @@ export class ReportController {
                 filters.branchId = ReportController.resolveBranchScope(req, undefined);
             }
             if (req.query.categoryId) filters.categoryId = parseInt(req.query.categoryId as string);
+            if (req.query.brandId) filters.brandId = parseInt(req.query.brandId as string);
 
             const data = await ReportService.getSalesReport(companyId, filters as any);
             const appliedFilters: Record<string, string> = {};
@@ -457,12 +448,15 @@ export class ReportController {
                     { header: 'Orden #', key: 'orderNumber', width: 15 },
                     { header: 'Producto', key: 'productName', width: 25 },
                     { header: 'Categoría', key: 'categoryName', width: 18 },
+                    { header: 'Empresa/Marca', key: 'brandName', width: 18 },
                     { header: 'Cantidad', key: 'quantity', width: 10, style: 'number' },
                     { header: 'Precio Unit.', key: 'unitPrice', width: 14, style: 'currency' },
                     { header: 'Descuento', key: 'discount', width: 12, style: 'currency' },
                     { header: 'Total', key: 'totalSale', width: 14, style: 'currency' },
                     { header: 'Método Pago', key: 'paymentMethod', width: 16 },
                     { header: 'Usuario', key: 'userName', width: 18 },
+                    { header: 'Sucursal', key: 'branchName', width: 18 },
+                    { header: 'Empresa', key: 'companyName', width: 18 },
                 ],
                 data: data.items,
                 filters: appliedFilters,

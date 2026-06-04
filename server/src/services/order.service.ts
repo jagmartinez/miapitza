@@ -250,6 +250,21 @@ export class OrderService {
         }>;
     }) {
         return await prisma.$transaction(async (tx) => {
+            // The order's table (if any) must belong to the same company AND the
+            // same branch as the order, so branch-scoped reporting/billing stays consistent.
+            if (data.tableId) {
+                const table = await tx.table.findFirst({
+                    where: { id: data.tableId, companyId },
+                    select: { id: true, branchId: true }
+                });
+                if (!table) {
+                    throw new Error('Mesa no encontrada para esta empresa');
+                }
+                if (table.branchId !== data.branchId) {
+                    throw new Error('La mesa pertenece a otra sucursal');
+                }
+            }
+
             // Check for existing OPEN order for this table
             if (data.tableId) {
                 const existingOrder = await tx.order.findFirst({

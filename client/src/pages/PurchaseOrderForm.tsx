@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Select from '../components/Select';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useConfirmDialog } from '../context/ConfirmContext';
@@ -8,7 +8,7 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 import Modal from '../components/Modal';
 import Sidebar from '../components/Sidebar';
-import { Plus, Trash2, Save, CheckCircle, Package, Info, MapPin, Building2, FileText, Eye } from 'lucide-react';
+import { Plus, Trash2, Save, CheckCircle, Package, Info, MapPin, Building2, FileText, Eye, Upload, Download } from 'lucide-react';
 import type { PurchaseOrder, PurchaseOrderItem, Supplier, Product, Branch, Warehouse, ProductAllowedUnit } from '../types';
 import type { SingleValue } from 'react-select';
 import './PurchaseOrderForm.css';
@@ -65,6 +65,8 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
         purchaseUnit: ''
     });
     const [itemUnits, setItemUnits] = useState<ProductAllowedUnit[]>([]);
+    const [importing, setImporting] = useState(false);
+    const importInputRef = useRef<HTMLInputElement>(null);
 
     // Receive Modal
     const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
@@ -200,6 +202,93 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 console.error('Error removing item:', error);
                 showError('Error al eliminar ítem');
             }
+        }
+    };
+
+    const handleDownloadTemplate = async () => {
+        try {
+            const res = await purchaseOrdersAPI.getImportTemplate();
+            const blob = res.data instanceof Blob
+                ? res.data
+                : new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'Plantilla_Orden_Compra.xlsx';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Error downloading template:', error);
+            showError('No se pudo descargar la plantilla');
+        }
+    };
+
+    interface ImportPreviewItem {
+        productId: number | null;
+        name: string;
+        unit: string;
+        purchaseUnit: string | null;
+        quantity: number;
+        unitCost: number;
+        isValid: boolean;
+        errors?: string[];
+    }
+
+    const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        // Reset the input so selecting the same file again re-triggers onChange.
+        e.target.value = '';
+        if (!file) return;
+
+        setImporting(true);
+        try {
+            const res = await purchaseOrdersAPI.validateImport(file);
+            const result = (res.data?.data ?? res.data) as { items?: ImportPreviewItem[]; summary?: { invalid?: number } };
+            const allItems = result.items || [];
+            const validItems = allItems.filter(it => it.isValid && it.productId);
+            const invalidCount = result.summary?.invalid ?? (allItems.length - validItems.length);
+
+            if (validItems.length === 0) {
+                showWarning('No se encontraron ítems válidos en el archivo. Revise los SKU y cantidades.');
+                return;
+            }
+
+            if (isNew) {
+                const lines: NewOrderLineDraft[] = validItems.map(it => {
+                    const product = products.find(p => p.id === it.productId)
+                        ?? ({ id: it.productId, name: it.name, unit: it.unit } as Product);
+                    return {
+                        productId: it.productId as number,
+                        quantity: Number(it.quantity),
+                        cost: Number(it.unitCost),
+                        purchaseUnit: it.purchaseUnit || undefined,
+                        product
+                    };
+                });
+                setNewItems(prev => [...prev, ...lines]);
+            } else {
+                for (const it of validItems) {
+                    await purchaseOrdersAPI.addItem(Number(effectiveId), {
+                        productId: it.productId as number,
+                        quantity: Number(it.quantity),
+                        cost: Number(it.unitCost),
+                        purchaseUnit: it.purchaseUnit || undefined
+                    });
+                }
+                await loadOrder(Number(effectiveId));
+            }
+
+            success(
+                `${validItems.length} ítem(s) importados` +
+                (invalidCount > 0 ? `. ${invalidCount} fila(s) omitidas por errores.` : '.')
+            );
+        } catch (error) {
+            console.error('Error importing items:', error);
+            showError('Error al importar el archivo. Verifique que use la plantilla correcta.');
+        } finally {
+            setImporting(false);
         }
     };
 
@@ -413,10 +502,33 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                 <h3>Ítems de la Orden</h3>
                             </div>
                             {isDraft && (
-                                <Button variant="ghost" onClick={() => setIsItemSidebarOpen(true)} className="add-item-btn-modern">
-                                    <Plus size={20} />
-                                    Agregar Ítem
-                                </Button>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <input
+                                        ref={importInputRef}
+                                        type="file"
+                                        accept=".xlsx,.xls"
+                                        onChange={handleImportExcel}
+                                        style={{ display: 'none' }}
+                                    />
+                                    <Button variant="ghost" type="button" onClick={handleDownloadTemplate} className="add-item-btn-modern">
+                                        <Download size={18} />
+                                        Plantilla
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        type="button"
+                                        onClick={() => importInputRef.current?.click()}
+                                        disabled={importing}
+                                        className="add-item-btn-modern"
+                                    >
+                                        <Upload size={18} />
+                                        {importing ? 'Importando...' : 'Importar Excel'}
+                                    </Button>
+                                    <Button variant="ghost" type="button" onClick={() => setIsItemSidebarOpen(true)} className="add-item-btn-modern">
+                                        <Plus size={20} />
+                                        Agregar Ítem
+                                    </Button>
+                                </div>
                             )}
                         </div>
 
@@ -603,13 +715,19 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                             />
                         )}
                         <Input
-                            label="Cantidad"
+                            label={`Cantidad${itemForm.purchaseUnit ? ` (en ${itemForm.purchaseUnit})` : ''}`}
                             type="number"
                             value={itemForm.quantity}
                             onChange={e => setItemForm({ ...itemForm, quantity: Number(e.target.value) })}
                             min={0.001}
                             step="any"
                         />
+                        {itemForm.purchaseUnit && (
+                            <p style={{ fontSize: '12px', color: 'var(--text-secondary, #6b7280)', margin: '-8px 0 0' }}>
+                                <Info size={12} style={{ verticalAlign: '-2px', marginRight: '4px' }} />
+                                La cantidad se ingresa en <strong>{itemForm.purchaseUnit}</strong>; se convertirá a la unidad base del inventario al recibir.
+                            </p>
+                        )}
                         <Input
                             label="Costo Unitario"
                             type="number"

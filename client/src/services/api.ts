@@ -446,6 +446,21 @@ export const categoriesAPI = {
         api.post('/categories/ensure-defaults'),
 };
 
+// Menu Brands (marcas) API
+export const menuBrandsAPI = {
+    getAll: () =>
+        api.get('/menu-brands'),
+
+    create: (data: Record<string, unknown>) =>
+        api.post('/menu-brands', data),
+
+    update: (id: number, data: Record<string, unknown>) =>
+        api.put(`/menu-brands/${id}`, data),
+
+    delete: (id: number) =>
+        api.delete(`/menu-brands/${id}`),
+};
+
 // Warehouses API
 export const warehousesAPI = {
     getAll: (params?: Record<string, unknown>) =>
@@ -675,6 +690,8 @@ export const reportsAPI = {
     // Extended Sales Reports
     getSalesByCategory: (params?: Record<string, string>) => api.get('/reports/sales-by-category', { params }),
     exportSalesByCategory: (params?: Record<string, string>) => api.get('/reports/sales-by-category/export', { params, responseType: 'arraybuffer' }),
+    getSalesByBrand: (params?: Record<string, string>) => api.get('/reports/sales-by-brand', { params }),
+    exportSalesByBrand: (params?: Record<string, string>) => api.get('/reports/sales-by-brand/export', { params, responseType: 'arraybuffer' }),
     getSalesDaily: (params?: Record<string, string>) => api.get('/reports/sales-daily', { params }),
     exportSalesDaily: (params?: Record<string, string>) => api.get('/reports/sales-daily/export', { params, responseType: 'arraybuffer' }),
     getSalesMonthly: (params?: Record<string, string>) => api.get('/reports/sales-monthly', { params }),

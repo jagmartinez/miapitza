@@ -4,7 +4,8 @@ import prisma from '../utils/prisma';
 export class WarehouseService {
     static async getAll(companyId: number, branchId?: number, type?: 'CENTRAL' | 'BRANCH') {
         const where: Prisma.WarehouseWhereInput = { companyId };
-        if (branchId) where.branchId = branchId;
+        // When scoped to a branch, also include shared CENTRAL warehouses (branchId null).
+        if (branchId) where.OR = [{ branchId }, { branchId: null }];
         if (type) where.type = type;
 
         return await prisma.warehouse.findMany({

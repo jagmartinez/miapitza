@@ -13,7 +13,7 @@ import { hasAnyRole } from '../utils/authz';
 import {
     AlertTriangle, Package, Plus, Edit2, Trash2,
     Activity, ShoppingBag, Layers, Truck, DollarSign, FileText,
-    Upload, Download, FileSpreadsheet, Search
+    Upload, Download, FileSpreadsheet, Search, LayoutGrid, List
 } from 'lucide-react';
 import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, UnitOfMeasure, Warehouse } from '../types';
 import type { SingleValue } from 'react-select';
@@ -37,6 +37,7 @@ interface StockAlertSummaryState {
 type ProductInventory = Product & {
     currentAverageCost?: number;
     lastPurchaseCost?: number;
+    totalStock?: number;
 };
 
 type StrOption = SingleValue<{ value: string; label: string }>;
@@ -75,6 +76,9 @@ export default function Inventory() {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
+    const [viewMode, setViewMode] = useState<'cards' | 'table'>(() =>
+        (localStorage.getItem('inventory_view_mode') as 'cards' | 'table') || 'cards'
+    );
     const [categories, setCategories] = useState<CategoryRow[]>([]);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -105,7 +109,8 @@ export default function Inventory() {
         price: '',
         minStock: '10',
         type: 'INGREDIENT' as 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH',
-        storageType: '' as '' | 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE'
+        storageType: '' as '' | 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE',
+        observation: ''
     });
 
     const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
@@ -242,7 +247,8 @@ export default function Inventory() {
                 price: product.price?.toString() || '',
                 minStock: product.minStock.toString(),
                 type: product.type,
-                storageType: product.storageType || ''
+                storageType: product.storageType || '',
+                observation: product.observation || ''
             });
         } else {
             setEditingProduct(null);
@@ -255,7 +261,8 @@ export default function Inventory() {
                 price: '',
                 minStock: '10',
                 type: 'INGREDIENT',
-                storageType: ''
+                storageType: '',
+                observation: ''
             });
         }
         setActiveTab('general');
@@ -363,6 +370,7 @@ export default function Inventory() {
                 price: formData.price ? parseFloat(formData.price) : null,
                 minStock: parseInt(formData.minStock, 10),
                 storageType: formData.storageType || null,
+                observation: formData.observation?.trim() || null,
                 active: true
             };
 
@@ -579,7 +587,7 @@ export default function Inventory() {
     };
 
     const filteredProducts = useMemo(() => {
-        return products.filter(p => {
+        const list = products.filter(p => {
             const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 p.sku?.toLowerCase().includes(searchQuery.toLowerCase());
 
@@ -591,6 +599,14 @@ export default function Inventory() {
             if (!matchStorage) return false;
 
             return matchType && matchCategory;
+        });
+
+        // Show products with the lowest stock first; tie-break alphabetically.
+        return list.sort((a, b) => {
+            const stockA = Number((a as ProductInventory).totalStock ?? 0);
+            const stockB = Number((b as ProductInventory).totalStock ?? 0);
+            if (stockA !== stockB) return stockA - stockB;
+            return a.name.localeCompare(b.name, 'es');
         });
     }, [products, lowStock, filter, searchQuery, selectedCategory, storageFilter]);
 
@@ -619,6 +635,24 @@ export default function Inventory() {
                     <h1><Package size={32} /> Gestión de Inventario</h1>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <div className="inventory-view-toggle">
+                        <button
+                            type="button"
+                            className={`view-toggle-btn ${viewMode === 'cards' ? 'active' : ''}`}
+                            onClick={() => { setViewMode('cards'); localStorage.setItem('inventory_view_mode', 'cards'); }}
+                            title="Vista de tarjetas"
+                        >
+                            <LayoutGrid size={18} />
+                        </button>
+                        <button
+                            type="button"
+                            className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+                            onClick={() => { setViewMode('table'); localStorage.setItem('inventory_view_mode', 'table'); }}
+                            title="Vista de tabla"
+                        >
+                            <List size={18} />
+                        </button>
+                    </div>
                     {canMutateProduct && (
                         <Button variant="secondary" onClick={handleDownloadTemplate}>
                             <Download size={18} />
@@ -788,6 +822,7 @@ export default function Inventory() {
             </div>
 
             {/* Products Grid - Tables Style */}
+            {viewMode === 'cards' && (
             <div className="inventory-grid-new">
                 {filteredProducts.map(product => {
                     const isLow = lowStock.some(p => p.id === product.id);
@@ -817,7 +852,7 @@ export default function Inventory() {
                                         </div>
                                     )}
                                     <div className="detail-item">
-                                        <span>{product.unit}</span>
+                                        <span>{product.baseUnit?.abbreviation || product.unit}</span>
                                     </div>
                                 </div>
 
@@ -901,6 +936,79 @@ export default function Inventory() {
                     );
                 })}
             </div>
+            )}
+
+            {/* Table View */}
+            {viewMode === 'table' && filteredProducts.length > 0 && (
+                <div className="inventory-table-wrapper">
+                    <table className="inventory-table">
+                        <thead>
+                            <tr>
+                                <th>Producto</th>
+                                <th>SKU</th>
+                                <th>Categoría</th>
+                                <th>Unidad</th>
+                                <th className="text-right">Stock Actual</th>
+                                <th className="text-right">Mín.</th>
+                                <th className="text-right">Costo Prom.</th>
+                                <th className="text-right">Precio</th>
+                                <th>Estado</th>
+                                <th className="text-right">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredProducts.map(product => {
+                                const isLow = lowStock.some(p => p.id === product.id);
+                                const stock = Number((product as ProductInventory).totalStock ?? 0);
+                                return (
+                                    <tr key={product.id} className={isLow ? 'row-low-stock' : ''}>
+                                        <td className="cell-name">{product.name}</td>
+                                        <td>{product.sku ? <span className="sku-tag">{product.sku}</span> : '-'}</td>
+                                        <td>{categories.find(c => c.id === product.categoryId)?.name || '-'}</td>
+                                        <td>{product.baseUnit?.abbreviation || product.unit}</td>
+                                        <td className="text-right">{stock.toLocaleString('es-NI', { maximumFractionDigits: 2 })} {product.baseUnit?.abbreviation || product.unit}</td>
+                                        <td className="text-right">{product.minStock}</td>
+                                        <td className="text-right">{formatCurrency(Number((product as ProductInventory).currentAverageCost ?? product.cost), settings)}</td>
+                                        <td className="text-right">{product.price ? formatCurrency(Number(product.price), settings) : '-'}</td>
+                                        <td>
+                                            {isLow
+                                                ? <span className="status-pill status-warning">Stock bajo</span>
+                                                : <span className="status-pill status-ok">OK</span>}
+                                        </td>
+                                        <td className="text-right">
+                                            <div className="table-actions">
+                                                <button className="table-action-btn" onClick={() => navigate(`/kardex?productId=${product.id}`)} title="Ver Kardex">
+                                                    <FileText size={16} />
+                                                </button>
+                                                {canAdjustStock && (
+                                                    <button className="table-action-btn" onClick={() => handleOpenAdjustment(product)} title="Ajustar Stock">
+                                                        <Activity size={16} />
+                                                    </button>
+                                                )}
+                                                {canMutateProduct && (
+                                                    <button className="table-action-btn" onClick={() => navigate(`/inventory/${product.id}/units`)} title="Conversiones">
+                                                        <Layers size={16} />
+                                                    </button>
+                                                )}
+                                                {canMutateProduct && (
+                                                    <button className="table-action-btn" onClick={() => handleOpenSidebar(product)} title="Editar">
+                                                        <Edit2 size={16} />
+                                                    </button>
+                                                )}
+                                                {canDeleteProduct && (
+                                                    <button className="table-action-btn danger" onClick={() => handleDelete(product.id)} title="Eliminar">
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
 
             {
                 filteredProducts.length === 0 && (
@@ -973,17 +1081,32 @@ export default function Inventory() {
                                         />
                                     </div>
 
-                                    <div className={`modal-input-group ${formData.type === 'INGREDIENT' ? 'disabled-group' : ''}`}>
-                                        <label className="modal-input-label" htmlFor="inventory-product-category">Categoría del Producto {formData.type === 'INGREDIENT' && <span className="label-note">(No aplica para ingredientes)</span>}</label>
+                                    <div className={formData.type === 'INGREDIENT' ? 'disabled-group' : ''}>
                                         <Select
                                             variant="modal"
                                             inputId="inventory-product-category"
+                                            label={
+                                                <>
+                                                    Categoría del Producto
+                                                    {formData.type === 'INGREDIENT' && (
+                                                        <span className="label-note"> (No aplica para ingredientes)</span>
+                                                    )}
+                                                </>
+                                            }
                                             options={categories.filter(c => c.active).map(c => ({ value: c.id.toString(), label: c.name }))}
-                                            value={categories.filter(c => c.active).map(c => ({ value: c.id.toString(), label: c.name })).find(opt => opt.value === formData.categoryId) || null}
+                                            value={
+                                                formData.categoryId
+                                                    ? categories
+                                                        .filter(c => c.active)
+                                                        .map(c => ({ value: c.id.toString(), label: c.name }))
+                                                        .find(opt => opt.value === formData.categoryId) || null
+                                                    : null
+                                            }
                                             onChange={(option: StrOption) => setFormData({ ...formData, categoryId: option ? option.value : '' })}
                                             placeholder={formData.type === 'INGREDIENT' ? 'N/A' : 'Seleccionar categoría...'}
                                             isClearable
                                             isDisabled={formData.type === 'INGREDIENT'}
+                                            isSearchable
                                         />
                                     </div>
 
@@ -1092,6 +1215,18 @@ export default function Inventory() {
                                                 </button>
                                             </p>
                                         )}
+                                    </div>
+
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label" htmlFor="inventory-observation">Observación</label>
+                                        <textarea
+                                            id="inventory-observation"
+                                            className="modal-standard-input"
+                                            style={{ minHeight: '90px', paddingTop: '10px', resize: 'vertical' }}
+                                            value={formData.observation}
+                                            onChange={(e) => setFormData({ ...formData, observation: e.target.value })}
+                                            placeholder="Notas internas sobre el producto (opcional)..."
+                                        />
                                     </div>
                                 </div>
                             )}

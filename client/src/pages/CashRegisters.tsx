@@ -89,8 +89,12 @@ export default function CashRegisters() {
             showWarning('Solo administradores pueden crear cajas registradoras.');
             return;
         }
+        const payload: { name: string; branchId?: number } = { name: newRegisterName };
+        if (user?.branchId) {
+            payload.branchId = user.branchId;
+        }
         try {
-            await cashRegistersAPI.create({ name: newRegisterName, branchId: user?.branchId || 1 });
+            await cashRegistersAPI.create(payload);
             setIsCreateModalOpen(false);
             setNewRegisterName('');
             loadRegisters();
@@ -108,7 +112,14 @@ export default function CashRegisters() {
     };
 
     const confirmOpenShift = async () => {
-        if (!selectedRegisterId || !startAmount) return;
+        if (!selectedRegisterId) {
+            showWarning('Seleccione una caja para abrir el turno.');
+            return;
+        }
+        if (startAmount === '' || Number.isNaN(Number(startAmount)) || Number(startAmount) < 0) {
+            showWarning('Indique un monto inicial válido (0 o mayor).');
+            return;
+        }
 
         try {
             const res = await cashShiftsAPI.open({
@@ -118,11 +129,13 @@ export default function CashRegisters() {
             setIsModalOpen(false);
             navigate(`/cash-shifts/${res.data.data.id}`);
         } catch (error: unknown) {
-            const apiMsg = typeof error === 'object' && error !== null && 'response' in error
-                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+            const errData = typeof error === 'object' && error !== null && 'response' in error
+                ? (error as { response?: { data?: { message?: string; errors?: Array<{ message: string }> } } }).response?.data
                 : undefined;
-            const errorMessage = apiMsg || 'Error al abrir turno';
-            if (errorMessage.includes('already has an open shift')) {
+            const apiMsg = errData?.message;
+            const validationMsg = errData?.errors?.map((e) => e.message).join('. ');
+            const errorMessage = (apiMsg && apiMsg !== 'Error de validación' ? apiMsg : validationMsg) || apiMsg || 'Error al abrir turno';
+            if (errorMessage.includes('turno abierto') || errorMessage.includes('already has an open shift')) {
                 const confirmNavigate = await confirm('Esta caja ya tiene un turno abierto. ¿Deseas ir al turno activo?', { title: 'Confirmar acción' });
                 if (confirmNavigate && selectedRegisterId) {
                     handleViewActiveShift(undefined, selectedRegisterId);
@@ -153,6 +166,10 @@ export default function CashRegisters() {
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('es-NI', { style: 'currency', currency: 'NIO', minimumFractionDigits: 0 }).format(amount);
     };
+
+    const selectedRegister = selectedRegisterId
+        ? registers.find((r) => r.id === selectedRegisterId)
+        : null;
 
     const filteredRegisters = registers.filter(r =>
         r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -375,6 +392,12 @@ export default function CashRegisters() {
                 <div className="premium-modal-content">
                     <div className="modal-tab-content">
                         <div className="modal-section">
+                            {selectedRegister && (
+                                <p className="modal-input-hint" style={{ marginBottom: '12px' }}>
+                                    Caja: <strong>{selectedRegister.name}</strong>
+                                    {selectedRegister.branch?.name ? ` · ${selectedRegister.branch.name}` : ''}
+                                </p>
+                            )}
                             <h3 className="section-title-v2">Saldo de Apertura</h3>
                             <div className="modal-input-group">
                                 <label className="modal-input-label" htmlFor="register-start-amount">Monto Inicial en Efectivo</label>

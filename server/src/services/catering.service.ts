@@ -126,6 +126,34 @@ export class CateringService {
         return event;
     }
 
+    // Validate that all client-provided foreign keys belong to the caller's
+    // company before persisting (Prisma only checks FKs by global id).
+    private static async assertEventRefs(companyId: number, refs: {
+        branchId?: number;
+        customerId?: number;
+        serviceIds?: number[];
+        menuItemIds?: number[];
+    }) {
+        if (refs.branchId !== undefined) {
+            const b = await prisma.branch.findFirst({ where: { id: refs.branchId, companyId }, select: { id: true } });
+            if (!b) throw new Error('Sucursal no encontrada para esta empresa');
+        }
+        if (refs.customerId !== undefined) {
+            const c = await prisma.customer.findFirst({ where: { id: refs.customerId, companyId }, select: { id: true } });
+            if (!c) throw new Error('Cliente no encontrado para esta empresa');
+        }
+        const serviceIds = [...new Set((refs.serviceIds || []).filter((n) => Number.isFinite(n)))];
+        if (serviceIds.length) {
+            const found = await prisma.cateringService.findMany({ where: { id: { in: serviceIds }, companyId }, select: { id: true } });
+            if (found.length !== serviceIds.length) throw new Error('Uno o más servicios no pertenecen a esta empresa');
+        }
+        const menuIds = [...new Set((refs.menuItemIds || []).filter((n) => Number.isFinite(n)))];
+        if (menuIds.length) {
+            const found = await prisma.menuItem.findMany({ where: { id: { in: menuIds }, companyId }, select: { id: true } });
+            if (found.length !== menuIds.length) throw new Error('Uno o más ítems de menú no pertenecen a esta empresa');
+        }
+    }
+
     static async createEvent(companyId: number, userId: number, data: CateringEventWriteBody) {
         const { services, menuItems, customerName, customerPhone, customerTaxId, customerId: cid, ...eventData } = data;
 
@@ -196,6 +224,13 @@ export class CateringService {
                 subtotal
             };
         }) || [];
+
+        // Ensure customer / services / menu items all belong to this company.
+        await this.assertEventRefs(companyId, {
+            customerId,
+            serviceIds: servicesToCreate.map((s) => s.cateringServiceId),
+            menuItemIds: menuItemsToCreate.map((m) => m.menuItemId),
+        });
 
         const cleanEventData = { ...eventData } as Record<string, unknown>;
         delete cleanEventData.branchId;
@@ -331,6 +366,14 @@ export class CateringService {
                 subtotal
             };
         }) || [];
+
+        // Ensure branch / customer / services / menu items belong to this company.
+        await this.assertEventRefs(companyId, {
+            branchId,
+            customerId,
+            serviceIds: servicesToUpdate.map((s) => s.cateringServiceId),
+            menuItemIds: menuItemsToUpdate.map((m) => m.menuItemId),
+        });
 
         const { date, ...mutableEventData } = eventData;
         const cleanEventData = { ...mutableEventData } as Record<string, unknown>;
@@ -525,6 +568,13 @@ export class CateringService {
             if (event.status === 'CANCELLED') {
                 throw new Error('No se pueden agregar pagos a eventos cancelados');
             }
+
+            // Payment method must be global (companyId null) or belong to this company.
+            const method = await tx.paymentMethod.findFirst({
+                where: { id: paymentData.paymentMethodId, OR: [{ companyId }, { companyId: null }] },
+                select: { id: true }
+            });
+            if (!method) throw new Error('Método de pago no válido para esta empresa');
 
             // Recompute balance from the authoritative total minus paid amounts
             // INSIDE the locked transaction (do not trust the stored balance).

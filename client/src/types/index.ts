@@ -24,6 +24,9 @@ export interface User {
     id: number;
     name: string;
   };
+  allowedBranches?: {
+    branch: { id: number; name: string; code?: string };
+  }[];
   status: string;
   color?: string | null;
   nif?: string;
@@ -51,6 +54,11 @@ export interface Table {
   status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'OUT_OF_SERVICE';
   location?: string;
   branchId: number;
+  branch?: {
+    id: number;
+    name: string;
+    code?: string;
+  };
 }
 
 export interface MenuItem {
@@ -61,6 +69,12 @@ export interface MenuItem {
   defaultPrice?: number;
   categoryId: number;
   branchId?: number | null;
+  brandId?: number | null;
+  brand?: {
+    id: number;
+    name: string;
+    color?: string | null;
+  };
   branchAvailability?: {
     branchId: number;
     branchName: string;
@@ -179,8 +193,20 @@ export interface Product {
   categoryId?: number;
   type: 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH';
   storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE' | null;
+  observation?: string | null;
   active: boolean;
   allowedUnits?: ProductAllowedUnit[];
+}
+
+export interface MenuBrand {
+  id: number;
+  name: string;
+  color?: string | null;
+  sortOrder: number;
+  active: boolean;
+  _count?: {
+    menuItems?: number;
+  };
 }
 
 export interface Branch {
@@ -309,6 +335,7 @@ export interface InventoryMovement {
   type: 'IN' | 'OUT' | 'ADJUSTMENT' | 'TRANSFER';
   quantity: number;
   reference?: string;
+  reason?: string | null;
   transferGroupId?: string | null;
   createdAt: string;
   warehouse?: Warehouse;

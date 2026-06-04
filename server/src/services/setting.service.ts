@@ -13,11 +13,24 @@ export class SettingService {
         });
 
         // Convert array to object and strip prefix
-        return settings.reduce((acc, curr) => {
+        const result = settings.reduce((acc, curr) => {
             const cleanName = curr.name.substring(prefix.length);
             acc[cleanName] = curr.value;
             return acc;
         }, {} as Record<string, string>);
+
+        // Single source of truth for the tax id is Company.ruc; surface it under
+        // both `ruc` and the legacy `nif` key so the UI always shows the unified value.
+        const company = await prisma.company.findUnique({
+            where: { id: companyId },
+            select: { ruc: true }
+        });
+        if (company?.ruc) {
+            result.ruc = company.ruc;
+            result.nif = company.ruc;
+        }
+
+        return result;
     }
 
     private static validateSettingValue(name: string, value: string) {
@@ -60,6 +73,16 @@ export class SettingService {
                         data: { name: prefixedName, value, companyId }
                     });
                 }
+            }
+
+            // Keep the tax id unified: editing it here (nif/ruc) updates Company.ruc,
+            // which is the source the invoices, tickets and reports read from.
+            const taxId = data.ruc ?? data.nif;
+            if (taxId !== undefined) {
+                await tx.company.update({
+                    where: { id: companyId },
+                    data: { ruc: taxId || null }
+                });
             }
         });
 

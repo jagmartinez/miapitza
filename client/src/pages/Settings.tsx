@@ -264,10 +264,10 @@ export default function Settings() {
                             </div>
 
                             <Input
-                                label="NIF / Tax ID"
+                                label="RUC (Identificación fiscal)"
                                 value={formData.nif}
                                 onChange={(e) => setFormData({ ...formData, nif: e.target.value })}
-                                placeholder="B12345678"
+                                placeholder="J0310000000000"
                             />
                             <Input
                                 label="Dirección"
