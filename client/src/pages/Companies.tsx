@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { companiesAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
+import Select from '../components/Select';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { Plus, Building2, Edit2, CheckCircle, XCircle } from 'lucide-react';
+import { Plus, Building2, Edit2, CheckCircle, XCircle, FileText } from 'lucide-react';
+import type { SingleValue } from 'react-select';
 import { useAppToast } from '../context/ToastContext';
 import './Companies.css';
 
@@ -230,52 +232,71 @@ export default function Companies() {
                 onClose={closeModal}
                 title={editingCompany ? 'Editar Empresa' : 'Nueva Empresa'}
             >
-                <form onSubmit={handleSubmit} className="modal-form-new">
-                    <div className="modal-input-group">
-                        <label className="modal-input-label" htmlFor="company-name">Nombre de la Empresa</label>
-                        <input
-                            id="company-name"
-                            type="text"
-                            className="modal-standard-input"
-                            value={formData.name}
-                            onChange={e => setFormData({ ...formData, name: e.target.value })}
-                            placeholder="Ej: Restaurante Mi Casa"
-                            required
-                            autoFocus
-                        />
-                    </div>
-                    <div className="modal-input-group">
-                        <label className="modal-input-label" htmlFor="company-ruc">RUC (Registro Único de Contribuyente)</label>
-                        <input
-                            id="company-ruc"
-                            type="text"
-                            className="modal-standard-input"
-                            value={formData.ruc}
-                            onChange={e => setFormData({ ...formData, ruc: e.target.value })}
-                            placeholder="Ej: J0310000123456"
-                        />
-                    </div>
-                    {editingCompany && (
-                        <div className="modal-input-group">
-                            <label className="modal-input-label checkbox-label">
-                                <input
-                                    type="checkbox"
-                                    checked={formData.active}
-                                    onChange={e => setFormData({ ...formData, active: e.target.checked })}
-                                />
-                                Empresa Activa
-                            </label>
+                <div className="premium-modal-content companies-modal-content">
+                    <form onSubmit={handleSubmit} className="modal-form-new">
+                        <div className="modal-tab-content">
+                            <div className="modal-section animate-slide-in">
+                                <div className="modal-section-header">
+                                    <Building2 size={18} />
+                                    <h3>Información General</h3>
+                                </div>
+
+                                <div className="modal-input-group">
+                                    <label className="modal-input-label" htmlFor="company-name">Nombre de la Empresa</label>
+                                    <input
+                                        id="company-name"
+                                        type="text"
+                                        className="modal-standard-input"
+                                        value={formData.name}
+                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                        placeholder="Ej: Restaurante Mi Casa"
+                                        required
+                                        autoFocus
+                                    />
+                                </div>
+
+                                <div className="modal-input-group">
+                                    <label className="modal-input-label" htmlFor="company-ruc">RUC (Registro Único de Contribuyente)</label>
+                                    <div style={{ position: 'relative' }}>
+                                        <FileText size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-neutral-400)' }} />
+                                        <input
+                                            id="company-ruc"
+                                            type="text"
+                                            className="modal-standard-input"
+                                            style={{ paddingLeft: '36px' }}
+                                            value={formData.ruc}
+                                            onChange={e => setFormData({ ...formData, ruc: e.target.value })}
+                                            placeholder="Ej: J0310000123456"
+                                        />
+                                    </div>
+                                </div>
+
+                                {editingCompany && (
+                                    <Select
+                                        variant="modal"
+                                        label="Estado de la Empresa"
+                                        options={[
+                                            { value: 'true', label: 'Activa' },
+                                            { value: 'false', label: 'Inactiva' }
+                                        ]}
+                                        value={formData.active ? { value: 'true', label: 'Activa' } : { value: 'false', label: 'Inactiva' }}
+                                        onChange={(option: SingleValue<{ value: string; label: string }>) => setFormData({ ...formData, active: option?.value === 'true' })}
+                                        isSearchable={false}
+                                    />
+                                )}
+                            </div>
                         </div>
-                    )}
-                    <div className="modal-footer">
-                        <Button variant="ghost" onClick={closeModal} type="button">
-                            Cancelar
-                        </Button>
-                        <Button variant="primary" type="submit" disabled={saving}>
-                            {saving ? 'Guardando...' : editingCompany ? 'Guardar Cambios' : 'Crear Empresa'}
-                        </Button>
-                    </div>
-                </form>
+
+                        <div className="modal-footer">
+                            <Button variant="ghost" onClick={closeModal} type="button">
+                                Cancelar
+                            </Button>
+                            <Button variant="primary" type="submit" disabled={saving}>
+                                {saving ? 'Guardando...' : editingCompany ? 'Guardar Cambios' : 'Crear Empresa'}
+                            </Button>
+                        </div>
+                    </form>
+                </div>
             </Sidebar>
         </div>
     );
