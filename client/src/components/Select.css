@@ -190,3 +190,30 @@
 .payment-split-assign-select .react-select__control {
     min-height: 34px !important;
 }
+
+/*
+ * Subtle scrollbar for react-select dropdowns, matching the main sidebar.
+ * The scrollable element is the menu-list (the menu wrapper has overflow:hidden).
+ */
+.react-select__menu-list {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+}
+
+.react-select__menu-list::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.react-select__menu-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.react-select__menu-list::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 3px;
+}
+
+.react-select__menu-list::-webkit-scrollbar-thumb:hover {
+    background: var(--color-neutral-400);
+}

@@ -13,7 +13,7 @@ import { hasAnyRole } from '../utils/authz';
 import {
     AlertTriangle, Package, Plus, Edit2, Trash2,
     Activity, ShoppingBag, Layers, Truck, DollarSign, FileText,
-    Upload, Download, FileSpreadsheet, Search, LayoutGrid, List
+    Upload, Download, FileSpreadsheet, Search, LayoutGrid, List, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, UnitOfMeasure, Warehouse } from '../types';
 import type { SingleValue } from 'react-select';
@@ -79,6 +79,8 @@ export default function Inventory() {
     const [viewMode, setViewMode] = useState<'cards' | 'table'>(() =>
         (localStorage.getItem('inventory_view_mode') as 'cards' | 'table') || 'cards'
     );
+    const [tablePage, setTablePage] = useState(1);
+    const TABLE_PAGE_SIZE = 10;
     const [categories, setCategories] = useState<CategoryRow[]>([]);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -610,6 +612,17 @@ export default function Inventory() {
         });
     }, [products, lowStock, filter, searchQuery, selectedCategory, storageFilter]);
 
+    // Reset to first page whenever the filtered result set changes.
+    useEffect(() => {
+        setTablePage(1);
+    }, [filter, searchQuery, selectedCategory, storageFilter, viewMode]);
+
+    const tableTotalPages = Math.max(1, Math.ceil(filteredProducts.length / TABLE_PAGE_SIZE));
+    const pagedProducts = useMemo(
+        () => filteredProducts.slice((tablePage - 1) * TABLE_PAGE_SIZE, tablePage * TABLE_PAGE_SIZE),
+        [filteredProducts, tablePage]
+    );
+
 
     // Type helpers
     const getTypeClass = (type: string, isLow: boolean) => {
@@ -945,7 +958,6 @@ export default function Inventory() {
                         <thead>
                             <tr>
                                 <th>Producto</th>
-                                <th>SKU</th>
                                 <th>Categoría</th>
                                 <th>Unidad</th>
                                 <th className="text-right">Stock Actual</th>
@@ -957,16 +969,18 @@ export default function Inventory() {
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredProducts.map(product => {
+                            {pagedProducts.map(product => {
                                 const isLow = lowStock.some(p => p.id === product.id);
                                 const stock = Number((product as ProductInventory).totalStock ?? 0);
                                 return (
                                     <tr key={product.id} className={isLow ? 'row-low-stock' : ''}>
-                                        <td className="cell-name">{product.name}</td>
-                                        <td>{product.sku ? <span className="sku-tag">{product.sku}</span> : '-'}</td>
+                                        <td className="cell-name">
+                                            <span className="cell-name-title">{product.name}</span>
+                                            {product.sku && <span className="cell-name-sku">{product.sku}</span>}
+                                        </td>
                                         <td>{categories.find(c => c.id === product.categoryId)?.name || '-'}</td>
                                         <td>{product.baseUnit?.abbreviation || product.unit}</td>
-                                        <td className="text-right">{stock.toLocaleString('es-NI', { maximumFractionDigits: 2 })} {product.baseUnit?.abbreviation || product.unit}</td>
+                                        <td className="text-right">{stock.toLocaleString('es-NI', { maximumFractionDigits: 2 })}</td>
                                         <td className="text-right">{product.minStock}</td>
                                         <td className="text-right">{formatCurrency(Number((product as ProductInventory).currentAverageCost ?? product.cost), settings)}</td>
                                         <td className="text-right">{product.price ? formatCurrency(Number(product.price), settings) : '-'}</td>
@@ -1007,6 +1021,34 @@ export default function Inventory() {
                             })}
                         </tbody>
                     </table>
+                    {tableTotalPages > 1 && (
+                        <div className="inventory-pagination">
+                            <span className="pagination-info">
+                                {((tablePage - 1) * TABLE_PAGE_SIZE) + 1}–{Math.min(tablePage * TABLE_PAGE_SIZE, filteredProducts.length)} de {filteredProducts.length}
+                            </span>
+                            <div className="pagination-controls">
+                                <button
+                                    type="button"
+                                    className="pagination-btn"
+                                    onClick={() => setTablePage(p => Math.max(1, p - 1))}
+                                    disabled={tablePage <= 1}
+                                    title="Anterior"
+                                >
+                                    <ChevronLeft size={16} />
+                                </button>
+                                <span className="pagination-page">{tablePage} / {tableTotalPages}</span>
+                                <button
+                                    type="button"
+                                    className="pagination-btn"
+                                    onClick={() => setTablePage(p => Math.min(tableTotalPages, p + 1))}
+                                    disabled={tablePage >= tableTotalPages}
+                                    title="Siguiente"
+                                >
+                                    <ChevronRight size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 

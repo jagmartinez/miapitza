@@ -383,9 +383,9 @@ function ReportDetail({ reportId }: { reportId: string }) {
                             isSearchable={false}
                         />
                     )}
-                    <Button onClick={handleExport} disabled={exporting || !data}>
+                    <Button onClick={handleExport} disabled={exporting || !data} title="Exportar a Excel">
                         {exporting ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
-                        {exporting ? 'Exportando...' : 'Exportar Excel'}
+                        Excel
                     </Button>
                 </div>
             </div>
