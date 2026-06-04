@@ -84,6 +84,40 @@
     padding: var(--spacing-xl);
 }
 
+/* Subtle scrollbar matching the main sidebar. */
+.modal-container,
+.modal-sidebar,
+.modal-body {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+}
+
+.modal-container::-webkit-scrollbar,
+.modal-sidebar::-webkit-scrollbar,
+.modal-body::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.modal-container::-webkit-scrollbar-track,
+.modal-sidebar::-webkit-scrollbar-track,
+.modal-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.modal-container::-webkit-scrollbar-thumb,
+.modal-sidebar::-webkit-scrollbar-thumb,
+.modal-body::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 3px;
+}
+
+.modal-container::-webkit-scrollbar-thumb:hover,
+.modal-sidebar::-webkit-scrollbar-thumb:hover,
+.modal-body::-webkit-scrollbar-thumb:hover {
+    background: var(--color-neutral-400);
+}
+
 /* Sidebar Modal Variant */
 .modal-overlay-sidebar {
     justify-content: flex-end !important;

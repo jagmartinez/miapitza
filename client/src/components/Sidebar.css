@@ -100,6 +100,45 @@
     padding: var(--spacing-xl);
 }
 
+/* Subtle scrollbar for modal/sidebar scroll areas, matching the main sidebar. */
+.sidebar-body,
+.sidebar-body .modal-tab-content,
+.sidebar-body .modal-form-new,
+.sidebar-body textarea {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+}
+
+.sidebar-body::-webkit-scrollbar,
+.sidebar-body .modal-tab-content::-webkit-scrollbar,
+.sidebar-body .modal-form-new::-webkit-scrollbar,
+.sidebar-body textarea::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.sidebar-body::-webkit-scrollbar-track,
+.sidebar-body .modal-tab-content::-webkit-scrollbar-track,
+.sidebar-body .modal-form-new::-webkit-scrollbar-track,
+.sidebar-body textarea::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.sidebar-body::-webkit-scrollbar-thumb,
+.sidebar-body .modal-tab-content::-webkit-scrollbar-thumb,
+.sidebar-body .modal-form-new::-webkit-scrollbar-thumb,
+.sidebar-body textarea::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 3px;
+}
+
+.sidebar-body::-webkit-scrollbar-thumb:hover,
+.sidebar-body .modal-tab-content::-webkit-scrollbar-thumb:hover,
+.sidebar-body .modal-form-new::-webkit-scrollbar-thumb:hover,
+.sidebar-body textarea::-webkit-scrollbar-thumb:hover {
+    background: var(--color-neutral-400);
+}
+
 /* Exclude modals that already handle their own padding */
 .sidebar-body:has(.dish-modal-form),
 .sidebar-body:has(.order-detail-content),
