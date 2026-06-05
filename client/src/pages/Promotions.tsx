@@ -8,6 +8,7 @@ import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
 import { Plus, Edit, Percent, DollarSign, Ticket, XCircle, Calendar, FileText } from 'lucide-react';
+import { useCurrency } from '../hooks/useCurrency';
 import './Promotions.css';
 
 interface PromotionRow {
@@ -52,6 +53,7 @@ function toApiPayload(payload: PromotionPayload): Record<string, unknown> {
 }
 
 export default function Promotions() {
+    const { formatMoney } = useCurrency();
     const { confirm } = useConfirmDialog();
     const { error: showError } = useAppToast();
     const [promotions, setPromotions] = useState<PromotionRow[]>([]);
@@ -184,7 +186,7 @@ export default function Promotions() {
                             )
                         },
                         { key: 'type', header: 'Tipo', render: (p) => p.type === 'PERCENTAGE' ? 'Porcentaje' : 'Monto Fijo' },
-                        { key: 'value', header: 'Valor', align: 'right', render: (p) => p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : `$${Number(p.value).toFixed(0)}` },
+                        { key: 'value', header: 'Valor', align: 'right', render: (p) => p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : formatMoney(Number(p.value)) },
                         { key: 'validity', header: 'Vigencia', render: (p) => `${formatDate(p.validFrom)} — ${formatDate(p.validTo)}` },
                         { key: 'usage', header: 'Usos', align: 'center', render: (p) => `${p.usageCount || 0}${p.usageLimit ? ` / ${p.usageLimit}` : ''}` },
                         {
@@ -242,7 +244,7 @@ export default function Promotions() {
                                     {p.description && <div className="promo-desc">{p.description}</div>}
 
                                     <div className="promo-value-display">
-                                        {p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : `$${Number(p.value).toFixed(0)}`}
+                                        {p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : formatMoney(Number(p.value))}
                                     </div>
 
                                     <div className="promo-details">
@@ -259,13 +261,13 @@ export default function Promotions() {
                                         {p.minOrderAmount && (
                                             <div className="promo-detail-row">
                                                 <span className="label">Mínimo</span>
-                                                <span className="value">${Number(p.minOrderAmount).toFixed(0)}</span>
+                                                <span className="value">{formatMoney(Number(p.minOrderAmount))}</span>
                                             </div>
                                         )}
                                         {p.maxDiscount && (
                                             <div className="promo-detail-row">
                                                 <span className="label">Desc. máximo</span>
-                                                <span className="value">${Number(p.maxDiscount).toFixed(0)}</span>
+                                                <span className="value">{formatMoney(Number(p.maxDiscount))}</span>
                                             </div>
                                         )}
                                         <div className="promo-detail-row">

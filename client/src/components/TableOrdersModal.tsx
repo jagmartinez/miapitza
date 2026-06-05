@@ -5,6 +5,7 @@ import { escapeHtml } from '../utils/escapeHtml';
 import { getUserAccentColor } from '../utils/authz';
 import { getOrderStatusClassName, getOrderStatusLabel } from '../utils/orderStatus';
 import { useDialogA11y } from '../hooks/useDialogA11y';
+import { useCurrency } from '../hooks/useCurrency';
 import './TableOrdersModal.css';
 
 interface TableOrdersModalProps {
@@ -15,6 +16,7 @@ interface TableOrdersModalProps {
 }
 
 export default function TableOrdersModal({ isOpen, onClose, tableNumber, orders }: TableOrdersModalProps) {
+    const { formatMoney, symbol } = useCurrency();
     const containerRef = useRef<HTMLDivElement>(null);
     const { titleId } = useDialogA11y(isOpen, onClose, containerRef);
     // Modal Tab State
@@ -77,7 +79,7 @@ export default function TableOrdersModal({ isOpen, onClose, tableNumber, orders 
                         ${order.items?.map(item => `
                             <div class="item">
                                 <span>${e(item.quantity)}x ${e(item.menuItem?.name || 'Item')}</span>
-                                <span>$${Number(item.subtotal).toFixed(2)}</span>
+                                <span>${e(symbol)}${Number(item.subtotal).toFixed(2)}</span>
                             </div>
                         `).join('')}
                     </div>
@@ -85,7 +87,7 @@ export default function TableOrdersModal({ isOpen, onClose, tableNumber, orders 
                 <div class="total">
                     <div class="item">
                         <span>TOTAL:</span>
-                        <span>$${totalAmount.toFixed(2)}</span>
+                        <span>${e(symbol)}${totalAmount.toFixed(2)}</span>
                     </div>
                 </div>
                 <div class="footer">
@@ -200,14 +202,14 @@ export default function TableOrdersModal({ isOpen, onClose, tableNumber, orders 
                                                         <span className="item-qty">{item.quantity}x</span>
                                                         <span className="item-name">{item.menuItem?.name || 'Item'}</span>
                                                     </div>
-                                                    <span className="item-price">${Number(item.subtotal).toFixed(2)}</span>
+                                                    <span className="item-price">{formatMoney(Number(item.subtotal))}</span>
                                                 </div>
                                             ))}
                                         </div>
 
                                         <div className="order-card-footer">
                                             <span className="order-total-label">Total:</span>
-                                            <span className="order-total-amount">${Number(order.total).toFixed(2)}</span>
+                                            <span className="order-total-amount">{formatMoney(Number(order.total))}</span>
                                         </div>
                                     </div>
                                 ))
@@ -226,7 +228,7 @@ export default function TableOrdersModal({ isOpen, onClose, tableNumber, orders 
                                 </div>
                                 <div className="bill-stat-card primary">
                                     <span className="stat-label">Monto a Pagar</span>
-                                    <span className="stat-value">${totalAmount.toFixed(2)}</span>
+                                    <span className="stat-value">{formatMoney(totalAmount)}</span>
                                 </div>
                             </div>
 
@@ -246,7 +248,7 @@ export default function TableOrdersModal({ isOpen, onClose, tableNumber, orders 
                                         <div key={idx} className="bill-item-row">
                                             <span className="b-qty">{item.quantity}x</span>
                                             <span className="b-name">{item.menuItem?.name || 'Item'}</span>
-                                            <span className="b-price">${Number(item.subtotal).toFixed(2)}</span>
+                                            <span className="b-price">{formatMoney(Number(item.subtotal))}</span>
                                         </div>
                                     ))}
                                 </div>

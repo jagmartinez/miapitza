@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import type { Order } from '../types';
 import type { CurrencySettings } from '../utils/currency';
+import { useCurrency } from '../hooks/useCurrency';
 import type { SingleValue } from 'react-select';
 import { getOrderStatusClassName, getOrderStatusLabel } from '../utils/orderStatus';
 import { useAppToast } from '../context/ToastContext';
@@ -33,6 +34,7 @@ type CompanyDisplaySettings = CurrencySettings & {
 
 export default function Orders() {
     const { user } = useAuth();
+    const { symbol: currencySymbol, formatMoney } = useCurrency();
     const { error: showError, warning: showWarning } = useAppToast();
     const canSendKitchen = canSendOrderToKitchen(user);
     const canCancel = canCancelOrder(user);
@@ -233,7 +235,7 @@ export default function Orders() {
             return;
         }
 
-        const currencySymbol = settings.currency_symbol || '$';
+        const printSymbol = settings.currency_symbol || currencySymbol;
         const e = escapeHtml;
         const invoiceHTML = `
             <!DOCTYPE html>
@@ -295,36 +297,36 @@ export default function Orders() {
                         <span class="item-qty">${e(item.quantity)}x</span>
                         <div class="item-desc">
                             <span class="bold">${e(item.menuItem?.name || 'Item')}</span>
-                            <div style="font-size: 10px; color: #666;">Precio: ${e(currencySymbol)}${Number(item.price || (Number(item.subtotal) / item.quantity)).toFixed(2)}</div>
+                            <div style="font-size: 10px; color: #666;">Precio: ${e(printSymbol)}${Number(item.price || (Number(item.subtotal) / item.quantity)).toFixed(2)}</div>
                         </div>
-                        <span class="item-price">${e(currencySymbol)}${Number(item.subtotal).toFixed(2)}</span>
+                        <span class="item-price">${e(printSymbol)}${Number(item.subtotal).toFixed(2)}</span>
                     </div>
                 `).join('')}
 
                 <div class="separator"></div>
                 <div class="line">
                     <span>Subtotal:</span>
-                    <span>${e(currencySymbol)}${Number(order.items?.reduce((sum, i) => sum + Number(i.subtotal), 0) || order.total).toFixed(2)}</span>
+                    <span>${e(printSymbol)}${Number(order.items?.reduce((sum, i) => sum + Number(i.subtotal), 0) || order.total).toFixed(2)}</span>
                 </div>
                 <div class="line">
                     <span>IVA:</span>
-                    <span>${e(currencySymbol)}${Number(order.tax || 0).toFixed(2)}</span>
+                    <span>${e(printSymbol)}${Number(order.tax || 0).toFixed(2)}</span>
                 </div>
                 ${order.discount ? `
                     <div class="line" style="color: #d32f2f;">
                         <span>Descuento:</span>
-                        <span>-${e(currencySymbol)}${Number(order.discount).toFixed(2)}</span>
+                        <span>-${e(printSymbol)}${Number(order.discount).toFixed(2)}</span>
                     </div>
                 ` : ''}
                 ${order.tipAmount ? `
                     <div class="line">
                         <span>Propina:</span>
-                        <span>${e(currencySymbol)}${Number(order.tipAmount).toFixed(2)}</span>
+                        <span>${e(printSymbol)}${Number(order.tipAmount).toFixed(2)}</span>
                     </div>
                 ` : ''}
                 <div class="line total">
                     <span>TOTAL:</span>
-                    <span>${e(currencySymbol)}${Number(order.total).toFixed(2)}</span>
+                    <span>${e(printSymbol)}${Number(order.total).toFixed(2)}</span>
                 </div>
 
                 <div class="footer center">
@@ -586,7 +588,7 @@ export default function Orders() {
 
                                 <div className="card-total">
                                     <span className="label">Total</span>
-                                    <span className="amount">{settings.currency_symbol || '$'}{Number(order.total).toFixed(2)}</span>
+                                    <span className="amount">{formatMoney(Number(order.total))}</span>
                                 </div>
                             </div>
 
@@ -704,11 +706,11 @@ export default function Orders() {
                                     <div className="financials-section">
                                         <div className="fin-row">
                                             <span>Subtotal</span>
-                                            <span>{settings.currency_symbol || '$'}{Number(selectedOrder.total).toFixed(2)}</span>
+                                            <span>{formatMoney(Number(selectedOrder.total))}</span>
                                         </div>
                                         <div className="fin-row total">
                                             <span>Total a Pagar</span>
-                                            <span>{settings.currency_symbol || '$'}{Number(selectedOrder.total).toFixed(2)}</span>
+                                            <span>{formatMoney(Number(selectedOrder.total))}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -723,7 +725,7 @@ export default function Orders() {
                                                     <div className="item-name">{item.menuItem?.name || 'Item eliminado'}</div>
                                                     {item.notes && <div className="item-notes">{item.notes}</div>}
                                                 </div>
-                                                <span className="item-price">{settings.currency_symbol || '$'}{Number(item.subtotal).toFixed(2)}</span>
+                                                <span className="item-price">{formatMoney(Number(item.subtotal))}</span>
                                             </div>
                                         ))}
                                     </div>

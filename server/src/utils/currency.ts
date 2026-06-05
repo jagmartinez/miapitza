@@ -16,17 +16,17 @@ export interface CurrencySettings {
  * @returns Formatted currency string (e.g., "C$ 100.00")
  */
 export const formatCurrency = (amount: number, settings: CurrencySettings = {}): string => {
-    const symbol = settings.currency_symbol || '$';
+    const symbol = settings.currency_symbol || 'C$';
     return `${symbol} ${amount.toFixed(2)}`;
 };
 
 /**
  * Get currency symbol from settings
  * @param settings - Company settings object
- * @returns Currency symbol (default: '$')
+ * @returns Currency symbol (default: 'C$')
  */
 export const getCurrencySymbol = (settings: CurrencySettings = {}): string => {
-    return settings.currency_symbol || '$';
+    return settings.currency_symbol || 'C$';
 };
 
 /**

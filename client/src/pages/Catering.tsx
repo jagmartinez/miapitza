@@ -18,6 +18,7 @@ import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
 import type { Branch, MenuItem, PaymentMethod } from '../types';
 import type { CurrencySettings } from '../utils/currency';
+import { useCurrency } from '../hooks/useCurrency';
 import './CateringMod.css';
 
 interface CateringClausesForm {
@@ -94,6 +95,7 @@ type CateringEventDetail = CateringEvent & {
 };
 
 export default function Catering() {
+    const { formatMoney } = useCurrency();
     const { user } = useAuth();
     const { confirm } = useConfirmDialog();
     const { error: showError, warning: showWarning } = useAppToast();
@@ -982,7 +984,7 @@ export default function Catering() {
                                                 }
                                             }
                                         }}
-                                        options={allServices.map((s) => ({ value: s.id.toString(), label: `${s.name} - $${s.salePrice}` }))}
+                                        options={allServices.map((s) => ({ value: s.id.toString(), label: `${s.name} - ${formatMoney(Number(s.salePrice))}` }))}
                                         placeholder="Seleccione un servicio..."
                                         isClearable
                                         isSearchable
@@ -1000,7 +1002,7 @@ export default function Catering() {
                                     {formData.services.map((item, index) => (
                                         <div key={index} className="items-table-row">
                                             <span>{item.service?.name || 'Servicio'}</span>
-                                            <span>${Number(item.unitPrice).toLocaleString()}</span>
+                                            <span>{formatMoney(Number(item.unitPrice))}</span>
                                             <input
                                                 type="number"
                                                 min="1"
@@ -1011,7 +1013,7 @@ export default function Catering() {
                                                     setFormData({ ...formData, services: newServices });
                                                 }}
                                             />
-                                            <span>${Number(item.quantity * item.unitPrice).toLocaleString()}</span>
+                                            <span>{formatMoney(Number(item.quantity * item.unitPrice))}</span>
                                             <button
                                                 className="remove-btn"
                                                 onClick={() => {
@@ -1045,7 +1047,7 @@ export default function Catering() {
                                                 }
                                             }
                                         }}
-                                        options={allMenuItems.map((m) => ({ value: m.id.toString(), label: `${m.name} - $${m.price || 0}` }))}
+                                        options={allMenuItems.map((m) => ({ value: m.id.toString(), label: `${m.name} - ${formatMoney(Number(m.price || 0))}` }))}
                                         placeholder="Seleccione un plato..."
                                         isClearable
                                         isSearchable
@@ -1078,7 +1080,7 @@ export default function Catering() {
                                     {formData.menuItems.map((item, index) => (
                                         <div key={index} className="items-table-row">
                                             <span>{item.menuItem?.name || 'Plato'}</span>
-                                            <span>${Number(item.unitPrice).toLocaleString()}</span>
+                                            <span>{formatMoney(Number(item.unitPrice))}</span>
                                             <input
                                                 type="number"
                                                 min="1"
@@ -1089,7 +1091,7 @@ export default function Catering() {
                                                     setFormData({ ...formData, menuItems: newMenu });
                                                 }}
                                             />
-                                            <span>${Number(item.quantity * item.unitPrice).toLocaleString()}</span>
+                                            <span>{formatMoney(Number(item.quantity * item.unitPrice))}</span>
                                             <button
                                                 className="remove-btn"
                                                 onClick={() => {
@@ -1211,7 +1213,7 @@ export default function Catering() {
                                     <div className="financial-main-row">
                                         <div className="summary-item highlighted">
                                             <span className="label">Total General</span>
-                                            <span className="value">${Number(selectedEvent.totalAmount || 0).toLocaleString()}</span>
+                                            <span className="value">{formatMoney(Number(selectedEvent.totalAmount || 0))}</span>
                                         </div>
                                         <div className="summary-item success">
                                             <span className="label">Total Pagado</span>
@@ -1219,7 +1221,7 @@ export default function Catering() {
                                         </div>
                                         <div className="summary-item danger">
                                             <span className="label">Saldo Pendiente</span>
-                                            <span className="value">${Number(selectedEvent.balance || 0).toLocaleString()}</span>
+                                            <span className="value">{formatMoney(Number(selectedEvent.balance || 0))}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -1277,7 +1279,7 @@ export default function Catering() {
                                             <div key={i} className="items-table-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
                                                 <span>{p.date ? new Date(p.date).toLocaleDateString() : '-'}</span>
                                                 <span>{p.paymentMethod?.name}</span>
-                                                <span>${Number(p.amount).toLocaleString()}</span>
+                                                <span>{formatMoney(Number(p.amount))}</span>
                                             </div>
                                         ))}
                                     </div>

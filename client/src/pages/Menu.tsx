@@ -16,6 +16,7 @@ import type { SingleValue } from 'react-select';
 
 type CatFilterOption = { value: string; label: string };
 import MenuItemCard from '../components/MenuItemCard';
+import { useCurrency } from '../hooks/useCurrency';
 import ImageViewer from '../components/ImageViewer';
 import './Menu.css';
 
@@ -55,6 +56,7 @@ type StrOption = { value: string; label: string };
 
 export default function Menu() {
   const { user } = useAuth();
+  const { formatMoney, symbol } = useCurrency();
   const { confirm } = useConfirmDialog();
   const { error: showError, warning: showWarning } = useAppToast();
   /** Backend: menu/recipe/image mutations require SUPERADMIN | ADMIN */
@@ -616,7 +618,7 @@ export default function Menu() {
                     <div className="modal-input-group">
                       <label className="modal-input-label" htmlFor="menu-item-price">Precio Final</label>
                       <div style={{ position: 'relative' }}>
-                        <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-tertiary)', fontWeight: 600 }}>$</span>
+                        <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-tertiary)', fontWeight: 600 }}>{symbol}</span>
                         <input
                           id="menu-item-price"
                           type="number"
@@ -670,7 +672,7 @@ export default function Menu() {
                         <>
                           <div className="cost-stat-card primary">
                             <span className="cost-stat-label">Costo MP</span>
-                            <div className="cost-stat-value">${totalCost.toFixed(2)}</div>
+                            <div className="cost-stat-value">{formatMoney(totalCost)}</div>
                           </div>
                           <div className="cost-stat-card">
                             <span className="cost-stat-label">Margen</span>
@@ -680,7 +682,7 @@ export default function Menu() {
                           </div>
                           <div className="cost-stat-card">
                             <span className="cost-stat-label">Utilidad</span>
-                            <div className="cost-stat-value">${profit.toFixed(2)}</div>
+                            <div className="cost-stat-value">{formatMoney(profit)}</div>
                           </div>
                         </>
                       );
@@ -774,7 +776,7 @@ export default function Menu() {
                               <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>{ing.quantity} {ing.unit}</div>
                             </div>
                             <div style={{ fontWeight: 600, fontSize: '13px', marginRight: '16px' }}>
-                              ${calculateIngredientLineCost(ing).toFixed(2)}
+                              {formatMoney(calculateIngredientLineCost(ing))}
                             </div>
                             {canMutateMenu ? (
                               <button type="button" onClick={() => removeIngredient(i)} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer', padding: '4px' }}>
@@ -865,7 +867,7 @@ export default function Menu() {
                     border: '1px solid var(--color-border)'
                   }}>
                     <span>Precio base {formData.branchId ? '(sucursal propia)' : '(global)'}</span>
-                    <strong>${Number(formData.price || 0).toFixed(2)}</strong>
+                    <strong>{formatMoney(Number(formData.price || 0))}</strong>
                   </div>
                   {branches.map((branch) => {
                     const existingPrice = branchPricing.find((priceRow) => priceRow.branchId === branch.id);

@@ -1322,13 +1322,13 @@ export default function Inventory() {
                                                 <div>
                                                     <div style={{ fontSize: '11px', color: 'var(--color-neutral-500)', marginBottom: '4px' }}>Costo Promedio</div>
                                                     <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--color-neutral-800)' }}>
-                                                        ${Number((editingProduct as ProductInventory).currentAverageCost ?? editingProduct.cost).toFixed(2)}
+                                                        {formatCurrency(Number((editingProduct as ProductInventory).currentAverageCost ?? editingProduct.cost), settings)}
                                                     </div>
                                                 </div>
                                                 <div>
                                                     <div style={{ fontSize: '11px', color: 'var(--color-neutral-500)', marginBottom: '4px' }}>Última Compra</div>
                                                     <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--color-neutral-800)' }}>
-                                                        ${Number((editingProduct as ProductInventory).lastPurchaseCost ?? editingProduct.cost).toFixed(2)}
+                                                        {formatCurrency(Number((editingProduct as ProductInventory).lastPurchaseCost ?? editingProduct.cost), settings)}
                                                     </div>
                                                 </div>
                                             </div>
@@ -1615,7 +1615,7 @@ export default function Inventory() {
                                                     </div>
                                                     <div className="po-suggestion-cost">
                                                         <span className="po-suggestion-cost-value">
-                                                            ${Number(suggestion.estimatedCost || 0).toFixed(2)}
+                                                            {formatCurrency(Number(suggestion.estimatedCost || 0), settings)}
                                                         </span>
                                                         <span className="po-suggestion-cost-label">estimado</span>
                                                     </div>

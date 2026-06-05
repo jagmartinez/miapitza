@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Edit2, Trash2, Utensils, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import type { MenuItem } from '../types';
+import { useCurrency } from '../hooks/useCurrency';
 
 interface MenuItemCardProps {
     item: MenuItem;
@@ -12,6 +13,7 @@ interface MenuItemCardProps {
 }
 
 export default function MenuItemCard({ item, onClick, onEdit, onDelete, onImageClick }: MenuItemCardProps) {
+    const { formatMoney } = useCurrency();
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
     const images = item.images || [];
@@ -76,7 +78,7 @@ export default function MenuItemCard({ item, onClick, onEdit, onDelete, onImageC
             <div className="menu-item-content">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <h3 className="item-name">{item.name}</h3>
-                    <span className="item-price-tag">${Number(item.price).toFixed(2)}</span>
+                    <span className="item-price-tag">{formatMoney(Number(item.price))}</span>
                 </div>
                 <p className="item-description">{item.description || 'Sin descripción.'}</p>
             </div>

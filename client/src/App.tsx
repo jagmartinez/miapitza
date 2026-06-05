@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { CurrencyProvider } from './context/CurrencyContext';
 import { useAuth } from './hooks/useAuth';
 import './styles/responsive.css';
 import Login from './pages/Login';
@@ -78,6 +79,7 @@ function App() {
         <ThemeProvider>
             <LanguageProvider>
                 <AuthProvider>
+                    <CurrencyProvider>
                     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
                       <Suspense fallback={<LoadingSpinner />}>
                         <Routes>
@@ -140,6 +142,7 @@ function App() {
                         </Routes>
                       </Suspense>
                     </BrowserRouter>
+                    </CurrencyProvider>
                 </AuthProvider>
             </LanguageProvider>
         </ThemeProvider>

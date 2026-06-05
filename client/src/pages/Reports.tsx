@@ -11,16 +11,13 @@ import {
     GitCompare, Activity, CreditCard, Building2, Tag, Warehouse, ChevronRight
 } from 'lucide-react';
 import type { Branch, Supplier } from '../types';
-import { formatCurrencyIntl } from '../utils/currency';
+import { formatCurrency } from '../utils/currency';
+import { useCurrency } from '../hooks/useCurrency';
 import './Reports.css';
 
 interface CategoryOption { id: number; name: string }
 interface WarehouseOption { id: number; name: string }
 interface BrandOption { id: number; name: string }
-
-// Currency/locale fall back to app-wide defaults (NIO / es-NI). Wiring these to
-// company settings requires a shared settings source (see report).
-const fmtCurrency = (n: number) => formatCurrencyIntl(n);
 
 const fmtNumber = (n: number) =>
     new Intl.NumberFormat('es-NI', { maximumFractionDigits: 2 }).format(n);
@@ -177,6 +174,7 @@ function ReportsHub({ onSelect }: { onSelect: (r: ReportDef) => void }) {
 
 // ── Report Detail ──
 function ReportDetail({ reportId }: { reportId: string }) {
+    const { formatMoney: fmtCurrency } = useCurrency();
     const navigate = useNavigate();
     const reportDef = REPORT_CATALOG.find(r => r.id === reportId);
     const groupedReportIds = getGroupReports(reportId);
@@ -566,7 +564,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
                                     {paginatedItems.map((row, i) => (
                                         <tr key={i}>{getColumns(reportId).map(col => (
                                             <td key={col.key} className={col.align === 'right' ? 'text-right' : ''}>
-                                                {renderCell(row[col.key], col)}
+                                                {renderCell(row[col.key], col, fmtCurrency)}
                                             </td>
                                         ))}</tr>
                                     ))}
@@ -890,7 +888,7 @@ function getColumns(reportId: string): ColDef[] {
     }
 }
 
-function renderCell(value: unknown, col: ColDef) {
+function renderCell(value: unknown, col: ColDef, fmtCurrency: (n: number) => string = (n) => formatCurrency(n)) {
     if (value === null || value === undefined) return '-';
     switch (col.format) {
         case 'currency': return fmtCurrency(Number(value));

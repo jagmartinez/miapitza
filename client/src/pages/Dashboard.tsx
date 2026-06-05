@@ -6,7 +6,7 @@ import { hasAnyRole } from '../utils/authz';
 import { getOrderStatusLabel } from '../utils/orderStatus';
 import type { Order } from '../types';
 import { ADMIN } from '../constants/roles';
-import { formatCurrencyIntl } from '../utils/currency';
+import { useCurrency } from '../hooks/useCurrency';
 import Select from '../components/Select';
 import type { SingleValue } from 'react-select';
 import Modal from '../components/Modal';
@@ -233,6 +233,7 @@ interface CategoryOption {
 export default function Dashboard() {
     const navigate = useNavigate();
     const { user } = useAuth();
+    const { formatMoney: formatCurrency } = useCurrency();
     const isAdmin = hasAnyRole(user, ADMIN);
     const [stats, setStats] = useState({
         todaySales: 0,
@@ -413,10 +414,6 @@ export default function Dashboard() {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
         return () => clearInterval(timer);
     }, []);
-
-    // Currency/locale fall back to app-wide defaults (NIO / es-NI). Wiring these
-    // to company settings requires a shared settings source (see report).
-    const formatCurrency = (value: number) => formatCurrencyIntl(value);
 
     const occupancyRate = (stats as DashboardStats).occupancyRate || 0;
     const averageTicket = (stats as DashboardStats).averageTicket || 0;

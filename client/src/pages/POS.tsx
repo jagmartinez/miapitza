@@ -23,6 +23,7 @@ import POSProductCard from '../components/POSProductCard';
 import { LoadingOverlay } from '../components/LoadingSpinner';
 import { Send, CreditCard, Printer, X, Search, Grid3x3, AlertTriangle, ChevronLeft } from 'lucide-react';
 import type { MenuItem, Order, Table } from '../types';
+import { useCurrency } from '../hooks/useCurrency';
 import './POS.css';
 
 interface OfflineResponse {
@@ -73,6 +74,7 @@ interface ShiftStatus {
 export default function POS() {
     const navigate = useNavigate();
     const { user } = useAuth();
+    const { symbol: currencySymbol } = useCurrency();
     const { confirm } = useConfirmDialog();
     const { success, error: showError, warning, info } = useAppToast();
     const canManageShift = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CAJERO']);
@@ -721,7 +723,6 @@ export default function POS() {
     }
 
     const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const currencySymbol = settings.currency_symbol || '$';
     const cartItemCount = cart.reduce((acc, item) => acc + item.quantity, 0);
     const showMobileActions = cartItemCount > 0 || Boolean(currentOrderId);
     const discountAmount = Math.min(
@@ -950,7 +951,7 @@ export default function POS() {
                                     </div>
                                 </div>
                                 <div style={{ fontWeight: 700 }}>
-                                    {settings.currency_symbol || '$'}{activeOrderTotal.toFixed(2)}
+                                    {currencySymbol}{activeOrderTotal.toFixed(2)}
                                 </div>
                             </div>
                         </div>
@@ -1046,7 +1047,7 @@ export default function POS() {
                     orderTotal={currentOrderId ? activeOrderTotal : total}
                     order={activeTableOrder}
                     onPaymentSuccess={handlePaymentComplete}
-                    currencySymbol={settings.currency_symbol || '$'}
+                    currencySymbol={currencySymbol}
                 />
             )}
 

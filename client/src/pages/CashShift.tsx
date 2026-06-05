@@ -14,6 +14,7 @@ import type { SingleValue } from 'react-select';
 import { hasAnyRole } from '../utils/authz';
 import { useAppToast } from '../context/ToastContext';
 import { DEFAULT_EXCHANGE_RATE } from '../utils/currency';
+import { useCurrency } from '../hooks/useCurrency';
 import './CashShift.css';
 
 interface DenomCountRow {
@@ -83,6 +84,7 @@ const formatDuration = (startDate: string, endDate?: string): string => {
 };
 
 export default function CashShiftPage() {
+    const { formatMoney } = useCurrency();
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -682,7 +684,7 @@ export default function CashShiftPage() {
                                             <td>{mov.description || '-'}</td>
                                             <td>{mov.supplier?.name || '-'}</td>
                                             <td className={`text-right amount-cell ${mov.type === 'IN' ? 'text-green' : 'text-red'}`}>
-                                                {mov.type === 'IN' ? '+' : '-'}${formatCurrency(Number(mov.amount))}
+                                                {mov.type === 'IN' ? '+' : '-'}{formatMoney(Number(mov.amount))}
                                             </td>
                                         </tr>
                                     ))}
@@ -790,16 +792,16 @@ export default function CashShiftPage() {
                             </div>
                             <div className="summary-row">
                                 <span>Ingresos</span>
-                                <span className="summary-value text-green">+${formatCurrency(Number(summary?.totalIn || 0))}</span>
+                                <span className="summary-value text-green">+{formatMoney(Number(summary?.totalIn || 0))}</span>
                             </div>
                             <div className="summary-row">
                                 <span>Egresos</span>
-                                <span className="summary-value text-red">-${formatCurrency(Number(summary?.totalOut || 0))}</span>
+                                <span className="summary-value text-red">-{formatMoney(Number(summary?.totalOut || 0))}</span>
                             </div>
                             <div className="summary-row total">
                                 <span>Balance</span>
                                 <span className={`summary-value ${(summary?.totalIn || 0) - (summary?.totalOut || 0) >= 0 ? 'text-green' : 'text-red'}`}>
-                                    ${formatCurrency((summary?.totalIn || 0) - (summary?.totalOut || 0))}
+                                    {formatMoney((summary?.totalIn || 0) - (summary?.totalOut || 0))}
                                 </span>
                             </div>
                         </div>
@@ -835,15 +837,15 @@ export default function CashShiftPage() {
                                 <div className="closing-info">
                                     <div className="info-row">
                                         <span>Esperado:</span>
-                                        <span>{isBlindCashier ? 'Oculto hasta validar' : `$${formatCurrency(Number(summary?.expectedAmount || 0))}`}</span>
+                                        <span>{isBlindCashier ? 'Oculto hasta validar' : formatMoney(Number(summary?.expectedAmount || 0))}</span>
                                     </div>
                                     <div className="info-row">
                                         <span>Real:</span>
-                                        <span>${formatCurrency(Number(shift.endAmount))}</span>
+                                        <span>{formatMoney(Number(shift.endAmount))}</span>
                                     </div>
                                     <div className={`info-row difference ${Number(shift.difference) >= 0 ? 'positive' : 'negative'}`}>
                                         <span>Diferencia:</span>
-                                        <span>${formatCurrency(Number(shift.difference))}</span>
+                                        <span>{formatMoney(Number(shift.difference))}</span>
                                     </div>
                                     {shift.notes && (
                                         <div className="closing-notes">

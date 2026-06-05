@@ -14,6 +14,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
+import { useCurrency } from '../hooks/useCurrency';
 import './CateringMod.css';
 
 interface CateringServiceRow {
@@ -28,10 +29,9 @@ const marginPct = (s: { internalCost: number; salePrice: number }) =>
     s.salePrice > 0 ? ((s.salePrice - s.internalCost) / s.salePrice) * 100 : 0;
 const marginColor = (pct: number) =>
     pct >= 50 ? 'var(--color-success)' : pct >= 20 ? 'var(--color-warning)' : 'var(--color-danger)';
-const money = (n: number) => `$${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
-
 export default function CateringServices() {
     const { user } = useAuth();
+    const { formatMoney: money } = useCurrency();
     const { confirm } = useConfirmDialog();
     const { warning: showWarning } = useAppToast();
     const userRoleNames = getUserRoleNames(user);

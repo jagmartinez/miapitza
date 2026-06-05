@@ -34,8 +34,10 @@ export interface CurrencyFormatOptions {
  * @param settings - Company settings object containing currency configuration
  * @returns Formatted currency string (e.g., "C$ 100.00")
  */
+export const DEFAULT_CURRENCY_SYMBOL = 'C$';
+
 export const formatCurrency = (amount: number, settings: CurrencySettings = {}): string => {
-    const symbol = settings.currency_symbol || 'C$';
+    const symbol = settings.currency_symbol || DEFAULT_CURRENCY_SYMBOL;
     return `${symbol} ${amount.toFixed(2)}`;
 };
 
@@ -69,5 +71,5 @@ export const formatCurrencyIntl = (amount: number, options: CurrencyFormatOption
  * @returns Currency symbol (default: 'C$')
  */
 export const getCurrencySymbol = (settings: CurrencySettings = {}): string => {
-    return settings.currency_symbol || 'C$';
+    return settings.currency_symbol || DEFAULT_CURRENCY_SYMBOL;
 };

@@ -11,6 +11,7 @@ import Sidebar from '../components/Sidebar';
 import { Plus, Trash2, Save, CheckCircle, Package, Info, MapPin, Building2, FileText, Eye, Upload, Download } from 'lucide-react';
 import type { PurchaseOrder, PurchaseOrderItem, Supplier, Product, Branch, Warehouse, ProductAllowedUnit } from '../types';
 import type { SingleValue } from 'react-select';
+import { useCurrency } from '../hooks/useCurrency';
 import './PurchaseOrderForm.css';
 
 type StrOption = { value: string; label: string };
@@ -30,6 +31,7 @@ interface PurchaseOrderFormProps {
 }
 
 export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: PurchaseOrderFormProps) {
+    const { formatMoney } = useCurrency();
     const { id: paramId } = useParams();
     const navigate = useNavigate();
     const { confirm } = useConfirmDialog();
@@ -557,7 +559,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                                 </div>
                                             </td>
                                             <td className="text-right font-mono">{Number(item.quantity).toFixed(2)}</td>
-                                            <td className="text-right font-mono">${Number(item.cost).toFixed(2)}</td>
+                                            <td className="text-right font-mono">{formatMoney(Number(item.cost))}</td>
                                             <td className="text-right font-bold">${(Number(item.quantity) * Number(item.cost)).toFixed(2)}</td>
                                             {isDraft && (
                                                 <td className="text-center">

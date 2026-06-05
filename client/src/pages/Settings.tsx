@@ -6,6 +6,8 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 import { Settings as SettingsIcon, Building2, FileText, Users, Database, Upload, Truck } from 'lucide-react';
 import { useAppToast } from '../context/ToastContext';
+import { useCurrency } from '../hooks/useCurrency';
+import { DEFAULT_CURRENCY_SYMBOL } from '../utils/currency';
 import './Settings.css';
 
 interface SalesChannelConfig {
@@ -21,6 +23,7 @@ type SettingsTab = 'general' | 'company' | 'invoice' | 'roles' | 'channels' | 's
 export default function Settings() {
     const navigate = useNavigate();
     const { error: showError, success } = useAppToast();
+    const { refresh: refreshCurrency } = useCurrency();
     const [activeTab, setActiveTab] = useState<SettingsTab>('general');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -33,7 +36,7 @@ export default function Settings() {
         // General
         companyName: '',
         taxRate: '',
-        currency_symbol: '$',
+        currency_symbol: DEFAULT_CURRENCY_SYMBOL,
 
         // Company
         nif: '',
@@ -67,7 +70,7 @@ export default function Settings() {
             setFormData({
                 companyName: settings.companyName || '',
                 taxRate: settings.taxRate || '',
-                currency_symbol: settings.currency_symbol || settings.currency || '$',
+                currency_symbol: settings.currency_symbol || settings.currency || DEFAULT_CURRENCY_SYMBOL,
                 nif: settings.nif || '',
                 address: settings.address || '',
                 phone: settings.phone || '',
@@ -154,6 +157,7 @@ export default function Settings() {
             }
 
             await settingsAPI.update(formData);
+            await refreshCurrency();
             success('Configuración guardada correctamente');
             loadSettings();
         } catch (error) {
