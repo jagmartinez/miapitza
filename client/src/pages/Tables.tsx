@@ -10,6 +10,9 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
 import { Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin, Building2 } from 'lucide-react';
+import ViewToggle from '../components/ViewToggle';
+import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
+import { useViewMode } from '../hooks/useViewMode';
 import type { Table, Order, Branch } from '../types';
 import type { SingleValue } from 'react-select';
 import Select from '../components/Select';
@@ -64,6 +67,7 @@ export default function Tables() {
     const [isOrdersModalOpen, setIsOrdersModalOpen] = useState(false);
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
     const [tableOrders, setTableOrders] = useState<Order[]>([]);
+    const { viewMode, setViewMode } = useViewMode('tables');
 
     const loadTables = useCallback(async () => {
         try {
@@ -226,12 +230,17 @@ export default function Tables() {
             <PageHeader
                 title="Gestión de Mesas"
                 icon={Grid3x3}
-                actions={canCreateTable ? (
-                    <Button onClick={() => handleOpenSidebar()}>
-                        <Plus size={20} />
-                        Nueva Mesa
-                    </Button>
-                ) : undefined}
+                actions={(
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <ViewToggle value={viewMode} onChange={setViewMode} />
+                        {canCreateTable && (
+                            <Button onClick={() => handleOpenSidebar()}>
+                                <Plus size={20} />
+                                Nueva Mesa
+                            </Button>
+                        )}
+                    </div>
+                )}
             />
 
             {/* Filters Row */}
@@ -284,7 +293,88 @@ export default function Tables() {
                 )}
             </div>
 
-            {/* Enhanced Table Grid */}
+            {viewMode === 'table' && filteredTables.length > 0 && (
+                <CatalogTable<Table>
+                    rows={filteredTables}
+                    rowKey={(table) => table.id}
+                    resetKey={`${statusFilter}-${branchFilter}`}
+                    columns={[
+                        {
+                            key: 'number',
+                            header: 'Mesa',
+                            render: (table) => (
+                                <div className="catalog-cell-stack">
+                                    <span className="cell-title">Mesa {table.number}</span>
+                                </div>
+                            ),
+                        },
+                        ...(canChooseBranch ? [{
+                            key: 'branch',
+                            header: 'Sucursal',
+                            render: (table: Table) => table.branch?.name || '-',
+                        }] : []),
+                        {
+                            key: 'capacity',
+                            header: 'Capacidad',
+                            align: 'center',
+                            render: (table) => `${table.capacity} pers.`,
+                        },
+                        {
+                            key: 'location',
+                            header: 'Ubicación',
+                            render: (table) => table.location || '-',
+                        },
+                        {
+                            key: 'status',
+                            header: 'Estado',
+                            render: (table) => (
+                                <span className={`catalog-pill ${table.status === 'AVAILABLE' ? 'ok' : table.status === 'OCCUPIED' ? 'warning' : 'neutral'}`}>
+                                    {getStatusText(table.status)}
+                                </span>
+                            ),
+                        },
+                        {
+                            key: 'actions',
+                            header: 'Acciones',
+                            align: 'right',
+                            render: (table) => (
+                                <div className="catalog-table-actions">
+                                    <button
+                                        type="button"
+                                        className="catalog-action-btn"
+                                        onClick={() => handleViewOrders(table)}
+                                        title="Ver órdenes"
+                                    >
+                                        <Eye size={16} />
+                                    </button>
+                                    {canEditTable && (
+                                        <button
+                                            type="button"
+                                            className="catalog-action-btn"
+                                            onClick={() => handleOpenSidebar(table)}
+                                            title="Editar"
+                                        >
+                                            <Edit2 size={16} />
+                                        </button>
+                                    )}
+                                    {canDeleteTable && (
+                                        <button
+                                            type="button"
+                                            className="catalog-action-btn danger"
+                                            onClick={() => handleDelete(table.id)}
+                                            title="Eliminar"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    )}
+                                </div>
+                            ),
+                        },
+                    ] as CatalogColumn<Table>[]}
+                />
+            )}
+
+            {viewMode === 'cards' && (
             <div className="tables-grid-new">
                 {filteredTables.map(table => {
                     return (
@@ -360,6 +450,7 @@ export default function Tables() {
                     );
                 })}
             </div>
+            )}
 
             {filteredTables.length === 0 && (
                 <div className="no-tables-message">

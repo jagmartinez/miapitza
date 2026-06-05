@@ -1,5 +1,5 @@
-import { useRef } from 'react';
-import { X } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { X, Search } from 'lucide-react';
 import type { Table } from '../types';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import './Modal.css';
@@ -11,11 +11,26 @@ interface TableSelectionModalProps {
     onClose: () => void;
 }
 
+function matchesTableSearch(table: Table, query: string): boolean {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    const number = String(table.number).toLowerCase();
+    const location = (table.location || '').toLowerCase();
+    return number.includes(q) || location.includes(q);
+}
+
 export default function TableSelectionModal({ tables, onSelectTable, onClose }: TableSelectionModalProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const { titleId } = useDialogA11y(true, onClose, containerRef);
-    const availableTables = tables.filter(t => t.status === 'AVAILABLE');
-    const occupiedTables = tables.filter(t => t.status === 'OCCUPIED');
+    const [searchQuery, setSearchQuery] = useState('');
+
+    const filteredTables = useMemo(
+        () => tables.filter((t) => matchesTableSearch(t, searchQuery)),
+        [tables, searchQuery]
+    );
+
+    const availableTables = filteredTables.filter(t => t.status === 'AVAILABLE');
+    const occupiedTables = filteredTables.filter(t => t.status === 'OCCUPIED');
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -35,7 +50,27 @@ export default function TableSelectionModal({ tables, onSelectTable, onClose }: 
                     </button>
                 </div>
 
+                <div className="table-selection-modal-toolbar">
+                    <div className="table-selection-search">
+                        <Search size={18} className="table-selection-search-icon" aria-hidden="true" />
+                        <input
+                            type="text"
+                            className="table-selection-search-input"
+                            placeholder="Filtrar por nombre o ubicación de mesa..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            autoFocus
+                        />
+                    </div>
+                </div>
+
                 <div className="table-selection-modal-body">
+                    {filteredTables.length === 0 && (
+                        <div className="table-selection-empty">
+                            No hay mesas que coincidan con &quot;{searchQuery}&quot;
+                        </div>
+                    )}
+
                     {availableTables.length > 0 && (
                         <div className="table-section">
                             <h3 className="section-title">Mesas Disponibles</h3>
@@ -43,6 +78,7 @@ export default function TableSelectionModal({ tables, onSelectTable, onClose }: 
                                 {availableTables.map(table => (
                                     <button
                                         key={table.id}
+                                        type="button"
                                         className="table-card available"
                                         onClick={() => {
                                             onSelectTable(table);
@@ -64,6 +100,7 @@ export default function TableSelectionModal({ tables, onSelectTable, onClose }: 
                                 {occupiedTables.map(table => (
                                     <button
                                         key={table.id}
+                                        type="button"
                                         className="table-card occupied"
                                         onClick={() => {
                                             onSelectTable(table);

@@ -9,8 +9,11 @@ import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import {
   Plus, Utensils, Trash2, Image as ImageIcon,
-  Info, PieChart, ImagePlus, DollarSign
+  Info, PieChart, ImagePlus, DollarSign, Edit2
 } from 'lucide-react';
+import ViewToggle from '../components/ViewToggle';
+import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
+import { useViewMode } from '../hooks/useViewMode';
 import { currencyInputPadding } from '../utils/currency';
 import type { Branch, MenuItem, MenuBrand, Product, ProductAllowedUnit } from '../types';
 import type { SingleValue } from 'react-select';
@@ -75,6 +78,7 @@ export default function Menu() {
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
   const [brands, setBrands] = useState<MenuBrand[]>([]);
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
+  const { viewMode, setViewMode } = useViewMode('menu');
 
   // Sidebar State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -431,12 +435,15 @@ export default function Menu() {
           <h1><Utensils size={32} /> Gestión de Menú</h1>
           <p className="menu-subtitle">{filteredItems.length} platos catalogados en el sistema</p>
         </div>
-        {canMutateMenu && (
-          <Button onClick={() => handleOpenSidebar()}>
-            <Plus size={18} />
-            Nuevo Plato
-          </Button>
-        )}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <ViewToggle value={viewMode} onChange={setViewMode} />
+          {canMutateMenu && (
+            <Button onClick={() => handleOpenSidebar()}>
+              <Plus size={18} />
+              Nuevo Plato
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Modern Filter Row */}
@@ -501,19 +508,107 @@ export default function Menu() {
         </div>
       </div>
 
-      {/* Main Grid Restored */}
-      <div className="menu-grid">
-        {filteredItems.map(item => (
-          <MenuItemCard
-            key={item.id}
-            item={item}
-            onClick={() => handleOpenSidebar(item)}
-            onEdit={() => handleOpenSidebar(item)}
-            onDelete={() => handleDelete(item.id)}
-            onImageClick={handleImageClick}
-          />
-        ))}
-      </div>
+      {viewMode === 'table' && filteredItems.length > 0 && (
+        <CatalogTable<MenuItem>
+          rows={filteredItems}
+          rowKey={(item) => item.id}
+          resetKey={`${selectedCategory}-${selectedBranch}-${selectedBrand}-${searchQuery}`}
+          columns={[
+            {
+              key: 'name',
+              header: 'Plato',
+              render: (item) => (
+                <div className="catalog-cell-stack">
+                  <span className="cell-title">{item.name}</span>
+                  {item.description && <span className="cell-sub">{item.description}</span>}
+                </div>
+              ),
+            },
+            {
+              key: 'category',
+              header: 'Categoría',
+              render: (item) => item.category?.name || '-',
+            },
+            {
+              key: 'brand',
+              header: 'Marca',
+              render: (item) => item.brand?.name || 'Común',
+            },
+            {
+              key: 'branch',
+              header: 'Sucursal',
+              render: (item) => {
+                if (!item.branchId) return 'Global';
+                return branches.find((b) => b.id === item.branchId)?.name || '-';
+              },
+            },
+            {
+              key: 'price',
+              header: 'Precio',
+              align: 'right',
+              render: (item) => formatMoney(Number(item.price)),
+            },
+            {
+              key: 'status',
+              header: 'Estado',
+              render: (item) => (
+                <span className={`catalog-pill ${item.active ? 'ok' : 'neutral'}`}>
+                  {item.active ? 'Activo' : 'Inactivo'}
+                </span>
+              ),
+            },
+            {
+              key: 'actions',
+              header: 'Acciones',
+              align: 'right',
+              render: (item) => (
+                <div className="catalog-table-actions">
+                  <button
+                    type="button"
+                    className="catalog-action-btn"
+                    onClick={() => handleOpenSidebar(item)}
+                    title="Ver / Editar"
+                  >
+                    <Edit2 size={16} />
+                  </button>
+                  {canMutateMenu && (
+                    <button
+                      type="button"
+                      className="catalog-action-btn danger"
+                      onClick={() => handleDelete(item.id)}
+                      title="Eliminar"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+              ),
+            },
+          ] as CatalogColumn<MenuItem>[]}
+        />
+      )}
+
+      {viewMode === 'cards' && (
+        <div className="menu-grid">
+          {filteredItems.map(item => (
+            <MenuItemCard
+              key={item.id}
+              item={item}
+              onClick={() => handleOpenSidebar(item)}
+              onEdit={() => handleOpenSidebar(item)}
+              onDelete={() => handleDelete(item.id)}
+              onImageClick={handleImageClick}
+            />
+          ))}
+        </div>
+      )}
+
+      {filteredItems.length === 0 && (
+        <div className="menu-empty-state">
+          <Utensils size={48} />
+          <p>No hay platos que coincidan con los filtros</p>
+        </div>
+      )}
 
       {/* REDESIGNED MODAL WITH TABS */}
       <Sidebar
@@ -539,7 +634,7 @@ export default function Menu() {
               onClick={() => setActiveTab('recipe')}
             >
               <PieChart size={18} />
-              <span>Costos <span className="tab-badge">{recipe.length}</span></span>
+              <span>Costos</span>
             </button>
             <button
               type="button"
@@ -547,7 +642,7 @@ export default function Menu() {
               onClick={() => setActiveTab('gallery')}
             >
               <ImageIcon size={18} />
-              <span>Galería <span className="tab-badge">{images.length}/3</span></span>
+              <span>Galería</span>
             </button>
             {editingItem && (
               <button

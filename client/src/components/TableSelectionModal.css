@@ -4,7 +4,9 @@
     max-width: 800px;
     width: 90%;
     max-height: 85vh;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     box-shadow: var(--shadow-xl);
 }
 
@@ -27,8 +29,73 @@
     margin: 0;
 }
 
+.table-selection-modal-toolbar {
+    padding: 0 var(--spacing-xl) var(--spacing-md);
+    border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
+}
+
+.table-selection-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.table-selection-search-icon {
+    position: absolute;
+    left: 12px;
+    color: var(--color-text-tertiary);
+    pointer-events: none;
+}
+
+.table-selection-search-input {
+    width: 100%;
+    padding: 10px 12px 10px 40px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    color: var(--color-text);
+    background: var(--color-background);
+    box-sizing: border-box;
+}
+
+.table-selection-search-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
 .table-selection-modal-body {
     padding: var(--spacing-xl);
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+}
+
+.table-selection-modal-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.table-selection-modal-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.table-selection-modal-body::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 3px;
+}
+
+.table-selection-modal-body::-webkit-scrollbar-thumb:hover {
+    background: var(--color-neutral-400);
+}
+
+.table-selection-empty {
+    text-align: center;
+    color: var(--color-text-secondary);
+    font-size: 14px;
+    padding: var(--spacing-xl) 0;
 }
 
 .table-section {
@@ -132,6 +199,10 @@
 
     .table-selection-modal-header h2 {
         font-size: var(--font-size-lg);
+    }
+
+    .table-selection-modal-toolbar {
+        padding: 0 var(--spacing-md) var(--spacing-sm);
     }
 
     .table-selection-modal-body {
