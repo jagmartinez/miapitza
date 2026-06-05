@@ -584,12 +584,43 @@
 .price-currency-icon {
   position: absolute;
   left: 12px;
-  font-weight: 700;
-  color: var(--color-neutral-400);
+  top: 50%;
+  transform: translateY(-50%);
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  pointer-events: none;
+  z-index: 1;
 }
 
 .price-input-wrapper input {
-  padding-left: 28px;
+  padding-left: 40px;
+}
+
+.branch-pricing-panel {
+  margin-top: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+}
+
+.branch-pricing-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.branch-pricing-row.base-price {
+  grid-template-columns: 1fr auto;
+}
+
+.branch-pricing-price-input {
+  width: 130px;
 }
 
 /* 3. Kosten/Recipe Dashboard (Compact) */

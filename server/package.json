@@ -20,6 +20,8 @@
     "import:maestros": "ts-node prisma/import-maestros-miapitz.ts",
     "import:menu-prices": "ts-node prisma/update-menu-prices-from-pdf.ts",
     "import:merge-products": "ts-node prisma/merge-recipe-products.ts",
+    "db:merge-bamboo": "tsx prisma/merge-bamboo-branches.ts",
+    "db:dedupe-catalog": "tsx prisma/dedupe-catalog.ts",
     "test": "npm run test:unit",
     "test:unit": "jest --config jest.unit.config.cjs",
     "test:integration": "jest --config jest.integration.config.cjs --runInBand",

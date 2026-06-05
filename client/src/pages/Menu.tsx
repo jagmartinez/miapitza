@@ -9,8 +9,9 @@ import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import {
   Plus, Utensils, Trash2, Image as ImageIcon,
-  Info, PieChart, ImagePlus
+  Info, PieChart, ImagePlus, DollarSign
 } from 'lucide-react';
+import { currencyInputPadding } from '../utils/currency';
 import type { Branch, MenuItem, MenuBrand, Product, ProductAllowedUnit } from '../types';
 import type { SingleValue } from 'react-select';
 
@@ -104,7 +105,7 @@ export default function Menu() {
   const [viewerInitialIndex, setViewerInitialIndex] = useState(0);
 
   // Modal Tab State
-  const [activeTab, setActiveTab] = useState<'info' | 'recipe' | 'gallery'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'recipe' | 'gallery' | 'pricing'>('info');
   const [saving, setSaving] = useState(false);
 
   const calculateIngredientLineCost = (ingredient: RecipeIngredient) => {
@@ -548,6 +549,16 @@ export default function Menu() {
               <ImageIcon size={18} />
               <span>Galería <span className="tab-badge">{images.length}/3</span></span>
             </button>
+            {editingItem && (
+              <button
+                type="button"
+                className={`modal-tab ${activeTab === 'pricing' ? 'active' : ''}`}
+                onClick={() => setActiveTab('pricing')}
+              >
+                <DollarSign size={18} />
+                <span>Precios</span>
+              </button>
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="modal-form-new">
@@ -617,14 +628,14 @@ export default function Menu() {
 
                     <div className="modal-input-group">
                       <label className="modal-input-label" htmlFor="menu-item-price">Precio Final</label>
-                      <div style={{ position: 'relative' }}>
-                        <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-tertiary)', fontWeight: 600 }}>{symbol}</span>
+                      <div className="price-input-wrapper">
+                        <span className="price-currency-icon">{symbol}</span>
                         <input
                           id="menu-item-price"
                           type="number"
                           step="0.01"
                           className="modal-standard-input"
-                          style={{ paddingLeft: '28px' }}
+                          style={{ paddingLeft: currencyInputPadding(symbol) }}
                           placeholder="0.00"
                           value={formData.price}
                           onChange={(e) => setFormData({ ...formData, price: e.target.value })}
@@ -839,79 +850,64 @@ export default function Menu() {
                   </div>
                 </div>
               )}
-            </div>
 
-            {editingItem && (
-              <div style={{
-                marginTop: '12px',
-                padding: '12px',
-                borderRadius: '12px',
-                background: 'var(--color-neutral-50)',
-                border: '1px solid var(--color-border)'
-              }}>
-                <div style={{ fontWeight: 700, marginBottom: '8px' }}>Matriz de precios por sucursal</div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--color-text-secondary)', marginBottom: '12px' }}>
-                  {formData.branchId
-                    ? 'Este plato es exclusivo de una sucursal. Los precios de abajo permiten ajustes adicionales por local.'
-                    : 'Este plato es global. Cada sucursal puede sobrescribir el precio base si lo necesita.'}
-                </div>
-                <div style={{ display: 'grid', gap: '8px' }}>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr auto',
-                    gap: '8px',
-                    alignItems: 'center',
-                    padding: '10px 12px',
-                    borderRadius: '10px',
-                    background: 'var(--color-surface)',
-                    border: '1px solid var(--color-border)'
-                  }}>
-                    <span>Precio base {formData.branchId ? '(sucursal propia)' : '(global)'}</span>
-                    <strong>{formatMoney(Number(formData.price || 0))}</strong>
+              {activeTab === 'pricing' && editingItem && (
+                <div className="modal-section animate-slide-in">
+                  <div className="modal-section-header">
+                    <DollarSign size={18} />
+                    <h3>Matriz de precios por sucursal</h3>
                   </div>
-                  {branches.map((branch) => {
-                    const existingPrice = branchPricing.find((priceRow) => priceRow.branchId === branch.id);
-                    return (
-                      <div key={branch.id} style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1fr auto auto',
-                        gap: '8px',
-                        alignItems: 'center',
-                        padding: '10px 12px',
-                        borderRadius: '10px',
-                        background: 'var(--color-surface)',
-                        border: '1px solid var(--color-border)'
-                      }}>
-                        <div>
-                          <div style={{ fontWeight: 600 }}>{branch.name}</div>
-                          <div style={{ fontSize: '0.78rem', color: 'var(--color-text-secondary)' }}>
-                            {existingPrice ? 'Override activo' : 'Usa precio base'}
-                          </div>
-                        </div>
-                        <input
-                          type="number"
-                          step="0.01"
-                          className="modal-standard-input"
-                          style={{ width: '110px' }}
-                          value={branchPriceDrafts[branch.id] ?? (existingPrice ? Number(existingPrice.price).toFixed(2) : Number(formData.price || 0).toFixed(2))}
-                          onChange={(e) => setBranchPriceDrafts((prev) => ({ ...prev, [branch.id]: e.target.value }))}
-                          readOnly={!canSetBranchPrices}
-                          disabled={!canSetBranchPrices}
-                        />
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          onClick={() => handleSaveBranchPrice(branch.id)}
-                          disabled={!canSetBranchPrices || savingBranchPriceId === branch.id}
-                        >
-                          {savingBranchPriceId === branch.id ? 'Guardando...' : 'Guardar'}
-                        </Button>
+                  <div className="branch-pricing-panel">
+                    <div style={{ fontSize: '0.82rem', color: 'var(--color-text-secondary)', marginBottom: '12px' }}>
+                      {formData.branchId
+                        ? 'Este plato es exclusivo de una sucursal. Los precios de abajo permiten ajustes adicionales por local.'
+                        : 'Este plato es global. Cada sucursal puede sobrescribir el precio base si lo necesita.'}
+                    </div>
+                    <div style={{ display: 'grid', gap: '8px' }}>
+                      <div className="branch-pricing-row base-price">
+                        <span>Precio base {formData.branchId ? '(sucursal propia)' : '(global)'}</span>
+                        <strong>{formatMoney(Number(formData.price || 0))}</strong>
                       </div>
-                    );
-                  })}
+                      {branches.map((branch) => {
+                        const existingPrice = branchPricing.find((priceRow) => priceRow.branchId === branch.id);
+                        return (
+                          <div key={branch.id} className="branch-pricing-row">
+                            <div>
+                              <div style={{ fontWeight: 600 }}>{branch.name}</div>
+                              <div style={{ fontSize: '0.78rem', color: 'var(--color-text-secondary)' }}>
+                                {branch.code ? `${branch.code} · ` : ''}
+                                {existingPrice ? 'Override activo' : 'Usa precio base'}
+                              </div>
+                            </div>
+                            <div className="price-input-wrapper branch-pricing-price-input">
+                              <span className="price-currency-icon">{symbol}</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                className="modal-standard-input"
+                                style={{ paddingLeft: currencyInputPadding(symbol), width: '100%' }}
+                                value={branchPriceDrafts[branch.id] ?? (existingPrice ? Number(existingPrice.price).toFixed(2) : Number(formData.price || 0).toFixed(2))}
+                                onChange={(e) => setBranchPriceDrafts((prev) => ({ ...prev, [branch.id]: e.target.value }))}
+                                readOnly={!canSetBranchPrices}
+                                disabled={!canSetBranchPrices}
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              onClick={() => handleSaveBranchPrice(branch.id)}
+                              disabled={!canSetBranchPrices || savingBranchPriceId === branch.id}
+                            >
+                              {savingBranchPriceId === branch.id ? 'Guardando...' : 'Guardar'}
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             <div className="modal-footer">
               <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>

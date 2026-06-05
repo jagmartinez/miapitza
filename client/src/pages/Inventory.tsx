@@ -17,7 +17,8 @@ import {
 } from 'lucide-react';
 import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, UnitOfMeasure, Warehouse } from '../types';
 import type { SingleValue } from 'react-select';
-import { formatCurrency, type CurrencySettings } from '../utils/currency';
+import { formatCurrency, currencyInputPadding, type CurrencySettings } from '../utils/currency';
+import { useCurrency } from '../hooks/useCurrency';
 import './Inventory.css';
 
 interface CategoryRow {
@@ -129,6 +130,7 @@ export default function Inventory() {
 
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [allUnits, setAllUnits] = useState<UnitOfMeasure[]>([]);
+    const { symbol } = useCurrency();
     const [settings, setSettings] = useState<CurrencySettings>({});
 
     // Excel import state
@@ -1338,15 +1340,15 @@ export default function Inventory() {
                                     {!editingProduct && (
                                         <div className="modal-form-row">
                                             <div className="modal-input-group">
-                                                <label className="modal-input-label" htmlFor="inventory-initial-cost">Costo Inicial ($)</label>
-                                                <div style={{ position: 'relative' }}>
-                                                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-neutral-400)', fontWeight: 600 }}>$</span>
+                                                <label className="modal-input-label" htmlFor="inventory-initial-cost">Costo Inicial</label>
+                                                <div className="price-input-wrapper">
+                                                    <span className="price-currency-icon">{symbol}</span>
                                                     <input
                                                         id="inventory-initial-cost"
                                                         type="number"
                                                         step="0.01"
                                                         className="modal-standard-input"
-                                                        style={{ paddingLeft: '28px' }}
+                                                        style={{ paddingLeft: currencyInputPadding(symbol) }}
                                                         value={formData.cost}
                                                         onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
                                                         required
@@ -1360,15 +1362,15 @@ export default function Inventory() {
                                     )}
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="inventory-sale-price">Precio de Venta ($)</label>
-                                        <div style={{ position: 'relative' }}>
-                                            <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-neutral-400)', fontWeight: 600 }}>$</span>
+                                        <label className="modal-input-label" htmlFor="inventory-sale-price">Precio de Venta</label>
+                                        <div className="price-input-wrapper">
+                                            <span className="price-currency-icon">{symbol}</span>
                                             <input
                                                 id="inventory-sale-price"
                                                 type="number"
                                                 step="0.01"
                                                 className="modal-standard-input"
-                                                style={{ paddingLeft: '28px' }}
+                                                style={{ paddingLeft: currencyInputPadding(symbol) }}
                                                 value={formData.price}
                                                 onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                                                 placeholder="Opcional"

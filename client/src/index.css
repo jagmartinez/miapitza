@@ -453,6 +453,28 @@ button.modal-tab {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
+.price-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.price-currency-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.price-input-wrapper .modal-standard-input {
+  padding-left: 40px;
+}
+
 /* Date inputs — native datepicker styling */
 input[type="date"].modal-standard-input,
 input[type="date"].table-filter-input {

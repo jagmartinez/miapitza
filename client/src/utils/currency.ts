@@ -36,6 +36,12 @@ export interface CurrencyFormatOptions {
  */
 export const DEFAULT_CURRENCY_SYMBOL = 'C$';
 
+/** Left padding for inputs with a currency prefix (e.g. C$, $). */
+export function currencyInputPadding(symbol: string): string {
+  const chars = Math.max(symbol.trim().length, 1);
+  return `calc(12px + ${chars}ch + 10px)`;
+}
+
 export const formatCurrency = (amount: number, settings: CurrencySettings = {}): string => {
     const symbol = settings.currency_symbol || DEFAULT_CURRENCY_SYMBOL;
     return `${symbol} ${amount.toFixed(2)}`;
