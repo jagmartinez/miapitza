@@ -131,28 +131,32 @@ export default function InvoiceHistory() {
                 </div>
             </div>
 
-            <div className="invoice-filters">
-                <div className="filter-group">
+            <div className="invoice-filters-row">
+                <div className="invoice-date-filters">
                     <button
-                        className={`filter-btn ${dateFilter === 'today' ? 'active' : ''}`}
+                        type="button"
+                        className={`invoice-filter-btn ${dateFilter === 'today' ? 'active' : ''}`}
                         onClick={() => setDateFilter('today')}
                     >
                         Hoy
                     </button>
                     <button
-                        className={`filter-btn ${dateFilter === 'week' ? 'active' : ''}`}
+                        type="button"
+                        className={`invoice-filter-btn ${dateFilter === 'week' ? 'active' : ''}`}
                         onClick={() => setDateFilter('week')}
                     >
                         Última Semana
                     </button>
                     <button
-                        className={`filter-btn ${dateFilter === 'month' ? 'active' : ''}`}
+                        type="button"
+                        className={`invoice-filter-btn ${dateFilter === 'month' ? 'active' : ''}`}
                         onClick={() => setDateFilter('month')}
                     >
                         Último Mes
                     </button>
                     <button
-                        className={`filter-btn ${dateFilter === 'all' ? 'active' : ''}`}
+                        type="button"
+                        className={`invoice-filter-btn ${dateFilter === 'all' ? 'active' : ''}`}
                         onClick={() => setDateFilter('all')}
                     >
                         Todas
@@ -161,7 +165,7 @@ export default function InvoiceHistory() {
 
                 <input
                     type="text"
-                    className="search-input"
+                    className="invoice-search-input"
                     placeholder="Buscar por número, cliente o mesero..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
