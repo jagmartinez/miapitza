@@ -143,22 +143,16 @@ export default function PurchaseOrders() {
             order.supplier?.name.toLowerCase().includes(searchLower) ||
             (order.invoiceNumber && order.invoiceNumber.toLowerCase().includes(searchLower));
 
-        // Date range filter
+        // Date range filter (compare local YYYY-MM-DD strings to avoid timezone issues)
         let matchesDate = true;
         if (startDate || endDate) {
-            const orderDate = new Date(order.date);
-            orderDate.setHours(0, 0, 0, 0);
+            const od = new Date(order.date);
+            const orderDateStr = od.getFullYear() + '-' +
+                String(od.getMonth() + 1).padStart(2, '0') + '-' +
+                String(od.getDate()).padStart(2, '0');
 
-            if (startDate) {
-                const start = new Date(startDate);
-                start.setHours(0, 0, 0, 0);
-                if (orderDate < start) matchesDate = false;
-            }
-            if (endDate) {
-                const end = new Date(endDate);
-                end.setHours(0, 0, 0, 0);
-                if (orderDate > end) matchesDate = false;
-            }
+            if (startDate && orderDateStr < startDate) matchesDate = false;
+            if (endDate && orderDateStr > endDate) matchesDate = false;
         }
 
         return matchesStatus && matchesSearch && matchesDate;
