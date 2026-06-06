@@ -13,7 +13,7 @@ import { hasAnyRole } from '../utils/authz';
 import {
     AlertTriangle, Package, Plus, Edit2, Trash2,
     Activity, ShoppingBag, Layers, Truck, DollarSign, FileText,
-    Upload, Download, FileSpreadsheet, Search, LayoutGrid, List, ChevronLeft, ChevronRight
+    Upload, Download, FileSpreadsheet, Search, LayoutGrid, List, ChevronLeft, ChevronRight, Printer
 } from 'lucide-react';
 import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, UnitOfMeasure, Warehouse } from '../types';
 import type { SingleValue } from 'react-select';
@@ -554,6 +554,63 @@ export default function Inventory() {
         }
     };
 
+    const handlePrintInventory = () => {
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('es-NI', { year: 'numeric', month: 'long', day: 'numeric' });
+        const timeStr = now.toLocaleTimeString('es-NI', { hour: '2-digit', minute: '2-digit' });
+
+        const rows = filteredProducts.map(p => {
+            const stock = Number((p as ProductInventory).totalStock ?? 0);
+            const cat = categories.find(c => c.id === p.categoryId)?.name || '-';
+            const unit = p.baseUnit?.abbreviation || p.unit;
+            return `<tr>
+                <td>${p.name}</td>
+                <td>${p.sku || '-'}</td>
+                <td>${cat}</td>
+                <td style="text-align:center">${unit}</td>
+                <td style="text-align:right">${stock.toLocaleString('es-NI', { maximumFractionDigits: 2 })}</td>
+                <td style="text-align:right">${p.minStock}</td>
+                <td style="text-align:center"></td>
+                <td></td>
+            </tr>`;
+        }).join('');
+
+        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Reporte de Inventario</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 11px; margin: 20px; }
+  h2 { margin: 0 0 4px; font-size: 16px; }
+  .meta { color: #555; margin-bottom: 12px; font-size: 11px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #333; padding: 4px 6px; }
+  th { background: #222; color: #fff; font-size: 10px; text-transform: uppercase; }
+  tr:nth-child(even) { background: #f5f5f5; }
+  .col-count { min-width: 70px; }
+  .col-obs { min-width: 100px; }
+  @media print { body { margin: 10px; } }
+</style></head><body>
+<h2>Reporte de Inventario F\u00edsico</h2>
+<div class="meta">Fecha: ${dateStr} &mdash; Hora: ${timeStr} &mdash; Total productos: ${filteredProducts.length}</div>
+<table>
+  <thead><tr>
+    <th>Producto</th><th>SKU</th><th>Categor\u00eda</th><th>Unidad</th>
+    <th>Stock Sistema</th><th>Stock M\u00edn</th><th class="col-count">Conteo F\u00edsico</th><th class="col-obs">Observaciones</th>
+  </tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<div style="margin-top:30px;display:flex;justify-content:space-between">
+  <div>_________________________<br><small>Realizado por</small></div>
+  <div>_________________________<br><small>Supervisado por</small></div>
+</div>
+</body></html>`;
+
+        const win = window.open('', '_blank');
+        if (win) {
+            win.document.write(html);
+            win.document.close();
+            win.print();
+        }
+    };
+
     const handleImportValidate = async () => {
         if (!importFile) return;
         setImportLoading(true);
@@ -673,6 +730,10 @@ export default function Inventory() {
                             <List size={18} />
                         </button>
                     </div>
+                    <Button variant="secondary" onClick={handlePrintInventory}>
+                        <Printer size={18} />
+                        Imprimir Inventario
+                    </Button>
                     {canMutateProduct && (
                         <Button variant="secondary" onClick={handleDownloadTemplate}>
                             <Download size={18} />
