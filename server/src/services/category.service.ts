@@ -98,7 +98,7 @@ export class CategoryService {
                 _count: {
                     select: {
                         menuItems: true,
-                        products: true
+                        products: { where: { active: true } }
                     }
                 }
             },
@@ -130,6 +130,7 @@ export class CategoryService {
         codePrefix?: string;
         sortOrder?: number;
         active?: boolean;
+        showInMenu?: boolean;
     }) {
         if (data.codePrefix) {
             data.codePrefix = data.codePrefix.toUpperCase().replace(/[^A-Z]/g, '').substring(0, 10);
@@ -155,6 +156,7 @@ export class CategoryService {
         codePrefix?: string;
         sortOrder?: number;
         active?: boolean;
+        showInMenu?: boolean;
     }) {
         await this.getById(id, companyId);
 

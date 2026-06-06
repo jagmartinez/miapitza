@@ -27,6 +27,11 @@ interface CategoryRow {
     description?: string;
     sortOrder?: number;
     active: boolean;
+    showInMenu?: boolean;
+    _count?: {
+        products?: number;
+        menuItems?: number;
+    };
 }
 
 interface StockAlertSummaryState {
@@ -798,7 +803,7 @@ export default function Inventory() {
                             variant="modal"
                             options={[
                                 { value: 'all', label: 'Todas las Categorías' },
-                                ...categories.filter(c => c.active).map(cat => ({ value: cat.id.toString(), label: cat.name }))
+                                ...categories.filter(c => c.active && (c._count?.products ?? 0) > 0).map(cat => ({ value: cat.id.toString(), label: cat.name }))
                             ]}
                             value={selectedCategory === 'all' ? { value: 'all', label: 'Todas las Categorías' } : { value: selectedCategory, label: categories.find(c => c.id.toString() === selectedCategory)?.name || 'Categoría' }}
                             onChange={(option: StrOption) => setSelectedCategory(option?.value || 'all')}

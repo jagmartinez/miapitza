@@ -43,6 +43,7 @@ interface Category {
     id: number;
     name: string;
     active: boolean;
+    showInMenu?: boolean;
 }
 
 interface Brand {
@@ -813,7 +814,7 @@ export default function POS() {
                     >
                         <span>Todos</span>
                     </button>
-                    {categories.filter(c => c.active && c.name !== 'Catering').map(cat => (
+                    {categories.filter(c => c.active && c.showInMenu !== false && c.name !== 'Catering').map(cat => (
                         <button
                             key={cat.id}
                             className={`category-item ${selectedCategory === cat.id ? 'active' : ''}`}

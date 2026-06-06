@@ -20,8 +20,10 @@ interface CategoryRow {
     codePrefix?: string;
     sortOrder?: number;
     active: boolean;
+    showInMenu: boolean;
     _count?: {
         menuItems?: number;
+        products?: number;
     };
 }
 
@@ -41,7 +43,8 @@ export default function Categories() {
         description: '',
         codePrefix: '',
         sortOrder: 0,
-        active: true
+        active: true,
+        showInMenu: true
     });
     const [activeTab, setActiveTab] = useState<'info' | 'config'>('info');
     const [saving, setSaving] = useState(false);
@@ -106,7 +109,8 @@ export default function Categories() {
                 description: category.description || '',
                 codePrefix: category.codePrefix || '',
                 sortOrder: category.sortOrder || 0,
-                active: category.active
+                active: category.active,
+                showInMenu: category.showInMenu ?? true
             });
         } else {
             setEditingCategory(null);
@@ -115,7 +119,8 @@ export default function Categories() {
                 description: '',
                 codePrefix: '',
                 sortOrder: categories.length,
-                active: true
+                active: true,
+                showInMenu: true
             });
         }
         setIsModalOpen(true);
@@ -168,7 +173,12 @@ export default function Categories() {
                         {
                             key: 'status',
                             header: 'Estado',
-                            render: (c) => <span className={`catalog-pill ${c.active ? 'ok' : 'neutral'}`}>{c.active ? 'Activa' : 'Inactiva'}</span>
+                            render: (c) => (
+                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                    <span className={`catalog-pill ${c.active ? 'ok' : 'neutral'}`}>{c.active ? 'Activa' : 'Inactiva'}</span>
+                                    {c.active && !c.showInMenu && <span className="catalog-pill neutral">Solo inventario</span>}
+                                </div>
+                            )
                         },
                         ...(canMutateCategory ? [{
                             key: 'actions',
@@ -199,9 +209,9 @@ export default function Categories() {
                 {categories.map((category) => (
                     <div key={category.id} className="category-card-new">
                         {/* Status/Badge */}
-                        <div className={`status-badge-new ${category.active ? 'active' : 'inactive'}`}>
-                            {category.active ? 'Activa' : 'Inactiva'}
-                        </div>
+                                <div className={`status-badge-new ${category.active ? 'active' : 'inactive'}`}>
+                                    {!category.active ? 'Inactiva' : category.showInMenu ? 'Menú + Inventario' : 'Solo Inventario'}
+                                </div>
 
                         {/* Card Body */}
                         <div className="category-card-body-new">
@@ -211,6 +221,10 @@ export default function Categories() {
                                 <div className="detail-item">
                                     <List size={16} />
                                     <span>{category._count?.menuItems || 0} Platos asociados</span>
+                                </div>
+                                <div className="detail-item">
+                                    <Tag size={16} />
+                                    <span>{category._count?.products || 0} Productos inventario</span>
                                 </div>
                                 {category.codePrefix && (
                                     <div className="detail-item">
@@ -354,6 +368,27 @@ export default function Categories() {
                                     </div>
 
                                     <div className="modal-input-group">
+                                        <label className="modal-input-label" id="category-show-in-menu-label">Visibilidad en Menú / POS</label>
+                                        <div
+                                            id="category-show-in-menu"
+                                            role="switch"
+                                            aria-checked={formData.showInMenu}
+                                            aria-labelledby="category-show-in-menu-label"
+                                            className={`modal-toggle-card ${formData.showInMenu ? 'active' : ''}`}
+                                            onClick={() => setFormData({ ...formData, showInMenu: !formData.showInMenu })}
+                                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--color-background)', borderRadius: '8px', border: '1px solid var(--color-border)' }}
+                                        >
+                                            <div className="toggle-switch">
+                                                <div className={`toggle-dot ${formData.showInMenu ? 'active' : ''}`} />
+                                            </div>
+                                            <span>{formData.showInMenu ? 'Visible en el menú / POS' : 'Oculta del menú / POS (solo inventario)'}</span>
+                                        </div>
+                                        <p style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
+                                            Si se desactiva, la categoría no aparecerá en el POS ni en el menú, pero seguirá disponible en inventario.
+                                        </p>
+                                    </div>
+
+                                    <div className="modal-input-group">
                                         <label className="modal-input-label" id="category-active-label">Estado de la Categoría</label>
                                         <div
                                             id="category-active"
@@ -367,8 +402,11 @@ export default function Categories() {
                                             <div className="toggle-switch">
                                                 <div className={`toggle-dot ${formData.active ? 'active' : ''}`} />
                                             </div>
-                                            <span>{formData.active ? 'Visible en el menú' : 'Oculta en el menú'}</span>
+                                            <span>{formData.active ? 'Categoría activa' : 'Categoría desactivada'}</span>
                                         </div>
+                                        <p style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
+                                            Si se desactiva, la categoría no aparecerá en ningún lugar del sistema.
+                                        </p>
                                     </div>
 
                                     <div className="modal-input-group">
