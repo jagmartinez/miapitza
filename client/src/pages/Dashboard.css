@@ -567,24 +567,24 @@
     border-radius: 4px;
 }
 
-.status-ready {
+.ord-status.status-ready {
     color: #166534;
     background: #dcfce7;
 }
 
-.status-sent_to_kitchen,
-.status-cooking {
+.ord-status.status-sent_to_kitchen,
+.ord-status.status-cooking {
     color: #854d0e;
     background: #fef9c3;
 }
 
-.status-delivered {
+.ord-status.status-delivered {
     color: #1e40af;
     background: #dbeafe;
 }
 
-.status-open,
-.status-pending {
+.ord-status.status-open,
+.ord-status.status-pending {
     color: #92400e;
     background: #fef3c7;
 }
@@ -654,12 +654,12 @@
     border-radius: 4px;
 }
 
-.status-paid {
+.inv-status.status-paid {
     color: #166534;
     background: #dcfce7;
 }
 
-.status-cancelled {
+.inv-status.status-cancelled {
     color: #991b1b;
     background: #fee2e2;
 }
