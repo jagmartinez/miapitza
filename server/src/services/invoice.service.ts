@@ -9,6 +9,8 @@ export interface InvoiceData {
     items: Array<{ name: string; quantity: number; price: number; subtotal: number }>;
     subtotal: number;
     tax: number;
+    tipAmount: number;
+    tipRatePercent: number;
     total: number;
     branchName: string;
     branchAddress?: string;
@@ -26,8 +28,16 @@ export class InvoiceService {
     private static async getIvaRate(companyId: number): Promise<number> {
         const { SettingService } = await import('./setting.service');
         const settings = await SettingService.getAll(companyId);
-        const taxRate = parseFloat(settings['tax_rate'] || '');
+        const taxRate = parseFloat(settings['tax_rate'] || settings['taxRate'] || '');
         return Number.isFinite(taxRate) && taxRate >= 0 ? taxRate / 100 : this.DEFAULT_IVA_RATE;
+    }
+
+    private static async getTipSettings(companyId: number): Promise<{ tipEnabled: boolean; tipRate: number }> {
+        const { SettingService } = await import('./setting.service');
+        const settings = await SettingService.getAll(companyId);
+        const tipEnabled = settings['tipEnabled'] === 'true';
+        const tipRate = parseFloat(settings['tipRate'] || '0');
+        return { tipEnabled, tipRate: Number.isFinite(tipRate) ? tipRate : 0 };
     }
 
     private static async ensureInvoiceNumber(orderId: number, companyId: number, branchId: number): Promise<string> {
@@ -145,18 +155,20 @@ export class InvoiceService {
         }
 
         const ivaRate = await this.getIvaRate(companyId);
+        const tipSettings = await this.getTipSettings(companyId);
         const itemSubtotal = order.items.reduce((sum, item) => sum + Number(item.subtotal), 0);
         const discount = Number(order.discount || 0);
         const subtotal = Math.max(0, itemSubtotal - discount);
         const tax = Number(order.tax || 0);
+        const tipAmount = Number(order.tipAmount || 0);
 
-        // Display the rate that actually matches the stored tax amount so the PDF is
-        // internally consistent (a stored tax of 0, or a rate that differs from the
-        // current setting, will no longer show a misleading percentage). Fall back to
-        // the configured IVA rate only when we can't derive it from the amounts.
         const taxRatePercent = subtotal > 0
             ? Math.round((tax / subtotal) * 10000) / 100
             : Math.round(ivaRate * 10000) / 100;
+
+        const tipRatePercent = tipAmount > 0 && subtotal > 0
+            ? Math.round((tipAmount / subtotal) * 10000) / 100
+            : tipSettings.tipRate;
 
         const invoiceData: InvoiceData = {
             orderId: order.id,
@@ -170,6 +182,8 @@ export class InvoiceService {
             })),
             subtotal,
             tax,
+            tipAmount,
+            tipRatePercent,
             total: Number(order.total),
             branchName: order.branch.name,
             branchAddress: order.branch.address ?? undefined,
@@ -240,14 +254,21 @@ export class InvoiceService {
         doc.text(`IVA (${data.taxRatePercent}%):`, 140, finalY + 7);
         doc.text(`${data.tax.toFixed(2)}`, 195, finalY + 7, { align: 'right' });
 
+        let tipOffset = 0;
+        if (data.tipAmount > 0) {
+            tipOffset = 7;
+            doc.text(`Propina (${data.tipRatePercent}%):`, 140, finalY + 14);
+            doc.text(`${data.tipAmount.toFixed(2)}`, 195, finalY + 14, { align: 'right' });
+        }
+
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
-        doc.text(`TOTAL:`, 140, finalY + 16);
-        doc.text(`C$ ${data.total.toFixed(2)}`, 195, finalY + 16, { align: 'right' });
+        doc.text(`TOTAL:`, 140, finalY + 16 + tipOffset);
+        doc.text(`C$ ${data.total.toFixed(2)}`, 195, finalY + 16 + tipOffset, { align: 'right' });
 
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
-        doc.text('¡Gracias por su compra!', 105, finalY + 30, { align: 'center' });
+        doc.text('¡Gracias por su compra!', 105, finalY + 30 + tipOffset, { align: 'center' });
 
         return Buffer.from(doc.output('arraybuffer'));
     }

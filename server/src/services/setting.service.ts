@@ -34,10 +34,16 @@ export class SettingService {
     }
 
     private static validateSettingValue(name: string, value: string) {
-        if (name === 'tax_rate') {
+        if (name === 'tax_rate' || name === 'taxRate') {
             const rate = parseFloat(value);
             if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
                 throw new Error('La tasa de impuesto debe ser un número entre 0 y 100');
+            }
+        }
+        if (name === 'tipRate') {
+            const rate = parseFloat(value);
+            if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+                throw new Error('La tasa de propina debe ser un número entre 0 y 100');
             }
         }
         if (name === 'session_timeout' || name === 'timeout') {

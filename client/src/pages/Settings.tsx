@@ -36,6 +36,8 @@ export default function Settings() {
         // General
         companyName: '',
         taxRate: '',
+        tipRate: '',
+        tipEnabled: 'false',
         currency_symbol: DEFAULT_CURRENCY_SYMBOL,
 
         // Company
@@ -70,6 +72,8 @@ export default function Settings() {
             setFormData({
                 companyName: settings.companyName || '',
                 taxRate: settings.taxRate || '',
+                tipRate: settings.tipRate || '',
+                tipEnabled: settings.tipEnabled || 'false',
                 currency_symbol: settings.currency_symbol || settings.currency || DEFAULT_CURRENCY_SYMBOL,
                 nif: settings.nif || '',
                 address: settings.address || '',
@@ -233,11 +237,36 @@ export default function Settings() {
                                     placeholder="16"
                                 />
                                 <Input
+                                    label="Propina (%)"
+                                    type="number"
+                                    step="0.01"
+                                    value={formData.tipRate}
+                                    onChange={(e) => setFormData({ ...formData, tipRate: e.target.value })}
+                                    placeholder="10"
+                                />
+                            </div>
+                            <div className="form-row">
+                                <Input
                                     label="Símbolo de Moneda"
                                     value={formData.currency_symbol}
                                     onChange={(e) => setFormData({ ...formData, currency_symbol: e.target.value })}
                                     placeholder="$"
                                 />
+                                <div className="input-group">
+                                    <label className="input-label">Propina habilitada</label>
+                                    <div
+                                        role="switch"
+                                        aria-checked={formData.tipEnabled === 'true'}
+                                        className={`settings-toggle ${formData.tipEnabled === 'true' ? 'active' : ''}`}
+                                        onClick={() => setFormData({ ...formData, tipEnabled: formData.tipEnabled === 'true' ? 'false' : 'true' })}
+                                        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'var(--color-background)', borderRadius: '8px', border: '1px solid var(--color-border)', marginTop: '4px' }}
+                                    >
+                                        <div className="toggle-switch">
+                                            <div className={`toggle-dot ${formData.tipEnabled === 'true' ? 'active' : ''}`} />
+                                        </div>
+                                        <span style={{ fontSize: '14px' }}>{formData.tipEnabled === 'true' ? 'Incluir propina en facturas' : 'Propina deshabilitada'}</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}

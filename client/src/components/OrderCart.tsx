@@ -19,9 +19,12 @@ interface OrderCartProps {
     cart: CartItem[];
     discount: number;
     taxRate: number;
+    tipRate?: number;
+    tipEnabled?: boolean;
     onUpdateQuantity: (menuItemId: number, delta: number) => void;
     onRemoveItem: (menuItemId: number) => void;
     onDiscountChange: (discount: number) => void;
+    onTipToggle?: (enabled: boolean) => void;
     enablePromotions?: boolean;
     onApplyPromotion?: (code: string) => void;
     currencySymbol?: string;
@@ -31,9 +34,12 @@ export default function OrderCart({
     cart,
     discount,
     taxRate,
+    tipRate = 0,
+    tipEnabled = false,
     onUpdateQuantity,
     onRemoveItem,
     onDiscountChange,
+    onTipToggle,
     enablePromotions,
     onApplyPromotion,
     currencySymbol = '$'
@@ -48,7 +54,8 @@ export default function OrderCart({
     const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     const discountAmount = subtotal * (discount / 100);
     const tax = (subtotal - discountAmount) * (taxRate / 100);
-    const total = subtotal - discountAmount + tax;
+    const tipAmount = tipEnabled ? (subtotal - discountAmount) * (tipRate / 100) : 0;
+    const total = subtotal - discountAmount + tax + tipAmount;
 
     return (
         <div className="order-cart">
@@ -134,6 +141,20 @@ export default function OrderCart({
                         <span>IVA ({taxRate}%):</span>
                         <span>{currencySymbol}{tax.toFixed(2)}</span>
                     </div>
+                    {tipRate > 0 && onTipToggle && (
+                        <div className="total-line tip-line">
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={tipEnabled}
+                                    onChange={(e) => onTipToggle(e.target.checked)}
+                                    style={{ accentColor: 'var(--color-primary)' }}
+                                />
+                                <span>Propina ({tipRate}%):</span>
+                            </label>
+                            <span>{currencySymbol}{tipAmount.toFixed(2)}</span>
+                        </div>
+                    )}
                     <div className="total-line total-final">
                         <span>TOTAL:</span>
                         <span>{currencySymbol}{total.toFixed(2)}</span>

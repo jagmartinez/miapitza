@@ -55,6 +55,8 @@ interface Brand {
 
 interface POSSettings {
     taxRate?: string;
+    tipRate?: string;
+    tipEnabled?: string;
     currency_symbol?: string;
     enablePromotions?: string;
     [key: string]: string | undefined;
@@ -102,6 +104,7 @@ export default function POS() {
     const [discount, setDiscount] = useState<number>(0);
     const [discountAmountOverride, setDiscountAmountOverride] = useState<number | null>(null);
     const [appliedPromotionCode, setAppliedPromotionCode] = useState<string | null>(null);
+    const [tipApplied, setTipApplied] = useState<boolean>(false);
     const [customerName, setCustomerName] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const debouncedSearch = useDebounce(searchQuery, 250);
@@ -168,6 +171,7 @@ export default function POS() {
             );
             setMenuItems(menuRes.data.data);
             setSettings(settingsRes.data.data);
+            setTipApplied(settingsRes.data.data.tipEnabled === 'true');
             setCategories(categoriesRes.data.data);
             setBrands(brandsRes.data.data || []);
         } catch {
@@ -573,12 +577,14 @@ export default function POS() {
                 );
                 const taxRate = parseFloat(settings.taxRate || '0');
                 const computedTax = Math.max(0, (refreshedSubtotal - computedDiscount) * (taxRate / 100));
+                const computedTipRate = parseFloat(settings.tipRate || '0');
+                const computedTip = tipApplied ? Math.max(0, (refreshedSubtotal - computedDiscount) * (computedTipRate / 100)) : 0;
 
                 const pricingResponse = await ordersAPI.updatePricing(orderId, {
                     discount: Number(computedDiscount.toFixed(2)),
                     discountCode: requestedPromotionCode || null,
                     tax: Number(computedTax.toFixed(2)),
-                    tipAmount: 0
+                    tipAmount: Number(computedTip.toFixed(2))
                 });
                 setActiveTableOrder(pricingResponse.data.data as Order);
             }
@@ -731,7 +737,9 @@ export default function POS() {
         subtotal
     );
     const taxAmount = (subtotal - discountAmount) * (parseFloat(settings.taxRate || '0') / 100);
-    const total = subtotal - discountAmount + taxAmount;
+    const tipRate = parseFloat(settings.tipRate || '0');
+    const tipAmount = tipApplied ? (subtotal - discountAmount) * (tipRate / 100) : 0;
+    const total = subtotal - discountAmount + taxAmount + tipAmount;
     const activeOrderTotal = Number(activeTableOrder?.total || 0);
     const displayTotal = cart.length > 0 ? total : activeOrderTotal;
     const canProcessPayment = canPay && (cart.length > 0 || Boolean(currentOrderId));
@@ -961,6 +969,8 @@ export default function POS() {
                         cart={cart}
                         discount={discount}
                         taxRate={parseFloat(settings.taxRate || '0')}
+                        tipRate={tipRate}
+                        tipEnabled={tipApplied}
                         onUpdateQuantity={updateQuantity}
                         onRemoveItem={removeFromCart}
                         onDiscountChange={(value) => {
@@ -968,6 +978,7 @@ export default function POS() {
                             setDiscountAmountOverride(null);
                             setAppliedPromotionCode(null);
                         }}
+                        onTipToggle={settings.tipEnabled === 'true' ? (enabled) => setTipApplied(enabled) : undefined}
                         enablePromotions={settings.enablePromotions === 'true'}
                         onApplyPromotion={handleApplyPromotion}
                         currencySymbol={currencySymbol}
