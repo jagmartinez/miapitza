@@ -35,17 +35,17 @@
 
 .modal-sm {
     width: 90%;
-    max-width: 400px;
+    max-width: 450px;
 }
 
 .modal-md {
     width: 90%;
-    max-width: 600px;
+    max-width: 650px;
 }
 
 .modal-lg {
     width: 90%;
-    max-width: 800px;
+    max-width: 850px;
 }
 
 .modal-header {
@@ -138,17 +138,17 @@
 }
 
 .modal-sidebar.modal-sm {
-    width: 380px;
+    width: 430px;
     max-width: 90%;
 }
 
 .modal-sidebar.modal-md {
-    width: 480px;
+    width: 530px;
     max-width: 90%;
 }
 
 .modal-sidebar.modal-lg {
-    width: 600px;
+    width: 650px;
     max-width: 90%;
 }
 

@@ -94,10 +94,10 @@
   --font-size-2xs: 0.625rem;
   --font-size-label: 0.6875rem;
   --font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --modal-width-sm: 400px;
-  --modal-width-md: 600px;
-  --modal-width-lg: 800px;
-  --modal-width-xl: 900px;
+  --modal-width-sm: 450px;
+  --modal-width-md: 650px;
+  --modal-width-lg: 850px;
+  --modal-width-xl: 950px;
 }
 
 /* Dark Mode Variables */

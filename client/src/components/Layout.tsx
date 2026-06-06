@@ -237,7 +237,15 @@ export default function Layout() {
                 </div>
             </aside>
 
-            <main className={`main-content ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
+            <main
+                className={`main-content ${isCollapsed ? 'sidebar-collapsed' : ''}`}
+                onClick={() => {
+                    if (!isCollapsed) {
+                        setIsCollapsed(true);
+                        try { localStorage.setItem('sidebar-collapsed', 'true'); } catch { /* ignore */ }
+                    }
+                }}
+            >
                 <Outlet />
                 <SyncStatus />
             </main>

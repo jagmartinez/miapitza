@@ -23,8 +23,8 @@
 .sidebar-panel {
     position: fixed;
     top: 0;
-    right: -600px;
-    width: 600px;
+    right: -650px;
+    width: 650px;
     height: 100vh;
     background-color: var(--color-surface);
     box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
@@ -35,18 +35,18 @@
 }
 
 .sidebar-panel.sidebar-wide {
-    right: -1000px;
-    width: 1000px;
+    right: -1050px;
+    width: 1050px;
 }
 
 .sidebar-panel.sidebar-large {
-    right: -750px;
-    width: 750px;
+    right: -800px;
+    width: 800px;
 }
 
 .sidebar-panel.sidebar-normal {
-    right: -600px;
-    width: 600px;
+    right: -650px;
+    width: 650px;
 }
 
 .sidebar-panel.sidebar-full {
