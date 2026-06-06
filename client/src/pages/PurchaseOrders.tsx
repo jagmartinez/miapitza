@@ -12,7 +12,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
-import { Plus, Eye, Zap, X, ShoppingCart, FileDown, FileText } from 'lucide-react';
+import { Plus, Eye, Zap, X, ShoppingCart, FileDown, FileText, CreditCard, DollarSign } from 'lucide-react';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import type { AutoPurchaseSuggestion, PurchaseOrder } from '../types';
 import './PurchaseOrders.css';
@@ -56,7 +56,9 @@ export default function PurchaseOrders() {
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
     const [isImportSidebarOpen, setIsImportSidebarOpen] = useState(false);
     const [settings, setSettings] = useState<CurrencySettings>({});
-
+    const [paymentModalOrder, setPaymentModalOrder] = useState<PurchaseOrder | null>(null);
+    const [paymentForm, setPaymentForm] = useState({ amount: '', date: new Date().toISOString().split('T')[0], bank: '', referenceNumber: '', observations: '' });
+    const [savingPayment, setSavingPayment] = useState(false);
     // Pagination and Filters state
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 5;
@@ -214,6 +216,42 @@ export default function PurchaseOrders() {
         }
     };
 
+    const handleOpenPayment = (order: PurchaseOrder) => {
+        setPaymentModalOrder(order);
+        const balance = Number(order.total) - Number(order.paidAmount || 0);
+        setPaymentForm({ amount: balance.toFixed(2), date: new Date().toISOString().split('T')[0], bank: '', referenceNumber: '', observations: '' });
+    };
+
+    const handleSubmitPayment = async () => {
+        if (!paymentModalOrder) return;
+        const amount = parseFloat(paymentForm.amount);
+        if (!amount || amount <= 0) { showError('El monto debe ser mayor a 0'); return; }
+        setSavingPayment(true);
+        try {
+            await purchaseOrdersAPI.addPayment(paymentModalOrder.id, {
+                amount,
+                date: paymentForm.date,
+                bank: paymentForm.bank || undefined,
+                referenceNumber: paymentForm.referenceNumber || undefined,
+                observations: paymentForm.observations || undefined
+            });
+            setPaymentModalOrder(null);
+            loadOrders();
+        } catch (error: unknown) {
+            showError(errMsg(error, 'Error al registrar pago'));
+        } finally {
+            setSavingPayment(false);
+        }
+    };
+
+    const getDaysRemaining = (dueDate?: string) => {
+        if (!dueDate) return null;
+        const due = new Date(dueDate);
+        const today = new Date();
+        const diff = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        return diff;
+    };
+
     if (loading) return <div>Cargando...</div>;
 
     return (
@@ -298,7 +336,9 @@ export default function PurchaseOrders() {
                                 <th>Proveedor</th>
                                 <th>Nº Factura</th>
                                 <th>Fecha</th>
+                                <th>Tipo</th>
                                 <th className="text-right">Total</th>
+                                <th>Pago</th>
                                 <th>Estado</th>
                                 <th className="text-center">Acciones</th>
                             </tr>
@@ -331,10 +371,46 @@ export default function PurchaseOrders() {
                                             })}
                                         </div>
                                     </td>
+                                    <td data-label="Tipo">
+                                        <span className={`po-type-badge ${order.invoiceType === 'CREDIT' ? 'credit' : 'cash'}`}>
+                                            {order.invoiceType === 'CREDIT' ? 'Crédito' : 'Contado'}
+                                        </span>
+                                    </td>
                                     <td data-label="Total" className="text-right">
                                         <div className="total-cell">
                                             {formatCurrency(Number(order.total) || 0, settings)}
                                         </div>
+                                    </td>
+                                    <td data-label="Pago">
+                                        {order.invoiceType === 'CREDIT' ? (
+                                            <div className="payment-info-cell">
+                                                <span className={`payment-status-badge ${order.paymentStatus?.toLowerCase() || 'pending'}`}>
+                                                    {order.paymentStatus === 'PAID' ? 'Pagado' : order.paymentStatus === 'PARTIAL' ? 'Parcial' : 'Pendiente'}
+                                                </span>
+                                                {order.paymentStatus !== 'PAID' && order.paymentDueDate && (
+                                                    <span className={`days-remaining ${(getDaysRemaining(order.paymentDueDate) ?? 0) < 0 ? 'overdue' : (getDaysRemaining(order.paymentDueDate) ?? 0) <= 3 ? 'urgent' : ''}`}>
+                                                        {(() => {
+                                                            const days = getDaysRemaining(order.paymentDueDate);
+                                                            if (days === null) return '';
+                                                            if (days < 0) return `Vencido ${Math.abs(days)}d`;
+                                                            if (days === 0) return 'Hoy';
+                                                            return `${days}d restantes`;
+                                                        })()}
+                                                    </span>
+                                                )}
+                                                {order.paymentStatus !== 'PAID' && canManagePurchaseOrders && (
+                                                    <button
+                                                        className="action-btn-mini payment"
+                                                        onClick={(e) => { e.stopPropagation(); handleOpenPayment(order); }}
+                                                        title="Registrar pago"
+                                                    >
+                                                        <DollarSign size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <span className="payment-status-badge paid">Pagado</span>
+                                        )}
                                     </td>
                                     <td data-label="Estado">{getStatusBadge(order.status)}</td>
                                     <td className="text-center">
@@ -542,6 +618,106 @@ export default function PurchaseOrders() {
                     settings={settings}
                 />
             </Sidebar>
+
+            {/* Payment Modal */}
+            {paymentModalOrder && (
+                <Modal isOpen={true} onClose={() => setPaymentModalOrder(null)} title={`Registrar Pago - OC #${paymentModalOrder.id}`}>
+                    <div className="payment-modal-content">
+                        <div className="payment-summary">
+                            <div className="payment-summary-row">
+                                <span>Total factura:</span>
+                                <strong>{formatCurrency(Number(paymentModalOrder.total), settings)}</strong>
+                            </div>
+                            <div className="payment-summary-row">
+                                <span>Abonado:</span>
+                                <strong>{formatCurrency(Number(paymentModalOrder.paidAmount || 0), settings)}</strong>
+                            </div>
+                            <div className="payment-summary-row highlight">
+                                <span>Saldo pendiente:</span>
+                                <strong>{formatCurrency(Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0), settings)}</strong>
+                            </div>
+                            {paymentModalOrder.paymentDueDate && (
+                                <div className="payment-summary-row">
+                                    <span>Fecha vencimiento:</span>
+                                    <strong>{new Date(paymentModalOrder.paymentDueDate).toLocaleDateString('es-ES')}</strong>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="payment-form-fields">
+                            <div className="modal-input-group">
+                                <label className="modal-input-label">Monto del pago *</label>
+                                <input
+                                    type="number"
+                                    className="modal-standard-input"
+                                    value={paymentForm.amount}
+                                    onChange={e => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                                    step="0.01"
+                                    min="0.01"
+                                    max={Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0)}
+                                />
+                            </div>
+                            <div className="modal-input-group">
+                                <label className="modal-input-label">Fecha de pago *</label>
+                                <input
+                                    type="date"
+                                    className="modal-standard-input"
+                                    value={paymentForm.date}
+                                    onChange={e => setPaymentForm({ ...paymentForm, date: e.target.value })}
+                                />
+                            </div>
+                            <div className="modal-input-group">
+                                <label className="modal-input-label">Banco</label>
+                                <select
+                                    className="modal-standard-input"
+                                    value={paymentForm.bank}
+                                    onChange={e => setPaymentForm({ ...paymentForm, bank: e.target.value })}
+                                >
+                                    <option value="">Seleccionar banco...</option>
+                                    <option value="BAC">BAC</option>
+                                    <option value="BANPRO">BANPRO</option>
+                                    <option value="LAFISE">LAFISE</option>
+                                    <option value="FICOHSA">FICOHSA</option>
+                                    <option value="AVANZ">AVANZ</option>
+                                    <option value="ATLANTIDA">ATLANTIDA</option>
+                                    <option value="EFECTIVO">EFECTIVO</option>
+                                    <option value="OTRO">OTRO</option>
+                                </select>
+                            </div>
+                            <div className="modal-input-group">
+                                <label className="modal-input-label">Número de referencia</label>
+                                <input
+                                    type="text"
+                                    className="modal-standard-input"
+                                    value={paymentForm.referenceNumber}
+                                    onChange={e => setPaymentForm({ ...paymentForm, referenceNumber: e.target.value })}
+                                    placeholder="Nº transferencia o comprobante"
+                                />
+                            </div>
+                            <div className="modal-input-group">
+                                <label className="modal-input-label">Observaciones</label>
+                                <textarea
+                                    className="modal-standard-input"
+                                    style={{ minHeight: '80px', resize: 'vertical' }}
+                                    value={paymentForm.observations}
+                                    onChange={e => setPaymentForm({ ...paymentForm, observations: e.target.value })}
+                                    placeholder="Notas adicionales..."
+                                />
+                            </div>
+                        </div>
+
+                        <div className="modal-footer" style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                            <button type="button" className="btn btn-secondary" onClick={() => setPaymentModalOrder(null)}>
+                                Cancelar
+                            </button>
+                            <button type="button" className="btn btn-primary" disabled={savingPayment} onClick={handleSubmitPayment}>
+                                <CreditCard size={16} />
+                                {savingPayment ? 'Registrando...' : 'Registrar Pago'}
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 }

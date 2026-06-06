@@ -231,4 +231,46 @@ export class PurchaseOrderController {
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
+
+    static async addPayment(req: Request, res: Response, next: NextFunction) {
+        try {
+            const purchaseOrderId = parseInt(req.params.id);
+            const companyId = req.user!.companyId;
+            const { amount, date, bank, referenceNumber, observations } = req.body;
+
+            if (!amount || amount <= 0) {
+                return next({ statusCode: 400, message: 'El monto debe ser mayor a 0' });
+            }
+
+            const payment = await PurchaseOrderService.addPayment(purchaseOrderId, companyId, {
+                amount: Number(amount),
+                date,
+                bank,
+                referenceNumber,
+                observations
+            });
+
+            res.status(201).json({
+                success: true,
+                message: 'Pago registrado exitosamente',
+                data: payment
+            });
+        } catch (error: unknown) {
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
+    static async getPayments(req: Request, res: Response, next: NextFunction) {
+        try {
+            const purchaseOrderId = parseInt(req.params.id);
+            const companyId = req.user!.companyId;
+            const payments = await PurchaseOrderService.getPayments(purchaseOrderId, companyId);
+            res.json({
+                success: true,
+                data: payments
+            });
+        } catch (error: unknown) {
+            next({ statusCode: 500, message: getErrorMessage(error) });
+        }
+    }
 }

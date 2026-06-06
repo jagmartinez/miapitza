@@ -247,8 +247,29 @@ export interface PurchaseOrder {
   notes?: string;
   invoiceNumber?: string;
   invoicePdf?: string;
+  invoiceDate?: string;
+  invoiceType?: 'CASH' | 'CREDIT';
+  paymentDueDate?: string;
+  bank?: string;
+  transferNumber?: string;
+  paidAmount?: number;
+  paymentStatus?: 'PENDING' | 'PARTIAL' | 'PAID';
   supplier?: Supplier;
   items?: PurchaseOrderItem[];
+  payments?: PurchaseOrderPayment[];
+  branch?: Branch;
+  _count?: { items: number };
+}
+
+export interface PurchaseOrderPayment {
+  id: number;
+  purchaseOrderId: number;
+  amount: number;
+  date: string;
+  bank?: string;
+  referenceNumber?: string;
+  observations?: string;
+  createdAt: string;
 }
 
 export interface PurchaseOrderItem {

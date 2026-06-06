@@ -54,7 +54,12 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
         branchId: '',
         supplierId: '',
         notes: '',
-        invoiceNumber: ''
+        invoiceNumber: '',
+        invoiceDate: new Date().toISOString().split('T')[0],
+        invoiceType: 'CASH' as 'CASH' | 'CREDIT',
+        paymentDueDate: '',
+        bank: '',
+        transferNumber: ''
     });
     const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
     const [newItems, setNewItems] = useState<NewOrderLineDraft[]>([]);
@@ -108,7 +113,12 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 branchId: res.data.data.branchId.toString(),
                 supplierId: res.data.data.supplierId.toString(),
                 notes: res.data.data.notes || '',
-                invoiceNumber: res.data.data.invoiceNumber || ''
+                invoiceNumber: res.data.data.invoiceNumber || '',
+                invoiceDate: res.data.data.invoiceDate ? res.data.data.invoiceDate.split('T')[0] : '',
+                invoiceType: res.data.data.invoiceType || 'CASH',
+                paymentDueDate: res.data.data.paymentDueDate ? res.data.data.paymentDueDate.split('T')[0] : '',
+                bank: res.data.data.bank || '',
+                transferNumber: res.data.data.transferNumber || ''
             });
             setInvoiceFile(null);
         } catch (error) {
@@ -129,7 +139,12 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 branchId: '',
                 supplierId: '',
                 notes: '',
-                invoiceNumber: ''
+                invoiceNumber: '',
+                invoiceDate: new Date().toISOString().split('T')[0],
+                invoiceType: 'CASH' as 'CASH' | 'CREDIT',
+                paymentDueDate: '',
+                bank: '',
+                transferNumber: ''
             });
             setInvoiceFile(null);
             setNewItems([]);
@@ -315,6 +330,15 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
             payload.append('supplierId', formData.supplierId);
             payload.append('notes', formData.notes);
             payload.append('invoiceNumber', formData.invoiceNumber);
+            payload.append('invoiceDate', formData.invoiceDate);
+            payload.append('invoiceType', formData.invoiceType);
+            if (formData.invoiceType === 'CREDIT' && formData.paymentDueDate) {
+                payload.append('paymentDueDate', formData.paymentDueDate);
+            }
+            if (formData.invoiceType === 'CASH') {
+                payload.append('bank', formData.bank);
+                payload.append('transferNumber', formData.transferNumber);
+            }
             if (invoiceFile) {
                 payload.append('invoicePdf', invoiceFile);
             }
@@ -455,6 +479,78 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                     variant="modal"
                                 />
                             </div>
+                            <div className="modal-input-group">
+                                <label className="modal-input-label" htmlFor="po-invoice-date"><FileText size={14} /> Fecha de Factura</label>
+                                <input
+                                    id="po-invoice-date"
+                                    type="date"
+                                    className="modal-standard-input"
+                                    value={formData.invoiceDate}
+                                    onChange={e => setFormData({ ...formData, invoiceDate: e.target.value })}
+                                    disabled={!isDraft}
+                                />
+                            </div>
+                            <div className="modal-input-group">
+                                <label className="modal-input-label" htmlFor="po-invoice-type"><FileText size={14} /> Tipo de Factura</label>
+                                <select
+                                    id="po-invoice-type"
+                                    className="modal-standard-input"
+                                    value={formData.invoiceType}
+                                    onChange={e => setFormData({ ...formData, invoiceType: e.target.value as 'CASH' | 'CREDIT' })}
+                                    disabled={!isDraft}
+                                >
+                                    <option value="CASH">Contado</option>
+                                    <option value="CREDIT">Crédito</option>
+                                </select>
+                            </div>
+                            {formData.invoiceType === 'CREDIT' && (
+                                <div className="modal-input-group">
+                                    <label className="modal-input-label" htmlFor="po-payment-due"><FileText size={14} /> Fecha de Vencimiento</label>
+                                    <input
+                                        id="po-payment-due"
+                                        type="date"
+                                        className="modal-standard-input"
+                                        value={formData.paymentDueDate}
+                                        onChange={e => setFormData({ ...formData, paymentDueDate: e.target.value })}
+                                        disabled={!isDraft}
+                                    />
+                                </div>
+                            )}
+                            {formData.invoiceType === 'CASH' && (
+                                <>
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label" htmlFor="po-bank"><FileText size={14} /> Banco</label>
+                                        <select
+                                            id="po-bank"
+                                            className="modal-standard-input"
+                                            value={formData.bank}
+                                            onChange={e => setFormData({ ...formData, bank: e.target.value })}
+                                            disabled={!isDraft}
+                                        >
+                                            <option value="">Seleccionar banco...</option>
+                                            <option value="BAC">BAC</option>
+                                            <option value="BANPRO">BANPRO</option>
+                                            <option value="LAFISE">LAFISE</option>
+                                            <option value="FICOHSA">FICOHSA</option>
+                                            <option value="AVANZ">AVANZ</option>
+                                            <option value="ATLANTIDA">ATLANTIDA</option>
+                                            <option value="EFECTIVO">EFECTIVO</option>
+                                            <option value="OTRO">OTRO</option>
+                                        </select>
+                                    </div>
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label" htmlFor="po-transfer-number"><FileText size={14} /> Nº Transferencia</label>
+                                        <Input
+                                            id="po-transfer-number"
+                                            value={formData.transferNumber}
+                                            onChange={e => setFormData({ ...formData, transferNumber: e.target.value })}
+                                            disabled={!isDraft}
+                                            placeholder="Nº referencia"
+                                            variant="modal"
+                                        />
+                                    </div>
+                                </>
+                            )}
                             <div className="modal-input-group">
                                 <label className="modal-input-label" htmlFor="invoice-pdf"><FileText size={14} /> Factura PDF/Imagen</label>
                                 <div className="file-upload-wrapper">

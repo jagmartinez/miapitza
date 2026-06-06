@@ -655,11 +655,19 @@ model PurchaseOrder {
   notes      String?
   invoiceNumber String?
   invoicePdf   String?
+  invoiceDate    DateTime?
+  invoiceType    InvoiceType     @default(CASH)
+  paymentDueDate DateTime?
+  bank           String?
+  transferNumber String?
+  paidAmount     Decimal         @default(0) @db.Decimal(10, 2)
+  paymentStatus  PaymentStatus   @default(PENDING)
 
   company  Company             @relation(fields: [companyId], references: [id])
   branch   Branch              @relation(fields: [branchId], references: [id])
   supplier Supplier            @relation(fields: [supplierId], references: [id])
   items    PurchaseOrderItem[]
+  payments PurchaseOrderPayment[]
 
   @@index([supplierId])
   @@index([status])
@@ -667,11 +675,37 @@ model PurchaseOrder {
   @@index([companyId, branchId])
 }
 
+enum InvoiceType {
+  CASH
+  CREDIT
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIAL
+  PAID
+}
+
 enum PurchaseOrderStatus {
   DRAFT
   ISSUED
   RECEIVED
   CANCELLED
+}
+
+model PurchaseOrderPayment {
+  id              Int      @id @default(autoincrement())
+  purchaseOrderId Int
+  amount          Decimal  @db.Decimal(10, 2)
+  date            DateTime @default(now())
+  bank            String?
+  referenceNumber String?
+  observations    String?  @db.Text
+  createdAt       DateTime @default(now())
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@index([purchaseOrderId])
 }
 
 model PurchaseOrderItem {

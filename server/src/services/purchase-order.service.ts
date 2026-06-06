@@ -95,6 +95,9 @@ export class PurchaseOrderService {
                             }
                         }
                     }
+                },
+                payments: {
+                    orderBy: { date: 'desc' }
                 }
             }
         });
@@ -112,6 +115,11 @@ export class PurchaseOrderService {
         notes?: string;
         invoiceNumber?: string;
         invoicePdf?: string;
+        invoiceDate?: string;
+        invoiceType?: 'CASH' | 'CREDIT';
+        paymentDueDate?: string;
+        bank?: string;
+        transferNumber?: string;
         items: Array<{
             productId: number;
             quantity: number;
@@ -166,6 +174,12 @@ export class PurchaseOrderService {
                     notes: data.notes,
                     invoiceNumber: data.invoiceNumber,
                     invoicePdf: data.invoicePdf,
+                    invoiceDate: data.invoiceDate ? new Date(data.invoiceDate) : null,
+                    invoiceType: data.invoiceType || 'CASH',
+                    paymentDueDate: data.paymentDueDate ? new Date(data.paymentDueDate) : null,
+                    bank: data.bank,
+                    transferNumber: data.transferNumber,
+                    paymentStatus: data.invoiceType === 'CASH' ? 'PAID' : 'PENDING',
                     companyId,
                     total,
                     status: 'DRAFT'
@@ -224,6 +238,11 @@ export class PurchaseOrderService {
         notes?: string;
         invoiceNumber?: string;
         invoicePdf?: string;
+        invoiceDate?: string;
+        invoiceType?: 'CASH' | 'CREDIT';
+        paymentDueDate?: string;
+        bank?: string;
+        transferNumber?: string;
         status?: 'DRAFT' | 'ISSUED' | 'RECEIVED' | 'CANCELLED';
     }) {
         // Verify PO belongs to this company
@@ -252,9 +271,20 @@ export class PurchaseOrderService {
             if (!supplier) throw new Error('Proveedor no encontrado para esta empresa');
         }
 
+        const updateData: Record<string, unknown> = { ...data };
+        if (data.invoiceDate !== undefined) {
+            updateData.invoiceDate = data.invoiceDate ? new Date(data.invoiceDate) : null;
+        }
+        if (data.paymentDueDate !== undefined) {
+            updateData.paymentDueDate = data.paymentDueDate ? new Date(data.paymentDueDate) : null;
+        }
+        if (data.invoiceType === 'CASH') {
+            updateData.paymentStatus = 'PAID';
+        }
+
         return await prisma.purchaseOrder.update({
             where: { id },
-            data,
+            data: updateData,
             include: {
                 supplier: true,
                 branch: true,
@@ -541,6 +571,66 @@ export class PurchaseOrderService {
             });
 
             return { success: true };
+        });
+    }
+
+    static async addPayment(purchaseOrderId: number, companyId: number, data: {
+        amount: number;
+        date?: string;
+        bank?: string;
+        referenceNumber?: string;
+        observations?: string;
+    }) {
+        const order = await prisma.purchaseOrder.findFirst({
+            where: { id: purchaseOrderId, companyId }
+        });
+
+        if (!order) throw new Error('Orden de compra no encontrada');
+        if (order.invoiceType !== 'CREDIT') throw new Error('Solo se pueden registrar pagos en facturas a crédito');
+
+        const currentPaid = Number(order.paidAmount) + data.amount;
+        const orderTotal = Number(order.total);
+
+        if (currentPaid > orderTotal) {
+            throw new Error(`El monto excede el saldo pendiente. Saldo: C$ ${(orderTotal - Number(order.paidAmount)).toFixed(2)}`);
+        }
+
+        const paymentStatus = currentPaid >= orderTotal ? 'PAID' : 'PARTIAL';
+
+        return await prisma.$transaction(async (tx: Tx) => {
+            const payment = await tx.purchaseOrderPayment.create({
+                data: {
+                    purchaseOrderId,
+                    amount: data.amount,
+                    date: data.date ? new Date(data.date) : new Date(),
+                    bank: data.bank,
+                    referenceNumber: data.referenceNumber,
+                    observations: data.observations
+                }
+            });
+
+            await tx.purchaseOrder.update({
+                where: { id: purchaseOrderId },
+                data: {
+                    paidAmount: currentPaid,
+                    paymentStatus
+                }
+            });
+
+            return payment;
+        });
+    }
+
+    static async getPayments(purchaseOrderId: number, companyId: number) {
+        const order = await prisma.purchaseOrder.findFirst({
+            where: { id: purchaseOrderId, companyId },
+            select: { id: true }
+        });
+        if (!order) throw new Error('Orden de compra no encontrada');
+
+        return await prisma.purchaseOrderPayment.findMany({
+            where: { purchaseOrderId },
+            orderBy: { date: 'desc' }
         });
     }
 }

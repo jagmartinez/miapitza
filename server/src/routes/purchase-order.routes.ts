@@ -58,4 +58,7 @@ router.delete('/items/:itemId', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), Pu
 
 router.post('/:id/receive', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.idParam), PurchaseOrderController.receive);
 
+router.get('/:id/payments', validate(s.idParam), PurchaseOrderController.getPayments);
+router.post('/:id/payments', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.idParam), PurchaseOrderController.addPayment);
+
 export default router;

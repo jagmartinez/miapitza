@@ -565,6 +565,12 @@ export const purchaseOrdersAPI = {
     },
 
     confirmImport: (data: Record<string, unknown>) => api.post('/purchase-orders/import/confirm', data),
+
+    getPayments: (orderId: number) =>
+        api.get(`/purchase-orders/${orderId}/payments`),
+
+    addPayment: (orderId: number, data: { amount: number; date?: string; bank?: string; referenceNumber?: string; observations?: string }) =>
+        api.post(`/purchase-orders/${orderId}/payments`, data),
 };
 
 // Cash Registers API
