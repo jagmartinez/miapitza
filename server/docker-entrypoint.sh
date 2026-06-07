@@ -1,18 +1,42 @@
 #!/bin/sh
 set -e
 
-if [ -n "$DATABASE_URL" ]; then
-  echo "Syncing database schema..."
-  set +e
-  npx prisma migrate deploy
-  migrate_status=$?
-  set -e
-  if [ "$migrate_status" -ne 0 ]; then
-    echo "migrate deploy failed (code $migrate_status); falling back to prisma db push..."
-    npx prisma db push --accept-data-loss --skip-generate
+# Mirror server/src/utils/prisma.ts so migrations run when Railway (or similar)
+# exposes MYSQL* parts / MYSQL_URL instead of DATABASE_URL.
+if [ -z "$DATABASE_URL" ]; then
+  if [ -n "$MYSQL_URL" ]; then
+    DATABASE_URL="$MYSQL_URL"
+  elif [ -n "$MYSQLURL" ]; then
+    DATABASE_URL="$MYSQLURL"
+  else
+    _host="${MYSQLHOST:-${MYSQL_HOST:-}}"
+    _port="${MYSQLPORT:-${MYSQL_PORT:-3306}}"
+    _user="${MYSQLUSER:-${MYSQL_USER:-}}"
+    _password="${MYSQLPASSWORD:-${MYSQL_PASSWORD:-}}"
+    _database="${MYSQLDATABASE:-${MYSQL_DATABASE:-}}"
+    if [ -n "$_host" ] && [ -n "$_user" ] && [ -n "$_database" ]; then
+      DATABASE_URL="mysql://${_user}:${_password}@${_host}:${_port}/${_database}"
+    fi
   fi
-else
-  echo "WARNING: DATABASE_URL is not set — skipping database schema sync."
+fi
+
+if [ -z "$DATABASE_URL" ]; then
+  echo "FATAL: Missing DATABASE_URL."
+  echo "  Set DATABASE_URL on this service, or link a MySQL plugin and reference its URL."
+  echo "  Supported fallbacks: MYSQL_URL / MYSQLHOST, MYSQLPORT, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE."
+  exit 1
+fi
+
+export DATABASE_URL
+
+echo "Syncing database schema..."
+set +e
+npx prisma migrate deploy
+migrate_status=$?
+set -e
+if [ "$migrate_status" -ne 0 ]; then
+  echo "migrate deploy failed (code $migrate_status); falling back to prisma db push..."
+  npx prisma db push --accept-data-loss --skip-generate
 fi
 
 exec node dist/index.js
