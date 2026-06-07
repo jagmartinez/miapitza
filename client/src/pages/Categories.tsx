@@ -80,16 +80,27 @@ export default function Categories() {
 
         setSaving(true);
         try {
+            const payload = {
+                ...formData,
+                codePrefix: formData.codePrefix.trim() || null,
+            };
             if (editingCategory) {
-                await categoriesAPI.update(editingCategory.id, formData);
+                await categoriesAPI.update(editingCategory.id, payload);
             } else {
-                await categoriesAPI.create(formData);
+                await categoriesAPI.create(payload);
             }
             loadData();
             closeModal();
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('Error saving category:', error);
-            showError('Error al guardar la categoría');
+            let message = 'Error al guardar la categoría';
+            if (typeof error === 'object' && error !== null && 'response' in error) {
+                const apiMessage = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
+                if (typeof apiMessage === 'string' && apiMessage.trim()) {
+                    message = apiMessage;
+                }
+            }
+            showError(message);
         } finally {
             setSaving(false);
         }

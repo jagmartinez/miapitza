@@ -22,6 +22,12 @@ const INVENTORY_ONLY_DEFAULTS = {
 };
 
 export class CategoryService {
+    private static normalizeCodePrefix(codePrefix?: string | null): string | null {
+        if (codePrefix == null || String(codePrefix).trim() === '') return null;
+        const normalized = String(codePrefix).toUpperCase().replace(/[^A-Z]/g, '').substring(0, 10);
+        return normalized || null;
+    }
+
     private static assertVisibility(data: { active?: boolean; showInMenu?: boolean; showInInventory?: boolean }) {
         if (data.active === false) return;
 
@@ -150,19 +156,20 @@ export class CategoryService {
     }) {
         this.assertVisibility(data);
 
-        if (data.codePrefix) {
-            data.codePrefix = data.codePrefix.toUpperCase().replace(/[^A-Z]/g, '').substring(0, 10);
+        const codePrefix = this.normalizeCodePrefix(data.codePrefix);
+        if (codePrefix) {
             const existing = await prisma.category.findFirst({
-                where: { companyId, codePrefix: data.codePrefix }
+                where: { companyId, codePrefix }
             });
             if (existing) {
-                throw new Error(`El prefijo "${data.codePrefix}" ya está en uso por la categoría "${existing.name}"`);
+                throw new Error(`El prefijo "${codePrefix}" ya está en uso por la categoría "${existing.name}"`);
             }
         }
 
         return await prisma.category.create({
             data: {
                 ...data,
+                codePrefix,
                 companyId
             }
         });
@@ -171,32 +178,36 @@ export class CategoryService {
     static async update(id: number, companyId: number, data: {
         name?: string;
         description?: string;
-        codePrefix?: string;
+        codePrefix?: string | null;
         sortOrder?: number;
         active?: boolean;
         showInMenu?: boolean;
         showInInventory?: boolean;
     }) {
-        const existing = await this.getById(id, companyId);
+        const category = await this.getById(id, companyId);
         this.assertVisibility({
-            active: data.active ?? existing.active,
-            showInMenu: data.showInMenu ?? existing.showInMenu,
-            showInInventory: data.showInInventory ?? existing.showInInventory,
+            active: data.active ?? category.active,
+            showInMenu: data.showInMenu ?? category.showInMenu,
+            showInInventory: data.showInInventory ?? category.showInInventory,
         });
 
-        if (data.codePrefix) {
-            data.codePrefix = data.codePrefix.toUpperCase().replace(/[^A-Z]/g, '').substring(0, 10);
-            const existing = await prisma.category.findFirst({
-                where: { companyId, codePrefix: data.codePrefix, NOT: { id } }
+        const updateData = { ...data };
+        if ('codePrefix' in data) {
+            updateData.codePrefix = this.normalizeCodePrefix(data.codePrefix);
+        }
+
+        if (updateData.codePrefix) {
+            const duplicate = await prisma.category.findFirst({
+                where: { companyId, codePrefix: updateData.codePrefix, NOT: { id } }
             });
-            if (existing) {
-                throw new Error(`El prefijo "${data.codePrefix}" ya está en uso por la categoría "${existing.name}"`);
+            if (duplicate) {
+                throw new Error(`El prefijo "${updateData.codePrefix}" ya está en uso por la categoría "${duplicate.name}"`);
             }
         }
 
         return await prisma.category.update({
             where: { id },
-            data
+            data: updateData
         });
     }
 
