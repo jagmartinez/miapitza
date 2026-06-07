@@ -22,6 +22,7 @@ type CatFilterOption = { value: string; label: string };
 import MenuItemCard from '../components/MenuItemCard';
 import { useCurrency } from '../hooks/useCurrency';
 import ImageViewer from '../components/ImageViewer';
+import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
 import './Menu.css';
 
 interface RecipeIngredient {
@@ -38,6 +39,7 @@ interface CategoryRow {
   name: string;
   active?: boolean;
   showInMenu?: boolean;
+  showInInventory?: boolean;
 }
 
 interface BranchPriceRow {
@@ -458,7 +460,7 @@ export default function Menu() {
             onChange={(val: SingleValue<CatFilterOption>) => setSelectedCategory(val?.value || 'all')}
             options={[
               { value: 'all', label: 'Todas las Categorías' },
-              ...categories.filter(cat => cat.active && cat.showInMenu !== false).map(cat => ({ value: cat.name, label: cat.name }))
+              ...categories.filter(cat => isCategoryVisibleInMenu(cat)).map(cat => ({ value: cat.name, label: cat.name }))
             ]}
             placeholder="Filtrar por categoría..."
             isSearchable
@@ -686,7 +688,7 @@ export default function Menu() {
                     <Select
                       variant="modal"
                       label="Categoría"
-                      options={categories.filter(cat => (cat.active && cat.showInMenu !== false) || cat.id.toString() === formData.categoryId).map(cat => ({ value: cat.id.toString(), label: cat.name }))}
+                      options={categories.filter(cat => isCategoryVisibleInMenu(cat) || cat.id.toString() === formData.categoryId).map(cat => ({ value: cat.id.toString(), label: cat.name }))}
                       value={categories.map(cat => ({ value: cat.id.toString(), label: cat.name })).find(opt => opt.value === formData.categoryId) || null}
                       onChange={(opt: SingleValue<StrOption>) => setFormData({ ...formData, categoryId: opt ? opt.value : '' })}
                       placeholder="Seleccionar..."

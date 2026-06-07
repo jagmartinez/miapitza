@@ -319,8 +319,9 @@ model Category {
   description String?
   codePrefix  String? // e.g. CAR, BEB, LAC - used for auto-generating product SKU
   sortOrder   Int     @default(0)
-  active      Boolean @default(true)
-  showInMenu  Boolean @default(true)
+  active          Boolean @default(true)
+  showInMenu      Boolean @default(true)
+  showInInventory Boolean @default(true)
 
   company   Company    @relation(fields: [companyId], references: [id])
   menuItems MenuItem[]

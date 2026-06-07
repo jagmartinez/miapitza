@@ -884,10 +884,13 @@ export default function Dashboard() {
 
                     <div className="header-meta-group">
                         {stockAlerts.length > 0 && (
-                            <div className="compact-alert-ticker" onClick={() => navigate('/inventory')}>
+                            <div className="compact-alert-ticker" onClick={() => navigate('/inventory')} title="Ver inventario con stock bajo">
                                 <AlertCircle size={16} className="text-danger" />
-                                <span className="ticker-label text-danger">CRÍTICO:</span>
-                                <span className="ticker-message">{stockAlerts.map(a => a.name).join(', ')} (stock bajo)</span>
+                                <span className="ticker-label text-danger">Stock bajo</span>
+                                <span className="ticker-count">{stockAlerts.length}</span>
+                                <span className="ticker-message">
+                                    {stockAlerts.length === 1 ? 'producto requiere atención' : 'productos requieren atención'}
+                                </span>
                                 <ChevronRight size={14} />
                             </div>
                         )}

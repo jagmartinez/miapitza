@@ -16,7 +16,21 @@ const IMPORT_CATEGORY_DEFS: Record<string, {
     lacteos: { name: 'Lácteos', codePrefix: 'LAC', description: 'Productos lácteos y derivados', sortOrder: 3 },
 };
 
+const INVENTORY_ONLY_DEFAULTS = {
+    showInMenu: false,
+    showInInventory: true,
+};
+
 export class CategoryService {
+    private static assertVisibility(data: { active?: boolean; showInMenu?: boolean; showInInventory?: boolean }) {
+        if (data.active === false) return;
+
+        const showInMenu = data.showInMenu ?? true;
+        const showInInventory = data.showInInventory ?? true;
+        if (!showInMenu && !showInInventory) {
+            throw new Error('La categoría debe ser visible en menú, inventario o ambos.');
+        }
+    }
     private static normalizeCategoryKey(name: string): string {
         return name
             .trim()
@@ -81,6 +95,7 @@ export class CategoryService {
                     description: def?.description,
                     sortOrder: def?.sortOrder,
                     active: true,
+                    ...INVENTORY_ONLY_DEFAULTS,
                 });
                 categoryMap.set(created.name.toLowerCase(), created.id);
                 categoryMap.set(this.normalizeCategoryKey(created.name), created.id);
@@ -131,7 +146,10 @@ export class CategoryService {
         sortOrder?: number;
         active?: boolean;
         showInMenu?: boolean;
+        showInInventory?: boolean;
     }) {
+        this.assertVisibility(data);
+
         if (data.codePrefix) {
             data.codePrefix = data.codePrefix.toUpperCase().replace(/[^A-Z]/g, '').substring(0, 10);
             const existing = await prisma.category.findFirst({
@@ -157,8 +175,14 @@ export class CategoryService {
         sortOrder?: number;
         active?: boolean;
         showInMenu?: boolean;
+        showInInventory?: boolean;
     }) {
-        await this.getById(id, companyId);
+        const existing = await this.getById(id, companyId);
+        this.assertVisibility({
+            active: data.active ?? existing.active,
+            showInMenu: data.showInMenu ?? existing.showInMenu,
+            showInInventory: data.showInInventory ?? existing.showInInventory,
+        });
 
         if (data.codePrefix) {
             data.codePrefix = data.codePrefix.toUpperCase().replace(/[^A-Z]/g, '').substring(0, 10);
@@ -233,7 +257,7 @@ export class CategoryService {
                 }
             } else {
                 await prisma.category.create({
-                    data: { ...cat, companyId }
+                    data: { ...cat, companyId, ...INVENTORY_ONLY_DEFAULTS }
                 });
                 created.push(cat.name);
             }

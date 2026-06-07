@@ -11,6 +11,7 @@ import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
 import { Plus, Tag, Edit2, Trash2, List } from 'lucide-react';
+import { getCategoryVisibilityLabel } from '../utils/categoryVisibility';
 import './Categories.css';
 
 interface CategoryRow {
@@ -21,6 +22,7 @@ interface CategoryRow {
     sortOrder?: number;
     active: boolean;
     showInMenu: boolean;
+    showInInventory: boolean;
     _count?: {
         menuItems?: number;
         products?: number;
@@ -44,7 +46,8 @@ export default function Categories() {
         codePrefix: '',
         sortOrder: 0,
         active: true,
-        showInMenu: true
+        showInMenu: true,
+        showInInventory: true
     });
     const [activeTab, setActiveTab] = useState<'info' | 'config'>('info');
     const [saving, setSaving] = useState(false);
@@ -68,6 +71,13 @@ export default function Categories() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!canMutateCategory) return;
+
+        if (formData.active && !formData.showInMenu && !formData.showInInventory) {
+            showError('La categoría debe ser visible en menú, inventario o ambos.');
+            setActiveTab('config');
+            return;
+        }
+
         setSaving(true);
         try {
             if (editingCategory) {
@@ -110,7 +120,8 @@ export default function Categories() {
                 codePrefix: category.codePrefix || '',
                 sortOrder: category.sortOrder || 0,
                 active: category.active,
-                showInMenu: category.showInMenu ?? true
+                showInMenu: category.showInMenu ?? true,
+                showInInventory: category.showInInventory ?? true
             });
         } else {
             setEditingCategory(null);
@@ -120,7 +131,8 @@ export default function Categories() {
                 codePrefix: '',
                 sortOrder: categories.length,
                 active: true,
-                showInMenu: true
+                showInMenu: true,
+                showInInventory: true
             });
         }
         setIsModalOpen(true);
@@ -176,7 +188,11 @@ export default function Categories() {
                             render: (c) => (
                                 <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                                     <span className={`catalog-pill ${c.active ? 'ok' : 'neutral'}`}>{c.active ? 'Activa' : 'Inactiva'}</span>
-                                    {c.active && !c.showInMenu && <span className="catalog-pill neutral">Solo inventario</span>}
+                                    {c.active && (
+                                        <span className="catalog-pill neutral">
+                                            {getCategoryVisibilityLabel(c.showInMenu ?? true, c.showInInventory ?? true)}
+                                        </span>
+                                    )}
                                 </div>
                             )
                         },
@@ -210,7 +226,9 @@ export default function Categories() {
                     <div key={category.id} className="category-card-new">
                         {/* Status/Badge */}
                                 <div className={`status-badge-new ${category.active ? 'active' : 'inactive'}`}>
-                                    {!category.active ? 'Inactiva' : category.showInMenu ? 'Menú + Inventario' : 'Solo Inventario'}
+                                    {!category.active
+                                        ? 'Inactiva'
+                                        : getCategoryVisibilityLabel(category.showInMenu ?? true, category.showInInventory ?? true)}
                                 </div>
 
                         {/* Card Body */}
@@ -381,12 +399,39 @@ export default function Categories() {
                                             <div className="toggle-switch">
                                                 <div className={`toggle-dot ${formData.showInMenu ? 'active' : ''}`} />
                                             </div>
-                                            <span>{formData.showInMenu ? 'Visible en el menú / POS' : 'Oculta del menú / POS (solo inventario)'}</span>
+                                            <span>{formData.showInMenu ? 'Visible en el menú / POS' : 'Oculta del menú / POS'}</span>
                                         </div>
                                         <p style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
-                                            Si se desactiva, la categoría no aparecerá en el POS ni en el menú, pero seguirá disponible en inventario.
+                                            Controla si la categoría aparece al crear platos y en el punto de venta.
                                         </p>
                                     </div>
+
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label" id="category-show-in-inventory-label">Visibilidad en Inventario</label>
+                                        <div
+                                            id="category-show-in-inventory"
+                                            role="switch"
+                                            aria-checked={formData.showInInventory}
+                                            aria-labelledby="category-show-in-inventory-label"
+                                            className={`modal-toggle-card ${formData.showInInventory ? 'active' : ''}`}
+                                            onClick={() => setFormData({ ...formData, showInInventory: !formData.showInInventory })}
+                                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--color-background)', borderRadius: '8px', border: '1px solid var(--color-border)' }}
+                                        >
+                                            <div className="toggle-switch">
+                                                <div className={`toggle-dot ${formData.showInInventory ? 'active' : ''}`} />
+                                            </div>
+                                            <span>{formData.showInInventory ? 'Visible en inventario' : 'Oculta del inventario'}</span>
+                                        </div>
+                                        <p style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '4px' }}>
+                                            Controla si la categoría aparece al crear productos y en los filtros de inventario.
+                                        </p>
+                                    </div>
+
+                                    {formData.active && !formData.showInMenu && !formData.showInInventory && (
+                                        <p style={{ fontSize: '12px', color: 'var(--color-danger, #ef4444)', margin: 0 }}>
+                                            Debe activar al menos una visibilidad (menú o inventario).
+                                        </p>
+                                    )}
 
                                     <div className="modal-input-group">
                                         <label className="modal-input-label" id="category-active-label">Estado de la Categoría</label>

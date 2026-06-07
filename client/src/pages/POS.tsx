@@ -24,6 +24,7 @@ import { LoadingOverlay } from '../components/LoadingSpinner';
 import { Send, CreditCard, Printer, X, Search, Grid3x3, AlertTriangle, ChevronLeft } from 'lucide-react';
 import type { MenuItem, Order, Table } from '../types';
 import { useCurrency } from '../hooks/useCurrency';
+import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
 import './POS.css';
 
 interface OfflineResponse {
@@ -822,7 +823,7 @@ export default function POS() {
                     >
                         <span>Todos</span>
                     </button>
-                    {categories.filter(c => c.active && c.showInMenu !== false && c.name !== 'Catering').map(cat => (
+                    {categories.filter(c => isCategoryVisibleInMenu(c) && c.name !== 'Catering').map(cat => (
                         <button
                             key={cat.id}
                             className={`category-item ${selectedCategory === cat.id ? 'active' : ''}`}

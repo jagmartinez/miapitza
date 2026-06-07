@@ -5,6 +5,8 @@ import api from '../services/api';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
+import Select from '../components/Select';
+import Input from '../components/Input';
 import PurchaseOrderForm from './PurchaseOrderForm';
 import PurchaseOrderImport from '../components/PurchaseOrderImport';
 import Modal from '../components/Modal';
@@ -12,8 +14,10 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
-import { Plus, Eye, Zap, X, ShoppingCart, FileDown, FileText, CreditCard, DollarSign } from 'lucide-react';
+import { Plus, Eye, Zap, X, ShoppingCart, FileDown, FileText, CreditCard, DollarSign, Info, Save } from 'lucide-react';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
+import { BANK_OPTIONS, type StrOption } from '../constants/purchaseOrderOptions';
+import type { SingleValue } from 'react-select';
 import type { AutoPurchaseSuggestion, PurchaseOrder } from '../types';
 import './PurchaseOrders.css';
 
@@ -613,105 +617,126 @@ export default function PurchaseOrders() {
                 />
             </Sidebar>
 
-            {/* Payment Modal */}
-            {paymentModalOrder && (
-                <Modal isOpen={true} onClose={() => setPaymentModalOrder(null)} title={`Registrar Pago - OC #${paymentModalOrder.id}`}>
-                    <div className="payment-modal-content">
-                        <div className="payment-summary">
-                            <div className="payment-summary-row">
-                                <span>Total factura:</span>
-                                <strong>{formatCurrency(Number(paymentModalOrder.total), settings)}</strong>
-                            </div>
-                            <div className="payment-summary-row">
-                                <span>Abonado:</span>
-                                <strong>{formatCurrency(Number(paymentModalOrder.paidAmount || 0), settings)}</strong>
-                            </div>
-                            <div className="payment-summary-row highlight">
-                                <span>Saldo pendiente:</span>
-                                <strong>{formatCurrency(Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0), settings)}</strong>
-                            </div>
-                            {paymentModalOrder.paymentDueDate && (
-                                <div className="payment-summary-row">
-                                    <span>Fecha vencimiento:</span>
-                                    <strong>{new Date(paymentModalOrder.paymentDueDate).toLocaleDateString('es-ES')}</strong>
+            {/* Payment Sidebar */}
+            <Sidebar
+                isOpen={!!paymentModalOrder}
+                onClose={() => setPaymentModalOrder(null)}
+                title={paymentModalOrder ? `Registrar Pago - OC #${paymentModalOrder.id}` : 'Registrar Pago'}
+            >
+                {paymentModalOrder && (
+                    <div className="premium-modal-content po-sidebar-form payment-sidebar-form">
+                        <div className="modal-tab-content">
+                            <div className="modal-section animate-slide-in">
+                                <div className="modal-section-header">
+                                    <Info size={18} />
+                                    <h3>Resumen de la factura</h3>
                                 </div>
-                            )}
+                                <div className="payment-summary">
+                                    <div className="payment-summary-row">
+                                        <span>Total factura</span>
+                                        <strong>{formatCurrency(Number(paymentModalOrder.total), settings)}</strong>
+                                    </div>
+                                    <div className="payment-summary-row">
+                                        <span>Abonado</span>
+                                        <strong>{formatCurrency(Number(paymentModalOrder.paidAmount || 0), settings)}</strong>
+                                    </div>
+                                    <div className="payment-summary-row highlight">
+                                        <span>Saldo pendiente</span>
+                                        <strong>{formatCurrency(Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0), settings)}</strong>
+                                    </div>
+                                    {paymentModalOrder.paymentDueDate && (
+                                        <div className="payment-summary-row">
+                                            <span>Fecha vencimiento</span>
+                                            <strong>{new Date(paymentModalOrder.paymentDueDate).toLocaleDateString('es-ES')}</strong>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="modal-section animate-slide-in">
+                                <div className="modal-section-header">
+                                    <CreditCard size={18} />
+                                    <h3>Datos del pago</h3>
+                                </div>
+                                <div className="form-grid-modern">
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label" htmlFor="payment-amount">Monto del pago *</label>
+                                        <Input
+                                            id="payment-amount"
+                                            type="number"
+                                            value={paymentForm.amount}
+                                            onChange={e => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+                                            step="0.01"
+                                            min="0.01"
+                                            max={Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0)}
+                                            variant="modal"
+                                        />
+                                    </div>
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label" htmlFor="payment-date">Fecha de pago *</label>
+                                        <input
+                                            id="payment-date"
+                                            type="date"
+                                            className="modal-standard-input"
+                                            value={paymentForm.date}
+                                            onChange={e => setPaymentForm({ ...paymentForm, date: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="modal-form-row">
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label" htmlFor="payment-bank">Banco</label>
+                                            <Select
+                                                inputId="payment-bank"
+                                                options={BANK_OPTIONS}
+                                                value={BANK_OPTIONS.find(o => o.value === paymentForm.bank) ?? null}
+                                                onChange={(option: SingleValue<StrOption>) =>
+                                                    setPaymentForm({ ...paymentForm, bank: option?.value ?? '' })
+                                                }
+                                                isClearable
+                                                placeholder="Seleccionar banco..."
+                                                variant="modal"
+                                            />
+                                        </div>
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label" htmlFor="payment-reference">Nº Transferencia</label>
+                                            <Input
+                                                id="payment-reference"
+                                                value={paymentForm.referenceNumber}
+                                                onChange={e => setPaymentForm({ ...paymentForm, referenceNumber: e.target.value })}
+                                                placeholder="Nº transferencia o comprobante"
+                                                variant="modal"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="modal-input-group full-width">
+                                        <label className="modal-input-label" htmlFor="payment-observations">Observaciones</label>
+                                        <textarea
+                                            id="payment-observations"
+                                            className="modal-textarea"
+                                            value={paymentForm.observations}
+                                            onChange={e => setPaymentForm({ ...paymentForm, observations: e.target.value })}
+                                            placeholder="Notas adicionales..."
+                                            rows={3}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
-                        <div className="payment-form-fields">
-                            <div className="modal-input-group">
-                                <label className="modal-input-label">Monto del pago *</label>
-                                <input
-                                    type="number"
-                                    className="modal-standard-input"
-                                    value={paymentForm.amount}
-                                    onChange={e => setPaymentForm({ ...paymentForm, amount: e.target.value })}
-                                    step="0.01"
-                                    min="0.01"
-                                    max={Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0)}
-                                />
+                        <div className="modal-footer">
+                            <div className="action-buttons">
+                                <Button variant="secondary" type="button" onClick={() => setPaymentModalOrder(null)}>
+                                    Cancelar
+                                </Button>
+                                <Button type="button" className="save-btn-premium" disabled={savingPayment} onClick={handleSubmitPayment}>
+                                    <Save size={20} />
+                                    <span>{savingPayment ? 'Registrando...' : 'Registrar Pago'}</span>
+                                </Button>
                             </div>
-                            <div className="modal-input-group">
-                                <label className="modal-input-label">Fecha de pago *</label>
-                                <input
-                                    type="date"
-                                    className="modal-standard-input"
-                                    value={paymentForm.date}
-                                    onChange={e => setPaymentForm({ ...paymentForm, date: e.target.value })}
-                                />
-                            </div>
-                            <div className="modal-input-group">
-                                <label className="modal-input-label">Banco</label>
-                                <select
-                                    className="modal-standard-input"
-                                    value={paymentForm.bank}
-                                    onChange={e => setPaymentForm({ ...paymentForm, bank: e.target.value })}
-                                >
-                                    <option value="">Seleccionar banco...</option>
-                                    <option value="BAC">BAC</option>
-                                    <option value="BANPRO">BANPRO</option>
-                                    <option value="LAFISE">LAFISE</option>
-                                    <option value="FICOHSA">FICOHSA</option>
-                                    <option value="AVANZ">AVANZ</option>
-                                    <option value="ATLANTIDA">ATLANTIDA</option>
-                                    <option value="EFECTIVO">EFECTIVO</option>
-                                    <option value="OTRO">OTRO</option>
-                                </select>
-                            </div>
-                            <div className="modal-input-group">
-                                <label className="modal-input-label">Número de referencia</label>
-                                <input
-                                    type="text"
-                                    className="modal-standard-input"
-                                    value={paymentForm.referenceNumber}
-                                    onChange={e => setPaymentForm({ ...paymentForm, referenceNumber: e.target.value })}
-                                    placeholder="Nº transferencia o comprobante"
-                                />
-                            </div>
-                            <div className="modal-input-group">
-                                <label className="modal-input-label">Observaciones</label>
-                                <textarea
-                                    className="modal-standard-input"
-                                    style={{ minHeight: '80px', resize: 'vertical' }}
-                                    value={paymentForm.observations}
-                                    onChange={e => setPaymentForm({ ...paymentForm, observations: e.target.value })}
-                                    placeholder="Notas adicionales..."
-                                />
-                            </div>
-                        </div>
-
-                        <div className="modal-footer" style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-                            <button type="button" className="btn btn-secondary" onClick={() => setPaymentModalOrder(null)}>
-                                Cancelar
-                            </button>
-                            <button type="button" className="btn btn-primary" disabled={savingPayment} onClick={handleSubmitPayment}>
-                                <CreditCard size={16} />
-                                {savingPayment ? 'Registrando...' : 'Registrar Pago'}
-                            </button>
                         </div>
                     </div>
-                </Modal>
-            )}
+                )}
+            </Sidebar>
         </div>
     );
 }
