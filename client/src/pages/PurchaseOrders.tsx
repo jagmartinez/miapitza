@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { purchaseOrdersAPI } from '../services/api';
 import api from '../services/api';
-import Card from '../components/Card';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import Select from '../components/Select';
@@ -14,11 +13,12 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
-import { Plus, Eye, Zap, X, ShoppingCart, FileDown, FileText, CreditCard, DollarSign, Info, Save } from 'lucide-react';
+import { Plus, Eye, Zap, X, ShoppingCart, FileDown, FileText, CreditCard, DollarSign, Info, Save, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import { BANK_OPTIONS, type StrOption } from '../constants/purchaseOrderOptions';
 import type { SingleValue } from 'react-select';
 import type { AutoPurchaseSuggestion, PurchaseOrder } from '../types';
+import './Inventory.css';
 import './PurchaseOrders.css';
 
 type PoSuggestionRow = AutoPurchaseSuggestion & { unit?: string };
@@ -65,7 +65,7 @@ export default function PurchaseOrders() {
     const [savingPayment, setSavingPayment] = useState(false);
     // Pagination and Filters state
     const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 5;
+    const itemsPerPage = 10;
 
     // Default to last month
     const [startDate, setStartDate] = useState(() => {
@@ -250,37 +250,104 @@ export default function PurchaseOrders() {
         return diff;
     };
 
-    if (loading) return <div>Cargando...</div>;
+    const draftCount = orders.filter(o => o.status === 'DRAFT').length;
+    const issuedCount = orders.filter(o => o.status === 'ISSUED').length;
+    const receivedCount = orders.filter(o => o.status === 'RECEIVED').length;
+    const pendingPaymentOrders = orders.filter(o => o.invoiceType === 'CREDIT' && o.paymentStatus !== 'PAID');
+    const overduePayments = pendingPaymentOrders.filter(o => {
+        const days = getDaysRemaining(o.paymentDueDate);
+        return days !== null && days < 0;
+    });
+
+    if (loading) return <div className="inventory-loading">Cargando órdenes de compra...</div>;
 
     return (
-        <div className="purchase-orders-page">
-            <header className="po-header">
-                <div className="header-info">
-                    <h1><ShoppingCart size={32} className="po-title-icon" /> Órdenes de Compra</h1>
-                    <p className="header-subtitle">Gestión de suministros y abastecimiento</p>
+        <div className="inventory-page purchase-orders-page">
+            <div className="inventory-header-new">
+                <div className="header-title-section">
+                    <h1><ShoppingCart size={32} /> Órdenes de Compra</h1>
                 </div>
-                <div className="header-actions">
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <Button variant="secondary" onClick={loadAutoSuggestions} disabled={loadingSuggestions || !canManagePurchaseOrders}>
-                        <Zap size={20} />
+                        <Zap size={18} />
                         {loadingSuggestions ? 'Cargando...' : 'Auto-Generar'}
                     </Button>
                     <Button variant="secondary" onClick={() => setIsImportSidebarOpen(true)} disabled={!canManagePurchaseOrders}>
-                        <FileDown size={20} />
+                        <FileDown size={18} />
                         Carga Masiva
                     </Button>
-                    <Button onClick={() => handleOpenForm()} disabled={!canManagePurchaseOrders}>
+                    <Button onClick={() => handleOpenForm()} disabled={!canManagePurchaseOrders} title="Nueva orden" aria-label="Nueva orden">
                         <Plus size={20} />
-                        Nueva Orden
                     </Button>
                 </div>
-            </header>
+            </div>
 
-            <div className="po-controls">
-                <div className="status-filters">
+            <div className="inventory-grid-new" style={{ marginBottom: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+                <div className="inventory-card-new">
+                    <div className="inventory-card-body-new">
+                        <div className="product-name-new">Resumen de órdenes</div>
+                        <div className="product-details-new">
+                            <div className="detail-item"><span>{orders.length} órdenes totales</span></div>
+                            <div className="detail-item"><span>{draftCount} borradores</span></div>
+                            <div className="detail-item"><span>{issuedCount} emitidas · {receivedCount} recibidas</span></div>
+                        </div>
+                    </div>
+                </div>
+                <div className="inventory-card-new">
+                    <div className="inventory-card-body-new">
+                        <div className="product-name-new">Pagos pendientes</div>
+                        <div className="product-details-new">
+                            {pendingPaymentOrders.slice(0, 3).map(order => (
+                                <div key={order.id} className="detail-item">
+                                    <AlertTriangle size={14} />
+                                    <span>#{order.id} {order.supplier?.name}</span>
+                                </div>
+                            ))}
+                            {pendingPaymentOrders.length === 0 && (
+                                <div className="detail-item"><span>Sin pagos pendientes</span></div>
+                            )}
+                            {overduePayments.length > 0 && (
+                                <div className="detail-item"><span>{overduePayments.length} vencidos</span></div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+                <div className="inventory-card-new">
+                    <div className="inventory-card-body-new">
+                        <div className="product-name-new">Reposición sugerida</div>
+                        <div className="product-details-new">
+                            <div className="detail-item"><span>Genera órdenes desde stock bajo</span></div>
+                            {canManagePurchaseOrders && (
+                                <div className="detail-item" style={{ marginTop: '8px' }}>
+                                    <button
+                                        type="button"
+                                        onClick={loadAutoSuggestions}
+                                        disabled={loadingSuggestions}
+                                        style={{
+                                            border: 'none',
+                                            background: 'transparent',
+                                            color: 'var(--color-primary)',
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                            padding: 0
+                                        }}
+                                    >
+                                        {loadingSuggestions ? 'Cargando sugerencias...' : 'Revisar sugerencias y crear borrador'}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="inventory-filters-row">
+                <div className="inventory-status-filters">
                     {['all', 'DRAFT', 'ISSUED', 'RECEIVED', 'CANCELLED'].map(status => (
                         <button
                             key={status}
-                            className={`filter-btn ${status.toLowerCase()} ${statusFilter === status ? 'active' : ''}`}
+                            type="button"
+                            className={`inventory-status-btn ${statusFilter === status ? 'active' : ''}`}
                             onClick={() => setStatusFilter(status)}
                         >
                             {status === 'all' ? 'Todas' :
@@ -289,19 +356,10 @@ export default function PurchaseOrders() {
                                         status === 'RECEIVED' ? 'Recibida' : 'Cancelada'}
                         </button>
                     ))}
-                </div>
-                <div className="filter-right-section">
-                    <div className="search-section">
-                        <div className="search-wrapper">
-                            <input
-                                type="text"
-                                placeholder="Buscar por ID, proveedor o factura..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                    <div className="date-filters">
+
+                    <div style={{ width: '1px', height: '24px', background: 'var(--color-border)', margin: '0 8px' }} />
+
+                    <div className="po-date-filters">
                         <div className="date-input-group">
                             <label>Desde:</label>
                             <input
@@ -319,17 +377,26 @@ export default function PurchaseOrders() {
                             />
                         </div>
                         {(startDate || endDate) && (
-                            <button className="clear-dates" onClick={() => { setStartDate(''); setEndDate(''); }}>
+                            <button type="button" className="clear-dates" onClick={() => { setStartDate(''); setEndDate(''); }}>
                                 <X size={14} />
                             </button>
                         )}
                     </div>
                 </div>
+
+                <div className="filter-right-section">
+                    <input
+                        type="text"
+                        placeholder="Buscar por ID, proveedor o factura..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="search-input inventory-search"
+                    />
+                </div>
             </div>
 
-            <Card className="po-table-card">
-                <div className="table-wrapper">
-                    <table className="modern-table">
+            <div className="inventory-table-wrapper">
+                <table className="inventory-table">
                         <thead>
                             <tr>
                                 <th>Orden</th>
@@ -340,17 +407,17 @@ export default function PurchaseOrders() {
                                 <th className="text-right">Total</th>
                                 <th>Pago</th>
                                 <th>Estado</th>
-                                <th className="text-center">Acciones</th>
+                                <th className="text-right">Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
                             {paginatedOrders.map(order => (
                                 <tr key={order.id} onClick={() => canManagePurchaseOrders && handleOpenForm(order.id)} className="clickable-row">
-                                    <td data-label="Orden">
-                                        <div className="order-id">
+                                    <td data-label="Orden" className="cell-name">
+                                        <span className="cell-name-title order-id">
                                             <span className="hashtag">#</span>
                                             {order.id}
-                                        </div>
+                                        </span>
                                     </td>
                                     <td data-label="Proveedor">
                                         <div className="supplier-cell">
@@ -413,21 +480,19 @@ export default function PurchaseOrders() {
                                         )}
                                     </td>
                                     <td data-label="Estado">{getStatusBadge(order.status)}</td>
-                                    <td className="text-center">
-                                        <div className="action-buttons-group">
+                                    <td className="text-right">
+                                        <div className="table-actions">
                                             {canManagePurchaseOrders && (
                                                 <button
-                                                    className="action-btn-mini edit"
+                                                    type="button"
+                                                    className="table-action-btn"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         handleOpenForm(order.id);
                                                     }}
                                                     title={order.status === 'RECEIVED' ? 'Ver detalles' : 'Editar'}
                                                 >
-                                                    {order.status === 'RECEIVED' ? <Eye size={18} /> : <Zap size={18} />}
-                                                    <span className="mobile-action-label">
-                                                        {order.status === 'RECEIVED' ? 'Ver' : 'Editar'}
-                                                    </span>
+                                                    {order.status === 'RECEIVED' ? <Eye size={16} /> : <Zap size={16} />}
                                                 </button>
                                             )}
                                             {order.invoicePdf && (
@@ -435,17 +500,17 @@ export default function PurchaseOrders() {
                                                     href={`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}${order.invoicePdf}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="action-btn-mini pdf"
+                                                    className="table-action-btn"
                                                     onClick={(e) => e.stopPropagation()}
                                                     title="Ver Factura PDF"
                                                 >
-                                                    <FileText size={18} />
-                                                    <span className="mobile-action-label">PDF</span>
+                                                    <FileText size={16} />
                                                 </a>
                                             )}
                                             {canDeletePurchaseOrders && (
                                                 <button
-                                                    className={`action-btn-mini delete ${order.status === 'RECEIVED' ? 'disabled' : ''}`}
+                                                    type="button"
+                                                    className="table-action-btn danger"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         handleDeleteOrder(order.id);
@@ -453,8 +518,7 @@ export default function PurchaseOrders() {
                                                     title={order.status === 'RECEIVED' ? 'No se puede eliminar' : 'Eliminar'}
                                                     disabled={order.status === 'RECEIVED'}
                                                 >
-                                                    <X size={18} />
-                                                    <span className="mobile-action-label">Eliminar</span>
+                                                    <X size={16} />
                                                 </button>
                                             )}
                                         </div>
@@ -463,7 +527,7 @@ export default function PurchaseOrders() {
                             ))}
                             {filteredOrders.length === 0 && (
                                 <tr>
-                                    <td colSpan={6}>
+                                    <td colSpan={9}>
                                         <div className="empty-state">
                                             <ShoppingCart size={48} />
                                             <p>No se encontraron órdenes de compra</p>
@@ -473,38 +537,35 @@ export default function PurchaseOrders() {
                             )}
                         </tbody>
                     </table>
-                </div>
-
                 {totalPages > 1 && (
-                    <div className="pagination-controls">
-                        <button
-                            disabled={currentPage === 1}
-                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                            className="pagi-btn"
-                        >
-                            Anterior
-                        </button>
-                        <div className="page-numbers">
-                            {Array.from({ length: totalPages }, (_, i) => i + 1).map(num => (
-                                <button
-                                    key={num}
-                                    className={`page-num ${currentPage === num ? 'active' : ''}`}
-                                    onClick={() => setCurrentPage(num)}
-                                >
-                                    {num}
-                                </button>
-                            ))}
+                    <div className="inventory-pagination">
+                        <span className="pagination-info">
+                            {((currentPage - 1) * itemsPerPage) + 1}–{Math.min(currentPage * itemsPerPage, filteredOrders.length)} de {filteredOrders.length}
+                        </span>
+                        <div className="pagination-controls">
+                            <button
+                                type="button"
+                                className="pagination-btn"
+                                disabled={currentPage === 1}
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                title="Anterior"
+                            >
+                                <ChevronLeft size={16} />
+                            </button>
+                            <span className="pagination-page">{currentPage} / {totalPages}</span>
+                            <button
+                                type="button"
+                                className="pagination-btn"
+                                disabled={currentPage === totalPages}
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                title="Siguiente"
+                            >
+                                <ChevronRight size={16} />
+                            </button>
                         </div>
-                        <button
-                            disabled={currentPage === totalPages}
-                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                            className="pagi-btn"
-                        >
-                            Siguiente
-                        </button>
                     </div>
                 )}
-            </Card>
+            </div>
 
             <Modal
                 isOpen={showSuggestionsModal && !!suggestions}

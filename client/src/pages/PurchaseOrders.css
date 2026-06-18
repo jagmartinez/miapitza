@@ -1,174 +1,56 @@
 .purchase-orders-page {
-    padding: var(--spacing-lg);
-    max-width: 1400px;
-    margin: 0 auto;
+    min-width: 0;
 }
 
-/* Header - Inventory Style */
-.po-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: var(--spacing-xl);
-    gap: var(--spacing-lg);
-    flex-wrap: wrap;
-}
-
-.header-info h1 {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    margin: 0;
-    font-size: var(--font-size-3xl);
-    color: var(--color-text);
-}
-
-.header-info h1 svg.po-title-icon {
-    color: var(--color-primary);
-}
-
-.dark .header-info h1 svg.po-title-icon {
-    color: white;
-}
-
-.header-subtitle {
-    margin: 4px 0 0 0;
-    color: var(--color-text-secondary);
-    font-size: var(--font-size-sm);
-}
-
-.header-actions {
-    display: flex;
-    gap: var(--spacing-sm);
-    flex-wrap: wrap;
-}
-
-/* Controls - Inventory Filters Row Style */
-.po-controls {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--spacing-xl);
-    gap: var(--spacing-md);
-    flex-wrap: wrap;
-}
-
-.status-filters {
+.po-date-filters {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
-    background: var(--color-surface);
-    padding: var(--spacing-xs);
-    border-radius: var(--radius-lg);
     flex-wrap: wrap;
 }
 
-.filter-right-section {
+.po-date-filters .date-input-group {
     display: flex;
     align-items: center;
-    gap: var(--spacing-md);
-    flex-wrap: wrap;
+    gap: var(--spacing-xs);
 }
 
-.filter-btn {
-    padding: var(--spacing-sm) var(--spacing-lg);
-    border-radius: var(--radius-md);
-    font-size: var(--font-size-sm);
-    font-weight: 500;
-    color: var(--color-text-secondary);
-    transition: all var(--transition-fast);
-}
-
-.filter-btn:hover {
-    background: var(--color-neutral-100);
-}
-
-.dark .filter-btn:hover {
-    background: var(--color-neutral-700);
-}
-
-.filter-btn.active {
-    background: var(--color-primary);
-    color: white;
-}
-
-.search-section {
-    width: 260px;
-    max-width: 100%;
-}
-
-.search-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-}
-
-.search-icon {
-    position: absolute;
-    left: var(--spacing-md);
-    color: var(--color-text-tertiary);
-}
-
-.search-wrapper input {
-    width: 100%;
-    padding: 10px 16px;
-    /* Balanced padding without icon */
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    font-size: var(--font-size-sm);
-    color: var(--color-text);
-    transition: all var(--transition-fast);
-    height: 42px;
-    /* Fixed height for consistency */
-    box-sizing: border-box;
-}
-
-.search-wrapper input:focus {
-    outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-}
-
-/* Table */
-.po-table-card {
-    padding: 0;
-    overflow: hidden;
-    border: 1px solid var(--color-border);
-    margin-top: var(--spacing-lg);
-    /* Space before table */
-}
-
-.table-wrapper {
-    overflow-x: auto;
-}
-
-.modern-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-.modern-table th {
-    text-align: left;
-    padding: var(--spacing-lg);
-    background: var(--color-neutral-50);
-    color: var(--color-text-secondary);
+.po-date-filters .date-input-group label {
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-bottom: 2px solid var(--color-border);
+    color: var(--color-text-tertiary);
 }
 
-.dark .modern-table th {
-    background: var(--color-neutral-800);
-}
-
-.modern-table td {
-    padding: var(--spacing-lg);
-    border-bottom: 1px solid var(--color-border);
+.po-date-filters .date-input-group input {
+    background: var(--color-background);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
     color: var(--color-text);
     font-size: var(--font-size-sm);
+    font-family: inherit;
+    padding: 6px 8px;
+    outline: none;
+}
+
+.po-date-filters .clear-dates {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-full);
+    color: var(--color-text-tertiary);
+    transition: all var(--transition-fast);
+}
+
+.po-date-filters .clear-dates:hover {
+    background: var(--color-neutral-100);
+    color: var(--color-danger);
+}
+
+.dark .po-date-filters .clear-dates:hover {
+    background: var(--color-neutral-700);
 }
 
 .clickable-row {
