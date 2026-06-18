@@ -4,11 +4,11 @@
     margin: 0 auto;
 }
 
-/* Header */
+/* Header - Inventory Style */
 .po-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     margin-bottom: var(--spacing-xl);
     gap: var(--spacing-lg);
     flex-wrap: wrap;
@@ -39,33 +39,39 @@
 
 .header-actions {
     display: flex;
-    gap: var(--spacing-md);
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
 }
 
-/* Controls */
+/* Controls - Inventory Filters Row Style */
 .po-controls {
     display: flex;
-    justify-content: flex-start;
-    align-items: flex-end;
-    margin-bottom: var(--spacing-2xl);
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-xl);
     gap: var(--spacing-md);
     flex-wrap: wrap;
 }
 
 .status-filters {
     display: flex;
-    gap: var(--spacing-xs);
-    background: var(--color-surface);
-    padding: 4px;
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--color-border);
-    height: 42px;
-    box-sizing: border-box;
     align-items: center;
+    gap: var(--spacing-sm);
+    background: var(--color-surface);
+    padding: var(--spacing-xs);
+    border-radius: var(--radius-lg);
+    flex-wrap: wrap;
+}
+
+.filter-right-section {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
 }
 
 .filter-btn {
-    padding: 8px 16px;
+    padding: var(--spacing-sm) var(--spacing-lg);
     border-radius: var(--radius-md);
     font-size: var(--font-size-sm);
     font-weight: 500;
@@ -87,8 +93,8 @@
 }
 
 .search-section {
-    flex: 1;
-    max-width: 400px;
+    width: 260px;
+    max-width: 100%;
 }
 
 .search-wrapper {
@@ -475,7 +481,14 @@
         padding: 8px 12px;
     }
 
+    .filter-right-section {
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+    }
+
     .search-section {
+        width: 100%;
         max-width: none;
     }
 

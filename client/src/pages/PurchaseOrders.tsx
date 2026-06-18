@@ -290,38 +290,40 @@ export default function PurchaseOrders() {
                         </button>
                     ))}
                 </div>
-                <div className="search-section">
-                    <div className="search-wrapper">
-                        <input
-                            type="text"
-                            placeholder="Buscar por ID, proveedor o factura..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
+                <div className="filter-right-section">
+                    <div className="search-section">
+                        <div className="search-wrapper">
+                            <input
+                                type="text"
+                                placeholder="Buscar por ID, proveedor o factura..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
                     </div>
-                </div>
-                <div className="date-filters">
-                    <div className="date-input-group">
-                        <label>Desde:</label>
-                        <input
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                        />
+                    <div className="date-filters">
+                        <div className="date-input-group">
+                            <label>Desde:</label>
+                            <input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                            />
+                        </div>
+                        <div className="date-input-group">
+                            <label>Hasta:</label>
+                            <input
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                            />
+                        </div>
+                        {(startDate || endDate) && (
+                            <button className="clear-dates" onClick={() => { setStartDate(''); setEndDate(''); }}>
+                                <X size={14} />
+                            </button>
+                        )}
                     </div>
-                    <div className="date-input-group">
-                        <label>Hasta:</label>
-                        <input
-                            type="date"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                        />
-                    </div>
-                    {(startDate || endDate) && (
-                        <button className="clear-dates" onClick={() => { setStartDate(''); setEndDate(''); }}>
-                            <X size={14} />
-                        </button>
-                    )}
                 </div>
             </div>
 
