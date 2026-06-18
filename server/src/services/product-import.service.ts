@@ -22,7 +22,7 @@ export class ProductImportService {
             { field: 'Stock Mínimo', description: 'Cantidad mínima para alertas de stock bajo', required: 'NO' },
             { field: 'Costo', description: 'Costo unitario del producto', required: 'NO' },
             { field: 'Precio Venta', description: 'Precio de venta al público', required: 'NO' },
-            { field: 'Tipo', description: 'INGREDIENT, PRODUCT_FOR_SALE o BOTH', required: 'NO' },
+            { field: 'Tipo', description: 'INGREDIENT, PRODUCT_FOR_SALE, BOTH, INTERMEDIATE o PACKAGING', required: 'NO' },
             { field: 'Almacenamiento', description: 'PERISHABLE, FROZEN o NON_PERISHABLE', required: 'NO' },
         ]);
         instructionsSheet.getRow(1).font = { bold: true };
@@ -120,7 +120,7 @@ export class ProductImportService {
             Array.from(requestedCategories)
         );
 
-        const VALID_TYPES = ['INGREDIENT', 'PRODUCT_FOR_SALE', 'BOTH'];
+        const VALID_TYPES = ['INGREDIENT', 'PRODUCT_FOR_SALE', 'BOTH', 'INTERMEDIATE', 'PACKAGING'];
         const VALID_STORAGE = ['PERISHABLE', 'FROZEN', 'NON_PERISHABLE'];
 
         type ImportRow = {
@@ -282,7 +282,7 @@ export class ProductImportService {
                             minStock: item.minStock ?? 0,
                             cost: item.cost ?? 0,
                             price: item.price ?? 0,
-                            type: (item.type as 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH') || 'INGREDIENT',
+                            type: (item.type as 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH' | 'INTERMEDIATE' | 'PACKAGING') || 'INGREDIENT',
                             storageType: (item.storageType as 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE') || 'NON_PERISHABLE',
                         },
                     });

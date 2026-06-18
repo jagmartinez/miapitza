@@ -1,0 +1,313 @@
+.production-recipes-page {
+    min-width: 0;
+}
+
+.production-recipes-page .header-title-section h1 {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.pr-subtitle {
+    margin: 4px 0 0;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+}
+
+.pr-filter-summary {
+    margin-left: auto;
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+}
+
+.pr-search-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.pr-search-icon {
+    position: absolute;
+    left: 12px;
+    color: var(--color-text-tertiary);
+    pointer-events: none;
+}
+
+.pr-search-wrapper .inventory-search {
+    padding-left: 36px;
+}
+
+.pr-table-card {
+    padding: 0;
+    overflow: hidden;
+}
+
+.pr-table-card .card-body {
+    padding: 0;
+}
+
+/* Version chip */
+.pr-version {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    background: var(--color-neutral-100);
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.dark .pr-version {
+    background: var(--color-neutral-700);
+    color: var(--color-neutral-300);
+}
+
+/* Status pills */
+.pr-status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.pr-status-active {
+    background: rgba(16, 185, 129, 0.12);
+    color: var(--color-success);
+}
+
+.pr-status-draft {
+    background: rgba(234, 179, 8, 0.12);
+    color: var(--color-warning, #eab308);
+}
+
+.pr-status-inactive {
+    background: var(--color-neutral-100);
+    color: var(--color-neutral-600);
+}
+
+.dark .pr-status-inactive {
+    background: var(--color-neutral-700);
+    color: var(--color-neutral-300);
+}
+
+/* Table action variants */
+.table-action-btn.success:hover:not(:disabled) {
+    background: rgba(16, 185, 129, 0.12);
+    color: var(--color-success);
+}
+
+/* Form helpers */
+.pr-helper-text {
+    margin: 6px 0 0;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
+}
+
+/* Components editor */
+.pr-components {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: var(--color-surface);
+}
+
+.pr-component-head,
+.pr-component-row {
+    display: grid;
+    grid-template-columns: minmax(0, 2.4fr) 90px minmax(0, 1.4fr) 96px 40px;
+    gap: var(--spacing-sm);
+    align-items: center;
+    padding: 10px 12px;
+}
+
+.pr-component-head {
+    background: var(--color-neutral-50);
+    border-bottom: 1px solid var(--color-border);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-tertiary);
+}
+
+.dark .pr-component-head {
+    background: var(--color-neutral-800);
+}
+
+.pr-component-row {
+    border-bottom: 1px solid var(--color-neutral-50);
+}
+
+.dark .pr-component-row {
+    border-bottom-color: var(--color-neutral-800);
+}
+
+.pr-component-row:last-child {
+    border-bottom: none;
+}
+
+.pr-col-qty .modal-standard-input {
+    text-align: center;
+}
+
+.pr-col-cost {
+    text-align: right;
+    font-weight: 600;
+    font-size: var(--font-size-sm);
+    color: var(--color-text);
+}
+
+.pr-col-remove {
+    display: flex;
+    justify-content: center;
+}
+
+.pr-remove-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+    color: var(--color-text-tertiary);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.pr-remove-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--color-danger);
+}
+
+.pr-add-component {
+    margin-top: var(--spacing-md);
+}
+
+/* Cost panel */
+.pr-cost-panel {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-background);
+    padding: var(--spacing-md);
+}
+
+.pr-cost-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: var(--spacing-sm);
+}
+
+.pr-cost-line {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: var(--spacing-md);
+    align-items: center;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    padding: 4px 0;
+}
+
+.pr-cost-line-name {
+    font-weight: 600;
+    color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pr-cost-line-qty {
+    color: var(--color-text-tertiary);
+    font-size: var(--font-size-xs);
+}
+
+.pr-cost-line-total {
+    font-weight: 600;
+    color: var(--color-text);
+    text-align: right;
+}
+
+.pr-cost-totals {
+    border-top: 1px solid var(--color-border);
+    padding-top: var(--spacing-sm);
+    margin-top: var(--spacing-xs);
+}
+
+.pr-cost-total-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+}
+
+.pr-cost-total-row.highlight {
+    font-size: var(--font-size-md);
+    color: var(--color-text);
+}
+
+.pr-cost-total-row.highlight strong {
+    color: var(--color-primary);
+}
+
+/* Activate toggle */
+.pr-activate-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--color-text);
+    cursor: pointer;
+}
+
+.pr-activate-toggle input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+}
+
+@media (max-width: 768px) {
+    .pr-filter-summary {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .pr-component-head {
+        display: none;
+    }
+
+    .pr-component-row {
+        grid-template-columns: 1fr 1fr;
+        gap: var(--spacing-sm);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        margin-bottom: var(--spacing-sm);
+        padding: var(--spacing-md);
+    }
+
+    .pr-col-product {
+        grid-column: 1 / -1;
+    }
+
+    .pr-col-cost {
+        text-align: left;
+        align-self: center;
+    }
+
+    .pr-col-remove {
+        justify-content: flex-end;
+    }
+}

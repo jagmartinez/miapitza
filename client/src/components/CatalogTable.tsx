@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, type ReactNode } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import Pagination from './Pagination';
 import './CatalogView.css';
 
 export interface CatalogColumn<T> {
@@ -68,36 +68,13 @@ export default function CatalogTable<T>({
                     ))}
                 </tbody>
             </table>
-            {totalPages > 1 && (
-                <div className="catalog-pagination">
-                    <span className="pagination-info">
-                        {((safePage - 1) * pageSize) + 1}–{Math.min(safePage * pageSize, rows.length)} de {rows.length}
-                    </span>
-                    <div className="pagination-controls">
-                        <button
-                            type="button"
-                            className="pagination-btn"
-                            onClick={() => setPage(p => Math.max(1, p - 1))}
-                            disabled={safePage <= 1}
-                            title="Anterior"
-                            aria-label="Página anterior"
-                        >
-                            <ChevronLeft size={16} />
-                        </button>
-                        <span className="pagination-page">{safePage} / {totalPages}</span>
-                        <button
-                            type="button"
-                            className="pagination-btn"
-                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                            disabled={safePage >= totalPages}
-                            title="Siguiente"
-                            aria-label="Página siguiente"
-                        >
-                            <ChevronRight size={16} />
-                        </button>
-                    </div>
-                </div>
-            )}
+            <Pagination
+                page={safePage}
+                totalPages={totalPages}
+                totalItems={rows.length}
+                pageSize={pageSize}
+                onPageChange={setPage}
+            />
         </div>
     );
 }

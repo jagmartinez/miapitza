@@ -6,9 +6,10 @@ import { cashShiftsAPI, cashArqueoAPI, suppliersAPI } from '../services/api';
 import { escapeHtml } from '../utils/escapeHtml';
 import Card from '../components/Card';
 import Button from '../components/Button';
+import Pagination from '../components/Pagination';
 import Input from '../components/Input';
 import Sidebar from '../components/Sidebar';
-import { ArrowLeft, Lock, Plus, Minus, Calendar, User, Banknote, Coins, Printer, ChevronLeft, ChevronRight, Clock, Hash, TrendingUp, TrendingDown, Wallet, FileText, Building2, DollarSign } from 'lucide-react';
+import { ArrowLeft, Lock, Plus, Minus, Calendar, User, Banknote, Coins, Printer, Clock, Hash, TrendingUp, TrendingDown, Wallet, FileText, Building2, DollarSign } from 'lucide-react';
 import type { CashMovement, CashShift, Supplier } from '../types';
 import type { SingleValue } from 'react-select';
 import { hasAnyRole } from '../utils/authz';
@@ -701,33 +702,15 @@ export default function CashShiftPage() {
                             </table>
                         </div>
 
-                        {/* Pagination - Always visible */}
-                        <div className="pagination">
-                            <span className="pagination-info">
-                                {filteredMovements.length > 0
-                                    ? `Mostrando ${((currentPage - 1) * ITEMS_PER_PAGE) + 1}-${Math.min(currentPage * ITEMS_PER_PAGE, filteredMovements.length)} de ${filteredMovements.length}`
-                                    : 'Sin resultados'}
-                            </span>
-                            <div className="pagination-controls">
-                                <button
-                                    className="pagination-btn"
-                                    disabled={currentPage === 1}
-                                    onClick={() => setCurrentPage(p => p - 1)}
-                                >
-                                    <ChevronLeft size={18} />
-                                </button>
-                                <span className="pagination-page">
-                                    {currentPage} / {totalPages}
-                                </span>
-                                <button
-                                    className="pagination-btn"
-                                    disabled={currentPage >= totalPages}
-                                    onClick={() => setCurrentPage(p => p + 1)}
-                                >
-                                    <ChevronRight size={18} />
-                                </button>
-                            </div>
-                        </div>
+                        <Pagination
+                            page={currentPage}
+                            totalPages={totalPages}
+                            totalItems={filteredMovements.length}
+                            pageSize={ITEMS_PER_PAGE}
+                            onPageChange={setCurrentPage}
+                            alwaysShow
+                            emptyLabel="Sin resultados"
+                        />
                     </Card>
                 </div>
 

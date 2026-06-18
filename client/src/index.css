@@ -1016,24 +1016,82 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   color: var(--color-text-tertiary);
 }
 
-/* ===== UNIFIED PAGINATION ===== */
-.pagination-bar {
+/* ===== UNIFIED TABLE PAGINATION ===== */
+.table-pagination {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: var(--spacing-lg);
-  padding: var(--spacing-md);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-top: none;
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-  margin-top: -1px;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--color-border);
+  background: transparent;
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
 }
 
-.pagination-info {
+.table-pagination .pagination-info {
   font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.table-pagination .pagination-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+}
+
+.table-pagination .pagination-page {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  min-width: 44px;
+  text-align: center;
+  padding: 0 2px;
+}
+
+.table-pagination .pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.table-pagination .pagination-btn:hover:not(:disabled) {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.table-pagination .pagination-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Legacy alias — same layout as .table-pagination */
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--color-border);
+  background: transparent;
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
 }
 
 .pagination-info .total-records {

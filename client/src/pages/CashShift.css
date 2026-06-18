@@ -391,55 +391,7 @@
 }
 
 /* ===== PAGINATION ===== */
-.pagination {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--spacing-md);
-    border-top: 2px solid var(--color-border);
-    background: var(--color-background);
-}
-
-.pagination-info {
-    font-size: var(--font-size-sm);
-    color: var(--color-text-secondary);
-}
-
-.pagination-controls {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-}
-
-.pagination-btn {
-    padding: var(--spacing-xs) var(--spacing-sm);
-    background: var(--color-surface);
-    border: 2px solid var(--color-border);
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--color-neutral-600);
-    transition: all var(--transition-fast);
-}
-
-.pagination-btn:hover:not(:disabled) {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
-}
-
-.pagination-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.pagination-page {
-    font-size: var(--font-size-sm);
-    font-weight: 600;
-    color: var(--color-text);
-    padding: 0 var(--spacing-sm);
-}
+/* Cash shift table footer uses shared .table-pagination from index.css */
 
 /* Sidebar */
 .shift-sidebar {

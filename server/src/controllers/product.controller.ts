@@ -16,7 +16,7 @@ export class ProductController {
 
             if (req.query.type) {
                 const t = req.query.type as string;
-                if (t === 'INGREDIENT' || t === 'PRODUCT_FOR_SALE' || t === 'BOTH') {
+                if (t === 'INGREDIENT' || t === 'PRODUCT_FOR_SALE' || t === 'BOTH' || t === 'INTERMEDIATE' || t === 'PACKAGING') {
                     filters.type = t;
                 }
             }

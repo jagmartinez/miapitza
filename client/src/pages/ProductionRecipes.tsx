@@ -1,0 +1,797 @@
+import { useState, useEffect, useMemo } from 'react';
+import { productionRecipesAPI, productsAPI, unitsAPI } from '../services/api';
+import Button from '../components/Button';
+import Pagination from '../components/Pagination';
+import Sidebar from '../components/Sidebar';
+import Select from '../components/Select';
+import Input from '../components/Input';
+import Card from '../components/Card';
+import { useAuth } from '../hooks/useAuth';
+import { useConfirmDialog } from '../context/ConfirmContext';
+import { useAppToast } from '../context/ToastContext';
+import { useCurrency } from '../hooks/useCurrency';
+import { getUserRoleNames } from '../utils/authz';
+import {
+    FlaskConical, Plus, Pencil, Power, Copy, Trash2, Save, Info, Layers,
+    Search
+} from 'lucide-react';
+import type { SingleValue } from 'react-select';
+import type { ProductionRecipe, Product, UnitOfMeasure } from '../types';
+import './Inventory.css';
+import './ProductionRecipes.css';
+
+type StrOption = { value: string; label: string };
+
+interface ComponentRow {
+    key: string;
+    componentProductId: string;
+    quantity: string;
+    unitId: string;
+}
+
+/** Product types that can be produced (act as a recipe output). */
+const PRODUCIBLE_TYPES: Product['type'][] = ['INTERMEDIATE', 'PRODUCT_FOR_SALE', 'BOTH'];
+
+const TYPE_LABELS: Record<Product['type'], string> = {
+    INGREDIENT: 'Ingrediente',
+    PRODUCT_FOR_SALE: 'Producto terminado',
+    BOTH: 'Mixto',
+    INTERMEDIATE: 'Intermedio',
+    PACKAGING: 'Empaque',
+};
+
+function errMsg(error: unknown, fallback: string): string {
+    if (typeof error === 'object' && error !== null && 'response' in error) {
+        const m = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
+        if (typeof m === 'string' && m) return m;
+    }
+    if (error instanceof Error) return error.message;
+    return fallback;
+}
+
+function makeRowKey(): string {
+    return Math.random().toString(36).slice(2, 11);
+}
+
+function emptyRow(): ComponentRow {
+    return { key: makeRowKey(), componentProductId: '', quantity: '', unitId: '' };
+}
+
+export default function ProductionRecipes() {
+    const { user } = useAuth();
+    const { confirm } = useConfirmDialog();
+    const { success: showSuccess, error: showError, warning: showWarning } = useAppToast();
+    const { formatMoney } = useCurrency();
+
+    const userRoleNames = getUserRoleNames(user);
+    const canManage = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'].includes(role));
+    const canDelete = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
+
+    const [recipes, setRecipes] = useState<ProductionRecipe[]>([]);
+    const [products, setProducts] = useState<Product[]>([]);
+    const [units, setUnits] = useState<UnitOfMeasure[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const [statusFilter, setStatusFilter] = useState<'all' | 'ACTIVE' | 'DRAFT' | 'INACTIVE'>('all');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
+
+    // Sidebar / form state
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [editingRecipe, setEditingRecipe] = useState<ProductionRecipe | null>(null);
+    const [saving, setSaving] = useState(false);
+    const [productId, setProductId] = useState('');
+    const [name, setName] = useState('');
+    const [yieldQuantity, setYieldQuantity] = useState('');
+    const [yieldUnitId, setYieldUnitId] = useState('');
+    const [notes, setNotes] = useState('');
+    const [rows, setRows] = useState<ComponentRow[]>([emptyRow()]);
+    const [activateOnSave, setActivateOnSave] = useState(false);
+
+    useEffect(() => {
+        loadAll();
+    }, []);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [statusFilter, searchQuery]);
+
+    const loadAll = async () => {
+        try {
+            const [recipesRes, productsRes, unitsRes] = await Promise.all([
+                productionRecipesAPI.getAll(),
+                productsAPI.getAll({ limit: 1000, active: true }),
+                unitsAPI.getAll(),
+            ]);
+            setRecipes(Array.isArray(recipesRes.data.data) ? recipesRes.data.data : []);
+            setProducts(Array.isArray(productsRes.data.data) ? productsRes.data.data : []);
+            setUnits(Array.isArray(unitsRes.data.data) ? unitsRes.data.data : []);
+        } catch (error) {
+            console.error('Error loading production recipes:', error);
+            setRecipes([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadRecipes = async () => {
+        try {
+            const res = await productionRecipesAPI.getAll();
+            setRecipes(Array.isArray(res.data.data) ? res.data.data : []);
+        } catch (error) {
+            console.error('Error reloading production recipes:', error);
+        }
+    };
+
+    const producibleProducts = useMemo(
+        () => products.filter((p) => PRODUCIBLE_TYPES.includes(p.type)),
+        [products]
+    );
+
+    const productOptions: StrOption[] = useMemo(
+        () => producibleProducts.map((p) => ({
+            value: String(p.id),
+            label: `${p.name}${p.sku ? ` (${p.sku})` : ''} — ${TYPE_LABELS[p.type]}`,
+        })),
+        [producibleProducts]
+    );
+
+    const componentOptions: StrOption[] = useMemo(
+        () => products
+            .filter((p) => String(p.id) !== productId)
+            .map((p) => ({
+                value: String(p.id),
+                label: `${p.name}${p.sku ? ` (${p.sku})` : ''} — ${TYPE_LABELS[p.type]}`,
+            })),
+        [products, productId]
+    );
+
+    const unitOptions: StrOption[] = useMemo(
+        () => units.map((u) => ({ value: String(u.id), label: `${u.name} (${u.abbreviation})` })),
+        [units]
+    );
+
+    const productById = useMemo(() => {
+        const map = new Map<number, Product>();
+        products.forEach((p) => map.set(p.id, p));
+        return map;
+    }, [products]);
+
+    const resetForm = () => {
+        setEditingRecipe(null);
+        setProductId('');
+        setName('');
+        setYieldQuantity('');
+        setYieldUnitId('');
+        setNotes('');
+        setRows([emptyRow()]);
+        setActivateOnSave(false);
+    };
+
+    const handleOpenCreate = () => {
+        if (!canManage) {
+            showWarning('No tienes permisos para gestionar recetas de producción');
+            return;
+        }
+        resetForm();
+        setIsSidebarOpen(true);
+    };
+
+    const handleOpenEdit = (recipe: ProductionRecipe) => {
+        if (!canManage) {
+            showWarning('No tienes permisos para gestionar recetas de producción');
+            return;
+        }
+        if (recipe.status === 'INACTIVE') {
+            showWarning('Las recetas inactivas no se pueden editar');
+            return;
+        }
+        setEditingRecipe(recipe);
+        setProductId(String(recipe.productId));
+        setName(recipe.name || '');
+        setYieldQuantity(recipe.yieldQuantity != null ? String(recipe.yieldQuantity) : '');
+        setYieldUnitId(recipe.yieldUnitId != null ? String(recipe.yieldUnitId) : '');
+        setNotes(recipe.notes || '');
+        setRows(
+            recipe.components.length > 0
+                ? recipe.components.map((c) => ({
+                    key: makeRowKey(),
+                    componentProductId: String(c.componentProductId),
+                    quantity: c.quantity != null ? String(c.quantity) : '',
+                    unitId: c.unitId != null ? String(c.unitId) : '',
+                }))
+                : [emptyRow()]
+        );
+        setActivateOnSave(false);
+        setIsSidebarOpen(true);
+    };
+
+    const handleCloseSidebar = () => {
+        setIsSidebarOpen(false);
+        resetForm();
+    };
+
+    const handleProductChange = (value: string) => {
+        setProductId(value);
+        // Default yield unit to the product's base unit when known.
+        const prod = value ? productById.get(Number(value)) : undefined;
+        if (prod?.baseUnitId) {
+            setYieldUnitId(String(prod.baseUnitId));
+        }
+    };
+
+    const updateRow = (key: string, patch: Partial<ComponentRow>) => {
+        setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+    };
+
+    const addRow = () => setRows((prev) => [...prev, emptyRow()]);
+
+    const removeRow = (key: string) => {
+        setRows((prev) => (prev.length <= 1 ? [emptyRow()] : prev.filter((r) => r.key !== key)));
+    };
+
+    const estimatedRowCost = (row: ComponentRow): number => {
+        const prod = row.componentProductId ? productById.get(Number(row.componentProductId)) : undefined;
+        if (!prod) return 0;
+        const unitCost = prod.currentAverageCost ?? prod.cost ?? 0;
+        const qty = parseFloat(row.quantity);
+        if (!Number.isFinite(qty)) return 0;
+        return unitCost * qty;
+    };
+
+    const estimatedTotal = rows.reduce((sum, r) => sum + estimatedRowCost(r), 0);
+
+    const validateForm = (): string | null => {
+        if (!productId) return 'Selecciona el producto que genera esta receta';
+        const qty = parseFloat(yieldQuantity);
+        if (!Number.isFinite(qty) || qty <= 0) return 'El rendimiento por lote debe ser mayor a 0';
+
+        const filled = rows.filter((r) => r.componentProductId);
+        if (filled.length === 0) return 'Agrega al menos un componente a la receta';
+
+        const seen = new Set<string>();
+        for (const r of filled) {
+            if (seen.has(r.componentProductId)) {
+                return 'Hay componentes duplicados; usa cada producto una sola vez';
+            }
+            seen.add(r.componentProductId);
+            const cqty = parseFloat(r.quantity);
+            if (!Number.isFinite(cqty) || cqty <= 0) {
+                return 'Cada componente debe tener una cantidad mayor a 0';
+            }
+        }
+        return null;
+    };
+
+    const handleSave = async () => {
+        if (!canManage) {
+            showWarning('No tienes permisos para gestionar recetas de producción');
+            return;
+        }
+        const validationError = validateForm();
+        if (validationError) {
+            showWarning(validationError);
+            return;
+        }
+
+        const components = rows
+            .filter((r) => r.componentProductId)
+            .map((r) => ({
+                componentProductId: Number(r.componentProductId),
+                quantity: Number(r.quantity),
+                unitId: r.unitId ? Number(r.unitId) : undefined,
+            }));
+
+        setSaving(true);
+        try {
+            if (editingRecipe) {
+                await productionRecipesAPI.update(editingRecipe.id, {
+                    name: name.trim() || undefined,
+                    yieldQuantity: Number(yieldQuantity),
+                    yieldUnitId: yieldUnitId ? Number(yieldUnitId) : undefined,
+                    notes: notes.trim() || undefined,
+                    components,
+                });
+                showSuccess('Receta actualizada correctamente');
+            } else {
+                await productionRecipesAPI.create({
+                    productId: Number(productId),
+                    name: name.trim() || undefined,
+                    yieldQuantity: Number(yieldQuantity),
+                    yieldUnitId: yieldUnitId ? Number(yieldUnitId) : undefined,
+                    notes: notes.trim() || undefined,
+                    components,
+                    activate: activateOnSave,
+                });
+                showSuccess('Receta creada correctamente');
+            }
+            handleCloseSidebar();
+            await loadRecipes();
+        } catch (error: unknown) {
+            showError(errMsg(error, 'No se pudo guardar la receta'));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleSetStatus = async (recipe: ProductionRecipe, status: 'ACTIVE' | 'INACTIVE') => {
+        if (!canManage) {
+            showWarning('No tienes permisos para gestionar recetas de producción');
+            return;
+        }
+        try {
+            await productionRecipesAPI.setStatus(recipe.id, status);
+            showSuccess(status === 'ACTIVE' ? 'Receta activada' : 'Receta desactivada');
+            await loadRecipes();
+        } catch (error: unknown) {
+            showError(errMsg(error, 'No se pudo cambiar el estado de la receta'));
+        }
+    };
+
+    const handleCreateVersion = async (recipe: ProductionRecipe) => {
+        if (!canManage) {
+            showWarning('No tienes permisos para gestionar recetas de producción');
+            return;
+        }
+        try {
+            await productionRecipesAPI.createVersion(recipe.id);
+            showSuccess('Se creó una nueva versión en borrador');
+            await loadRecipes();
+        } catch (error: unknown) {
+            showError(errMsg(error, 'No se pudo crear una nueva versión'));
+        }
+    };
+
+    const handleDelete = async (recipe: ProductionRecipe) => {
+        if (!canDelete) {
+            showWarning('No tienes permisos para eliminar recetas');
+            return;
+        }
+        const ok = await confirm(
+            `¿Eliminar la receta "${recipe.name || recipe.product?.name}" (v${recipe.version})?`,
+            { title: 'Confirmar acción' }
+        );
+        if (!ok) return;
+        try {
+            await productionRecipesAPI.delete(recipe.id);
+            showSuccess('Receta eliminada');
+            await loadRecipes();
+        } catch (error: unknown) {
+            showError(errMsg(error, 'No se pudo eliminar la receta'));
+        }
+    };
+
+    const getStatusBadge = (status: ProductionRecipe['status']) => {
+        const map: Record<ProductionRecipe['status'], { cls: string; label: string }> = {
+            DRAFT: { cls: 'pr-status-draft', label: 'Borrador' },
+            ACTIVE: { cls: 'pr-status-active', label: 'Activa' },
+            INACTIVE: { cls: 'pr-status-inactive', label: 'Inactiva' },
+        };
+        const { cls, label } = map[status];
+        return <span className={`pr-status-badge ${cls}`}>{label}</span>;
+    };
+
+    const filteredRecipes = recipes.filter((recipe) => {
+        const matchesStatus = statusFilter === 'all' || recipe.status === statusFilter;
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return matchesStatus;
+        const matchesSearch =
+            (recipe.product?.name || '').toLowerCase().includes(q) ||
+            (recipe.product?.sku || '').toLowerCase().includes(q) ||
+            (recipe.name || '').toLowerCase().includes(q);
+        return matchesStatus && matchesSearch;
+    });
+
+    const totalPages = Math.ceil(filteredRecipes.length / itemsPerPage);
+    const paginatedRecipes = filteredRecipes.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
+    const activeCount = recipes.filter((r) => r.status === 'ACTIVE').length;
+    const draftCount = recipes.filter((r) => r.status === 'DRAFT').length;
+    const inactiveCount = recipes.filter((r) => r.status === 'INACTIVE').length;
+
+    const selectedProduct = productId ? productById.get(Number(productId)) : undefined;
+
+    if (loading) return <div className="inventory-loading">Cargando recetas...</div>;
+
+    const statusFilters: Array<{ key: typeof statusFilter; label: string }> = [
+        { key: 'all', label: 'Todas' },
+        { key: 'ACTIVE', label: 'Activas' },
+        { key: 'DRAFT', label: 'Borradores' },
+        { key: 'INACTIVE', label: 'Inactivas' },
+    ];
+
+    return (
+        <div className="inventory-page production-recipes-page">
+            <div className="inventory-header-new">
+                <div className="header-title-section">
+                    <h1><FlaskConical size={32} /> Recetas de Producción</h1>
+                    <p className="pr-subtitle">Define recetas multinivel para productos intermedios y terminados</p>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <Button onClick={handleOpenCreate} disabled={!canManage}>
+                        <Plus size={18} />
+                        Nueva Receta
+                    </Button>
+                </div>
+            </div>
+
+            <div className="inventory-filters-row">
+                <div className="inventory-status-filters">
+                    {statusFilters.map((s) => (
+                        <button
+                            key={s.key}
+                            type="button"
+                            className={`inventory-status-btn ${statusFilter === s.key ? 'active' : ''}`}
+                            onClick={() => setStatusFilter(s.key)}
+                        >
+                            {s.label}
+                        </button>
+                    ))}
+                    <span className="pr-filter-summary">
+                        {activeCount} activas · {draftCount} borradores · {inactiveCount} inactivas
+                    </span>
+                </div>
+                <div className="filter-right-section">
+                    <div className="pr-search-wrapper">
+                        <Search size={16} className="pr-search-icon" />
+                        <input
+                            type="text"
+                            placeholder="Buscar por producto, SKU o receta..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="search-input inventory-search"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            <Card className="pr-table-card">
+                <div className="inventory-table-wrapper">
+                    <table className="inventory-table">
+                        <thead>
+                            <tr>
+                                <th>Producto</th>
+                                <th>Receta</th>
+                                <th>Versión</th>
+                                <th>Estado</th>
+                                <th className="text-right"># Componentes</th>
+                                <th className="text-right">Costo unitario estimado</th>
+                                <th className="text-right">Costo lote</th>
+                                <th className="text-right">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {paginatedRecipes.map((recipe) => (
+                                <tr key={recipe.id}>
+                                    <td data-label="Producto" className="cell-name">
+                                        <span className="cell-name-title">{recipe.product?.name || `#${recipe.productId}`}</span>
+                                        {recipe.product?.sku && (
+                                            <span className="cell-name-sku">{recipe.product.sku}</span>
+                                        )}
+                                    </td>
+                                    <td data-label="Receta">
+                                        {recipe.name || <span className="text-muted">—</span>}
+                                    </td>
+                                    <td data-label="Versión">
+                                        <span className="pr-version">v{recipe.version}</span>
+                                    </td>
+                                    <td data-label="Estado">{getStatusBadge(recipe.status)}</td>
+                                    <td data-label="# Componentes" className="text-right">
+                                        {recipe.components?.length ?? 0}
+                                    </td>
+                                    <td data-label="Costo unitario estimado" className="text-right">
+                                        {recipe.cost
+                                            ? formatMoney(Number(recipe.cost.unitCost) || 0)
+                                            : <span className="text-muted">—</span>}
+                                    </td>
+                                    <td data-label="Costo lote" className="text-right">
+                                        {recipe.cost
+                                            ? formatMoney(Number(recipe.cost.batchCost) || 0)
+                                            : <span className="text-muted">—</span>}
+                                    </td>
+                                    <td data-label="Acciones" className="text-right">
+                                        <div className="table-actions">
+                                            {canManage && recipe.status !== 'INACTIVE' && (
+                                                <button
+                                                    type="button"
+                                                    className="table-action-btn"
+                                                    onClick={() => handleOpenEdit(recipe)}
+                                                    title="Editar"
+                                                >
+                                                    <Pencil size={16} />
+                                                </button>
+                                            )}
+                                            {canManage && recipe.status !== 'ACTIVE' && (
+                                                <button
+                                                    type="button"
+                                                    className="table-action-btn success"
+                                                    onClick={() => handleSetStatus(recipe, 'ACTIVE')}
+                                                    title="Activar"
+                                                >
+                                                    <Power size={16} />
+                                                </button>
+                                            )}
+                                            {canManage && recipe.status === 'ACTIVE' && (
+                                                <button
+                                                    type="button"
+                                                    className="table-action-btn"
+                                                    onClick={() => handleSetStatus(recipe, 'INACTIVE')}
+                                                    title="Desactivar"
+                                                >
+                                                    <Power size={16} />
+                                                </button>
+                                            )}
+                                            {canManage && (
+                                                <button
+                                                    type="button"
+                                                    className="table-action-btn"
+                                                    onClick={() => handleCreateVersion(recipe)}
+                                                    title="Nueva versión"
+                                                >
+                                                    <Copy size={16} />
+                                                </button>
+                                            )}
+                                            {canDelete && (
+                                                <button
+                                                    type="button"
+                                                    className="table-action-btn danger"
+                                                    onClick={() => handleDelete(recipe)}
+                                                    title="Eliminar"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                            {filteredRecipes.length === 0 && (
+                                <tr>
+                                    <td colSpan={8}>
+                                        <div className="empty-state">
+                                            <FlaskConical size={48} />
+                                            <p>
+                                                {recipes.length === 0
+                                                    ? 'Aún no hay recetas de producción. Crea la primera para empezar.'
+                                                    : 'No se encontraron recetas con los filtros seleccionados.'}
+                                            </p>
+                                            {canManage && recipes.length === 0 && (
+                                                <Button onClick={handleOpenCreate}>
+                                                    <Plus size={18} />
+                                                    Nueva Receta
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                    <Pagination
+                        page={currentPage}
+                        totalPages={totalPages}
+                        totalItems={filteredRecipes.length}
+                        pageSize={itemsPerPage}
+                        onPageChange={setCurrentPage}
+                    />
+                </div>
+            </Card>
+
+            <Sidebar
+                isOpen={isSidebarOpen}
+                onClose={handleCloseSidebar}
+                title={editingRecipe ? `Editar Receta · ${editingRecipe.product?.name ?? ''}` : 'Nueva Receta de Producción'}
+                width="large"
+            >
+                <div className="premium-modal-content">
+                    <div className="modal-form-new">
+                        <div className="modal-tab-content">
+                            <div className="modal-section animate-slide-in">
+                                <div className="modal-section-header">
+                                    <Info size={18} />
+                                    <h3>Datos de la receta</h3>
+                                </div>
+
+                                <div className="modal-input-group">
+                                    <label className="modal-input-label">Producto que genera la receta *</label>
+                                    <Select
+                                        variant="modal"
+                                        options={productOptions}
+                                        value={productOptions.find((o) => o.value === productId) ?? null}
+                                        onChange={(opt: SingleValue<StrOption>) => handleProductChange(opt?.value ?? '')}
+                                        placeholder="Selecciona un intermedio o producto terminado..."
+                                        isClearable
+                                        isDisabled={!!editingRecipe}
+                                    />
+                                </div>
+
+                                <div className="modal-input-group">
+                                    <label className="modal-input-label" htmlFor="pr-name">Nombre de la receta</label>
+                                    <Input
+                                        id="pr-name"
+                                        variant="modal"
+                                        value={name}
+                                        onChange={(e) => setName(e.target.value)}
+                                        placeholder={selectedProduct ? `Receta de ${selectedProduct.name}` : 'Receta de ...'}
+                                    />
+                                </div>
+
+                                <div className="modal-form-row">
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label" htmlFor="pr-yield">Rendimiento por lote *</label>
+                                        <Input
+                                            id="pr-yield"
+                                            variant="modal"
+                                            type="number"
+                                            min="0"
+                                            step="0.0001"
+                                            value={yieldQuantity}
+                                            onChange={(e) => setYieldQuantity(e.target.value)}
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label">Unidad de rendimiento</label>
+                                        <Select
+                                            variant="modal"
+                                            options={unitOptions}
+                                            value={unitOptions.find((o) => o.value === yieldUnitId) ?? null}
+                                            onChange={(opt: SingleValue<StrOption>) => setYieldUnitId(opt?.value ?? '')}
+                                            placeholder="Unidad..."
+                                            isClearable
+                                        />
+                                    </div>
+                                </div>
+                                <p className="pr-helper-text">Cantidad que produce una corrida de esta receta.</p>
+                            </div>
+
+                            <div className="modal-section animate-slide-in">
+                                <div className="modal-section-header">
+                                    <Layers size={18} />
+                                    <h3>Componentes</h3>
+                                </div>
+
+                                <div className="pr-components">
+                                    <div className="pr-component-head">
+                                        <span>Producto</span>
+                                        <span>Cantidad</span>
+                                        <span>Unidad</span>
+                                        <span className="pr-col-cost">Costo est.</span>
+                                        <span aria-hidden="true" />
+                                    </div>
+                                    {rows.map((row) => (
+                                        <div key={row.key} className="pr-component-row">
+                                            <div className="pr-col-product">
+                                                <Select
+                                                    variant="modal"
+                                                    options={componentOptions}
+                                                    value={componentOptions.find((o) => o.value === row.componentProductId) ?? null}
+                                                    onChange={(opt: SingleValue<StrOption>) => updateRow(row.key, { componentProductId: opt?.value ?? '' })}
+                                                    placeholder="Componente..."
+                                                    isClearable
+                                                />
+                                            </div>
+                                            <div className="pr-col-qty">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.0001"
+                                                    className="modal-standard-input"
+                                                    placeholder="Cant"
+                                                    value={row.quantity}
+                                                    onChange={(e) => updateRow(row.key, { quantity: e.target.value })}
+                                                />
+                                            </div>
+                                            <div className="pr-col-unit">
+                                                <Select
+                                                    variant="modal"
+                                                    options={unitOptions}
+                                                    value={unitOptions.find((o) => o.value === row.unitId) ?? null}
+                                                    onChange={(opt: SingleValue<StrOption>) => updateRow(row.key, { unitId: opt?.value ?? '' })}
+                                                    placeholder="Base"
+                                                    isClearable
+                                                />
+                                            </div>
+                                            <div className="pr-col-cost">
+                                                {formatMoney(estimatedRowCost(row))}
+                                            </div>
+                                            <div className="pr-col-remove">
+                                                <button
+                                                    type="button"
+                                                    className="pr-remove-btn"
+                                                    onClick={() => removeRow(row.key)}
+                                                    title="Quitar componente"
+                                                    aria-label="Quitar componente"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <Button type="button" variant="secondary" onClick={addRow} className="pr-add-component">
+                                    <Plus size={16} />
+                                    Agregar componente
+                                </Button>
+                            </div>
+
+                            <div className="modal-section animate-slide-in">
+                                <div className="modal-section-header">
+                                    <Info size={18} />
+                                    <h3>Costo estimado</h3>
+                                </div>
+
+                                {editingRecipe?.cost ? (
+                                    <div className="pr-cost-panel">
+                                        <div className="pr-cost-lines">
+                                            {editingRecipe.cost.lines.map((line) => (
+                                                <div key={line.componentProductId} className="pr-cost-line">
+                                                    <span className="pr-cost-line-name">{line.componentName}</span>
+                                                    <span className="pr-cost-line-qty">
+                                                        {line.quantity} {line.unit}
+                                                    </span>
+                                                    <span className="pr-cost-line-total">{formatMoney(Number(line.totalCost) || 0)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="pr-cost-totals">
+                                            <div className="pr-cost-total-row">
+                                                <span>Costo del lote</span>
+                                                <strong>{formatMoney(Number(editingRecipe.cost.batchCost) || 0)}</strong>
+                                            </div>
+                                            <div className="pr-cost-total-row highlight">
+                                                <span>
+                                                    Costo unitario
+                                                    {editingRecipe.cost.yieldBaseUnit ? ` (por ${editingRecipe.cost.yieldBaseUnit})` : ''}
+                                                </span>
+                                                <strong>{formatMoney(Number(editingRecipe.cost.unitCost) || 0)}</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="pr-cost-panel">
+                                        <div className="pr-cost-total-row highlight">
+                                            <span>Costo estimado (referencial)</span>
+                                            <strong>{formatMoney(estimatedTotal)}</strong>
+                                        </div>
+                                        <p className="pr-helper-text">
+                                            Estimado a partir del costo promedio actual de los componentes. El costo definitivo se calcula al guardar.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {!editingRecipe && (
+                                <div className="modal-section animate-slide-in">
+                                    <label className="pr-activate-toggle">
+                                        <input
+                                            type="checkbox"
+                                            checked={activateOnSave}
+                                            onChange={(e) => setActivateOnSave(e.target.checked)}
+                                        />
+                                        <span>Activar al guardar</span>
+                                    </label>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="modal-footer">
+                            <Button type="button" variant="ghost" onClick={handleCloseSidebar}>
+                                Cancelar
+                            </Button>
+                            <Button type="button" variant="primary" onClick={handleSave} disabled={saving}>
+                                <Save size={18} />
+                                {saving ? 'Guardando...' : 'Guardar'}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </Sidebar>
+        </div>
+    );
+}

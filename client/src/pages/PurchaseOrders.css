@@ -198,21 +198,7 @@
     background: var(--color-neutral-700);
 }
 
-/* Pagination */
-.pagination-controls {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: var(--spacing-lg);
-    border-top: 1px solid var(--color-border);
-    gap: var(--spacing-xl);
-    background: var(--color-neutral-50);
-}
-
-.dark .pagination-controls {
-    background: var(--color-neutral-800);
-}
-
+/* Pagination (legacy page-number picker — not used by table footer) */
 .page-numbers {
     display: flex;
     gap: var(--spacing-xs);
@@ -577,6 +563,129 @@
 
 .action-btn-mini.payment:hover {
     background: rgba(59, 130, 246, 0.15);
+}
+
+.po-pending-payment-link {
+    border: none;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+}
+
+.po-pending-payment-link:hover span {
+    color: var(--color-primary);
+}
+
+.payment-partial-amount {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    font-weight: 600;
+}
+
+.po-payment-register-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    background: rgba(59, 130, 246, 0.08);
+    color: var(--color-primary);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.po-payment-register-btn:hover {
+    background: rgba(59, 130, 246, 0.15);
+}
+
+.payment-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.payment-history-item {
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-surface);
+}
+
+.payment-history-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.payment-history-main strong {
+    color: var(--color-text);
+}
+
+.payment-history-main span {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+}
+
+.payment-history-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+}
+
+.payment-history-empty {
+    padding: 12px;
+    border: 1px dashed var(--color-border);
+    border-radius: 8px;
+    color: var(--color-text-secondary);
+    font-size: 13px;
+    text-align: center;
+}
+
+.payment-history-paid {
+    background: rgba(34, 197, 94, 0.08);
+    border-color: rgba(34, 197, 94, 0.25);
+    color: var(--color-success, #22c55e);
+}
+
+.po-suggestions-summary {
+    margin-bottom: 1rem;
+}
+
+.po-suggestion-search {
+    min-width: 180px;
+    width: 220px;
+    max-width: 100%;
+}
+
+.po-suggestion-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+    .po-suggestion-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .po-suggestion-toolbar-actions {
+        width: 100%;
+    }
+
+    .po-suggestion-search {
+        width: 100%;
+    }
 }
 
 /* Payment Modal */

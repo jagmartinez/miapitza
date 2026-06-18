@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { reportsAPI, branchesAPI, categoriesAPI, suppliersAPI, warehousesAPI, menuBrandsAPI } from '../services/api';
+import { reportsAPI, branchesAPI, categoriesAPI, suppliersAPI, warehousesAPI, menuBrandsAPI, productionReportsAPI } from '../services/api';
 import Button from '../components/Button';
+import Pagination from '../components/Pagination';
 import Select from '../components/Select';
 import type { SingleValue } from 'react-select';
 import {
     Package, ShoppingCart, DollarSign, TrendingUp, BarChart3, AlertTriangle,
     ArrowLeft, Download, Search, FileSpreadsheet, Truck,
     RefreshCw, FileText, Calendar, Clock, Users, PieChart, Shield,
-    GitCompare, Activity, CreditCard, Building2, Tag, Warehouse, ChevronRight
+    GitCompare, Activity, CreditCard, Building2, Tag, Warehouse, ChevronRight, Factory
 } from 'lucide-react';
 import type { Branch, Supplier } from '../types';
 import { formatCurrency } from '../utils/currency';
@@ -82,6 +83,11 @@ const REPORT_CATALOG: ReportDef[] = [
     { id: 'production-yield', name: 'Rendimiento de Producción', description: 'Porciones posibles con stock actual y ingrediente limitante.', icon: Package, category: 'Producción', hiddenInHub: true },
     { id: 'menu-engineering', name: 'Productos Estrella', description: 'Clasificación BCG: Estrellas, Puzzles, Caballos de Trabajo y Perros.', icon: TrendingUp, category: 'Producción', hiddenInHub: true },
     { id: 'purchase-projection', name: 'Proyección de Compras', description: 'Estimación de necesidades de compra basado en velocidad de ventas.', icon: ShoppingCart, category: 'Producción', hiddenInHub: true },
+    { id: 'prod-orders', name: 'Producciones Realizadas', description: 'Órdenes de producción del período con cantidades y costos.', icon: Factory, category: 'Producción' },
+    { id: 'prod-plan-vs-real', name: 'Plan vs Real (Rendimiento)', description: 'Diferencias entre cantidad planificada y real, merma y variación de costo.', icon: GitCompare, category: 'Producción', hiddenInHub: true },
+    { id: 'prod-input-consumption', name: 'Consumo de Insumos', description: 'Insumos consumidos por producción agregados por producto.', icon: Package, category: 'Producción', hiddenInHub: true },
+    { id: 'prod-profitability', name: 'Rentabilidad de Producidos', description: 'Costo de producción vs precio de venta de productos fabricados.', icon: TrendingUp, category: 'Producción', hiddenInHub: true },
+    { id: 'prod-kardex', name: 'Kardex de Producidos', description: 'Movimientos de inventario generados por producción.', icon: FileSpreadsheet, category: 'Producción', hiddenInHub: true },
 ];
 
 const CATEGORIES_ORDER = ['Inventario', 'Compras', 'Ventas', 'Costos', 'Producción', 'Auditoría', 'Decisiones'];
@@ -92,7 +98,167 @@ const REPORT_GROUPS: Array<{ key: string; reports: string[] }> = [
     { key: 'sales', reports: ['sales', 'sales-daily', 'sales-monthly', 'sales-by-category', 'sales-by-brand', 'sales-by-payment-method', 'sales-by-waiter', 'sales-by-channel', 'sales-by-hour'] },
     { key: 'costs-analytics', reports: ['profitability', 'food-cost-by-category', 'margin-by-product'] },
     { key: 'production', reports: ['recipe-cost', 'production-yield', 'menu-engineering', 'purchase-projection'] },
+    { key: 'production-orders', reports: ['prod-orders', 'prod-plan-vs-real', 'prod-input-consumption', 'prod-profitability', 'prod-kardex'] },
 ];
+
+// ── Producción (órdenes) report ids and data shapes ──
+const PRODUCTION_REPORT_IDS = new Set([
+    'prod-orders', 'prod-plan-vs-real', 'prod-input-consumption', 'prod-profitability', 'prod-kardex',
+]);
+
+interface ProdProductRef { name: string; sku: string | null; type?: string }
+interface ProdWarehouseRef { name: string }
+
+interface ProdOrderRow {
+    code: string;
+    status: string;
+    date: string;
+    finishedAt: string | null;
+    plannedQuantity: number;
+    producedQuantity: number;
+    estimatedCost: number;
+    realCost: number;
+    realUnitCost: number;
+    product: ProdProductRef | null;
+    warehouse: ProdWarehouseRef | null;
+}
+interface ProdOrdersSummary {
+    count: number; finished: number; cancelled: number;
+    totalPlanned: number; totalProduced: number;
+    totalEstimatedCost: number; totalRealCost: number;
+}
+interface ProdOrdersResponse { summary: ProdOrdersSummary; items: ProdOrderRow[] }
+
+interface PlanVsRealRow {
+    id: number; code: string; product: ProdProductRef | null; finishedAt: string | null;
+    plannedQuantity: number; producedQuantity: number; quantityDiff: number; yieldPct: number;
+    estimatedCost: number; realCost: number; costVariance: number;
+    estimatedUnitCost: number; realUnitCost: number;
+}
+interface PlanVsRealSummary {
+    count: number; totalPlanned: number; totalProduced: number;
+    totalCostVariance: number; avgYieldPct: number;
+}
+interface PlanVsRealResponse { summary: PlanVsRealSummary; items: PlanVsRealRow[] }
+
+interface InputConsumptionRow {
+    componentProductId: number; name: string; sku: string | null; unit: string;
+    consumedQuantity: number; totalCost: number; orders: number;
+}
+interface InputConsumptionResponse { summary: { components: number; totalCost: number }; items: InputConsumptionRow[] }
+
+interface ProdProfitabilityRow {
+    productId: number; name: string; sku: string | null; type: string;
+    averageCost: number; lastProductionUnitCost: number | null; salePrice: number | null;
+    margin: number | null; marginPct: number | null;
+}
+interface ProdProfitabilityResponse { summary: { products: number }; items: ProdProfitabilityRow[] }
+
+interface ProdKardexRow {
+    id: number; type: string; quantity: number; unitCost: number; totalCost: number;
+    balanceQty: number; balanceCost: number; reason: string | null; reference: string | null;
+    createdAt: string; product: ProdProductRef | null; warehouse: ProdWarehouseRef | null;
+}
+interface ProdKardexResponse { items: ProdKardexRow[] }
+
+type ProductionReportData = { items: Record<string, unknown>[]; summary: Record<string, number> };
+
+async function loadProductionReport(reportId: string, params: Record<string, string>): Promise<ProductionReportData> {
+    switch (reportId) {
+        case 'prod-orders': {
+            const d = (await productionReportsAPI.getProductions(params)).data.data as ProdOrdersResponse;
+            return {
+                summary: { ...d.summary },
+                items: d.items.map((o) => ({
+                    code: o.code,
+                    productName: o.product?.name ?? '-',
+                    sku: o.product?.sku ?? '-',
+                    warehouseName: o.warehouse?.name ?? '-',
+                    date: o.date,
+                    plannedQuantity: o.plannedQuantity,
+                    producedQuantity: o.producedQuantity,
+                    estimatedCost: o.estimatedCost,
+                    realCost: o.realCost,
+                    realUnitCost: o.realUnitCost,
+                    status: o.status,
+                })),
+            };
+        }
+        case 'prod-plan-vs-real': {
+            const d = (await productionReportsAPI.getPlanVsReal(params)).data.data as PlanVsRealResponse;
+            return {
+                summary: { ...d.summary },
+                items: d.items.map((o) => ({
+                    code: o.code,
+                    productName: o.product?.name ?? '-',
+                    sku: o.product?.sku ?? '-',
+                    finishedAt: o.finishedAt,
+                    plannedQuantity: o.plannedQuantity,
+                    producedQuantity: o.producedQuantity,
+                    quantityDiff: o.quantityDiff,
+                    yieldPct: o.yieldPct,
+                    estimatedCost: o.estimatedCost,
+                    realCost: o.realCost,
+                    costVariance: o.costVariance,
+                    estimatedUnitCost: o.estimatedUnitCost,
+                    realUnitCost: o.realUnitCost,
+                })),
+            };
+        }
+        case 'prod-input-consumption': {
+            const d = (await productionReportsAPI.getInputConsumption(params)).data.data as InputConsumptionResponse;
+            return {
+                summary: { ...d.summary },
+                items: d.items.map((c) => ({
+                    name: c.name,
+                    sku: c.sku ?? '-',
+                    unit: c.unit,
+                    consumedQuantity: c.consumedQuantity,
+                    totalCost: c.totalCost,
+                    orders: c.orders,
+                })),
+            };
+        }
+        case 'prod-profitability': {
+            const d = (await productionReportsAPI.getProfitability(params)).data.data as ProdProfitabilityResponse;
+            return {
+                summary: { ...d.summary },
+                items: d.items.map((p) => ({
+                    name: p.name,
+                    sku: p.sku ?? '-',
+                    type: p.type,
+                    averageCost: p.averageCost,
+                    lastProductionUnitCost: p.lastProductionUnitCost,
+                    salePrice: p.salePrice,
+                    margin: p.margin,
+                    marginPct: p.marginPct,
+                })),
+            };
+        }
+        case 'prod-kardex': {
+            const d = (await productionReportsAPI.getProducedKardex(params)).data.data as ProdKardexResponse;
+            return {
+                summary: {},
+                items: d.items.map((m) => ({
+                    createdAt: m.createdAt,
+                    productName: m.product?.name ?? '-',
+                    sku: m.product?.sku ?? '-',
+                    warehouseName: m.warehouse?.name ?? '-',
+                    type: m.type,
+                    quantity: m.quantity,
+                    unitCost: m.unitCost,
+                    totalCost: m.totalCost,
+                    balanceQty: m.balanceQty,
+                    balanceCost: m.balanceCost,
+                    reference: m.reference ?? '-',
+                    reason: m.reason ?? '-',
+                })),
+            };
+        }
+        default:
+            throw new Error('Reporte de producción no encontrado');
+    }
+}
 
 function getGroupReports(reportId: string) {
     const group = REPORT_GROUPS.find(g => g.reports.includes(reportId));
@@ -236,6 +402,10 @@ function ReportDetail({ reportId }: { reportId: string }) {
         setPage(1);
         try {
             const params = buildParams();
+            if (PRODUCTION_REPORT_IDS.has(reportId)) {
+                setData(await loadProductionReport(reportId, params));
+                return;
+            }
             let res;
             switch (reportId) {
                 case 'inventory': res = await reportsAPI.getInventoryReport(params); break;
@@ -381,10 +551,12 @@ function ReportDetail({ reportId }: { reportId: string }) {
                             isSearchable={false}
                         />
                     )}
-                    <Button onClick={handleExport} disabled={exporting || !data} title="Exportar a Excel">
-                        {exporting ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
-                        Excel
-                    </Button>
+                    {!PRODUCTION_REPORT_IDS.has(reportId) && (
+                        <Button onClick={handleExport} disabled={exporting || !data} title="Exportar a Excel">
+                            {exporting ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
+                            Excel
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -413,7 +585,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
                     </div>
                 )}
 
-                {(reportId === 'inventory' || reportId === 'low-stock') && (
+                {(reportId === 'inventory' || reportId === 'low-stock' || reportId === 'prod-kardex') && (
                     <div className="filter-field">
                         <Select
                             label={<><Warehouse size={12} /> Almacén</>}
@@ -502,7 +674,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
                     {summaryEntries.map(([key, val]) => {
                         const isString = typeof val === 'string';
                         const isCurrency = !isString && /value|amount|sales|cost|discount|ticket|revenue|cogs|spent|income|commission|variation/i.test(key) && !/count|pct|percent/i.test(key);
-                        const isPercent = !isString && /margin|foodcost|variation/i.test(key) && /pct|percent|overall/i.test(key);
+                        const isPercent = !isString && /margin|foodcost|variation|yield/i.test(key) && /pct|percent|overall/i.test(key);
                         return (
                             <div key={key} className={`kpi-card ${getKpiVariant(key)}`}>
                                 <div className="kpi-label">
@@ -573,20 +745,13 @@ function ReportDetail({ reportId }: { reportId: string }) {
                         </div>
                     </div>
 
-                    {totalPages > 1 && (
-                        <div className="pagination-bar">
-                            <Button variant="ghost" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
-                                Anterior
-                            </Button>
-                            <span className="pagination-info">
-                                Página {page} de {totalPages}
-                                <span className="total-records"> ({items.length} registros)</span>
-                            </span>
-                            <Button variant="ghost" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
-                                Siguiente
-                            </Button>
-                        </div>
-                    )}
+                    <Pagination
+                        page={page}
+                        totalPages={totalPages}
+                        totalItems={items.length}
+                        pageSize={PAGE_SIZE}
+                        onPageChange={setPage}
+                    />
                 </>
             )}
         </div>
@@ -600,6 +765,7 @@ const DATE_FILTER_REPORTS = new Set([
     'sales-monthly', 'sales-by-payment-method', 'sales-by-waiter', 'sales-by-channel',
     'sales-by-hour', 'food-cost-by-category', 'margin-by-product', 'audit', 'day-analysis',
     'menu-engineering', 'purchase-projection',
+    'prod-orders', 'prod-plan-vs-real', 'prod-input-consumption', 'prod-kardex',
 ]);
 const BRANCH_FILTER_REPORTS = new Set([
     'purchases', 'sales', 'purchases-by-day', 'purchases-by-month', 'most-purchased',
@@ -607,6 +773,7 @@ const BRANCH_FILTER_REPORTS = new Set([
     'sales-by-payment-method', 'sales-by-waiter', 'sales-by-channel', 'sales-by-hour',
     'food-cost-by-category', 'margin-by-product', 'day-analysis', 'month-comparison',
     'recipe-cost', 'production-yield', 'menu-engineering', 'purchase-projection',
+    'prod-orders', 'prod-plan-vs-real', 'prod-input-consumption',
 ]);
 const CATEGORY_FILTER_REPORTS = new Set([
     'inventory', 'purchases', 'sales', 'profitability', 'low-stock',
@@ -647,7 +814,7 @@ function getKpiVariant(key: string): string {
 }
 
 // ── Column Definitions ──
-type ColDef = { key: string; header: string; align?: 'right' | 'center'; format?: 'currency' | 'number' | 'percent' | 'date' | 'status' };
+type ColDef = { key: string; header: string; align?: 'right' | 'center'; format?: 'currency' | 'number' | 'percent' | 'date' | 'status'; signColor?: boolean; invertSign?: boolean };
 
 function getColumns(reportId: string): ColDef[] {
     switch (reportId) {
@@ -884,27 +1051,101 @@ function getColumns(reportId: string): ColDef[] {
             { key: 'daysUntilStockout', header: 'Días p/ Agotar', align: 'right', format: 'number' },
             { key: 'estimatedCost', header: 'Costo Est.', align: 'right', format: 'currency' },
         ];
+        case 'prod-orders': return [
+            { key: 'code', header: 'Código' },
+            { key: 'productName', header: 'Producto' },
+            { key: 'sku', header: 'SKU' },
+            { key: 'warehouseName', header: 'Almacén' },
+            { key: 'date', header: 'Fecha', format: 'date' },
+            { key: 'plannedQuantity', header: 'Planificado', align: 'right', format: 'number' },
+            { key: 'producedQuantity', header: 'Producido', align: 'right', format: 'number' },
+            { key: 'estimatedCost', header: 'Costo Est.', align: 'right', format: 'currency' },
+            { key: 'realCost', header: 'Costo Real', align: 'right', format: 'currency' },
+            { key: 'realUnitCost', header: 'Costo Unit. Real', align: 'right', format: 'currency' },
+            { key: 'status', header: 'Estado', format: 'status' },
+        ];
+        case 'prod-plan-vs-real': return [
+            { key: 'code', header: 'Código' },
+            { key: 'productName', header: 'Producto' },
+            { key: 'sku', header: 'SKU' },
+            { key: 'finishedAt', header: 'Finalizado', format: 'date' },
+            { key: 'plannedQuantity', header: 'Planificado', align: 'right', format: 'number' },
+            { key: 'producedQuantity', header: 'Producido', align: 'right', format: 'number' },
+            { key: 'quantityDiff', header: 'Diferencia', align: 'right', format: 'number', signColor: true },
+            { key: 'yieldPct', header: 'Rendimiento %', align: 'right', format: 'percent' },
+            { key: 'estimatedCost', header: 'Costo Est.', align: 'right', format: 'currency' },
+            { key: 'realCost', header: 'Costo Real', align: 'right', format: 'currency' },
+            { key: 'costVariance', header: 'Var. Costo', align: 'right', format: 'currency', signColor: true, invertSign: true },
+            { key: 'estimatedUnitCost', header: 'C.Unit Est.', align: 'right', format: 'currency' },
+            { key: 'realUnitCost', header: 'C.Unit Real', align: 'right', format: 'currency' },
+        ];
+        case 'prod-input-consumption': return [
+            { key: 'name', header: 'Insumo' },
+            { key: 'sku', header: 'SKU' },
+            { key: 'unit', header: 'Unidad' },
+            { key: 'consumedQuantity', header: 'Cant. Consumida', align: 'right', format: 'number' },
+            { key: 'totalCost', header: 'Costo Total', align: 'right', format: 'currency' },
+            { key: 'orders', header: '# Órdenes', align: 'right', format: 'number' },
+        ];
+        case 'prod-profitability': return [
+            { key: 'name', header: 'Producto' },
+            { key: 'sku', header: 'SKU' },
+            { key: 'type', header: 'Tipo' },
+            { key: 'averageCost', header: 'Costo Prom.', align: 'right', format: 'currency' },
+            { key: 'lastProductionUnitCost', header: 'Últ. Costo Prod.', align: 'right', format: 'currency' },
+            { key: 'salePrice', header: 'Precio Venta', align: 'right', format: 'currency' },
+            { key: 'margin', header: 'Margen', align: 'right', format: 'currency', signColor: true },
+            { key: 'marginPct', header: '% Margen', align: 'right', format: 'percent' },
+        ];
+        case 'prod-kardex': return [
+            { key: 'createdAt', header: 'Fecha', format: 'date' },
+            { key: 'productName', header: 'Producto' },
+            { key: 'sku', header: 'SKU' },
+            { key: 'warehouseName', header: 'Almacén' },
+            { key: 'type', header: 'Tipo' },
+            { key: 'quantity', header: 'Cantidad', align: 'right', format: 'number' },
+            { key: 'unitCost', header: 'Costo Unit.', align: 'right', format: 'currency' },
+            { key: 'totalCost', header: 'Costo Total', align: 'right', format: 'currency' },
+            { key: 'balanceQty', header: 'Saldo Cant.', align: 'right', format: 'number' },
+            { key: 'balanceCost', header: 'Saldo Costo', align: 'right', format: 'currency' },
+            { key: 'reference', header: 'Referencia' },
+            { key: 'reason', header: 'Motivo' },
+        ];
         default: return [];
     }
+}
+
+function signClass(value: unknown, invert?: boolean): string {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n === 0) return '';
+    const good = invert ? n < 0 : n > 0;
+    return good ? 'cell-positive' : 'cell-negative';
 }
 
 function renderCell(value: unknown, col: ColDef, fmtCurrency: (n: number) => string = (n) => formatCurrency(n)) {
     if (value === null || value === undefined) return '-';
     switch (col.format) {
-        case 'currency': return fmtCurrency(Number(value));
-        case 'number': return fmtNumber(Number(value));
+        case 'currency': {
+            const text = fmtCurrency(Number(value));
+            return col.signColor ? <span className={signClass(value, col.invertSign)}>{text}</span> : text;
+        }
+        case 'number': {
+            const text = fmtNumber(Number(value));
+            return col.signColor ? <span className={signClass(value, col.invertSign)}>{text}</span> : text;
+        }
         case 'percent': return fmtPercent(Number(value));
         case 'date': return fmtDate(String(value));
         case 'status': {
             const s = String(value).toUpperCase();
-            const cls = s === 'OK' || s === 'HIGH' ? 'status-ok'
-                : s === 'MEDIUM' || s === 'WARNING' || s === 'LOW' ? 'status-warning'
-                : s === 'CRITICAL' ? 'status-critical'
+            const cls = s === 'OK' || s === 'HIGH' || s === 'FINISHED' ? 'status-ok'
+                : s === 'MEDIUM' || s === 'WARNING' || s === 'LOW' || s === 'IN_PROGRESS' || s === 'PENDING' ? 'status-warning'
+                : s === 'CRITICAL' || s === 'CANCELLED' ? 'status-critical'
                 : 'status-default';
             const labels: Record<string, string> = {
                 OK: 'OK', HIGH: 'Alto', MEDIUM: 'Medio', LOW: 'Bajo',
                 WARNING: 'Advertencia', CRITICAL: 'Crítico',
                 DRAFT: 'Borrador', ISSUED: 'Emitida', RECEIVED: 'Recibida', CANCELLED: 'Cancelada',
+                PENDING: 'Pendiente', IN_PROGRESS: 'En Proceso', FINISHED: 'Finalizada',
             };
             return <span className={`status-pill ${cls}`}>{labels[s] || s}</span>;
         }
@@ -951,6 +1192,12 @@ function formatSummaryLabel(key: string): string {
         horses: 'Caballos', dogs: 'Perros', avgQtySold: 'Prom. Qty Vendida',
         projectionDays: 'Días Proyección', urgentItems: 'Urgentes (≤3 días)',
         estimatedTotalCost: 'Costo Estimado Total', avgDaysUntilStockout: 'Prom. Días p/ Agotar',
+        // Production orders reports
+        count: 'Órdenes', finished: 'Finalizadas', cancelled: 'Canceladas',
+        totalPlanned: 'Total Planificado', totalProduced: 'Total Producido',
+        totalEstimatedCost: 'Costo Estimado', totalRealCost: 'Costo Real',
+        totalCostVariance: 'Variación de Costo', avgYieldPct: 'Rendimiento Prom.',
+        components: 'Insumos', totalCost: 'Costo Total', products: 'Productos',
     };
     return map[key] || key;
 }

@@ -44,6 +44,8 @@ import {
     TrendingDown,
     FileText,
     ShoppingBag,
+    FlaskConical,
+    Factory,
     type LucideIcon
 } from 'lucide-react';
 import { getUserAccentColor, getUserRoleNames } from '../utils/authz';
@@ -100,6 +102,9 @@ const NAV_SECTIONS: NavSection[] = [
             { to: '/menu-brands', icon: Tags, label: 'Marcas', roles: CHEF_MGMT },
             { to: '/promotions', icon: Ticket, label: 'Promociones', roles: ADMIN },
             { to: '/inventory', icon: Package, label: 'Inventario', roles: WAREHOUSE },
+            { to: '/production-recipes', icon: FlaskConical, label: 'Recetas de Producción', roles: WAREHOUSE },
+            { to: '/production-orders', icon: Factory, label: 'Producción', roles: WAREHOUSE },
+            { to: '/production-dashboard', icon: BarChart3, label: 'Panel de Producción', roles: WAREHOUSE },
             { to: '/units-of-measure', icon: Ruler, label: 'Unidades de Medida', roles: WAREHOUSE },
             { to: '/suppliers', icon: Truck, label: 'Proveedores', roles: WAREHOUSE },
             { to: '/purchase-orders', icon: ShoppingBag, label: 'Órdenes de Compra', roles: WAREHOUSE },

@@ -3,10 +3,12 @@ import prisma from '../utils/prisma';
 import { getErrorMessage } from '../utils/error';
 import { AuditLogService } from './audit-log.service';
 
+export type ProductTypeValue = 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH' | 'INTERMEDIATE' | 'PACKAGING';
+
 export class ProductService {
 
     static async getAll(companyId: number, filters?: {
-        type?: 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH';
+        type?: ProductTypeValue;
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE';
         categoryId?: number;
         active?: boolean;
@@ -135,7 +137,7 @@ export class ProductService {
     static async generateSku(
         companyId: number,
         categoryId?: number | null,
-        type?: 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH'
+        type?: ProductTypeValue
     ): Promise<string> {
         let prefix = 'GEN';
 
@@ -148,6 +150,10 @@ export class ProductService {
             }
         } else if (type === 'INGREDIENT') {
             prefix = 'ING';
+        } else if (type === 'INTERMEDIATE') {
+            prefix = 'INT';
+        } else if (type === 'PACKAGING') {
+            prefix = 'EMP';
         }
 
         const lastProduct = await prisma.product.findFirst({
@@ -179,7 +185,7 @@ export class ProductService {
         minStock?: number;
         cost?: number;
         price?: number;
-        type?: 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH';
+        type?: ProductTypeValue;
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE';
         observation?: string | null;
     }, userId?: number) {
@@ -233,7 +239,7 @@ export class ProductService {
         minStock?: number;
         cost?: number;
         price?: number;
-        type?: 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH';
+        type?: ProductTypeValue;
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE' | null;
         observation?: string | null;
         active?: boolean;
@@ -247,10 +253,7 @@ export class ProductService {
         if (incomingSkuEmpty || (!hasSkuKey && currentSkuEmpty)) {
             const effectiveCategoryId =
                 data.categoryId !== undefined ? data.categoryId : existing.categoryId;
-            const effectiveType = (data.type || existing.type) as
-                | 'INGREDIENT'
-                | 'PRODUCT_FOR_SALE'
-                | 'BOTH';
+            const effectiveType = (data.type || existing.type) as ProductTypeValue;
             data.sku = await this.generateSku(companyId, effectiveCategoryId, effectiveType);
         }
 

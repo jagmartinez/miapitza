@@ -191,11 +191,135 @@ export interface Product {
   price?: number;
   minStock: number;
   categoryId?: number;
-  type: 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH';
+  type: ProductType;
   storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE' | null;
   observation?: string | null;
   active: boolean;
   allowedUnits?: ProductAllowedUnit[];
+  currentAverageCost?: number;
+  lastPurchaseCost?: number;
+}
+
+export type ProductType = 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH' | 'INTERMEDIATE' | 'PACKAGING';
+
+export type ProductionRecipeStatus = 'DRAFT' | 'ACTIVE' | 'INACTIVE';
+
+export interface ProductionRecipeComponent {
+  id?: number;
+  componentProductId: number;
+  componentProduct?: Pick<Product, 'id' | 'name' | 'sku' | 'type' | 'unit'> & { currentAverageCost?: number };
+  quantity: number;
+  unitId?: number | null;
+  unit?: string | null;
+  notes?: string | null;
+}
+
+export interface RecipeCostLine {
+  componentProductId: number;
+  componentName: string;
+  componentType: string;
+  unit: string;
+  baseUnit: string;
+  quantity: number;
+  baseQuantity: number;
+  unitCost: number;
+  totalCost: number;
+}
+
+export interface RecipeCost {
+  batchCost: number;
+  yieldBaseQuantity: number;
+  yieldBaseUnit: string;
+  unitCost: number;
+  lines: RecipeCostLine[];
+}
+
+export interface ProductionRecipe {
+  id: number;
+  companyId: number;
+  productId: number;
+  product?: Pick<Product, 'id' | 'name' | 'sku' | 'type' | 'unit'>;
+  name: string;
+  version: number;
+  status: ProductionRecipeStatus;
+  yieldQuantity: number;
+  yieldUnitId?: number | null;
+  yieldUnit?: { id: number; name: string; abbreviation: string } | null;
+  notes?: string | null;
+  createdBy?: { id: number; name: string } | null;
+  createdAt: string;
+  updatedAt: string;
+  components: ProductionRecipeComponent[];
+  cost?: RecipeCost | null;
+}
+
+export type ProductionOrderStatus = 'DRAFT' | 'PENDING' | 'IN_PROGRESS' | 'FINISHED' | 'CANCELLED';
+
+export interface ProductionOrderItem {
+  id: number;
+  componentProductId: number;
+  componentProduct?: Pick<Product, 'id' | 'name' | 'sku' | 'type' | 'unit'>;
+  requiredQuantity: number;
+  consumedQuantity: number;
+  unitId?: number | null;
+  unit?: string | null;
+  unitCost: number;
+  totalCost: number;
+}
+
+export interface ProductionOrder {
+  id: number;
+  companyId: number;
+  branchId: number;
+  code: string;
+  productId: number;
+  product?: Pick<Product, 'id' | 'name' | 'sku' | 'type' | 'unit'>;
+  recipeId?: number | null;
+  recipe?: { id: number; name: string; version: number; yieldQuantity: number } | null;
+  warehouseId: number;
+  warehouse?: { id: number; name: string; code?: string };
+  status: ProductionOrderStatus;
+  plannedQuantity: number;
+  producedQuantity: number;
+  estimatedCost: number;
+  estimatedUnitCost: number;
+  realCost: number;
+  realUnitCost: number;
+  userId: number;
+  user?: { id: number; name: string };
+  notes?: string | null;
+  date: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: ProductionOrderItem[];
+}
+
+export interface ProductionRequirementLine {
+  componentProductId: number;
+  componentName: string;
+  componentType: string;
+  unit: string;
+  requiredQuantity: number;
+  availableQuantity: number;
+  sufficient: boolean;
+  producible: boolean;
+  unitCost: number;
+  totalCost: number;
+}
+
+export interface ProductionPreview {
+  productId: number;
+  recipeId: number;
+  plannedQuantity: number;
+  yieldBaseQuantity: number;
+  estimatedCost: number;
+  estimatedUnitCost: number;
+  canProduce: boolean;
+  requirements: ProductionRequirementLine[];
 }
 
 export interface MenuBrand {

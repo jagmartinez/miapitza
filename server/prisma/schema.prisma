@@ -2,7 +2,7 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
@@ -26,41 +26,43 @@ model Company {
   updatedAt     DateTime      @updatedAt
 
   // Relations
-  branches           Branch[]
-  settings           Setting[]
-  users              User[]
-  auditLogs          AuditLog[]
-  tables             Table[]
-  reservations       Reservation[]
-  categories         Category[]
-  menuBrands         MenuBrand[]
-  menuItems          MenuItem[]
-  products           Product[]
-  warehouses         Warehouse[]
-  suppliers          Supplier[]
-  purchaseOrders     PurchaseOrder[]
-  orders             Order[]
-  paymentMethods     PaymentMethod[]
-  cashRegisters      CashRegister[]
-  cashShifts         CashShift[]
-  modifierGroups     ModifierGroup[]
-  roles              Role[]
-  stocks             Stock[]
-  inventoryMovements InventoryMovement[]
-  cateringEvents     CateringEvent[]
-  cateringServices   CateringService[]
-  customers          Customer[]
-  promotions         Promotion[]
+  branches             Branch[]
+  settings             Setting[]
+  users                User[]
+  auditLogs            AuditLog[]
+  tables               Table[]
+  reservations         Reservation[]
+  categories           Category[]
+  menuBrands           MenuBrand[]
+  menuItems            MenuItem[]
+  products             Product[]
+  warehouses           Warehouse[]
+  suppliers            Supplier[]
+  purchaseOrders       PurchaseOrder[]
+  orders               Order[]
+  paymentMethods       PaymentMethod[]
+  cashRegisters        CashRegister[]
+  cashShifts           CashShift[]
+  modifierGroups       ModifierGroup[]
+  roles                Role[]
+  stocks               Stock[]
+  inventoryMovements   InventoryMovement[]
+  cateringEvents       CateringEvent[]
+  cateringServices     CateringService[]
+  customers            Customer[]
+  promotions           Promotion[]
   productCostHistories ProductCostHistory[]
-  invoiceSequences   InvoiceSequence[]
-  apiKeys            ApiKey[]
-  unitsOfMeasure     UnitOfMeasure[]
-  productUnits       ProductUnit[]
-  salesChannelConfigs SalesChannelConfig[]
-  pedidosYaConfigs    PedidosYaConfig[]
-  pedidosYaMappings   PedidosYaProductMapping[]
+  invoiceSequences     InvoiceSequence[]
+  apiKeys              ApiKey[]
+  unitsOfMeasure       UnitOfMeasure[]
+  productUnits         ProductUnit[]
+  salesChannelConfigs  SalesChannelConfig[]
+  pedidosYaConfigs     PedidosYaConfig[]
+  pedidosYaMappings    PedidosYaProductMapping[]
   pedidosYaWebhookLogs PedidosYaWebhookLog[]
-  pedidosYaOrderSyncs PedidosYaOrderSync[]
+  pedidosYaOrderSyncs  PedidosYaOrderSync[]
+  productionRecipes    ProductionRecipe[]
+  productionOrders     ProductionOrder[]
 }
 
 enum CostingMethod {
@@ -84,20 +86,21 @@ model Branch {
   updatedAt DateTime     @updatedAt
 
   // Relations
-  company        Company               @relation(fields: [companyId], references: [id])
-  users          User[]
-  allowedUsers   UserBranch[]
-  tables         Table[]
-  reservations   Reservation[]
-  warehouses     Warehouse[]
-  purchaseOrders PurchaseOrder[]
-  orders         Order[]
-  cashRegisters  CashRegister[]
-  menuItems      MenuItem[] // Optional: if menu varies by branch
-  menuItemPrices MenuItemBranchPrice[]
-  cateringEvents CateringEvent[]
+  company          Company               @relation(fields: [companyId], references: [id])
+  users            User[]
+  allowedUsers     UserBranch[]
+  tables           Table[]
+  reservations     Reservation[]
+  warehouses       Warehouse[]
+  purchaseOrders   PurchaseOrder[]
+  orders           Order[]
+  cashRegisters    CashRegister[]
+  menuItems        MenuItem[] // Optional: if menu varies by branch
+  menuItemPrices   MenuItemBranchPrice[]
+  cateringEvents   CateringEvent[]
   invoiceSequences InvoiceSequence[]
   pedidosYaConfigs PedidosYaConfig[]
+  productionOrders ProductionOrder[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -123,43 +126,46 @@ enum BranchStatus {
 }
 
 model User {
-  id        Int        @id @default(autoincrement())
-  companyId Int? // Null for simple setups, non-null for enterprise
-  name      String
-  email     String     @unique
-  username  String     @unique
-  password           String // Hashed
-  mustChangePassword Boolean   @default(true)
-  passwordChangedAt  DateTime?
-  twoFactorSecret         String?
-  twoFactorEnabled        Boolean   @default(false)
-  twoFactorRecoveryCodes  Json?
-  twoFactorEnabledAt      DateTime?
-  roleId    Int
-  branchId  Int? // Primary branch
-  status    UserStatus @default(ACTIVE)
-  color     String? // Hex color for visual identification (e.g. waiters)
-  nif       String?
-  address   String?
-  phone     String?
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id                     Int        @id @default(autoincrement())
+  companyId              Int? // Null for simple setups, non-null for enterprise
+  name                   String
+  email                  String     @unique
+  username               String     @unique
+  password               String // Hashed
+  mustChangePassword     Boolean    @default(true)
+  passwordChangedAt      DateTime?
+  twoFactorSecret        String?
+  twoFactorEnabled       Boolean    @default(false)
+  twoFactorRecoveryCodes Json?
+  twoFactorEnabledAt     DateTime?
+  roleId                 Int
+  branchId               Int? // Primary branch
+  status                 UserStatus @default(ACTIVE)
+  color                  String? // Hex color for visual identification (e.g. waiters)
+  nif                    String?
+  address                String?
+  phone                  String?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
 
   // Relations
-  company  Company?       @relation(fields: [companyId], references: [id])
-  role     Role           @relation(fields: [roleId], references: [id])
-  branch   Branch?        @relation(fields: [branchId], references: [id])
-  sessions UserSession[]
-  userRoles UserRole[]
+  company         Company?      @relation(fields: [companyId], references: [id])
+  role            Role          @relation(fields: [roleId], references: [id])
+  branch          Branch?       @relation(fields: [branchId], references: [id])
+  sessions        UserSession[]
+  userRoles       UserRole[]
   allowedBranches UserBranch[] // Branches a SUPERADMIN permits this user to be assigned to
 
   // Operational relations
-  orders          Order[]  @relation("OrderCreator")
-  cancelledOrders Order[]  @relation("OrderCancelledBy")
-  cashShifts CashShift[]
-  movements  InventoryMovement[]
-  auditLogs  AuditLog[]
-  apiKeys    ApiKey[]     @relation("ApiKeyCreator")
+  orders                    Order[]             @relation("OrderCreator")
+  cancelledOrders           Order[]             @relation("OrderCancelledBy")
+  cashShifts                CashShift[]
+  movements                 InventoryMovement[]
+  auditLogs                 AuditLog[]
+  apiKeys                   ApiKey[]            @relation("ApiKeyCreator")
+  productionRecipesCreated  ProductionRecipe[]  @relation("ProductionRecipeCreatedBy")
+  productionOrders          ProductionOrder[]   @relation("ProductionOrderUser")
+  cancelledProductionOrders ProductionOrder[]   @relation("ProductionOrderCancelledBy")
 
   // DEFERRED (require data migration / backfill - NOT done in this additive pass):
   //  - email/username are globally @unique; making them tenant-scoped composite
@@ -225,7 +231,7 @@ model UserRole {
 model Role {
   id          Int     @id @default(autoincrement())
   companyId   Int?
-  name        String  // SUPERADMIN, ADMIN, WAITER, etc.
+  name        String // SUPERADMIN, ADMIN, WAITER, etc.
   description String?
 
   company     Company?     @relation(fields: [companyId], references: [id])
@@ -313,12 +319,12 @@ enum ReservationStatus {
 // ==========================================
 
 model Category {
-  id          Int     @id @default(autoincrement())
-  companyId   Int
-  name        String
-  description String?
-  codePrefix  String? // e.g. CAR, BEB, LAC - used for auto-generating product SKU
-  sortOrder   Int     @default(0)
+  id              Int     @id @default(autoincrement())
+  companyId       Int
+  name            String
+  description     String?
+  codePrefix      String? // e.g. CAR, BEB, LAC - used for auto-generating product SKU
+  sortOrder       Int     @default(0)
   active          Boolean @default(true)
   showInMenu      Boolean @default(true)
   showInInventory Boolean @default(true)
@@ -372,11 +378,11 @@ model MenuItem {
   branch   Branch?    @relation(fields: [branchId], references: [id])
   brand    MenuBrand? @relation(fields: [brandId], references: [id])
 
-  recipes        Recipe[]
-  images         MenuItemImage[]
-  orderItems     OrderItem[]
-  modifierGroups ModifierGroup[]
-  branchPrices   MenuItemBranchPrice[]
+  recipes           Recipe[]
+  images            MenuItemImage[]
+  orderItems        OrderItem[]
+  modifierGroups    ModifierGroup[]
+  branchPrices      MenuItemBranchPrice[]
   cateringMenuItems CateringMenuItem[]
   pedidosYaMappings PedidosYaProductMapping[]
 
@@ -435,10 +441,13 @@ model UnitOfMeasure {
   systemFactor    Decimal         @db.Decimal(18, 6)
   active          Boolean         @default(true)
 
-  company         Company        @relation(fields: [companyId], references: [id])
-  productUnits    ProductUnit[]
-  productBase     Product[]      @relation("ProductBaseUnit")
-  recipeUnits     Recipe[]       @relation("RecipeUnit")
+  company                        Company                     @relation(fields: [companyId], references: [id])
+  productUnits                   ProductUnit[]
+  productBase                    Product[]                   @relation("ProductBaseUnit")
+  recipeUnits                    Recipe[]                    @relation("RecipeUnit")
+  productionRecipeYields         ProductionRecipe[]          @relation("ProductionRecipeYieldUnit")
+  productionRecipeComponentUnits ProductionRecipeComponent[] @relation("ProductionRecipeComponentUnit")
+  productionOrderItemUnits       ProductionOrderItem[]       @relation("ProductionOrderItemUnit")
 
   @@unique([companyId, abbreviation])
   @@index([companyId])
@@ -453,9 +462,9 @@ model ProductUnit {
   isDefault        Boolean @default(false)
   active           Boolean @default(true)
 
-  company  Company       @relation(fields: [companyId], references: [id])
-  product  Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
-  unit     UnitOfMeasure @relation(fields: [unitId], references: [id])
+  company Company       @relation(fields: [companyId], references: [id])
+  product Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  unit    UnitOfMeasure @relation(fields: [unitId], references: [id])
 
   @@unique([productId, unitId])
   @@index([companyId])
@@ -464,35 +473,39 @@ model ProductUnit {
 
 // Ingredients and Direct Sale Products
 model Product {
-  id                 Int         @id @default(autoincrement())
+  id                 Int          @id @default(autoincrement())
   companyId          Int
   name               String
   sku                String?
   categoryId         Int?
   unit               String // Legacy: kg, g, L, ml, unit
   baseUnitId         Int?
-  minStock           Decimal     @default(0) @db.Decimal(10, 3)
-  cost               Decimal     @default(0) @db.Decimal(10, 2)
-  currentAverageCost Decimal     @default(0) @db.Decimal(10, 6)
-  lastPurchaseCost   Decimal     @default(0) @db.Decimal(10, 6)
-  price              Decimal?    @db.Decimal(10, 2)
+  minStock           Decimal      @default(0) @db.Decimal(10, 3)
+  cost               Decimal      @default(0) @db.Decimal(10, 2)
+  currentAverageCost Decimal      @default(0) @db.Decimal(10, 6)
+  lastPurchaseCost   Decimal      @default(0) @db.Decimal(10, 6)
+  price              Decimal?     @db.Decimal(10, 2)
   type               ProductType  @default(INGREDIENT)
   storageType        StorageType?
   observation        String?      @db.Text
-  active             Boolean     @default(true)
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
+  active             Boolean      @default(true)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
-  company      Company        @relation(fields: [companyId], references: [id])
-  category     Category?      @relation(fields: [categoryId], references: [id])
-  baseUnit     UnitOfMeasure? @relation("ProductBaseUnit", fields: [baseUnitId], references: [id])
+  company  Company        @relation(fields: [companyId], references: [id])
+  category Category?      @relation(fields: [categoryId], references: [id])
+  baseUnit UnitOfMeasure? @relation("ProductBaseUnit", fields: [baseUnitId], references: [id])
 
-  stocks             Stock[]
-  inventoryMovements InventoryMovement[]
-  purchaseOrderItems PurchaseOrderItem[]
-  recipes            Recipe[]
-  costHistory        ProductCostHistory[]
-  allowedUnits       ProductUnit[]
+  stocks               Stock[]
+  inventoryMovements   InventoryMovement[]
+  purchaseOrderItems   PurchaseOrderItem[]
+  recipes              Recipe[]
+  costHistory          ProductCostHistory[]
+  allowedUnits         ProductUnit[]
+  productionRecipes    ProductionRecipe[]          @relation("ProductProductionRecipes")
+  recipeComponents     ProductionRecipeComponent[] @relation("ProductRecipeComponents")
+  productionOrders     ProductionOrder[]           @relation("ProductProductionOrders")
+  productionOrderItems ProductionOrderItem[]       @relation("ProductProductionOrderItems")
 
   @@unique([companyId, sku])
   @@index([categoryId])
@@ -501,9 +514,11 @@ model Product {
 }
 
 enum ProductType {
-  INGREDIENT
-  PRODUCT_FOR_SALE
-  BOTH
+  INGREDIENT // Materia prima / insumo comprado
+  PRODUCT_FOR_SALE // Producto terminado para la venta
+  BOTH // Insumo y producto de venta (venta directa)
+  INTERMEDIATE // Producto intermedio / semielaborado producido internamente
+  PACKAGING // Empaque / material de empaque
 }
 
 enum StorageType {
@@ -520,9 +535,9 @@ model Recipe {
   unit       String?
   unitId     Int?
 
-  menuItem      MenuItem        @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
-  product       Product         @relation(fields: [productId], references: [id])
-  unitOfMeasure UnitOfMeasure?  @relation("RecipeUnit", fields: [unitId], references: [id])
+  menuItem      MenuItem       @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  product       Product        @relation(fields: [productId], references: [id])
+  unitOfMeasure UnitOfMeasure? @relation("RecipeUnit", fields: [unitId], references: [id])
 
   @@unique([menuItemId, productId])
   @@index([menuItemId])
@@ -544,18 +559,19 @@ model MenuItemImage {
 // ==========================================
 
 model Warehouse {
-  id        Int    @id @default(autoincrement())
+  id        Int           @id @default(autoincrement())
   companyId Int
   branchId  Int?
   type      WarehouseType @default(BRANCH)
   name      String // Main, Kitchen, Bar
   code      String
 
-  company   Company             @relation(fields: [companyId], references: [id])
-  branch    Branch?             @relation(fields: [branchId], references: [id])
-  stocks    Stock[]
-  movements InventoryMovement[]
+  company          Company             @relation(fields: [companyId], references: [id])
+  branch           Branch?             @relation(fields: [branchId], references: [id])
+  stocks           Stock[]
+  movements        InventoryMovement[]
   pedidosYaConfigs PedidosYaConfig[]
+  ProductionOrder  ProductionOrder[]
 
   @@unique([companyId, code])
   @@unique([companyId, branchId, name])
@@ -646,27 +662,27 @@ model Supplier {
 }
 
 model PurchaseOrder {
-  id         Int                 @id @default(autoincrement())
-  companyId  Int
-  branchId   Int
-  supplierId Int
-  date       DateTime            @default(now())
-  status     PurchaseOrderStatus @default(DRAFT)
-  total      Decimal             @default(0) @db.Decimal(10, 2)
-  notes      String?
-  invoiceNumber String?
-  invoicePdf   String?
+  id             Int                 @id @default(autoincrement())
+  companyId      Int
+  branchId       Int
+  supplierId     Int
+  date           DateTime            @default(now())
+  status         PurchaseOrderStatus @default(DRAFT)
+  total          Decimal             @default(0) @db.Decimal(10, 2)
+  notes          String?
+  invoiceNumber  String?
+  invoicePdf     String?
   invoiceDate    DateTime?
-  invoiceType    InvoiceType     @default(CASH)
+  invoiceType    InvoiceType         @default(CASH)
   paymentDueDate DateTime?
   bank           String?
   transferNumber String?
-  paidAmount     Decimal         @default(0) @db.Decimal(10, 2)
-  paymentStatus  PaymentStatus   @default(PENDING)
+  paidAmount     Decimal             @default(0) @db.Decimal(10, 2)
+  paymentStatus  PaymentStatus       @default(PENDING)
 
-  company  Company             @relation(fields: [companyId], references: [id])
-  branch   Branch              @relation(fields: [branchId], references: [id])
-  supplier Supplier            @relation(fields: [supplierId], references: [id])
+  company  Company                @relation(fields: [companyId], references: [id])
+  branch   Branch                 @relation(fields: [branchId], references: [id])
+  supplier Supplier               @relation(fields: [supplierId], references: [id])
   items    PurchaseOrderItem[]
   payments PurchaseOrderPayment[]
 
@@ -757,31 +773,31 @@ model ProductCostHistory {
 // ==========================================
 
 model Order {
-  id             Int         @id @default(autoincrement())
-  companyId      Int
-  branchId       Int
-  tableId        Int?
-  userId         Int // Waiter/Cashier who created the order
-  cashRegisterId Int? // Linked when paid/processed
-  cashRegister   CashRegister? @relation("OrderCashRegister", fields: [cashRegisterId], references: [id])
-  customerName   String?
-  orderType      OrderType   @default(DINE_IN)
-  salesChannel   SalesChannel @default(RESTAURANT)
-  status         OrderStatus @default(OPEN)
-  total          Decimal     @default(0) @db.Decimal(10, 2)
-  discount       Decimal     @default(0) @db.Decimal(10, 2)
-  discountCode   String? // Applied promotion/discount code
-  tipAmount      Decimal     @default(0) @db.Decimal(10, 2)
-  tax            Decimal     @default(0) @db.Decimal(10, 2)
-  channelCommission Decimal  @default(0) @db.Decimal(10, 2) // e.g. 24% PedidosYa commission
-  channelMarkup     Decimal  @default(0) @db.Decimal(10, 2) // price markup applied for channel
-  invoiceNumber  String?     @unique
-  cancelledById  Int? // User who cancelled the order
-  cancelReason   String? // Reason for cancellation
-  cancelledAt    DateTime? // Timestamp of cancellation
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  closedAt       DateTime?
+  id                Int           @id @default(autoincrement())
+  companyId         Int
+  branchId          Int
+  tableId           Int?
+  userId            Int // Waiter/Cashier who created the order
+  cashRegisterId    Int? // Linked when paid/processed
+  cashRegister      CashRegister? @relation("OrderCashRegister", fields: [cashRegisterId], references: [id])
+  customerName      String?
+  orderType         OrderType     @default(DINE_IN)
+  salesChannel      SalesChannel  @default(RESTAURANT)
+  status            OrderStatus   @default(OPEN)
+  total             Decimal       @default(0) @db.Decimal(10, 2)
+  discount          Decimal       @default(0) @db.Decimal(10, 2)
+  discountCode      String? // Applied promotion/discount code
+  tipAmount         Decimal       @default(0) @db.Decimal(10, 2)
+  tax               Decimal       @default(0) @db.Decimal(10, 2)
+  channelCommission Decimal       @default(0) @db.Decimal(10, 2) // e.g. 24% PedidosYa commission
+  channelMarkup     Decimal       @default(0) @db.Decimal(10, 2) // price markup applied for channel
+  invoiceNumber     String?       @unique
+  cancelledById     Int? // User who cancelled the order
+  cancelReason      String? // Reason for cancellation
+  cancelledAt       DateTime? // Timestamp of cancellation
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  closedAt          DateTime?
 
   company     Company @relation(fields: [companyId], references: [id])
   branch      Branch  @relation(fields: [branchId], references: [id])
@@ -789,8 +805,8 @@ model Order {
   user        User    @relation("OrderCreator", fields: [userId], references: [id])
   cancelledBy User?   @relation("OrderCancelledBy", fields: [cancelledById], references: [id])
 
-  items    OrderItem[]
-  payments Payment[]
+  items          OrderItem[]
+  payments       Payment[]
   pedidosYaSyncs PedidosYaOrderSync[]
 
   @@index([companyId, branchId])
@@ -855,8 +871,8 @@ model PaymentMethod {
   name      String // Cash, Card, Transfer
   active    Boolean @default(true)
 
-  company  Company?  @relation(fields: [companyId], references: [id])
-  payments Payment[]
+  company          Company?          @relation(fields: [companyId], references: [id])
+  payments         Payment[]
   cateringPayments CateringPayment[]
 }
 
@@ -1058,15 +1074,15 @@ enum PromotionType {
 // ==========================================
 
 model SalesChannelConfig {
-  id               Int          @id @default(autoincrement())
-  companyId        Int
-  channel          SalesChannel
-  name             String       // Display name: "PedidosYa", "Delivery Propio"
-  priceMarkupPct   Decimal      @default(0) @db.Decimal(5, 2) // e.g. 18.00 for 18%
-  commissionPct    Decimal      @default(0) @db.Decimal(5, 2) // e.g. 24.00 for 24%
-  active           Boolean      @default(true)
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  id             Int          @id @default(autoincrement())
+  companyId      Int
+  channel        SalesChannel
+  name           String // Display name: "PedidosYa", "Delivery Propio"
+  priceMarkupPct Decimal      @default(0) @db.Decimal(5, 2) // e.g. 18.00 for 18%
+  commissionPct  Decimal      @default(0) @db.Decimal(5, 2) // e.g. 24.00 for 24%
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   company Company @relation(fields: [companyId], references: [id])
 
@@ -1090,33 +1106,34 @@ model Setting {
 
   @@unique([companyId, name])
 }
+
 // ==========================================
 // 12. CATERING MODULE
 // ==========================================
 
 model CateringEvent {
-  id           Int                 @id @default(autoincrement())
-  companyId    Int
-  branchId     Int
-  customerId   Int?
-  title        String
-  date         DateTime
-  peopleCount  Int
-  status       CateringStatus     @default(QUOTED)
-  totalAmount  Decimal            @default(0) @db.Decimal(10, 2)
-  balance      Decimal            @default(0) @db.Decimal(10, 2)
-  location     String?
-  notes        String?            @db.Text
-  clauses      Json?
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  id          Int            @id @default(autoincrement())
+  companyId   Int
+  branchId    Int
+  customerId  Int?
+  title       String
+  date        DateTime
+  peopleCount Int
+  status      CateringStatus @default(QUOTED)
+  totalAmount Decimal        @default(0) @db.Decimal(10, 2)
+  balance     Decimal        @default(0) @db.Decimal(10, 2)
+  location    String?
+  notes       String?        @db.Text
+  clauses     Json?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
-  company      Company            @relation(fields: [companyId], references: [id])
-  branch       Branch             @relation(fields: [branchId], references: [id])
-  customer     Customer?          @relation(fields: [customerId], references: [id])
-  services     CateringServiceItem[]
-  menuItems    CateringMenuItem[]
-  payments     CateringPayment[]
+  company   Company               @relation(fields: [companyId], references: [id])
+  branch    Branch                @relation(fields: [branchId], references: [id])
+  customer  Customer?             @relation(fields: [customerId], references: [id])
+  services  CateringServiceItem[]
+  menuItems CateringMenuItem[]
+  payments  CateringPayment[]
 
   @@index([companyId])
   @@index([branchId])
@@ -1143,51 +1160,51 @@ model CateringService {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  company      Company  @relation(fields: [companyId], references: [id])
-  items        CateringServiceItem[]
+  company Company               @relation(fields: [companyId], references: [id])
+  items   CateringServiceItem[]
 }
 
 model CateringServiceItem {
-  id                Int             @id @default(autoincrement())
+  id                Int     @id @default(autoincrement())
   cateringEventId   Int
   cateringServiceId Int
-  quantity          Decimal         @db.Decimal(10, 2)
-  unitPrice         Decimal         @db.Decimal(10, 2)
-  subtotal          Decimal         @db.Decimal(10, 2)
+  quantity          Decimal @db.Decimal(10, 2)
+  unitPrice         Decimal @db.Decimal(10, 2)
+  subtotal          Decimal @db.Decimal(10, 2)
   notes             String?
 
-  event             CateringEvent   @relation(fields: [cateringEventId], references: [id], onDelete: Cascade)
-  service           CateringService @relation(fields: [cateringServiceId], references: [id])
+  event   CateringEvent   @relation(fields: [cateringEventId], references: [id], onDelete: Cascade)
+  service CateringService @relation(fields: [cateringServiceId], references: [id])
 
   @@index([cateringEventId])
 }
 
 model CateringMenuItem {
-  id              Int           @id @default(autoincrement())
+  id              Int     @id @default(autoincrement())
   cateringEventId Int
   menuItemId      Int
   quantity        Int
-  unitPrice       Decimal       @db.Decimal(10, 2)
-  subtotal        Decimal       @db.Decimal(10, 2)
+  unitPrice       Decimal @db.Decimal(10, 2)
+  subtotal        Decimal @db.Decimal(10, 2)
 
-  event           CateringEvent @relation(fields: [cateringEventId], references: [id], onDelete: Cascade)
-  menuItem        MenuItem      @relation(fields: [menuItemId], references: [id])
+  event    CateringEvent @relation(fields: [cateringEventId], references: [id], onDelete: Cascade)
+  menuItem MenuItem      @relation(fields: [menuItemId], references: [id])
 
   @@index([cateringEventId])
   @@index([menuItemId])
 }
 
 model CateringPayment {
-  id              Int           @id @default(autoincrement())
+  id              Int                 @id @default(autoincrement())
   cateringEventId Int
   paymentMethodId Int
-  amount          Decimal       @db.Decimal(10, 2)
+  amount          Decimal             @db.Decimal(10, 2)
   reference       String?
   type            CateringPaymentType @default(ADVANCE)
-  date            DateTime      @default(now())
+  date            DateTime            @default(now())
 
-  event           CateringEvent @relation(fields: [cateringEventId], references: [id], onDelete: Restrict)
-  paymentMethod   PaymentMethod @relation(fields: [paymentMethodId], references: [id])
+  event         CateringEvent @relation(fields: [cateringEventId], references: [id], onDelete: Restrict)
+  paymentMethod PaymentMethod @relation(fields: [paymentMethodId], references: [id])
 
   @@index([cateringEventId])
 }
@@ -1206,11 +1223,11 @@ model AuditLog {
   // Nullable + optional relation so the FK can be added without backfilling
   // pre-existing rows. DEFERRED: making companyId required again needs a backfill.
   companyId  Int?
-  entityType String   // Order, Payment, InventoryMovement, etc.
+  entityType String // Order, Payment, InventoryMovement, etc.
   entityId   Int
-  action     String   // CANCEL, CREATE, UPDATE, DELETE, TRANSFER, etc.
+  action     String // CANCEL, CREATE, UPDATE, DELETE, TRANSFER, etc.
   userId     Int
-  details    Json?    // Additional context (reason, old/new values, etc.)
+  details    Json? // Additional context (reason, old/new values, etc.)
   createdAt  DateTime @default(now())
 
   user    User     @relation(fields: [userId], references: [id])
@@ -1249,27 +1266,27 @@ model ApiKey {
 // ==========================================
 
 model PedidosYaConfig {
-  id                Int      @id @default(autoincrement())
-  companyId         Int
-  branchId          Int?
-  clientId          String?
-  clientSecret      String?
-  restaurantId      String?
-  webhookSecret     String?
-  environment       String   @default("sandbox") // sandbox | production
-  autoAcceptOrders  Boolean  @default(false)
-  autoSyncStatus    Boolean  @default(true)
+  id                 Int       @id @default(autoincrement())
+  companyId          Int
+  branchId           Int?
+  clientId           String?
+  clientSecret       String?
+  restaurantId       String?
+  webhookSecret      String?
+  environment        String    @default("sandbox") // sandbox | production
+  autoAcceptOrders   Boolean   @default(false)
+  autoSyncStatus     Boolean   @default(true)
   defaultWarehouseId Int?
-  active            Boolean  @default(false)
-  accessToken       String?  @db.Text
-  refreshToken      String?  @db.Text
-  tokenExpiresAt    DateTime?
-  lastSyncAt        DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  active             Boolean   @default(false)
+  accessToken        String?   @db.Text
+  refreshToken       String?   @db.Text
+  tokenExpiresAt     DateTime?
+  lastSyncAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  company   Company   @relation(fields: [companyId], references: [id])
-  branch    Branch?   @relation(fields: [branchId], references: [id])
+  company   Company    @relation(fields: [companyId], references: [id])
+  branch    Branch?    @relation(fields: [branchId], references: [id])
   warehouse Warehouse? @relation(fields: [defaultWarehouseId], references: [id])
 
   @@unique([companyId, branchId])
@@ -1277,15 +1294,15 @@ model PedidosYaConfig {
 }
 
 model PedidosYaProductMapping {
-  id             Int      @id @default(autoincrement())
-  companyId      Int
-  externalId     String
-  externalName   String
-  menuItemId     Int?
-  isActive       Boolean  @default(true)
-  lastSyncAt     DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id           Int       @id @default(autoincrement())
+  companyId    Int
+  externalId   String
+  externalName String
+  menuItemId   Int?
+  isActive     Boolean   @default(true)
+  lastSyncAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   company  Company   @relation(fields: [companyId], references: [id])
   menuItem MenuItem? @relation(fields: [menuItemId], references: [id])
@@ -1296,15 +1313,15 @@ model PedidosYaProductMapping {
 }
 
 model PedidosYaWebhookLog {
-  id            Int      @id @default(autoincrement())
-  companyId     Int
-  eventType     String
-  externalId    String?
-  payload       Json
-  status        String   @default("RECEIVED") // RECEIVED | PROCESSED | FAILED | IGNORED
-  errorMessage  String?  @db.Text
-  processedAt   DateTime?
-  createdAt     DateTime @default(now())
+  id           Int       @id @default(autoincrement())
+  companyId    Int
+  eventType    String
+  externalId   String?
+  payload      Json
+  status       String    @default("RECEIVED") // RECEIVED | PROCESSED | FAILED | IGNORED
+  errorMessage String?   @db.Text
+  processedAt  DateTime?
+  createdAt    DateTime  @default(now())
 
   company Company @relation(fields: [companyId], references: [id])
 
@@ -1339,12 +1356,142 @@ model Customer {
   email     String?
   phone     String?
   address   String?  @db.Text
-  taxId     String?  // RUC/NIT
+  taxId     String? // RUC/NIT
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company   Company  @relation(fields: [companyId], references: [id])
+  company        Company         @relation(fields: [companyId], references: [id])
   cateringEvents CateringEvent[]
 
   @@index([companyId])
+}
+
+// ==========================================
+// 16. PRODUCCIÓN (RECETAS BOM Y ÓRDENES)
+// ==========================================
+//
+// Distinto del modelo `Recipe` (MenuItem -> Product, consumo en venta).
+// Aquí una receta de producción (ProductionRecipe) está asociada a un PRODUCTO
+// de salida (intermedio o terminado) y se compone de varios componentes que son
+// otros productos del inventario (insumos comprados, intermedios o empaques),
+// permitiendo recetas multinivel.
+
+enum ProductionRecipeStatus {
+  DRAFT // Borrador (editable, no usable en producción)
+  ACTIVE // Activa (versión vigente para producir)
+  INACTIVE // Inactiva / archivada (versión anterior)
+}
+
+model ProductionRecipe {
+  id            Int                    @id @default(autoincrement())
+  companyId     Int
+  productId     Int // Producto de salida (INTERMEDIATE o PRODUCT_FOR_SALE)
+  name          String
+  version       Int                    @default(1)
+  status        ProductionRecipeStatus @default(DRAFT)
+  yieldQuantity Decimal                @db.Decimal(18, 6) // Rendimiento: cantidad producida por lote (en yieldUnit)
+  yieldUnitId   Int?
+  notes         String?                @db.Text
+  createdById   Int?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  company          Company                     @relation(fields: [companyId], references: [id])
+  product          Product                     @relation("ProductProductionRecipes", fields: [productId], references: [id])
+  yieldUnit        UnitOfMeasure?              @relation("ProductionRecipeYieldUnit", fields: [yieldUnitId], references: [id])
+  createdBy        User?                       @relation("ProductionRecipeCreatedBy", fields: [createdById], references: [id])
+  components       ProductionRecipeComponent[]
+  productionOrders ProductionOrder[]
+
+  @@unique([companyId, productId, version])
+  @@index([companyId])
+  @@index([productId])
+  @@index([companyId, status])
+}
+
+model ProductionRecipeComponent {
+  id                 Int     @id @default(autoincrement())
+  recipeId           Int
+  componentProductId Int
+  quantity           Decimal @db.Decimal(18, 6) // Cantidad por lote (rendimiento) en `unit`
+  unitId             Int?
+  unit               String?
+  notes              String?
+
+  recipe           ProductionRecipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  componentProduct Product          @relation("ProductRecipeComponents", fields: [componentProductId], references: [id])
+  unitOfMeasure    UnitOfMeasure?   @relation("ProductionRecipeComponentUnit", fields: [unitId], references: [id])
+
+  @@unique([recipeId, componentProductId])
+  @@index([recipeId])
+  @@index([componentProductId])
+}
+
+enum ProductionOrderStatus {
+  DRAFT // Borrador
+  PENDING // Pendiente (planificada, insumos reservados conceptualmente)
+  IN_PROGRESS // En proceso
+  FINISHED // Finalizada (insumos descargados, producto ingresado)
+  CANCELLED // Anulada
+}
+
+model ProductionOrder {
+  id                Int                   @id @default(autoincrement())
+  companyId         Int
+  branchId          Int
+  code              String // Número/código de orden (PRD-000001)
+  productId         Int // Producto a producir
+  recipeId          Int? // Receta utilizada (snapshot lógico)
+  warehouseId       Int // Almacén donde se consumen insumos y entra el producido
+  status            ProductionOrderStatus @default(DRAFT)
+  plannedQuantity   Decimal               @db.Decimal(18, 6) // Cantidad planificada
+  producedQuantity  Decimal               @default(0) @db.Decimal(18, 6) // Cantidad real producida
+  estimatedCost     Decimal               @default(0) @db.Decimal(18, 6) // Costo estimado total
+  estimatedUnitCost Decimal               @default(0) @db.Decimal(18, 6)
+  realCost          Decimal               @default(0) @db.Decimal(18, 6) // Costo real total (insumos consumidos)
+  realUnitCost      Decimal               @default(0) @db.Decimal(18, 6) // Costo unitario real del producido
+  userId            Int // Usuario responsable
+  notes             String?               @db.Text
+  date              DateTime              @default(now())
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  cancelledAt       DateTime?
+  cancelledById     Int?
+  cancelReason      String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  company     Company               @relation(fields: [companyId], references: [id])
+  branch      Branch                @relation(fields: [branchId], references: [id])
+  product     Product               @relation("ProductProductionOrders", fields: [productId], references: [id])
+  recipe      ProductionRecipe?     @relation(fields: [recipeId], references: [id])
+  warehouse   Warehouse             @relation(fields: [warehouseId], references: [id])
+  user        User                  @relation("ProductionOrderUser", fields: [userId], references: [id])
+  cancelledBy User?                 @relation("ProductionOrderCancelledBy", fields: [cancelledById], references: [id])
+  items       ProductionOrderItem[]
+
+  @@unique([companyId, code])
+  @@index([companyId, branchId])
+  @@index([companyId, status])
+  @@index([productId])
+  @@index([recipeId])
+}
+
+model ProductionOrderItem {
+  id                 Int     @id @default(autoincrement())
+  productionOrderId  Int
+  componentProductId Int
+  requiredQuantity   Decimal @db.Decimal(18, 6) // Insumo requerido (en unidad base del componente)
+  consumedQuantity   Decimal @default(0) @db.Decimal(18, 6) // Insumo consumido real (en unidad base)
+  unitId             Int?
+  unit               String?
+  unitCost           Decimal @default(0) @db.Decimal(18, 6) // Costo unitario al consumir (promedio ponderado)
+  totalCost          Decimal @default(0) @db.Decimal(18, 6)
+
+  productionOrder  ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  componentProduct Product         @relation("ProductProductionOrderItems", fields: [componentProductId], references: [id])
+  unitOfMeasure    UnitOfMeasure?  @relation("ProductionOrderItemUnit", fields: [unitId], references: [id])
+
+  @@index([productionOrderId])
+  @@index([componentProductId])
 }

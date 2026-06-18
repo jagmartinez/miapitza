@@ -88,6 +88,14 @@
     background: var(--color-warning);
 }
 
+.inventory-status-btn.intermediate.active {
+    background: #f59e0b;
+}
+
+.inventory-status-btn.packaging.active {
+    background: #8b5cf6;
+}
+
 /* Filter Right Section - Search + Stats (Reservations Style) */
 .filter-right-section {
     display: flex;
@@ -189,6 +197,16 @@
     /* cyan-500 */
 }
 
+.inventory-card-new.intermediate {
+    border-color: #f59e0b;
+    /* amber-500 */
+}
+
+.inventory-card-new.packaging {
+    border-color: #8b5cf6;
+    /* violet-500 */
+}
+
 .inventory-card-new.low-stock {
     border-color: var(--color-warning);
 }
@@ -221,6 +239,16 @@
 .type-badge-new.both {
     background: #0891b2;
     /* Cyan 600 */
+}
+
+.type-badge-new.intermediate {
+    background: #f59e0b;
+    /* Amber 500 */
+}
+
+.type-badge-new.packaging {
+    background: #8b5cf6;
+    /* Violet 500 */
 }
 
 /* Dark mode overrides */
@@ -1364,61 +1392,6 @@
 .table-action-btn:hover {
     color: var(--color-primary);
     border-color: var(--color-primary);
-}
-
-.inventory-pagination {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 10px 14px;
-    border-top: 1px solid var(--color-border);
-    background: var(--color-background);
-    border-bottom-left-radius: var(--radius-lg);
-    border-bottom-right-radius: var(--radius-lg);
-}
-
-.inventory-pagination .pagination-info {
-    font-size: var(--font-size-sm);
-    color: var(--color-text-secondary);
-}
-
-.inventory-pagination .pagination-controls {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.inventory-pagination .pagination-page {
-    font-size: var(--font-size-sm);
-    font-weight: 600;
-    color: var(--color-text);
-    min-width: 48px;
-    text-align: center;
-}
-
-.inventory-pagination .pagination-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    background: var(--color-surface);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.inventory-pagination .pagination-btn:hover:not(:disabled) {
-    color: var(--color-primary);
-    border-color: var(--color-primary);
-}
-
-.inventory-pagination .pagination-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
 }
 
 .table-action-btn.danger:hover {

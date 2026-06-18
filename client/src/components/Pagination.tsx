@@ -1,4 +1,4 @@
-import Button from './Button';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 interface PaginationProps {
     page: number;
@@ -7,6 +7,9 @@ interface PaginationProps {
     pageSize?: number;
     onPageChange: (page: number) => void;
     className?: string;
+    /** When true, footer stays visible even with a single page (e.g. empty lists). */
+    alwaysShow?: boolean;
+    emptyLabel?: string;
 }
 
 export default function Pagination({
@@ -16,30 +19,69 @@ export default function Pagination({
     pageSize,
     onPageChange,
     className = '',
+    alwaysShow = false,
+    emptyLabel,
 }: PaginationProps) {
-    if (totalPages <= 1) return null;
+    if (!alwaysShow && totalPages <= 1) return null;
 
-    const start = totalItems !== undefined && pageSize !== undefined
-        ? (page - 1) * pageSize + 1
-        : undefined;
-    const end = totalItems !== undefined && pageSize !== undefined
-        ? Math.min(page * pageSize, totalItems)
-        : undefined;
+    const safeTotalPages = Math.max(1, totalPages);
+    const safePage = Math.min(Math.max(1, page), safeTotalPages);
+    const hasRange = totalItems !== undefined && pageSize !== undefined;
+    const start = hasRange && totalItems! > 0 ? (safePage - 1) * pageSize! + 1 : undefined;
+    const end = hasRange && totalItems! > 0 ? Math.min(safePage * pageSize!, totalItems!) : undefined;
+
+    const infoText = emptyLabel && (!totalItems || totalItems === 0)
+        ? emptyLabel
+        : start !== undefined && end !== undefined && totalItems !== undefined
+            ? `${start}–${end} de ${totalItems}`
+            : `Página ${safePage} de ${safeTotalPages}`;
 
     return (
-        <nav className={`pagination-bar ${className}`.trim()} aria-label="Paginación">
-            <Button variant="ghost" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
-                Anterior
-            </Button>
-            <span className="pagination-info">
-                Página {page} de {totalPages}
-                {start !== undefined && end !== undefined && totalItems !== undefined && (
-                    <> · {start}–{end} de {totalItems}</>
-                )}
-            </span>
-            <Button variant="ghost" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
-                Siguiente
-            </Button>
+        <nav className={`table-pagination ${className}`.trim()} aria-label="Paginación">
+            <span className="pagination-info">{infoText}</span>
+            <div className="pagination-controls">
+                <button
+                    type="button"
+                    className="pagination-btn"
+                    disabled={safePage <= 1}
+                    onClick={() => onPageChange(1)}
+                    title="Primera página"
+                    aria-label="Primera página"
+                >
+                    <ChevronsLeft size={16} />
+                </button>
+                <button
+                    type="button"
+                    className="pagination-btn"
+                    disabled={safePage <= 1}
+                    onClick={() => onPageChange(safePage - 1)}
+                    title="Anterior"
+                    aria-label="Página anterior"
+                >
+                    <ChevronLeft size={16} />
+                </button>
+                <span className="pagination-page">{safePage} / {safeTotalPages}</span>
+                <button
+                    type="button"
+                    className="pagination-btn"
+                    disabled={safePage >= safeTotalPages}
+                    onClick={() => onPageChange(safePage + 1)}
+                    title="Siguiente"
+                    aria-label="Página siguiente"
+                >
+                    <ChevronRight size={16} />
+                </button>
+                <button
+                    type="button"
+                    className="pagination-btn"
+                    disabled={safePage >= safeTotalPages}
+                    onClick={() => onPageChange(safeTotalPages)}
+                    title="Última página"
+                    aria-label="Última página"
+                >
+                    <ChevronsRight size={16} />
+                </button>
+            </div>
         </nav>
     );
 }

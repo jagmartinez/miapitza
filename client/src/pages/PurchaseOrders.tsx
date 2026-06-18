@@ -1,23 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { purchaseOrdersAPI } from '../services/api';
+import { purchaseOrdersAPI, autoPurchaseOrdersAPI, branchesAPI, suppliersAPI } from '../services/api';
 import api from '../services/api';
 import Button from '../components/Button';
+import Pagination from '../components/Pagination';
 import Sidebar from '../components/Sidebar';
 import Select from '../components/Select';
 import Input from '../components/Input';
 import PurchaseOrderForm from './PurchaseOrderForm';
 import PurchaseOrderImport from '../components/PurchaseOrderImport';
-import Modal from '../components/Modal';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
-import { Plus, Eye, Zap, X, ShoppingCart, FileDown, FileText, CreditCard, DollarSign, Info, Save, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Eye, Zap, X, ShoppingCart, FileDown, FileText, CreditCard, DollarSign, Info, Save, AlertTriangle } from 'lucide-react';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import { BANK_OPTIONS, type StrOption } from '../constants/purchaseOrderOptions';
 import type { SingleValue } from 'react-select';
-import type { AutoPurchaseSuggestion, PurchaseOrder } from '../types';
+import type { AutoPurchaseSuggestion, Branch, PurchaseOrder, PurchaseOrderPayment, Supplier } from '../types';
 import './Inventory.css';
 import './PurchaseOrders.css';
 
@@ -44,7 +44,7 @@ function errMsg(error: unknown, fallback: string): string {
 export default function PurchaseOrders() {
     const { user } = useAuth();
     const { confirm } = useConfirmDialog();
-    const { error: showError, warning: showWarning } = useAppToast();
+    const { error: showError, warning: showWarning, success: showSuccess } = useAppToast();
     const userRoleNames = getUserRoleNames(user);
     const canManagePurchaseOrders = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'BODEGA'].includes(role));
     const canDeletePurchaseOrders = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
@@ -53,7 +53,7 @@ export default function PurchaseOrders() {
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
-    const [showSuggestionsModal, setShowSuggestionsModal] = useState(false);
+    const [showSuggestionsSidebar, setShowSuggestionsSidebar] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editingOrderId, setEditingOrderId] = useState<number | undefined>(undefined);
     const [suggestions, setSuggestions] = useState<PoSuggestionsData | null>(null);
@@ -62,6 +62,14 @@ export default function PurchaseOrders() {
     const [settings, setSettings] = useState<CurrencySettings>({});
     const [paymentModalOrder, setPaymentModalOrder] = useState<PurchaseOrder | null>(null);
     const [paymentForm, setPaymentForm] = useState({ amount: '', date: new Date().toISOString().split('T')[0], bank: '', referenceNumber: '', observations: '' });
+    const [paymentHistory, setPaymentHistory] = useState<PurchaseOrderPayment[]>([]);
+    const [loadingPaymentHistory, setLoadingPaymentHistory] = useState(false);
+    const [branches, setBranches] = useState<Branch[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [selectedSuggestionKeys, setSelectedSuggestionKeys] = useState<Record<string, boolean>>({});
+    const [autoPurchaseForm, setAutoPurchaseForm] = useState({ branchId: '', supplierId: '' });
+    const [creatingAutoPurchaseOrder, setCreatingAutoPurchaseOrder] = useState(false);
+    const [suggestionSearch, setSuggestionSearch] = useState('');
     const [savingPayment, setSavingPayment] = useState(false);
     // Pagination and Filters state
     const [currentPage, setCurrentPage] = useState(1);
@@ -108,13 +116,91 @@ export default function PurchaseOrders() {
         }
         setLoadingSuggestions(true);
         try {
-            const response = await api.get('/advanced/auto-po/suggestions');
-            setSuggestions(response.data.data);
-            setShowSuggestionsModal(true);
+            const [suggestionsRes, branchesRes, suppliersRes] = await Promise.all([
+                api.get('/advanced/auto-po/suggestions'),
+                branchesAPI.getAll(),
+                suppliersAPI.getAll(),
+            ]);
+            setSuggestions(suggestionsRes.data.data);
+            setBranches(branchesRes.data.data || []);
+            setSuppliers(suppliersRes.data.data || []);
+            setSelectedSuggestionKeys({});
+            setSuggestionSearch('');
+            setShowSuggestionsSidebar(true);
         } catch (error: unknown) {
             showError('Error al cargar sugerencias: ' + errMsg(error, 'Error'));
         } finally {
             setLoadingSuggestions(false);
+        }
+    };
+
+    const getSuggestionKey = (suggestion: PoSuggestionRow) => `${suggestion.productId}-${suggestion.warehouseId}`;
+
+    const suggestionRows = useMemo(() => suggestions?.suggestions ?? [], [suggestions]);
+
+    const selectedSuggestions = useMemo(
+        () => suggestionRows.filter((suggestion) => selectedSuggestionKeys[getSuggestionKey(suggestion)]),
+        [suggestionRows, selectedSuggestionKeys]
+    );
+
+    const filteredSuggestionRows = useMemo(() => {
+        const query = suggestionSearch.trim().toLowerCase();
+        if (!query) return suggestionRows;
+        return suggestionRows.filter((item) =>
+            item.productName?.toLowerCase().includes(query) ||
+            item.warehouseName?.toLowerCase().includes(query)
+        );
+    }, [suggestionRows, suggestionSearch]);
+
+    const handleToggleSuggestion = (suggestion: PoSuggestionRow) => {
+        const key = getSuggestionKey(suggestion);
+        setSelectedSuggestionKeys((prev) => ({ ...prev, [key]: !prev[key] }));
+    };
+
+    const handleSelectUrgentSuggestions = () => {
+        setSelectedSuggestionKeys((prev) => {
+            const next = { ...prev };
+            suggestionRows
+                .filter((suggestion) => suggestion.priority === 'URGENT')
+                .forEach((suggestion) => { next[getSuggestionKey(suggestion)] = true; });
+            return next;
+        });
+    };
+
+    const handleCreateAutoPurchaseOrder = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!canManagePurchaseOrders) return;
+        if (selectedSuggestions.length === 0) {
+            showWarning('Selecciona al menos una sugerencia para crear la orden.');
+            return;
+        }
+        if (!autoPurchaseForm.branchId || !autoPurchaseForm.supplierId) {
+            showWarning('Selecciona sucursal y proveedor para generar el borrador.');
+            return;
+        }
+        try {
+            setCreatingAutoPurchaseOrder(true);
+            const response = await autoPurchaseOrdersAPI.createFromSuggestions({
+                branchId: Number(autoPurchaseForm.branchId),
+                supplierId: Number(autoPurchaseForm.supplierId),
+                items: selectedSuggestions.map((suggestion) => ({
+                    productId: suggestion.productId,
+                    quantity: Number(suggestion.suggestedQuantity),
+                    cost: suggestion.suggestedQuantity > 0
+                        ? Number(((Number(suggestion.estimatedCost) || 0) / suggestion.suggestedQuantity).toFixed(2))
+                        : 0,
+                })),
+            });
+            showSuccess('Borrador de orden de compra creado correctamente.');
+            setShowSuggestionsSidebar(false);
+            setSelectedSuggestionKeys({});
+            setAutoPurchaseForm({ branchId: '', supplierId: '' });
+            await loadOrders();
+            navigate(`/purchase-orders/${response.data.data.id}`);
+        } catch (error: unknown) {
+            showError(errMsg(error, 'No se pudo crear el borrador de compra.'));
+        } finally {
+            setCreatingAutoPurchaseOrder(false);
         }
     };
 
@@ -214,10 +300,25 @@ export default function PurchaseOrders() {
         }
     };
 
-    const handleOpenPayment = (order: PurchaseOrder) => {
+    const handleOpenPayment = async (order: PurchaseOrder) => {
         setPaymentModalOrder(order);
         const balance = Number(order.total) - Number(order.paidAmount || 0);
-        setPaymentForm({ amount: balance.toFixed(2), date: new Date().toISOString().split('T')[0], bank: '', referenceNumber: '', observations: '' });
+        setPaymentForm({
+            amount: balance > 0 ? balance.toFixed(2) : '',
+            date: new Date().toISOString().split('T')[0],
+            bank: '',
+            referenceNumber: '',
+            observations: '',
+        });
+        setLoadingPaymentHistory(true);
+        try {
+            const res = await purchaseOrdersAPI.getPayments(order.id);
+            setPaymentHistory(Array.isArray(res.data.data) ? res.data.data : []);
+        } catch {
+            setPaymentHistory(order.payments || []);
+        } finally {
+            setLoadingPaymentHistory(false);
+        }
     };
 
     const handleSubmitPayment = async () => {
@@ -233,7 +334,22 @@ export default function PurchaseOrders() {
                 referenceNumber: paymentForm.referenceNumber || undefined,
                 observations: paymentForm.observations || undefined
             });
-            setPaymentModalOrder(null);
+            showSuccess('Pago registrado correctamente.');
+            const [paymentsRes, orderRes] = await Promise.all([
+                purchaseOrdersAPI.getPayments(paymentModalOrder.id),
+                purchaseOrdersAPI.getById(paymentModalOrder.id),
+            ]);
+            const updatedOrder = orderRes.data.data as PurchaseOrder;
+            setPaymentModalOrder(updatedOrder);
+            setPaymentHistory(Array.isArray(paymentsRes.data.data) ? paymentsRes.data.data : []);
+            const balance = Number(updatedOrder.total) - Number(updatedOrder.paidAmount || 0);
+            setPaymentForm((prev) => ({
+                ...prev,
+                amount: balance > 0 ? balance.toFixed(2) : '',
+                bank: '',
+                referenceNumber: '',
+                observations: '',
+            }));
             loadOrders();
         } catch (error: unknown) {
             showError(errMsg(error, 'Error al registrar pago'));
@@ -298,10 +414,15 @@ export default function PurchaseOrders() {
                         <div className="product-name-new">Pagos pendientes</div>
                         <div className="product-details-new">
                             {pendingPaymentOrders.slice(0, 3).map(order => (
-                                <div key={order.id} className="detail-item">
+                                <button
+                                    key={order.id}
+                                    type="button"
+                                    className="detail-item po-pending-payment-link"
+                                    onClick={() => handleOpenPayment(order)}
+                                >
                                     <AlertTriangle size={14} />
                                     <span>#{order.id} {order.supplier?.name}</span>
-                                </div>
+                                </button>
                             ))}
                             {pendingPaymentOrders.length === 0 && (
                                 <div className="detail-item"><span>Sin pagos pendientes</span></div>
@@ -448,12 +569,17 @@ export default function PurchaseOrders() {
                                             {formatCurrency(Number(order.total) || 0, settings)}
                                         </div>
                                     </td>
-                                    <td data-label="Pago">
+                                    <td data-label="Pago" onClick={(e) => e.stopPropagation()}>
                                         {order.invoiceType === 'CREDIT' ? (
                                             <div className="payment-info-cell">
                                                 <span className={`payment-status-badge ${order.paymentStatus?.toLowerCase() || 'pending'}`}>
                                                     {order.paymentStatus === 'PAID' ? 'Pagado' : order.paymentStatus === 'PARTIAL' ? 'Parcial' : 'Pendiente'}
                                                 </span>
+                                                {Number(order.paidAmount || 0) > 0 && order.paymentStatus !== 'PAID' && (
+                                                    <span className="payment-partial-amount">
+                                                        Abonado: {formatCurrency(Number(order.paidAmount || 0), settings)}
+                                                    </span>
+                                                )}
                                                 {order.paymentStatus !== 'PAID' && order.paymentDueDate && (
                                                     <span className={`days-remaining ${(getDaysRemaining(order.paymentDueDate) ?? 0) < 0 ? 'overdue' : (getDaysRemaining(order.paymentDueDate) ?? 0) <= 3 ? 'urgent' : ''}`}>
                                                         {(() => {
@@ -465,13 +591,15 @@ export default function PurchaseOrders() {
                                                         })()}
                                                     </span>
                                                 )}
-                                                {order.paymentStatus !== 'PAID' && canManagePurchaseOrders && (
+                                                {canManagePurchaseOrders && (
                                                     <button
-                                                        className="action-btn-mini payment"
+                                                        type="button"
+                                                        className="po-payment-register-btn"
                                                         onClick={(e) => { e.stopPropagation(); handleOpenPayment(order); }}
-                                                        title="Registrar pago"
+                                                        title={order.paymentStatus === 'PAID' ? 'Ver abonos' : 'Registrar pago / abono'}
                                                     >
                                                         <DollarSign size={14} />
+                                                        {order.paymentStatus === 'PAID' ? 'Abonos' : 'Abonar'}
                                                     </button>
                                                 )}
                                             </div>
@@ -480,8 +608,18 @@ export default function PurchaseOrders() {
                                         )}
                                     </td>
                                     <td data-label="Estado">{getStatusBadge(order.status)}</td>
-                                    <td className="text-right">
+                                    <td className="text-right" onClick={(e) => e.stopPropagation()}>
                                         <div className="table-actions">
+                                            {canManagePurchaseOrders && order.invoiceType === 'CREDIT' && (
+                                                <button
+                                                    type="button"
+                                                    className="table-action-btn"
+                                                    onClick={() => handleOpenPayment(order)}
+                                                    title={order.paymentStatus === 'PAID' ? 'Ver historial de abonos' : 'Registrar pago / abono'}
+                                                >
+                                                    <DollarSign size={16} />
+                                                </button>
+                                            )}
                                             {canManagePurchaseOrders && (
                                                 <button
                                                     type="button"
@@ -537,119 +675,175 @@ export default function PurchaseOrders() {
                             )}
                         </tbody>
                     </table>
-                {totalPages > 1 && (
-                    <div className="inventory-pagination">
-                        <span className="pagination-info">
-                            {((currentPage - 1) * itemsPerPage) + 1}–{Math.min(currentPage * itemsPerPage, filteredOrders.length)} de {filteredOrders.length}
-                        </span>
-                        <div className="pagination-controls">
-                            <button
-                                type="button"
-                                className="pagination-btn"
-                                disabled={currentPage === 1}
-                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                title="Anterior"
-                            >
-                                <ChevronLeft size={16} />
-                            </button>
-                            <span className="pagination-page">{currentPage} / {totalPages}</span>
-                            <button
-                                type="button"
-                                className="pagination-btn"
-                                disabled={currentPage === totalPages}
-                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                title="Siguiente"
-                            >
-                                <ChevronRight size={16} />
-                            </button>
-                        </div>
-                    </div>
-                )}
+                <Pagination
+                    page={currentPage}
+                    totalPages={totalPages}
+                    totalItems={filteredOrders.length}
+                    pageSize={itemsPerPage}
+                    onPageChange={setCurrentPage}
+                />
             </div>
 
-            <Modal
-                isOpen={showSuggestionsModal && !!suggestions}
-                onClose={() => setShowSuggestionsModal(false)}
-                title="Sugerencias de Órdenes de Compra Automáticas"
-                size="lg"
+            <Sidebar
+                isOpen={showSuggestionsSidebar && !!suggestions}
+                onClose={() => setShowSuggestionsSidebar(false)}
+                title="Sugerencias de Órdenes de Compra"
+                width="wide"
             >
                 {suggestions && (
-                    <>
-                        <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
-                            <div className="stat-card">
-                                <div className="stat-icon">📦</div>
-                                <div className="stat-content">
-                                    <div className="stat-label">Productos</div>
-                                    <div className="stat-value">{suggestions.summary.totalProducts}</div>
+                    <div className="premium-modal-content product-modal-content">
+                        <form onSubmit={handleCreateAutoPurchaseOrder} className="modal-form-new">
+                            <div className="modal-tab-content">
+                                <div className="import-summary-grid po-suggestions-summary">
+                                    <div className="import-summary-card">
+                                        <div className="import-summary-value">{suggestions.summary.totalProducts ?? suggestionRows.length}</div>
+                                        <div className="import-summary-label">Productos</div>
+                                    </div>
+                                    <div className="import-summary-card import-summary-error">
+                                        <div className="import-summary-value">{suggestions.summary.urgentProducts}</div>
+                                        <div className="import-summary-label">Urgentes</div>
+                                    </div>
+                                    <div className="import-summary-card import-summary-new">
+                                        <div className="import-summary-value">
+                                            {formatCurrency(Number(suggestions.summary.totalEstimatedCost) || 0, settings)}
+                                        </div>
+                                        <div className="import-summary-label">Costo estimado</div>
+                                    </div>
+                                </div>
+
+                                <div className="modal-section animate-slide-in">
+                                    <div className="modal-section-header">
+                                        <FileText size={18} />
+                                        <h3>Configurar borrador</h3>
+                                    </div>
+                                    <div className="modal-form-row">
+                                        <Select
+                                            variant="modal"
+                                            label="Sucursal"
+                                            options={branches.map((branch) => ({
+                                                value: branch.id.toString(),
+                                                label: branch.name,
+                                            }))}
+                                            value={autoPurchaseForm.branchId
+                                                ? {
+                                                    value: autoPurchaseForm.branchId,
+                                                    label: branches.find((branch) => branch.id.toString() === autoPurchaseForm.branchId)?.name || 'Seleccionar sucursal',
+                                                }
+                                                : null}
+                                            onChange={(option: SingleValue<StrOption>) => setAutoPurchaseForm((prev) => ({ ...prev, branchId: option?.value || '' }))}
+                                            placeholder="Seleccionar sucursal..."
+                                            isSearchable={false}
+                                        />
+                                        <Select
+                                            variant="modal"
+                                            label="Proveedor"
+                                            options={suppliers.map((supplier) => ({
+                                                value: supplier.id.toString(),
+                                                label: supplier.name,
+                                            }))}
+                                            value={autoPurchaseForm.supplierId
+                                                ? {
+                                                    value: autoPurchaseForm.supplierId,
+                                                    label: suppliers.find((supplier) => supplier.id.toString() === autoPurchaseForm.supplierId)?.name || 'Seleccionar proveedor',
+                                                }
+                                                : null}
+                                            onChange={(option: SingleValue<StrOption>) => setAutoPurchaseForm((prev) => ({ ...prev, supplierId: option?.value || '' }))}
+                                            placeholder="Seleccionar proveedor..."
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="modal-section animate-slide-in">
+                                    <div className="modal-section-header">
+                                        <AlertTriangle size={18} />
+                                        <h3>Productos sugeridos</h3>
+                                    </div>
+
+                                    <div className="po-suggestion-toolbar">
+                                        <span className="po-suggestion-count">
+                                            {selectedSuggestions.length} seleccionados de {suggestionRows.length} sugerencias
+                                        </span>
+                                        <div className="po-suggestion-toolbar-actions">
+                                            <input
+                                                type="text"
+                                                className="search-input po-suggestion-search"
+                                                placeholder="Buscar producto o almacén..."
+                                                value={suggestionSearch}
+                                                onChange={(e) => setSuggestionSearch(e.target.value)}
+                                            />
+                                            <Button type="button" variant="ghost" onClick={handleSelectUrgentSuggestions}>
+                                                Seleccionar urgentes
+                                            </Button>
+                                            <Button type="button" variant="ghost" onClick={() => setSelectedSuggestionKeys({})}>
+                                                Limpiar
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    <div className="po-suggestion-list">
+                                        {filteredSuggestionRows.length === 0 ? (
+                                            <div className="po-suggestion-empty">
+                                                No hay sugerencias que coincidan con la búsqueda.
+                                            </div>
+                                        ) : (
+                                            filteredSuggestionRows.map((suggestion) => {
+                                                const key = getSuggestionKey(suggestion);
+                                                const checked = Boolean(selectedSuggestionKeys[key]);
+                                                const isUrgent = suggestion.priority === 'URGENT';
+                                                const displayName = suggestion.productName?.trim() || `Producto #${suggestion.productId}`;
+                                                return (
+                                                    <label
+                                                        key={key}
+                                                        className={`po-suggestion-card${checked ? ' is-selected' : ''}${isUrgent ? ' is-urgent' : ''}`}
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            className="po-suggestion-checkbox"
+                                                            checked={checked}
+                                                            onChange={() => handleToggleSuggestion(suggestion)}
+                                                        />
+                                                        <div className="po-suggestion-body">
+                                                            <div className="po-suggestion-header">
+                                                                <span className="po-suggestion-name">{displayName}</span>
+                                                                <span className={`po-priority-badge${isUrgent ? ' po-priority-badge--urgent' : ' po-priority-badge--normal'}`}>
+                                                                    {isUrgent ? 'Urgente' : 'Normal'}
+                                                                </span>
+                                                            </div>
+                                                            <div className="po-suggestion-tags">
+                                                                <span className="sku-tag">{suggestion.warehouseName || 'Sin bodega'}</span>
+                                                            </div>
+                                                            <div className="po-suggestion-metrics">
+                                                                <span><strong>Actual:</strong> {Number(suggestion.currentStock || 0).toFixed(2)} {suggestion.unit || ''}</span>
+                                                                <span><strong>Mín:</strong> {Number(suggestion.minStock || 0).toFixed(2)} {suggestion.unit || ''}</span>
+                                                                <span><strong>Sugerido:</strong> {Number(suggestion.suggestedQuantity).toFixed(2)} {suggestion.unit || ''}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="po-suggestion-cost">
+                                                            <span className="po-suggestion-cost-value">
+                                                                {formatCurrency(Number(suggestion.estimatedCost) || 0, settings)}
+                                                            </span>
+                                                            <span className="po-suggestion-cost-label">estimado</span>
+                                                        </div>
+                                                    </label>
+                                                );
+                                            })
+                                        )}
+                                    </div>
                                 </div>
                             </div>
-                            <div className="stat-card warning">
-                                <div className="stat-icon">🚨</div>
-                                <div className="stat-content">
-                                    <div className="stat-label">Urgentes</div>
-                                    <div className="stat-value">{suggestions.summary.urgentProducts}</div>
-                                </div>
+
+                            <div className="modal-footer">
+                                <Button type="button" variant="ghost" onClick={() => setShowSuggestionsSidebar(false)}>
+                                    Cerrar
+                                </Button>
+                                <Button type="submit" variant="primary" disabled={creatingAutoPurchaseOrder || selectedSuggestions.length === 0}>
+                                    {creatingAutoPurchaseOrder ? 'Creando...' : 'Crear borrador'}
+                                </Button>
                             </div>
-                            <div className="stat-card">
-                                <div className="stat-icon">💰</div>
-                                <div className="stat-content">
-                                    <div className="stat-label">Costo Estimado</div>
-                                    <div className="stat-value">{formatCurrency(Number(suggestions.summary.totalEstimatedCost) || 0, settings)}</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="table-container">
-                            <table className="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Prioridad</th>
-                                        <th>Producto</th>
-                                        <th>Stock Actual</th>
-                                        <th>Mínimo</th>
-                                        <th>Cantidad Sugerida</th>
-                                        <th>Costo Est.</th>
-                                        <th>Almacén</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {suggestions.suggestions.map((item, idx: number) => (
-                                        <tr key={idx} className={item.priority === 'URGENT' ? 'warning' : ''}>
-                                            <td>
-                                                <span className={`badge ${item.priority === 'URGENT' ? 'error' : 'warning'}`}>
-                                                    {item.priority === 'URGENT' ? '🚨 URGENTE' : '⚠️ Normal'}
-                                                </span>
-                                            </td>
-                                            <td>{item.productName}</td>
-                                            <td>{Number(item.currentStock || 0).toFixed(2)} {item.unit}</td>
-                                            <td>{Number(item.minStock || 0).toFixed(2)} {item.unit}</td>
-                                            <td><strong>{item.suggestedQuantity.toFixed(2)} {item.unit}</strong></td>
-                                            <td>{formatCurrency(Number(item.estimatedCost) || 0, settings)}</td>
-                                            <td>{item.warehouseName}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px' }}>
-                            <p><strong>💡 Nota:</strong> Estas sugerencias se basan en productos con stock bajo. Para crear una orden de compra, usa el botón &quot;Nueva Orden&quot; y selecciona los productos manualmente.</p>
-                        </div>
-
-                        <div className="modal-footer" style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-                            <button type="button" className="btn btn-secondary" onClick={() => setShowSuggestionsModal(false)}>
-                                Cerrar
-                            </button>
-                            <button type="button" className="btn btn-primary" disabled={!canManagePurchaseOrders} onClick={() => {
-                                setShowSuggestionsModal(false);
-                                navigate('/purchase-orders/new');
-                            }}>
-                                Crear Orden Manual
-                            </button>
-                        </div>
-                    </>
+                        </form>
+                    </div>
                 )}
-            </Modal>
+            </Sidebar>
             {/* Purchase Order Form Sidebar */}
             <Sidebar
                 isOpen={isSidebarOpen}
@@ -718,6 +912,35 @@ export default function PurchaseOrders() {
 
                             <div className="modal-section animate-slide-in">
                                 <div className="modal-section-header">
+                                    <DollarSign size={18} />
+                                    <h3>Historial de abonos</h3>
+                                </div>
+                                {loadingPaymentHistory ? (
+                                    <p className="payment-history-empty">Cargando abonos...</p>
+                                ) : paymentHistory.length === 0 ? (
+                                    <p className="payment-history-empty">Sin abonos registrados para esta orden.</p>
+                                ) : (
+                                    <div className="payment-history-list">
+                                        {paymentHistory.map((payment) => (
+                                            <div key={payment.id} className="payment-history-item">
+                                                <div className="payment-history-main">
+                                                    <strong>{formatCurrency(Number(payment.amount), settings)}</strong>
+                                                    <span>{new Date(payment.date).toLocaleDateString('es-ES')}</span>
+                                                </div>
+                                                <div className="payment-history-meta">
+                                                    {payment.bank && <span>{payment.bank}</span>}
+                                                    {payment.referenceNumber && <span>Ref: {payment.referenceNumber}</span>}
+                                                    {payment.observations && <span>{payment.observations}</span>}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0) > 0 ? (
+                            <div className="modal-section animate-slide-in">
+                                <div className="modal-section-header">
                                     <CreditCard size={18} />
                                     <h3>Datos del pago</h3>
                                 </div>
@@ -784,6 +1007,11 @@ export default function PurchaseOrders() {
                                     </div>
                                 </div>
                             </div>
+                            ) : (
+                                <div className="payment-history-empty payment-history-paid">
+                                    Esta orden ya está pagada en su totalidad.
+                                </div>
+                            )}
                         </div>
 
                         <div className="modal-footer">
@@ -791,7 +1019,12 @@ export default function PurchaseOrders() {
                                 <Button variant="secondary" type="button" onClick={() => setPaymentModalOrder(null)}>
                                     Cancelar
                                 </Button>
-                                <Button type="button" className="save-btn-premium" disabled={savingPayment} onClick={handleSubmitPayment}>
+                                <Button
+                                    type="button"
+                                    className="save-btn-premium"
+                                    disabled={savingPayment || Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0) <= 0}
+                                    onClick={handleSubmitPayment}
+                                >
                                     <Save size={20} />
                                     <span>{savingPayment ? 'Registrando...' : 'Registrar Pago'}</span>
                                 </Button>

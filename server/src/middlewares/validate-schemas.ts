@@ -410,3 +410,57 @@ export const updateDeliveryStatus: ValidationSchema = {
 export const filenameParam: ValidationSchema = {
     params: { filename: { type: 'string', required: true, min: 1, max: 255, pattern: /^[a-zA-Z0-9._-]+$/ } },
 };
+
+// ── Production Recipes (BOM) ──
+export const createProductionRecipe: ValidationSchema = {
+    body: {
+        productId: { type: 'number', required: true, min: 1 },
+        yieldQuantity: { type: 'number', required: true, min: 0.000001 },
+        components: { type: 'array', required: true, min: 1 },
+    },
+};
+
+export const updateProductionRecipe: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1 } },
+    body: {
+        yieldQuantity: { type: 'number', required: false, min: 0.000001 },
+    },
+};
+
+export const setProductionRecipeStatus: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1 } },
+    body: {
+        status: { type: 'string', required: true, enum: ['DRAFT', 'ACTIVE', 'INACTIVE'] },
+    },
+};
+
+// ── Production Orders ──
+export const previewProduction: ValidationSchema = {
+    body: {
+        productId: { type: 'number', required: true, min: 1 },
+        plannedQuantity: { type: 'number', required: true, min: 0.000001 },
+        warehouseId: { type: 'number', required: true, min: 1 },
+    },
+};
+
+export const createProductionOrder: ValidationSchema = {
+    body: {
+        productId: { type: 'number', required: true, min: 1 },
+        plannedQuantity: { type: 'number', required: true, min: 0.000001 },
+        warehouseId: { type: 'number', required: true, min: 1 },
+    },
+};
+
+export const setProductionOrderStatus: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1 } },
+    body: {
+        status: { type: 'string', required: true, enum: ['DRAFT', 'PENDING', 'IN_PROGRESS'] },
+    },
+};
+
+export const finishProductionOrder: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1 } },
+    body: {
+        producedQuantity: { type: 'number', required: false, min: 0 },
+    },
+};

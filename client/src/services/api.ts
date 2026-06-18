@@ -425,6 +425,64 @@ export const productsAPI = {
         api.post('/products/import/confirm', { items }),
 };
 
+// Production Recipes (BOM) API
+export const productionRecipesAPI = {
+    getAll: (params?: Record<string, unknown>) =>
+        api.get('/production-recipes', { params }),
+    getById: (id: number) =>
+        api.get(`/production-recipes/${id}`),
+    getByProduct: (productId: number) =>
+        api.get(`/production-recipes/product/${productId}`),
+    create: (data: Record<string, unknown>) =>
+        api.post('/production-recipes', data),
+    update: (id: number, data: Record<string, unknown>) =>
+        api.put(`/production-recipes/${id}`, data),
+    setStatus: (id: number, status: string) =>
+        api.patch(`/production-recipes/${id}/status`, { status }),
+    createVersion: (id: number) =>
+        api.post(`/production-recipes/${id}/version`),
+    delete: (id: number) =>
+        api.delete(`/production-recipes/${id}`),
+};
+
+// Production Orders API
+export const productionOrdersAPI = {
+    getAll: (params?: Record<string, unknown>) =>
+        api.get('/production-orders', { params }),
+    getById: (id: number) =>
+        api.get(`/production-orders/${id}`),
+    preview: (data: Record<string, unknown>) =>
+        api.post('/production-orders/preview', data),
+    create: (data: Record<string, unknown>) =>
+        api.post('/production-orders', data),
+    update: (id: number, data: Record<string, unknown>) =>
+        api.put(`/production-orders/${id}`, data),
+    setStatus: (id: number, status: string) =>
+        api.patch(`/production-orders/${id}/status`, { status }),
+    finish: (id: number, data: Record<string, unknown>) =>
+        api.post(`/production-orders/${id}/finish`, data),
+    cancel: (id: number, reason?: string) =>
+        api.post(`/production-orders/${id}/cancel`, { reason }),
+};
+
+// Production Reports API
+export const productionReportsAPI = {
+    getDashboard: (params?: Record<string, unknown>) =>
+        api.get('/reports/production/dashboard', { params }),
+    getProductions: (params?: Record<string, unknown>) =>
+        api.get('/reports/production/productions', { params }),
+    getInputConsumption: (params?: Record<string, unknown>) =>
+        api.get('/reports/production/input-consumption', { params }),
+    getPlanVsReal: (params?: Record<string, unknown>) =>
+        api.get('/reports/production/plan-vs-real', { params }),
+    getProducedKardex: (params?: Record<string, unknown>) =>
+        api.get('/reports/production/produced-kardex', { params }),
+    getProfitability: (params?: Record<string, unknown>) =>
+        api.get('/reports/production/profitability', { params }),
+    getTraceability: (orderId: number) =>
+        api.get(`/reports/production/traceability/${orderId}`),
+};
+
 // Categories API
 export const categoriesAPI = {
     getAll: () =>

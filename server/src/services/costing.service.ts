@@ -140,6 +140,92 @@ export class CostingService {
     }
 
     /**
+     * Update product cost when a manufactured product ENTERS inventory through a
+     * production order (orden de producción).
+     *
+     * This is the internal-transformation counterpart of `updateProductCost`. It
+     * MUST run inside the production order's transaction (`db`). The produced unit
+     * cost is computed by the production service from the real cost of the consumed
+     * inputs (`realCost / producedQuantity`), so here we simply fold it into the
+     * weighted-average / FIFO valuation of the OUTPUT product, exactly like a
+     * purchase receipt would — but without a purchaseOrderItem.
+     *
+     * `previousStock` is the OUTPUT product stock for the target warehouse captured
+     * BEFORE the production IN movement, mirroring the purchase-receive convention.
+     */
+    static async applyProductionCost(
+        db: Db,
+        productId: number,
+        companyId: number,
+        quantity: number,
+        unitCost: number,
+        previousStock: number
+    ): Promise<void> {
+        try {
+            const product = await db.product.findFirst({
+                where: { id: productId, companyId },
+                select: { currentAverageCost: true }
+            });
+
+            if (!product) {
+                throw new Error(`Product ${productId} not found`);
+            }
+
+            const company = await db.company.findUnique({
+                where: { id: companyId },
+                select: { costingMethod: true }
+            });
+            const costingMethod = company?.costingMethod || 'WEIGHTED_AVERAGE';
+
+            const currentStock = previousStock;
+            const previousAvgCost = Number(product.currentAverageCost);
+            let newAvgCost: number;
+
+            if (costingMethod === 'WEIGHTED_AVERAGE') {
+                newAvgCost = await this.calculateWeightedAverageCost(
+                    productId,
+                    currentStock,
+                    previousAvgCost,
+                    quantity,
+                    unitCost
+                );
+            } else {
+                // FIFO: the production batch is added at its computed cost; the stored
+                // average reflects the FIFO-weighted average across remaining batches.
+                const batches = await this.getFifoBatches(productId, companyId, db);
+                batches.push({ quantity, unitCost });
+                newAvgCost = this.calculateBatchWeightedAverage(batches);
+            }
+
+            await db.product.update({
+                where: { id: productId },
+                data: {
+                    currentAverageCost: newAvgCost,
+                    cost: newAvgCost, // Keep legacy field in sync
+                    updatedAt: new Date()
+                }
+            });
+
+            // Record cost history (purchaseOrderItemId is null for production entries)
+            await db.productCostHistory.create({
+                data: {
+                    productId,
+                    companyId,
+                    quantity,
+                    unitCost,
+                    previousAvgCost,
+                    newAvgCost,
+                    previousStock: currentStock,
+                    newStock: currentStock + quantity
+                }
+            });
+        } catch (error: unknown) {
+            console.error(`[CostingService] Error applying production cost:`, error);
+            throw new Error(`Failed to apply production cost: ${getErrorMessage(error)}`);
+        }
+    }
+
+    /**
      * Get cost history for a product
      */
     static async getCostHistory(productId: number, companyId: number, limit: number = 50) {

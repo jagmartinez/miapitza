@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Select from '../components/Select';
 import { autoPurchaseOrdersAPI, branchesAPI, productsAPI, inventoryMovementsAPI, categoriesAPI, stockAlertsAPI, suppliersAPI, unitsAPI, settingsAPI } from '../services/api';
 import Button from '../components/Button';
+import Pagination from '../components/Pagination';
 import Sidebar from '../components/Sidebar';
 // import Input from '../components/Input';
 import { ToastContainer } from '../components/Toast';
@@ -13,7 +14,8 @@ import { hasAnyRole } from '../utils/authz';
 import {
     AlertTriangle, Package, Plus, Edit2, Trash2,
     Activity, ShoppingBag, Layers, Truck, DollarSign, FileText,
-    Upload, Download, FileSpreadsheet, Search, LayoutGrid, List, ChevronLeft, ChevronRight, Printer
+    Upload, Download, FileSpreadsheet, Search, LayoutGrid, List, Printer,
+    FlaskConical, Box
 } from 'lucide-react';
 import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, UnitOfMeasure, Warehouse } from '../types';
 import type { SingleValue } from 'react-select';
@@ -118,7 +120,7 @@ export default function Inventory() {
         cost: '',
         price: '',
         minStock: '10',
-        type: 'INGREDIENT' as 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH',
+        type: 'INGREDIENT' as 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH' | 'INTERMEDIATE' | 'PACKAGING',
         storageType: '' as '' | 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE',
         observation: ''
     });
@@ -751,6 +753,8 @@ export default function Inventory() {
             case 'INGREDIENT': return 'ingredient';
             case 'PRODUCT_FOR_SALE': return 'product';
             case 'BOTH': return 'both';
+            case 'INTERMEDIATE': return 'intermediate';
+            case 'PACKAGING': return 'packaging';
             default: return 'ingredient';
         }
     };
@@ -904,6 +908,18 @@ export default function Inventory() {
                         onClick={() => setFilter('PRODUCT_FOR_SALE')}
                     >
                         Productos
+                    </button>
+                    <button
+                        className={`inventory-status-btn intermediate ${filter === 'INTERMEDIATE' ? 'active' : ''}`}
+                        onClick={() => setFilter('INTERMEDIATE')}
+                    >
+                        Intermedios
+                    </button>
+                    <button
+                        className={`inventory-status-btn packaging ${filter === 'PACKAGING' ? 'active' : ''}`}
+                        onClick={() => setFilter('PACKAGING')}
+                    >
+                        Empaques
                     </button>
                     <button
                         className={`inventory-status-btn low ${filter === 'low' ? 'active' : ''}`}
@@ -1144,34 +1160,13 @@ export default function Inventory() {
                             })}
                         </tbody>
                     </table>
-                    {tableTotalPages > 1 && (
-                        <div className="inventory-pagination">
-                            <span className="pagination-info">
-                                {((tablePage - 1) * TABLE_PAGE_SIZE) + 1}–{Math.min(tablePage * TABLE_PAGE_SIZE, filteredProducts.length)} de {filteredProducts.length}
-                            </span>
-                            <div className="pagination-controls">
-                                <button
-                                    type="button"
-                                    className="pagination-btn"
-                                    onClick={() => setTablePage(p => Math.max(1, p - 1))}
-                                    disabled={tablePage <= 1}
-                                    title="Anterior"
-                                >
-                                    <ChevronLeft size={16} />
-                                </button>
-                                <span className="pagination-page">{tablePage} / {tableTotalPages}</span>
-                                <button
-                                    type="button"
-                                    className="pagination-btn"
-                                    onClick={() => setTablePage(p => Math.min(tableTotalPages, p + 1))}
-                                    disabled={tablePage >= tableTotalPages}
-                                    title="Siguiente"
-                                >
-                                    <ChevronRight size={16} />
-                                </button>
-                            </div>
-                        </div>
-                    )}
+                    <Pagination
+                        page={tablePage}
+                        totalPages={tableTotalPages}
+                        totalItems={filteredProducts.length}
+                        pageSize={TABLE_PAGE_SIZE}
+                        onPageChange={setTablePage}
+                    />
                 </div>
             )}
 
@@ -1306,6 +1301,26 @@ export default function Inventory() {
                                                 <div className="type-info">
                                                     <span className="type-name">Ambos</span>
                                                     <span className="type-desc">Uso y Venta</span>
+                                                </div>
+                                            </div>
+                                            <div
+                                                className={`type-option ${formData.type === 'INTERMEDIATE' ? 'active' : ''}`}
+                                                onClick={() => setFormData({ ...formData, type: 'INTERMEDIATE' })}
+                                            >
+                                                <FlaskConical size={20} />
+                                                <div className="type-info">
+                                                    <span className="type-name">Intermedio</span>
+                                                    <span className="type-desc">Semielaborado</span>
+                                                </div>
+                                            </div>
+                                            <div
+                                                className={`type-option ${formData.type === 'PACKAGING' ? 'active' : ''}`}
+                                                onClick={() => setFormData({ ...formData, type: 'PACKAGING' })}
+                                            >
+                                                <Box size={20} />
+                                                <div className="type-info">
+                                                    <span className="type-name">Empaque</span>
+                                                    <span className="type-desc">Material</span>
                                                 </div>
                                             </div>
                                         </div>
