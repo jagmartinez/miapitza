@@ -1022,7 +1022,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px 12px;
+  padding: 16px 12px;
   border-top: 1px solid var(--color-border);
   background: transparent;
   border-bottom-left-radius: var(--radius-lg);
@@ -1085,7 +1085,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px 12px;
+  padding: 16px 12px;
   border-top: 1px solid var(--color-border);
   background: transparent;
   border-bottom-left-radius: var(--radius-lg);

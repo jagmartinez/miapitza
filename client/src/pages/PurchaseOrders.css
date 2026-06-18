@@ -738,3 +738,28 @@
 .payment-sidebar-form .payment-summary {
     border-radius: var(--radius-lg);
 }
+
+.payment-tab-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    margin-left: 6px;
+    border-radius: 999px;
+    background: var(--color-primary);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.payment-sidebar-form .modal-tab .payment-tab-count {
+    opacity: 0.85;
+}
+
+.payment-sidebar-form .modal-tab.active .payment-tab-count {
+    background: rgba(255, 255, 255, 0.25);
+    opacity: 1;
+}
