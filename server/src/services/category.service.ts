@@ -253,24 +253,40 @@ export class CategoryService {
         const existing: string[] = [];
 
         for (const cat of defaults) {
-            const found = await prisma.category.findFirst({
-                where: { companyId, name: cat.name }
+            const byName = await prisma.category.findFirst({
+                where: { companyId, name: cat.name },
             });
-            if (found) {
-                if (!found.codePrefix) {
+            const byPrefix = cat.codePrefix
+                ? await prisma.category.findFirst({
+                    where: { companyId, codePrefix: cat.codePrefix },
+                })
+                : null;
+
+            if (byName) {
+                if (!byName.codePrefix && cat.codePrefix && !byPrefix) {
                     await prisma.category.update({
-                        where: { id: found.id },
-                        data: { codePrefix: cat.codePrefix }
+                        where: { id: byName.id },
+                        data: { codePrefix: cat.codePrefix },
                     });
                     existing.push(`${cat.name} (prefijo actualizado: ${cat.codePrefix})`);
                 } else {
                     existing.push(cat.name);
                 }
-            } else {
+                continue;
+            }
+
+            if (byPrefix) {
+                existing.push(`${cat.name} (prefijo ${cat.codePrefix} ya usado por "${byPrefix.name}")`);
+                continue;
+            }
+
+            try {
                 await prisma.category.create({
-                    data: { ...cat, companyId, ...INVENTORY_ONLY_DEFAULTS }
+                    data: { ...cat, companyId, ...INVENTORY_ONLY_DEFAULTS },
                 });
                 created.push(cat.name);
+            } catch {
+                existing.push(`${cat.name} (no se pudo crear)`);
             }
         }
 
