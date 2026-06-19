@@ -103,7 +103,7 @@ async function ensureDemoProduct(
     userId: number,
     sku: string,
     name: string,
-    type: 'INTERMEDIATE' | 'PRODUCT_FOR_SALE',
+    type: 'INGREDIENT' | 'INTERMEDIATE' | 'PRODUCT_FOR_SALE',
     unit: string,
     categoryId?: number | null
 ) {
@@ -124,6 +124,35 @@ async function ensureDemoProduct(
     await UnitConversionService.autoConfigureProduct(created.id, companyId, unit);
     step('Producto', `Creado ${name}`, { id: created.id, sku, type, unit });
     return created;
+}
+
+async function resolveRawIngredient(
+    companyId: number,
+    userId: number,
+    spec: { match: string; sku?: string },
+    fallback: { sku: string; name: string; unit: string },
+    categoryId?: number | null
+) {
+    let product = await findProduct(companyId, { sku: spec.sku, nameContains: spec.match });
+    if (!product) {
+        product = await prisma.product.findFirst({
+            where: { companyId, active: true, name: { contains: spec.match } },
+            orderBy: { id: 'asc' },
+        });
+    }
+    if (product) return { product, created: false as const };
+
+    product = await ensureDemoProduct(
+        companyId,
+        userId,
+        fallback.sku,
+        fallback.name,
+        'INGREDIENT',
+        fallback.unit,
+        categoryId
+    );
+    step('Insumo demo', `Creado porque no existía en catálogo: ${fallback.name}`, { sku: fallback.sku });
+    return { product, created: true as const };
 }
 
 async function stockQty(companyId: number, warehouseId: number, productId: number) {
@@ -172,33 +201,59 @@ async function main() {
     });
     if (!menuCategory) throw new Error('No hay categoría de menú');
 
-    // ── Resolver insumos reales ─────────────────────────────────────────────
-    const harina = await findProduct(company.id, RAW.HARINA);
-    const tomate = await findProduct(company.id, RAW.TOMATE_LATA);
-    const aceite = await findProduct(company.id, RAW.ACEITE);
-    const oregano = await findProduct(company.id, RAW.OREGANO);
-    const mozzarella = await findProduct(company.id, RAW.MOZZARELLA);
+    // ── Resolver insumos (catálogo real o crear DEMO si faltan) ─────────────
+    const rawSpecs = [
+        {
+            key: 'harina' as const,
+            spec: RAW.HARINA,
+            fallback: { sku: `${DEMO_PREFIX}-HARINA`, name: `${DEMO_PREFIX} Harina`, unit: 'kg' },
+        },
+        {
+            key: 'tomate' as const,
+            spec: RAW.TOMATE_LATA,
+            fallback: { sku: `${DEMO_PREFIX}-TOMATE`, name: `${DEMO_PREFIX} Lata tomate`, unit: 'unidad' },
+        },
+        {
+            key: 'aceite' as const,
+            spec: RAW.ACEITE,
+            fallback: { sku: `${DEMO_PREFIX}-ACEITE`, name: `${DEMO_PREFIX} Aceite oliva`, unit: 'unidad' },
+        },
+        {
+            key: 'oregano' as const,
+            spec: RAW.OREGANO,
+            fallback: { sku: `${DEMO_PREFIX}-OREGANO`, name: `${DEMO_PREFIX} Orégano`, unit: 'unidad' },
+        },
+        {
+            key: 'mozzarella' as const,
+            spec: RAW.MOZZARELLA,
+            fallback: { sku: `${DEMO_PREFIX}-MOZZ`, name: `${DEMO_PREFIX} Mozzarella`, unit: 'unidad' },
+        },
+    ];
 
-    if (!harina || !tomate || !aceite || !oregano || !mozzarella) {
-        throw new Error(
-            `Faltan insumos base. Encontrados: harina=${!!harina} tomate=${!!tomate} aceite=${!!aceite} oregano=${!!oregano} moz=${!!mozzarella}`
-        );
-    }
+    const resolved = await Promise.all(
+        rawSpecs.map((r) => resolveRawIngredient(companyId, userId, r.spec, r.fallback, invCategory?.id))
+    );
+    const [harinaR, tomateR, aceiteR, oreganoR, mozzarellaR] = resolved;
+    const harina = harinaR.product;
+    const tomate = tomateR.product;
+    const aceite = aceiteR.product;
+    const oregano = oreganoR.product;
+    const mozzarella = mozzarellaR.product;
 
-    step('Insumos', 'Productos base localizados', {
-        harina: { id: harina.id, name: harina.name, unit: harina.unit },
-        tomate: { id: tomate.id, name: tomate.name, unit: tomate.unit },
-        aceite: { id: aceite.id, name: aceite.name, unit: aceite.unit },
-        oregano: { id: oregano.id, name: oregano.name, unit: oregano.unit },
-        mozzarella: { id: mozzarella.id, name: mozzarella.name, unit: mozzarella.unit },
+    step('Insumos', 'Productos base listos', {
+        harina: { id: harina.id, name: harina.name, unit: harina.unit, created: harinaR.created },
+        tomate: { id: tomate.id, name: tomate.name, unit: tomate.unit, created: tomateR.created },
+        aceite: { id: aceite.id, name: aceite.name, unit: aceite.unit, created: aceiteR.created },
+        oregano: { id: oregano.id, name: oregano.name, unit: oregano.unit, created: oreganoR.created },
+        mozzarella: { id: mozzarella.id, name: mozzarella.name, unit: mozzarella.unit, created: mozzarellaR.created },
     });
 
     // ── Productos intermedios DEMO ──────────────────────────────────────────
     const masaProduct = await ensureDemoProduct(
-        company.id, user.id, DEMO.MASA_SKU, DEMO.MASA_NAME, 'INTERMEDIATE', 'unidad', invCategory?.id
+        companyId, userId, DEMO.MASA_SKU, DEMO.MASA_NAME, 'INTERMEDIATE', 'unidad', invCategory?.id
     );
     const salsaProduct = await ensureDemoProduct(
-        company.id, user.id, DEMO.SALSA_SKU, DEMO.SALSA_NAME, 'INTERMEDIATE', 'g', invCategory?.id
+        companyId, userId, DEMO.SALSA_SKU, DEMO.SALSA_NAME, 'INTERMEDIATE', 'g', invCategory?.id
     );
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -214,8 +269,8 @@ async function main() {
 
     let poId: number | null = null;
     if (!DRY_RUN) {
-        const po = await PurchaseOrderService.create(company.id, {
-            branchId: branch.id,
+        const po = await PurchaseOrderService.create(companyId, {
+            branchId,
             supplierId: supplier.id,
             notes: `${DEMO_PREFIX} Compra insumos demo`,
             invoiceType: 'CASH',
@@ -223,8 +278,8 @@ async function main() {
         });
         if (!po) throw new Error('No se pudo crear la orden de compra');
         poId = po.id;
-        await PurchaseOrderService.update(po.id, company.id, { status: 'ISSUED' });
-        await PurchaseOrderService.receive(po.id, company.id, user.id, warehouse.id);
+        await PurchaseOrderService.update(po.id, companyId, { status: 'ISSUED' });
+        await PurchaseOrderService.receive(po.id, companyId, userId, warehouseId);
         step('Compra', `OC #${po.id} recibida en almacén ${warehouse.id}`, {
             total: Number(po.total),
             items: purchaseItems.map((i) => ({
