@@ -42,11 +42,25 @@ export function currencyInputPadding(symbol: string): string {
   return `calc(12px + ${chars}ch + 10px)`;
 }
 
-export const formatCurrency = (amount: number | string | null | undefined, settings: CurrencySettings = {}): string => {
-    const symbol = settings.currency_symbol || DEFAULT_CURRENCY_SYMBOL;
+/** Normalize API/Prisma amounts (number, string, null) for display math. */
+export function coerceMoneyAmount(amount: unknown): number {
+    if (amount == null) return 0;
+    if (typeof amount === 'number') return Number.isFinite(amount) ? amount : 0;
+    if (typeof amount === 'string') {
+        const n = Number(amount.replace(/,/g, '').trim());
+        return Number.isFinite(n) ? n : 0;
+    }
+    if (typeof amount === 'object' && amount !== null && 'toNumber' in amount) {
+        const toNumber = (amount as { toNumber?: () => number }).toNumber;
+        if (typeof toNumber === 'function') return coerceMoneyAmount(toNumber.call(amount));
+    }
     const n = Number(amount);
-    const safe = Number.isFinite(n) ? n : 0;
-    return `${symbol} ${safe.toFixed(2)}`;
+    return Number.isFinite(n) ? n : 0;
+}
+
+export const formatCurrency = (amount: unknown, settings: CurrencySettings = {}): string => {
+    const symbol = settings.currency_symbol || DEFAULT_CURRENCY_SYMBOL;
+    return `${symbol} ${coerceMoneyAmount(amount).toFixed(2)}`;
 };
 
 /**
@@ -54,7 +68,8 @@ export const formatCurrency = (amount: number | string | null | undefined, setti
  * locale are sourced from settings/options with app-wide fallbacks, so pages no
  * longer need to hardcode them.
  */
-export const formatCurrencyIntl = (amount: number, options: CurrencyFormatOptions = {}): string => {
+export const formatCurrencyIntl = (amount: unknown, options: CurrencyFormatOptions = {}): string => {
+    const safe = coerceMoneyAmount(amount);
     const {
         currency = DEFAULT_CURRENCY_CODE,
         locale = DEFAULT_CURRENCY_LOCALE,
@@ -67,9 +82,9 @@ export const formatCurrencyIntl = (amount: number, options: CurrencyFormatOption
             currency,
             minimumFractionDigits,
             maximumFractionDigits,
-        }).format(amount);
+        }).format(safe);
     } catch {
-        return `${amount.toFixed(maximumFractionDigits)}`;
+        return `${safe.toFixed(maximumFractionDigits)}`;
     }
 };
 

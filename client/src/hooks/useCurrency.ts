@@ -10,7 +10,7 @@ export function useCurrency() {
   return {
     settings: {},
     symbol,
-    formatMoney: (amount: number) => formatCurrency(amount),
+    formatMoney: (amount: unknown) => formatCurrency(amount),
     refresh: async () => undefined,
     loading: false,
   };

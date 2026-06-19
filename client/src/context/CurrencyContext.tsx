@@ -45,7 +45,7 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return {
       settings,
       symbol,
-      formatMoney: (amount: number) => formatCurrency(amount, settings),
+      formatMoney: (amount: unknown) => formatCurrency(amount, settings),
       refresh,
       loading,
     };

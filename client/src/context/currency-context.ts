@@ -4,7 +4,7 @@ import type { CurrencySettings } from '../utils/currency';
 export interface CurrencyContextValue {
   settings: CurrencySettings;
   symbol: string;
-  formatMoney: (amount: number) => string;
+  formatMoney: (amount: unknown) => string;
   refresh: () => Promise<void>;
   loading: boolean;
 }
