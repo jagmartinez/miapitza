@@ -410,9 +410,9 @@ export class ReportService {
                 menuItemId: product.menuItemId,
                 name: menuItem?.name || 'Unknown',
                 category: menuItem?.category?.name || 'N/A',
-                price: menuItem?.price || 0,
+                price: Number(menuItem?.price || 0),
                 totalQuantity: product._sum.quantity || 0,
-                totalRevenue: product._sum.subtotal || 0
+                totalRevenue: Number(product._sum.subtotal || 0)
             };
         });
 
@@ -472,7 +472,7 @@ export class ReportService {
                 userId: sale.userId,
                 userName: user?.name || 'Unknown',
                 userRole: user?.role?.name || 'Unknown',
-                totalSales: sale._sum.total || 0,
+                totalSales: Number(sale._sum.total || 0),
                 orderCount: sale._count.id || 0,
                 averageOrderValue: sale._count.id ? Number(sale._sum.total || 0) / sale._count.id : 0
             };
