@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { FileText, Download, Eye, Calendar, User } from 'lucide-react';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import EmptyState from '../components/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Pagination from '../components/Pagination';
-import { ordersAPI, settingsAPI } from '../services/api';
+import { ordersAPI, invoicesAPI, settingsAPI } from '../services/api';
 import type { Order } from '../types';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import './InvoiceHistory.css';
@@ -23,90 +23,118 @@ interface Invoice {
 
 const PAGE_SIZE = 20;
 
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const monthStartStr = () => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+};
+
+function dateRangeForFilter(filter: string): { startDate?: string; endDate?: string } {
+    const today = todayStr();
+    switch (filter) {
+        case 'today':
+            return { startDate: today, endDate: today };
+        case 'week': {
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            return { startDate: weekAgo.toISOString().slice(0, 10), endDate: today };
+        }
+        case 'month':
+            return { startDate: monthStartStr(), endDate: today };
+        default:
+            return {};
+    }
+}
+
 export default function InvoiceHistory() {
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [loading, setLoading] = useState(true);
-    const [dateFilter, setDateFilter] = useState('today');
+    const [error, setError] = useState<string | null>(null);
+    const [dateFilter, setDateFilter] = useState('month');
     const [searchTerm, setSearchTerm] = useState('');
     const [settings, setSettings] = useState<CurrencySettings>({});
     const [page, setPage] = useState(1);
 
-    useEffect(() => {
-        loadInvoices();
-        loadSettings();
+    const loadSettings = useCallback(async () => {
+        try {
+            const res = await settingsAPI.getAll();
+            setSettings(res.data.data);
+        } catch (err) {
+            console.error('Error loading settings:', err);
+        }
+    }, []);
+
+    const loadInvoices = useCallback(async () => {
+        try {
+            setLoading(true);
+            setError(null);
+            const range = dateRangeForFilter(dateFilter);
+            const response = await ordersAPI.getAll({
+                status: 'PAID',
+                limit: 200,
+                ...range,
+            });
+
+            const rows = Array.isArray(response.data?.data) ? response.data.data : [];
+            const invoiceData = rows
+                .filter((order: Order) => order.status === 'PAID')
+                .map((order: Order) => ({
+                    id: order.id,
+                    invoiceNumber: order.invoiceNumber || `FAC-${String(order.id).padStart(6, '0')}`,
+                    date: order.closedAt || order.createdAt,
+                    customerName: order.customerName,
+                    waiterName: order.user?.name || 'N/A',
+                    total: order.total || 0,
+                    paymentMethod: order.payments?.[0]?.paymentMethod?.name || 'N/A',
+                    status: order.status,
+                }));
+
+            setInvoices(invoiceData);
+        } catch (err) {
+            console.error('Error loading invoices:', err);
+            setError('No se pudieron cargar las facturas. Intente de nuevo.');
+            setInvoices([]);
+        } finally {
+            setLoading(false);
+        }
     }, [dateFilter]);
+
+    useEffect(() => {
+        void loadSettings();
+    }, [loadSettings]);
+
+    useEffect(() => {
+        void loadInvoices();
+    }, [loadInvoices]);
 
     useEffect(() => {
         setPage(1);
     }, [dateFilter, searchTerm]);
 
-    const loadSettings = async () => {
+    const downloadPdf = async (orderId: number, invoiceNumber: string) => {
         try {
-            const res = await settingsAPI.getAll();
-            setSettings(res.data.data);
-        } catch (error) {
-            console.error('Error loading settings:', error);
+            const res = await invoicesAPI.downloadPdf(orderId);
+            const blob = new Blob([res.data], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${invoiceNumber}.pdf`;
+            link.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error('Error downloading invoice PDF:', err);
+            setError('No se pudo descargar el PDF de la factura.');
         }
     };
 
-    const loadInvoices = async () => {
-        try {
-            setLoading(true);
-            const response = await ordersAPI.getAll({
-                status: 'PAID'
-            });
-
-            const invoiceData = response.data.data
-                .filter((order: Order) => order.status === 'PAID')
-                .map((order: Order) => ({
-                    id: order.id,
-                    invoiceNumber: `FAC-${String(order.id).padStart(6, '0')}`,
-                    date: order.createdAt,
-                    customerName: order.customerName,
-                    waiterName: order.user?.name || 'N/A',
-                    total: order.total || 0,
-                    paymentMethod: order.payments?.[0]?.paymentMethod?.name || 'N/A',
-                    status: order.status
-                }));
-
-            setInvoices(invoiceData);
-        } catch (error) {
-            console.error('Error loading invoices:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const filterByDate = (invoice: Invoice) => {
-        const invoiceDate = new Date(invoice.date);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        switch (dateFilter) {
-            case 'today':
-                return invoiceDate >= today;
-            case 'week': {
-                const weekAgo = new Date(today);
-                weekAgo.setDate(weekAgo.getDate() - 7);
-                return invoiceDate >= weekAgo;
-            }
-            case 'month': {
-                const monthAgo = new Date(today);
-                monthAgo.setMonth(monthAgo.getMonth() - 1);
-                return invoiceDate >= monthAgo;
-            }
-            default:
-                return true;
-        }
-    };
-
-    const filteredInvoices = invoices
-        .filter(filterByDate)
-        .filter(invoice =>
-            invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            invoice.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            invoice.waiterName.toLowerCase().includes(searchTerm.toLowerCase())
+    const filteredInvoices = invoices.filter((invoice) => {
+        const q = searchTerm.toLowerCase();
+        return (
+            invoice.invoiceNumber.toLowerCase().includes(q) ||
+            invoice.customerName?.toLowerCase().includes(q) ||
+            invoice.waiterName.toLowerCase().includes(q)
         );
+    });
 
     const totalAmount = filteredInvoices.reduce((sum, inv) => sum + inv.total, 0);
     const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / PAGE_SIZE));
@@ -131,6 +159,10 @@ export default function InvoiceHistory() {
                 </div>
             </div>
 
+            {error && (
+                <div className="invoice-error" role="alert">{error}</div>
+            )}
+
             <div className="invoice-filters-row">
                 <div className="invoice-date-filters">
                     <button
@@ -152,7 +184,7 @@ export default function InvoiceHistory() {
                         className={`invoice-filter-btn ${dateFilter === 'month' ? 'active' : ''}`}
                         onClick={() => setDateFilter('month')}
                     >
-                        Último Mes
+                        Este Mes
                     </button>
                     <button
                         type="button"
@@ -177,7 +209,7 @@ export default function InvoiceHistory() {
                     <EmptyState
                         icon={<FileText size={64} />}
                         title="No hay facturas"
-                        description="No se encontraron facturas con los filtros aplicados"
+                        description="No se encontraron facturas pagadas en el período seleccionado. Prueba ampliar el filtro a «Este Mes» o «Todas»."
                     />
                 </Card>
             ) : (
@@ -200,7 +232,7 @@ export default function InvoiceHistory() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {pagedInvoices.map(invoice => (
+                                {pagedInvoices.map((invoice) => (
                                     <tr key={invoice.id}>
                                         <td className="invoice-number">{invoice.invoiceNumber}</td>
                                         <td>
@@ -210,7 +242,7 @@ export default function InvoiceHistory() {
                                                 <span className="time">
                                                     {new Date(invoice.date).toLocaleTimeString('es-ES', {
                                                         hour: '2-digit',
-                                                        minute: '2-digit'
+                                                        minute: '2-digit',
                                                     })}
                                                 </span>
                                             </div>
@@ -223,7 +255,7 @@ export default function InvoiceHistory() {
                                             </div>
                                         </td>
                                         <td>
-                                            <span className={`payment-badge payment-${invoice.paymentMethod.toLowerCase()}`}>
+                                            <span className={`payment-badge payment-${invoice.paymentMethod.toLowerCase().replace(/\s+/g, '-')}`}>
                                                 {invoice.paymentMethod}
                                             </span>
                                         </td>
@@ -235,15 +267,15 @@ export default function InvoiceHistory() {
                                                 <Button
                                                     variant="secondary"
                                                     size="sm"
-                                                    onClick={() => window.print()}
+                                                    onClick={() => void downloadPdf(invoice.id, invoice.invoiceNumber)}
                                                 >
                                                     <Eye size={16} />
-                                                    Ver
+                                                    Ver PDF
                                                 </Button>
                                                 <Button
                                                     variant="secondary"
                                                     size="sm"
-                                                    onClick={() => window.print()}
+                                                    onClick={() => void downloadPdf(invoice.id, invoice.invoiceNumber)}
                                                 >
                                                     <Download size={16} />
                                                     Descargar

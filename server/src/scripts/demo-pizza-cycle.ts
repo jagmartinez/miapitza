@@ -25,6 +25,8 @@ import { MenuItemService } from '../services/menu-item.service';
 import { OrderService } from '../services/order.service';
 import { PaymentService } from '../services/payment.service';
 import { UnitConversionService } from '../services/unit-conversion.service';
+import { WasteReportService } from '../services/waste-report.service';
+import { InvoiceService } from '../services/invoice.service';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 const DEMO_PREFIX = 'DEMO-CYCLE';
@@ -505,7 +507,7 @@ async function main() {
         const saleOrder = await OrderService.create(company.id, {
             branchId: branch.id,
             userId: user.id,
-            customerName: 'Cliente Demo Ciclo',
+            customerName: `${DEMO_PREFIX} Cliente Demo`,
             items: [{ menuItemId, quantity: 2, price: 450 }],
         });
         if (!saleOrder) throw new Error('No se pudo crear la orden de venta');
@@ -547,8 +549,39 @@ async function main() {
                 cantidadOriginal: m.originalQuantity ? Number(m.originalQuantity) : null,
             })),
         });
+
+        const invoice = await InvoiceService.generateInvoice(saleOrder.id, companyId);
+        step('Factura', `Número fiscal asignado`, {
+            orderId: saleOrder.id,
+            invoiceNumber: invoice.invoiceNumber,
+            total: invoice.total,
+        });
     } else {
         step('Venta', '[dry-run] 2 pizzas × C$450 = C$900', { menuItemId });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // FASE 6: MERMA (desperdicio de salsa demo)
+    // ═══════════════════════════════════════════════════════════════════════
+    if (!DRY_RUN) {
+        const stockBeforeWaste = await stockQty(companyId, warehouseId, salsaProduct.id);
+        await WasteReportService.recordWaste(companyId, {
+            warehouseId,
+            productId: salsaProduct.id,
+            userId,
+            quantity: 200,
+            unit: 'g',
+            reason: 'Vencimiento',
+            notes: `${DEMO_PREFIX} merma demo post-producción`,
+        });
+        const stockAfterWaste = await stockQty(companyId, warehouseId, salsaProduct.id);
+        step('Merma', '200 g salsa registrada (Vencimiento)', {
+            producto: DEMO.SALSA_NAME,
+            stockAntes: stockBeforeWaste,
+            stockDespués: stockAfterWaste,
+        });
+    } else {
+        step('Merma', '[dry-run] 200 g salsa — Vencimiento', { productId: salsaProduct.id });
     }
 
     // ── Resumen final ───────────────────────────────────────────────────────
@@ -573,8 +606,13 @@ async function main() {
    • Costo MP y margen calculados en pestaña Costos
 
 5. VENTA — 2 pizzas → Orden ${orderId ?? '(dry-run)'}
-   • Al pagar: descuenta receta del MENÚ (no la de producción)
-   • Producción abastece stock; venta consume semielaborados + mozzarella
+   • Cliente: ${DEMO_PREFIX} Cliente Demo
+   • Al pagar: descuenta receta del MENÚ + genera factura fiscal
+   • Ver en: Órdenes, Facturas, Reportes → Ventas
+
+6. MERMA — 200 g salsa (${DEMO.SALSA_NAME})
+   • Motivo: Vencimiento
+   • Ver en: Reporte Mermas → pestaña Ver Reporte
 `);
     console.log('═'.repeat(60));
 }

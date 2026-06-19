@@ -141,6 +141,8 @@ export interface Order {
   tipAmount?: number;
   status: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'PAID' | 'CANCELLED';
   customerName?: string;
+  invoiceNumber?: string;
+  closedAt?: string;
   cancelledById?: number;
   cancelledBy?: { id: number; name: string };
   cancelReason?: string;

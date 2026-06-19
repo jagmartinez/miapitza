@@ -2,25 +2,16 @@ import { Request, Response, NextFunction } from 'express';
 import { ReportExtendedService } from '../services/report-extended.service';
 import { ExcelExporter, sendExcelResponse } from '../utils/excel-export';
 import { getErrorMessage } from '../utils/error';
+import { resolveBranchScope, BranchScopeError } from '../utils/branch-scope';
+import { parseOptionalQueryDateFrom, parseOptionalQueryDateTo } from '../utils/date-range';
 
 export class ReportExtendedController {
-    private static resolveBranchScope(req: Request, requestedBranchId?: number): number | undefined {
-        const isSuperAdmin = req.user?.role === 'SUPERADMIN';
-        if (isSuperAdmin) return requestedBranchId;
-        const userBranchId = req.user?.branchId;
-        if (!userBranchId) throw new Error('Usuario sin sucursal asignada');
-        if (requestedBranchId && requestedBranchId !== userBranchId) {
-            throw new Error('No autorizado para consultar otra sucursal');
-        }
-        return userBranchId;
-    }
-
     private static parseFilters(req: Request) {
         const branchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
         return {
-            dateFrom: req.query.dateFrom ? new Date(req.query.dateFrom as string) : undefined,
-            dateTo: req.query.dateTo ? new Date(req.query.dateTo as string) : undefined,
-            branchId: ReportExtendedController.resolveBranchScope(req, branchId),
+            dateFrom: parseOptionalQueryDateFrom(req.query.dateFrom as string | undefined),
+            dateTo: parseOptionalQueryDateTo(req.query.dateTo as string | undefined),
+            branchId: resolveBranchScope(req.user!, branchId),
             supplierId: req.query.supplierId ? parseInt(req.query.supplierId as string) : undefined,
             categoryId: req.query.categoryId ? parseInt(req.query.categoryId as string) : undefined,
             productId: req.query.productId ? parseInt(req.query.productId as string) : undefined,
@@ -699,8 +690,8 @@ export class ReportExtendedController {
         try {
             const companyId = req.user!.companyId;
             const filters: Parameters<typeof ReportExtendedService.getAuditReport>[1] = {};
-            if (req.query.dateFrom) filters.dateFrom = new Date(req.query.dateFrom as string);
-            if (req.query.dateTo) filters.dateTo = new Date(req.query.dateTo as string);
+            if (req.query.dateFrom) filters.dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string);
+            if (req.query.dateTo) filters.dateTo = parseOptionalQueryDateTo(req.query.dateTo as string);
             if (req.query.userId) filters.userId = parseInt(req.query.userId as string);
             if (req.query.entityType) filters.entityType = req.query.entityType as string;
             if (req.query.action) filters.action = req.query.action as string;
@@ -716,8 +707,8 @@ export class ReportExtendedController {
         try {
             const companyId = req.user!.companyId;
             const filters: Parameters<typeof ReportExtendedService.getAuditReport>[1] = {};
-            if (req.query.dateFrom) filters.dateFrom = new Date(req.query.dateFrom as string);
-            if (req.query.dateTo) filters.dateTo = new Date(req.query.dateTo as string);
+            if (req.query.dateFrom) filters.dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string);
+            if (req.query.dateTo) filters.dateTo = parseOptionalQueryDateTo(req.query.dateTo as string);
             if (req.query.userId) filters.userId = parseInt(req.query.userId as string);
             if (req.query.entityType) filters.entityType = req.query.entityType as string;
             if (req.query.action) filters.action = req.query.action as string;
@@ -798,7 +789,7 @@ export class ReportExtendedController {
         try {
             const companyId = req.user!.companyId;
             const branchRaw = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            const branchId = ReportExtendedController.resolveBranchScope(req, branchRaw);
+            const branchId = resolveBranchScope(req.user!, branchRaw);
             const monthA = req.query.monthA as string | undefined;
             const monthB = req.query.monthB as string | undefined;
             const data = await ReportExtendedService.getMonthComparison(companyId, { branchId, monthA, monthB });
@@ -812,7 +803,7 @@ export class ReportExtendedController {
         try {
             const companyId = req.user!.companyId;
             const branchRaw = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
-            const branchId = ReportExtendedController.resolveBranchScope(req, branchRaw);
+            const branchId = resolveBranchScope(req.user!, branchRaw);
             const monthA = req.query.monthA as string | undefined;
             const monthB = req.query.monthB as string | undefined;
             const data = await ReportExtendedService.getMonthComparison(companyId, { branchId, monthA, monthB });

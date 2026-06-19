@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { OrderService } from '../services/order.service';
 import { WebSocketService } from '../services/websocket.service';
 import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
+import { parseQueryDateFrom, parseQueryDateTo } from '../utils/date-range';
 
 export class OrderController {
     /** Load an order and assert the caller's branch may access it. */
@@ -36,11 +37,11 @@ export class OrderController {
             }
 
             if (req.query.startDate) {
-                filters.startDate = new Date(req.query.startDate as string);
+                filters.startDate = parseQueryDateFrom(req.query.startDate as string);
             }
 
             if (req.query.endDate) {
-                filters.endDate = new Date(req.query.endDate as string);
+                filters.endDate = parseQueryDateTo(req.query.endDate as string);
             }
 
             if (req.query.page) {

@@ -1,20 +1,19 @@
 import type { Request, Response } from 'express';
 import { ReportProductionService } from '../services/report-production.service';
 import { ExcelExporter, sendExcelResponse } from '../utils/excel-export';
+import { resolveBranchScope } from '../utils/branch-scope';
+import { parseOptionalQueryDateFrom, parseOptionalQueryDateTo } from '../utils/date-range';
 
 function parseFilters(req: Request) {
     const { categoryId, warehouseId, branchId, dateFrom, dateTo, days } = req.query;
-    const user = req.user!;
-    const resolvedBranch = user.role === 'SUPERADMIN'
-        ? (branchId ? Number(branchId) : undefined)
-        : user.branchId || undefined;
+    const requestedBranch = branchId ? Number(branchId) : undefined;
 
     return {
         categoryId: categoryId ? Number(categoryId) : undefined,
         warehouseId: warehouseId ? Number(warehouseId) : undefined,
-        branchId: resolvedBranch,
-        dateFrom: dateFrom ? new Date(dateFrom as string) : undefined,
-        dateTo: dateTo ? new Date(dateTo as string) : undefined,
+        branchId: resolveBranchScope(req.user!, requestedBranch),
+        dateFrom: parseOptionalQueryDateFrom(dateFrom as string | undefined),
+        dateTo: parseOptionalQueryDateTo(dateTo as string | undefined),
         days: days ? Number(days) : undefined,
     };
 }

@@ -3,6 +3,7 @@ import { ReportService } from '../services/report.service';
 import { ExcelExporter, sendExcelResponse } from '../utils/excel-export';
 import { getErrorMessage } from '../utils/error';
 import { resolveBranchScope } from '../utils/branch-scope';
+import { parseOptionalQueryDateFrom, parseOptionalQueryDateTo } from '../utils/date-range';
 
 export class ReportController {
     private static resolveBranchScope(req: Request, requestedBranchId?: number): number | undefined {
@@ -242,8 +243,8 @@ export class ReportController {
         try {
             const companyId = req.user!.companyId;
             const filters: NonNullable<Parameters<typeof ReportService.getCostReport>[1]> = {};
-            if (req.query.dateFrom) filters.dateFrom = new Date(req.query.dateFrom as string);
-            if (req.query.dateTo) filters.dateTo = new Date(req.query.dateTo as string);
+            if (req.query.dateFrom) filters.dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string);
+            if (req.query.dateTo) filters.dateTo = parseOptionalQueryDateTo(req.query.dateTo as string);
             if (req.query.branchId) {
                 const requestedBranchId = parseInt(req.query.branchId as string);
                 filters.branchId = ReportController.resolveBranchScope(req, requestedBranchId);
@@ -330,8 +331,8 @@ export class ReportController {
         try {
             const companyId = req.user!.companyId;
             const filters: Record<string, unknown> = {};
-            if (req.query.dateFrom) filters.dateFrom = new Date(req.query.dateFrom as string);
-            if (req.query.dateTo) filters.dateTo = new Date(req.query.dateTo as string);
+            if (req.query.dateFrom) filters.dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string);
+            if (req.query.dateTo) filters.dateTo = parseOptionalQueryDateTo(req.query.dateTo as string);
             if (req.query.supplierId) filters.supplierId = parseInt(req.query.supplierId as string);
             if (req.query.categoryId) filters.categoryId = parseInt(req.query.categoryId as string);
             if (req.query.branchId) {
@@ -352,8 +353,8 @@ export class ReportController {
         try {
             const companyId = req.user!.companyId;
             const filters: Record<string, unknown> = {};
-            if (req.query.dateFrom) filters.dateFrom = new Date(req.query.dateFrom as string);
-            if (req.query.dateTo) filters.dateTo = new Date(req.query.dateTo as string);
+            if (req.query.dateFrom) filters.dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string);
+            if (req.query.dateTo) filters.dateTo = parseOptionalQueryDateTo(req.query.dateTo as string);
             if (req.query.supplierId) filters.supplierId = parseInt(req.query.supplierId as string);
             if (req.query.branchId) {
                 filters.branchId = ReportController.resolveBranchScope(req, parseInt(req.query.branchId as string));
@@ -403,8 +404,8 @@ export class ReportController {
         try {
             const companyId = req.user!.companyId;
             const filters: Record<string, unknown> = {};
-            if (req.query.dateFrom) filters.dateFrom = new Date(req.query.dateFrom as string);
-            if (req.query.dateTo) filters.dateTo = new Date(req.query.dateTo as string);
+            if (req.query.dateFrom) filters.dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string);
+            if (req.query.dateTo) filters.dateTo = parseOptionalQueryDateTo(req.query.dateTo as string);
             if (req.query.branchId) {
                 filters.branchId = ReportController.resolveBranchScope(req, parseInt(req.query.branchId as string));
             } else {
@@ -425,8 +426,8 @@ export class ReportController {
         try {
             const companyId = req.user!.companyId;
             const filters: Record<string, unknown> = {};
-            if (req.query.dateFrom) filters.dateFrom = new Date(req.query.dateFrom as string);
-            if (req.query.dateTo) filters.dateTo = new Date(req.query.dateTo as string);
+            if (req.query.dateFrom) filters.dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string);
+            if (req.query.dateTo) filters.dateTo = parseOptionalQueryDateTo(req.query.dateTo as string);
             if (req.query.branchId) {
                 filters.branchId = ReportController.resolveBranchScope(req, parseInt(req.query.branchId as string));
             } else {

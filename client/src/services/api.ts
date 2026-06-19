@@ -390,6 +390,13 @@ export const ordersAPI = {
         api.post(`/orders/${orderId}/report-problem`, { description }),
 };
 
+export const invoicesAPI = {
+    getData: (orderId: number) => api.get(`/invoices/${orderId}`),
+
+    downloadPdf: (orderId: number) =>
+        api.get(`/invoices/${orderId}/pdf`, { responseType: 'blob' }),
+};
+
 // Products API
 export const productsAPI = {
     getAll: (params?: Record<string, unknown>) =>

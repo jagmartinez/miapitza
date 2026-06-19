@@ -10,6 +10,7 @@ import { ADMINS, CASHIERS, INVENTORY } from '../constants/roles';
 import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
 import { getErrorMessage } from '../utils/error';
+import { parseOptionalQueryDateFrom, parseOptionalQueryDateTo } from '../utils/date-range';
 
 const router = Router();
 
@@ -39,8 +40,8 @@ router.get('/waste/report', requireRole(...INVENTORY), async (req: Request, res:
         const { startDate, endDate, warehouseId, productId } = req.query;
 
         const report = await WasteReportService.getWasteReport(companyId, {
-            startDate: startDate ? new Date(startDate as string) : undefined,
-            endDate: endDate ? new Date(endDate as string) : undefined,
+            startDate: parseOptionalQueryDateFrom(startDate as string | undefined),
+            endDate: parseOptionalQueryDateTo(endDate as string | undefined),
             warehouseId: warehouseId ? parseInt(warehouseId as string) : undefined,
             productId: productId ? parseInt(productId as string) : undefined
         });
