@@ -64,6 +64,18 @@ export const formatCurrency = (amount: unknown, settings: CurrencySettings = {})
 };
 
 /**
+ * Format amount with the company currency symbol AND thousands separators.
+ * Preserves the configured symbol (e.g. "C$") while grouping digits via
+ * Intl.NumberFormat, producing values like "C$ 12,345.67".
+ */
+export const formatCurrencyGrouped = (amount: unknown, settings: CurrencySettings = {}): string => {
+    const symbol = settings.currency_symbol || DEFAULT_CURRENCY_SYMBOL;
+    const locale = settings.currency_locale || DEFAULT_CURRENCY_LOCALE;
+    const n = coerceMoneyAmount(amount);
+    return `${symbol} ${new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)}`;
+};
+
+/**
  * Configurable currency formatter backed by Intl.NumberFormat. Currency code and
  * locale are sourced from settings/options with app-wide fallbacks, so pages no
  * longer need to hardcode them.

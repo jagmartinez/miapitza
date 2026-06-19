@@ -98,12 +98,29 @@
     font-size: 14px;
 }
 
+/* KPI sections */
+.prod-kpis-section {
+    margin-bottom: 22px;
+}
+
+.prod-section-label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--color-text-muted, #64748b);
+    margin-bottom: 10px;
+}
+
 /* KPI cards */
 .prod-dash-kpis {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 14px;
-    margin-bottom: 22px;
+}
+
+.prod-dash-kpis-sm {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
 .prod-kpi {
@@ -114,6 +131,48 @@
     border: 1px solid var(--color-border);
     border-radius: 14px;
     padding: 16px 18px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.prod-kpi:hover {
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+    transform: translateY(-1px);
+}
+
+.prod-kpi-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+/* Period-over-period delta badge */
+.prod-delta {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 999px;
+    white-space: nowrap;
+    line-height: 1;
+}
+
+.prod-delta-up {
+    color: #16a34a;
+    background: rgba(34, 197, 94, 0.14);
+}
+
+.prod-delta-down {
+    color: #dc2626;
+    background: rgba(239, 68, 68, 0.14);
+}
+
+.prod-delta-neutral {
+    color: var(--color-text-muted, #64748b);
+    background: rgba(148, 163, 184, 0.16);
 }
 
 .prod-kpi-icon {
@@ -131,6 +190,7 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
+    flex: 1;
 }
 
 .prod-kpi-label {
@@ -173,6 +233,7 @@
     border-radius: 14px;
     padding: 18px;
     margin-bottom: 16px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .prod-card-wide {
@@ -262,6 +323,93 @@
 
 .prod-table .muted {
     color: var(--color-text-muted, #94a3b8);
+}
+
+.prod-table .pos {
+    color: #16a34a;
+    font-weight: 600;
+}
+
+.prod-table .neg {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+/* Yield pill (color-coded) */
+.prod-yield {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.prod-yield-green {
+    color: #16a34a;
+    background: rgba(34, 197, 94, 0.14);
+}
+
+.prod-yield-amber {
+    color: #b45309;
+    background: rgba(245, 158, 11, 0.16);
+}
+
+.prod-yield-red {
+    color: #dc2626;
+    background: rgba(239, 68, 68, 0.14);
+}
+
+.prod-yield-text-green { color: #16a34a; }
+.prod-yield-text-amber { color: #b45309; }
+.prod-yield-text-red { color: #dc2626; }
+
+/* Single branch summary */
+.prod-branch-single {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 8px 4px 4px;
+}
+
+.prod-branch-single-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--color-text);
+}
+
+.prod-branch-single-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+.prod-branch-single-grid > div {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    background: var(--color-surface-hover, rgba(148, 163, 184, 0.08));
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 12px 14px;
+}
+
+.prod-branch-single-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--color-text-muted, #64748b);
+    font-weight: 600;
+}
+
+.prod-branch-single-val {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--color-text);
+    font-variant-numeric: tabular-nums;
 }
 
 .prod-row {
