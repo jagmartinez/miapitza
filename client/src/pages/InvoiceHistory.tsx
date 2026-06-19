@@ -84,7 +84,7 @@ export default function InvoiceHistory() {
                     date: order.closedAt || order.createdAt,
                     customerName: order.customerName,
                     waiterName: order.user?.name || 'N/A',
-                    total: order.total || 0,
+                    total: Number(order.total) || 0,
                     paymentMethod: order.payments?.[0]?.paymentMethod?.name || 'N/A',
                     status: order.status,
                 }));
@@ -136,7 +136,7 @@ export default function InvoiceHistory() {
         );
     });
 
-    const totalAmount = filteredInvoices.reduce((sum, inv) => sum + inv.total, 0);
+    const totalAmount = filteredInvoices.reduce((sum, inv) => sum + Number(inv.total), 0);
     const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / PAGE_SIZE));
     const pagedInvoices = filteredInvoices.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 

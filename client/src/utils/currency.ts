@@ -42,9 +42,11 @@ export function currencyInputPadding(symbol: string): string {
   return `calc(12px + ${chars}ch + 10px)`;
 }
 
-export const formatCurrency = (amount: number, settings: CurrencySettings = {}): string => {
+export const formatCurrency = (amount: number | string | null | undefined, settings: CurrencySettings = {}): string => {
     const symbol = settings.currency_symbol || DEFAULT_CURRENCY_SYMBOL;
-    return `${symbol} ${amount.toFixed(2)}`;
+    const n = Number(amount);
+    const safe = Number.isFinite(n) ? n : 0;
+    return `${symbol} ${safe.toFixed(2)}`;
 };
 
 /**
