@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { KardexService } from '../services/kardex.service';
 import { getErrorMessage } from '../utils/error';
 import { resolveBranchScope, BranchScopeError } from '../utils/branch-scope';
+import { parseOptionalQueryDateFrom, parseOptionalQueryDateTo } from '../utils/date-range';
 
 export class KardexController {
     /**
@@ -15,8 +16,8 @@ export class KardexController {
             const warehouseId = req.query.warehouseId ? parseInt(req.query.warehouseId as string) : undefined;
             const requestedBranch = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
             const branchId = resolveBranchScope(req.user!, requestedBranch);
-            const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom as string) : undefined;
-            const dateTo = req.query.dateTo ? new Date(req.query.dateTo as string) : undefined;
+            const dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string | undefined);
+            const dateTo = parseOptionalQueryDateTo(req.query.dateTo as string | undefined);
             const type = req.query.type as 'IN' | 'OUT' | 'ADJUSTMENT' | 'TRANSFER' | undefined;
 
             if (!productId) {
@@ -53,8 +54,8 @@ export class KardexController {
             const categoryId = req.query.categoryId ? parseInt(req.query.categoryId as string) : undefined;
             const requestedBranch = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
             const branchId = resolveBranchScope(req.user!, requestedBranch);
-            const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom as string) : undefined;
-            const dateTo = req.query.dateTo ? new Date(req.query.dateTo as string) : undefined;
+            const dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string | undefined);
+            const dateTo = parseOptionalQueryDateTo(req.query.dateTo as string | undefined);
 
             const summary = await KardexService.generateKardexSummary(companyId, {
                 warehouseId,
@@ -85,8 +86,8 @@ export class KardexController {
             const warehouseId = req.query.warehouseId ? parseInt(req.query.warehouseId as string) : undefined;
             const requestedBranch = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
             const branchId = resolveBranchScope(req.user!, requestedBranch);
-            const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom as string) : undefined;
-            const dateTo = req.query.dateTo ? new Date(req.query.dateTo as string) : undefined;
+            const dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string | undefined);
+            const dateTo = parseOptionalQueryDateTo(req.query.dateTo as string | undefined);
 
             if (!productId) {
                 return res.status(400).json({ error: 'productId es requerido' });

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { warehousesAPI, reportsAPI, settingsAPI } from '../services/api';
+import { warehousesAPI, reportsAPI, settingsAPI, productsAPI } from '../services/api';
 import Select from '../components/Select';
 import Button from '../components/Button';
 import Pagination from '../components/Pagination';
@@ -67,7 +67,26 @@ interface KardexData {
     };
 }
 
+interface ProductRow {
+    id: number;
+    name: string;
+    sku: string;
+}
+
 const PAGE_SIZE = 20;
+
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const monthStartStr = () => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+};
+
+const num = (value: number | string | null | undefined) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+};
+
+type ProductSelectOption = { value: number; label: string };
 
 export default function Kardex() {
     const navigate = useNavigate();
@@ -76,14 +95,15 @@ export default function Kardex() {
     showErrorRef.current = showError;
 
     const [warehouses, setWarehouses] = useState<WarehouseRow[]>([]);
+    const [products, setProducts] = useState<ProductRow[]>([]);
     const [kardexData, setKardexData] = useState<KardexData | null>(null);
     const [loading, setLoading] = useState(false);
 
     // Filters
     const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
     const [selectedWarehouse, setSelectedWarehouse] = useState<number | null>(null);
-    const [dateFrom, setDateFrom] = useState('');
-    const [dateTo, setDateTo] = useState('');
+    const [dateFrom, setDateFrom] = useState(monthStartStr);
+    const [dateTo, setDateTo] = useState(todayStr);
     const [movementType, setMovementType] = useState<string>('');
     const [currentPage, setCurrentPage] = useState(1);
     const [settings, setSettings] = useState<CurrencySettings>({});
@@ -94,6 +114,16 @@ export default function Kardex() {
             setSettings(res.data.data || {});
         } catch (error) {
             console.error('Error loading settings:', error);
+        }
+    }, []);
+
+    const loadProducts = useCallback(async () => {
+        try {
+            const res = await productsAPI.getAll({ active: true, limit: 500 });
+            const rows = (res.data?.data ?? res.data ?? []) as ProductRow[];
+            setProducts(Array.isArray(rows) ? rows : []);
+        } catch (error) {
+            console.error('Error loading products:', error);
         }
     }, []);
 
@@ -135,14 +165,15 @@ export default function Kardex() {
 
     useEffect(() => {
         void loadWarehouses();
+        void loadProducts();
         void loadSettings();
 
         const params = new URLSearchParams(window.location.search);
         const productId = params.get('productId');
         if (productId) {
-            setSelectedProduct(parseInt(productId));
+            setSelectedProduct(parseInt(productId, 10));
         }
-    }, [loadWarehouses, loadSettings]);
+    }, [loadWarehouses, loadProducts, loadSettings]);
 
     useEffect(() => {
         if (selectedProduct) {
@@ -215,6 +246,25 @@ export default function Kardex() {
             <div className="kardex-filters">
                 <div className="filter-row">
                     <Select
+                        label="Producto"
+                        options={products.map((p) => ({
+                            value: p.id,
+                            label: `${p.name}${p.sku ? ` (${p.sku})` : ''}`,
+                        }))}
+                        value={
+                            selectedProduct
+                                ? {
+                                    value: selectedProduct,
+                                    label: products.find((p) => p.id === selectedProduct)?.name || `Producto #${selectedProduct}`,
+                                }
+                                : null
+                        }
+                        onChange={(option: SingleValue<ProductSelectOption>) => setSelectedProduct(option?.value ?? null)}
+                        placeholder="Selecciona un producto..."
+                        isClearable
+                    />
+
+                    <Select
                         label="Almacén"
                         options={[
                             { value: null, label: 'Todos los almacenes' },
@@ -273,23 +323,23 @@ export default function Kardex() {
                     <div className="balance-cards-row">
                         <div className="balance-card opening">
                             <span className="balance-label">Saldo Inicial</span>
-                            <span className="balance-qty">{kardexData.openingBalance.quantity.toFixed(3)} {unitLabel}</span>
+                            <span className="balance-qty">{num(kardexData.openingBalance.quantity).toFixed(3)} {unitLabel}</span>
                             <span className="balance-cost">{formatCurrency(kardexData.openingBalance.cost, settings)}</span>
                         </div>
 
                         <div className="balance-card total-in">
                             <span className="balance-label">Total Entradas</span>
-                            <span className="balance-value in">{kardexData.totals.totalIn.toFixed(3)} {unitLabel}</span>
+                            <span className="balance-value in">{num(kardexData.totals.totalIn).toFixed(3)} {unitLabel}</span>
                         </div>
 
                         <div className="balance-card total-out">
                             <span className="balance-label">Total Salidas</span>
-                            <span className="balance-value out">{kardexData.totals.totalOut.toFixed(3)} {unitLabel}</span>
+                            <span className="balance-value out">{num(kardexData.totals.totalOut).toFixed(3)} {unitLabel}</span>
                         </div>
 
                         <div className="balance-card closing">
                             <span className="balance-label">Saldo Final</span>
-                            <span className="balance-qty">{kardexData.closingBalance.quantity.toFixed(3)} {unitLabel}</span>
+                            <span className="balance-qty">{num(kardexData.closingBalance.quantity).toFixed(3)} {unitLabel}</span>
                             <span className="balance-cost">{formatCurrency(kardexData.closingBalance.cost, settings)}</span>
                         </div>
                     </div>
@@ -342,14 +392,14 @@ export default function Kardex() {
                                         </td>
                                         <td>{movement.reference}</td>
                                         <td className={`text-right ${movement.in ? 'movement-in' : ''}`}>
-                                            {movement.in ? `${movement.in.toFixed(3)} ${unitLabel}` : '-'}
+                                            {movement.in ? `${num(movement.in).toFixed(3)} ${unitLabel}` : '-'}
                                             {movement.in ? originalHint : null}
                                         </td>
                                         <td className={`text-right ${movement.out ? 'movement-out' : ''}`}>
-                                            {movement.out ? `${movement.out.toFixed(3)} ${unitLabel}` : '-'}
+                                            {movement.out ? `${num(movement.out).toFixed(3)} ${unitLabel}` : '-'}
                                             {movement.out ? originalHint : null}
                                         </td>
-                                        <td className="text-right font-bold">{movement.balance.toFixed(3)} {unitLabel}</td>
+                                        <td className="text-right font-bold">{num(movement.balance).toFixed(3)} {unitLabel}</td>
                                         <td className="text-right">{formatCurrency(movement.unitCost, settings)}</td>
                                         <td className="text-right">{formatCurrency(movement.totalCost, settings)}</td>
                                         <td>{movement.warehouse}</td>
@@ -377,7 +427,7 @@ export default function Kardex() {
             ) : !selectedProduct ? (
                 <div className="no-movements">
                     <FileText size={48} />
-                    <p>Selecciona un producto para ver su kardex</p>
+                    <p>Selecciona un producto (ej. DEMO-CYCLE Masa pizza) para ver entradas, salidas y saldo</p>
                 </div>
             ) : null}
 

@@ -3,7 +3,7 @@
  *
  * Demostración end-to-end del flujo operativo:
  *   Compra insumos → Recetas de producción → Orden de producción →
- *   Plato en menú con receta → Venta + pago → Descargue de inventario.
+ *   Plato en menú con receta → Turno caja → Cocina → Venta + pago → Factura → Merma.
  *
  * Usa ingredientes REALES del catálogo (Harina, Tomate, Aceite, Orégano, Mozzarella)
  * y crea productos DEMO intermedios (Masa / Salsa) para no alterar datos operativos.
@@ -27,6 +27,7 @@ import { PaymentService } from '../services/payment.service';
 import { UnitConversionService } from '../services/unit-conversion.service';
 import { WasteReportService } from '../services/waste-report.service';
 import { InvoiceService } from '../services/invoice.service';
+import { CashShiftService } from '../services/cash-shift.service';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 const DEMO_PREFIX = 'DEMO-CYCLE';
@@ -170,6 +171,176 @@ async function productCostSummary(companyId: number, productId: number) {
         select: { name: true, cost: true, currentAverageCost: true, lastPurchaseCost: true, unit: true },
     });
     return p;
+}
+
+async function ensureDemoCashShift(companyId: number, branchId: number, userId: number) {
+    if (DRY_RUN) return { registerId: -1, shiftId: -1 };
+
+    let register = await prisma.cashRegister.findFirst({
+        where: { companyId, branchId },
+        orderBy: { id: 'asc' },
+    });
+    if (!register) {
+        register = await prisma.cashRegister.create({
+            data: { companyId, branchId, name: `${DEMO_PREFIX} Caja 1`, status: 'OPEN' },
+        });
+        step('Caja', 'Caja registradora creada', { id: register.id, name: register.name });
+    }
+
+    let shift = await CashShiftService.getActiveShiftByUser(userId, companyId);
+    if (!shift) {
+        shift = await CashShiftService.open(companyId, branchId, {
+            cashRegisterId: register.id,
+            userId,
+            startAmount: 1000,
+        });
+        step('Caja', 'Turno abierto con fondo inicial C$1000', { shiftId: shift.id, registerId: register.id });
+    } else {
+        step('Caja', 'Turno activo existente reutilizado', { shiftId: shift.id, registerId: shift.cashRegisterId });
+    }
+
+    return { registerId: register.id, shiftId: shift.id };
+}
+
+async function findCashPaymentMethod(companyId: number) {
+    const method =
+        (await prisma.paymentMethod.findFirst({
+            where: {
+                OR: [{ companyId }, { companyId: null }],
+                active: true,
+                name: { contains: 'Efectivo' },
+            },
+        })) ||
+        (await prisma.paymentMethod.findFirst({
+            where: {
+                OR: [{ companyId }, { companyId: null }],
+                active: true,
+                name: { in: ['CASH', 'Cash', 'cash'] },
+            },
+        }));
+    if (!method) throw new Error('No hay método de pago Efectivo/CASH');
+    return method;
+}
+
+async function runFullSaleWithKitchen(
+    companyId: number,
+    branchId: number,
+    userId: number,
+    menuItemId: number,
+    warehouseId: number,
+    masaProductId: number,
+    salsaProductId: number,
+    mozzarellaId: number
+) {
+    const stockBeforeSale = {
+        masa: await stockQty(companyId, warehouseId, masaProductId),
+        salsa: await stockQty(companyId, warehouseId, salsaProductId),
+        mozzarella: await stockQty(companyId, warehouseId, mozzarellaId),
+    };
+
+    await ensureDemoCashShift(companyId, branchId, userId);
+
+    const saleOrder = await OrderService.create(companyId, {
+        branchId,
+        userId,
+        customerName: `${DEMO_PREFIX} Cliente Demo`,
+        items: [{ menuItemId, quantity: 2, price: 450 }],
+    });
+    if (!saleOrder) throw new Error('No se pudo crear la orden de venta');
+
+    await OrderService.sendToKitchen(saleOrder.id, companyId);
+    step('Cocina', `Orden #${saleOrder.id} enviada a cocina`, { status: 'SENT_TO_KITCHEN' });
+
+    const withItems = await OrderService.getById(saleOrder.id, companyId);
+    for (const item of withItems.items) {
+        await OrderService.startItem(saleOrder.id, item.id, companyId);
+        await OrderService.finishItem(saleOrder.id, item.id, companyId);
+    }
+    step('Cocina', `Orden #${saleOrder.id} preparada`, { status: 'READY', items: withItems.items.length });
+
+    const cashMethod = await findCashPaymentMethod(companyId);
+    await PaymentService.create(
+        companyId,
+        { orderId: saleOrder.id, paymentMethodId: cashMethod.id, amount: Number(saleOrder.total) },
+        userId
+    );
+
+    const stockAfterSale = {
+        masa: await stockQty(companyId, warehouseId, masaProductId),
+        salsa: await stockQty(companyId, warehouseId, salsaProductId),
+        mozzarella: await stockQty(companyId, warehouseId, mozzarellaId),
+    };
+
+    const movements = await prisma.inventoryMovement.findMany({
+        where: { companyId, reference: `ORD-${saleOrder.id}`, type: 'OUT' },
+        include: { product: { select: { name: true } } },
+        orderBy: { id: 'asc' },
+    });
+
+    step('Venta', `Orden #${saleOrder.id} pagada en efectivo — descargue inventario`, {
+        total: Number(saleOrder.total),
+        metodoPago: cashMethod.name,
+        cantidadPizzas: 2,
+        stockAntes: stockBeforeSale,
+        stockDespués: stockAfterSale,
+        movimientosOUT: movements.map((m) => ({
+            producto: m.product.name,
+            cantidadBase: Number(m.quantity),
+            costoTotal: Number(m.totalCost),
+        })),
+    });
+
+    const invoice = await InvoiceService.generateInvoice(saleOrder.id, companyId);
+    step('Factura', 'Número fiscal asignado', {
+        orderId: saleOrder.id,
+        invoiceNumber: invoice.invoiceNumber,
+        total: invoice.total,
+    });
+
+    return saleOrder.id;
+}
+
+async function ensureActiveKitchenOrder(companyId: number, branchId: number, userId: number, menuItemId: number) {
+    if (DRY_RUN) {
+        step('Cocina activa', '[dry-run] Orden pendiente en cocina');
+        return null;
+    }
+
+    const existing = await prisma.order.findFirst({
+        where: {
+            companyId,
+            customerName: `${DEMO_PREFIX} Cocina (activa)`,
+            status: { in: ['SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] },
+        },
+        orderBy: { id: 'desc' },
+    });
+    if (existing) {
+        step('Cocina activa', 'Orden demo ya visible en pantalla Cocina', {
+            orderId: existing.id,
+            status: existing.status,
+        });
+        return existing.id;
+    }
+
+    const order = await OrderService.create(companyId, {
+        branchId,
+        userId,
+        customerName: `${DEMO_PREFIX} Cocina (activa)`,
+        items: [{ menuItemId, quantity: 1, price: 450 }],
+    });
+    if (!order) throw new Error('No se pudo crear orden de cocina activa');
+
+    await OrderService.sendToKitchen(order.id, companyId);
+    const full = await OrderService.getById(order.id, companyId);
+    if (full.items[0]) {
+        await OrderService.startItem(order.id, full.items[0].id, companyId);
+    }
+    step('Cocina activa', 'Orden en preparación (visible en Cocina ahora)', {
+        orderId: order.id,
+        status: 'IN_PREPARATION',
+        plato: DEMO.MENU_NAME,
+    });
+    return order.id;
 }
 
 async function main() {
@@ -492,76 +663,31 @@ async function main() {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // FASE 5: VENTA + PAGO → DESCARGUE INVENTARIO
+    // FASE 5: TURNO CAJA → COCINA → VENTA EFECTIVO → FACTURA
     // ═══════════════════════════════════════════════════════════════════════
-    const stockBeforeSale = !DRY_RUN
-        ? {
-              masa: await stockQty(company.id, warehouse.id, masaProduct.id),
-              salsa: await stockQty(company.id, warehouse.id, salsaProduct.id),
-              mozzarella: await stockQty(company.id, warehouse.id, mozzarella.id),
-          }
-        : null;
-
     let orderId: number | null = null;
     if (!DRY_RUN && menuItemId > 0) {
-        const saleOrder = await OrderService.create(company.id, {
-            branchId: branch.id,
-            userId: user.id,
-            customerName: `${DEMO_PREFIX} Cliente Demo`,
-            items: [{ menuItemId, quantity: 2, price: 450 }],
-        });
-        if (!saleOrder) throw new Error('No se pudo crear la orden de venta');
-        orderId = saleOrder.id;
-
-        const paymentMethod = await prisma.paymentMethod.findFirst({
-            where: { OR: [{ companyId: company.id }, { companyId: null }], active: true, name: { contains: 'Tarjeta' } },
-        });
-        if (!paymentMethod) throw new Error('No hay método de pago Tarjeta');
-
-        await PaymentService.create(
-            company.id,
-            { orderId: saleOrder.id, paymentMethodId: paymentMethod.id, amount: Number(saleOrder.total) },
-            user.id
+        orderId = await runFullSaleWithKitchen(
+            companyId,
+            branchId,
+            userId,
+            menuItemId,
+            warehouseId,
+            masaProduct.id,
+            salsaProduct.id,
+            mozzarella.id
         );
-
-        const stockAfterSale = {
-            masa: await stockQty(company.id, warehouse.id, masaProduct.id),
-            salsa: await stockQty(company.id, warehouse.id, salsaProduct.id),
-            mozzarella: await stockQty(company.id, warehouse.id, mozzarella.id),
-        };
-
-        const movements = await prisma.inventoryMovement.findMany({
-            where: { companyId: company.id, reference: `ORD-${saleOrder.id}`, type: 'OUT' },
-            include: { product: { select: { name: true } } },
-            orderBy: { id: 'asc' },
-        });
-
-        step('Venta', `Orden #${saleOrder.id} pagada — descargue inventario`, {
-            total: Number(saleOrder.total),
-            cantidadPizzas: 2,
-            stockAntes: stockBeforeSale,
-            stockDespués: stockAfterSale,
-            movimientosOUT: movements.map((m) => ({
-                producto: m.product.name,
-                cantidadBase: Number(m.quantity),
-                costoTotal: Number(m.totalCost),
-                unidadOriginal: m.originalUnit,
-                cantidadOriginal: m.originalQuantity ? Number(m.originalQuantity) : null,
-            })),
-        });
-
-        const invoice = await InvoiceService.generateInvoice(saleOrder.id, companyId);
-        step('Factura', `Número fiscal asignado`, {
-            orderId: saleOrder.id,
-            invoiceNumber: invoice.invoiceNumber,
-            total: invoice.total,
-        });
     } else {
-        step('Venta', '[dry-run] 2 pizzas × C$450 = C$900', { menuItemId });
+        step('Venta', '[dry-run] 2 pizzas × C$450 = C$900 (caja + cocina + efectivo)', { menuItemId });
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // FASE 6: MERMA (desperdicio de salsa demo)
+    // FASE 6: ORDEN ACTIVA EN COCINA (visible en pantalla Cocina)
+    // ═══════════════════════════════════════════════════════════════════════
+    const kitchenOrderId = await ensureActiveKitchenOrder(companyId, branchId, userId, menuItemId);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // FASE 7: MERMA (desperdicio de salsa demo)
     // ═══════════════════════════════════════════════════════════════════════
     if (!DRY_RUN) {
         const stockBeforeWaste = await stockQty(companyId, warehouseId, salsaProduct.id);
@@ -605,14 +731,23 @@ async function main() {
    • 1 masa + 150 g salsa + 0.15 mozzarella por pizza
    • Costo MP y margen calculados en pestaña Costos
 
-5. VENTA — 2 pizzas → Orden ${orderId ?? '(dry-run)'}
-   • Cliente: ${DEMO_PREFIX} Cliente Demo
-   • Al pagar: descuenta receta del MENÚ + genera factura fiscal
-   • Ver en: Órdenes, Facturas, Reportes → Ventas
+5. CAJA — Turno abierto (fondo C$1000) → movimiento IN al cobrar en efectivo
 
-6. MERMA — 200 g salsa (${DEMO.SALSA_NAME})
+6. VENTA COMPLETA — Orden ${orderId ?? '(dry-run)'}
+   • Cocina: enviada → preparada → lista (READY)
+   • Pago en EFECTIVO → visible en turno de caja
+   • Factura fiscal generada
+   • Ver en: Órdenes, Facturas, Reportes → Ventas, Caja
+
+7. COCINA ACTIVA — Orden ${kitchenOrderId ?? '(dry-run)'} "${DEMO_PREFIX} Cocina (activa)"
+   • Estado IN_PREPARATION — visible en pantalla Cocina ahora
+
+8. MERMA — 200 g salsa (${DEMO.SALSA_NAME})
    • Motivo: Vencimiento
-   • Ver en: Reporte Mermas → pestaña Ver Reporte
+   • Ver en: Reporte Mermas
+
+9. KARDEX — Inventario → producto DEMO-CYCLE → botón Kardex
+   • Movimientos: compra IN, producción IN/OUT, venta OUT, merma OUT
 `);
     console.log('═'.repeat(60));
 }
