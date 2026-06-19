@@ -380,8 +380,13 @@ export default function Inventory() {
                 sku: trimmedSku ? trimmedSku : undefined,
                 categoryId: formData.categoryId ? parseInt(formData.categoryId, 10) : null,
                 cost: parseFloat(formData.cost),
-                price: formData.price ? parseFloat(formData.price) : null,
-                minStock: parseInt(formData.minStock, 10),
+                // Sale price only applies to sellable products (Producto de Venta / Ambos).
+                price: (formData.type === 'PRODUCT_FOR_SALE' || formData.type === 'BOTH') && formData.price
+                    ? parseFloat(formData.price)
+                    : null,
+                // minStock is expressed in the product's base unit; allow decimals
+                // (e.g. 0.5 kg) instead of truncating to an integer.
+                minStock: parseFloat(formData.minStock) || 0,
                 storageType: formData.storageType || null,
                 observation: formData.observation?.trim() || null,
                 active: true
@@ -1419,17 +1424,22 @@ export default function Inventory() {
                                     </div>
 
                                     <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="inventory-min-stock">Stock Mínimo (Alerta)</label>
+                                        <label className="modal-input-label" htmlFor="inventory-min-stock">
+                                            Stock Mínimo (Alerta){formData.unit ? ` — en ${formData.unit}` : ''}
+                                        </label>
                                         <input
                                             id="inventory-min-stock"
                                             type="number"
+                                            step="0.001"
+                                            min="0"
                                             className="modal-standard-input"
                                             value={formData.minStock}
                                             onChange={(e) => setFormData({ ...formData, minStock: e.target.value })}
                                             required
                                         />
                                         <small style={{ color: 'var(--color-neutral-500)', fontSize: '11px', marginTop: '4px', display: 'block' }}>
-                                            Se mostrará una alerta cuando el stock sea inferior a este valor.
+                                            Se mostrará una alerta cuando el stock sea inferior a este valor. La cantidad
+                                            está expresada en la <strong>unidad base</strong> del producto{formData.unit ? ` (${formData.unit})` : ''}.
                                         </small>
                                     </div>
                                 </div>
@@ -1497,22 +1507,33 @@ export default function Inventory() {
                                         </div>
                                     )}
 
-                                    <div className="modal-input-group">
-                                        <label className="modal-input-label" htmlFor="inventory-sale-price">Precio de Venta</label>
-                                        <div className="price-input-wrapper">
-                                            <span className="price-currency-icon">{symbol}</span>
-                                            <input
-                                                id="inventory-sale-price"
-                                                type="number"
-                                                step="0.01"
-                                                className="modal-standard-input"
-                                                style={{ paddingLeft: currencyInputPadding(symbol) }}
-                                                value={formData.price}
-                                                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                                                placeholder="Opcional"
-                                            />
-                                        </div>
-                                    </div>
+                                    {(() => {
+                                        const isSellable = formData.type === 'PRODUCT_FOR_SALE' || formData.type === 'BOTH';
+                                        return (
+                                            <div className="modal-input-group">
+                                                <label className="modal-input-label" htmlFor="inventory-sale-price">Precio de Venta</label>
+                                                <div className="price-input-wrapper">
+                                                    <span className="price-currency-icon">{symbol}</span>
+                                                    <input
+                                                        id="inventory-sale-price"
+                                                        type="number"
+                                                        step="0.01"
+                                                        className="modal-standard-input"
+                                                        style={{ paddingLeft: currencyInputPadding(symbol) }}
+                                                        value={isSellable ? formData.price : ''}
+                                                        onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                                                        placeholder={isSellable ? 'Opcional' : 'No aplica'}
+                                                        disabled={!isSellable}
+                                                    />
+                                                </div>
+                                                {!isSellable && (
+                                                    <small style={{ color: 'var(--color-neutral-500)', fontSize: '11px', marginTop: '4px', display: 'block' }}>
+                                                        El precio de venta solo aplica a productos de tipo <strong>Producto de Venta</strong> o <strong>Ambos</strong>.
+                                                    </small>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             )}
                         </div>

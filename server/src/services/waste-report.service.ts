@@ -1,5 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { InventoryEngineService } from './inventory-engine.service';
+import { UnitConversionService } from './unit-conversion.service';
 
 /**
  * Waste Report Service
@@ -16,6 +18,8 @@ export class WasteReportService {
         quantity: number;
         reason: string;
         notes?: string;
+        /** Unit of the entered quantity. When omitted, quantity is taken as base. */
+        unit?: string;
     }) {
         // Wrap in transaction for atomicity
         return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -29,56 +33,49 @@ export class WasteReportService {
 
             const product = await tx.product.findFirst({
                 where: { id: data.productId, companyId },
-                select: { id: true }
+                select: { id: true, name: true }
             });
             if (!product) throw new Error('Producto no encontrado para esta empresa');
 
-            // Check stock availability first
-            const stock = await tx.stock.findUnique({
-                where: {
-                    warehouseId_productId: {
-                        warehouseId: data.warehouseId,
-                        productId: data.productId
-                    }
-                }
-            });
-
-            if (!stock) {
-                throw new Error('No stock record found for this product in the specified warehouse');
-            }
-
-            if (Number(stock.quantity) < data.quantity) {
-                throw new Error(`Insufficient stock. Available: ${stock.quantity}, Requested: ${data.quantity}`);
-            }
-
-            // Create inventory movement for waste
-            const movement = await tx.inventoryMovement.create({
-                data: {
+            // Stock and costing live in the base unit. If the caller sent a unit,
+            // convert the quantity to base BEFORE costing; otherwise keep the legacy
+            // assumption that the quantity is already in the base unit.
+            let baseQuantity = data.quantity;
+            let originalQuantity: number | null = null;
+            let originalUnit: string | null = null;
+            let conversionFactor: number | null = null;
+            if (data.unit) {
+                const conversion = await UnitConversionService.convert(
+                    data.productId,
                     companyId,
-                    warehouseId: data.warehouseId,
-                    productId: data.productId,
-                    userId: data.userId,
-                    type: 'OUT',
-                    quantity: data.quantity,
-                    reason: `WASTE: ${data.reason}`,
-                    reference: data.notes
-                }
+                    data.quantity,
+                    data.unit,
+                    tx
+                );
+                baseQuantity = conversion.baseQuantity;
+                originalQuantity = conversion.originalQuantity;
+                originalUnit = conversion.originalUnit;
+                conversionFactor = conversion.conversionFactor;
+            }
+
+            // Stock lock, availability check, costing, FIFO-layer consumption and
+            // the OUT movement are handled by the single inventory engine.
+            const result = await InventoryEngineService.applyMovement(tx, {
+                type: 'OUT',
+                companyId,
+                warehouseId: data.warehouseId,
+                productId: data.productId,
+                userId: data.userId,
+                quantity: baseQuantity,
+                reason: `WASTE: ${data.reason}`,
+                reference: data.notes,
+                originalQuantity,
+                originalUnit,
+                conversionFactor,
+                productName: product.name
             });
 
-            // Update stock atomically
-            await tx.stock.update({
-                where: {
-                    warehouseId_productId: {
-                        warehouseId: data.warehouseId,
-                        productId: data.productId
-                    }
-                },
-                data: {
-                    quantity: { decrement: data.quantity }
-                }
-            });
-
-            return movement;
+            return await tx.inventoryMovement.findUnique({ where: { id: result.movementId } });
         });
     }
 
@@ -113,19 +110,25 @@ export class WasteReportService {
         const movements = await prisma.inventoryMovement.findMany({
             where,
             include: {
-                product: { select: { name: true, unit: true, cost: true } },
+                product: { select: { name: true, unit: true, cost: true, currentAverageCost: true } },
                 warehouse: { select: { name: true } },
                 user: { select: { name: true } }
             },
             orderBy: { createdAt: 'desc' }
         });
 
+        // Value each waste line at its REAL base-unit cost. Prefer the cost the
+        // engine stored on the movement at OUT time; fall back to the product's
+        // current average cost and only then to the legacy `cost` field.
+        const lineCost = (m: (typeof movements)[number]): number => {
+            if (m.totalCost != null) return Number(m.totalCost);
+            const unitCost = Number(m.unitCost ?? m.product?.currentAverageCost ?? m.product?.cost ?? 0);
+            return Number(m.quantity) * unitCost;
+        };
+
         // Calculate totals
         const totalUnits = movements.reduce((sum, m) => sum + Number(m.quantity), 0);
-        const totalCost = movements.reduce(
-            (sum, m) => sum + Number(m.quantity) * Number(m.product?.cost || 0),
-            0
-        );
+        const totalCost = movements.reduce((sum, m) => sum + lineCost(m), 0);
 
         type ReasonAgg = { count: number; quantity: number; cost: number };
         // Group by reason
@@ -136,7 +139,7 @@ export class WasteReportService {
             }
             acc[reason].count++;
             acc[reason].quantity += Number(m.quantity);
-            acc[reason].cost += Number(m.quantity) * Number(m.product?.cost || 0);
+            acc[reason].cost += lineCost(m);
             return acc;
         }, {});
 
@@ -157,7 +160,7 @@ export class WasteReportService {
                 product: m.product?.name,
                 quantity: Number(m.quantity),
                 unit: m.product?.unit,
-                cost: Math.round(Number(m.quantity) * Number(m.product?.cost || 0) * 100) / 100,
+                cost: Math.round(lineCost(m) * 100) / 100,
                 reason: (m.reason ?? '').replace('WASTE: ', ''),
                 warehouse: m.warehouse?.name,
                 user: m.user?.name

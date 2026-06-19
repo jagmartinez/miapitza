@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import Select from '../components/Select';
-import { branchPricingAPI, menuAPI, productsAPI, categoriesAPI, branchesAPI, unitsAPI, menuBrandsAPI } from '../services/api';
+import { branchPricingAPI, menuAPI, productsAPI, categoriesAPI, branchesAPI, unitsAPI, menuBrandsAPI, modifiersAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
@@ -9,13 +9,14 @@ import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import {
   Plus, Utensils, Trash2, Image as ImageIcon,
-  Info, PieChart, ImagePlus, DollarSign, Edit2
+  Info, PieChart, ImagePlus, DollarSign, Edit2,
+  SlidersHorizontal, Package
 } from 'lucide-react';
 import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
 import { currencyInputPadding } from '../utils/currency';
-import type { Branch, MenuItem, MenuBrand, Product, ProductAllowedUnit } from '../types';
+import type { Branch, MenuItem, MenuBrand, Product, ProductAllowedUnit, UnitOfMeasure } from '../types';
 import type { SingleValue } from 'react-select';
 
 type CatFilterOption = { value: string; label: string };
@@ -61,11 +62,35 @@ interface MenuImageRecord {
 
 type StrOption = { value: string; label: string };
 
+// Modifier inventory link: a modifier can optionally consume `consumeQuantity`
+// (in `unitId`) of `productId` from inventory when selected during a sale.
+interface ModifierRow {
+  id: number;
+  name: string;
+  price: number | string;
+  active: boolean;
+  productId?: number | null;
+  consumeQuantity?: number | string | null;
+  unitId?: number | null;
+  product?: { id: number; name: string } | null;
+  unit?: { id: number; name: string; abbreviation: string } | null;
+}
+
+interface ModifierGroupRow {
+  id: number;
+  name: string;
+  description?: string | null;
+  modifiers: ModifierRow[];
+}
+
+// Products eligible to be consumed by a modifier (insumos / empaques / intermedios).
+const MODIFIER_PRODUCT_TYPES: Product['type'][] = ['INGREDIENT', 'BOTH', 'INTERMEDIATE', 'PACKAGING'];
+
 export default function Menu() {
   const { user } = useAuth();
   const { formatMoney, symbol } = useCurrency();
   const { confirm } = useConfirmDialog();
-  const { error: showError, warning: showWarning } = useAppToast();
+  const { error: showError, warning: showWarning, success: showSuccess } = useAppToast();
   /** Backend: menu/recipe/image mutations require SUPERADMIN | ADMIN */
   const canMutateMenu = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CHEF']);
   /** Backend: branch price overrides via /advanced/pricing require SUPERADMIN | ADMIN */
@@ -115,6 +140,23 @@ export default function Menu() {
   const [activeTab, setActiveTab] = useState<'info' | 'recipe' | 'gallery' | 'pricing'>('info');
   const [saving, setSaving] = useState(false);
 
+  // ── Modifiers admin (groups + modifiers with inventory link) ──
+  const [isModifierModalOpen, setIsModifierModalOpen] = useState(false);
+  const [modifierGroups, setModifierGroups] = useState<ModifierGroupRow[]>([]);
+  const [modifierProducts, setModifierProducts] = useState<Product[]>([]);
+  const [units, setUnits] = useState<UnitOfMeasure[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [editingModifierId, setEditingModifierId] = useState<number | null>(null);
+  const [modifierForm, setModifierForm] = useState({
+    name: '',
+    extraPrice: '',
+    productId: '',
+    consumeQuantity: '',
+    unitId: ''
+  });
+  const [savingModifier, setSavingModifier] = useState(false);
+
   const calculateIngredientLineCost = (ingredient: RecipeIngredient) => {
     const baseQuantity = Number(ingredient.quantity) * Number(ingredient.conversionFactor || 1);
     return Number(ingredient.cost) * baseQuantity;
@@ -144,6 +186,131 @@ export default function Menu() {
       console.error('Error loading data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const resetModifierForm = () => {
+    setEditingModifierId(null);
+    setModifierForm({ name: '', extraPrice: '', productId: '', consumeQuantity: '', unitId: '' });
+  };
+
+  const loadModifierData = async () => {
+    try {
+      const [groupsRes, productsRes, unitsRes] = await Promise.all([
+        modifiersAPI.getAllGroups(),
+        productsAPI.getAll({ active: true }),
+        unitsAPI.getAll()
+      ]);
+      const groups: ModifierGroupRow[] = groupsRes.data.data || [];
+      setModifierGroups(groups);
+      setModifierProducts(
+        (productsRes.data.data || []).filter((p: Product) => MODIFIER_PRODUCT_TYPES.includes(p.type))
+      );
+      setUnits((unitsRes.data.data || []).filter((u: UnitOfMeasure) => u.active));
+      // Keep the current selection if it still exists, otherwise pick the first group.
+      setSelectedGroupId((prev) =>
+        prev && groups.some((g) => g.id === prev) ? prev : (groups[0]?.id ?? null)
+      );
+    } catch (error) {
+      console.error('Error loading modifiers:', error);
+      showError('No se pudieron cargar los modificadores');
+    }
+  };
+
+  const openModifierModal = async () => {
+    resetModifierForm();
+    setNewGroupName('');
+    setIsModifierModalOpen(true);
+    await loadModifierData();
+  };
+
+  const handleCreateGroup = async () => {
+    const name = newGroupName.trim();
+    if (!name) return;
+    try {
+      const res = await modifiersAPI.createGroup({ name });
+      setNewGroupName('');
+      await loadModifierData();
+      const createdId = res.data?.data?.id;
+      if (createdId) setSelectedGroupId(createdId);
+      showSuccess('Grupo de modificadores creado');
+    } catch (error) {
+      console.error('Error creating modifier group:', error);
+      showError('No se pudo crear el grupo');
+    }
+  };
+
+  const handleEditModifier = (modifier: ModifierRow) => {
+    setEditingModifierId(modifier.id);
+    setModifierForm({
+      name: modifier.name,
+      extraPrice: modifier.price != null ? String(modifier.price) : '',
+      productId: modifier.productId != null ? String(modifier.productId) : '',
+      consumeQuantity: modifier.consumeQuantity != null ? String(modifier.consumeQuantity) : '',
+      unitId: modifier.unitId != null ? String(modifier.unitId) : ''
+    });
+  };
+
+  const handleSaveModifier = async () => {
+    const name = modifierForm.name.trim();
+    if (!name) {
+      showWarning('El nombre del modificador es obligatorio');
+      return;
+    }
+    if (!editingModifierId && !selectedGroupId) {
+      showWarning('Selecciona o crea un grupo primero');
+      return;
+    }
+    // A modifier links inventory only when a product is chosen; quantity is then required.
+    const hasProduct = modifierForm.productId !== '';
+    if (hasProduct && (modifierForm.consumeQuantity === '' || Number(modifierForm.consumeQuantity) <= 0)) {
+      showWarning('Indica una cantidad a consumir mayor a 0');
+      return;
+    }
+
+    const payload: Record<string, unknown> = {
+      name,
+      extraPrice: modifierForm.extraPrice === '' ? 0 : Number(modifierForm.extraPrice),
+      // Send explicit null to unlink when no product is selected.
+      productId: hasProduct ? Number(modifierForm.productId) : null,
+      consumeQuantity: hasProduct ? Number(modifierForm.consumeQuantity) : null,
+      unitId: hasProduct && modifierForm.unitId !== '' ? Number(modifierForm.unitId) : null
+    };
+
+    setSavingModifier(true);
+    try {
+      if (editingModifierId) {
+        await modifiersAPI.updateModifier(editingModifierId, payload);
+        showSuccess('Modificador actualizado');
+      } else {
+        await modifiersAPI.createModifier({ ...payload, groupId: selectedGroupId });
+        showSuccess('Modificador creado');
+      }
+      resetModifierForm();
+      await loadModifierData();
+    } catch (error) {
+      console.error('Error saving modifier:', error);
+      showError('No se pudo guardar el modificador');
+    } finally {
+      setSavingModifier(false);
+    }
+  };
+
+  const handleDeleteModifier = async (modifier: ModifierRow) => {
+    const ok = await confirm(`¿Eliminar el modificador "${modifier.name}"?`, {
+      title: 'Eliminar modificador',
+      confirmText: 'Eliminar',
+      variant: 'danger'
+    });
+    if (!ok) return;
+    try {
+      await modifiersAPI.deleteModifier(modifier.id);
+      if (editingModifierId === modifier.id) resetModifierForm();
+      await loadModifierData();
+      showSuccess('Modificador eliminado');
+    } catch (error) {
+      console.error('Error deleting modifier:', error);
+      showError('No se pudo eliminar el modificador');
     }
   };
 
@@ -440,6 +607,12 @@ export default function Menu() {
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <ViewToggle value={viewMode} onChange={setViewMode} />
+          {canSetBranchPrices && (
+            <Button variant="secondary" onClick={openModifierModal}>
+              <SlidersHorizontal size={18} />
+              Modificadores
+            </Button>
+          )}
           {canMutateMenu && (
             <Button onClick={() => handleOpenSidebar()}>
               <Plus size={18} />
@@ -1020,6 +1193,198 @@ export default function Menu() {
           </form >
         </div >
       </Sidebar >
+
+      {/* MODIFIERS ADMIN MODAL */}
+      <Sidebar
+        isOpen={isModifierModalOpen}
+        onClose={() => { setIsModifierModalOpen(false); resetModifierForm(); }}
+        title="Modificadores"
+        width="normal"
+      >
+        <div className="premium-modal-content modifiers-admin">
+          <div className="modal-tab-content">
+            {/* Group selector + create */}
+            <div className="modal-section">
+              <div className="modal-section-header">
+                <SlidersHorizontal size={18} />
+                <h3>Grupos de modificadores</h3>
+              </div>
+
+              <div className="modifier-group-chips">
+                {modifierGroups.map((group) => (
+                  <button
+                    key={group.id}
+                    type="button"
+                    className={`modifier-group-chip ${selectedGroupId === group.id ? 'active' : ''}`}
+                    onClick={() => { setSelectedGroupId(group.id); resetModifierForm(); }}
+                  >
+                    {group.name}
+                    <span className="modifier-group-chip-count">{group.modifiers.length}</span>
+                  </button>
+                ))}
+                {modifierGroups.length === 0 && (
+                  <span className="modifier-empty-hint">Aún no hay grupos. Crea uno para empezar.</span>
+                )}
+              </div>
+
+              <div className="modifier-inline-add">
+                <input
+                  className="modal-standard-input"
+                  placeholder="Nuevo grupo (ej: Extras, Tamaño)"
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreateGroup(); } }}
+                />
+                <Button type="button" variant="secondary" onClick={handleCreateGroup} disabled={!newGroupName.trim()}>
+                  <Plus size={16} /> Grupo
+                </Button>
+              </div>
+            </div>
+
+            {/* Modifiers of selected group */}
+            {selectedGroupId && (
+              <div className="modal-section animate-slide-in">
+                <div className="modal-section-header">
+                  <Package size={18} />
+                  <h3>Modificadores del grupo</h3>
+                </div>
+
+                <div className="modifier-list">
+                  {(modifierGroups.find((g) => g.id === selectedGroupId)?.modifiers || []).map((modifier) => (
+                    <div key={modifier.id} className="modifier-list-row">
+                      <div className="modifier-list-main">
+                        <span className="modifier-list-name">{modifier.name}</span>
+                        <span className="modifier-list-price">+{formatMoney(Number(modifier.price))}</span>
+                      </div>
+                      <div className="modifier-list-link">
+                        {modifier.productId ? (
+                          <span className="modifier-link-tag">
+                            <Package size={13} />
+                            Consume {Number(modifier.consumeQuantity ?? 0)} {modifier.unit?.abbreviation || ''} de {modifier.product?.name || 'producto'}
+                          </span>
+                        ) : (
+                          <span className="modifier-link-tag muted">Sin consumo de inventario</span>
+                        )}
+                      </div>
+                      <div className="modifier-list-actions">
+                        <button type="button" className="catalog-action-btn" title="Editar" onClick={() => handleEditModifier(modifier)}>
+                          <Edit2 size={16} />
+                        </button>
+                        <button type="button" className="catalog-action-btn danger" title="Eliminar" onClick={() => handleDeleteModifier(modifier)}>
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {(modifierGroups.find((g) => g.id === selectedGroupId)?.modifiers.length ?? 0) === 0 && (
+                    <span className="modifier-empty-hint">Este grupo no tiene modificadores.</span>
+                  )}
+                </div>
+
+                {/* Add / edit modifier */}
+                <div className="modifier-edit-card">
+                  <div className="modifier-edit-title">
+                    {editingModifierId ? 'Editar modificador' : 'Nuevo modificador'}
+                  </div>
+
+                  <div className="modal-form-row">
+                    <div className="modal-input-group">
+                      <label className="modal-input-label" htmlFor="modifier-name">Nombre</label>
+                      <input
+                        id="modifier-name"
+                        className="modal-standard-input"
+                        placeholder="Ej: Queso extra"
+                        value={modifierForm.name}
+                        onChange={(e) => setModifierForm({ ...modifierForm, name: e.target.value })}
+                      />
+                    </div>
+                    <div className="modal-input-group">
+                      <label className="modal-input-label" htmlFor="modifier-price">Precio extra</label>
+                      <div className="price-input-wrapper">
+                        <span className="price-currency-icon">{symbol}</span>
+                        <input
+                          id="modifier-price"
+                          type="number"
+                          step="0.01"
+                          className="modal-standard-input"
+                          style={{ paddingLeft: currencyInputPadding(symbol) }}
+                          placeholder="0.00"
+                          value={modifierForm.extraPrice}
+                          onChange={(e) => setModifierForm({ ...modifierForm, extraPrice: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="modifier-link-divider">
+                    <Package size={14} /> Consumo de inventario (opcional)
+                  </div>
+
+                  <div className="modal-form-row">
+                    <Select
+                      variant="modal"
+                      label="Producto / insumo a consumir"
+                      options={modifierProducts.map((p) => ({ value: String(p.id), label: p.sku ? `${p.name} (${p.sku})` : p.name }))}
+                      value={modifierForm.productId
+                        ? (() => {
+                          const p = modifierProducts.find((mp) => String(mp.id) === modifierForm.productId);
+                          return p ? { value: String(p.id), label: p.sku ? `${p.name} (${p.sku})` : p.name } : null;
+                        })()
+                        : null}
+                      onChange={(opt: SingleValue<StrOption>) => setModifierForm({ ...modifierForm, productId: opt ? opt.value : '', ...(opt ? {} : { consumeQuantity: '', unitId: '' }) })}
+                      placeholder="Sin vínculo de inventario"
+                      isClearable
+                    />
+                    <div className="modal-input-group">
+                      <label className="modal-input-label" htmlFor="modifier-qty">Cantidad a consumir</label>
+                      <input
+                        id="modifier-qty"
+                        type="number"
+                        step="0.001"
+                        className="modal-standard-input"
+                        placeholder="0.000"
+                        value={modifierForm.consumeQuantity}
+                        onChange={(e) => setModifierForm({ ...modifierForm, consumeQuantity: e.target.value })}
+                        disabled={!modifierForm.productId}
+                      />
+                    </div>
+                    <Select
+                      variant="modal"
+                      label="Unidad"
+                      options={units.map((u) => ({ value: String(u.id), label: `${u.name} (${u.abbreviation})` }))}
+                      value={modifierForm.unitId
+                        ? (() => {
+                          const u = units.find((mu) => String(mu.id) === modifierForm.unitId);
+                          return u ? { value: String(u.id), label: `${u.name} (${u.abbreviation})` } : null;
+                        })()
+                        : null}
+                      onChange={(opt: SingleValue<StrOption>) => setModifierForm({ ...modifierForm, unitId: opt ? opt.value : '' })}
+                      placeholder="Unidad base del producto"
+                      isClearable
+                      isDisabled={!modifierForm.productId}
+                    />
+                  </div>
+
+                  <div className="modifier-edit-actions">
+                    {editingModifierId && (
+                      <Button type="button" variant="ghost" onClick={resetModifierForm}>Cancelar edición</Button>
+                    )}
+                    <Button type="button" variant="primary" onClick={handleSaveModifier} disabled={savingModifier || !modifierForm.name.trim()}>
+                      {savingModifier ? 'Guardando...' : editingModifierId ? 'Actualizar' : 'Agregar modificador'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="modal-footer">
+            <Button type="button" variant="ghost" onClick={() => { setIsModifierModalOpen(false); resetModifierForm(); }}>
+              Cerrar
+            </Button>
+          </div>
+        </div>
+      </Sidebar>
     </div >
   );
 }

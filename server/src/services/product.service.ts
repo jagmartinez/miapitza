@@ -189,6 +189,18 @@ export class ProductService {
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE';
         observation?: string | null;
     }, userId?: number) {
+        // La categoría, si se indica, debe pertenecer a la empresa (evita asociar
+        // productos a categorías de otro tenant).
+        if (data.categoryId !== undefined && data.categoryId !== null) {
+            const category = await prisma.category.findFirst({
+                where: { id: data.categoryId, companyId },
+                select: { id: true }
+            });
+            if (!category) {
+                throw new Error('La categoría no pertenece a la empresa.');
+            }
+        }
+
         if (!data.sku || data.sku.trim() === '') {
             data.sku = await this.generateSku(companyId, data.categoryId, data.type);
         }
@@ -246,6 +258,18 @@ export class ProductService {
     }, userId?: number) {
         const existing = await this.getById(id, companyId);
 
+        // La categoría, si se indica, debe pertenecer a la empresa (evita reasignar
+        // productos a categorías de otro tenant).
+        if (data.categoryId !== undefined && data.categoryId !== null) {
+            const category = await prisma.category.findFirst({
+                where: { id: data.categoryId, companyId },
+                select: { id: true }
+            });
+            if (!category) {
+                throw new Error('La categoría no pertenece a la empresa.');
+            }
+        }
+
         const hasSkuKey = Object.prototype.hasOwnProperty.call(data, 'sku');
         const incomingSkuEmpty = hasSkuKey && (!data.sku || String(data.sku).trim() === '');
         const currentSkuEmpty = !existing.sku || String(existing.sku).trim() === '';
@@ -271,9 +295,18 @@ export class ProductService {
             }
         }
 
+        // Edición manual del costo: sincronizamos las tres fuentes de costo
+        // (cost, currentAverageCost, lastPurchaseCost) para que no diverjan. No se
+        // registra ProductCostHistory porque es un ajuste manual, no un movimiento.
+        const updateData: typeof data & { currentAverageCost?: number; lastPurchaseCost?: number } = { ...data };
+        if (data.cost !== undefined && data.cost !== null) {
+            updateData.currentAverageCost = data.cost;
+            updateData.lastPurchaseCost = data.cost;
+        }
+
         const product = await prisma.product.update({
             where: { id },
-            data,
+            data: updateData,
             include: {
                 category: {
                     select: {

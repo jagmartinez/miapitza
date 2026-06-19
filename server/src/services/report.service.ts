@@ -1038,8 +1038,13 @@ export class ReportService {
                 if (filters?.categoryId && item.product.categoryId !== filters.categoryId) continue;
                 if (filters?.productId && item.productId !== filters.productId) continue;
 
-                const cost = Number(item.subtotal);
-                totalPurchaseCost += cost;
+                const lineSubtotal = Number(item.subtotal);
+                totalPurchaseCost += lineSubtotal;
+
+                // Aggregate volume and cost in BASE units so avgUnitCost is comparable
+                // across purchases made in different purchase units.
+                const baseQty = Number(item.baseQuantity ?? item.quantity);
+                const baseUnitCost = Number(item.baseCost ?? item.cost);
 
                 if (!productCosts[item.productId]) {
                     productCosts[item.productId] = {
@@ -1052,8 +1057,8 @@ export class ReportService {
                         currentAvgCost: Number(item.product.currentAverageCost)
                     };
                 }
-                productCosts[item.productId].totalQuantity += Number(item.quantity);
-                productCosts[item.productId].totalCost += cost;
+                productCosts[item.productId].totalQuantity += baseQty;
+                productCosts[item.productId].totalCost += baseUnitCost * baseQty;
             }
         }
 
@@ -1268,8 +1273,8 @@ export class ReportService {
                     supplierName: po.supplier.name,
                     productName: item.product.name,
                     categoryName: item.product.category?.name || null,
-                    quantity: Math.round(Number(item.quantity) * 100) / 100,
-                    unitCost: Math.round(Number(item.cost) * 100) / 100,
+                    quantity: Math.round(Number(item.baseQuantity ?? item.quantity) * 100) / 100,
+                    unitCost: Math.round(Number(item.baseCost ?? item.cost) * 100) / 100,
                     totalCost: cost,
                     status: po.status
                 });

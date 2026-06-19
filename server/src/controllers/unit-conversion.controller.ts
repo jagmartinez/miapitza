@@ -212,10 +212,84 @@ export class UnitConversionController {
                 }>;
             };
 
+            // El producto debe pertenecer a la empresa del usuario antes de cualquier
+            // escritura: evita actualizar productos de otro tenant (product.update solo
+            // filtra por id, que no incluye companyId).
+            const product = await prisma.product.findFirst({
+                where: { id: productId, companyId },
+                select: { id: true }
+            });
+            if (!product) {
+                return next({ statusCode: 404, message: 'Producto no encontrado' });
+            }
+
+            // La unidad base debe existir y pertenecer a la empresa: es el ancla de
+            // todas las conversiones, así que validamos contra el catálogo.
+            const baseUnit = await prisma.unitOfMeasure.findFirst({
+                where: { id: baseUnitId, companyId }
+            });
+            if (!baseUnit) {
+                return next({ statusCode: 400, message: 'La unidad base no existe o no pertenece a la empresa' });
+            }
+
+            const safeAllowed = Array.isArray(allowedUnits) ? allowedUnits : [];
+
+            // Cargamos las unidades referenciadas desde el catálogo (con scope de
+            // empresa) para validar compatibilidad de measurementType vs. la base.
+            const unitIds = [...new Set(safeAllowed.map((au) => au.unitId))];
+            const catalogUnits = await prisma.unitOfMeasure.findMany({
+                where: { id: { in: unitIds }, companyId }
+            });
+            const catalogById = new Map(catalogUnits.map((u) => [u.id, u]));
+
+            for (const au of safeAllowed) {
+                const factor = Number(au.conversionFactor);
+                // Un factor <= 0 corrompe el costeo (división por 0/negativo).
+                if (!Number.isFinite(factor) || factor <= 0) {
+                    return next({
+                        statusCode: 400,
+                        message: `El factor de conversión debe ser mayor a 0 (unidad ${au.unitId})`
+                    });
+                }
+
+                const unit = catalogById.get(au.unitId);
+                if (!unit) {
+                    return next({
+                        statusCode: 400,
+                        message: `La unidad ${au.unitId} no existe o no pertenece a la empresa`
+                    });
+                }
+
+                // Coherencia: si se incluye la base en allowedUnits, su factor es 1.
+                if (au.unitId === baseUnitId && factor !== 1) {
+                    return next({
+                        statusCode: 400,
+                        message: 'La unidad base debe tener factor de conversión 1'
+                    });
+                }
+
+                // Las unidades alternas deben compartir el measurementType de la base.
+                // Excepción: las unidades PACKAGE llevan factores específicos por
+                // producto que no se derivan del catálogo, así que se permite el
+                // factor explícito (ya validado > 0) aunque el tipo difiera.
+                if (au.unitId !== baseUnitId
+                    && unit.measurementType !== baseUnit.measurementType
+                    && unit.measurementType !== 'PACKAGE') {
+                    return next({
+                        statusCode: 400,
+                        message: `La unidad "${unit.abbreviation}" (${unit.measurementType}) no es compatible ` +
+                            `con la unidad base "${baseUnit.abbreviation}" (${baseUnit.measurementType})`
+                    });
+                }
+            }
+
             await prisma.$transaction(async (tx) => {
+                // Sincroniza la cadena legacy `product.unit` con la abreviatura de la
+                // base recién fijada (igual que autoConfigureProduct) para que listados
+                // y kardex que muestran product.unit sigan coherentes.
                 await tx.product.update({
                     where: { id: productId },
-                    data: { baseUnitId }
+                    data: { baseUnitId, unit: baseUnit.abbreviation }
                 });
 
                 // Deactivate all existing
@@ -224,7 +298,7 @@ export class UnitConversionController {
                     data: { active: false }
                 });
 
-                for (const au of allowedUnits) {
+                for (const au of safeAllowed) {
                     await tx.productUnit.upsert({
                         where: { productId_unitId: { productId, unitId: au.unitId } },
                         create: {

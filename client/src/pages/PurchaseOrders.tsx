@@ -577,11 +577,6 @@ export default function PurchaseOrders() {
                                                 <span className={`payment-status-badge ${order.paymentStatus?.toLowerCase() || 'pending'}`}>
                                                     {order.paymentStatus === 'PAID' ? 'Pagado' : order.paymentStatus === 'PARTIAL' ? 'Parcial' : 'Pendiente'}
                                                 </span>
-                                                {Number(order.paidAmount || 0) > 0 && order.paymentStatus !== 'PAID' && (
-                                                    <span className="payment-partial-amount">
-                                                        Abonado: {formatCurrency(Number(order.paidAmount || 0), settings)}
-                                                    </span>
-                                                )}
                                                 {order.paymentStatus !== 'PAID' && order.paymentDueDate && (
                                                     <span className={`days-remaining ${(getDaysRemaining(order.paymentDueDate) ?? 0) < 0 ? 'overdue' : (getDaysRemaining(order.paymentDueDate) ?? 0) <= 3 ? 'urgent' : ''}`}>
                                                         {(() => {
@@ -592,17 +587,6 @@ export default function PurchaseOrders() {
                                                             return `${days}d restantes`;
                                                         })()}
                                                     </span>
-                                                )}
-                                                {canManagePurchaseOrders && (
-                                                    <button
-                                                        type="button"
-                                                        className="po-payment-register-btn"
-                                                        onClick={(e) => { e.stopPropagation(); handleOpenPayment(order); }}
-                                                        title={order.paymentStatus === 'PAID' ? 'Ver abonos' : 'Registrar pago / abono'}
-                                                    >
-                                                        <DollarSign size={14} />
-                                                        {order.paymentStatus === 'PAID' ? 'Abonos' : 'Abonar'}
-                                                    </button>
                                                 )}
                                             </div>
                                         ) : (

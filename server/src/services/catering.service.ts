@@ -4,6 +4,7 @@ import { CateringStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { getErrorMessage } from '../utils/error';
 import { UnitConversionService } from './unit-conversion.service';
+import { InventoryEngineService } from './inventory-engine.service';
 
 export interface CateringServiceLineDto {
     cateringServiceId: number | string;
@@ -450,6 +451,19 @@ export class CateringService {
 
         if (!event) return;
 
+        // IDEMPOTENCY GUARD: skip when this event's stock is already deducted.
+        // Mirrors order consumption: net = OUT - reversal IN for the stable ref.
+        const reference = `EVT-${event.id}`;
+        const priorMovements = await tx.inventoryMovement.findMany({
+            where: { companyId, reference, type: { in: ['OUT', 'IN'] } },
+            select: { type: true, quantity: true }
+        });
+        const netConsumed = priorMovements.reduce((net, m) => {
+            const qty = Number(m.quantity);
+            return m.type === 'OUT' ? net + qty : net - qty;
+        }, 0);
+        if (netConsumed > 1e-9) return;
+
         const warehouse = await tx.warehouse.findFirst({
             where: { branchId: event.branchId, companyId }
         }) || await tx.warehouse.findFirst({
@@ -463,45 +477,21 @@ export class CateringService {
                 const conv = await this.convertRecipeQuantityToBase(recipe, companyId, tx);
                 const totalNeeded = conv.baseQuantity * cMenuItem.quantity;
 
-                // Inline stock deduction within the same transaction
-                const stock = await tx.stock.findUnique({
-                    where: { warehouseId_productId: { warehouseId: warehouse.id, productId: recipe.productId } }
-                });
-
-                const currentQty = stock ? Number(stock.quantity) : 0;
-                const newQty = currentQty - totalNeeded;
-                if (newQty < 0) {
-                    throw new Error(`Stock insuficiente para ${recipe.product.name}`);
-                }
-
-                if (stock) {
-                    await tx.stock.update({
-                        where: { warehouseId_productId: { warehouseId: warehouse.id, productId: recipe.productId } },
-                        data: { quantity: newQty }
-                    });
-                } else {
-                    throw new Error(`No hay stock registrado para ${recipe.product.name}`);
-                }
-
-                const unitCost = Number(recipe.product.currentAverageCost || recipe.product.cost || 0);
-                await tx.inventoryMovement.create({
-                    data: {
-                        companyId,
-                        warehouseId: warehouse.id,
-                        productId: recipe.productId,
-                        userId,
-                        type: 'OUT',
-                        quantity: totalNeeded,
-                        originalQuantity: conv.originalQuantity ? conv.originalQuantity * cMenuItem.quantity : null,
-                        originalUnit: conv.originalUnit,
-                        conversionFactor: conv.conversionFactor,
-                        reason: `Catering Event: ${event.title}`,
-                        reference: `EVT-${event.id}`,
-                        unitCost,
-                        totalCost: totalNeeded * unitCost,
-                        balanceQty: newQty,
-                        balanceCost: newQty * unitCost
-                    }
+                // Stock lock, availability check, costing, FIFO-layer consumption
+                // and the OUT movement are handled by the single inventory engine.
+                await InventoryEngineService.applyMovement(tx, {
+                    type: 'OUT',
+                    companyId,
+                    warehouseId: warehouse.id,
+                    productId: recipe.productId,
+                    userId,
+                    quantity: totalNeeded,
+                    originalQuantity: conv.originalQuantity ? conv.originalQuantity * cMenuItem.quantity : null,
+                    originalUnit: conv.originalUnit,
+                    conversionFactor: conv.conversionFactor,
+                    reason: `Catering Event: ${event.title}`,
+                    reference,
+                    productName: recipe.product.name
                 });
             }
         }

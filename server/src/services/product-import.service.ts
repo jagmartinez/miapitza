@@ -1,6 +1,7 @@
 import * as ExcelJS from 'exceljs';
 import prisma from '../utils/prisma';
 import { CategoryService } from './category.service';
+import { UnitConversionService } from './unit-conversion.service';
 
 export class ProductImportService {
     static async generateTemplate(companyId: number): Promise<Buffer> {
@@ -252,9 +253,16 @@ export class ProductImportService {
     }>) {
         let created = 0;
         let updated = 0;
+        // Products whose unit auto-configuration failed (no legacy mapping / missing
+        // catalog units). These are NOT fatal: the product is still imported, it just
+        // keeps the legacy 1:1 behavior until configured manually in "Conversiones".
+        const autoConfigSkipped: Array<{ productId: number; unit: string; reason: string }> = [];
 
         await prisma.$transaction(async (tx) => {
             for (const item of items) {
+                let productId: number;
+                let legacyUnit = item.unit;
+
                 if (item.isUpdate && item.existingProductId) {
                     const updateData: Record<string, unknown> = {};
                     if (item.name) updateData.name = item.name;
@@ -266,13 +274,17 @@ export class ProductImportService {
                     if (item.type) updateData.type = item.type;
                     if (item.storageType) updateData.storageType = item.storageType;
 
-                    await tx.product.update({
+                    const product = await tx.product.update({
                         where: { id: item.existingProductId },
                         data: updateData,
+                        select: { id: true, unit: true },
                     });
+                    productId = product.id;
+                    // On updates the unit column may not have been provided in the row.
+                    if (!legacyUnit) legacyUnit = product.unit;
                     updated++;
                 } else {
-                    await tx.product.create({
+                    const product = await tx.product.create({
                         data: {
                             companyId,
                             sku: item.sku,
@@ -285,12 +297,40 @@ export class ProductImportService {
                             type: (item.type as 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH' | 'INTERMEDIATE' | 'PACKAGING') || 'INGREDIENT',
                             storageType: (item.storageType as 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE') || 'NON_PERISHABLE',
                         },
+                        select: { id: true, unit: true },
                     });
+                    productId = product.id;
+                    if (!legacyUnit) legacyUnit = product.unit;
                     created++;
+                }
+
+                // Resolve baseUnitId / ProductUnit and sync product.unit from the legacy
+                // string so imported products are not left in the legacy 1:1 mode. A
+                // failure here must not abort the whole import: capture and continue.
+                try {
+                    const configured = await UnitConversionService.autoConfigureProduct(
+                        productId,
+                        companyId,
+                        legacyUnit,
+                        tx
+                    );
+                    if (!configured) {
+                        autoConfigSkipped.push({
+                            productId,
+                            unit: legacyUnit,
+                            reason: 'Sin mapeo legacy o unidades de catálogo faltantes',
+                        });
+                    }
+                } catch (error) {
+                    autoConfigSkipped.push({
+                        productId,
+                        unit: legacyUnit,
+                        reason: error instanceof Error ? error.message : 'Error desconocido',
+                    });
                 }
             }
         });
 
-        return { created, updated, total: created + updated };
+        return { created, updated, total: created + updated, autoConfigSkipped };
     }
 }

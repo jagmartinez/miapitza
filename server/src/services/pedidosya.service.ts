@@ -2,6 +2,7 @@ import prisma from '../utils/prisma';
 import crypto from 'crypto';
 import type { Prisma } from '@prisma/client';
 import { AuditLogService } from './audit-log.service';
+import { OrderService } from './order.service';
 import { encrypt, decrypt, isEncrypted } from '../utils/encryption';
 
 const SECRET_FIELDS = ['clientSecret', 'webhookSecret', 'accessToken', 'refreshToken'] as const;
@@ -236,7 +237,18 @@ export class PedidosYaService {
             id?: string; name: string; quantity: number; price?: number; notes?: string;
         }>;
 
-        const mappedItems = await this.mapOrderItems(companyId, items);
+        const { mapped: mappedItems, unmapped } = await this.mapOrderItems(companyId, items);
+
+        // Never create a partial order: if any incoming item has no menu mapping,
+        // reject the whole sync so it is not silently dropped. The thrown error is
+        // persisted on the webhook log (status FAILED) by processWebhook, leaving a
+        // clear trace for manual review/mapping instead of an incomplete sale.
+        if (unmapped.length > 0) {
+            throw new Error(
+                `Orden PedidosYa ${externalId} no sincronizada: ${unmapped.length} producto(s) sin mapeo ` +
+                `(${unmapped.join(', ')}). Configure el mapeo de productos antes de aceptar la orden.`
+            );
+        }
 
         const systemUser = await prisma.user.findFirst({
             where: { companyId, username: 'system' },
@@ -297,10 +309,37 @@ export class PedidosYaService {
         });
         if (!sync) return;
 
-        await prisma.order.update({
-            where: { id: sync.orderId },
-            data: { status: 'CANCELLED', cancelReason: 'Cancelado por PedidosYa' },
+        // Route through OrderService.cancel so the cancellation validates the
+        // state transition, reverses any consumed inventory (reverseForOrder) and
+        // frees the table — instead of a raw status write that skips all of that.
+        const systemUser = await prisma.user.findFirst({
+            where: { companyId, username: 'system' },
+            select: { id: true },
         });
+
+        try {
+            await OrderService.cancel(
+                sync.orderId,
+                companyId,
+                systemUser?.id,
+                'Cancelado por PedidosYa',
+                // Channel cancellations are authoritative even for PAID orders.
+                { allowPaidReversal: true }
+            );
+        } catch (err) {
+            // The order may already be in a terminal/incompatible state (e.g.
+            // already cancelled). Don't break the webhook: log it and still
+            // update the sync record so it reflects the external cancellation.
+            console.error(`[PedidosYa] No se pudo cancelar la orden ${sync.orderId} vía OrderService:`, err);
+            AuditLogService.log({
+                companyId,
+                userId: systemUser?.id || 1,
+                entityType: 'Order',
+                entityId: sync.orderId,
+                action: 'CANCEL',
+                details: { source: 'PEDIDOSYA', externalId, cancelFailed: true, error: (err as Error).message },
+            }).catch(() => {});
+        }
 
         await prisma.pedidosYaOrderSync.update({
             where: { id: sync.id },
@@ -328,6 +367,9 @@ export class PedidosYaService {
         id?: string; name: string; quantity: number; price?: number; notes?: string;
     }>) {
         const result: Array<{ menuItemId: number; quantity: number; price: number; notes?: string }> = [];
+        // Track items we could not resolve to a MenuItem so the caller can reject
+        // the sync instead of silently dropping them.
+        const unmapped: string[] = [];
 
         for (const item of items) {
             let menuItemId: number | null = null;
@@ -357,10 +399,12 @@ export class PedidosYaService {
 
             if (menuItemId) {
                 result.push({ menuItemId, quantity: item.quantity, price, notes: item.notes });
+            } else {
+                unmapped.push(item.name || item.id || 'desconocido');
             }
         }
 
-        return result;
+        return { mapped: result, unmapped };
     }
 
     // ── Status Sync (outbound) ──

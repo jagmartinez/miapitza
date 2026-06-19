@@ -109,6 +109,37 @@ export class PurchaseOrderService {
         return order;
     }
 
+    /**
+     * Resolve a default purchase unit when the caller omits one, so the conversion
+     * to base unit (and baseQuantity/baseCost) always runs instead of storing raw
+     * quantities. Order per business rule: the product's default ProductUnit, then
+     * its configured base unit. Returns null if neither exists (legacy behavior:
+     * the raw quantity is treated as already being in base unit).
+     */
+    private static async resolveDefaultPurchaseUnit(
+        productId: number,
+        companyId: number,
+        db: Tx | typeof prisma
+    ): Promise<string | null> {
+        const defaultUnit = await db.productUnit.findFirst({
+            where: { productId, companyId, isDefault: true, active: true },
+            include: { unit: true }
+        });
+        if (defaultUnit?.unit?.abbreviation) {
+            return defaultUnit.unit.abbreviation;
+        }
+
+        const product = await db.product.findFirst({
+            where: { id: productId, companyId },
+            include: { baseUnit: true }
+        });
+        if (product?.baseUnit?.abbreviation) {
+            return product.baseUnit.abbreviation;
+        }
+
+        return null;
+    }
+
     static async create(companyId: number, data: {
         branchId: number;
         supplierId: number;
@@ -127,8 +158,9 @@ export class PurchaseOrderService {
             purchaseUnit?: string;
         }>;
     }) {
-        // Verify branch
-        const branch = await prisma.branch.findUnique({
+        // Verify branch (findFirst guarantees the companyId scope; findUnique can't
+        // filter by a non-unique companyId and would leak cross-tenant branches).
+        const branch = await prisma.branch.findFirst({
             where: { id: data.branchId, companyId }
         });
 
@@ -180,6 +212,9 @@ export class PurchaseOrderService {
                     bank: data.bank,
                     transferNumber: data.transferNumber,
                     paymentStatus: data.invoiceType === 'CASH' ? 'PAID' : 'PENDING',
+                    // A8: a CASH purchase is settled immediately; keep paidAmount in
+                    // sync with the total so PAID never coexists with paidAmount = 0.
+                    paidAmount: data.invoiceType === 'CASH' ? total : 0,
                     companyId,
                     total,
                     status: 'DRAFT'
@@ -192,6 +227,12 @@ export class PurchaseOrderService {
                 let conversionFactor: number | null = null;
                 let baseQuantity: number | null = null;
                 let baseCost: number | null = null;
+
+                // Default to the product's unit so the conversion always runs and
+                // baseQuantity/baseCost are persisted (avoids treating raw qty as base).
+                if (!purchaseUnit) {
+                    purchaseUnit = await this.resolveDefaultPurchaseUnit(item.productId, companyId, tx);
+                }
 
                 if (purchaseUnit) {
                     const conv = await UnitConversionService.convertWithCost(
@@ -363,75 +404,69 @@ export class PurchaseOrderService {
         }
 
         return await prisma.$transaction(async (tx: Tx) => {
-            // Import CostingService dynamically to avoid circular dependencies
+            // Import CostingService / engine dynamically to avoid circular deps.
             const { CostingService } = await import('./costing.service');
+            const { InventoryEngineService } = await import('./inventory-engine.service');
 
             // Update each product's stock and cost (using base-unit quantities)
             for (const item of order.items) {
-                // Use converted base quantities if available, otherwise original
-                const stockQty = item.baseQuantity ? Number(item.baseQuantity) : Number(item.quantity);
-                const costPerBase = item.baseCost ? Number(item.baseCost) : Number(item.cost);
+                // Resolve the base-unit quantity/cost. Prefer the stored converted
+                // values; check `!= null` (not truthiness) so a legitimate 0 is kept
+                // instead of falling back to the raw figures.
+                let conversionFactor: number | null =
+                    item.conversionFactor != null ? Number(item.conversionFactor) : null;
+                let baseQuantity: number | null =
+                    item.baseQuantity != null ? Number(item.baseQuantity) : null;
+                let baseCost: number | null =
+                    item.baseCost != null ? Number(item.baseCost) : null;
 
-                let stock = await tx.stock.findUnique({
-                    where: {
-                        warehouseId_productId: {
-                            warehouseId,
-                            productId: item.productId
-                        }
-                    }
-                });
-
-                if (!stock) {
-                    stock = await tx.stock.create({
-                        data: {
-                            warehouseId,
-                            productId: item.productId,
-                            companyId,
-                            quantity: 0
-                        }
-                    });
+                // Legacy items created before conversion ran: if no baseQuantity was
+                // stored but a purchaseUnit exists, reconvert now so kg-vs-g style
+                // purchases are not mis-costed by treating the raw quantity as base.
+                if (baseQuantity == null && item.purchaseUnit) {
+                    const conv = await UnitConversionService.convertWithCost(
+                        item.productId, companyId, Number(item.quantity), item.purchaseUnit, Number(item.cost), tx
+                    );
+                    conversionFactor = conv.conversionFactor;
+                    baseQuantity = conv.baseQuantity;
+                    baseCost = conv.baseCost;
                 }
 
-                // Capture the pre-receipt stock for this warehouse BEFORE mutating it,
-                // so the weighted-average cost calculation is deterministic.
-                const previousStock = Number(stock.quantity);
-                const newBalanceQty = previousStock + stockQty;
+                const stockQty = baseQuantity != null ? baseQuantity : Number(item.quantity);
+                const costPerBase = baseCost != null ? baseCost : Number(item.cost);
 
-                await tx.stock.update({
-                    where: {
-                        warehouseId_productId: {
-                            warehouseId,
-                            productId: item.productId
-                        }
-                    },
-                    data: { quantity: newBalanceQty }
+                // C1: capture the pre-receipt GLOBAL stock (sum across ALL of the
+                // company's warehouses for this product) BEFORE the engine mutates
+                // the receiving warehouse's stock. The weighted-average cost and
+                // ProductCostHistory must use this global figure.
+                const globalAgg = await tx.stock.aggregate({
+                    _sum: { quantity: true },
+                    where: { productId: item.productId, companyId }
+                });
+                const globalStockBefore = Number(globalAgg._sum.quantity ?? 0);
+
+                // IN through the engine: values the entry at costPerBase, opens a
+                // PURCHASE FIFO layer, and (A6/D6) keeps the accumulated valued
+                // balance (previous warehouse value + entry cost). The engine reads
+                // currentAverageCost BEFORE updateProductCost folds in the new cost.
+                await InventoryEngineService.applyMovement(tx, {
+                    type: 'IN',
+                    companyId,
+                    warehouseId,
+                    productId: item.productId,
+                    userId,
+                    quantity: stockQty,
+                    unitCost: costPerBase,
+                    originalQuantity: Number(item.quantity),
+                    originalUnit: item.purchaseUnit || null,
+                    conversionFactor: conversionFactor != null ? conversionFactor : null,
+                    reason: 'Purchase order received',
+                    reference: `PO-${order.id}`,
+                    sourceType: 'PURCHASE'
                 });
 
-                const movementTotalCost = costPerBase * stockQty;
-                const newBalanceCost = newBalanceQty * costPerBase;
-
-                await tx.inventoryMovement.create({
-                    data: {
-                        warehouseId,
-                        productId: item.productId,
-                        userId,
-                        companyId,
-                        type: 'IN',
-                        quantity: stockQty,
-                        originalQuantity: Number(item.quantity),
-                        originalUnit: item.purchaseUnit || null,
-                        conversionFactor: item.conversionFactor ? Number(item.conversionFactor) : null,
-                        unitCost: costPerBase,
-                        totalCost: movementTotalCost,
-                        balanceQty: newBalanceQty,
-                        balanceCost: newBalanceCost,
-                        reason: 'Purchase order received',
-                        reference: `PO-${order.id}`
-                    }
-                });
-
-                // Update product cost using base-unit values, inside this transaction
-                // so cost writes commit/rollback atomically with the stock changes.
+                // Update product cost (global moving average) using base-unit values,
+                // inside this transaction so cost writes commit/rollback atomically.
                 await CostingService.updateProductCost(
                     tx,
                     item.productId,
@@ -440,14 +475,22 @@ export class PurchaseOrderService {
                     stockQty,
                     costPerBase,
                     warehouseId,
-                    previousStock
+                    globalStockBefore
                 );
             }
 
-            // Update order status
+            // Update order status. A8: if the order is CASH, settle paidAmount on
+            // receipt so the total (which may have changed via addItem/removeItem
+            // while DRAFT) and paidAmount stay consistent. No payment row is created
+            // for CASH, mirroring create(), so this does not duplicate payments.
             return await tx.purchaseOrder.update({
                 where: { id },
-                data: { status: 'RECEIVED' },
+                data: {
+                    status: 'RECEIVED',
+                    ...(order.invoiceType === 'CASH'
+                        ? { paymentStatus: 'PAID', paidAmount: order.total }
+                        : {})
+                },
                 include: {
                     supplier: true,
                     branch: true,
@@ -493,6 +536,12 @@ export class PurchaseOrderService {
             let baseQuantity: number | null = null;
             let baseCost: number | null = null;
 
+            // Default to the product's unit so the conversion always runs and
+            // baseQuantity/baseCost are persisted (avoids treating raw qty as base).
+            if (!purchaseUnit) {
+                purchaseUnit = await this.resolveDefaultPurchaseUnit(data.productId, companyId, tx);
+            }
+
             if (purchaseUnit) {
                 const conv = await UnitConversionService.convertWithCost(
                     data.productId, companyId, data.quantity, purchaseUnit, data.cost, tx
@@ -534,6 +583,19 @@ export class PurchaseOrderService {
 
             return item;
         });
+    }
+
+    /**
+     * Resolve the branch of the PO that owns an item. Used by the controller to
+     * apply the branch-scope guard on item-level routes that only carry itemId.
+     */
+    static async getItemOrderBranch(itemId: number, companyId: number): Promise<number | null> {
+        const item = await prisma.purchaseOrderItem.findFirst({
+            where: { id: itemId, purchaseOrder: { companyId } },
+            select: { purchaseOrder: { select: { branchId: true } } }
+        });
+        if (!item) throw new Error('Item not found');
+        return item.purchaseOrder.branchId;
     }
 
     // Remove item from order

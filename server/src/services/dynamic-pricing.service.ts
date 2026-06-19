@@ -17,11 +17,13 @@ export class DynamicPricingService {
             throw new Error('Sucursal no encontrada');
         }
 
-        // First check for branch-specific price
+        // First check for branch-specific price. Only active branch prices apply;
+        // a deactivated branch price must fall back to the base MenuItem price.
         const branchPrice = await prisma.menuItemBranchPrice?.findFirst({
             where: {
                 menuItemId,
                 branchId,
+                active: true,
                 branch: { companyId }
             }
         });

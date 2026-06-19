@@ -105,8 +105,10 @@ export class ReportExtendedService {
                 if (!matrix[productKey][supplierKey]) {
                     matrix[productKey][supplierKey] = { avgCost: 0, minCost: Infinity, maxCost: 0, totalQty: 0, entries: 0 };
                 }
-                const unitCost = Number(item.cost);
-                const qty = Number(item.quantity);
+                // Compare supplier prices per BASE unit so purchases in different
+                // purchase units are ranked consistently.
+                const unitCost = Number(item.baseCost ?? item.cost);
+                const qty = Number(item.baseQuantity ?? item.quantity);
                 const entry = matrix[productKey][supplierKey];
                 entry.minCost = Math.min(entry.minCost, unitCost);
                 entry.maxCost = Math.max(entry.maxCost, unitCost);
@@ -189,7 +191,9 @@ export class ReportExtendedService {
                         totalQuantity: 0, totalCost: 0, orderCount: 0
                     };
                 }
-                productMap[item.productId].totalQuantity += Number(item.quantity);
+                // Accumulate volume in BASE units; subtotal is the unit-independent
+                // monetary total, so avgUnitCost ends up expressed per base unit.
+                productMap[item.productId].totalQuantity += Number(item.baseQuantity ?? item.quantity);
                 productMap[item.productId].totalCost += Number(item.subtotal);
                 productMap[item.productId].orderCount += 1;
             }

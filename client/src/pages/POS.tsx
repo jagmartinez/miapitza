@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { tablesAPI, menuAPI, ordersAPI, settingsAPI, cashShiftsAPI, promotionsAPI, categoriesAPI, menuBrandsAPI } from '../services/api';
+import { tablesAPI, menuAPI, ordersAPI, settingsAPI, cashShiftsAPI, promotionsAPI, categoriesAPI, menuBrandsAPI, warehousesAPI } from '../services/api';
 import { offlineManager } from '../services/offlineManager';
 import { useDebounce } from '../utils/useDebounce';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
@@ -21,8 +21,8 @@ import PaymentModal from '../components/PaymentModal';
 import NumericKeypad from '../components/NumericKeypad';
 import POSProductCard from '../components/POSProductCard';
 import { LoadingOverlay } from '../components/LoadingSpinner';
-import { Send, CreditCard, Printer, X, Search, Grid3x3, AlertTriangle, ChevronLeft } from 'lucide-react';
-import type { MenuItem, Order, Table } from '../types';
+import { Send, CreditCard, Printer, X, Search, Grid3x3, AlertTriangle, ChevronLeft, Check } from 'lucide-react';
+import type { MenuItem, ModifierGroupWithModifiers, ModifierOption, Order, Table } from '../types';
 import { useCurrency } from '../hooks/useCurrency';
 import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
 import './POS.css';
@@ -32,12 +32,23 @@ interface OfflineResponse {
     [key: string]: unknown;
 }
 
+interface SelectedModifier {
+    id: number;
+    name: string;
+    price: number;
+}
+
 interface CartItem {
+    // Stable per-line id: several lines can share the same menuItemId when they
+    // carry different modifier selections, so quantity/remove must key off this.
+    lineId: string;
     menuItemId: number;
     menuItem: MenuItem;
     quantity: number;
+    // Unit price already includes the selected modifiers' extra price.
     price: number;
     notes: string;
+    modifiers: SelectedModifier[];
 }
 
 interface Category {
@@ -82,6 +93,7 @@ export default function POS() {
     const { confirm } = useConfirmDialog();
     const { success, error: showError, warning, info } = useAppToast();
     const canManageShift = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CAJERO']);
+    const canManageWarehouse = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF']);
     const canSendToKitchen = canSendOrderToKitchen(user);
     const canCancelActive = canCancelOrder(user);
     const canPay = canCreatePayment(user);
@@ -115,6 +127,8 @@ export default function POS() {
     const [selectedItemForKeypad, setSelectedItemForKeypad] = useState<MenuItem | null>(null);
     const [shiftStatus, setShiftStatus] = useState<ShiftStatus | null>(null);
     const [showShiftWarning, setShowShiftWarning] = useState(false);
+    // null = aún sin verificar; false bloquea el cobro proactivamente.
+    const [hasWarehouse, setHasWarehouse] = useState<boolean | null>(null);
     const waiterAccentColor = getUserAccentColor(activeTableOrder?.user || user);
 
     // Scope the local menu cache by company + branch so different tenants/branches
@@ -199,6 +213,32 @@ export default function POS() {
             warning('No se pudo verificar el estado del turno de caja. Los cobros podrían no estar disponibles.');
         }
     }, []);
+
+    // Proactively detect whether the active branch has at least one warehouse.
+    // Mirrors the backend payment guard so the cashier is warned BEFORE trying to
+    // charge instead of only seeing the abort error at checkout.
+    const checkBranchWarehouse = useCallback(async () => {
+        const branchId = user?.branchId;
+        if (!branchId) {
+            // Sin sucursal asignada (p. ej. SUPERADMIN global): no bloqueamos aquí;
+            // el guard del backend sigue protegiendo el descargue de inventario.
+            setHasWarehouse(true);
+            return;
+        }
+        try {
+            const res = await warehousesAPI.getAll({ branchId });
+            const list = (res.data?.data || []) as unknown[];
+            setHasWarehouse(list.length > 0);
+        } catch {
+            // Ante un fallo de consulta no bloqueamos proactivamente; el cobro lo
+            // seguirá validando el backend.
+            setHasWarehouse(true);
+        }
+    }, [user?.branchId]);
+
+    useEffect(() => {
+        checkBranchWarehouse();
+    }, [checkBranchWarehouse]);
 
     // Show table modal on first load if no table selected
     useEffect(() => {
@@ -334,28 +374,72 @@ export default function POS() {
         await loadActiveOrderForTable(table);
     }, [cart.length, clearDraftCart, loadActiveOrderForTable, selectedTable?.id]);
 
-    const addToCart = useCallback((item: MenuItem, quantity: number = 1) => {
+    // Selector de modificadores: producto en edición + sus grupos cargados.
+    const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
+    const [modifierGroups, setModifierGroups] = useState<ModifierGroupWithModifiers[]>([]);
+    const [loadingModifiers, setLoadingModifiers] = useState(false);
+
+    const addToCart = useCallback((item: MenuItem, quantity: number = 1, modifiers: SelectedModifier[] = []) => {
+        const modifiersExtra = modifiers.reduce((sum, mod) => sum + Number(mod.price), 0);
+        const unitPrice = Number(item.price) + modifiersExtra;
+
         setCart(prevCart => {
-            const existing = prevCart.find(c => c.menuItemId === item.id);
-            if (existing) {
-                return prevCart.map(c =>
-                    c.menuItemId === item.id ? { ...c, quantity: c.quantity + quantity } : c
-                );
-            } else {
-                return [...prevCart, {
-                    menuItemId: item.id,
-                    menuItem: item,
-                    quantity,
-                    price: item.price,
-                    notes: ''
-                }];
+            // Lines without modifiers can merge; lines with modifiers stay separate
+            // so each distinct selection keeps its own price and OrderItemModifier set.
+            if (modifiers.length === 0) {
+                const existing = prevCart.find(c => c.menuItemId === item.id && c.modifiers.length === 0);
+                if (existing) {
+                    return prevCart.map(c =>
+                        c.lineId === existing.lineId ? { ...c, quantity: c.quantity + quantity } : c
+                    );
+                }
             }
+
+            return [...prevCart, {
+                lineId: `${item.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                menuItemId: item.id,
+                menuItem: item,
+                quantity,
+                price: unitPrice,
+                notes: '',
+                modifiers
+            }];
         });
     }, []);
 
+    const openModifierSelector = useCallback(async (item: MenuItem) => {
+        setModifierItem(item);
+        setModifierGroups([]);
+        setLoadingModifiers(true);
+        try {
+            const res = await menuAPI.getById(item.id);
+            const groups = (res.data.data?.modifierGroups || []) as ModifierGroupWithModifiers[];
+            setModifierGroups(groups);
+        } catch {
+            showError('No se pudieron cargar los modificadores de este producto.');
+            setModifierItem(null);
+        } finally {
+            setLoadingModifiers(false);
+        }
+    }, [showError]);
+
     const handleItemClick = useCallback((item: MenuItem) => {
+        // Open the modifier selector only when the product actually has groups;
+        // otherwise keep the existing one-tap add behavior.
+        if ((item._count?.modifierGroups ?? 0) > 0) {
+            void openModifierSelector(item);
+            return;
+        }
         addToCart(item, 1);
-    }, [addToCart]);
+    }, [addToCart, openModifierSelector]);
+
+    const handleModifierConfirm = useCallback((selected: SelectedModifier[]) => {
+        if (modifierItem) {
+            addToCart(modifierItem, 1, selected);
+        }
+        setModifierItem(null);
+        setModifierGroups([]);
+    }, [addToCart, modifierItem]);
 
     const handleItemRightClick = useCallback((e: React.MouseEvent, item: MenuItem) => {
         e.preventDefault();
@@ -370,15 +454,16 @@ export default function POS() {
 
     const handleKeypadConfirm = (quantity: number) => {
         if (selectedItemForKeypad) {
+            // Right-click / quantity keypad keeps the quick path (no modifiers).
             addToCart(selectedItemForKeypad, quantity);
         }
         setShowKeypad(false);
         setSelectedItemForKeypad(null);
     };
 
-    const updateQuantity = (menuItemId: number, delta: number) => {
+    const updateQuantity = (lineId: string, delta: number) => {
         setCart(cart.map(item => {
-            if (item.menuItemId === menuItemId) {
+            if (item.lineId === lineId) {
                 const newQuantity = item.quantity + delta;
                 return newQuantity > 0 ? { ...item, quantity: newQuantity } : item;
             }
@@ -386,8 +471,8 @@ export default function POS() {
         }).filter(item => item.quantity > 0));
     };
 
-    const removeFromCart = (menuItemId: number) => {
-        setCart(cart.filter(item => item.menuItemId !== menuItemId));
+    const removeFromCart = (lineId: string) => {
+        setCart(cart.filter(item => item.lineId !== lineId));
     };
 
     const buildOrderPayload = useCallback(() => ({
@@ -397,7 +482,8 @@ export default function POS() {
             menuItemId: item.menuItemId,
             quantity: item.quantity,
             price: item.price,
-            notes: item.notes || ''
+            notes: item.notes || '',
+            modifierIds: item.modifiers.map(mod => mod.id)
         }))
     }), [selectedTable, customerName, cart]);
 
@@ -429,7 +515,8 @@ export default function POS() {
                 const response = await ordersAPI.addItem(currentOrderId, {
                     menuItemId: item.menuItemId,
                     quantity: item.quantity,
-                    notes: item.notes || ''
+                    notes: item.notes || '',
+                    modifierIds: item.modifiers.map(mod => mod.id)
                 }, {
                     operationType: 'ADD_ORDER_ITEM'
                 });
@@ -530,6 +617,11 @@ export default function POS() {
     const handlePayment = async () => {
         if (!canPay) {
             warning('Tu rol no puede registrar pagos. Pide apoyo a un cajero o administrador.');
+            return;
+        }
+
+        if (hasWarehouse === false) {
+            warning('No se puede cobrar: esta sucursal no tiene un almacén configurado. Configura un almacén en Bodegas para habilitar el cobro.');
             return;
         }
 
@@ -743,7 +835,8 @@ export default function POS() {
     const total = subtotal - discountAmount + taxAmount + tipAmount;
     const activeOrderTotal = Number(activeTableOrder?.total || 0);
     const displayTotal = cart.length > 0 ? total : activeOrderTotal;
-    const canProcessPayment = canPay && (cart.length > 0 || Boolean(currentOrderId));
+    const branchHasNoWarehouse = hasWarehouse === false;
+    const canProcessPayment = canPay && !branchHasNoWarehouse && (cart.length > 0 || Boolean(currentOrderId));
 
     return (
         <div className="pos-container-new">
@@ -789,7 +882,11 @@ export default function POS() {
                         className="header-action-btn primary"
                         onClick={handlePayment}
                         disabled={!canProcessPayment || processingPayment}
-                        title={canPay ? 'Pagar (Ctrl+P)' : 'Tu rol no puede registrar pagos'}
+                        title={!canPay
+                            ? 'Tu rol no puede registrar pagos'
+                            : branchHasNoWarehouse
+                                ? 'Sin almacén configurado en la sucursal: no se puede cobrar'
+                                : 'Pagar (Ctrl+P)'}
                     >
                         <CreditCard size={18} />
                         <span>{processingPayment ? 'Preparando...' : 'Pagar'}</span>
@@ -812,6 +909,31 @@ export default function POS() {
                     </button>
                 </div>
             </div>
+
+            {/* Aviso proactivo: la sucursal activa no tiene almacén, por lo que no se
+                puede cobrar (el descargue de inventario fallaría en el backend). */}
+            {branchHasNoWarehouse && (
+                <div className="pos-warehouse-banner" role="alert">
+                    <AlertTriangle size={22} className="pos-warehouse-banner-icon" />
+                    <div className="pos-warehouse-banner-text">
+                        <strong>No se puede cobrar en esta sucursal</strong>
+                        <span>
+                            La sucursal activa no tiene un almacén configurado, por lo que las ventas no
+                            pueden descargar inventario y el cobro está bloqueado. Configura un almacén para
+                            esta sucursal en Bodegas/Configuración para habilitarlo.
+                        </span>
+                    </div>
+                    {canManageWarehouse && (
+                        <button
+                            type="button"
+                            className="pos-warehouse-banner-btn"
+                            onClick={() => navigate('/warehouses')}
+                        >
+                            Ir a Bodegas
+                        </button>
+                    )}
+                </div>
+            )}
 
             {/* Main Content */}
             <div className="pos-main-new">
@@ -1061,6 +1183,7 @@ export default function POS() {
                     order={activeTableOrder}
                     onPaymentSuccess={handlePaymentComplete}
                     currencySymbol={currencySymbol}
+                    branchHasWarehouse={hasWarehouse !== false}
                 />
             )}
 
@@ -1069,6 +1192,20 @@ export default function POS() {
                     onConfirm={handleKeypadConfirm}
                     onClose={() => setShowKeypad(false)}
                     initialValue={1}
+                />
+            )}
+
+            {modifierItem && (
+                <ModifierSelectorModal
+                    item={modifierItem}
+                    groups={modifierGroups}
+                    loading={loadingModifiers}
+                    currencySymbol={currencySymbol}
+                    onClose={() => {
+                        setModifierItem(null);
+                        setModifierGroups([]);
+                    }}
+                    onConfirm={handleModifierConfirm}
                 />
             )}
 
@@ -1120,6 +1257,152 @@ export default function POS() {
                     </div>
                 </div>
             )}
+        </div>
+    );
+}
+
+interface ModifierSelectorModalProps {
+    item: MenuItem;
+    groups: ModifierGroupWithModifiers[];
+    loading: boolean;
+    currencySymbol: string;
+    onClose: () => void;
+    onConfirm: (selected: SelectedModifier[]) => void;
+}
+
+function ModifierSelectorModal({
+    item,
+    groups,
+    loading,
+    currencySymbol,
+    onClose,
+    onConfirm
+}: ModifierSelectorModalProps) {
+    // Selección por grupo (ids de modificadores elegidos).
+    const [selected, setSelected] = useState<Record<number, number[]>>({});
+
+    const toggleModifier = (group: ModifierGroupWithModifiers, modifierId: number) => {
+        setSelected(prev => {
+            const current = prev[group.id] || [];
+            const isSelected = current.includes(modifierId);
+            const max = group.maxSelect;
+
+            // Single-choice group behaves like a radio (replace selection).
+            if (max === 1) {
+                if (isSelected) {
+                    // Allow clearing only when the group is optional (minSelect === 0).
+                    return { ...prev, [group.id]: group.minSelect > 0 ? current : [] };
+                }
+                return { ...prev, [group.id]: [modifierId] };
+            }
+
+            if (isSelected) {
+                return { ...prev, [group.id]: current.filter(id => id !== modifierId) };
+            }
+
+            // Respect the upper bound for multi-select groups (null = unlimited).
+            if (max != null && current.length >= max) {
+                return prev;
+            }
+            return { ...prev, [group.id]: [...current, modifierId] };
+        });
+    };
+
+    const selectedOptions: SelectedModifier[] = groups.flatMap(group =>
+        (selected[group.id] || [])
+            .map(id => group.modifiers.find(m => m.id === id))
+            .filter((m): m is ModifierOption => Boolean(m))
+            .map(m => ({ id: m.id, name: m.name, price: Number(m.price) }))
+    );
+
+    const modifiersExtra = selectedOptions.reduce((sum, mod) => sum + mod.price, 0);
+    const subtotal = Number(item.price) + modifiersExtra;
+
+    // Every group must satisfy its minSelect before the item can be added.
+    const isValid = groups.every(group => (selected[group.id] || []).length >= group.minSelect);
+
+    const groupHint = (group: ModifierGroupWithModifiers): string => {
+        const min = group.minSelect;
+        const max = group.maxSelect;
+        if (min > 0 && max != null) return min === max ? `Elige ${min}` : `Elige ${min}–${max}`;
+        if (min > 0) return `Elige al menos ${min}`;
+        if (max != null) return `Hasta ${max}`;
+        return 'Opcional';
+    };
+
+    return (
+        <div className="pos-modifier-overlay" onClick={onClose}>
+            <div className="pos-modifier-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="pos-modifier-header">
+                    <div>
+                        <h3>{item.name}</h3>
+                        <span className="pos-modifier-subtitle">Personaliza tu producto</span>
+                    </div>
+                    <button type="button" className="pos-modifier-close" onClick={onClose}>
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div className="pos-modifier-body">
+                    {loading ? (
+                        <div className="pos-modifier-empty">Cargando modificadores...</div>
+                    ) : groups.length === 0 ? (
+                        <div className="pos-modifier-empty">Este producto no tiene modificadores.</div>
+                    ) : (
+                        groups.map(group => {
+                            const groupSelected = selected[group.id] || [];
+                            return (
+                                <div key={group.id} className="pos-modifier-group">
+                                    <div className="pos-modifier-group-head">
+                                        <span className="pos-modifier-group-name">{group.name}</span>
+                                        <span className={`pos-modifier-group-hint ${group.minSelect > 0 ? 'required' : ''}`}>
+                                            {groupHint(group)}
+                                        </span>
+                                    </div>
+                                    <div className="pos-modifier-options">
+                                        {group.modifiers.map(mod => {
+                                            const checked = groupSelected.includes(mod.id);
+                                            return (
+                                                <button
+                                                    type="button"
+                                                    key={mod.id}
+                                                    className={`pos-modifier-option ${checked ? 'selected' : ''}`}
+                                                    onClick={() => toggleModifier(group, mod.id)}
+                                                >
+                                                    <span className="pos-modifier-check">
+                                                        {checked && <Check size={14} />}
+                                                    </span>
+                                                    <span className="pos-modifier-option-name">{mod.name}</span>
+                                                    {Number(mod.price) > 0 && (
+                                                        <span className="pos-modifier-option-price">
+                                                            +{currencySymbol}{Number(mod.price).toFixed(2)}
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+
+                <div className="pos-modifier-footer">
+                    <div className="pos-modifier-subtotal">
+                        <span>Subtotal</span>
+                        <strong>{currencySymbol}{subtotal.toFixed(2)}</strong>
+                    </div>
+                    <button
+                        type="button"
+                        className="pos-modifier-add-btn"
+                        onClick={() => onConfirm(selectedOptions)}
+                        disabled={loading || !isValid}
+                    >
+                        Agregar
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }

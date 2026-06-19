@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
 import { AuditLogService } from './audit-log.service';
+import { InventoryEngineService } from './inventory-engine.service';
 
 export class InventoryMovementService {
     static async getAll(companyId: number, filters?: {
@@ -140,6 +141,10 @@ export class InventoryMovementService {
         reason?: string;
         reference?: string;
         unit?: string;
+        // D11: optional entry cost (per original/purchase unit) for manual IN /
+        // positive ADJUSTMENT movements so they can be valued correctly. Optional
+        // to preserve backward compatibility with existing callers.
+        unitCost?: number;
     }) {
         // Verify warehouse belongs to company
         const warehouse = await prisma.warehouse.findFirst({
@@ -187,122 +192,49 @@ export class InventoryMovementService {
             conversionFactor = conv.conversionFactor;
         }
 
-        // Start transaction
+        // D11: convert a caller-supplied IN/ADJUSTMENT entry cost (per original
+        // unit) to base unit before handing it to the engine.
+        const baseUnitCost = (data.unitCost != null)
+            ? (conversionFactor && conversionFactor > 0 ? data.unitCost / conversionFactor : data.unitCost)
+            : undefined;
+
+        // Start transaction. All stock/movement/FIFO-batch mutations go through the
+        // single inventory engine, preserving the WEIGHTED_AVERAGE valuation while
+        // adding real FIFO layers.
         return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-            // Get or create stock record
-            let stock = await tx.stock.findUnique({
-                where: {
-                    warehouseId_productId: {
-                        warehouseId: data.warehouseId,
-                        productId: data.productId
-                    }
-                }
-            });
-
-            if (!stock) {
-                stock = await tx.stock.create({
-                    data: {
-                        warehouseId: data.warehouseId,
-                        productId: data.productId,
-                        companyId,
-                        quantity: 0
-                    }
-                });
-            }
-
-            // Calculate new quantity based on movement type (using base-unit quantity)
-            const currentQuantity = Number(stock.quantity);
-            let newQuantity = currentQuantity;
-
-            if (data.type === 'IN') {
-                newQuantity += baseQuantity;
-            } else if (data.type === 'ADJUSTMENT') {
-                newQuantity += baseQuantity;
-                if (newQuantity < 0) {
-                    throw new Error('Adjustment would result in negative stock');
-                }
-            } else if (data.type === 'OUT' || data.type === 'TRANSFER') {
-                newQuantity -= baseQuantity;
-
-                if (newQuantity < 0) {
-                    throw new Error('Insufficient stock for this operation');
-                }
-            }
-
-            // Update stock
-            await tx.stock.update({
-                where: {
-                    warehouseId_productId: {
-                        warehouseId: data.warehouseId,
-                        productId: data.productId
-                    }
-                },
-                data: {
-                    quantity: newQuantity
-                }
-            });
-
-            const unitCost = Number(product.currentAverageCost || product.cost || 0);
-            const totalCost = baseQuantity * unitCost;
-
-            const currentBalanceCost = currentQuantity * unitCost;
-            let newBalanceCost = currentBalanceCost;
-
-            if (data.type === 'IN' || data.type === 'ADJUSTMENT') {
-                newBalanceCost = currentBalanceCost + totalCost;
-            } else {
-                newBalanceCost = currentBalanceCost - totalCost;
-            }
-
-            const movement = await tx.inventoryMovement.create({
-                data: {
-                    warehouseId: data.warehouseId,
-                    productId: data.productId,
-                    userId: data.userId,
-                    type: data.type,
-                    quantity: baseQuantity,
-                    reason: data.reason,
-                    reference: data.reference,
-                    originalQuantity,
-                    originalUnit,
-                    conversionFactor,
-                    companyId,
-                    unitCost,
-                    totalCost,
-                    balanceQty: newQuantity,
-                    balanceCost: newBalanceCost
-                },
-                include: {
-                    warehouse: {
-                        select: {
-                            id: true,
-                            name: true
-                        }
-                    },
-                    product: {
-                        select: {
-                            id: true,
-                            name: true,
-                            unit: true
-                        }
-                    },
-                    user: {
-                        select: {
-                            id: true,
-                            name: true
-                        }
-                    }
-                }
+            const result = await InventoryEngineService.applyMovement(tx, {
+                type: data.type,
+                companyId,
+                warehouseId: data.warehouseId,
+                productId: data.productId,
+                userId: data.userId,
+                quantity: baseQuantity,
+                unitCost: baseUnitCost,
+                reason: data.reason,
+                reference: data.reference,
+                originalQuantity,
+                originalUnit,
+                conversionFactor,
+                // IN / ADJUSTMENT open a manual-adjustment FIFO layer.
+                sourceType: 'ADJUSTMENT'
             });
 
             AuditLogService.log({
                 companyId, userId: data.userId,
-                entityType: 'InventoryMovement', entityId: movement.id,
-                action: data.type === 'TRANSFER' ? 'TRANSFER' : 'CREATE',
+                entityType: 'InventoryMovement', entityId: result.movementId,
+                action: 'CREATE',
                 details: { type: data.type, productId: data.productId, warehouseId: data.warehouseId, quantity: baseQuantity, reason: data.reason }
             }).catch((err) => console.error('[InventoryMovementService] Failed to write audit log:', err));
 
-            return movement;
+            // Re-read with the same includes callers expect.
+            return await tx.inventoryMovement.findUnique({
+                where: { id: result.movementId },
+                include: {
+                    warehouse: { select: { id: true, name: true } },
+                    product: { select: { id: true, name: true, unit: true } },
+                    user: { select: { id: true, name: true } }
+                }
+            });
         });
     }
 
@@ -399,80 +331,47 @@ export class InventoryMovementService {
             });
             if (!product) throw new Error('Product not found or unauthorized');
 
+            // A transfer keeps the product's moving-average cost on both legs, so we
+            // pass it explicitly to the engine (bespoke valuation) to preserve the
+            // exact legacy numbers regardless of the active costing method.
             const unitCost = Number(product.currentAverageCost || product.cost || 0);
-            const totalCost = baseQuantity * unitCost;
 
-            // --- OUT from source warehouse ---
-            const sourceStock = await tx.stock.findUnique({
-                where: { warehouseId_productId: { warehouseId: data.fromWarehouseId, productId: data.productId } }
-            });
-            if (!sourceStock) throw new Error('No stock in source warehouse');
-
-            const sourceNewQty = Number(sourceStock.quantity) - baseQuantity;
-            if (sourceNewQty < 0) throw new Error('Insufficient stock in source warehouse for transfer');
-
-            await tx.stock.update({
-                where: { warehouseId_productId: { warehouseId: data.fromWarehouseId, productId: data.productId } },
-                data: { quantity: sourceNewQty }
-            });
-
-            await tx.inventoryMovement.create({
-                data: {
-                    companyId,
-                    warehouseId: data.fromWarehouseId,
-                    productId: data.productId,
-                    userId: data.userId,
-                    type: 'TRANSFER',
-                    transferGroupId,
-                    quantity: baseQuantity,
-                    originalQuantity,
-                    originalUnit,
-                    conversionFactor: convFactor,
-                    reason: `Transfer out to warehouse ${data.toWarehouseId}`,
-                    reference: data.reference || null,
-                    unitCost,
-                    totalCost,
-                    balanceQty: sourceNewQty,
-                    balanceCost: sourceNewQty * unitCost
-                }
+            // --- OUT from source warehouse (TRANSFER, outbound leg) ---
+            await InventoryEngineService.applyMovement(tx, {
+                type: 'TRANSFER',
+                direction: 'OUT',
+                companyId,
+                warehouseId: data.fromWarehouseId,
+                productId: data.productId,
+                userId: data.userId,
+                quantity: baseQuantity,
+                unitCost,
+                originalQuantity,
+                originalUnit,
+                conversionFactor: convFactor,
+                reason: `Transfer out to warehouse ${data.toWarehouseId}`,
+                reference: data.reference || undefined,
+                transferGroupId,
+                productName: product.name
             });
 
-            // --- IN to destination warehouse ---
-            let destStock = await tx.stock.findUnique({
-                where: { warehouseId_productId: { warehouseId: data.toWarehouseId, productId: data.productId } }
-            });
-            if (!destStock) {
-                destStock = await tx.stock.create({
-                    data: { warehouseId: data.toWarehouseId, productId: data.productId, companyId, quantity: 0 }
-                });
-            }
-
-            const destNewQty = Number(destStock.quantity) + baseQuantity;
-
-            await tx.stock.update({
-                where: { warehouseId_productId: { warehouseId: data.toWarehouseId, productId: data.productId } },
-                data: { quantity: destNewQty }
-            });
-
-            await tx.inventoryMovement.create({
-                data: {
-                    companyId,
-                    warehouseId: data.toWarehouseId,
-                    productId: data.productId,
-                    userId: data.userId,
-                    type: 'TRANSFER',
-                    transferGroupId,
-                    quantity: baseQuantity,
-                    originalQuantity,
-                    originalUnit,
-                    conversionFactor: convFactor,
-                    reason: `Transfer in from warehouse ${data.fromWarehouseId}`,
-                    reference: data.reference || null,
-                    unitCost,
-                    totalCost,
-                    balanceQty: destNewQty,
-                    balanceCost: destNewQty * unitCost
-                }
+            // --- IN to destination warehouse (TRANSFER, inbound leg) ---
+            await InventoryEngineService.applyMovement(tx, {
+                type: 'TRANSFER',
+                direction: 'IN',
+                companyId,
+                warehouseId: data.toWarehouseId,
+                productId: data.productId,
+                userId: data.userId,
+                quantity: baseQuantity,
+                unitCost,
+                originalQuantity,
+                originalUnit,
+                conversionFactor: convFactor,
+                reason: `Transfer in from warehouse ${data.fromWarehouseId}`,
+                reference: data.reference || undefined,
+                transferGroupId,
+                sourceType: 'TRANSFER'
             });
 
             return { success: true, transferGroupId };

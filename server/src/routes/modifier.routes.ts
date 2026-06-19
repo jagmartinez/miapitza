@@ -15,6 +15,7 @@ router.put('/groups/:id', requireRole('ADMIN', 'SUPERADMIN'), validate(s.idParam
 
 router.post('/modifiers', requireRole('ADMIN', 'SUPERADMIN'), validate(s.createModifier), ModifierController.createModifier);
 router.put('/modifiers/:id', requireRole('ADMIN', 'SUPERADMIN'), validate(s.idParam), ModifierController.updateModifier);
+router.delete('/modifiers/:id', requireRole('ADMIN', 'SUPERADMIN'), validate(s.idParam), ModifierController.deleteModifier);
 
 router.post('/assign', requireRole('ADMIN', 'SUPERADMIN'), ModifierController.assignGroupToMenuItem);
 router.post('/remove', requireRole('ADMIN', 'SUPERADMIN'), ModifierController.removeGroupFromMenuItem);

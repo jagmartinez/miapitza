@@ -119,9 +119,11 @@ export class MenuItemService {
                                 id: true,
                                 name: true,
                                 unit: true,
-                                cost: true
+                                cost: true,
+                                currentAverageCost: true
                             }
-                        }
+                        },
+                        unitOfMeasure: { select: { abbreviation: true } }
                     }
                 },
                 modifierGroups: {
@@ -138,11 +140,13 @@ export class MenuItemService {
             throw new Error('Menu item not found');
         }
 
-        // Calculate total cost from recipes in product base units
+        // Calculate total cost from recipes in product base units.
+        // Unit priority: recipe.unit -> recipe.unitId abbreviation -> product.unit.
+        // Cost source aligned with production/reports: currentAverageCost ?? cost.
         const recipeCosts = await Promise.all(menuItem.recipes.map(async (recipe) => {
-            const recipeUnit = recipe.unit || recipe.product.unit;
+            const recipeUnit = recipe.unit || recipe.unitOfMeasure?.abbreviation || recipe.product.unit;
             const recipeQty = Number(recipe.quantity);
-            let baseQty = recipeQty;
+            const unitCost = Number(recipe.product.currentAverageCost ?? recipe.product.cost ?? 0);
 
             try {
                 const conv = await UnitConversionService.convert(
@@ -151,13 +155,14 @@ export class MenuItemService {
                     recipeQty,
                     recipeUnit
                 );
-                baseQty = conv.baseQuantity;
+                return unitCost * conv.baseQuantity;
             } catch {
-                // If conversion config is missing, keep legacy 1:1 behavior
+                // Conversion failed with an incompatible configured base unit: a
+                // silent 1:1 would inflate the cost (e.g. ×1000 treating kg as g).
+                // Surface a non-inflated 0 for this recipe instead of a misleading
+                // number, and keep the menu list working (no crash).
+                return 0;
             }
-
-            const unitCost = Number(recipe.product.cost || 0);
-            return unitCost * baseQty;
         }));
 
         const totalCost = recipeCosts.reduce((sum, value) => sum + value, 0);

@@ -7,12 +7,20 @@ import type { SingleValue } from 'react-select';
 import type { MenuItem } from '../types';
 import './OrderCart.css';
 
+interface SelectedModifier {
+    id: number;
+    name: string;
+    price: number;
+}
+
 interface CartItem {
+    lineId: string;
     menuItemId: number;
     menuItem: MenuItem;
     quantity: number;
     price: number;
     notes: string;
+    modifiers: SelectedModifier[];
 }
 
 interface OrderCartProps {
@@ -21,8 +29,8 @@ interface OrderCartProps {
     taxRate: number;
     tipRate?: number;
     tipEnabled?: boolean;
-    onUpdateQuantity: (menuItemId: number, delta: number) => void;
-    onRemoveItem: (menuItemId: number) => void;
+    onUpdateQuantity: (lineId: string, delta: number) => void;
+    onRemoveItem: (lineId: string) => void;
     onDiscountChange: (discount: number) => void;
     onTipToggle?: (enabled: boolean) => void;
     enablePromotions?: boolean;
@@ -46,9 +54,9 @@ export default function OrderCart({
 }: OrderCartProps) {
     const { confirm } = useConfirmDialog();
 
-    const handleRemove = async (itemId: number) => {
+    const handleRemove = async (lineId: string) => {
         if (!(await confirm('¿Eliminar este producto del carrito?', { variant: 'warning' }))) return;
-        onRemoveItem(itemId);
+        onRemoveItem(lineId);
     };
 
     const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -72,28 +80,49 @@ export default function OrderCart({
                     </div>
                 ) : (
                     cart.map(item => (
-                        <div key={item.menuItemId} className="cart-item-compact">
+                        <div key={item.lineId} className="cart-item-compact">
                             <div className="item-info">
                                 <div className="item-name-compact">{item.menuItem.name}</div>
                                 <div className="item-price-compact">{currencySymbol}{Number(item.price).toFixed(2)}</div>
+                                {item.modifiers.length > 0 && (
+                                    <ul style={{ listStyle: 'none', margin: '4px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        {item.modifiers.map(mod => (
+                                            <li
+                                                key={mod.id}
+                                                style={{
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    gap: '8px',
+                                                    fontSize: '0.78rem',
+                                                    color: 'var(--color-text-secondary)'
+                                                }}
+                                            >
+                                                <span>+ {mod.name}</span>
+                                                {Number(mod.price) > 0 && (
+                                                    <span>{currencySymbol}{Number(mod.price).toFixed(2)}</span>
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
                             </div>
                             <div className="item-actions">
                                 <button
                                     className="qty-btn-compact"
-                                    onClick={() => onUpdateQuantity(item.menuItemId, -1)}
+                                    onClick={() => onUpdateQuantity(item.lineId, -1)}
                                 >
                                     <Minus size={14} />
                                 </button>
                                 <span className="qty-display">{item.quantity}</span>
                                 <button
                                     className="qty-btn-compact"
-                                    onClick={() => onUpdateQuantity(item.menuItemId, 1)}
+                                    onClick={() => onUpdateQuantity(item.lineId, 1)}
                                 >
                                     <Plus size={14} />
                                 </button>
                                 <button
                                     className="remove-btn-compact"
-                                    onClick={() => void handleRemove(item.menuItemId)}
+                                    onClick={() => void handleRemove(item.lineId)}
                                 >
                                     <Trash2 size={14} />
                                 </button>

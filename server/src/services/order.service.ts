@@ -2,14 +2,18 @@ import prisma from '../utils/prisma';
 import { Prisma } from '@prisma/client';
 import { PedidosYaService } from './pedidosya.service';
 import { InventoryConsumptionService } from './inventory-consumption.service';
+import { DynamicPricingService } from './dynamic-pricing.service';
 
 /** Valid state transitions for orders */
 const VALID_TRANSITIONS: Record<string, string[]> = {
     'OPEN': ['SENT_TO_KITCHEN', 'CANCELLED'],
     'SENT_TO_KITCHEN': ['IN_PREPARATION', 'READY', 'CANCELLED'],
     'IN_PREPARATION': ['READY', 'CANCELLED'],
-    'READY': ['DELIVERED', 'PAID', 'CANCELLED'],
-    'DELIVERED': ['PAID', 'CANCELLED'],
+    // PAID is intentionally NOT reachable via manual updateStatus: it must only
+    // be set by PaymentService once the order is fully paid (which also triggers
+    // inventory consumption). Allowing 'PAID' here would skip cobro y descargue.
+    'READY': ['DELIVERED', 'CANCELLED'],
+    'DELIVERED': ['CANCELLED'],
     'PAID': [],      // terminal
     'CANCELLED': [], // terminal
 };
@@ -237,6 +241,40 @@ export class OrderService {
         return this.withTimeline(order);
     }
 
+    /**
+     * Validate and materialize an item's selected modifiers, mirroring the
+     * membership check used by `addItem`: every modifierId must belong to one of
+     * the MenuItem's modifier groups. Returns the OrderItemModifier create rows
+     * plus their combined extra price so the caller can fold it into the unit price.
+     */
+    private static async resolveItemModifiers(
+        tx: Prisma.TransactionClient,
+        menuItem: { modifierGroups: { modifiers: { id: number }[] }[] },
+        modifierIds?: number[]
+    ): Promise<{ create: { modifierId: number; name: string; price: Prisma.Decimal | number }[]; total: number }> {
+        if (!modifierIds || modifierIds.length === 0) {
+            return { create: [], total: 0 };
+        }
+
+        const validModifierIds = new Set(
+            menuItem.modifierGroups.flatMap((g) => g.modifiers.map((m) => m.id))
+        );
+        const invalidIds = modifierIds.filter((id) => !validModifierIds.has(id));
+        if (invalidIds.length > 0) {
+            throw new Error('Modificadores inválidos para este producto');
+        }
+
+        const modifiers = await tx.modifier.findMany({
+            where: { id: { in: modifierIds }, active: true }
+        });
+        const total = modifiers.reduce((sum, mod) => sum + Number(mod.price), 0);
+
+        return {
+            create: modifiers.map((mod) => ({ modifierId: mod.id, name: mod.name, price: mod.price })),
+            total
+        };
+    }
+
     static async create(companyId: number, data: {
         branchId: number;
         tableId?: number;
@@ -247,6 +285,7 @@ export class OrderService {
             quantity: number;
             price: number;
             notes?: string;
+            modifierIds?: number[];
         }>;
     }) {
         return await prisma.$transaction(async (tx) => {
@@ -284,13 +323,27 @@ export class OrderService {
                     if (data.items && data.items.length > 0) {
                         for (const item of data.items) {
                             const menuItem = await tx.menuItem.findFirst({
-                                where: { id: item.menuItemId, companyId, active: true }
+                                where: { id: item.menuItemId, companyId, active: true },
+                                include: {
+                                    modifierGroups: {
+                                        include: { modifiers: { select: { id: true } } }
+                                    }
+                                }
                             });
                             if (!menuItem) {
                                 throw new Error('Elemento de menú no encontrado o inactivo');
                             }
 
-                            const unitPrice = Number(menuItem.price);
+                            // Validate + price the selected modifiers (same rule as addItem).
+                            const modifiers = await this.resolveItemModifiers(tx, menuItem, item.modifierIds);
+
+                            // Resolve the branch-effective price (falls back to the
+                            // base MenuItem price when no branch price is configured),
+                            // then fold in the selected modifiers' extra price.
+                            const basePrice = data.branchId
+                                ? await DynamicPricingService.getPrice(item.menuItemId, data.branchId, companyId)
+                                : Number(menuItem.price);
+                            const unitPrice = basePrice + modifiers.total;
                             const subtotal = unitPrice * item.quantity;
                             await tx.orderItem.create({
                                 data: {
@@ -299,7 +352,8 @@ export class OrderService {
                                     quantity: item.quantity,
                                     price: unitPrice,
                                     subtotal: subtotal,
-                                    notes: item.notes || ''
+                                    notes: item.notes || '',
+                                    modifiers: { create: modifiers.create }
                                 }
                             });
                         }
@@ -360,13 +414,27 @@ export class OrderService {
 
                 for (const item of data.items) {
                     const menuItem = await tx.menuItem.findFirst({
-                        where: { id: item.menuItemId, companyId, active: true }
+                        where: { id: item.menuItemId, companyId, active: true },
+                        include: {
+                            modifierGroups: {
+                                include: { modifiers: { select: { id: true } } }
+                            }
+                        }
                     });
                     if (!menuItem) {
                         throw new Error('Elemento de menú no encontrado o inactivo');
                     }
 
-                    const unitPrice = Number(menuItem.price);
+                    // Validate + price the selected modifiers (same rule as addItem).
+                    const modifiers = await this.resolveItemModifiers(tx, menuItem, item.modifierIds);
+
+                    // Resolve the branch-effective price (falls back to the base
+                    // MenuItem price when no branch price is configured), then fold
+                    // in the selected modifiers' extra price.
+                    const basePrice = data.branchId
+                        ? await DynamicPricingService.getPrice(item.menuItemId, data.branchId, companyId)
+                        : Number(menuItem.price);
+                    const unitPrice = basePrice + modifiers.total;
                     const subtotal = unitPrice * item.quantity;
                     totalAmount += subtotal;
 
@@ -377,7 +445,8 @@ export class OrderService {
                             quantity: item.quantity,
                             price: unitPrice,
                             subtotal: subtotal,
-                            notes: item.notes || ''
+                            notes: item.notes || '',
+                            modifiers: { create: modifiers.create }
                         }
                     });
                 }
@@ -472,9 +541,6 @@ export class OrderService {
             modifiersTotal = modifiersData.reduce((sum, mod) => sum + Number(mod.price), 0);
         }
 
-        const itemPrice = Number(menuItem.price);
-        const subtotal = (itemPrice + modifiersTotal) * data.quantity;
-
         // Move order status check INSIDE transaction to prevent TOCTOU race
         return await prisma.$transaction(async (tx) => {
             const order = await tx.order.findFirst({
@@ -489,12 +555,20 @@ export class OrderService {
                 throw new Error('Cannot add items to paid or cancelled orders');
             }
 
+            // Resolve the branch-effective price for the order's branch (falls
+            // back to the base MenuItem price when no branch price is configured).
+            const basePrice = order.branchId
+                ? await DynamicPricingService.getPrice(data.menuItemId, order.branchId, companyId)
+                : Number(menuItem.price);
+            const unitPrice = basePrice + modifiersTotal;
+            const subtotal = unitPrice * data.quantity;
+
             const item = await tx.orderItem.create({
                 data: {
                     orderId,
                     menuItemId: data.menuItemId,
                     quantity: data.quantity,
-                    price: itemPrice + modifiersTotal,
+                    price: unitPrice,
                     subtotal: subtotal,
                     notes: data.notes,
                     modifiers: {
@@ -831,7 +905,8 @@ export class OrderService {
                             include: {
                                 recipes: {
                                     include: {
-                                        product: true
+                                        product: true,
+                                        unitOfMeasure: { select: { abbreviation: true } }
                                     }
                                 }
                             }
@@ -888,7 +963,16 @@ export class OrderService {
         });
     }
 
-    static async cancel(id: number, companyId: number, cancelledById?: number, cancelReason?: string) {
+    static async cancel(
+        id: number,
+        companyId: number,
+        cancelledById?: number,
+        cancelReason?: string,
+        // `allowPaidReversal` is reserved for channel integrations (e.g. PedidosYa)
+        // that must honor an external cancellation even after the order was PAID.
+        // It reverses any consumed inventory instead of rejecting the cancel.
+        options?: { allowPaidReversal?: boolean }
+    ) {
         const order = await prisma.order.findFirst({
             where: { id, companyId },
             include: { table: true, payments: true }
@@ -898,21 +982,27 @@ export class OrderService {
             throw new Error('Order not found');
         }
 
-        if (order.status === 'PAID') {
-            throw new Error('Cannot cancel paid orders');
-        }
-
         if (order.status === 'CANCELLED') {
             throw new Error('Order is already cancelled');
         }
 
-        // Check for existing partial payments — require refund first
-        if (order.payments && order.payments.length > 0) {
+        // PAID orders are terminal for manual cancellation; only channel
+        // integrations may cancel them (with inventory reversal below).
+        if (order.status === 'PAID' && !options?.allowPaidReversal) {
+            throw new Error('Cannot cancel paid orders');
+        }
+
+        // For non-PAID orders, require partial payments to be refunded first.
+        // (A PAID channel cancellation reverses inventory and is settled by the
+        // platform, so the local payment-refund gate does not apply.)
+        if (order.status !== 'PAID' && order.payments && order.payments.length > 0) {
             const totalPaid = order.payments.reduce((sum, p) => sum + Number(p.amount), 0);
             if (totalPaid > 0) {
                 throw new Error(`Order has existing payments totaling ${totalPaid.toFixed(2)}. Please refund/delete payments before cancelling.`);
             }
         }
+
+        const reversalUserId = cancelledById ?? order.userId;
 
         return await prisma.$transaction(async (tx) => {
             const updatedOrder = await tx.order.update({
@@ -923,6 +1013,14 @@ export class OrderService {
                     cancelReason: cancelReason || null,
                     cancelledAt: new Date()
                 }
+            });
+
+            // Restore any inventory deducted for this order. Idempotent no-op for
+            // orders that never reached PAID (no outstanding consumption).
+            await InventoryConsumptionService.reverseForOrder(tx, {
+                orderId: id,
+                userId: reversalUserId,
+                companyId
             });
 
             if (order.tableId) {

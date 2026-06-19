@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import api from '../services/api';
+import api, { unitsAPI } from '../services/api';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import type { SingleValue } from 'react-select';
 import Select from '../components/Select';
@@ -61,6 +61,14 @@ interface Product {
     unit: string;
 }
 
+interface AllowedUnit {
+    unitId: number;
+    abbreviation: string;
+    name: string;
+    isBase: boolean;
+    isDefault: boolean;
+}
+
 const PAGE_SIZE = 20;
 
 const WasteReport: React.FC = () => {
@@ -74,10 +82,13 @@ const WasteReport: React.FC = () => {
     const [settings, setSettings] = useState<CurrencySettings>({});
     const [loading, setLoading] = useState(false);
 
+    const [productUnits, setProductUnits] = useState<AllowedUnit[]>([]);
+
     const [formData, setFormData] = useState({
         warehouseId: '',
         productId: '',
         quantity: '',
+        unit: '',
         reason: '',
         notes: ''
     });
@@ -122,13 +133,15 @@ const WasteReport: React.FC = () => {
                 productId: parseInt(formData.productId),
                 quantity: parseFloat(formData.quantity),
                 reason: formData.reason,
-                notes: formData.notes
+                notes: formData.notes,
+                ...(formData.unit ? { unit: formData.unit } : {})
             });
             success('Merma registrada exitosamente');
             setFormData({
                 warehouseId: '',
                 productId: '',
                 quantity: '',
+                unit: '',
                 reason: '',
                 notes: ''
             });
@@ -171,6 +184,33 @@ const WasteReport: React.FC = () => {
     useEffect(() => {
         setPage(1);
     }, [filters.startDate, filters.endDate, filters.warehouseId, filters.productId]);
+
+    // Load the product's allowed units so the user can record waste in any of them.
+    // Default to the base unit (backend assumes base when no unit is sent).
+    useEffect(() => {
+        if (!formData.productId) {
+            setProductUnits([]);
+            setFormData((fd) => ({ ...fd, unit: '' }));
+            return;
+        }
+        let cancelled = false;
+        void (async () => {
+            try {
+                const res = await unitsAPI.getProductUnits(parseInt(formData.productId));
+                if (cancelled) return;
+                const units: AllowedUnit[] = res.data.data || [];
+                setProductUnits(units);
+                const base = units.find((u) => u.isBase) ?? units[0];
+                setFormData((fd) => ({ ...fd, unit: base ? base.abbreviation : '' }));
+            } catch {
+                if (!cancelled) {
+                    setProductUnits([]);
+                    setFormData((fd) => ({ ...fd, unit: '' }));
+                }
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [formData.productId]);
 
     const detailEntries = report?.details ?? [];
     const totalPages = Math.max(1, Math.ceil(detailEntries.length / PAGE_SIZE));
@@ -275,6 +315,35 @@ const WasteReport: React.FC = () => {
                                     />
                                 </div>
 
+                                <div className="modal-input-group">
+                                    <Select
+                                        label={<><Package size={12} /> Unidad</>}
+                                        options={productUnits.map((u) => ({
+                                            value: u.abbreviation,
+                                            label: u.isBase ? `${u.abbreviation} (base)` : u.abbreviation
+                                        }))}
+                                        value={
+                                            formData.unit
+                                                ? {
+                                                    value: formData.unit,
+                                                    label: (() => {
+                                                        const u = productUnits.find((x) => x.abbreviation === formData.unit);
+                                                        return u ? (u.isBase ? `${u.abbreviation} (base)` : u.abbreviation) : formData.unit;
+                                                    })()
+                                                }
+                                                : null
+                                        }
+                                        onChange={(option: SingleValue<StrOption>) =>
+                                            option && setFormData({ ...formData, unit: option.value })
+                                        }
+                                        placeholder={formData.productId ? 'Unidad base' : 'Seleccione producto'}
+                                        isDisabled={!formData.productId || productUnits.length === 0}
+                                        isSearchable={false}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="modal-form-row">
                                 <div className="modal-input-group">
                                     <Select
                                         label={<><AlertTriangle size={12} /> Razón *</>}

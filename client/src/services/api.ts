@@ -519,6 +519,33 @@ export const menuBrandsAPI = {
         api.delete(`/menu-brands/${id}`),
 };
 
+// Modifiers API (grupos de modificadores + modificadores con vínculo de inventario)
+export const modifiersAPI = {
+    getAllGroups: () =>
+        api.get('/modifiers/groups'),
+
+    createGroup: (data: Record<string, unknown>) =>
+        api.post('/modifiers/groups', data),
+
+    updateGroup: (id: number, data: Record<string, unknown>) =>
+        api.put(`/modifiers/groups/${id}`, data),
+
+    createModifier: (data: Record<string, unknown>) =>
+        api.post('/modifiers/modifiers', data),
+
+    updateModifier: (id: number, data: Record<string, unknown>) =>
+        api.put(`/modifiers/modifiers/${id}`, data),
+
+    deleteModifier: (id: number) =>
+        api.delete(`/modifiers/modifiers/${id}`),
+
+    assignGroupToMenuItem: (menuItemId: number, groupId: number) =>
+        api.post('/modifiers/assign', { menuItemId, groupId }),
+
+    removeGroupFromMenuItem: (menuItemId: number, groupId: number) =>
+        api.post('/modifiers/remove', { menuItemId, groupId }),
+};
+
 // Warehouses API
 export const warehousesAPI = {
     getAll: (params?: Record<string, unknown>) =>

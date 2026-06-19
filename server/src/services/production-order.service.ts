@@ -3,6 +3,7 @@ import prisma from '../utils/prisma';
 import { CostingService } from './costing.service';
 import { ProductionRecipeService } from './production-recipe.service';
 import { AuditLogService } from './audit-log.service';
+import { InventoryEngineService } from './inventory-engine.service';
 
 type Tx = Prisma.TransactionClient;
 
@@ -86,11 +87,13 @@ export class ProductionOrderService {
 
         let recipe;
         if (params.recipeId) {
+            // Solo se puede producir con recetas ACTIVE (alineado con getActiveForProduct);
+            // recetas DRAFT/INACTIVE no son usables vía API aunque se pase su recipeId.
             recipe = await db.productionRecipe.findFirst({
-                where: { id: params.recipeId, companyId, productId },
+                where: { id: params.recipeId, companyId, productId, status: 'ACTIVE' },
                 include: { components: { select: { componentProductId: true } } }
             });
-            if (!recipe) throw new Error('La receta indicada no existe o no corresponde al producto.');
+            if (!recipe) throw new Error('La receta indicada no existe, no corresponde al producto o no está activa.');
         } else {
             recipe = await ProductionRecipeService.getActiveForProduct(productId, companyId, db);
             if (!recipe) throw new Error('El producto no tiene una receta de producción activa.');
@@ -212,6 +215,11 @@ export class ProductionOrderService {
             select: { id: true, branchId: true }
         });
         if (!warehouse) throw new Error('Almacén no encontrado.');
+        // El almacén debe pertenecer a la sucursal de la orden; los almacenes centrales
+        // (branchId null) son compartidos. Misma regla que la recepción de compras.
+        if (data.branchId && warehouse.branchId && warehouse.branchId !== data.branchId) {
+            throw new Error('El almacén no pertenece a la sucursal de la orden de producción.');
+        }
 
         const preview = await this.computeRequirements(companyId, {
             productId: data.productId,
@@ -385,9 +393,10 @@ export class ProductionOrderService {
 
         const result = await prisma.$transaction(async (tx) => {
             let realCost = 0;
-            const consumedSnapshot: Array<{ componentProductId: number; consumedQuantity: number; unitCost: number; totalCost: number }> = [];
 
-            // 1. Consume inputs (OUT)
+            // 1. Consume inputs (OUT) through the single inventory engine. Under
+            // WEIGHTED_AVERAGE the OUT is valued by the shared outflow contract
+            // (identical to the legacy code); the engine also consumes FIFO layers.
             for (const item of order.items) {
                 const consumedQuantity = overrides.has(item.componentProductId)
                     ? Number(overrides.get(item.componentProductId))
@@ -404,103 +413,64 @@ export class ProductionOrderService {
 
                 const product = await tx.product.findFirst({
                     where: { id: item.componentProductId, companyId },
-                    select: { id: true, name: true, currentAverageCost: true, cost: true }
+                    select: { id: true, name: true }
                 });
                 if (!product) throw new Error(`Componente ${item.componentProductId} no encontrado.`);
 
-                const stock = await tx.stock.findUnique({
-                    where: { warehouseId_productId: { warehouseId: order.warehouseId, productId: item.componentProductId } }
+                const moved = await InventoryEngineService.applyMovement(tx, {
+                    type: 'OUT',
+                    companyId,
+                    warehouseId: order.warehouseId,
+                    productId: item.componentProductId,
+                    userId,
+                    quantity: consumedQuantity,
+                    reason: `Producción ${order.code}: consumo de insumo`,
+                    reference: PROD_REF(order.id),
+                    allowNegative: payload.allowNegative,
+                    productName: product.name
                 });
-                const currentQty = stock ? Number(stock.quantity) : 0;
 
-                if (!payload.allowNegative && currentQty < consumedQuantity) {
-                    throw new Error(
-                        `Stock insuficiente de "${product.name}". Requerido: ${consumedQuantity}, Disponible: ${currentQty}. ` +
-                        `Produzca primero el insumo o ajuste el inventario.`
-                    );
-                }
-
-                const newQty = currentQty - consumedQuantity;
-                const unitCost = Number(product.currentAverageCost || product.cost || 0);
-                const totalCost = unitCost * consumedQuantity;
-                realCost += totalCost;
-
-                if (stock) {
-                    await tx.stock.update({
-                        where: { warehouseId_productId: { warehouseId: order.warehouseId, productId: item.componentProductId } },
-                        data: { quantity: newQty }
-                    });
-                } else {
-                    await tx.stock.create({
-                        data: { companyId, warehouseId: order.warehouseId, productId: item.componentProductId, quantity: newQty }
-                    });
-                }
-
-                await tx.inventoryMovement.create({
-                    data: {
-                        companyId,
-                        warehouseId: order.warehouseId,
-                        productId: item.componentProductId,
-                        userId,
-                        type: 'OUT',
-                        quantity: consumedQuantity,
-                        unitCost,
-                        totalCost,
-                        balanceQty: newQty,
-                        balanceCost: newQty * unitCost,
-                        reason: `Producción ${order.code}: consumo de insumo`,
-                        reference: PROD_REF(order.id)
-                    }
-                });
+                realCost += moved.totalCost;
 
                 await tx.productionOrderItem.update({
                     where: { id: item.id },
-                    data: { consumedQuantity, unitCost, totalCost }
+                    data: { consumedQuantity, unitCost: moved.unitCost, totalCost: moved.totalCost }
                 });
-
-                consumedSnapshot.push({ componentProductId: item.componentProductId, consumedQuantity, unitCost, totalCost });
             }
 
             realCost = round6(realCost);
             const realUnitCost = producedQuantity > 0 ? round6(realCost / producedQuantity) : 0;
 
-            // 2. Produce output (IN) at real unit cost
-            const outStock = await tx.stock.findUnique({
-                where: { warehouseId_productId: { warehouseId: order.warehouseId, productId: order.productId } }
+            // 2. Produce output (IN) at real unit cost.
+            // Stock GLOBAL del producto fabricado ANTES de la entrada (suma de todas
+            // las bodegas), capturado antes de que el motor mute la bodega destino:
+            // el costeo global se alimenta de este stock global.
+            const globalAgg = await tx.stock.aggregate({
+                where: { productId: order.productId, companyId },
+                _sum: { quantity: true }
             });
-            const previousStock = outStock ? Number(outStock.quantity) : 0;
-            const newOutQty = previousStock + producedQuantity;
+            const previousGlobalStock = Number(globalAgg._sum.quantity || 0);
 
-            if (outStock) {
-                await tx.stock.update({
-                    where: { warehouseId_productId: { warehouseId: order.warehouseId, productId: order.productId } },
-                    data: { quantity: newOutQty }
-                });
-            } else {
-                await tx.stock.create({
-                    data: { companyId, warehouseId: order.warehouseId, productId: order.productId, quantity: newOutQty }
-                });
-            }
-
-            await tx.inventoryMovement.create({
-                data: {
-                    companyId,
-                    warehouseId: order.warehouseId,
-                    productId: order.productId,
-                    userId,
-                    type: 'IN',
-                    quantity: producedQuantity,
-                    unitCost: realUnitCost,
-                    totalCost: realCost,
-                    balanceQty: newOutQty,
-                    balanceCost: newOutQty * realUnitCost,
-                    reason: `Producción ${order.code}: entrada de producto fabricado`,
-                    reference: PROD_REF(order.id)
-                }
+            // IN through the engine at the real unit cost; opens a PRODUCTION FIFO
+            // layer and keeps the accumulated valued balance (previous warehouse
+            // value + realCost) exactly as before.
+            await InventoryEngineService.applyMovement(tx, {
+                type: 'IN',
+                companyId,
+                warehouseId: order.warehouseId,
+                productId: order.productId,
+                userId,
+                quantity: producedQuantity,
+                unitCost: realUnitCost,
+                reason: `Producción ${order.code}: entrada de producto fabricado`,
+                reference: PROD_REF(order.id),
+                sourceType: 'PRODUCTION'
             });
 
-            // 3. Fold into the OUTPUT product's weighted-average cost
-            await CostingService.applyProductionCost(tx, order.productId, companyId, producedQuantity, realUnitCost, previousStock);
+            // 3. Fold into the OUTPUT product's weighted-average cost using GLOBAL stock
+            // (coherente con el costeo global; previousGlobalStock = suma de todas las bodegas).
+            // productionOrderId enables exact cost reversal on cancellation (#1).
+            await CostingService.applyProductionCost(tx, order.productId, companyId, producedQuantity, realUnitCost, previousGlobalStock, order.id);
 
             // 4. Mark order finished
             const updated = await tx.productionOrder.update({
@@ -549,11 +519,21 @@ export class ProductionOrderService {
 
         await prisma.$transaction(async (tx) => {
             if (wasFinished) {
-                // Reverse the produced OUTPUT: take it back OUT of stock.
+                // Reverse the produced OUTPUT: take it back OUT of stock (valued at
+                // the product's current moving-average cost — bespoke, passed
+                // explicitly so the engine preserves the legacy number).
                 const producedQuantity = Number(order.producedQuantity);
                 if (producedQuantity > 0) {
+                    const product = await tx.product.findFirst({
+                        where: { id: order.productId, companyId },
+                        select: { name: true, currentAverageCost: true, cost: true }
+                    });
+                    // Friendly guard: cannot reverse if the produced output is no
+                    // longer fully in stock (already consumed/sold). The engine's
+                    // own locked check is the race-safe backstop.
                     const outStock = await tx.stock.findUnique({
-                        where: { warehouseId_productId: { warehouseId: order.warehouseId, productId: order.productId } }
+                        where: { warehouseId_productId: { warehouseId: order.warehouseId, productId: order.productId } },
+                        select: { quantity: true }
                     });
                     const currentQty = outStock ? Number(outStock.quantity) : 0;
                     if (currentQty < producedQuantity) {
@@ -561,71 +541,45 @@ export class ProductionOrderService {
                             'No se puede anular: el producto fabricado ya fue consumido/vendido y no hay existencia suficiente para revertir.'
                         );
                     }
-                    const product = await tx.product.findFirst({
-                        where: { id: order.productId, companyId },
-                        select: { currentAverageCost: true, cost: true }
-                    });
                     const unitCost = Number(product?.currentAverageCost || product?.cost || 0);
-                    const newQty = currentQty - producedQuantity;
-                    await tx.stock.update({
-                        where: { warehouseId_productId: { warehouseId: order.warehouseId, productId: order.productId } },
-                        data: { quantity: newQty }
-                    });
-                    await tx.inventoryMovement.create({
-                        data: {
-                            companyId,
-                            warehouseId: order.warehouseId,
-                            productId: order.productId,
-                            userId,
-                            type: 'OUT',
-                            quantity: producedQuantity,
-                            unitCost,
-                            totalCost: unitCost * producedQuantity,
-                            balanceQty: newQty,
-                            balanceCost: newQty * unitCost,
-                            reason: `Anulación producción ${order.code}: reversa de producto fabricado`,
-                            reference: PROD_REF(order.id)
-                        }
+                    await InventoryEngineService.applyMovement(tx, {
+                        type: 'OUT',
+                        companyId,
+                        warehouseId: order.warehouseId,
+                        productId: order.productId,
+                        userId,
+                        quantity: producedQuantity,
+                        unitCost,
+                        reason: `Anulación producción ${order.code}: reversa de producto fabricado`,
+                        reference: PROD_REF(order.id),
+                        productName: product?.name
                     });
                 }
 
-                // Restore consumed inputs back IN.
+                // Restore consumed inputs back IN (valued at the cost they were
+                // consumed at — bespoke item.unitCost).
                 for (const item of order.items) {
                     const consumed = Number(item.consumedQuantity);
                     if (consumed <= 0) continue;
-                    const stock = await tx.stock.findUnique({
-                        where: { warehouseId_productId: { warehouseId: order.warehouseId, productId: item.componentProductId } }
-                    });
-                    const currentQty = stock ? Number(stock.quantity) : 0;
-                    const newQty = currentQty + consumed;
-                    const unitCost = Number(item.unitCost);
-                    if (stock) {
-                        await tx.stock.update({
-                            where: { warehouseId_productId: { warehouseId: order.warehouseId, productId: item.componentProductId } },
-                            data: { quantity: newQty }
-                        });
-                    } else {
-                        await tx.stock.create({
-                            data: { companyId, warehouseId: order.warehouseId, productId: item.componentProductId, quantity: newQty }
-                        });
-                    }
-                    await tx.inventoryMovement.create({
-                        data: {
-                            companyId,
-                            warehouseId: order.warehouseId,
-                            productId: item.componentProductId,
-                            userId,
-                            type: 'IN',
-                            quantity: consumed,
-                            unitCost,
-                            totalCost: unitCost * consumed,
-                            balanceQty: newQty,
-                            balanceCost: newQty * unitCost,
-                            reason: `Anulación producción ${order.code}: reversa de insumo`,
-                            reference: PROD_REF(order.id)
-                        }
+                    await InventoryEngineService.applyMovement(tx, {
+                        type: 'IN',
+                        companyId,
+                        warehouseId: order.warehouseId,
+                        productId: item.componentProductId,
+                        userId,
+                        quantity: consumed,
+                        unitCost: Number(item.unitCost),
+                        reason: `Anulación producción ${order.code}: reversa de insumo`,
+                        reference: PROD_REF(order.id),
+                        sourceType: 'ADJUSTMENT'
                     });
                 }
+
+                // Exact cost reversal (#1): remove this order's ProductCostHistory
+                // entry and recompute the product cost from the remaining history,
+                // INSIDE the transaction (replaces the previous partial post-commit
+                // recalculateProductCost).
+                await CostingService.reverseProductionCost(tx, id, companyId);
             }
 
             await tx.productionOrder.update({

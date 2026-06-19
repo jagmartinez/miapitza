@@ -222,12 +222,17 @@ export class PurchaseOrderController {
         try {
             const itemId = parseInt(req.params.itemId);
             const companyId = req.user!.companyId;
+            // A14: this route only carries itemId, so resolve the owning PO's branch
+            // to enforce the same branch-scope guard used on other mutating routes.
+            const branchId = await PurchaseOrderService.getItemOrderBranch(itemId, companyId);
+            assertBranchAccess(req.user!, branchId);
             await PurchaseOrderService.removeItem(itemId, companyId);
             res.json({
                 success: true,
                 message: 'Artículo eliminado exitosamente'
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -241,6 +246,9 @@ export class PurchaseOrderController {
             if (!amount || amount <= 0) {
                 return next({ statusCode: 400, message: 'El monto debe ser mayor a 0' });
             }
+
+            // A14: enforce branch-scope before registering a payment.
+            await PurchaseOrderController.assertOrderBranch(req, purchaseOrderId);
 
             const payment = await PurchaseOrderService.addPayment(purchaseOrderId, companyId, {
                 amount: Number(amount),
@@ -256,6 +264,7 @@ export class PurchaseOrderController {
                 data: payment
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }

@@ -114,7 +114,15 @@ export class StockService {
                 });
             }
 
-            let newQuantity = Number(stock.quantity);
+            // Lock the Stock row (same FOR UPDATE pattern as order.service) and
+            // re-read the locked quantity before the read-modify-write.
+            await tx.$queryRaw`SELECT id FROM \`Stock\` WHERE id = ${stock.id} AND companyId = ${companyId} FOR UPDATE`;
+            const lockedStock = await tx.stock.findUnique({
+                where: { id: stock.id },
+                select: { quantity: true }
+            });
+
+            let newQuantity = Number(lockedStock?.quantity ?? stock.quantity);
             if (type === 'IN') {
                 newQuantity += quantity;
             } else if (type === 'ADJUSTMENT') {

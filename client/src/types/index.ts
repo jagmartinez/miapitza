@@ -61,6 +61,22 @@ export interface Table {
   };
 }
 
+export interface ModifierOption {
+  id: number;
+  name: string;
+  price: number;
+  active?: boolean;
+}
+
+export interface ModifierGroupWithModifiers {
+  id: number;
+  name: string;
+  description?: string | null;
+  minSelect: number;
+  maxSelect: number | null;
+  modifiers: ModifierOption[];
+}
+
 export interface MenuItem {
   id: number;
   name: string;
@@ -101,6 +117,11 @@ export interface MenuItem {
     id: number;
     imageUrl: string;
   }[];
+  modifierGroups?: ModifierGroupWithModifiers[];
+  _count?: {
+    recipes?: number;
+    modifierGroups?: number;
+  };
   active: boolean;
 }
 

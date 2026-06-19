@@ -158,14 +158,26 @@ export class UnitConversionService {
         if (!baseUnit) {
             const inferredBase = await this.resolveBaseUnitFromLegacy(companyId, product.unit, db);
             if (!inferredBase) {
-                // No unit conversion configured and no inferable base unit — legacy 1:1
-                return {
-                    baseQuantity: quantity,
-                    conversionFactor: 1,
-                    originalQuantity: quantity,
-                    originalUnit: unitAbbreviation,
-                    baseUnit: product.unit
-                };
+                // No base unit configured and none inferable from the legacy string.
+                // A blind 1:1 here would treat e.g. 2 kg as 2 g (mis-cost ×1000), so
+                // the 1:1 is only safe when the requested unit IS the product's own
+                // unit. Otherwise we refuse and ask for explicit configuration.
+                const requestedAbbr = this.normalizeLegacyAbbreviation(unitAbbreviation);
+                const productAbbr = this.normalizeLegacyAbbreviation(product.unit);
+                if (requestedAbbr === productAbbr) {
+                    return {
+                        baseQuantity: quantity,
+                        conversionFactor: 1,
+                        originalQuantity: quantity,
+                        originalUnit: unitAbbreviation,
+                        baseUnit: product.unit
+                    };
+                }
+                throw new Error(
+                    `El producto "${product.name}" no tiene unidades configuradas, por lo que no se puede ` +
+                    `convertir la unidad "${unitAbbreviation}" a su unidad base. ` +
+                    `Configure la unidad base y las conversiones del producto en "Conversiones" antes de continuar.`
+                );
             }
 
             const requestedAbbr = this.normalizeLegacyAbbreviation(unitAbbreviation);
@@ -309,9 +321,15 @@ export class UnitConversionService {
 
         // costPerUnit is per original unit. Convert to cost per base unit.
         // If 1 original unit = factor base units, then cost per base = costPerUnit / factor
-        const baseCost = result.conversionFactor > 0
-            ? costPerUnit / result.conversionFactor
-            : costPerUnit;
+        // A non-positive factor would corrupt costing (division by 0/negativo). Factors
+        // are validated > 0 on write, so reaching here means inconsistent data: fail loud.
+        if (!(result.conversionFactor > 0)) {
+            throw new Error(
+                `Factor de conversión inválido (${result.conversionFactor}) para la unidad ` +
+                `"${unitAbbreviation}". Revise la configuración de conversiones del producto.`
+            );
+        }
+        const baseCost = costPerUnit / result.conversionFactor;
 
         return {
             ...result,

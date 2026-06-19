@@ -372,7 +372,7 @@ export class KardexService {
             const startRow = kardex.dateRange.from || kardex.dateRange.to ? 5 : 4;
             worksheet.mergeCells(`A${startRow}:K${startRow}`);
             const openingCell = worksheet.getCell(`A${startRow}`);
-            openingCell.value = `Saldo Inicial: ${kardex.openingBalance.quantity} ${kardex.product.unit} @ $${(kardex.openingBalance.cost / kardex.openingBalance.quantity || 0).toFixed(2)} = $${kardex.openingBalance.cost.toFixed(2)}`;
+            openingCell.value = `Saldo Inicial: ${kardex.openingBalance.quantity} ${kardex.baseUnitAbbr} @ $${(kardex.openingBalance.cost / kardex.openingBalance.quantity || 0).toFixed(2)} = $${kardex.openingBalance.cost.toFixed(2)}`;
             openingCell.font = { bold: true };
             openingCell.fill = {
                 type: 'pattern',
@@ -442,7 +442,7 @@ export class KardexService {
             currentRow++;
             worksheet.mergeCells(`A${currentRow}:K${currentRow}`);
             const closingCell = worksheet.getCell(`A${currentRow}`);
-            closingCell.value = `Saldo Final: ${kardex.closingBalance.quantity} ${kardex.product.unit} @ $${(kardex.closingBalance.cost / kardex.closingBalance.quantity || 0).toFixed(2)} = $${kardex.closingBalance.cost.toFixed(2)}`;
+            closingCell.value = `Saldo Final: ${kardex.closingBalance.quantity} ${kardex.baseUnitAbbr} @ $${(kardex.closingBalance.cost / kardex.closingBalance.quantity || 0).toFixed(2)} = $${kardex.closingBalance.cost.toFixed(2)}`;
             closingCell.font = { bold: true };
             closingCell.fill = {
                 type: 'pattern',
@@ -452,13 +452,13 @@ export class KardexService {
 
             // Totals
             currentRow += 2;
-            worksheet.getCell(`A${currentRow}`).value = `Total Entradas: ${kardex.totals.totalIn} ${kardex.product.unit}`;
+            worksheet.getCell(`A${currentRow}`).value = `Total Entradas: ${kardex.totals.totalIn} ${kardex.baseUnitAbbr}`;
             worksheet.getCell(`A${currentRow}`).font = { bold: true };
             currentRow++;
-            worksheet.getCell(`A${currentRow}`).value = `Total Salidas: ${kardex.totals.totalOut} ${kardex.product.unit}`;
+            worksheet.getCell(`A${currentRow}`).value = `Total Salidas: ${kardex.totals.totalOut} ${kardex.baseUnitAbbr}`;
             worksheet.getCell(`A${currentRow}`).font = { bold: true };
             currentRow++;
-            worksheet.getCell(`A${currentRow}`).value = `Cambio Neto: ${kardex.totals.netChange} ${kardex.product.unit}`;
+            worksheet.getCell(`A${currentRow}`).value = `Cambio Neto: ${kardex.totals.netChange} ${kardex.baseUnitAbbr}`;
             worksheet.getCell(`A${currentRow}`).font = { bold: true };
 
             // Add borders to all cells with data

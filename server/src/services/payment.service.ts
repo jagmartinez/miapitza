@@ -66,7 +66,7 @@ export class PaymentService {
 
             const order = await tx.order.findFirst({
                 where: { id: data.orderId, companyId },
-                include: { payments: true, items: { include: { menuItem: { include: { recipes: { include: { product: true } } } } } } }
+                include: { payments: true, items: { include: { menuItem: { include: { recipes: { include: { product: true, unitOfMeasure: { select: { abbreviation: true } } } } } } } } }
             });
 
             if (!order) {
@@ -153,27 +153,51 @@ export class PaymentService {
                     }
                 }
 
-                // NOTE: table release intentionally happens on DELIVERED
-                // (OrderService.complete) or CANCELLED, not on PAID.
+                // Free the associated table once the order is PAID, but only if
+                // no other active order still occupies it (shared-table safety).
+                // Idempotent: setting AVAILABLE on an already-free table is a no-op.
+                if (order.tableId) {
+                    const otherActiveOnTable = await tx.order.count({
+                        where: {
+                            companyId,
+                            tableId: order.tableId,
+                            id: { not: order.id },
+                            status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED'] }
+                        }
+                    });
+                    if (otherActiveOnTable === 0) {
+                        await tx.table.update({
+                            where: { id: order.tableId },
+                            data: { status: 'AVAILABLE' }
+                        });
+                    }
+                }
 
                 // Auto-deduct inventory through the shared, idempotent consumption
                 // service. Skips automatically if the order was already consumed
                 // (e.g. OrderService.complete already ran).
+                //
+                // A PAID sale MUST descargar inventario: if the branch has no
+                // warehouse we abort the whole payment transaction instead of
+                // silently confirming a sale that would lose the descargue.
                 const branchId = order.branchId;
-                if (branchId) {
-                    const warehouse = await tx.warehouse.findFirst({
-                        where: { branchId, companyId }
-                    });
+                const warehouse = branchId
+                    ? await tx.warehouse.findFirst({ where: { branchId, companyId } })
+                    : null;
 
-                    if (warehouse) {
-                        await InventoryConsumptionService.consumeForOrder(tx, {
-                            order,
-                            warehouseId: warehouse.id,
-                            userId,
-                            companyId
-                        });
-                    }
+                if (!warehouse) {
+                    throw new Error(
+                        `No hay almacén configurado para la sucursal ${branchId ?? '(sin sucursal)'}; ` +
+                        `no se puede descargar inventario para la orden ${order.id}.`
+                    );
                 }
+
+                await InventoryConsumptionService.consumeForOrder(tx, {
+                    order,
+                    warehouseId: warehouse.id,
+                    userId,
+                    companyId
+                });
             }
 
             return payment;

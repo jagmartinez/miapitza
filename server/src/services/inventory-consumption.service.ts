@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { UnitConversionService } from './unit-conversion.service';
+import { InventoryEngineService } from './inventory-engine.service';
 
 /**
  * Centralizes recipe -> base-unit conversion, stock decrement and the matching
@@ -24,6 +25,10 @@ type RecipeLike = {
     productId: number;
     quantity: Prisma.Decimal | number | string;
     unit?: string | null;
+    // Optional FK-resolved unit. When the caller includes the `unitOfMeasure`
+    // relation, its abbreviation is used as a fallback for the legacy `unit`
+    // string; absent it, behavior is unchanged (falls back to product.unit).
+    unitOfMeasure?: { abbreviation: string } | null;
     product: RecipeProductLike;
 };
 
@@ -95,19 +100,21 @@ export class InventoryConsumptionService {
 
         for (const item of order.items) {
             for (const recipe of item.menuItem.recipes) {
-                const recipeUnit = recipe.unit || recipe.product.unit;
+                // Unit priority: recipe.unit -> recipe.unitId abbreviation -> product.unit.
+                const recipeUnit = recipe.unit || recipe.unitOfMeasure?.abbreviation || recipe.product.unit;
                 let recipeQtyBase: number;
                 let originalQuantity: number | null = null;
                 let originalUnit: string | null = null;
                 let conversionFactor: number | null = null;
 
                 // NOTE: do NOT silently fall back to the raw recipe quantity when a
-                // conversion fails. For legacy products without a base unit,
-                // `convert` already returns a safe 1:1 result; it only throws when a
-                // base unit IS configured and the recipe unit is incompatible. In
-                // that case deducting the raw quantity would corrupt stock (e.g.
-                // subtract 200 from a stock kept in kg for a "200 g" recipe), so we
-                // surface a clear error and abort the consumption transaction.
+                // conversion fails. `convert` only returns a 1:1 result when the
+                // recipe unit is the product's own unit; otherwise (a base unit is
+                // configured with an incompatible unit, OR a legacy product has no
+                // base unit and the recipe uses a different unit) it throws. In those
+                // cases deducting the raw quantity would corrupt stock (e.g. subtract
+                // 200 from a stock kept in kg for a "200 g" recipe), so we surface a
+                // clear error and abort the consumption transaction.
                 try {
                     const conv = await UnitConversionService.convert(
                         recipe.productId,
@@ -130,50 +137,113 @@ export class InventoryConsumptionService {
 
                 const requiredQty = recipeQtyBase * item.quantity;
 
-                const stock = await tx.stock.findUnique({
-                    where: { warehouseId_productId: { warehouseId, productId: recipe.productId } }
-                });
-
-                if (!stock) {
-                    throw new Error(`Stock insuficiente para ${recipe.product.name}. Requerido: ${requiredQty}, Disponible: 0`);
-                }
-
-                const currentQty = Number(stock.quantity);
-                if (currentQty < requiredQty) {
-                    throw new Error(`Stock insuficiente para ${recipe.product.name}. Requerido: ${requiredQty}, Disponible: ${currentQty}`);
-                }
-
-                const newQty = currentQty - requiredQty;
-                const unitCost = Number(recipe.product.currentAverageCost || recipe.product.cost || 0);
-
-                await tx.stock.update({
-                    where: { warehouseId_productId: { warehouseId, productId: recipe.productId } },
-                    data: { quantity: newQty }
-                });
-
-                await tx.inventoryMovement.create({
-                    data: {
-                        companyId,
-                        warehouseId,
-                        productId: recipe.productId,
-                        userId,
-                        type: 'OUT',
-                        quantity: requiredQty,
-                        originalQuantity: originalQuantity != null ? originalQuantity * item.quantity : null,
-                        originalUnit,
-                        conversionFactor,
-                        unitCost,
-                        totalCost: unitCost * requiredQty,
-                        balanceQty: newQty,
-                        balanceCost: newQty * unitCost,
-                        reason: 'Consumo por orden',
-                        reference
-                    }
+                // Stock lock, validation, costing, FIFO-layer consumption and the
+                // OUT movement are all handled by the single inventory engine.
+                await InventoryEngineService.applyMovement(tx, {
+                    type: 'OUT',
+                    companyId,
+                    warehouseId,
+                    productId: recipe.productId,
+                    userId,
+                    quantity: requiredQty,
+                    originalQuantity: originalQuantity != null ? originalQuantity * item.quantity : null,
+                    originalUnit,
+                    conversionFactor,
+                    reason: 'Consumo por orden',
+                    reference,
+                    productName: recipe.product.name
                 });
             }
         }
 
+        // OBJETIVO 4: also consume the ingredients linked to the order's selected
+        // modifiers. Re-query the OrderItemModifier rows INSIDE the tx (do not rely
+        // on the passed `order` carrying them) and post one OUT per modifier whose
+        // product link + consumeQuantity are configured, under the SAME ORD-{id}
+        // reference so idempotency and reversal treat them like recipe consumption.
+        await this.consumeModifiersForOrder(tx, order.id, { warehouseId, userId, companyId, reference });
+
         return { consumed: true };
+    }
+
+    /**
+     * Consume inventory for the ingredient-linked modifiers selected on an order.
+     * Each consuming modifier deducts `consumeQuantity` (in its `unit`, or the
+     * linked product's base unit) times the OrderItem quantity, valued and layered
+     * through the inventory engine under the order's stable reference.
+     */
+    private static async consumeModifiersForOrder(
+        tx: Prisma.TransactionClient,
+        orderId: number,
+        ctx: { warehouseId: number; userId: number; companyId: number; reference: string }
+    ): Promise<void> {
+        const orderItemModifiers = await tx.orderItemModifier.findMany({
+            where: { orderItem: { orderId } },
+            select: {
+                modifier: {
+                    select: {
+                        name: true,
+                        productId: true,
+                        consumeQuantity: true,
+                        unit: { select: { abbreviation: true } },
+                        product: { select: { id: true, name: true, unit: true } }
+                    }
+                },
+                orderItem: { select: { quantity: true } }
+            }
+        });
+
+        for (const oim of orderItemModifiers) {
+            const modifier = oim.modifier;
+            if (!modifier.productId || !modifier.product) continue;
+
+            const consumeQuantity = Number(modifier.consumeQuantity ?? 0);
+            if (!(consumeQuantity > 0)) continue;
+
+            const unitAbbreviation = modifier.unit?.abbreviation || modifier.product.unit;
+
+            let baseQuantity: number;
+            let originalQuantity: number | null = null;
+            let originalUnit: string | null = null;
+            let conversionFactor: number | null = null;
+            try {
+                const conv = await UnitConversionService.convert(
+                    modifier.productId,
+                    ctx.companyId,
+                    consumeQuantity,
+                    unitAbbreviation,
+                    tx
+                );
+                baseQuantity = conv.baseQuantity;
+                originalQuantity = conv.originalQuantity;
+                originalUnit = conv.originalUnit;
+                conversionFactor = conv.conversionFactor;
+            } catch (err) {
+                const detail = err instanceof Error ? err.message : 'conversión de unidad no válida';
+                throw new Error(
+                    `No se pudo descontar inventario del modificador "${modifier.name}": ${detail}. ` +
+                    `Revise la unidad del modificador y la configuración de unidades del producto.`
+                );
+            }
+
+            const requiredQty = baseQuantity * oim.orderItem.quantity;
+            if (!(requiredQty > 0)) continue;
+
+            await InventoryEngineService.applyMovement(tx, {
+                type: 'OUT',
+                companyId: ctx.companyId,
+                warehouseId: ctx.warehouseId,
+                productId: modifier.productId,
+                userId: ctx.userId,
+                quantity: requiredQty,
+                originalQuantity: originalQuantity != null ? originalQuantity * oim.orderItem.quantity : null,
+                originalUnit,
+                conversionFactor,
+                reason: 'Consumo por modificador',
+                reference: ctx.reference,
+                productName: modifier.product.name
+            });
+        }
     }
 
     /**
@@ -216,44 +286,21 @@ export class InventoryConsumptionService {
         for (const entry of net.values()) {
             if (entry.quantity <= 1e-9) continue; // nothing outstanding to restore
 
-            const stock = await tx.stock.findUnique({
-                where: { warehouseId_productId: { warehouseId: entry.warehouseId, productId: entry.productId } }
-            });
-
-            const currentQty = stock ? Number(stock.quantity) : 0;
-            const newQty = currentQty + entry.quantity;
-
-            if (stock) {
-                await tx.stock.update({
-                    where: { warehouseId_productId: { warehouseId: entry.warehouseId, productId: entry.productId } },
-                    data: { quantity: newQty }
-                });
-            } else {
-                await tx.stock.create({
-                    data: {
-                        companyId,
-                        warehouseId: entry.warehouseId,
-                        productId: entry.productId,
-                        quantity: newQty
-                    }
-                });
-            }
-
-            await tx.inventoryMovement.create({
-                data: {
-                    companyId,
-                    warehouseId: entry.warehouseId,
-                    productId: entry.productId,
-                    userId,
-                    type: 'IN',
-                    quantity: entry.quantity,
-                    unitCost: entry.unitCost,
-                    totalCost: entry.unitCost * entry.quantity,
-                    balanceQty: newQty,
-                    balanceCost: newQty * entry.unitCost,
-                    reason: 'Reversa de consumo por orden (pago eliminado)',
-                    reference
-                }
+            // Restore the net deducted stock with a compensating IN through the
+            // engine. We pass the original OUT unit cost explicitly so the reversal
+            // is valued at the cost it was consumed at (bespoke), and a FIFO layer
+            // is re-opened for the restored quantity.
+            await InventoryEngineService.applyMovement(tx, {
+                type: 'IN',
+                companyId,
+                warehouseId: entry.warehouseId,
+                productId: entry.productId,
+                userId,
+                quantity: entry.quantity,
+                unitCost: entry.unitCost,
+                reason: 'Reversa de consumo por orden (pago eliminado)',
+                reference,
+                sourceType: 'ADJUSTMENT'
             });
             reversed = true;
         }

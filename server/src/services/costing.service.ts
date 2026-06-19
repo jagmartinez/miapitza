@@ -38,13 +38,75 @@ export class CostingService {
     }
 
     /**
+     * Resolve the unit cost used to value an OUTFLOW (sale, consumption,
+     * transfer-out) according to the company's costing method. Shared contract
+     * invoked by other services when posting OUT movements.
+     *
+     * - WEIGHTED_AVERAGE: the product's stored moving-average cost.
+     * - FIFO: best-effort estimate from the oldest remaining real cost layer
+     *   (`InventoryBatch`, company-wide), falling back to the legacy
+     *   ProductCostHistory-derived batches and finally to the average/legacy cost.
+     *
+     * NOTE: This is a COMPANY-WIDE best estimate. The exact per-warehouse FIFO
+     * COGS is computed by InventoryEngineService.applyMovement, which knows the
+     * warehouse. This helper is only used for the WEIGHTED_AVERAGE outflow value
+     * and as a FIFO fallback for callers that don't go through the engine.
+     */
+    static async getOutflowUnitCost(db: Db, productId: number, companyId: number): Promise<number> {
+        const product = await db.product.findFirst({
+            where: { id: productId, companyId },
+            select: { currentAverageCost: true, cost: true }
+        });
+
+        const fallback = Number(product?.currentAverageCost ?? product?.cost ?? 0);
+
+        const company = await db.company.findUnique({
+            where: { id: companyId },
+            select: { costingMethod: true }
+        });
+        const costingMethod = company?.costingMethod || 'WEIGHTED_AVERAGE';
+
+        if (costingMethod !== 'FIFO') {
+            return fallback;
+        }
+
+        // FIFO best-effort: prefer the real cost layers (InventoryBatch) when the
+        // delegate is available (it is on the real Prisma client; minimal test
+        // stubs may omit it, in which case we fall back to the legacy estimate).
+        const batchDelegate = (db as unknown as {
+            inventoryBatch?: {
+                findFirst: (args: unknown) => Promise<{ unitCost: unknown } | null>;
+            };
+        }).inventoryBatch;
+        if (batchDelegate?.findFirst) {
+            const oldest = await batchDelegate.findFirst({
+                where: { productId, companyId, remainingQty: { gt: 0 } },
+                orderBy: { createdAt: 'asc' },
+                select: { unitCost: true }
+            });
+            if (oldest && Number(oldest.unitCost) > 0) {
+                return Number(oldest.unitCost);
+            }
+        }
+
+        // Legacy fallback: value the outflow at the oldest ProductCostHistory batch.
+        const batches = await this.getFifoBatches(productId, companyId, db);
+        if (batches.length > 0 && batches[0].unitCost > 0) {
+            return batches[0].unitCost;
+        }
+        return fallback;
+    }
+
+    /**
      * Update product cost when receiving a purchase order.
      *
      * This is called automatically when a purchase order is received. It MUST run
      * inside the same transaction as the stock mutation, so the caller passes its
-     * `tx` client (`db`). The caller also passes the PRE-receipt stock quantity for
-     * this warehouse (captured before the stock update) so the weighted-average
-     * computation is deterministic regardless of read isolation level.
+     * `tx` client (`db`). The caller also passes the PRE-receipt GLOBAL stock
+     * quantity for the product (sum across all of the company's warehouses,
+     * captured before the stock update) so the weighted-average computation is
+     * deterministic and reflects the global moving average — not a single
+     * warehouse's quantity.
      */
     static async updateProductCost(
         db: Db,
@@ -75,7 +137,9 @@ export class CostingService {
 
             const costingMethod = company?.costingMethod || 'WEIGHTED_AVERAGE';
 
-            // Pre-receipt stock for this warehouse, supplied by the caller.
+            // Pre-receipt GLOBAL stock for the product, supplied by the caller.
+            // When 0 it means "no global stock", so the new cost simply becomes the
+            // entry cost (handled inside calculateWeightedAverageCost).
             const currentStock = previousStock;
 
             const previousAvgCost = Number(product.currentAverageCost);
@@ -159,7 +223,8 @@ export class CostingService {
         companyId: number,
         quantity: number,
         unitCost: number,
-        previousStock: number
+        previousStock: number,
+        productionOrderId?: number
     ): Promise<void> {
         try {
             const product = await db.product.findFirst({
@@ -206,11 +271,14 @@ export class CostingService {
                 }
             });
 
-            // Record cost history (purchaseOrderItemId is null for production entries)
+            // Record cost history (purchaseOrderItemId is null for production
+            // entries). productionOrderId links the entry to its order so the cost
+            // effect can be reversed exactly when the order is cancelled (#1).
             await db.productCostHistory.create({
                 data: {
                     productId,
                     companyId,
+                    productionOrderId: productionOrderId ?? null,
                     quantity,
                     unitCost,
                     previousAvgCost,
@@ -223,6 +291,73 @@ export class CostingService {
             console.error(`[CostingService] Error applying production cost:`, error);
             throw new Error(`Failed to apply production cost: ${getErrorMessage(error)}`);
         }
+    }
+
+    /**
+     * Reverse the cost effect of a (now cancelled) production order (#1).
+     *
+     * Locates the ProductCostHistory entry/entries created by applyProductionCost
+     * for `productionOrderId`, removes them, and recomputes the product's
+     * currentAverageCost/cost from the REMAINING history (WEIGHTED_AVERAGE) or the
+     * remaining FIFO batches. MUST run inside the cancellation transaction so the
+     * cost reversal commits atomically with the stock reversal — replacing the
+     * previous post-commit recalculateProductCost which could leave a partial state.
+     */
+    static async reverseProductionCost(
+        db: Db,
+        productionOrderId: number,
+        companyId: number
+    ): Promise<void> {
+        const entries = await db.productCostHistory.findMany({
+            where: { productionOrderId, companyId },
+            select: { productId: true }
+        });
+        if (entries.length === 0) return;
+
+        const productId = entries[0].productId;
+
+        // Drop the production cost entries so the recompute reflects the reversal.
+        await db.productCostHistory.deleteMany({ where: { productionOrderId, companyId } });
+
+        const company = await db.company.findUnique({
+            where: { id: companyId },
+            select: { costingMethod: true }
+        });
+        const costingMethod = company?.costingMethod || 'WEIGHTED_AVERAGE';
+
+        let newAvgCost: number;
+        if (costingMethod === 'FIFO') {
+            const batches = await this.getFifoBatches(productId, companyId, db);
+            newAvgCost = this.calculateBatchWeightedAverage(batches);
+        } else {
+            // Replay the remaining weighted-average history chronologically.
+            const history = await db.productCostHistory.findMany({
+                where: { productId, companyId },
+                orderBy: { createdAt: 'asc' }
+            });
+            let runningStock = 0;
+            let runningAvgCost = 0;
+            for (const entry of history) {
+                const qty = Number(entry.quantity);
+                const cost = Number(entry.unitCost);
+                if (runningStock + qty === 0) {
+                    runningAvgCost = 0;
+                } else {
+                    runningAvgCost = ((runningStock * runningAvgCost) + (qty * cost)) / (runningStock + qty);
+                }
+                runningStock += qty;
+            }
+            newAvgCost = runningAvgCost;
+        }
+
+        await db.product.update({
+            where: { id: productId },
+            data: {
+                currentAverageCost: newAvgCost,
+                cost: newAvgCost,
+                updatedAt: new Date()
+            }
+        });
     }
 
     /**

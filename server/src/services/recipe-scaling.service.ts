@@ -1,4 +1,5 @@
 import prisma from '../utils/prisma';
+import { UnitConversionService } from './unit-conversion.service';
 
 /**
  * Recipe Scaling Service
@@ -31,8 +32,9 @@ export class RecipeScalingService {
             where: { menuItemId: recipe.menuItemId },
             include: {
                 product: {
-                    select: { name: true, unit: true, cost: true }
-                }
+                    select: { name: true, unit: true, cost: true, currentAverageCost: true }
+                },
+                unitOfMeasure: { select: { abbreviation: true } }
             }
         });
 
@@ -40,14 +42,32 @@ export class RecipeScalingService {
         const basePortions = 1;
         const scaleFactor = targetPortions / basePortions;
 
-        const scaledIngredients = recipes.map((r) => ({
-            productId: r.productId,
-            productName: r.product.name,
-            unit: r.product.unit,
-            baseQuantity: Number(r.quantity),
-            scaledQuantity: Math.round(Number(r.quantity) * scaleFactor * 1000) / 1000,
-            unitCost: Number(r.product.cost),
-            totalCost: Math.round(Number(r.quantity) * scaleFactor * Number(r.product.cost) * 100) / 100
+        // Cost in base units: convert the scaled quantity with the recipe's unit
+        // (recipe.unit -> recipe.unitId abbreviation -> product.unit) and value it
+        // with currentAverageCost ?? cost, matching menu-item/consumption costing.
+        const scaledIngredients = await Promise.all(recipes.map(async (r) => {
+            const recipeUnit = r.unit || r.unitOfMeasure?.abbreviation || r.product.unit;
+            const scaledQty = Number(r.quantity) * scaleFactor;
+            const unitCost = Number(r.product.currentAverageCost ?? r.product.cost ?? 0);
+
+            let totalCost = 0;
+            try {
+                const conv = await UnitConversionService.convert(r.productId, companyId, scaledQty, recipeUnit);
+                totalCost = Math.round(unitCost * conv.baseQuantity * 100) / 100;
+            } catch {
+                // Incompatible configured base unit: avoid an inflated 1:1 cost.
+                totalCost = 0;
+            }
+
+            return {
+                productId: r.productId,
+                productName: r.product.name,
+                unit: r.product.unit,
+                baseQuantity: Number(r.quantity),
+                scaledQuantity: Math.round(scaledQty * 1000) / 1000,
+                unitCost,
+                totalCost
+            };
         }));
 
         const totalCost = scaledIngredients.reduce((sum, i) => sum + i.totalCost, 0);
@@ -82,7 +102,8 @@ export class RecipeScalingService {
         const recipes = await prisma.recipe.findMany({
             where: { menuItemId },
             include: {
-                product: { select: { name: true, unit: true, cost: true } }
+                product: { select: { name: true, unit: true, cost: true, currentAverageCost: true } },
+                unitOfMeasure: { select: { abbreviation: true } }
             }
         });
 
@@ -101,9 +122,20 @@ export class RecipeScalingService {
             : 1;
         const safePortions = Math.max(1, portionsFromYield);
 
-        // Calculate costs
-        const totalIngredientCost = recipes.reduce((sum, r) =>
-            sum + (Number(r.quantity) * Number(r.product.cost)), 0);
+        // Calculate costs in base units (convert with the recipe's unit and value
+        // with currentAverageCost ?? cost) so the cost is coherent with kg/g usage.
+        const ingredientCosts = await Promise.all(recipes.map(async (r) => {
+            const recipeUnit = r.unit || r.unitOfMeasure?.abbreviation || r.product.unit;
+            const unitCost = Number(r.product.currentAverageCost ?? r.product.cost ?? 0);
+            try {
+                const conv = await UnitConversionService.convert(r.productId, companyId, Number(r.quantity), recipeUnit);
+                return unitCost * conv.baseQuantity;
+            } catch {
+                // Incompatible configured base unit: avoid an inflated 1:1 cost.
+                return 0;
+            }
+        }));
+        const totalIngredientCost = ingredientCosts.reduce((sum, v) => sum + v, 0);
 
         return {
             input: {

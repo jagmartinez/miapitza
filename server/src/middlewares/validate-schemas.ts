@@ -242,7 +242,11 @@ export const createModifierGroup: ValidationSchema = {
 export const createModifier: ValidationSchema = {
     body: {
         name: { type: 'string', required: true, min: 1, max: 100 },
-        price: { type: 'number', min: 0 },
+        extraPrice: { type: 'number', min: 0 },
+        // Optional inventory link: consume `consumeQuantity` of `productId` (in `unitId`).
+        productId: { type: 'number', min: 1 },
+        consumeQuantity: { type: 'number', min: 0 },
+        unitId: { type: 'number', min: 1 },
     },
 };
 
@@ -313,6 +317,9 @@ export const recordWaste: ValidationSchema = {
         quantity: { type: 'number', required: true, min: 0 },
         reason: { type: 'string', required: true, min: 1 },
         warehouseId: { type: 'number', required: true, min: 1 },
+        // Optional unit of the entered quantity; converted to base before costing.
+        // Omitted means the quantity is already expressed in the product base unit.
+        unit: { type: 'string', required: false, min: 1 },
     },
 };
 

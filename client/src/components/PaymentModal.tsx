@@ -63,9 +63,11 @@ interface PaymentModalProps {
     order?: Order | null;
     onPaymentSuccess: (data?: { offlineQueued?: boolean }) => void;
     currencySymbol?: string;
+    /** Defensa adicional: si la sucursal no tiene almacén, el cobro se bloquea. */
+    branchHasWarehouse?: boolean;
 }
 
-const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSuccess, currencySymbol = '$' }: PaymentModalProps) => {
+const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSuccess, currencySymbol = '$', branchHasWarehouse = true }: PaymentModalProps) => {
     const [mode, setMode] = useState<'single' | 'split'>('single');
 
     // Payment methods are validated server-side against the company's DB rows;
@@ -872,6 +874,12 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
 
                 {/* Footer */}
                 <div className="payment-footer">
+                    {!branchHasWarehouse && (
+                        <div className="error-message-new">
+                            No se puede cobrar: esta sucursal no tiene un almacén configurado.
+                            Configura un almacén en Bodegas para habilitar el cobro.
+                        </div>
+                    )}
                     {error && <div className="error-message-new">{error}</div>}
                     {pendingNotice && (
                         <div style={{
@@ -892,7 +900,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                         <button className="btn-confirm"
                             onClick={mode === 'single' ? handleSinglePayment : handleSplitPayment}
                             disabled={
-                                loading || previewLoading ||
+                                loading || previewLoading || !branchHasWarehouse ||
                                 (mode === 'single' && (selectedMethod === null || (isCashSelected && parseFloat(amountTendered) < totalWithTip))) ||
                                 (mode === 'split' && Math.abs(getSplitRemaining()) > 0.02)
                             }>

@@ -63,6 +63,7 @@ model Company {
   pedidosYaOrderSyncs  PedidosYaOrderSync[]
   productionRecipes    ProductionRecipe[]
   productionOrders     ProductionOrder[]
+  inventoryBatches     InventoryBatch[]
 }
 
 enum CostingMethod {
@@ -445,6 +446,7 @@ model UnitOfMeasure {
   productUnits                   ProductUnit[]
   productBase                    Product[]                   @relation("ProductBaseUnit")
   recipeUnits                    Recipe[]                    @relation("RecipeUnit")
+  modifierUnits                  Modifier[]                  @relation("ModifierUnit")
   productionRecipeYields         ProductionRecipe[]          @relation("ProductionRecipeYieldUnit")
   productionRecipeComponentUnits ProductionRecipeComponent[] @relation("ProductionRecipeComponentUnit")
   productionOrderItemUnits       ProductionOrderItem[]       @relation("ProductionOrderItemUnit")
@@ -498,10 +500,12 @@ model Product {
 
   stocks               Stock[]
   inventoryMovements   InventoryMovement[]
+  inventoryBatches     InventoryBatch[]
   purchaseOrderItems   PurchaseOrderItem[]
   recipes              Recipe[]
   costHistory          ProductCostHistory[]
   allowedUnits         ProductUnit[]
+  modifierLinks        Modifier[]                  @relation("ModifierProduct")
   productionRecipes    ProductionRecipe[]          @relation("ProductProductionRecipes")
   recipeComponents     ProductionRecipeComponent[] @relation("ProductRecipeComponents")
   productionOrders     ProductionOrder[]           @relation("ProductProductionOrders")
@@ -570,6 +574,7 @@ model Warehouse {
   branch           Branch?             @relation(fields: [branchId], references: [id])
   stocks           Stock[]
   movements        InventoryMovement[]
+  inventoryBatches InventoryBatch[]
   pedidosYaConfigs PedidosYaConfig[]
   ProductionOrder  ProductionOrder[]
 
@@ -597,6 +602,7 @@ model Stock {
 
   @@unique([warehouseId, productId])
   @@index([companyId])
+  @@index([warehouseId])
 }
 
 model InventoryMovement {
@@ -636,6 +642,31 @@ enum MovementType {
   OUT
   ADJUSTMENT
   TRANSFER
+}
+
+// FIFO cost layers per (warehouse, product). Each inbound movement opens a batch
+// with its own unit cost; outbound movements consume batches oldest-first to
+// derive a real FIFO cost of goods. Only relevant when Company.costingMethod = FIFO;
+// for WEIGHTED_AVERAGE these rows are still maintained but not used for valuation.
+model InventoryBatch {
+  id           Int      @id @default(autoincrement())
+  companyId    Int
+  warehouseId  Int
+  productId    Int
+  unitCost     Decimal  @db.Decimal(18, 6)
+  originalQty  Decimal  @db.Decimal(18, 6)
+  remainingQty Decimal  @db.Decimal(18, 6)
+  sourceType   String // PURCHASE | PRODUCTION | ADJUSTMENT | TRANSFER | OPENING
+  sourceRef    String?
+  createdAt    DateTime @default(now())
+
+  company   Company   @relation(fields: [companyId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@index([companyId, productId, warehouseId, createdAt])
+  @@index([warehouseId, productId])
+  @@index([remainingQty])
 }
 
 // ==========================================
@@ -751,6 +782,7 @@ model ProductCostHistory {
   productId           Int
   companyId           Int
   purchaseOrderItemId Int?
+  productionOrderId   Int?
   quantity            Decimal  @db.Decimal(18, 6)
   unitCost            Decimal  @db.Decimal(18, 6)
   previousAvgCost     Decimal  @db.Decimal(18, 6)
@@ -761,10 +793,12 @@ model ProductCostHistory {
 
   product           Product            @relation(fields: [productId], references: [id])
   purchaseOrderItem PurchaseOrderItem? @relation(fields: [purchaseOrderItemId], references: [id])
+  productionOrder   ProductionOrder?   @relation(fields: [productionOrderId], references: [id])
   company           Company            @relation(fields: [companyId], references: [id])
 
   @@index([productId])
   @@index([companyId])
+  @@index([productionOrderId])
   @@index([createdAt])
 }
 
@@ -1014,13 +1048,22 @@ model Modifier {
   name            String
   price           Decimal  @default(0) @db.Decimal(10, 2)
   active          Boolean  @default(true)
+  // Optional inventory link: when set, selecting this modifier consumes
+  // `consumeQuantity` (in `unitId`, or the product base unit) of `productId`.
+  productId       Int?
+  consumeQuantity Decimal? @db.Decimal(10, 3)
+  unitId          Int?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   modifierGroup      ModifierGroup       @relation(fields: [modifierGroupId], references: [id])
+  product            Product?            @relation("ModifierProduct", fields: [productId], references: [id])
+  unit               UnitOfMeasure?      @relation("ModifierUnit", fields: [unitId], references: [id])
   orderItemModifiers OrderItemModifier[]
 
   @@index([modifierGroupId])
+  @@index([productId])
+  @@index([unitId])
 }
 
 model OrderItemModifier {
@@ -1469,6 +1512,7 @@ model ProductionOrder {
   user        User                  @relation("ProductionOrderUser", fields: [userId], references: [id])
   cancelledBy User?                 @relation("ProductionOrderCancelledBy", fields: [cancelledById], references: [id])
   items       ProductionOrderItem[]
+  costHistory ProductCostHistory[]
 
   @@unique([companyId, code])
   @@index([companyId, branchId])

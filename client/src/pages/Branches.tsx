@@ -6,7 +6,7 @@ import Sidebar from '../components/Sidebar';
 import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
-import { Plus, MapPin, Phone, Edit2, Trash2, Building2, Store } from 'lucide-react';
+import { Plus, MapPin, Phone, Edit2, Trash2, Building2, Store, AlertTriangle } from 'lucide-react';
 import type { Branch, Company } from '../types';
 import type { SingleValue } from 'react-select';
 import { useAuth } from '../hooks/useAuth';
@@ -207,6 +207,15 @@ export default function Branches() {
                                 <div className="catalog-cell-stack">
                                     <span className="cell-title">{b.name}</span>
                                     {b.code && <span className="cell-sub">{b.code}</span>}
+                                    {(b._count?.warehouses ?? 0) === 0 && (
+                                        <span
+                                            className="cell-sub"
+                                            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--color-warning, #f59e0b)', fontWeight: 600 }}
+                                            title="Sin almacén: no se podrá cobrar en esta sucursal hasta configurar uno"
+                                        >
+                                            <AlertTriangle size={12} /> Sin almacén
+                                        </span>
+                                    )}
                                 </div>
                             )
                         },
@@ -265,6 +274,25 @@ export default function Branches() {
                                     <span className="branch-company-tag-new">
                                         <Building2 size={12} />
                                         {branch.company.name}
+                                    </span>
+                                )}
+                                {(branch._count?.warehouses ?? 0) === 0 && (
+                                    <span
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            padding: '2px 8px',
+                                            borderRadius: '999px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: 700,
+                                            color: 'var(--color-warning, #f59e0b)',
+                                            background: 'color-mix(in srgb, var(--color-warning, #f59e0b) 15%, transparent)',
+                                            border: '1px solid var(--color-warning, #f59e0b)'
+                                        }}
+                                        title="Sin almacén: no se podrá cobrar en esta sucursal hasta configurar uno"
+                                    >
+                                        <AlertTriangle size={12} /> Sin almacén
                                     </span>
                                 )}
                             </div>
