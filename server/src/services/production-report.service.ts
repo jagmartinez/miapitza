@@ -12,17 +12,8 @@ interface BaseFilters {
 function dateWhere(filters: BaseFilters): Prisma.DateTimeFilter | undefined {
     if (!filters.dateFrom && !filters.dateTo) return undefined;
     const f: Prisma.DateTimeFilter = {};
-    if (filters.dateFrom) {
-        const start = new Date(filters.dateFrom);
-        start.setUTCHours(0, 0, 0, 0);
-        f.gte = start;
-    }
-    if (filters.dateTo) {
-        const end = new Date(filters.dateTo);
-        // Inclusive end-of-day: `new Date('YYYY-MM-DD')` is UTC midnight at day start.
-        end.setUTCHours(23, 59, 59, 999);
-        f.lte = end;
-    }
+    if (filters.dateFrom) f.gte = filters.dateFrom;
+    if (filters.dateTo) f.lte = filters.dateTo;
     return f;
 }
 

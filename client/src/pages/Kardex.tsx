@@ -93,6 +93,10 @@ export default function Kardex() {
     const { toasts, removeToast, success: showSuccess, error: showError } = useToast();
     const showErrorRef = useRef(showError);
     showErrorRef.current = showError;
+    // Track whether a productId arrived via the URL (explicit selection has
+    // priority) and whether we already applied the default preselection.
+    const urlHadProductIdRef = useRef(false);
+    const autoSelectedRef = useRef(false);
 
     const [warehouses, setWarehouses] = useState<WarehouseRow[]>([]);
     const [products, setProducts] = useState<ProductRow[]>([]);
@@ -171,9 +175,22 @@ export default function Kardex() {
         const params = new URLSearchParams(window.location.search);
         const productId = params.get('productId');
         if (productId) {
+            urlHadProductIdRef.current = true;
             setSelectedProduct(parseInt(productId, 10));
         }
     }, [loadWarehouses, loadProducts, loadSettings]);
+
+    // When entering without an explicit productId in the URL, preselect the
+    // first available product so the page isn't empty (e.g. coming from the
+    // Reports hub). Runs once; never overrides a URL-provided selection.
+    useEffect(() => {
+        if (urlHadProductIdRef.current || autoSelectedRef.current) return;
+        if (selectedProduct) return;
+        if (products.length > 0) {
+            autoSelectedRef.current = true;
+            setSelectedProduct(products[0].id);
+        }
+    }, [products, selectedProduct]);
 
     useEffect(() => {
         if (selectedProduct) {

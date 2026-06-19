@@ -50,6 +50,7 @@ import salesChannelRoutes from './routes/sales-channel.routes';
 import productionRecipeRoutes from './routes/production-recipe.routes';
 import productionOrderRoutes from './routes/production-order.routes';
 import productionReportRoutes from './routes/production-report.routes';
+import adminRoutes from './routes/admin.routes';
 
 dotenv.config();
 
@@ -191,6 +192,7 @@ app.use('/api/units', unitConversionRoutes);
 app.use('/api/sales-channels', salesChannelRoutes);
 app.use('/api/production-recipes', productionRecipeRoutes);
 app.use('/api/production-orders', productionOrderRoutes);
+app.use('/api/admin', adminRoutes);
 
 // API v1 versioned router (new endpoints go here)
 app.use('/api/v1', v1Router);

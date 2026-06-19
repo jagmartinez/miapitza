@@ -50,7 +50,7 @@ export default function Orders() {
     const debouncedSearch = useDebounce(searchQuery, 300);
 
     // Date Range Filter State
-    const [dateRange, setDateRange] = useState<'24h' | '7d' | '30d' | 'custom'>('24h');
+    const [dateRange, setDateRange] = useState<'24h' | '7d' | '30d' | 'custom'>('7d');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
 

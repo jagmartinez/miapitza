@@ -11,9 +11,18 @@
  * Ejecución:
  *   npx ts-node --transpile-only src/scripts/demo-pizza-cycle.ts
  *   npx ts-node --transpile-only src/scripts/demo-pizza-cycle.ts --dry-run
+ *   npx ts-node --transpile-only src/scripts/demo-pizza-cycle.ts --once
  *
  * En Railway (producción, desde el contenedor API):
  *   node dist/scripts/demo-pizza-cycle.js
+ *
+ * Usuario/rol de ejecución:
+ *   El ciclo corre como el PRIMER usuario con status ACTIVE de la empresa
+ *   (prisma.user.findFirst({ where: { companyId, status: 'ACTIVE' } })).
+ *   NO filtra por rol: usa el primer usuario activo que devuelva la BD.
+ *
+ * Guard de ejecución (§12.4):
+ *   Fuera de --dry-run, requiere la env var ALLOW_DEMO_SCRIPTS=1 o aborta.
  */
 
 import prisma from '../utils/prisma';
@@ -29,7 +38,8 @@ import { WasteReportService } from '../services/waste-report.service';
 import { InvoiceService } from '../services/invoice.service';
 import { CashShiftService } from '../services/cash-shift.service';
 
-const DRY_RUN = process.argv.includes('--dry-run');
+let DRY_RUN = process.argv.includes('--dry-run');
+let ONCE = process.argv.includes('--once');
 const DEMO_PREFIX = 'DEMO-CYCLE';
 
 const RAW = {
@@ -343,7 +353,21 @@ async function ensureActiveKitchenOrder(companyId: number, branchId: number, use
     return order.id;
 }
 
-async function main() {
+export async function runDemoCycle(
+    opts: { dryRun?: boolean; once?: boolean } = {}
+): Promise<{ ok: boolean; steps: StepLog[]; summary?: Record<string, unknown> }> {
+    if (opts.dryRun !== undefined) DRY_RUN = opts.dryRun;
+    if (opts.once !== undefined) ONCE = opts.once;
+
+    // Reinicia el log para que cada invocación (p. ej. el endpoint admin) devuelva
+    // solo los pasos de SU corrida y no acumule los de llamadas previas en el proceso.
+    log.length = 0;
+
+    // Guard (§12.4): fuera de dry-run, exige ALLOW_DEMO_SCRIPTS=1 antes de tocar la BD.
+    if (!DRY_RUN && process.env.ALLOW_DEMO_SCRIPTS !== '1') {
+        throw new Error('Ejecución bloqueada: definí ALLOW_DEMO_SCRIPTS=1 para correr el script demo.');
+    }
+
     step('Inicio', DRY_RUN ? 'MODO DRY-RUN (sin escrituras)' : 'Ejecutando ciclo completo en BD');
 
     const company = await prisma.company.findFirst();
@@ -440,28 +464,51 @@ async function main() {
         { productId: mozzarella.id, quantity: 30, cost: 35, purchaseUnit: 'unidad' },
     ];
 
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
     let poId: number | null = null;
     if (!DRY_RUN) {
-        const po = await PurchaseOrderService.create(companyId, {
-            branchId,
-            supplierId: supplier.id,
-            notes: `${DEMO_PREFIX} Compra insumos demo`,
-            invoiceType: 'CASH',
-            items: purchaseItems,
-        });
-        if (!po) throw new Error('No se pudo crear la orden de compra');
-        poId = po.id;
-        await PurchaseOrderService.update(po.id, companyId, { status: 'ISSUED' });
-        await PurchaseOrderService.receive(po.id, companyId, userId, warehouseId);
-        step('Compra', `OC #${po.id} recibida en almacén ${warehouse.id}`, {
-            total: Number(po.total),
-            items: purchaseItems.map((i) => ({
-                productId: i.productId,
-                qty: i.quantity,
-                unit: i.purchaseUnit,
-                cost: i.cost,
-            })),
-        });
+        let existingPo: { id: number } | null = null;
+        if (ONCE) {
+            existingPo = await prisma.purchaseOrder.findFirst({
+                where: {
+                    companyId,
+                    supplierId: supplier.id,
+                    notes: `${DEMO_PREFIX} Compra insumos demo`,
+                    date: { gte: startOfToday },
+                },
+                orderBy: { id: 'desc' },
+            });
+        }
+
+        if (existingPo) {
+            poId = existingPo.id;
+            step('Compra', `OC demo de hoy ya existe (#${existingPo.id}) — se omite (--once)`, {
+                poId: existingPo.id,
+            });
+        } else {
+            const po = await PurchaseOrderService.create(companyId, {
+                branchId,
+                supplierId: supplier.id,
+                notes: `${DEMO_PREFIX} Compra insumos demo`,
+                invoiceType: 'CASH',
+                items: purchaseItems,
+            });
+            if (!po) throw new Error('No se pudo crear la orden de compra');
+            poId = po.id;
+            await PurchaseOrderService.update(po.id, companyId, { status: 'ISSUED' });
+            await PurchaseOrderService.receive(po.id, companyId, userId, warehouseId);
+            step('Compra', `OC #${po.id} recibida en almacén ${warehouse.id}`, {
+                total: Number(po.total),
+                items: purchaseItems.map((i) => ({
+                    productId: i.productId,
+                    qty: i.quantity,
+                    unit: i.purchaseUnit,
+                    cost: i.cost,
+                })),
+            });
+        }
     } else {
         step('Compra', 'Simulada (dry-run)', purchaseItems);
     }
@@ -667,16 +714,35 @@ async function main() {
     // ═══════════════════════════════════════════════════════════════════════
     let orderId: number | null = null;
     if (!DRY_RUN && menuItemId > 0) {
-        orderId = await runFullSaleWithKitchen(
-            companyId,
-            branchId,
-            userId,
-            menuItemId,
-            warehouseId,
-            masaProduct.id,
-            salsaProduct.id,
-            mozzarella.id
-        );
+        let existingSale: { id: number } | null = null;
+        if (ONCE) {
+            existingSale = await prisma.order.findFirst({
+                where: {
+                    companyId,
+                    customerName: `${DEMO_PREFIX} Cliente Demo`,
+                    createdAt: { gte: startOfToday },
+                },
+                orderBy: { id: 'desc' },
+            });
+        }
+
+        if (existingSale) {
+            orderId = existingSale.id;
+            step('Venta', `Venta demo de hoy ya existe (orden #${existingSale.id}) — se omite (--once)`, {
+                orderId: existingSale.id,
+            });
+        } else {
+            orderId = await runFullSaleWithKitchen(
+                companyId,
+                branchId,
+                userId,
+                menuItemId,
+                warehouseId,
+                masaProduct.id,
+                salsaProduct.id,
+                mozzarella.id
+            );
+        }
     } else {
         step('Venta', '[dry-run] 2 pizzas × C$450 = C$900 (caja + cocina + efectivo)', { menuItemId });
     }
@@ -750,11 +816,27 @@ async function main() {
    • Movimientos: compra IN, producción IN/OUT, venta OUT, merma OUT
 `);
     console.log('═'.repeat(60));
+
+    const summary: Record<string, unknown> = {
+        poId,
+        orderId,
+        kitchenOrderId,
+        menuItemId,
+        dryRun: DRY_RUN,
+        once: ONCE,
+    };
+
+    return { ok: true, steps: log, summary };
 }
 
-main()
-    .catch((err) => {
-        console.error('\n❌ Error:', err instanceof Error ? err.message : err);
-        process.exitCode = 1;
-    })
-    .finally(() => prisma.$disconnect());
+if (require.main === module) {
+    runDemoCycle()
+        .then(() => {
+            console.log('\n✅ Ciclo demo finalizado.');
+        })
+        .catch((err) => {
+            console.error('\n❌ Error:', err instanceof Error ? err.message : err);
+            process.exitCode = 1;
+        })
+        .finally(() => prisma.$disconnect());
+}
