@@ -340,8 +340,16 @@ Tras ejecutar el script demo y desplegar API + web:
 
 ### 9.2 Web (`miapitza-web`)
 
-- Requiere **redeploy explícito** si no está conectado a GitHub auto-deploy.
-- Comando usado: `railway redeploy --service miapitza-web --yes`
+- **No está conectado a GitHub auto-deploy** (deploy del último *snapshot* subido por CLI). `commitHash`/`repo` vacíos en el deployment.
+- **OJO:** `railway redeploy --service miapitza-web --yes` **reconstruye el snapshot anterior** (frontend viejo); NO publica el código nuevo del working tree.
+- **Comando correcto** (sube `client/` como raíz del build; sin esto, `railway up` usa el `Dockerfile` raíz = API y falla el healthcheck `/health`):
+
+```bash
+cd client
+railway up . --path-as-root --ci --service miapitza-web --environment production
+```
+
+- El servicio usa `client/railway.toml` + `client/Dockerfile` (healthcheck `/`).
 - Tras deploy frontend: **Ctrl+F5** o incógnito (bundle cache).
 
 ### 9.3 Ejecutar demo en prod
