@@ -92,7 +92,7 @@ async function ensureBranchWarehouse(companyId: number, branchId: number) {
     if (DRY_RUN) return { id: -1, name: 'DRY', branchId, companyId };
 
     wh = await prisma.warehouse.create({
-        data: { companyId, branchId, name: 'Bodega Demo Ciclo' },
+        data: { companyId, branchId, name: 'Bodega Demo Ciclo', code: `DEMO-${branchId}` },
     });
     step('Setup', `Almacén creado para sucursal ${branchId}`, { warehouseId: wh.id });
     return wh;
@@ -150,14 +150,17 @@ async function main() {
 
     const branch = await prisma.branch.findFirst({ where: { companyId: company.id }, orderBy: { id: 'asc' } });
     if (!branch) throw new Error('No hay sucursal');
+    const branchId = branch.id;
 
     const user = await prisma.user.findFirst({ where: { companyId: company.id, status: 'ACTIVE' } });
     if (!user) throw new Error('No hay usuario activo');
+    const userId = user.id;
 
     const supplier = await prisma.supplier.findFirst({ where: { companyId: company.id } });
     if (!supplier) throw new Error('No hay proveedor');
 
-    const warehouse = await ensureBranchWarehouse(company.id, branch.id);
+    const warehouse = await ensureBranchWarehouse(companyId, branch.id);
+    const warehouseId = warehouse.id;
 
     const invCategory = await prisma.category.findFirst({
         where: { companyId: company.id, showInInventory: true },
@@ -260,20 +263,20 @@ async function main() {
         components: Array<{ componentProductId: number; quantity: number; unit?: string; unitId?: number }>
     ) {
         const existing = await prisma.productionRecipe.findFirst({
-            where: { companyId: company.id, productId, status: { in: ['ACTIVE', 'DRAFT'] } },
+            where: { companyId, productId, status: { in: ['ACTIVE', 'DRAFT'] } },
             orderBy: { version: 'desc' },
         });
         if (existing) {
             step('Receta producción', `Ya existe v${existing.version} para producto ${productId}`, { id: existing.id, status: existing.status });
             if (existing.status !== 'ACTIVE' && !DRY_RUN) {
-                await ProductionRecipeService.setStatus(existing.id, company.id, 'ACTIVE', user.id);
+                await ProductionRecipeService.setStatus(existing.id, companyId, 'ACTIVE', userId);
             }
             return existing;
         }
         if (DRY_RUN) return { id: -1, productId, name };
 
         const recipe = await ProductionRecipeService.create(
-            company.id,
+            companyId,
             {
                 productId,
                 name,
@@ -282,7 +285,7 @@ async function main() {
                 activate: true,
                 components,
             },
-            user.id
+            userId
         );
         step('Receta producción', `Creada y activada: ${name}`, {
             id: recipe.id,
@@ -326,28 +329,28 @@ async function main() {
             return null;
         }
 
-        const before = await stockQty(company.id, warehouse.id, productId);
+        const before = await stockQty(companyId, warehouseId, productId);
 
         const order = await ProductionOrderService.create(
-            company.id,
+            companyId,
             {
                 productId,
                 plannedQuantity: plannedQty,
-                warehouseId: warehouse.id,
-                branchId: branch.id,
+                warehouseId,
+                branchId,
                 status: 'PENDING',
                 notes: `${DEMO_PREFIX} ${label}`,
             },
-            user.id
+            userId
         );
-        await ProductionOrderService.setStatus(order.id, company.id, 'IN_PROGRESS', user.id);
-        const finished = await ProductionOrderService.finish(order.id, company.id, user.id, {
+        await ProductionOrderService.setStatus(order.id, companyId, 'IN_PROGRESS', userId);
+        const finished = await ProductionOrderService.finish(order.id, companyId, userId, {
             producedQuantity: plannedQty,
             allowNegative: false,
         });
 
-        const after = await stockQty(company.id, warehouse.id, productId);
-        const outCost = await productCostSummary(company.id, productId);
+        const after = await stockQty(companyId, warehouseId, productId);
+        const outCost = await productCostSummary(companyId, productId);
 
         step('Producción', `${label} finalizada (${order.code})`, {
             orderId: order.id,
