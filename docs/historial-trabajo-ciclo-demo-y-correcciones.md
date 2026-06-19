@@ -332,31 +332,141 @@ Tras ejecutar el script demo y desplegar API + web:
 
 ## 9. Despliegue
 
-### 9.1 API (`miapitza`)
+> **Lee esto antes de desplegar.** Esta es la guía oficial paso a paso de commit + deploy a Railway.
+> Sigue el orden exacto. Los errores típicos (y por qué ocurren) están en §9.7.
 
-- Push a `main` → Railway build desde `server/` (Dockerfile).
-- El script demo se incluye en imagen si `npm run build` compila `src/scripts/*.ts`.
-- Migraciones: ver runbook; en prod históricamente también `db push` fallback.
+### 9.0 Arquitectura de deploy (modelo mental)
 
-### 9.2 Web (`miapitza-web`)
+| Servicio | Cómo se despliega | Build context | Config | Healthcheck |
+|----------|-------------------|---------------|--------|-------------|
+| **API `miapitza`** | **Auto-deploy por `git push` a `main`** (conectado a GitHub) | raíz del repo | `railway.toml` + `Dockerfile` (raíz, compila `server/`) | `/health` |
+| **Web `miapitza-web`** | **Manual por CLI** (`railway up`), **NO** está en GitHub auto-deploy | `client/` | `client/railway.toml` + `client/Dockerfile` | `/` |
+| **MySQL** | Imagen gestionada; no se toca en deploys de código | — | — | — |
 
-- **No está conectado a GitHub auto-deploy** (deploy del último *snapshot* subido por CLI). `commitHash`/`repo` vacíos en el deployment.
-- **OJO:** `railway redeploy --service miapitza-web --yes` **reconstruye el snapshot anterior** (frontend viejo); NO publica el código nuevo del working tree.
-- **Comando correcto** (sube `client/` como raíz del build; sin esto, `railway up` usa el `Dockerfile` raíz = API y falla el healthcheck `/health`):
+**Reglas de oro:**
+
+1. **Un `git push` a `main` despliega SOLO la API.** El frontend NO se despliega con push.
+2. **El frontend se despliega aparte con `railway up . --path-as-root` desde `client/`.** Nunca con `railway redeploy` (eso reconstruye el snapshot viejo) ni con `railway up` sin `--path-as-root` (eso sube la raíz del repo y construye la API por error → falla healthcheck `/health`).
+3. Un deploy fallido **no** tumba al activo: el servicio sigue sirviendo la última versión sana.
+
+### 9.1 Pre-flight (revisar SIEMPRE antes de commitear)
+
+```bash
+# 1. Estás en la rama correcta y limpia de sorpresas
+git -C c:\restaurant status
+
+# 2. Validaciones locales — TODAS deben pasar
+cd server && npm run typecheck && npm run test:unit
+cd ../client && npm run typecheck && npm run build
+```
+
+- ✅ Confirmar que `git status` no incluya archivos de datos/secretos a commitear por error (`*.xlsx`, `*.pdf`, `tmp-*.b64`, `explore-prod-db.ts`, `.claude/`). Commitear solo código + docs relevantes.
+- ✅ Variables de entorno presentes en Railway (no se tocan en cada deploy, pero verificar si cambió algo):
+  - **API `miapitza`:** `DATABASE_URL`, `JWT_SECRET`, `CLIENT_URL`, `NODE_ENV=production`. Para el seed demo: `ALLOW_DEMO_SCRIPTS=1`.
+  - **Web `miapitza-web`:** `VITE_API_URL`, `VITE_WS_URL` (son **build-time**: si cambian, hay que re-desplegar el frontend para que tomen efecto).
+- ✅ Railway CLI autenticado y apuntando al proyecto correcto:
+
+```bash
+railway whoami
+railway status   # Project: mellow-elegance · Environment: production
+```
+
+### 9.2 Paso a paso — Commit
+
+```bash
+# Agregar SOLO los archivos relevantes (evitar `git add .` a ciegas)
+git -C c:\restaurant add <archivos de código y docs>
+
+# Commit con mensaje claro (en inglés, estilo del repo)
+git -C c:\restaurant commit -m "<resumen conciso del cambio>"
+
+# Verificar
+git -C c:\restaurant log --oneline -3
+git -C c:\restaurant status --short
+```
+
+### 9.3 Paso a paso — Deploy API (`miapitza`)
+
+```bash
+# El push a main dispara el build+deploy automático de la API
+git -C c:\restaurant push origin main
+```
+
+Esperar a que termine y **verificar** (ver §9.5):
+
+```bash
+railway status --json   # miapitza → latestDeployment.status = SUCCESS, commitHash = <tu commit>
+curl https://miapitza-production.up.railway.app/health   # → ok
+```
+
+> Nota: cualquier push a `main` (aunque sea solo-docs) reconstruye y reinicia la API. Si el cambio NO afecta al backend y querés evitar el reinicio, podés agrupar varios cambios en un solo push.
+
+### 9.4 Paso a paso — Deploy Web (`miapitza-web`)
+
+**Solo si cambiaste el frontend (`client/`).** El push NO lo despliega.
 
 ```bash
 cd client
 railway up . --path-as-root --ci --service miapitza-web --environment production
 ```
 
-- El servicio usa `client/railway.toml` + `client/Dockerfile` (healthcheck `/`).
-- Tras deploy frontend: **Ctrl+F5** o incógnito (bundle cache).
+- `--path-as-root` hace que el build context sea `client/` (usa `client/Dockerfile`). **Imprescindible.**
+- `--ci` muestra los logs y espera a que termine.
+- El build correcto se reconoce porque hace `COPY package.json …` + `vite build` + `serve -s dist` (NO `prisma generate`).
+- Tras el deploy: **Ctrl+F5** / ventana incógnito para evitar caché del bundle.
 
-### 9.3 Ejecutar demo en prod
+### 9.5 Verificación post-deploy
 
 ```bash
-# Requiere Railway CLI autenticado y acceso al proyecto
-railway ssh --service miapitza -- node dist/scripts/demo-pizza-cycle.js
+# Estado de ambos servicios
+railway status --json
+
+# API
+curl https://miapitza-production.up.railway.app/health        # 200 "ok"
+
+# Web (debe servir el index del SPA)
+curl -I https://miapitza-web-production.up.railway.app/        # HTTP 200
+```
+
+Checklist UI (con Ctrl+F5): Órdenes default **7 días**, Kardex preselecciona producto, Facturas/Dashboard sin crash, Panel Producción con datos. Ver §8 para la tabla completa.
+
+### 9.6 Rollback rápido
+
+- En el dashboard de Railway, el servicio guarda el historial de deployments: usar **"Redeploy"** sobre el último deployment **SUCCESS** anterior para volver atrás.
+- La web mantiene vivo el último deployment sano aunque el nuevo falle; no requiere acción inmediata si el deploy nuevo falló.
+
+### 9.7 Errores típicos (y por qué pasan)
+
+| Síntoma | Causa | Solución |
+|---------|-------|----------|
+| Frontend no refleja cambios tras `git push` | El push solo despliega la API; la web es manual | Desplegar web con §9.4 |
+| Deploy web falla healthcheck `/health` | `railway up` sin `--path-as-root` subió la raíz y construyó la API | Usar `railway up . --path-as-root` desde `client/` |
+| `railway redeploy` "funciona" pero sigue el frontend viejo | `redeploy` reconstruye el **snapshot anterior**, no el código nuevo | Usar `railway up . --path-as-root` |
+| `railway up` "operation timed out" en *Uploading* | Red/endpoint de subida (no es por tamaño) | Reintentar; el sitio activo no se afecta |
+| Bundle viejo en el navegador | Caché del SPA | **Ctrl+F5** / incógnito |
+| `VITE_API_URL` no aplica | Es build-time | Re-desplegar el frontend tras cambiar la variable |
+
+### 9.8 Mejora recomendada (config, una sola vez)
+
+Para que el frontend también se despliegue con `git push` y evitar el flujo manual:
+
+1. Railway → servicio **`miapitza-web`** → **Settings → Source**: conectar el repo `jagmartinez/miapitza`, rama `main`.
+2. En el mismo servicio, **Settings → Build → Root Directory = `client`** (así usa `client/Dockerfile` y `client/railway.toml`).
+3. Activar **Auto Deploy** en `main`.
+4. Verificar `VITE_API_URL` / `VITE_WS_URL` como variables del servicio (build args).
+
+Hecho esto, un `git push` desplegará **API y Web**; el comando manual de §9.4 queda como respaldo.
+
+### 9.9 Ejecutar demo en prod
+
+```bash
+# Opción A (CLI directo al contenedor de la API)
+railway ssh --service miapitza -- node dist/scripts/demo-pizza-cycle.js          # requiere ALLOW_DEMO_SCRIPTS=1
+railway ssh --service miapitza -- node dist/scripts/demo-pizza-cycle.js --once   # idempotente por día
+
+# Opción B (endpoint admin, solo SUPERADMIN)
+# POST https://miapitza-production.up.railway.app/api/admin/seed-demo-cycle
+#   body opcional: { "once": true, "dryRun": false }
 ```
 
 **Nota:** `railway run` desde local con `mysql.railway.internal` **no** alcanza la BD; usar SSH al contenedor o URL pública MySQL si se configura.
@@ -387,7 +497,7 @@ Valores orientativos — cada re-ejecución incrementa IDs:
 5. **Decimal → string:** cualquier pantalla nueva que use `.toFixed` directo puede romperse; usar siempre `formatMoney` / `coerceMoneyAmount`.
 6. **Fechas:** cualquier endpoint nuevo que parsee `YYYY-MM-DD` debe usar `date-range.ts`.
 7. **Migraciones prod:** baseline pendiente para `migrate deploy` limpio (ver conversaciones previas).
-8. **`miapitza-web`:** verificar conexión GitHub → auto-deploy en cada push.
+8. **`miapitza-web`:** NO está en GitHub auto-deploy; el frontend se despliega manualmente por CLI. Ver guía paso a paso en §9 (deploy en §9.4, config recomendada en §9.8).
 9. **Script `explore-prod-db.ts`:** existe local sin commit; auxiliar para inspección BD.
 
 ---
