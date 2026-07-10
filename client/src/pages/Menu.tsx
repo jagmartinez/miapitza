@@ -16,8 +16,14 @@ import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
 import { currencyInputPadding } from '../utils/currency';
-import type { Branch, MenuItem, MenuBrand, Product, ProductAllowedUnit, UnitOfMeasure } from '../types';
+import type { Branch, MenuItem, MenuBrand, MenuRecipe, Product, ProductAllowedUnit, UnitOfMeasure } from '../types';
 import type { SingleValue } from 'react-select';
+import {
+  buildMenuRecipeSyncPlan,
+  calculateMenuRecipeLineCost,
+  type EditableMenuRecipe,
+  validateMenuRecipes,
+} from '../utils/menuRecipe';
 
 type CatFilterOption = { value: string; label: string };
 import MenuItemCard from '../components/MenuItemCard';
@@ -25,15 +31,6 @@ import { useCurrency } from '../hooks/useCurrency';
 import ImageViewer from '../components/ImageViewer';
 import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
 import './Menu.css';
-
-interface RecipeIngredient {
-  productId: number;
-  productName: string;
-  quantity: number;
-  unit: string;
-  cost: number;
-  conversionFactor: number;
-}
 
 interface CategoryRow {
   id: number;
@@ -46,13 +43,6 @@ interface CategoryRow {
 interface BranchPriceRow {
   branchId: number;
   price: number | string;
-}
-
-interface RecipeApiRow {
-  id: number;
-  quantity: string | number;
-  unit?: string;
-  product: Product;
 }
 
 interface MenuImageRecord {
@@ -85,13 +75,35 @@ interface ModifierGroupRow {
 
 // Products eligible to be consumed by a modifier (insumos / empaques / intermedios).
 const MODIFIER_PRODUCT_TYPES: Product['type'][] = ['INGREDIENT', 'BOTH', 'INTERMEDIATE', 'PACKAGING'];
+const RECIPE_PRODUCT_TYPES: Product['type'][] = ['INGREDIENT', 'BOTH', 'INTERMEDIATE', 'PACKAGING'];
+
+function errMsg(error: unknown, fallback: string): string {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
+    if (typeof message === 'string' && message.trim()) return message;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
+function fallbackProductUnit(product?: Pick<Product, 'unit'> & Partial<Pick<Product, 'baseUnitId'>>): ProductAllowedUnit[] {
+  if (!product?.unit) return [];
+  return [{
+    unitId: product.baseUnitId ?? 0,
+    abbreviation: product.unit,
+    name: product.unit,
+    conversionFactor: 1,
+    isBase: true,
+    isDefault: true,
+  }];
+}
 
 export default function Menu() {
   const { user } = useAuth();
   const { formatMoney, symbol } = useCurrency();
   const { confirm } = useConfirmDialog();
   const { error: showError, warning: showWarning, success: showSuccess } = useAppToast();
-  /** Backend: menu/recipe/image mutations require SUPERADMIN | ADMIN */
+  /** Backend: menu/recipe/image mutations require SUPERADMIN | ADMIN | CHEF. */
   const canMutateMenu = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CHEF']);
   /** Backend: branch price overrides via /advanced/pricing require SUPERADMIN | ADMIN */
   const canSetBranchPrices = hasAnyRole(user, ['SUPERADMIN', 'ADMIN']);
@@ -121,12 +133,15 @@ export default function Menu() {
     brandId: ''
   });
 
-  const [recipe, setRecipe] = useState<RecipeIngredient[]>([]);
+  const [recipe, setRecipe] = useState<EditableMenuRecipe[]>([]);
+  const [originalRecipe, setOriginalRecipe] = useState<EditableMenuRecipe[]>([]);
+  const [recipeUnitsByProduct, setRecipeUnitsByProduct] = useState<Record<number, ProductAllowedUnit[]>>({});
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [selectedIngredientUnit, setSelectedIngredientUnit] = useState<string>('');
   const [ingredientUnits, setIngredientUnits] = useState<ProductAllowedUnit[]>([]);
   const [quantity, setQuantity] = useState<string>('');
   const [images, setImages] = useState<string[]>([]);
+  const [originalImages, setOriginalImages] = useState<MenuImageRecord[]>([]);
   const [branchPricing, setBranchPricing] = useState<BranchPriceRow[]>([]);
   const [branchPriceDrafts, setBranchPriceDrafts] = useState<Record<number, string>>({});
   const [savingBranchPriceId, setSavingBranchPriceId] = useState<number | null>(null);
@@ -157,20 +172,13 @@ export default function Menu() {
   });
   const [savingModifier, setSavingModifier] = useState(false);
 
-  const calculateIngredientLineCost = (ingredient: RecipeIngredient) => {
-    const baseQuantity = Number(ingredient.quantity) * Number(ingredient.conversionFactor || 1);
-    return Number(ingredient.cost) * baseQuantity;
-  };
+  const calculateIngredientLineCost = calculateMenuRecipeLineCost;
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const [menuRes, productsRes, categoriesRes, branchesRes, brandsRes] = await Promise.all([
         menuAPI.getAll({ active: true }),
-        productsAPI.getAll({ active: true }),
+        productsAPI.getAll({ active: true, limit: 500 }),
         categoriesAPI.getAll(),
         branchesAPI.getAll(),
         menuBrandsAPI.getAll()
@@ -178,16 +186,19 @@ export default function Menu() {
       setMenuItems(menuRes.data.data);
       setBranches(branchesRes.data.data || []);
       setBrands(brandsRes.data.data || []);
-      setProducts(productsRes.data.data.filter((p: Product) =>
-        p.type === 'INGREDIENT' || p.type === 'BOTH'
-      ));
+      setProducts((productsRes.data.data || []).filter((p: Product) => RECIPE_PRODUCT_TYPES.includes(p.type)));
       setCategories(categoriesRes.data.data);
     } catch (error) {
       console.error('Error loading data:', error);
+      showError(errMsg(error, 'No se pudo cargar el menú y sus ingredientes'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [showError]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
   const resetModifierForm = () => {
     setEditingModifierId(null);
@@ -325,47 +336,69 @@ export default function Menu() {
         branchId: item.branchId?.toString() || '',
         brandId: item.brandId?.toString() || ''
       });
+      // Never leave data from the previously-opened item in the editor while
+      // this item's imported recipe is being loaded.
+      setRecipe([]);
+      setOriginalRecipe([]);
+      setRecipeUnitsByProduct({});
+      setImages([]);
+      setOriginalImages([]);
+      setBranchPricing([]);
+      setBranchPriceDrafts({});
 
       try {
-        const [recipesRes, imagesRes] = await Promise.all([
+        const [recipesRes, imagesRes, pricingRes] = await Promise.all([
           menuAPI.getRecipes(item.id),
-          menuAPI.getImages(item.id)
+          menuAPI.getImages(item.id),
+          branchPricingAPI.getMenuItemMatrix(item.id),
         ]);
 
-        const recipeRows: RecipeApiRow[] = recipesRes.data.data || [];
+        const recipeRows: MenuRecipe[] = recipesRes.data.data || [];
         const uniqueProductIds = Array.from(new Set(recipeRows.map((r) => r.product.id)));
         const productUnitsMap = new Map<number, ProductAllowedUnit[]>();
 
         await Promise.all(uniqueProductIds.map(async (productId) => {
+          const catalogProduct = products.find((product) => product.id === productId)
+            ?? recipeRows.find((row) => row.product.id === productId)?.product;
           try {
             const unitsRes = await unitsAPI.getProductUnits(productId);
-            productUnitsMap.set(productId, unitsRes.data.data || []);
+            const allowedUnits: ProductAllowedUnit[] = unitsRes.data.data || [];
+            productUnitsMap.set(productId, allowedUnits.length > 0 ? allowedUnits : fallbackProductUnit(catalogProduct));
           } catch {
-            productUnitsMap.set(productId, []);
+            productUnitsMap.set(productId, fallbackProductUnit(catalogProduct));
           }
         }));
 
-        const loadedRecipes = recipeRows.map((r: RecipeApiRow) => {
-          const recipeUnit = r.unit || r.product.unit;
+        const loadedRecipes: EditableMenuRecipe[] = recipeRows.map((r) => {
           const allowedUnits = productUnitsMap.get(r.product.id) || [];
+          const unitFromId = r.unitId == null
+            ? undefined
+            : allowedUnits.find((unit) => unit.unitId === r.unitId)?.abbreviation;
+          const recipeUnit = r.unit || r.unitOfMeasure?.abbreviation || unitFromId || r.product.unit;
           const matchedUnit = allowedUnits.find(
             (u) => u.abbreviation.toLowerCase() === String(recipeUnit).toLowerCase()
           );
+          const catalogProduct = products.find((product) => product.id === r.product.id);
           return {
+            id: r.id,
             productId: r.product.id,
             productName: r.product.name,
             quantity: Number(r.quantity),
             unit: recipeUnit,
-            cost: Number(r.product.cost),
-            conversionFactor: Number(matchedUnit?.conversionFactor || 1)
+            cost: Number(catalogProduct?.currentAverageCost ?? catalogProduct?.cost ?? r.product.currentAverageCost ?? r.product.cost ?? 0),
+            conversionFactor: Number(matchedUnit?.conversionFactor ?? 0),
+            unitConfigured: Boolean(matchedUnit),
           };
         });
 
-        const loadedImages = imagesRes.data.data.map((img: MenuImageRecord) => img.imageUrl);
+        const loadedImageRecords: MenuImageRecord[] = imagesRes.data.data || [];
+        const loadedImages = loadedImageRecords.map((img) => img.imageUrl);
 
         setRecipe(loadedRecipes);
+        setOriginalRecipe(loadedRecipes.map((ingredient) => ({ ...ingredient })));
+        setRecipeUnitsByProduct(Object.fromEntries(productUnitsMap));
         setImages(loadedImages);
-        const pricingRes = await branchPricingAPI.getMenuItemMatrix(item.id);
+        setOriginalImages(loadedImageRecords);
         setBranchPricing(pricingRes.data.data.branchPrices || []);
         setBranchPriceDrafts(
           (pricingRes.data.data.branchPrices || []).reduce((acc: Record<number, string>, priceRow: BranchPriceRow) => {
@@ -375,12 +408,17 @@ export default function Menu() {
         );
       } catch (error) {
         console.error('Error loading details:', error);
+        showError(errMsg(error, 'No se pudo cargar la receta del plato'));
+        return;
       }
     } else {
       setEditingItem(null);
       setFormData({ name: '', description: '', price: '', categoryId: '', branchId: '', brandId: '' });
       setRecipe([]);
+      setOriginalRecipe([]);
+      setRecipeUnitsByProduct({});
       setImages([]);
+      setOriginalImages([]);
       setBranchPricing([]);
       setBranchPriceDrafts({});
     }
@@ -426,7 +464,9 @@ export default function Menu() {
     const product = products.find(p => p.id === parseInt(productId));
     try {
       const res = await unitsAPI.getProductUnits(Number(productId));
-      const units: ProductAllowedUnit[] = res.data.data || [];
+      const configuredUnits: ProductAllowedUnit[] = res.data.data || [];
+      const units = configuredUnits.length > 0 ? configuredUnits : fallbackProductUnit(product);
+      setRecipeUnitsByProduct((previous) => ({ ...previous, [Number(productId)]: units }));
       if (units.length > 0) {
         setIngredientUnits(units);
         const defaultUnit = units.find(u => u.isBase) || units.find(u => u.isDefault) || units[0];
@@ -437,32 +477,50 @@ export default function Menu() {
         setSelectedIngredientUnit(baseUnit);
       }
     } catch {
-      const baseUnit = product?.unit || 'unidad';
-      setIngredientUnits([{ unitId: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }]);
-      setSelectedIngredientUnit(baseUnit);
+      const units = fallbackProductUnit(product);
+      setRecipeUnitsByProduct((previous) => ({ ...previous, [Number(productId)]: units }));
+      setIngredientUnits(units);
+      setSelectedIngredientUnit(units[0]?.abbreviation || '');
     }
   }, [products]);
 
   const addIngredient = () => {
-    if (!selectedProductId || !quantity) return;
+    if (!selectedProductId) {
+      showWarning('Selecciona un ingrediente');
+      return;
+    }
 
     const product = products.find(p => p.id === parseInt(selectedProductId));
     if (!product) return;
+    const parsedQuantity = Number(quantity);
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+      showWarning('La cantidad del ingrediente debe ser mayor a 0');
+      return;
+    }
+    if (recipe.some((ingredient) => ingredient.productId === product.id)) {
+      showWarning(`El ingrediente "${product.name}" ya está en la receta`);
+      return;
+    }
+    const selectedUnit = selectedIngredientUnit || product.unit;
+    const matchedUnit = ingredientUnits.find(
+      (unit) => unit.abbreviation.toLowerCase() === selectedUnit.toLowerCase()
+    );
+    if (!matchedUnit) {
+      showWarning(`Selecciona una unidad configurada para "${product.name}"`);
+      return;
+    }
 
-    const newIngredient: RecipeIngredient = {
+    const newIngredient: EditableMenuRecipe = {
       productId: product.id,
       productName: product.name,
-      quantity: parseFloat(quantity),
-      unit: selectedIngredientUnit || product.unit,
-      cost: Number(product.cost),
-      conversionFactor: Number(
-        ingredientUnits.find(
-          (u) => u.abbreviation.toLowerCase() === String(selectedIngredientUnit || product.unit).toLowerCase()
-        )?.conversionFactor || 1
-      )
+      quantity: parsedQuantity,
+      unit: selectedUnit,
+      cost: Number(product.currentAverageCost ?? product.cost ?? 0),
+      conversionFactor: Number(matchedUnit.conversionFactor),
+      unitConfigured: true,
     };
 
-    setRecipe([...recipe, newIngredient]);
+    setRecipe((previous) => [...previous, newIngredient]);
     setSelectedProductId('');
     setSelectedIngredientUnit('');
     setIngredientUnits([]);
@@ -470,7 +528,28 @@ export default function Menu() {
   };
 
   const removeIngredient = (index: number) => {
-    setRecipe(recipe.filter((_, i) => i !== index));
+    setRecipe((previous) => previous.filter((_, i) => i !== index));
+  };
+
+  const updateIngredientQuantity = (index: number, nextQuantity: string) => {
+    setRecipe((previous) => previous.map((ingredient, ingredientIndex) =>
+      ingredientIndex === index ? { ...ingredient, quantity: nextQuantity } : ingredient
+    ));
+  };
+
+  const updateIngredientUnit = (index: number, nextUnit: string) => {
+    setRecipe((previous) => previous.map((ingredient, ingredientIndex) => {
+      if (ingredientIndex !== index) return ingredient;
+      const matchedUnit = (recipeUnitsByProduct[ingredient.productId] || []).find(
+        (unit) => unit.abbreviation.toLowerCase() === nextUnit.toLowerCase()
+      );
+      return {
+        ...ingredient,
+        unit: nextUnit,
+        conversionFactor: Number(matchedUnit?.conversionFactor ?? 0),
+        unitConfigured: Boolean(matchedUnit),
+      };
+    }));
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -498,12 +577,33 @@ export default function Menu() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canMutateMenu) return;
+
+    const price = Number(formData.price);
+    if (!formData.name.trim()) {
+      showWarning('El nombre del plato es obligatorio');
+      return;
+    }
+    if (!formData.categoryId) {
+      showWarning('Selecciona una categoría');
+      return;
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      showWarning('Ingresa un precio válido');
+      return;
+    }
+    const recipeValidationError = validateMenuRecipes(recipe);
+    if (recipeValidationError) {
+      showWarning(recipeValidationError);
+      setActiveTab('recipe');
+      return;
+    }
+
     setSaving(true);
     try {
       const menuData = {
-        name: formData.name,
+        name: formData.name.trim(),
         description: formData.description || undefined,
-        price: parseFloat(formData.price),
+        price,
         categoryId: parseInt(formData.categoryId),
         branchId: formData.branchId ? parseInt(formData.branchId) : null,
         brandId: formData.brandId ? parseInt(formData.brandId) : null,
@@ -516,41 +616,55 @@ export default function Menu() {
         await menuAPI.update(editingItem.id, menuData);
         menuItemId = editingItem.id;
 
-        const [existingRecipes, existingImages] = await Promise.all([
-          menuAPI.getRecipes(menuItemId),
-          menuAPI.getImages(menuItemId)
-        ]);
+        const syncPlan = buildMenuRecipeSyncPlan(originalRecipe, recipe);
 
-        await Promise.all([
-          ...existingRecipes.data.data.map((r: { id: number }) => menuAPI.deleteRecipe(r.id)),
-          ...existingImages.data.data.map((img: MenuImageRecord) => menuAPI.deleteImage(img.id))
-        ]);
+        // Update retained lines first. Removed rows are deleted before creates so
+        // replacing the same product cannot hit the unique menuItem/product key.
+        await Promise.all(syncPlan.update.map(({ id, data }) => menuAPI.updateRecipe(id, data)));
+        await Promise.all(syncPlan.delete.map((recipeId) => menuAPI.deleteRecipe(recipeId)));
+        await Promise.all(syncPlan.create.map((ingredient) => menuAPI.addRecipe(menuItemId, ingredient)));
+
+        const retainedImageUrls = new Set(images);
+        const originalImageUrls = new Set(originalImages.map((image) => image.imageUrl));
+        const removedImages = originalImages.filter((image) => !retainedImageUrls.has(image.imageUrl));
+        const addedImages = images.filter((imageUrl) => !originalImageUrls.has(imageUrl));
+        await Promise.all(removedImages.map((image) => menuAPI.deleteImage(image.id)));
+        await Promise.all(addedImages.map((imageUrl) => menuAPI.addImage(menuItemId, imageUrl)));
       } else {
         const response = await menuAPI.create(menuData);
         menuItemId = response.data.data.id;
-      }
-
-      if (recipe.length > 0) {
-        await Promise.all(recipe.map(ing =>
-          menuAPI.addRecipe(menuItemId, {
-            productId: ing.productId,
-            quantity: ing.quantity,
-            unit: ing.unit
-          })
-        ));
-      }
-
-      if (images.length > 0) {
-        await Promise.all(images.map(img =>
-          menuAPI.addImage(menuItemId, img)
-        ));
+        await Promise.all(recipe.map((ingredient) => menuAPI.addRecipe(menuItemId, {
+          productId: ingredient.productId,
+          quantity: Number(ingredient.quantity),
+          unit: ingredient.unit.trim(),
+        })));
+        await Promise.all(images.map((imageUrl) => menuAPI.addImage(menuItemId, imageUrl)));
       }
 
       setIsSidebarOpen(false);
-      loadData();
+      await loadData();
+      showSuccess(editingItem ? 'Plato y receta actualizados' : 'Plato y receta creados');
     } catch (error: unknown) {
       console.error('Error saving menu item:', error);
-      showError('Error al guardar el plato');
+      const message = errMsg(error, 'Error al guardar el plato y su receta');
+
+      // Line and image synchronisation uses several API requests. If one fails,
+      // the server may already contain a subset of the changes; prevent retrying
+      // with stale original IDs and force the next open to read authoritative data.
+      setIsSidebarOpen(false);
+      setEditingItem(null);
+      setRecipe([]);
+      setOriginalRecipe([]);
+      setRecipeUnitsByProduct({});
+      setSelectedProductId('');
+      setSelectedIngredientUnit('');
+      setIngredientUnits([]);
+      setQuantity('');
+      setImages([]);
+      setOriginalImages([]);
+      setActiveTab('info');
+      await loadData();
+      showError(`${message}. El catálogo se recargó; vuelve a abrir el plato antes de reintentar.`);
     } finally {
       setSaving(false);
     }
@@ -995,6 +1109,8 @@ export default function Menu() {
                       <input
                         id="menu-ingredient-quantity"
                         type="number"
+                        min="0.001"
+                        step="0.001"
                         className="modal-standard-input"
                         style={{ width: '80px', textAlign: 'center' }}
                         placeholder="Cant"
@@ -1039,7 +1155,7 @@ export default function Menu() {
                         variant="primary"
                         style={{ padding: '0 12px' }}
                         onClick={addIngredient}
-                        disabled={!canMutateMenu || !selectedProductId || !quantity}
+                        disabled={!canMutateMenu || !selectedProductId || !quantity || Number(quantity) <= 0}
                       >
                         <Plus size={18} />
                       </Button>
@@ -1051,22 +1167,70 @@ export default function Menu() {
                     <label className="modal-input-label" id="menu-ingredients-list-label">Ingredientes Seleccionados</label>
                     <div id="menu-ingredients-list" aria-labelledby="menu-ingredients-list-label" style={{ border: '1px solid var(--color-border)', borderRadius: '8px', overflow: 'hidden' }}>
                       {recipe.length > 0 ? (
-                        recipe.map((ing, i) => (
-                          <div key={i} className="recipe-ingredient-row">
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: '13px', fontWeight: 600 }}>{ing.productName}</div>
-                              <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>{ing.quantity} {ing.unit}</div>
+                        recipe.map((ing, i) => {
+                          const allowedUnits = recipeUnitsByProduct[ing.productId] || [];
+                          const unitOptions = allowedUnits.map((unit) => ({
+                            value: unit.abbreviation,
+                            label: unit.name && unit.name !== unit.abbreviation
+                              ? `${unit.name} (${unit.abbreviation})`
+                              : unit.abbreviation,
+                          }));
+                          const selectedUnitOption = unitOptions.find(
+                            (option) => option.value.toLowerCase() === ing.unit.toLowerCase()
+                          ) || { value: ing.unit, label: ing.unit };
+
+                          return (
+                            <div key={ing.id ?? `new-${ing.productId}`} className="recipe-ingredient-row">
+                              <div className="recipe-ingredient-name">
+                                <div>{ing.productName}</div>
+                                {!ing.unitConfigured && (
+                                  <span className="recipe-unit-error">Unidad no configurada</span>
+                                )}
+                              </div>
+                              {canMutateMenu ? (
+                                <>
+                                  <input
+                                    type="number"
+                                    min="0.001"
+                                    step="0.001"
+                                    className="modal-standard-input recipe-ingredient-quantity"
+                                    aria-label={`Cantidad de ${ing.productName}`}
+                                    value={ing.quantity}
+                                    onChange={(event) => updateIngredientQuantity(i, event.target.value)}
+                                  />
+                                  <div className="recipe-ingredient-unit">
+                                    <Select
+                                      variant="modal"
+                                      options={unitOptions}
+                                      value={selectedUnitOption}
+                                      onChange={(option: SingleValue<StrOption>) => updateIngredientUnit(i, option?.value || '')}
+                                      isSearchable={unitOptions.length > 6}
+                                      isDisabled={unitOptions.length === 0}
+                                      aria-label={`Unidad de ${ing.productName}`}
+                                    />
+                                  </div>
+                                </>
+                              ) : (
+                                <span className="recipe-ingredient-measure">{ing.quantity} {ing.unit}</span>
+                              )}
+                              <div className="recipe-ingredient-cost">
+                                {ing.unitConfigured
+                                  ? formatMoney(calculateIngredientLineCost(ing))
+                                  : '—'}
+                              </div>
+                              {canMutateMenu ? (
+                                <button
+                                  type="button"
+                                  onClick={() => removeIngredient(i)}
+                                  className="recipe-ingredient-remove"
+                                  aria-label={`Quitar ${ing.productName}`}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              ) : null}
                             </div>
-                            <div style={{ fontWeight: 600, fontSize: '13px', marginRight: '16px' }}>
-                              {formatMoney(calculateIngredientLineCost(ing))}
-                            </div>
-                            {canMutateMenu ? (
-                              <button type="button" onClick={() => removeIngredient(i)} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer', padding: '4px' }}>
-                                <Trash2 size={14} />
-                              </button>
-                            ) : null}
-                          </div>
-                        ))
+                          );
+                        })
                       ) : (
                         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--color-neutral-400)', fontSize: '13px' }}>
                           Sin ingredientes registrados

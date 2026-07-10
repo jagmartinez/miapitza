@@ -1,9 +1,14 @@
 .git
 .github
+.tmp
 **/node_modules
 client
 .claude
 *.md
+*.xlsx
+*.pdf
+*.b64
 .env
 .env.*
 !.env.example
+server/src/scripts/explore-prod-db.ts

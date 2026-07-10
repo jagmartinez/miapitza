@@ -1,0 +1,236 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "file": "Recetas Menu.xlsx",
+    "sha256": "46c13ed9520540712c1d791a89804884d4392f05e1272f759183ae4e2274019b"
+  },
+  "defaultCategory": "Producción",
+  "entries": [
+    {
+      "sourceName": "Albahaca",
+      "productSku": "VGR-000001",
+      "mode": "EXISTING",
+      "catalogName": "Albahaca",
+      "baseUnit": "g",
+      "productType": "INGREDIENT",
+      "activate": true
+    },
+    {
+      "sourceName": "Carne Della Nonna",
+      "productSku": "PRD-000001",
+      "mode": "EXISTING",
+      "catalogName": "Carne Della Nonna",
+      "baseUnit": "g",
+      "productType": "INTERMEDIATE",
+      "activate": true
+    },
+    {
+      "sourceName": "Cebolla morada",
+      "productSku": "VEG-000020",
+      "mode": "EXISTING",
+      "catalogName": "CEBOLLA MORADA",
+      "baseUnit": "lb",
+      "recipeUnits": ["g"],
+      "productType": "INGREDIENT",
+      "activate": true
+    },
+    {
+      "sourceName": "Hongos",
+      "productSku": "RCP-000006",
+      "mode": "CREATE",
+      "catalogName": "Hongos frescos para receta",
+      "baseUnit": "g",
+      "productType": "INGREDIENT",
+      "storageType": "PERISHABLE",
+      "referenceCost": 0.71288,
+      "activate": true
+    },
+    {
+      "sourceName": "Jalapeño",
+      "productSku": "VEG-000022",
+      "mode": "EXISTING",
+      "catalogName": "CHILE JALAPEÑO",
+      "baseUnit": "lb",
+      "recipeUnits": ["g"],
+      "productType": "INGREDIENT",
+      "activate": true
+    },
+    {
+      "sourceName": "Jamón selva negra",
+      "productSku": "CON-000053",
+      "mode": "EXISTING",
+      "catalogName": "JAMON SELVA NEGRA",
+      "baseUnit": "oz",
+      "recipeUnits": ["g"],
+      "productType": "INGREDIENT",
+      "activate": true
+    },
+    {
+      "sourceName": "Masa precocida",
+      "productSku": "PRD-000002",
+      "mode": "EXISTING",
+      "catalogName": "Masa precocida",
+      "baseUnit": "unidad",
+      "productType": "INTERMEDIATE",
+      "activate": true
+    },
+    {
+      "sourceName": "Miel",
+      "productSku": "BEB-000034",
+      "mode": "EXISTING",
+      "catalogName": "MIEL",
+      "baseUnit": "oz",
+      "recipeUnits": ["g"],
+      "productType": "INGREDIENT",
+      "activate": true
+    },
+    {
+      "sourceName": "Miel envase de mesa",
+      "productSku": "RCP-000008",
+      "mode": "CREATE",
+      "catalogName": "Miel envase de mesa",
+      "baseUnit": "g",
+      "productType": "INGREDIENT",
+      "storageType": "NON_PERISHABLE",
+      "referenceCost": 0.13,
+      "activate": true
+    },
+    {
+      "sourceName": "Mozzarella fresco",
+      "productSku": "RCP-000005",
+      "mode": "CREATE",
+      "catalogName": "Mozzarella fresco para receta",
+      "baseUnit": "g",
+      "productType": "INGREDIENT",
+      "storageType": "PERISHABLE",
+      "referenceCost": 0.2422907488986784,
+      "activate": true
+    },
+    {
+      "sourceName": "Pepperoni",
+      "productSku": "CON-000067",
+      "mode": "EXISTING",
+      "catalogName": "PEPPERONI",
+      "baseUnit": "lb",
+      "recipeUnits": ["g"],
+      "productType": "INGREDIENT",
+      "activate": true
+    },
+    {
+      "sourceName": "Piña hawaiana",
+      "productSku": "VEG-000011",
+      "mode": "EXISTING",
+      "catalogName": "PIÑA GOLDEN",
+      "baseUnit": "lb",
+      "recipeUnits": ["g"],
+      "productType": "INGREDIENT",
+      "activate": true
+    },
+    {
+      "sourceName": "Prosciutto",
+      "productSku": "CON-000069",
+      "mode": "EXISTING",
+      "catalogName": "PROSCIUTTO",
+      "baseUnit": "unidad",
+      "productType": "INGREDIENT",
+      "activate": true,
+      "recipeUnitOverride": {
+        "from": "g",
+        "to": "unidad",
+        "evidence": "Detalle_Recetas histórico registra 2 láminas para La Bianco; la fuente nueva dice 2 GR."
+      }
+    },
+    {
+      "sourceName": "Queso mozzarella",
+      "productSku": "RCP-000004",
+      "mode": "CREATE",
+      "catalogName": "Queso mozzarella para receta",
+      "baseUnit": "g",
+      "productType": "INGREDIENT",
+      "storageType": "PERISHABLE",
+      "referenceCost": 0.265943832599119,
+      "activate": true
+    },
+    {
+      "sourceName": "Reduccion de balsamico",
+      "productSku": "RCP-000007",
+      "mode": "CREATE",
+      "catalogName": "Reducción de balsámico para receta",
+      "baseUnit": "g",
+      "productType": "INGREDIENT",
+      "storageType": "NON_PERISHABLE",
+      "referenceCost": 0.7642857142857142,
+      "activate": true
+    },
+    {
+      "sourceName": "Ricotta",
+      "productSku": "CON-000073",
+      "mode": "EXISTING",
+      "catalogName": "RICOTTA",
+      "baseUnit": "g",
+      "productType": "INGREDIENT",
+      "activate": true
+    },
+    {
+      "sourceName": "Romero",
+      "productSku": "VEG-000012",
+      "mode": "EXISTING",
+      "catalogName": "ROMERO",
+      "baseUnit": "lb",
+      "recipeUnits": ["g"],
+      "productType": "INGREDIENT",
+      "activate": true
+    },
+    {
+      "sourceName": "Rúcula",
+      "productSku": "VGR-000003",
+      "mode": "EXISTING",
+      "catalogName": "Rúcula",
+      "baseUnit": "g",
+      "productType": "INGREDIENT",
+      "activate": true
+    },
+    {
+      "sourceName": "Salsa 4 quesos",
+      "productSku": "RCP-000003",
+      "mode": "CREATE",
+      "catalogName": "Salsa 4 quesos",
+      "baseUnit": "g",
+      "productType": "INTERMEDIATE",
+      "storageType": "PERISHABLE",
+      "referenceCost": 0.14567031144782036,
+      "activate": true
+    },
+    {
+      "sourceName": "Salsa pesto",
+      "productSku": "RCP-000002",
+      "mode": "CREATE",
+      "catalogName": "Salsa pesto",
+      "baseUnit": "g",
+      "productType": "INTERMEDIATE",
+      "storageType": "PERISHABLE",
+      "referenceCost": 0.5516231248214366,
+      "activate": true
+    },
+    {
+      "sourceName": "Salsa roja",
+      "productSku": "RCP-000001",
+      "mode": "CREATE",
+      "catalogName": "Salsa roja",
+      "baseUnit": "g",
+      "productType": "INTERMEDIATE",
+      "storageType": "PERISHABLE",
+      "referenceCost": 0.11336436464263813,
+      "activate": true
+    },
+    {
+      "sourceName": "Tomate cherry",
+      "productSku": "VGR-000002",
+      "mode": "EXISTING",
+      "catalogName": "Tomate cherry",
+      "baseUnit": "g",
+      "productType": "INGREDIENT",
+      "activate": true
+    }
+  ]
+}

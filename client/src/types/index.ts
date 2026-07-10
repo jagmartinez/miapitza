@@ -125,6 +125,30 @@ export interface MenuItem {
   active: boolean;
 }
 
+/** A single inventory component consumed when one menu item is sold. */
+export interface MenuRecipe {
+  id: number;
+  menuItemId: number;
+  productId: number;
+  quantity: number | string;
+  unit?: string | null;
+  unitId?: number | null;
+  unitOfMeasure?: { id?: number; abbreviation: string } | null;
+  product: Pick<Product, 'id' | 'name' | 'unit'>
+    & Partial<Pick<Product, 'cost' | 'baseUnitId' | 'currentAverageCost' | 'type'>>;
+}
+
+export interface MenuRecipeCreateInput {
+  productId: number;
+  quantity: number;
+  unit: string;
+}
+
+export interface MenuRecipeUpdateInput {
+  quantity?: number;
+  unit?: string;
+}
+
 export interface Order {
   id: number;
   branchId: number;

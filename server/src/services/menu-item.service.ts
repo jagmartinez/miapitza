@@ -284,7 +284,7 @@ export class MenuItemService {
         const abbr = unit.trim();
         if (!abbr) return null;
         const uom = await prisma.unitOfMeasure.findFirst({
-            where: { companyId, abbreviation: abbr },
+            where: { companyId, abbreviation: abbr, active: true },
             select: { id: true }
         });
         return uom?.id ?? null;
@@ -296,11 +296,21 @@ export class MenuItemService {
         quantity: number;
         unit?: string;
     }) {
+        const quantity = Number(data.quantity);
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+            throw new Error('La cantidad de la receta debe ser mayor a 0');
+        }
         // Verify menu item belongs to company
         await this.getById(menuItemId, companyId);
         // Verify the product also belongs to the company (avoid cross-tenant recipe links)
-        const product = await prisma.product.findFirst({ where: { id: data.productId, companyId }, select: { id: true } });
+        const product = await prisma.product.findFirst({
+            where: { id: data.productId, companyId },
+            select: { id: true, unit: true }
+        });
         if (!product) throw new Error('Producto no encontrado para esta empresa');
+        const unit = String(data.unit ?? product.unit).trim();
+        if (!unit) throw new Error('La unidad de la receta es requerida');
+        await UnitConversionService.convert(product.id, companyId, quantity, unit);
         // Check if recipe already exists
         const existing = await prisma.recipe.findFirst({
             where: {
@@ -313,14 +323,14 @@ export class MenuItemService {
             throw new Error('Recipe for this product already exists in this menu item');
         }
 
-        const unitId = await this.resolveUnitId(companyId, data.unit);
+        const unitId = await this.resolveUnitId(companyId, unit);
 
         return await prisma.recipe.create({
             data: {
                 menuItemId,
                 productId: data.productId,
-                quantity: data.quantity,
-                unit: data.unit,
+                quantity,
+                unit,
                 unitId
             },
             include: {
@@ -340,12 +350,28 @@ export class MenuItemService {
         quantity?: number;
         unit?: string;
     }) {
+        if (data.quantity === undefined && data.unit === undefined) {
+            throw new Error('No hay cambios para guardar en la receta');
+        }
+        const existing = await prisma.recipe.findFirst({
+            where: { id: recipeId, menuItem: { companyId } },
+            include: { product: { select: { id: true, unit: true } } }
+        });
+        if (!existing) throw new Error('Receta no encontrada para esta empresa');
+        const quantity = data.quantity === undefined ? Number(existing.quantity) : Number(data.quantity);
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+            throw new Error('La cantidad de la receta debe ser mayor a 0');
+        }
+        const unit = String(data.unit ?? existing.unit ?? existing.product.unit).trim();
+        if (!unit) throw new Error('La unidad de la receta es requerida');
+        await UnitConversionService.convert(existing.product.id, companyId, quantity, unit);
+
         const updateData: Prisma.RecipeUpdateInput = {};
-        if (data.quantity !== undefined) updateData.quantity = data.quantity;
+        if (data.quantity !== undefined) updateData.quantity = quantity;
         if (data.unit !== undefined) {
-            updateData.unit = data.unit;
+            updateData.unit = unit;
             // Keep the FK in sync with the abbreviation.
-            const unitId = await this.resolveUnitId(companyId, data.unit);
+            const unitId = await this.resolveUnitId(companyId, unit);
             updateData.unitOfMeasure = unitId
                 ? { connect: { id: unitId } }
                 : { disconnect: true };

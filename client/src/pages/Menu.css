@@ -1747,6 +1747,7 @@
 .recipe-ingredient-row {
   display: flex;
   align-items: center;
+  gap: 10px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
@@ -1759,6 +1760,81 @@
 
 .recipe-ingredient-row:hover {
   background: var(--color-background);
+}
+
+.recipe-ingredient-name {
+  flex: 1 1 150px;
+  min-width: 120px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.recipe-unit-error {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-danger);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.recipe-ingredient-quantity {
+  flex: 0 0 82px;
+  width: 82px;
+  text-align: right;
+}
+
+.recipe-ingredient-unit {
+  flex: 0 1 145px;
+  min-width: 115px;
+}
+
+.recipe-ingredient-measure {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.recipe-ingredient-cost {
+  flex: 0 0 90px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.recipe-ingredient-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-danger);
+  cursor: pointer;
+}
+
+.recipe-ingredient-remove:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+@media (max-width: 640px) {
+  .recipe-ingredient-row {
+    flex-wrap: wrap;
+  }
+
+  .recipe-ingredient-name {
+    flex-basis: calc(100% - 36px);
+  }
+
+  .recipe-ingredient-quantity,
+  .recipe-ingredient-unit {
+    flex: 1 1 110px;
+    width: auto;
+  }
+
+  .recipe-ingredient-cost {
+    margin-left: auto;
+  }
 }
 
 /* CHEF (and others) can open items in read-only; hide grid card mutations */

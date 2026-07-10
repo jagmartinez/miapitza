@@ -1,6 +1,11 @@
 import axios from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
-import type { LoginResponse } from '../types';
+import type {
+    LoginResponse,
+    MenuRecipe,
+    MenuRecipeCreateInput,
+    MenuRecipeUpdateInput,
+} from '../types';
 import { db, type SyncItem } from './db';
 import { offlineManager } from './offlineManager';
 import { closeWebSocket } from '../utils/websocket';
@@ -316,10 +321,13 @@ export const menuAPI = {
 
     // Recipes
     getRecipes: (id: number) =>
-        api.get(`/menu-items/${id}/recipes`),
+        api.get<{ success: boolean; data: MenuRecipe[] }>(`/menu-items/${id}/recipes`),
 
-    addRecipe: (id: number, data: Record<string, unknown>) =>
-        api.post(`/menu-items/${id}/recipes`, data),
+    addRecipe: (id: number, data: MenuRecipeCreateInput) =>
+        api.post<{ success: boolean; data: MenuRecipe }>(`/menu-items/${id}/recipes`, data),
+
+    updateRecipe: (recipeId: number, data: MenuRecipeUpdateInput) =>
+        api.put<{ success: boolean; data: MenuRecipe }>(`/menu-items/recipes/${recipeId}`, data),
 
     deleteRecipe: (recipeId: number) =>
         api.delete(`/menu-items/recipes/${recipeId}`),
