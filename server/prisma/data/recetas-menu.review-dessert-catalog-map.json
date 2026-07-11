@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "file": "Recetas Menu.xlsx",
+    "sha256": "46c13ed9520540712c1d791a89804884d4392f05e1272f759183ae4e2274019b"
+  },
+  "defaultCategory": "Postres",
+  "entries": [
+    {
+      "sourceName": "Cheesecake entero",
+      "productSku": "CCI-RVW-CHEESECAKE",
+      "mode": "CREATE",
+      "catalogName": "Cheesecake entero",
+      "baseUnit": "unidad",
+      "productType": "INGREDIENT",
+      "storageType": "PERISHABLE",
+      "referenceCost": 1000,
+      "activate": true
+    }
+  ]
+}

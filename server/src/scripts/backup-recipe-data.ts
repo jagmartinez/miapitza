@@ -75,6 +75,7 @@ async function main(): Promise<void> {
             select: {
                 id: true,
                 name: true,
+                price: true,
                 active: true,
                 type: true,
                 category: { select: { id: true, name: true } },
@@ -131,8 +132,10 @@ async function main(): Promise<void> {
                 sku: true,
                 type: true,
                 unit: true,
+                cost: true,
                 baseUnitId: true,
                 active: true,
+                category: { select: { id: true, name: true } },
                 currentAverageCost: true,
                 lastPurchaseCost: true,
                 stocks: {

@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "file": "Recetas Menu.xlsx",
+    "sha256": "46c13ed9520540712c1d791a89804884d4392f05e1272f759183ae4e2274019b"
+  },
+  "policy": {
+    "activateOnlyWithDeterministicYield": true,
+    "keepInferredOrBusinessDependentFormulasAsDraft": true
+  },
+  "decisions": [
+    {
+      "productSku": "RCP-000001",
+      "recipeName": "Receta de Salsa roja",
+      "targetStatus": "ACTIVE",
+      "reason": "El lote declara 17000 g y todos sus componentes quedaron resueltos con evidencia de compra."
+    },
+    {
+      "productSku": "RCP-000002",
+      "recipeName": "Receta de Salsa pesto",
+      "targetStatus": "ACTIVE",
+      "reason": "El lote declara 1120 g y todos sus componentes quedaron resueltos con unidades compatibles."
+    },
+    {
+      "productSku": "RCP-000009",
+      "recipeName": "Receta de Salsa vodka",
+      "targetStatus": "DRAFT",
+      "reason": "El rendimiento de 1039 g es teórico; debe sustituirse por el rendimiento pesado de un lote real."
+    },
+    {
+      "productSku": "PRD-000001",
+      "recipeName": "Receta de Carne Della Nonna",
+      "targetStatus": "DRAFT",
+      "reason": "El rendimiento histórico de 1053 g debe validarse pesando la primera producción real."
+    },
+    {
+      "productSku": "RCP-000010",
+      "recipeName": "Receta de Queso Ricotta producido",
+      "targetStatus": "ACTIVE",
+      "reason": "La fuente declara de forma explícita un rendimiento de 6810 g."
+    },
+    {
+      "productSku": "PRD-000002",
+      "recipeName": "Receta de Masa precocida",
+      "targetStatus": "ACTIVE",
+      "reason": "La fuente declara de forma explícita un rendimiento de 4 unidades."
+    },
+    {
+      "productSku": "RCP-000011",
+      "recipeName": "Receta de Masa integral",
+      "targetStatus": "ACTIVE",
+      "reason": "La fuente declara de forma explícita un rendimiento de 8 unidades."
+    },
+    {
+      "productSku": "RCP-000012",
+      "recipeName": "Receta de Brownie",
+      "targetStatus": "ACTIVE",
+      "reason": "La fuente declara de forma explícita un rendimiento de 12 unidades."
+    },
+    {
+      "productSku": "RCP-000013",
+      "recipeName": "Receta de Pan de acompañamiento",
+      "targetStatus": "DRAFT",
+      "reason": "Debe confirmarse que el aceite genérico de la fuente corresponde a aceite de oliva y validar el rendimiento de 2 barras."
+    },
+    {
+      "productSku": "RCP-000016",
+      "recipeName": "Receta de Té preparado",
+      "targetStatus": "ACTIVE",
+      "reason": "El bloque corresponde a un lote explícito de 20 servicios; la etiqueta errónea 'g' se corrigió a unidad."
+    }
+  ]
+}

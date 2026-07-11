@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { effectiveUnitCost } from '../utils/product-cost';
 import { getErrorMessage } from '../utils/error';
 
 /**
@@ -58,7 +59,7 @@ export class CostingService {
             select: { currentAverageCost: true, cost: true }
         });
 
-        const fallback = Number(product?.currentAverageCost ?? product?.cost ?? 0);
+        const fallback = effectiveUnitCost(product?.currentAverageCost, product?.cost);
 
         const company = await db.company.findUnique({
             where: { id: companyId },
@@ -163,13 +164,14 @@ export class CostingService {
                 newAvgCost = this.calculateBatchWeightedAverage(batches);
             }
 
-            // Update product costs
+            // Product.cost is the reviewed catalog/reference value. Operational
+            // receipts update only the moving average and last purchase cost;
+            // consumers use effectiveUnitCost() to prefer this positive average.
             await db.product.update({
                 where: { id: productId },
                 data: {
                     currentAverageCost: newAvgCost,
                     lastPurchaseCost: unitCost,
-                    cost: newAvgCost, // Keep legacy field in sync
                     updatedAt: new Date()
                 }
             });
@@ -266,7 +268,6 @@ export class CostingService {
                 where: { id: productId },
                 data: {
                     currentAverageCost: newAvgCost,
-                    cost: newAvgCost, // Keep legacy field in sync
                     updatedAt: new Date()
                 }
             });
@@ -298,8 +299,9 @@ export class CostingService {
      *
      * Locates the ProductCostHistory entry/entries created by applyProductionCost
      * for `productionOrderId`, removes them, and recomputes the product's
-     * currentAverageCost/cost from the REMAINING history (WEIGHTED_AVERAGE) or the
-     * remaining FIFO batches. MUST run inside the cancellation transaction so the
+     * currentAverageCost from the REMAINING history (WEIGHTED_AVERAGE) or the
+     * remaining FIFO batches. Product.cost stays as the reviewed reference value.
+     * MUST run inside the cancellation transaction so the
      * cost reversal commits atomically with the stock reversal — replacing the
      * previous post-commit recalculateProductCost which could leave a partial state.
      */
@@ -314,7 +316,20 @@ export class CostingService {
         });
         if (entries.length === 0) return;
 
-        const productId = entries[0].productId;
+        const productIds = [...new Set(entries.map((entry) => entry.productId))];
+
+        // Capture the complete replay chain before deleting the target entry.
+        // The first row's previousStock/previousAvgCost is the historical/legacy
+        // baseline; replaying from zero would erase stock value that predates the
+        // ProductCostHistory table.
+        const histories = new Map<number, Awaited<ReturnType<typeof db.productCostHistory.findMany>>>();
+        for (const productId of productIds) {
+            const history = await db.productCostHistory.findMany({
+                where: { productId, companyId },
+                orderBy: { createdAt: 'asc' }
+            });
+            histories.set(productId, history);
+        }
 
         // Drop the production cost entries so the recompute reflects the reversal.
         await db.productCostHistory.deleteMany({ where: { productionOrderId, companyId } });
@@ -325,39 +340,50 @@ export class CostingService {
         });
         const costingMethod = company?.costingMethod || 'WEIGHTED_AVERAGE';
 
-        let newAvgCost: number;
-        if (costingMethod === 'FIFO') {
-            const batches = await this.getFifoBatches(productId, companyId, db);
-            newAvgCost = this.calculateBatchWeightedAverage(batches);
-        } else {
-            // Replay the remaining weighted-average history chronologically.
-            const history = await db.productCostHistory.findMany({
-                where: { productId, companyId },
-                orderBy: { createdAt: 'asc' }
-            });
-            let runningStock = 0;
-            let runningAvgCost = 0;
-            for (const entry of history) {
-                const qty = Number(entry.quantity);
-                const cost = Number(entry.unitCost);
-                if (runningStock + qty === 0) {
-                    runningAvgCost = 0;
-                } else {
-                    runningAvgCost = ((runningStock * runningAvgCost) + (qty * cost)) / (runningStock + qty);
-                }
-                runningStock += qty;
-            }
-            newAvgCost = runningAvgCost;
-        }
+        for (const productId of productIds) {
+            let newAvgCost: number;
+            if (costingMethod === 'FIFO') {
+                const batches = await this.getFifoBatches(productId, companyId, db);
+                newAvgCost = this.calculateBatchWeightedAverage(batches);
+            } else {
+                const completeHistory = histories.get(productId) || [];
+                const baseline = completeHistory[0];
+                let runningStock = baseline ? Number(baseline.previousStock) : 0;
+                let runningAvgCost = baseline ? Number(baseline.previousAvgCost) : 0;
+                let removedStockBefore = 0;
 
-        await db.product.update({
-            where: { id: productId },
-            data: {
-                currentAverageCost: newAvgCost,
-                cost: newAvgCost,
-                updatedAt: new Date()
+                for (const entry of completeHistory) {
+                    const qty = Number(entry.quantity);
+                    if (entry.productionOrderId === productionOrderId) {
+                        // Exact batch reversal guarantees this produced quantity
+                        // was not consumed. Every later history row therefore saw
+                        // `qty` more stock than the counterfactual replay should.
+                        removedStockBefore += qty;
+                        continue;
+                    }
+                    // `previousStock` captures real OUT movements between cost
+                    // events. Reset to that observed stock and subtract only the
+                    // removed production layers that precede this row.
+                    runningStock = Math.max(0, Number(entry.previousStock) - removedStockBefore);
+                    const cost = Number(entry.unitCost);
+                    if (runningStock + qty === 0) {
+                        runningAvgCost = 0;
+                    } else {
+                        runningAvgCost = ((runningStock * runningAvgCost) + (qty * cost)) / (runningStock + qty);
+                    }
+                    runningStock += qty;
+                }
+                newAvgCost = runningAvgCost;
             }
-        });
+
+            await db.product.update({
+                where: { id: productId },
+                data: {
+                    currentAverageCost: newAvgCost,
+                    updatedAt: new Date()
+                }
+            });
+        }
     }
 
     /**
@@ -414,7 +440,6 @@ export class CostingService {
                 where: { id: productId },
                 data: {
                     currentAverageCost: newAvgCost,
-                    cost: newAvgCost,
                     updatedAt: new Date()
                 }
             });
@@ -443,7 +468,6 @@ export class CostingService {
                 where: { id: productId },
                 data: {
                     currentAverageCost: runningAvgCost,
-                    cost: runningAvgCost,
                     updatedAt: new Date()
                 }
             });

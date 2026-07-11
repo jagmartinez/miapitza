@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "file": "Recetas Menu.xlsx",
+    "sha256": "46c13ed9520540712c1d791a89804884d4392f05e1272f759183ae4e2274019b"
+  },
+  "defaultCategory": "Producción",
+  "entries": [
+    {
+      "sourceName": "Pan de acompañamiento producido",
+      "productSku": "RCP-000013",
+      "mode": "CREATE",
+      "catalogName": "Pan de acompañamiento",
+      "baseUnit": "unidad",
+      "productType": "INTERMEDIATE",
+      "storageType": "PERISHABLE",
+      "referenceCost": 59.69,
+      "activate": true
+    },
+    {
+      "sourceName": "Té preparado producido",
+      "productSku": "RCP-000016",
+      "mode": "CREATE",
+      "catalogName": "Té preparado",
+      "baseUnit": "unidad",
+      "productType": "INTERMEDIATE",
+      "storageType": "PERISHABLE",
+      "referenceCost": 9.93,
+      "activate": true
+    },
+    {
+      "sourceName": "Rodaja de pan integral",
+      "productSku": "CCI-RVW-PAN-INTEGRAL",
+      "mode": "CREATE",
+      "catalogName": "Rodaja de pan integral",
+      "baseUnit": "unidad",
+      "productType": "INGREDIENT",
+      "storageType": "NON_PERISHABLE",
+      "referenceCost": 5,
+      "activate": true
+    }
+  ]
+}

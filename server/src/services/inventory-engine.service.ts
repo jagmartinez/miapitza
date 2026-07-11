@@ -44,6 +44,12 @@ export interface ApplyMovementParams {
     conversionFactor?: number | null;
     /** Batch source label for the opened FIFO layer (IN side only). */
     sourceType?: BatchSourceType;
+    /**
+     * For an exact reversal, consume only the still-open layer(s) created by
+     * this source reference. If those layers no longer contain the requested
+     * quantity, reject instead of consuming unrelated stock.
+     */
+    consumeSourceRef?: string;
     transferGroupId?: string | null;
     /** Allow the resulting balance to go negative (skip the OUT stock check). */
     allowNegative?: boolean;
@@ -174,17 +180,20 @@ export class InventoryEngineService {
         } else {
             // OUT: load the layers (oldest first), lock them, and consume them so
             // FIFO stays consistent regardless of the active costing method.
-            const layers = await tx.inventoryBatch.findMany({
+            const allLayers = await tx.inventoryBatch.findMany({
                 where: { companyId, warehouseId, productId, remainingQty: { gt: 0 } },
                 orderBy: { createdAt: 'asc' },
-                select: { id: true, unitCost: true, remainingQty: true }
+                select: { id: true, unitCost: true, remainingQty: true, sourceRef: true }
             });
-            if (layers.length > 0) {
+            if (allLayers.length > 0) {
                 // Lock the candidate layers to avoid concurrent double-consumption.
                 await tx.$queryRaw`SELECT id FROM \`InventoryBatch\` WHERE companyId = ${companyId} AND warehouseId = ${warehouseId} AND productId = ${productId} AND remainingQty > 0 FOR UPDATE`;
             }
+            const layers = params.consumeSourceRef
+                ? allLayers.filter((layer) => layer.sourceRef === params.consumeSourceRef)
+                : allLayers;
             const prevValued = isFifo
-                ? layers.reduce((s, b) => s + Number(b.remainingQty) * Number(b.unitCost), 0)
+                ? allLayers.reduce((s, b) => s + Number(b.remainingQty) * Number(b.unitCost), 0)
                 : currentQty * avgCost;
 
             let remaining = quantity;
@@ -201,8 +210,16 @@ export class InventoryEngineService {
                     data: { remainingQty: available - take }
                 });
             }
-            // Graceful degradation: legacy stock without layers (or a shortfall) is
-            // valued at the average cost instead of throwing.
+            // Exact reversals must never consume another purchase/production
+            // layer. A shortfall means this output was already used.
+            if (remaining > EPS && params.consumeSourceRef) {
+                throw new Error(
+                    `No hay cantidad suficiente en el lote ${params.consumeSourceRef} para una reversa exacta. ` +
+                    `Requerido: ${quantity}, Disponible en lote: ${quantity - remaining}`
+                );
+            }
+
+            // Graceful degradation for ordinary legacy stock without layers.
             if (remaining > EPS) {
                 fifoCogs += remaining * avgCost;
                 remaining = 0;

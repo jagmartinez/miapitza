@@ -1,0 +1,248 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "file": "Recetas Menu.xlsx",
+    "sheet": "reviewRequired resuelto",
+    "generatedAt": "1970-01-01T00:00:00.000Z",
+    "sha256": "46c13ed9520540712c1d791a89804884d4392f05e1272f759183ae4e2274019b",
+    "templateFile": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+    "templateSha256": "ea76e30de15952e025bba93eef6e7c17e38936559ebe55faaa9627835ece7d50"
+  },
+  "fingerprint": "1da933385c6e069756fc35e4f003d5bedd5646c847dbb333b5e2bb7516626a5c",
+  "menuItems": [
+    {
+      "sourceKey": "Pastas!C5",
+      "name": "Canelones ricotta y espinaca — Salsa 4 quesos",
+      "category": "Pastas Frescas",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 407,
+      "description": "Importado y revisado desde Pastas!C5 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Pastas!N5",
+      "name": "Canelones ricotta y espinaca — Salsa roja",
+      "category": "Pastas Frescas",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 350,
+      "description": "Importado y revisado desde Pastas!N5 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Pastas!Z5",
+      "name": "Mezzaluna ricotta y espinaca — Salsa roja",
+      "category": "Pastas Frescas",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 350,
+      "description": "Importado y revisado desde Pastas!Z5 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Pastas!AL5",
+      "name": "Mezzaluna ricotta y espinaca — Salsa 4 quesos",
+      "category": "Pastas Frescas",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 407,
+      "description": "Importado y revisado desde Pastas!AL5 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Pastas!AX5",
+      "name": "Mezzaluna — Salsa pesto",
+      "category": "Pastas Frescas",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 390,
+      "description": "Importado y revisado desde Pastas!AX5 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Pastas!BJ5",
+      "name": "Mezzaluna — Salsa vodka",
+      "category": "Pastas Frescas",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 380,
+      "description": "Importado y revisado desde Pastas!BJ5 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Pastas!BV5",
+      "name": "Canelones — Salsa vodka",
+      "category": "Pastas Frescas",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 380,
+      "description": "Importado y revisado desde Pastas!BV5 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Pastas!BV42",
+      "name": "Raviolis con champiñones — Salsa 4 quesos",
+      "category": "Pastas Frescas",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 390,
+      "description": "Importado y revisado desde Pastas!BV42 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Antipastos!C4",
+      "name": "Tabla de Antipasto",
+      "category": "Antipastos",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 587,
+      "description": "Importado y revisado desde Antipastos!C4 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Antipastos!L4",
+      "name": "Pan Rústico",
+      "category": "Antipastos",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 495,
+      "description": "Importado y revisado desde Antipastos!L4 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Antipastos!U4",
+      "name": "Rúcula & Hongos al Vino",
+      "category": "Antipastos",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 457,
+      "description": "Importado y revisado desde Antipastos!U4 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Pitzas!ED3",
+      "name": "Alla Vodka",
+      "category": "Pizzas",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 575,
+      "description": "Importado y revisado desde Pitzas!ED3 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Pitzas!EM3",
+      "name": "Kit de pizza",
+      "category": "Kids Menú",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 243.5,
+      "description": "Importado y revisado desde Pitzas!EM3 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Pitzas nuevas!S5",
+      "name": "La Reina",
+      "category": "Pizzas",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 560,
+      "description": "Importado y revisado desde Pitzas nuevas!S5 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Pitzas nuevas!K29",
+      "name": "Focaccia",
+      "category": "Focaccias",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 260,
+      "description": "Importado y revisado desde Pitzas nuevas!K29 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Postres!L5",
+      "name": "Brownie con helado",
+      "category": "Postres",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 185,
+      "description": "Importado y revisado desde Postres!L5 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Postres!AD5",
+      "name": "Pan de Banano Ala Mode",
+      "category": "Postres",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 145,
+      "description": "Importado y revisado desde Postres!AD5 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Postres!U27",
+      "name": "Cheesecake de fresas",
+      "category": "Postres",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 250,
+      "description": "Importado y revisado desde Postres!U27 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Bebidas!D5",
+      "name": "La Vielle Ferme — Copa",
+      "category": "Bebidas y Vinos",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 296,
+      "description": "Importado y revisado desde Bebidas!D5 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Bebidas!P5",
+      "name": "Don Luciano — Copa",
+      "category": "Bebidas y Vinos",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 220,
+      "description": "Importado y revisado desde Bebidas!P5 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Bebidas!AB5",
+      "name": "Pinot Grigio Pasqua — Copa",
+      "category": "Bebidas y Vinos",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 300,
+      "description": "Importado y revisado desde Bebidas!AB5 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Bebidas!AN5",
+      "name": "Rosé — Botella",
+      "category": "Bebidas y Vinos",
+      "brand": "Mia Pitza",
+      "type": "DIRECT",
+      "price": 1375,
+      "description": "Importado y revisado desde Bebidas!AN5 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Bebidas!AZ5",
+      "name": "19 Crimes — Copa",
+      "category": "Bebidas y Vinos",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 350,
+      "description": "Importado y revisado desde Bebidas!AZ5 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Bebidas!BX5",
+      "name": "Rosé — Copa",
+      "category": "Bebidas y Vinos",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 250,
+      "description": "Importado y revisado desde Bebidas!BX5 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Bebidas!CJ5",
+      "name": "Verdejo Quintaluna — Copa",
+      "category": "Bebidas y Vinos",
+      "brand": "Mia Pitza",
+      "type": "PREPARED",
+      "price": 350,
+      "description": "Importado y revisado desde Bebidas!CJ5 de Recetas Menu.xlsx."
+    },
+    {
+      "sourceKey": "Bebidas!CV5",
+      "name": "Verdejo Quintaluna — Botella",
+      "category": "Bebidas y Vinos",
+      "brand": "Mia Pitza",
+      "type": "DIRECT",
+      "price": 1549,
+      "description": "Importado y revisado desde Bebidas!CV5 de Recetas Menu.xlsx."
+    }
+  ]
+}

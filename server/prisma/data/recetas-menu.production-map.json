@@ -1,0 +1,1245 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "file": "Recetas Menu.xlsx",
+    "sha256": "46c13ed9520540712c1d791a89804884d4392f05e1272f759183ae4e2274019b",
+    "normalizedContract": "recetas-menu.normalized.json"
+  },
+  "status": "READY_FOR_DATABASE_DRY_RUN",
+  "policies": {
+    "initialRecipeStatus": "DRAFT",
+    "applyRequiresAllRecipesReady": true,
+    "blockedMappingsAreNeverApplied": true,
+    "crossDimensionConversionsRequireBusinessEvidence": true,
+    "inferredYieldsRequireConfirmation": true
+  },
+  "recipes": [
+    {
+      "sourceKey": "Salsas!C5",
+      "output": {
+        "status": "RESOLVED",
+        "mapping": {
+          "status": "RESOLVED",
+          "productSku": "RCP-000001",
+          "catalogName": "Salsa roja"
+        },
+        "reasonCodes": [],
+        "evidence": [
+          "El mapa de catálogo aplicado creó RCP-000001 como INTERMEDIATE en g para la misma salida Salsa roja.",
+          "El SKU histórico MP-005 ya no es el identificador operativo."
+        ],
+        "decisionRequired": null,
+        "alternatives": []
+      },
+      "yield": {
+        "status": "RESOLVED",
+        "quantity": 17000,
+        "unit": "g",
+        "reasonCodes": [],
+        "evidence": [
+          "Salsas!C5 declara 17000 y etiqueta explícita Gramos."
+        ],
+        "decisionRequired": null
+      },
+      "components": [
+        {
+          "sourceRow": 10,
+          "sourceName": "Ajo",
+          "quantity": 30,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "VEG-000001",
+            "catalogName": "AJO"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SYSTEM_CONVERSION",
+            "catalogBaseUnit": "lb"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "Compras!A11 identifica Ajo y el catálogo activo contiene un único SKU nominal AJO, VEG-000001.",
+            "g y lb pertenecen a MASS y la conversión del sistema es determinística."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 11,
+          "sourceName": "Aceite de oliva",
+          "quantity": 350,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "MIS-000041",
+            "catalogName": "ACEITE DE OLIVA"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SOURCE_UNIT_CORRECTION_FROM_PURCHASE_LINK",
+            "catalogBaseUnit": "l",
+            "resolvedUnit": "ml"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "La fórmula de Salsas!C5 fila 11 enlaza Compras!G12, presentación en litros; se corrige la etiqueta g a 350 ml sin aplicar conversión por densidad.",
+            "MIS-000041 es el SKU canónico activo de aceite de oliva y convierte ml↔l por volumen."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 12,
+          "sourceName": "Albahaca",
+          "quantity": 80,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "VGR-000001",
+            "catalogName": "Albahaca"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "g"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "El mapa de catálogo aplicado fija Albahaca en VGR-000001 y g."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 13,
+          "sourceName": "Lata de tomate",
+          "quantity": 6,
+          "unit": "unidad",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-C329AE1D78",
+            "catalogName": "Tomate enlatado"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "PACKAGE_CONTENT_FROM_SOURCE",
+            "catalogBaseUnit": "g",
+            "resolvedQuantity": 15600,
+            "resolvedUnit": "g"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "Compras!15 declara 2600 g por lata y la receta consume 6 latas; 6 × 2600 = 15600 g.",
+            "CCI-C329AE1D78 conserva exactamente la identidad y costo de Compras!15 en base g."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        }
+      ]
+    },
+    {
+      "sourceKey": "Salsas!N5",
+      "output": {
+        "status": "RESOLVED",
+        "mapping": {
+          "status": "RESOLVED",
+          "productSku": "RCP-000002",
+          "catalogName": "Salsa pesto"
+        },
+        "reasonCodes": [],
+        "evidence": [
+          "El mapa de catálogo aplicado creó RCP-000002 como INTERMEDIATE en g para Salsa pesto."
+        ],
+        "decisionRequired": null,
+        "alternatives": []
+      },
+      "yield": {
+        "status": "RESOLVED",
+        "quantity": 1120,
+        "unit": "g",
+        "reasonCodes": [],
+        "evidence": [
+          "Salsas!N5 declara 1120 y etiqueta explícita Gramos."
+        ],
+        "decisionRequired": null
+      },
+      "components": [
+        {
+          "sourceRow": 10,
+          "sourceName": "Semilla de marañon",
+          "quantity": 50,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "MIS-000078",
+            "catalogName": "SEMILLAS DE MARAÑON"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SYSTEM_CONVERSION",
+            "catalogBaseUnit": "lb"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "Compras!A19 y Costo de insumos!A82 identifican Semilla de marañón; MIS-000078 es el SKU activo nominal.",
+            "g y lb son unidades MASS compatibles."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 11,
+          "sourceName": "Aceite de oliva",
+          "quantity": 896,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "MIS-000041",
+            "catalogName": "ACEITE DE OLIVA"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SOURCE_UNIT_CORRECTION_FROM_PURCHASE_LINK",
+            "catalogBaseUnit": "l",
+            "resolvedUnit": "ml"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "La fórmula de Salsas!N5 fila 11 enlaza Compras!G12, presentación en litros; se corrige la etiqueta g a 896 ml sin aplicar conversión por densidad.",
+            "MIS-000041 es el SKU canónico activo de aceite de oliva y convierte ml↔l por volumen."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 12,
+          "sourceName": "Albahaca",
+          "quantity": 450,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "VGR-000001",
+            "catalogName": "Albahaca"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "g"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "El mapa de catálogo aplicado fija Albahaca en VGR-000001 y g."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 13,
+          "sourceName": "Ajo",
+          "quantity": 20,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "VEG-000001",
+            "catalogName": "AJO"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SYSTEM_CONVERSION",
+            "catalogBaseUnit": "lb"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "Compras!A11 identifica Ajo y VEG-000001 es el SKU activo nominal; g/lb son MASS."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 14,
+          "sourceName": "Parmesano",
+          "quantity": 340,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-B227D34CC2",
+            "catalogName": "QUESO PARMESANO (base g)"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "g"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "Costo de insumos!21 documenta el parmesano por masa y CCI-B227D34CC2 fue creado en g."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 15,
+          "sourceName": "Sal",
+          "quantity": 5,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-FFE2D77F8F",
+            "catalogName": "Sal (base g)"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "g"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "Compras!27 documenta sal por masa y CCI-FFE2D77F8F fue creado en g."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 16,
+          "sourceName": "Vinagre Blanco",
+          "quantity": 5,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-9C9C052E5D",
+            "catalogName": "VINAGRE BLANCO (base ml)"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SOURCE_UNIT_CORRECTION_FROM_PURCHASE_LINK",
+            "catalogBaseUnit": "ml",
+            "resolvedUnit": "ml"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "La fórmula enlaza Compras!20, donde el vinagre se controla por volumen; se corrige la etiqueta de 5 g a 5 ml.",
+            "CCI-9C9C052E5D es el insumo vigente con base ml."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        }
+      ]
+    },
+    {
+      "sourceKey": "Salsas!AJ5",
+      "output": {
+        "status": "RESOLVED",
+        "mapping": {
+          "status": "RESOLVED",
+          "productSku": "RCP-000009",
+          "catalogName": "Salsa vodka"
+        },
+        "reasonCodes": [],
+        "evidence": [
+          "RCP-000009 fue creado como salida INTERMEDIATE en g; se mantiene separado del artículo comprado CON-000037."
+        ],
+        "decisionRequired": null,
+        "alternatives": []
+      },
+      "yield": {
+        "status": "RESOLVED",
+        "quantity": 1039,
+        "unit": "g",
+        "reasonCodes": [],
+        "evidence": [
+          "La hoja conserva 1039 como rendimiento teórico del lote. Se importa sólo como DRAFT y debe sustituirse por rendimiento pesado antes de activarla."
+        ],
+        "decisionRequired": null
+      },
+      "components": [
+        {
+          "sourceRow": 10,
+          "sourceName": "Vodka",
+          "quantity": 56,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-B39A60F59B",
+            "catalogName": "Vodka"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SOURCE_UNIT_CORRECTION_FROM_PURCHASE_LINK",
+            "catalogBaseUnit": "ml",
+            "resolvedUnit": "ml"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "La fórmula enlaza Compras!52, botella de vodka controlada en ml; se corrige 56 g a 56 ml.",
+            "CCI-B39A60F59B proviene de esa misma fila de compra."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 11,
+          "sourceName": "cebolla",
+          "quantity": 70,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "VEG-000005",
+            "catalogName": "CEBOLLA AMARILLA"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SYSTEM_CONVERSION",
+            "catalogBaseUnit": "lb"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "La fórmula de costo enlaza Compras!10 Cebolla amarilla; VEG-000005 es el SKU activo correspondiente.",
+            "g y lb son unidades MASS convertibles por el sistema."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 12,
+          "sourceName": "ajo",
+          "quantity": 5,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "VEG-000001",
+            "catalogName": "AJO"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SYSTEM_CONVERSION",
+            "catalogBaseUnit": "lb"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "VEG-000001 es el único SKU nominal activo de AJO; g/lb son MASS."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 13,
+          "sourceName": "Aceite de oliva",
+          "quantity": 28,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "MIS-000041",
+            "catalogName": "ACEITE DE OLIVA"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SOURCE_UNIT_CORRECTION_FROM_PURCHASE_LINK",
+            "catalogBaseUnit": "l",
+            "resolvedUnit": "ml"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "La fórmula de Salsas!AJ5 fila 13 enlaza Compras!G12, presentación en litros; se corrige la etiqueta g a 28 ml sin aplicar conversión por densidad.",
+            "MIS-000041 es el SKU canónico activo de aceite de oliva y convierte ml↔l por volumen."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 14,
+          "sourceName": "tomate enlatado",
+          "quantity": 700,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-C329AE1D78",
+            "catalogName": "Tomate enlatado"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "g"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "La fórmula enlaza Compras!15 y CCI-C329AE1D78 fue creado desde esa fila en base g."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 15,
+          "sourceName": "crema dulce",
+          "quantity": 180,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CON-000008",
+            "catalogName": "CREMA DULCE"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SYSTEM_CONVERSION",
+            "catalogBaseUnit": "lb"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "CON-000008 es el SKU activo nominal de CREMA DULCE; la fuente de costos también la registra por masa.",
+            "g/lb son MASS."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        }
+      ]
+    },
+    {
+      "sourceKey": "Pitzas!C4",
+      "output": {
+        "status": "RESOLVED",
+        "mapping": {
+          "status": "RESOLVED",
+          "productSku": "PRD-000001",
+          "catalogName": "Carne Della Nonna"
+        },
+        "reasonCodes": [],
+        "evidence": [
+          "El mapa de catálogo aplicado fija Carne Della Nonna en PRD-000001, INTERMEDIATE/g."
+        ],
+        "decisionRequired": null,
+        "alternatives": []
+      },
+      "yield": {
+        "status": "RESOLVED",
+        "quantity": 1053,
+        "unit": "g",
+        "reasonCodes": [],
+        "evidence": [
+          "La hoja conserva 1053 g como rendimiento histórico. Se importa sólo como DRAFT y debe ajustarse con la primera producción pesada antes de activarla."
+        ],
+        "decisionRequired": null
+      },
+      "components": [
+        {
+          "sourceRow": 9,
+          "sourceName": "Carne molida",
+          "quantity": 2,
+          "unit": "lb",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CON-000045",
+            "catalogName": "CARNE MOLIDA"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "lb"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "Compras!A41 y Costo de insumos!A15 identifican Carne molida; CON-000045 es el SKU activo nominal en lb."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 10,
+          "sourceName": "Ricotta",
+          "quantity": 80,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CON-000073",
+            "catalogName": "RICOTTA"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "g"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "El mapa de catálogo aplicado fija Ricotta como componente en CON-000073 y g."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 11,
+          "sourceName": "Queso parmesano",
+          "quantity": 50,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-B227D34CC2",
+            "catalogName": "QUESO PARMESANO (base g)"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "g"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "La receta usa parmesano por masa; CCI-B227D34CC2 conserva la presentación vigente en base g."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 12,
+          "sourceName": "ajo",
+          "quantity": 15,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "VEG-000001",
+            "catalogName": "AJO"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SYSTEM_CONVERSION",
+            "catalogBaseUnit": "lb"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "VEG-000001 es el único SKU nominal activo de AJO; g/lb son MASS."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 13,
+          "sourceName": "OREGANO",
+          "quantity": 20,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-8440C685DE",
+            "catalogName": "Oregano (base g)"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "g"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "La receta dice OREGANO a granel y en g; Compras!23 crea CCI-8440C685DE en g, separado del orégano porcionado."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 14,
+          "sourceName": "CHILE",
+          "quantity": 10,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "MIS-000050",
+            "catalogName": "CHILE"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SYSTEM_CONVERSION",
+            "catalogBaseUnit": "lb"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "MIS-000050 es el SKU activo nominal CHILE por masa; g/lb son MASS."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        }
+      ]
+    },
+    {
+      "sourceKey": "Pitzas!N4",
+      "output": {
+        "status": "RESOLVED",
+        "mapping": {
+          "status": "RESOLVED",
+          "productSku": "RCP-000010",
+          "catalogName": "Queso Ricotta producido"
+        },
+        "reasonCodes": [],
+        "evidence": [
+          "RCP-000010 fue creado como salida INTERMEDIATE en g; separa la ricotta producida del insumo comprado CON-000073."
+        ],
+        "decisionRequired": null,
+        "alternatives": []
+      },
+      "yield": {
+        "status": "RESOLVED",
+        "quantity": 6810,
+        "unit": "g",
+        "reasonCodes": [],
+        "evidence": [
+          "Pitzas!N4 declara 6810 con etiqueta explícita PORCIONES EN GR."
+        ],
+        "decisionRequired": null
+      },
+      "components": [
+        {
+          "sourceRow": 9,
+          "sourceName": "Leche entera",
+          "quantity": 24,
+          "unit": "l",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-25E4131C13",
+            "catalogName": "LECHE (base ml)"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SYSTEM_CONVERSION",
+            "catalogBaseUnit": "ml"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "Costo de insumos!65 documenta leche por litro y CCI-25E4131C13 fue creado en ml; l↔ml es conversión de volumen del sistema."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 10,
+          "sourceName": "Crema dulce",
+          "quantity": 6,
+          "unit": "lb",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CON-000008",
+            "catalogName": "CREMA DULCE"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "lb"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "CON-000008 es el SKU activo nominal de CREMA DULCE en lb."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 11,
+          "sourceName": "Vinagre blanco",
+          "quantity": 450,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-9C9C052E5D",
+            "catalogName": "VINAGRE BLANCO (base ml)"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SOURCE_UNIT_CORRECTION_FROM_CATALOG_EVIDENCE",
+            "catalogBaseUnit": "ml",
+            "resolvedUnit": "ml"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "Compras y Costo de insumos registran vinagre blanco por volumen; se corrige la etiqueta 450 g a 450 ml.",
+            "CCI-9C9C052E5D usa base ml."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 12,
+          "sourceName": "Sal",
+          "quantity": 90,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-FFE2D77F8F",
+            "catalogName": "Sal (base g)"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "g"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "La receta consume sal en g y CCI-FFE2D77F8F es el SKU vigente en base g."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        }
+      ]
+    },
+    {
+      "sourceKey": "Pitzas nuevas!AB5",
+      "output": {
+        "status": "RESOLVED",
+        "mapping": {
+          "status": "RESOLVED",
+          "productSku": "PRD-000002",
+          "catalogName": "Masa precocida"
+        },
+        "reasonCodes": [],
+        "evidence": [
+          "El mapa de catálogo aplicado fija Masa precocida en PRD-000002, INTERMEDIATE/unidad."
+        ],
+        "decisionRequired": null,
+        "alternatives": []
+      },
+      "yield": {
+        "status": "RESOLVED",
+        "quantity": 4,
+        "unit": "unidad",
+        "reasonCodes": [],
+        "evidence": [
+          "Pitzas nuevas!AB5 declara 4 PORCIONES y la salida se controla por unidad."
+        ],
+        "decisionRequired": null
+      },
+      "components": [
+        {
+          "sourceRow": 10,
+          "sourceName": "LEVADURA",
+          "quantity": 7,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-DAB047458A",
+            "catalogName": "LEVADURA"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "g"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "Costo de insumos!20 crea el SKU vigente de levadura en base g."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 11,
+          "sourceName": "Harina",
+          "quantity": 500,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "ING-000002",
+            "catalogName": "Harina Napoli"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SYSTEM_CONVERSION",
+            "catalogBaseUnit": "qq"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "La fórmula enlaza Compras!45 Harina Napoli; ING-000002 fue reactivado y tiene conversión g↔qq."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 12,
+          "sourceName": "SAL",
+          "quantity": 12.5,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-FFE2D77F8F",
+            "catalogName": "Sal (base g)"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "g"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "La fórmula enlaza Compras!27 y CCI-FFE2D77F8F fue creado desde esa fila en g."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 13,
+          "sourceName": "AZUCAR",
+          "quantity": 6,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "MIS-000047",
+            "catalogName": "AZUCAR"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SYSTEM_CONVERSION",
+            "catalogBaseUnit": "lb"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "Compras!A50 y Costo de insumos!A102 identifican Azúcar; MIS-000047 es el SKU activo nominal por masa."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 14,
+          "sourceName": "ACEITE",
+          "quantity": 40,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "MIS-000002",
+            "catalogName": "ACEITE VEGETAL MAZOLA"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SOURCE_UNIT_CORRECTION_FROM_PURCHASE_LINK",
+            "catalogBaseUnit": "gal",
+            "resolvedUnit": "ml"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "La fórmula enlaza Compras!81 Aceite vegetal; se corrige 40 g a 40 ml.",
+            "MIS-000002 es el aceite vegetal canónico y convierte ml↔gal por volumen."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        }
+      ]
+    },
+    {
+      "sourceKey": "Pitzas nuevas!C29",
+      "output": {
+        "status": "RESOLVED",
+        "mapping": {
+          "status": "RESOLVED",
+          "productSku": "RCP-000011",
+          "catalogName": "Masa integral"
+        },
+        "reasonCodes": [],
+        "evidence": [
+          "RCP-000011 fue creado como salida INTERMEDIATE por unidad y no comparte inventario con la masa estándar."
+        ],
+        "decisionRequired": null,
+        "alternatives": []
+      },
+      "yield": {
+        "status": "RESOLVED",
+        "quantity": 8,
+        "unit": "unidad",
+        "reasonCodes": [],
+        "evidence": [
+          "Pitzas nuevas!C29 declara 8 PORCIONES y la salida propuesta se controla por unidad."
+        ],
+        "decisionRequired": null
+      },
+      "components": [
+        {
+          "sourceRow": 34,
+          "sourceName": "Harina blanca",
+          "quantity": 500,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "ING-000002",
+            "catalogName": "Harina Napoli"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SYSTEM_CONVERSION",
+            "catalogBaseUnit": "qq"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "El costo unitario de la fila coincide exactamente con Compras!45 Harina Napoli; ING-000002 está activo y convierte g↔qq."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 35,
+          "sourceName": "Harina integral",
+          "quantity": 500,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-179E185126",
+            "catalogName": "harina integral"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "g"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "Compras!82 identifica harina integral y CCI-179E185126 fue creado desde esa fila en g."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 36,
+          "sourceName": "aceite",
+          "quantity": 120,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "MIS-000002",
+            "catalogName": "ACEITE VEGETAL MAZOLA"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SOURCE_UNIT_CORRECTION_FROM_RECIPE_CONTEXT",
+            "catalogBaseUnit": "gal",
+            "resolvedUnit": "ml"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "La masa estándar enlaza aceite vegetal y el costo directo de esta fila es compatible con esa variante, no con aceite de oliva; se corrige 120 g a 120 ml.",
+            "Durante la importación inicial se mantuvo DRAFT; el mapa de activación posterior aprobó esta receta como ACTIVE."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 37,
+          "sourceName": "Azucarr",
+          "quantity": 5.5,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "MIS-000047",
+            "catalogName": "AZUCAR"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SYSTEM_CONVERSION",
+            "catalogBaseUnit": "lb"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "Azucarr es una errata inequívoca; MIS-000047 es el SKU activo nominal AZUCAR por masa."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 38,
+          "sourceName": "Levadura",
+          "quantity": 7,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-DAB047458A",
+            "catalogName": "LEVADURA"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "g"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "CCI-DAB047458A es el SKU vigente de levadura en g."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 39,
+          "sourceName": "Sal",
+          "quantity": 12.5,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-FFE2D77F8F",
+            "catalogName": "Sal (base g)"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "g"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "CCI-FFE2D77F8F es el SKU vigente de sal en g."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 40,
+          "sourceName": "Agua",
+          "quantity": 600,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-AGUA-PROCESO",
+            "catalogName": "Agua de proceso"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "WATER_PROCESS_STANDARDIZATION",
+            "catalogBaseUnit": "ml",
+            "resolvedUnit": "ml"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "El agua de proceso se estandariza por volumen; para agua de cocina 600 g nominales corresponden a 600 ml.",
+            "CCI-AGUA-PROCESO fue creado en ml, costo de referencia cero y sin inventario inicial."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        }
+      ]
+    },
+    {
+      "sourceKey": "Postres!U5",
+      "output": {
+        "status": "RESOLVED",
+        "mapping": {
+          "status": "RESOLVED",
+          "productSku": "RCP-000012",
+          "catalogName": "Brownie"
+        },
+        "reasonCodes": [],
+        "evidence": [
+          "RCP-000012 fue creado como INTERMEDIATE por unidad para que los platos de postre consuman la porción producida."
+        ],
+        "decisionRequired": null,
+        "alternatives": []
+      },
+      "yield": {
+        "status": "RESOLVED",
+        "quantity": 12,
+        "unit": "unidad",
+        "reasonCodes": [],
+        "evidence": [
+          "Postres!U5 declara 12 PORCIONES; la salida propuesta se controla por unidad."
+        ],
+        "decisionRequired": null
+      },
+      "components": [
+        {
+          "sourceRow": 10,
+          "sourceName": "Aceite",
+          "quantity": 250,
+          "unit": "g",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "MIS-000002",
+            "catalogName": "ACEITE VEGETAL MAZOLA"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "SOURCE_UNIT_CORRECTION_FROM_PURCHASE_LINK",
+            "catalogBaseUnit": "gal",
+            "resolvedUnit": "ml"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "La fórmula enlaza Compras!81 Aceite vegetal; se corrige 250 g a 250 ml.",
+            "MIS-000002 es el SKU canónico de aceite vegetal."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 11,
+          "sourceName": "Huevo",
+          "quantity": 3,
+          "unit": "unidad",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "CCI-D956E9FF8F",
+            "catalogName": "HUEVOS"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "unidad"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "La fórmula enlaza Compras!26 y Costo de insumos!73 crea CCI-D956E9FF8F por unidad."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        },
+        {
+          "sourceRow": 12,
+          "sourceName": "Mezcla",
+          "quantity": 3,
+          "unit": "unidad",
+          "status": "RESOLVED",
+          "mapping": {
+            "status": "RESOLVED",
+            "productSku": "MIS-000059",
+            "catalogName": "MEZCLA BROWNIES"
+          },
+          "unitResolution": {
+            "status": "RESOLVED",
+            "strategy": "DIRECT",
+            "catalogBaseUnit": "unidad"
+          },
+          "reasonCodes": [],
+          "evidence": [
+            "La fórmula enlaza Compras!42 y su costo unitario evaluado es 874/6 = 145.6667, exactamente el costo usado por la receta.",
+            "MIS-000059 es la identidad activa de mezcla de brownies por unidad; la caja histórica queda separada."
+          ],
+          "decisionRequired": null,
+          "alternatives": []
+        }
+      ]
+    }
+  ]
+}

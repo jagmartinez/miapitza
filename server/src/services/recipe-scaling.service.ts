@@ -1,4 +1,5 @@
 import prisma from '../utils/prisma';
+import { effectiveUnitCost } from '../utils/product-cost';
 import { UnitConversionService } from './unit-conversion.service';
 
 /**
@@ -44,11 +45,11 @@ export class RecipeScalingService {
 
         // Cost in base units: convert the scaled quantity with the recipe's unit
         // (recipe.unit -> recipe.unitId abbreviation -> product.unit) and value it
-        // with currentAverageCost ?? cost, matching menu-item/consumption costing.
+        // with the weighted average first and catalog reference as fallback.
         const scaledIngredients = await Promise.all(recipes.map(async (r) => {
             const recipeUnit = r.unit || r.unitOfMeasure?.abbreviation || r.product.unit;
             const scaledQty = Number(r.quantity) * scaleFactor;
-            const unitCost = Number(r.product.currentAverageCost ?? r.product.cost ?? 0);
+            const unitCost = effectiveUnitCost(r.product.currentAverageCost, r.product.cost);
 
             let totalCost = 0;
             try {
@@ -123,10 +124,10 @@ export class RecipeScalingService {
         const safePortions = Math.max(1, portionsFromYield);
 
         // Calculate costs in base units (convert with the recipe's unit and value
-        // with currentAverageCost ?? cost) so the cost is coherent with kg/g usage.
+        // with weighted-average/reference fallback) so the cost is coherent with kg/g usage.
         const ingredientCosts = await Promise.all(recipes.map(async (r) => {
             const recipeUnit = r.unit || r.unitOfMeasure?.abbreviation || r.product.unit;
-            const unitCost = Number(r.product.currentAverageCost ?? r.product.cost ?? 0);
+            const unitCost = effectiveUnitCost(r.product.currentAverageCost, r.product.cost);
             try {
                 const conv = await UnitConversionService.convert(r.productId, companyId, Number(r.quantity), recipeUnit);
                 return unitCost * conv.baseQuantity;

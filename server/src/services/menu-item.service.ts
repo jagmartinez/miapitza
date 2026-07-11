@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { effectiveUnitCost } from '../utils/product-cost';
 import { UnitConversionService } from './unit-conversion.service';
 
 export class MenuItemService {
@@ -142,11 +143,12 @@ export class MenuItemService {
 
         // Calculate total cost from recipes in product base units.
         // Unit priority: recipe.unit -> recipe.unitId abbreviation -> product.unit.
-        // Cost source aligned with production/reports: currentAverageCost ?? cost.
+        // Prefer the real weighted average, but allow a catalog reference cost
+        // when no purchase/production has established an average yet.
         const recipeCosts = await Promise.all(menuItem.recipes.map(async (recipe) => {
             const recipeUnit = recipe.unit || recipe.unitOfMeasure?.abbreviation || recipe.product.unit;
             const recipeQty = Number(recipe.quantity);
-            const unitCost = Number(recipe.product.currentAverageCost ?? recipe.product.cost ?? 0);
+            const unitCost = effectiveUnitCost(recipe.product.currentAverageCost, recipe.product.cost);
 
             try {
                 const conv = await UnitConversionService.convert(

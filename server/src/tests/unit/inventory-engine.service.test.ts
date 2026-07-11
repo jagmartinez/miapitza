@@ -8,6 +8,7 @@ interface BatchRow {
     id: number;
     unitCost: number;
     remainingQty: number;
+    sourceRef?: string | null;
 }
 
 /**
@@ -181,5 +182,55 @@ describe('InventoryEngineService.applyMovement — OUT consumes FIFO layers olde
                 productName: 'Harina'
             })
         ).rejects.toThrow(/Stock insuficiente para Harina/);
+    });
+
+    it('consumes only the requested production layer during an exact reversal', async () => {
+        const { tx, batchUpdates } = makeTx({
+            costingMethod: 'FIFO',
+            stockQuantity: 15,
+            avgCost: 6,
+            batches: [
+                { id: 1, unitCost: 4, remainingQty: 10, sourceRef: 'PO-1' },
+                { id: 2, unitCost: 8, remainingQty: 5, sourceRef: 'PROD-7' }
+            ]
+        });
+
+        await InventoryEngineService.applyMovement(tx, {
+            type: 'OUT',
+            companyId: 1,
+            warehouseId: 1,
+            productId: 1,
+            userId: 1,
+            quantity: 5,
+            unitCost: 8,
+            consumeSourceRef: 'PROD-7'
+        });
+
+        expect(batchUpdates).toEqual([{ where: { id: 2 }, data: { remainingQty: 0 } }]);
+    });
+
+    it('rejects an exact reversal when its own layer was already consumed', async () => {
+        const { tx, stockUpdates } = makeTx({
+            costingMethod: 'WEIGHTED_AVERAGE',
+            stockQuantity: 10,
+            avgCost: 6,
+            batches: [
+                { id: 1, unitCost: 4, remainingQty: 9, sourceRef: 'PO-1' },
+                { id: 2, unitCost: 8, remainingQty: 1, sourceRef: 'PROD-7' }
+            ]
+        });
+
+        await expect(InventoryEngineService.applyMovement(tx, {
+            type: 'OUT',
+            companyId: 1,
+            warehouseId: 1,
+            productId: 1,
+            userId: 1,
+            quantity: 5,
+            unitCost: 8,
+            consumeSourceRef: 'PROD-7'
+        })).rejects.toThrow(/reversa exacta/i);
+
+        expect(stockUpdates).toHaveLength(0);
     });
 });

@@ -30,6 +30,7 @@ import MenuItemCard from '../components/MenuItemCard';
 import { useCurrency } from '../hooks/useCurrency';
 import ImageViewer from '../components/ImageViewer';
 import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
+import { effectiveUnitCost } from '../utils/productCost';
 import './Menu.css';
 
 interface CategoryRow {
@@ -385,7 +386,10 @@ export default function Menu() {
             productName: r.product.name,
             quantity: Number(r.quantity),
             unit: recipeUnit,
-            cost: Number(catalogProduct?.currentAverageCost ?? catalogProduct?.cost ?? r.product.currentAverageCost ?? r.product.cost ?? 0),
+            cost: effectiveUnitCost(
+              catalogProduct?.currentAverageCost ?? r.product.currentAverageCost,
+              catalogProduct?.cost ?? r.product.cost,
+            ),
             conversionFactor: Number(matchedUnit?.conversionFactor ?? 0),
             unitConfigured: Boolean(matchedUnit),
           };
@@ -515,7 +519,7 @@ export default function Menu() {
       productName: product.name,
       quantity: parsedQuantity,
       unit: selectedUnit,
-      cost: Number(product.currentAverageCost ?? product.cost ?? 0),
+      cost: effectiveUnitCost(product.currentAverageCost, product.cost),
       conversionFactor: Number(matchedUnit.conversionFactor),
       unitConfigured: true,
     };

@@ -464,10 +464,10 @@ export class ProductionRecipeService {
         });
 
         if (userId) {
-            AuditLogService.log({
+            await AuditLogService.log({
                 companyId, userId, entityType: 'ProductionRecipe', entityId: id,
                 action: 'UPDATE', details: { status }
-            }).catch((err) => console.error('[ProductionRecipeService] audit log failed:', err));
+            });
         }
 
         return this.getById(id, companyId);

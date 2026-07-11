@@ -1,0 +1,1031 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "file": "Recetas Menu.xlsx",
+    "sha256": "46c13ed9520540712c1d791a89804884d4392f05e1272f759183ae4e2274019b"
+  },
+  "status": "PARTIALLY_RESOLVED_WITH_EXPLICIT_BLOCKERS",
+  "policies": {
+    "neverInventMissingQuantityOrUnit": true,
+    "publishedMenuPriceOverridesConflictingLocalCell": true,
+    "duplicateZeroPriceIsIgnored": true,
+    "resolvedRecipesRemainAuditableToSourceRows": true,
+    "newProductionRecipesStartDraft": true
+  },
+  "decisions": [
+    {
+      "sourceKey": "Salsas!Y5",
+      "candidateDomain": "PRODUCTION",
+      "status": "BLOCKED",
+      "decisionRequired": "Indicar cantidad y unidad de Nuez moscada antes de activar/importar la Salsa 4 quesos.",
+      "evidence": [
+        "Salsas!Y16 contiene el ingrediente Nuez moscada, pero cantidad y unidad están vacías."
+      ]
+    },
+    {
+      "sourceKey": "Pastas!C5",
+      "candidateDomain": "MENU",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Canelones ricotta y espinaca — Salsa 4 quesos",
+        "category": "Pastas Frescas",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 407,
+        "description": "Importado y revisado desde Pastas!C5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "CON-000064",
+          "catalogName": "PASTA CANELONES"
+        },
+        {
+          "sourceRow": 11,
+          "productSku": "RCP-000003",
+          "catalogName": "Salsa 4 quesos"
+        }
+      ],
+      "evidence": [
+        "Nombre, precio y componentes reconciliados contra el bloque fuente y el catálogo operativo."
+      ]
+    },
+    {
+      "sourceKey": "Pastas!N5",
+      "candidateDomain": "MENU",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Canelones ricotta y espinaca — Salsa roja",
+        "category": "Pastas Frescas",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 350,
+        "description": "Importado y revisado desde Pastas!N5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "CON-000064",
+          "catalogName": "PASTA CANELONES"
+        },
+        {
+          "sourceRow": 11,
+          "productSku": "RCP-000001",
+          "catalogName": "Salsa roja"
+        }
+      ],
+      "evidence": [
+        "Nombre, precio y componentes reconciliados contra el bloque fuente y el catálogo operativo."
+      ]
+    },
+    {
+      "sourceKey": "Pastas!Z5",
+      "candidateDomain": "MENU",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Mezzaluna ricotta y espinaca — Salsa roja",
+        "category": "Pastas Frescas",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 350,
+        "description": "Importado y revisado desde Pastas!Z5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "CON-000065",
+          "catalogName": "PASTA MEZZALUNA"
+        },
+        {
+          "sourceRow": 11,
+          "productSku": "RCP-000001",
+          "catalogName": "Salsa roja"
+        }
+      ],
+      "evidence": [
+        "Nombre, precio y componentes reconciliados contra el bloque fuente y el catálogo operativo."
+      ]
+    },
+    {
+      "sourceKey": "Pastas!AL5",
+      "candidateDomain": "MENU",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Mezzaluna ricotta y espinaca — Salsa 4 quesos",
+        "category": "Pastas Frescas",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 407,
+        "description": "Importado y revisado desde Pastas!AL5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "CON-000065",
+          "catalogName": "PASTA MEZZALUNA"
+        },
+        {
+          "sourceRow": 11,
+          "productSku": "RCP-000003",
+          "catalogName": "Salsa 4 quesos"
+        }
+      ],
+      "evidence": [
+        "Nombre, precio y componentes reconciliados contra el bloque fuente y el catálogo operativo."
+      ]
+    },
+    {
+      "sourceKey": "Pastas!AX5",
+      "candidateDomain": "MENU",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Mezzaluna — Salsa pesto",
+        "category": "Pastas Frescas",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 390,
+        "description": "Importado y revisado desde Pastas!AX5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "CON-000065",
+          "catalogName": "PASTA MEZZALUNA"
+        },
+        {
+          "sourceRow": 11,
+          "productSku": "RCP-000002",
+          "catalogName": "Salsa pesto"
+        }
+      ],
+      "evidence": [
+        "Nombre, precio y componentes reconciliados contra el bloque fuente y el catálogo operativo."
+      ]
+    },
+    {
+      "sourceKey": "Pastas!BJ5",
+      "candidateDomain": "MENU",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Mezzaluna — Salsa vodka",
+        "category": "Pastas Frescas",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 380,
+        "description": "Importado y revisado desde Pastas!BJ5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "CON-000065",
+          "catalogName": "PASTA MEZZALUNA"
+        },
+        {
+          "sourceRow": 11,
+          "productSku": "RCP-000009",
+          "catalogName": "Salsa vodka"
+        }
+      ],
+      "evidence": [
+        "Nombre, precio y componentes reconciliados contra el bloque fuente y el catálogo operativo."
+      ]
+    },
+    {
+      "sourceKey": "Pastas!BV5",
+      "candidateDomain": "MENU",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Canelones — Salsa vodka",
+        "category": "Pastas Frescas",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 380,
+        "description": "Importado y revisado desde Pastas!BV5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "CON-000064",
+          "catalogName": "PASTA CANELONES"
+        },
+        {
+          "sourceRow": 11,
+          "productSku": "RCP-000009",
+          "catalogName": "Salsa vodka"
+        }
+      ],
+      "evidence": [
+        "Nombre, precio y componentes reconciliados contra el bloque fuente y el catálogo operativo."
+      ]
+    },
+    {
+      "sourceKey": "Pastas!CG5",
+      "candidateDomain": "PRODUCTION",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "PRODUCTION",
+        "outputSku": "RCP-000013",
+        "outputName": "Pan de acompañamiento",
+        "yieldQuantity": 2,
+        "yieldUnit": "unidad",
+        "recipeStatus": "DRAFT"
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "ING-000002",
+          "catalogName": "Harina Napoli"
+        },
+        {
+          "sourceRow": 11,
+          "productSku": "CCI-DAB047458A",
+          "catalogName": "LEVADURA"
+        },
+        {
+          "sourceRow": 12,
+          "productSku": "CCI-B227D34CC2",
+          "catalogName": "QUESO PARMESANO (base g)"
+        },
+        {
+          "sourceRow": 13,
+          "productSku": "CCI-66473E67BB",
+          "catalogName": "ACEITUNAS NEGRAS"
+        },
+        {
+          "sourceRow": 14,
+          "productSku": "VEG-000001",
+          "catalogName": "AJO"
+        },
+        {
+          "sourceRow": 15,
+          "productSku": "MIS-000041",
+          "catalogName": "ACEITE DE OLIVA",
+          "resolvedUnit": "ml"
+        },
+        {
+          "sourceRow": 16,
+          "productSku": "CCI-8440C685DE",
+          "catalogName": "Oregano (base g)"
+        },
+        {
+          "sourceRow": 17,
+          "productSku": "RCP-000008",
+          "catalogName": "Miel envase de mesa"
+        }
+      ],
+      "evidence": [
+        "La fuente declara rendimiento de 2 barras; se crea una salida específica por unidad y se conserva como DRAFT."
+      ]
+    },
+    {
+      "sourceKey": "Pastas!BV42",
+      "candidateDomain": "MENU",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Raviolis con champiñones — Salsa 4 quesos",
+        "category": "Pastas Frescas",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 390,
+        "description": "Importado y revisado desde Pastas!BV42 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 47,
+          "productSku": "CON-000066",
+          "catalogName": "PASTA RAVIOLI",
+          "resolvedQuantity": 0.333,
+          "resolvedUnit": "lb"
+        },
+        {
+          "sourceRow": 48,
+          "productSku": "RCP-000003",
+          "catalogName": "Salsa 4 quesos",
+          "resolvedQuantity": 56,
+          "resolvedUnit": "g"
+        }
+      ],
+      "evidence": [
+        "El bloque declara 3 porciones: 1 lb de ravioli y 168 g de salsa se dividen entre 3; cada plato consume 1/3 lb y 56 g."
+      ]
+    },
+    {
+      "sourceKey": "Pastas!CG42",
+      "candidateDomain": "BUNDLE",
+      "status": "BLOCKED",
+      "decisionRequired": "Definir qué postre exacto integra el Ejecutivo y aprobar si el sistema debe congelar o recalcular la receta aplanada del combo.",
+      "evidence": [
+        "El bloque sólo dice POSTRE 0.5 unidad y no identifica el producto/plato concreto."
+      ]
+    },
+    {
+      "sourceKey": "Antipastos!C4",
+      "candidateDomain": "MENU",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Tabla de Antipasto",
+        "category": "Antipastos",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 587,
+        "description": "Importado y revisado desde Antipastos!C4 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 9,
+          "productSku": "CCI-RVW-PAN-INTEGRAL",
+          "catalogName": "Rodaja de pan integral"
+        },
+        {
+          "sourceRow": 10,
+          "productSku": "RCP-000010",
+          "catalogName": "Queso Ricotta producido"
+        },
+        {
+          "sourceRow": 11,
+          "productSku": "CON-000069",
+          "catalogName": "PROSCIUTTO"
+        },
+        {
+          "sourceRow": 12,
+          "productSku": "VGR-000003",
+          "catalogName": "Rúcula"
+        },
+        {
+          "sourceRow": 13,
+          "productSku": "VGR-000002",
+          "catalogName": "Tomate cherry"
+        },
+        {
+          "sourceRow": 14,
+          "productSku": "CCI-01F3E4B742",
+          "catalogName": "FRESAS FRESCAS"
+        },
+        {
+          "sourceRow": 15,
+          "productSku": "RCP-000002",
+          "catalogName": "Salsa pesto"
+        },
+        {
+          "sourceRow": 16,
+          "productSku": "CON-000067",
+          "catalogName": "PEPPERONI"
+        }
+      ],
+      "evidence": [
+        "Precio C$587 confirmado tanto por el bloque como por el menú PDF."
+      ]
+    },
+    {
+      "sourceKey": "Antipastos!L4",
+      "candidateDomain": "MENU",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Pan Rústico",
+        "category": "Antipastos",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 495,
+        "description": "Importado y revisado desde Antipastos!L4 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 9,
+          "productSku": "CCI-RVW-PAN-INTEGRAL",
+          "catalogName": "Rodaja de pan integral"
+        },
+        {
+          "sourceRow": 10,
+          "productSku": "RCP-000010",
+          "catalogName": "Queso Ricotta producido"
+        },
+        {
+          "sourceRow": 11,
+          "productSku": "RCP-000002",
+          "catalogName": "Salsa pesto"
+        },
+        {
+          "sourceRow": 12,
+          "productSku": "VGR-000003",
+          "catalogName": "Rúcula"
+        },
+        {
+          "sourceRow": 13,
+          "productSku": "CON-000069",
+          "catalogName": "PROSCIUTTO"
+        },
+        {
+          "sourceRow": 14,
+          "productSku": "VGR-000002",
+          "catalogName": "Tomate cherry"
+        }
+      ],
+      "evidence": [
+        "Precio C$495 confirmado tanto por el bloque como por el menú PDF."
+      ]
+    },
+    {
+      "sourceKey": "Antipastos!U4",
+      "candidateDomain": "MENU",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Rúcula & Hongos al Vino",
+        "category": "Antipastos",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 457,
+        "description": "Importado y revisado desde Antipastos!U4 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 9,
+          "productSku": "CCI-RVW-PAN-INTEGRAL",
+          "catalogName": "Rodaja de pan integral"
+        },
+        {
+          "sourceRow": 10,
+          "productSku": "RCP-000010",
+          "catalogName": "Queso Ricotta producido"
+        },
+        {
+          "sourceRow": 11,
+          "productSku": "CON-000053",
+          "catalogName": "JAMON SELVA NEGRA"
+        },
+        {
+          "sourceRow": 12,
+          "productSku": "VGR-000003",
+          "catalogName": "Rúcula"
+        },
+        {
+          "sourceRow": 13,
+          "productSku": "VGR-000002",
+          "catalogName": "Tomate cherry"
+        },
+        {
+          "sourceRow": 14,
+          "productSku": "CCI-B4C1CC42C4",
+          "catalogName": "Champiñones enteros"
+        },
+        {
+          "sourceRow": 15,
+          "productSku": "CCI-3EA0C30FFA",
+          "catalogName": "fiel"
+        }
+      ],
+      "evidence": [
+        "El bloque local contiene C$587, pero el menú PDF vigente identifica Rúcula & hongos al vino a C$457; se aplica el precio publicado."
+      ]
+    },
+    {
+      "sourceKey": "Pitzas!DU3",
+      "candidateDomain": "MENU",
+      "status": "BLOCKED",
+      "decisionRequired": "Definir la mecánica de selección de cuatro sabores y cómo cada cuarto consume la receta de la pizza elegida.",
+      "evidence": [
+        "La única línea de la hoja es autorreferencial (Mia pitza consume Mia pitza) y no contiene una BOM fija.",
+        "El menú PDF la describe como selección variable de cuatro favoritas."
+      ]
+    },
+    {
+      "sourceKey": "Pitzas!ED3",
+      "candidateDomain": "MENU",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Alla Vodka",
+        "category": "Pizzas",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 575,
+        "description": "Importado y revisado desde Pitzas!ED3 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 8,
+          "productSku": "PRD-000002",
+          "catalogName": "Masa precocida"
+        },
+        {
+          "sourceRow": 9,
+          "productSku": "RCP-000009",
+          "catalogName": "Salsa vodka"
+        },
+        {
+          "sourceRow": 10,
+          "productSku": "RCP-000004",
+          "catalogName": "Queso mozzarella para receta"
+        },
+        {
+          "sourceRow": 11,
+          "productSku": "CON-000069",
+          "catalogName": "PROSCIUTTO"
+        }
+      ],
+      "evidence": [
+        "Nombre y precio C$575 confirmados en el menú PDF."
+      ]
+    },
+    {
+      "sourceKey": "Pitzas!EM3",
+      "candidateDomain": "MENU",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Kit de pizza",
+        "category": "Kids Menú",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 243.5,
+        "description": "Importado y revisado desde Pitzas!EM3 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 8,
+          "productSku": "PRD-000002",
+          "catalogName": "Masa precocida"
+        },
+        {
+          "sourceRow": 9,
+          "productSku": "RCP-000001",
+          "catalogName": "Salsa roja"
+        },
+        {
+          "sourceRow": 10,
+          "productSku": "RCP-000004",
+          "catalogName": "Queso mozzarella para receta"
+        },
+        {
+          "sourceRow": 11,
+          "productSku": "EMP-000041",
+          "catalogName": "CAJAS PARA PIZZA"
+        }
+      ],
+      "evidence": [
+        "El bloque fija C$243.50 e identifica cuatro componentes físicos, incluido el empaque."
+      ]
+    },
+    {
+      "sourceKey": "Pitzas nuevas!S5",
+      "candidateDomain": "MENU",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "La Reina",
+        "category": "Pizzas",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 560,
+        "description": "Importado y revisado desde Pitzas nuevas!S5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "PRD-000002",
+          "catalogName": "Masa precocida"
+        },
+        {
+          "sourceRow": 11,
+          "productSku": "RCP-000001",
+          "catalogName": "Salsa roja"
+        },
+        {
+          "sourceRow": 12,
+          "productSku": "CCI-B227D34CC2",
+          "catalogName": "QUESO PARMESANO (base g)"
+        },
+        {
+          "sourceRow": 13,
+          "productSku": "VGR-000001",
+          "catalogName": "Albahaca"
+        }
+      ],
+      "evidence": [
+        "Nombre y precio C$560 confirmados en el menú PDF."
+      ]
+    },
+    {
+      "sourceKey": "Pitzas nuevas!K29",
+      "candidateDomain": "MENU",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Focaccia",
+        "category": "Focaccias",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 260,
+        "description": "Importado y revisado desde Pitzas nuevas!K29 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 34,
+          "productSku": "ING-000002",
+          "catalogName": "Harina Napoli"
+        },
+        {
+          "sourceRow": 35,
+          "productSku": "MIS-000041",
+          "catalogName": "ACEITE DE OLIVA",
+          "resolvedUnit": "ml"
+        },
+        {
+          "sourceRow": 36,
+          "productSku": "RCP-000008",
+          "catalogName": "Miel envase de mesa"
+        },
+        {
+          "sourceRow": 37,
+          "productSku": "CCI-FFE2D77F8F",
+          "catalogName": "Sal (base g)"
+        },
+        {
+          "sourceRow": 38,
+          "productSku": "CCI-DAB047458A",
+          "catalogName": "LEVADURA"
+        }
+      ],
+      "evidence": [
+        "Nombre y precio C$260 confirmados en el menú PDF; el aceite enlazado a Compras!12 se expresa en ml."
+      ]
+    },
+    {
+      "sourceKey": "PROMOCION!C5",
+      "candidateDomain": "BUNDLE",
+      "status": "BLOCKED",
+      "decisionRequired": "Identificar la pizza, el postre, el vino/copa y la tabla exactos de la promoción antes de aplanar o modelar el combo.",
+      "evidence": [
+        "Los componentes son categorías genéricas (PITZA, POSTRE, COPA DE VINO, TABLA ANTIPASTO), no productos/platos inequívocos.",
+        "Ya existe una pizza La Sussana; la promoción necesita un nombre/identidad separada."
+      ]
+    },
+    {
+      "sourceKey": "Postres!C5",
+      "candidateDomain": "PRODUCTION",
+      "status": "BLOCKED",
+      "decisionRequired": "Confirmar qué significa 1 cg de esencia de vainilla y convertirlo a ml o a una porción de inventario explícita.",
+      "evidence": [
+        "La unidad cg no existe en el catálogo y no hay densidad/factor aprobado para la esencia."
+      ]
+    },
+    {
+      "sourceKey": "Postres!L5",
+      "candidateDomain": "MENU",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Brownie con helado",
+        "category": "Postres",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 185,
+        "description": "Importado y revisado desde Postres!L5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "RCP-000012",
+          "catalogName": "Brownie"
+        },
+        {
+          "sourceRow": 11,
+          "productSku": "CCI-94F1042B24",
+          "catalogName": "Helado de vainilla (base ml)",
+          "resolvedUnit": "ml"
+        }
+      ],
+      "evidence": [
+        "Nombre y precio C$185 confirmados en el menú PDF."
+      ]
+    },
+    {
+      "sourceKey": "Postres!AD5",
+      "candidateDomain": "MENU",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Pan de Banano Ala Mode",
+        "category": "Postres",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 145,
+        "description": "Importado y revisado desde Postres!AD5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "CCI-C5285D9C30",
+          "catalogName": "Bizcocho de banano"
+        },
+        {
+          "sourceRow": 11,
+          "productSku": "CCI-94F1042B24",
+          "catalogName": "Helado de vainilla (base ml)",
+          "resolvedUnit": "ml"
+        }
+      ],
+      "evidence": [
+        "La salida fuente “Masa para pizza” está mal rotulada; los componentes son bizcocho de banano y helado. El menú PDF publica Pan de Banano o Zanahoria Ala Mode a C$145."
+      ]
+    },
+    {
+      "sourceKey": "Postres!AL5",
+      "candidateDomain": "PRODUCTION",
+      "status": "BLOCKED",
+      "decisionRequired": "Confirmar qué significa 1 ch de polvo de hornear y bicarbonato, y convertir cada dosis a gramos o porciones explícitas.",
+      "evidence": [
+        "La unidad ch no existe en el catálogo y los dos sólidos requieren factores de masa aprobados."
+      ]
+    },
+    {
+      "sourceKey": "Postres!U27",
+      "candidateDomain": "PORTIONING",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Cheesecake de fresas",
+        "category": "Postres",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 250,
+        "description": "Importado y revisado desde Postres!U27 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 32,
+          "productSku": "CCI-RVW-CHEESECAKE",
+          "catalogName": "Cheesecake entero",
+          "resolvedQuantity": 0.111,
+          "resolvedUnit": "unidad"
+        }
+      ],
+      "evidence": [
+        "La hoja declara 1 cheesecake para 9 porciones; cada venta consume 1/9 unidad. Precio C$250 confirmado por PDF."
+      ]
+    },
+    {
+      "sourceKey": "Bebidas!D5",
+      "candidateDomain": "PORTIONING",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "La Vielle Ferme — Copa",
+        "category": "Bebidas y Vinos",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 296,
+        "description": "Importado y revisado desde Bebidas!D5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "BEB-RVW-VIELLE-FERME",
+          "catalogName": "La Vielle Ferme botella",
+          "resolvedQuantity": 0.2,
+          "resolvedUnit": "unidad"
+        }
+      ],
+      "evidence": [
+        "La hoja declara 1 botella para 5 copas; cada venta consume 0.2 botella."
+      ]
+    },
+    {
+      "sourceKey": "Bebidas!P5",
+      "candidateDomain": "PORTIONING",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Don Luciano — Copa",
+        "category": "Bebidas y Vinos",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 220,
+        "description": "Importado y revisado desde Bebidas!P5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "BEB-RVW-DON-LUCIANO",
+          "catalogName": "Don Luciano botella",
+          "resolvedQuantity": 0.2,
+          "resolvedUnit": "unidad"
+        }
+      ],
+      "evidence": [
+        "La hoja declara 1 botella para 5 porciones; cada venta consume 0.2 botella."
+      ]
+    },
+    {
+      "sourceKey": "Bebidas!AB5",
+      "candidateDomain": "PORTIONING",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Pinot Grigio Pasqua — Copa",
+        "category": "Bebidas y Vinos",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 300,
+        "description": "Importado y revisado desde Bebidas!AB5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "BEB-RVW-PINOT-PASQUA",
+          "catalogName": "Pinot Grigio Pasqua botella",
+          "resolvedQuantity": 0.125,
+          "resolvedUnit": "unidad"
+        }
+      ],
+      "evidence": [
+        "La hoja declara 1 botella para 8 porciones; cada venta consume 0.125 botella."
+      ]
+    },
+    {
+      "sourceKey": "Bebidas!AN5",
+      "candidateDomain": "DIRECT",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Rosé — Botella",
+        "category": "Bebidas y Vinos",
+        "brand": "Mia Pitza",
+        "type": "DIRECT",
+        "price": 1375,
+        "description": "Importado y revisado desde Bebidas!AN5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "BEB-RVW-ROSE-750",
+          "catalogName": "Rosé botella 750 ml",
+          "resolvedUnit": "unidad"
+        }
+      ],
+      "evidence": [
+        "Venta 1:1 de botella de 750 ml; costo fuente C$593.18."
+      ]
+    },
+    {
+      "sourceKey": "Bebidas!AZ5",
+      "candidateDomain": "PORTIONING",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "19 Crimes — Copa",
+        "category": "Bebidas y Vinos",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 350,
+        "description": "Importado y revisado desde Bebidas!AZ5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "CCI-DE0BA9340D",
+          "catalogName": "19 CRIMES CABERNET SAUVIGNON",
+          "resolvedQuantity": 0.2,
+          "resolvedUnit": "unidad"
+        }
+      ],
+      "evidence": [
+        "El bloque calcula cinco porciones por botella; se usa la identidad vigente del costo de insumos."
+      ]
+    },
+    {
+      "sourceKey": "Bebidas!BL5",
+      "candidateDomain": "PORTIONING",
+      "status": "IGNORED",
+      "decisionRequired": null,
+      "evidence": [
+        "Duplicado de Bebidas!AZ5 con el mismo insumo y precio de menú cero; se conserva como anomalía y no se crea otro plato."
+      ]
+    },
+    {
+      "sourceKey": "Bebidas!BX5",
+      "candidateDomain": "PORTIONING",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Rosé — Copa",
+        "category": "Bebidas y Vinos",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 250,
+        "description": "Importado y revisado desde Bebidas!BX5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "BEB-RVW-ROSE-750",
+          "catalogName": "Rosé botella 750 ml",
+          "resolvedQuantity": 0.2,
+          "resolvedUnit": "unidad"
+        }
+      ],
+      "evidence": [
+        "La hoja declara 1 botella para 5 copas; comparte la botella de Rosé usada por la venta directa."
+      ]
+    },
+    {
+      "sourceKey": "Bebidas!CJ5",
+      "candidateDomain": "PORTIONING",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Verdejo Quintaluna — Copa",
+        "category": "Bebidas y Vinos",
+        "brand": "Mia Pitza",
+        "type": "PREPARED",
+        "price": 350,
+        "description": "Importado y revisado desde Bebidas!CJ5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "BEB-RVW-VERDEJO-750",
+          "catalogName": "Verdejo Quintaluna botella 750 ml",
+          "resolvedQuantity": 0.2,
+          "resolvedUnit": "unidad"
+        }
+      ],
+      "evidence": [
+        "La hoja declara 1 botella para 5 copas. Se usa C$806 como costo conservador, el mayor de los dos valores conflictivos del mismo archivo."
+      ]
+    },
+    {
+      "sourceKey": "Bebidas!CV5",
+      "candidateDomain": "DIRECT",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "MENU",
+        "name": "Verdejo Quintaluna — Botella",
+        "category": "Bebidas y Vinos",
+        "brand": "Mia Pitza",
+        "type": "DIRECT",
+        "price": 1549,
+        "description": "Importado y revisado desde Bebidas!CV5 de Recetas Menu.xlsx."
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "BEB-RVW-VERDEJO-750",
+          "catalogName": "Verdejo Quintaluna botella 750 ml",
+          "resolvedUnit": "unidad"
+        }
+      ],
+      "evidence": [
+        "Venta 1:1 de botella; comparte el insumo con la copa y usa costo conservador C$806 por el conflicto C$806/C$623.69."
+      ]
+    },
+    {
+      "sourceKey": "Bebidas!DH5",
+      "candidateDomain": "PRODUCTION",
+      "status": "RESOLVED",
+      "target": {
+        "kind": "PRODUCTION",
+        "outputSku": "RCP-000016",
+        "outputName": "Té preparado",
+        "yieldQuantity": 20,
+        "yieldUnit": "unidad",
+        "recipeStatus": "DRAFT"
+      },
+      "ingredients": [
+        {
+          "sourceRow": 10,
+          "productSku": "CCI-AGUA-PROCESO",
+          "catalogName": "Agua de proceso"
+        },
+        {
+          "sourceRow": 11,
+          "productSku": "CCI-RVW-BOLSA-TE",
+          "catalogName": "Bolsa de té"
+        },
+        {
+          "sourceRow": 12,
+          "productSku": "MIS-000047",
+          "catalogName": "AZUCAR"
+        },
+        {
+          "sourceRow": 13,
+          "productSku": "CCI-3E32349CA2",
+          "catalogName": "LIMON (base unidad)"
+        }
+      ],
+      "evidence": [
+        "El bloque declara un lote real de 20 porciones; se corrige la etiqueta de rendimiento g a 20 unidades y se importa como DRAFT."
+      ]
+    }
+  ]
+}

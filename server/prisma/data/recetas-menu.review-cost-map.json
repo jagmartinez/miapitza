@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "file": "Recetas Menu.xlsx",
+    "sha256": "46c13ed9520540712c1d791a89804884d4392f05e1272f759183ae4e2274019b",
+    "generatedAt": "2026-07-10T00:00:00.000Z",
+    "catalogSnapshotAt": "2026-07-10T00:00:00.000Z"
+  },
+  "policy": {
+    "sourceSelection": "COMPLETE_COST_SHEET_THEN_COMPLETE_PURCHASE_FALLBACK",
+    "evaluatedPriceTreatment": "USE_AS_EVALUATED",
+    "surcharge15Treatment": "ALREADY_INCLUDED_WHEN_FORMULA_CONTAINS_1_15",
+    "updateField": "cost",
+    "preserveCurrentAverageCost": true,
+    "preserveLastPurchaseCost": true,
+    "createPurchases": false,
+    "createStock": false,
+    "createInventoryMovements": false,
+    "createCostHistory": false
+  },
+  "entries": [
+    {
+      "id": "review:canelones-mass",
+      "source": {
+        "sheet": "Costo de insumos",
+        "row": 69,
+        "asOfDate": "2026-06-21",
+        "priority": "PRIMARY",
+        "name": "CANELONES",
+        "presentation": "1 libra / 12 unidades",
+        "unit": "lb",
+        "contentQuantity": 1,
+        "evaluatedPrice": 415,
+        "priceFormula": "=415"
+      },
+      "target": {
+        "mode": "EXISTING",
+        "sku": "CON-000064",
+        "catalogName": "PASTA CANELONES",
+        "baseUnit": "lb",
+        "category": null,
+        "productType": "INGREDIENT",
+        "storageType": null,
+        "matchEvidence": "FACT",
+        "catalogRole": "PURCHASED_INPUT"
+      },
+      "resolution": {
+        "decision": "APPLY",
+        "blockers": [],
+        "rationale": "Costo de insumos!69 fija C$415 por paquete y el catálogo histórico documenta que el paquete de 12 canelones equivale a una libra."
+      },
+      "calculation": {
+        "normalizedSourceName": "canelones",
+        "normalizedSourceUnit": "lb",
+        "surcharge15Detected": false,
+        "sourceUnitCost": 415,
+        "expectedBaseUnitCost": 415
+      },
+      "notes": ["Se conserva CON-000064 en lb para que las recetas en gramos conviertan por masa."]
+    },
+    {
+      "id": "review:prosciutto-portion",
+      "source": {
+        "sheet": "Compras",
+        "row": 37,
+        "asOfDate": "2025-11-01",
+        "priority": "PRIMARY",
+        "name": "Prosciutto porción",
+        "presentation": "rollito",
+        "unit": "unidad",
+        "contentQuantity": 1,
+        "evaluatedPrice": 23.285714285714285,
+        "priceFormula": "=Compras!G37"
+      },
+      "target": {
+        "mode": "EXISTING",
+        "sku": "CON-000069",
+        "catalogName": "PROSCIUTTO",
+        "baseUnit": "unidad",
+        "category": null,
+        "productType": "INGREDIENT",
+        "storageType": null,
+        "matchEvidence": "FACT",
+        "catalogRole": "PORTION_OR_INTERMEDIATE"
+      },
+      "resolution": {
+        "decision": "APPLY",
+        "blockers": [],
+        "rationale": "Las recetas de antipasto y Alla Vodka consumen rollitos/unidades; se conserva separado del prosciutto comprado por gramos."
+      },
+      "calculation": {
+        "normalizedSourceName": "prosciutto porcion",
+        "normalizedSourceUnit": "unidad",
+        "surcharge15Detected": false,
+        "sourceUnitCost": 23.285714285714285,
+        "expectedBaseUnitCost": 23.29
+      },
+      "notes": ["No altera CCI-516C41C43E, que representa el insumo comprado en gramos."]
+    },
+    {
+      "id": "review:tomate-cherry-grams",
+      "source": {
+        "sheet": "Compras",
+        "row": 5,
+        "asOfDate": "2025-11-01",
+        "priority": "PRIMARY",
+        "name": "Tomate cherry",
+        "presentation": "libra",
+        "unit": "g",
+        "contentQuantity": 1,
+        "evaluatedPrice": 0.11013215859030837,
+        "priceFormula": "=Compras!G5"
+      },
+      "target": {
+        "mode": "EXISTING",
+        "sku": "VGR-000002",
+        "catalogName": "Tomate cherry",
+        "baseUnit": "g",
+        "category": null,
+        "productType": "INGREDIENT",
+        "storageType": null,
+        "matchEvidence": "FACT",
+        "catalogRole": "PURCHASED_INPUT"
+      },
+      "resolution": {
+        "decision": "APPLY",
+        "blockers": [],
+        "rationale": "Las recetas existentes consumen VGR-000002 en gramos y Compras!5 aporta el costo unitario histórico compatible."
+      },
+      "calculation": {
+        "normalizedSourceName": "tomate cherry",
+        "normalizedSourceUnit": "g",
+        "surcharge15Detected": false,
+        "sourceUnitCost": 0.11013215859030837,
+        "expectedBaseUnitCost": 0.11
+      },
+      "notes": []
+    },
+    {
+      "id": "review:rucula-grams",
+      "source": {
+        "sheet": "Costo de insumos",
+        "row": 34,
+        "asOfDate": "2026-06-21",
+        "priority": "PRIMARY",
+        "name": "ARUGULA",
+        "presentation": "libra",
+        "unit": "lb",
+        "contentQuantity": 1,
+        "evaluatedPrice": 170,
+        "priceFormula": null
+      },
+      "target": {
+        "mode": "EXISTING",
+        "sku": "VGR-000003",
+        "catalogName": "Rúcula",
+        "baseUnit": "g",
+        "category": null,
+        "productType": "INGREDIENT",
+        "storageType": null,
+        "matchEvidence": "FACT",
+        "catalogRole": "PURCHASED_INPUT"
+      },
+      "resolution": {
+        "decision": "APPLY",
+        "blockers": [],
+        "rationale": "Costo de insumos!34 es la fuente primaria y más reciente; ARUGULA es el alias revisado de Rúcula y C$170/lb equivale a C$0.37/g."
+      },
+      "calculation": {
+        "normalizedSourceName": "arugula",
+        "normalizedSourceUnit": "lb",
+        "surcharge15Detected": false,
+        "sourceUnitCost": 170,
+        "expectedBaseUnitCost": 0.37
+      },
+      "notes": ["Se evita que la fuente histórica Compras!40 (C$0.35/g) sobrescriba el costo primario más reciente."]
+    }
+  ],
+  "productionCoverage": []
+}

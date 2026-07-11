@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "file": "Recetas Menu.xlsx",
+    "sha256": "46c13ed9520540712c1d791a89804884d4392f05e1272f759183ae4e2274019b"
+  },
+  "defaultCategory": "Bebidas y Vinos",
+  "entries": [
+    {
+      "sourceName": "Bolsa de té",
+      "productSku": "CCI-RVW-BOLSA-TE",
+      "mode": "CREATE",
+      "catalogName": "Bolsa de té",
+      "baseUnit": "unidad",
+      "productType": "INGREDIENT",
+      "storageType": "NON_PERISHABLE",
+      "referenceCost": 2.26,
+      "activate": true
+    },
+    {
+      "sourceName": "La Vielle Ferme botella",
+      "productSku": "BEB-RVW-VIELLE-FERME",
+      "mode": "CREATE",
+      "catalogName": "La Vielle Ferme botella",
+      "baseUnit": "unidad",
+      "productType": "INGREDIENT",
+      "storageType": "NON_PERISHABLE",
+      "referenceCost": 593,
+      "activate": true
+    },
+    {
+      "sourceName": "Don Luciano botella",
+      "productSku": "BEB-RVW-DON-LUCIANO",
+      "mode": "CREATE",
+      "catalogName": "Don Luciano botella",
+      "baseUnit": "unidad",
+      "productType": "INGREDIENT",
+      "storageType": "NON_PERISHABLE",
+      "referenceCost": 335,
+      "activate": true
+    },
+    {
+      "sourceName": "Pinot Grigio Pasqua botella",
+      "productSku": "BEB-RVW-PINOT-PASQUA",
+      "mode": "CREATE",
+      "catalogName": "Pinot Grigio Pasqua botella",
+      "baseUnit": "unidad",
+      "productType": "INGREDIENT",
+      "storageType": "NON_PERISHABLE",
+      "referenceCost": 915,
+      "activate": true
+    },
+    {
+      "sourceName": "Rosé botella 750 ml",
+      "productSku": "BEB-RVW-ROSE-750",
+      "mode": "CREATE",
+      "catalogName": "Rosé botella 750 ml",
+      "baseUnit": "unidad",
+      "productType": "INGREDIENT",
+      "storageType": "NON_PERISHABLE",
+      "referenceCost": 593.18,
+      "activate": true
+    },
+    {
+      "sourceName": "Verdejo Quintaluna botella 750 ml",
+      "productSku": "BEB-RVW-VERDEJO-750",
+      "mode": "CREATE",
+      "catalogName": "Verdejo Quintaluna botella 750 ml",
+      "baseUnit": "unidad",
+      "productType": "INGREDIENT",
+      "storageType": "NON_PERISHABLE",
+      "referenceCost": 806,
+      "activate": true
+    }
+  ]
+}

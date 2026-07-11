@@ -205,20 +205,31 @@ export class PaymentService {
     }
 
     static async delete(id: number, companyId: number, userId: number) {
-        const payment = await prisma.payment.findFirst({
+        const target = await prisma.payment.findFirst({
             where: { id, order: { companyId } },
-            include: {
-                order: {
-                    include: { payments: true, items: true }
-                }
-            }
+            select: { orderId: true }
         });
 
-        if (!payment) {
+        if (!target) {
             throw new Error('Payment not found');
         }
 
         return await prisma.$transaction(async (tx) => {
+            // Serialize payment removal with payment creation, order completion
+            // and cancellation. The status alone is not an inventory marker: a
+            // fully-paid order may already be DELIVERED.
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${target.orderId} AND companyId = ${companyId} FOR UPDATE`;
+
+            const payment = await tx.payment.findFirst({
+                where: { id, orderId: target.orderId, order: { companyId } },
+                include: {
+                    order: {
+                        include: { payments: true, items: true }
+                    }
+                }
+            });
+            if (!payment) throw new Error('Payment not found');
+
             // Delete corresponding cash movement if exists
             await tx.cashMovement.deleteMany({
                 where: { reference: `PAY-${id}` }
@@ -228,48 +239,75 @@ export class PaymentService {
                 where: { id }
             });
 
-            // Determine correct status after removing payment
-            if (payment.order.status === 'PAID') {
-                // Check remaining payments after this deletion
-                const remainingPaid = payment.order.payments
-                    .filter((p) => p.id !== id)
-                    .reduce((sum, p) => sum + Number(p.amount), 0);
+            const totalBefore = payment.order.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+            const remainingPaid = payment.order.payments
+                .filter((p) => p.id !== id)
+                .reduce((sum, p) => sum + Number(p.amount), 0);
+            const orderTotal = Number(payment.order.total);
+            const wasFullyPaid = totalBefore + 0.01 >= orderTotal;
+            const becomesUnderpaid = remainingPaid + 0.01 < orderTotal;
 
-                let newStatus: OrderStatus;
-                if (remainingPaid >= Number(payment.order.total)) {
-                    newStatus = 'PAID'; // Still fully paid
-                } else {
-                    // Determine logical pre-payment state
-                    newStatus = this.deriveOrderStatus(payment.order);
+            if (becomesUnderpaid && payment.order.status !== 'CANCELLED') {
+                const newStatus = this.deriveOrderStatus(payment.order);
+
+                await tx.order.update({
+                    where: { id: payment.orderId },
+                    data: { status: newStatus, closedAt: null }
+                });
+
+                // Reverse based on the outstanding ORD-{id} movements, not on a
+                // display status. This also covers PAID -> DELIVERED orders.
+                await InventoryConsumptionService.reverseForOrder(tx, {
+                    orderId: payment.orderId,
+                    userId,
+                    companyId
+                });
+
+                // The order is open again. Keep its table occupied unless another
+                // active order already does so (setting OCCUPIED is idempotent).
+                if (payment.order.tableId) {
+                    await tx.table.update({
+                        where: { id: payment.order.tableId },
+                        data: { status: 'OCCUPIED' }
+                    });
                 }
 
-                if (newStatus !== 'PAID') {
-                    await tx.order.update({
-                        where: { id: payment.orderId },
-                        data: { status: newStatus }
+                // Promotion usage is financial-state based as well: it was counted
+                // when the order first became fully paid, regardless of later
+                // operational status changes.
+                if (wasFullyPaid && payment.order.discountCode) {
+                    const promo = await tx.promotion.findFirst({
+                        where: { companyId, code: payment.order.discountCode.toUpperCase() },
+                        select: { id: true, usageCount: true }
                     });
-
-                    // Reverse any inventory that was consumed for this order so
-                    // stock is restored and the idempotency marker is cleared.
-                    await InventoryConsumptionService.reverseForOrder(tx, {
-                        orderId: payment.orderId,
-                        userId,
-                        companyId
-                    });
-
-                    // Roll back the promotion usage that was counted when the
-                    // order became PAID.
-                    if (payment.order.discountCode) {
-                        const promo = await tx.promotion.findFirst({
-                            where: { companyId, code: payment.order.discountCode.toUpperCase() },
-                            select: { id: true, usageCount: true }
+                    if (promo && promo.usageCount > 0) {
+                        await tx.promotion.update({
+                            where: { id: promo.id },
+                            data: { usageCount: { decrement: 1 } }
                         });
-                        if (promo && promo.usageCount > 0) {
-                            await tx.promotion.update({
-                                where: { id: promo.id },
-                                data: { usageCount: { decrement: 1 } }
-                            });
-                        }
+                    }
+                }
+            }
+
+            // Existing cancelled records remain terminal. Their inventory was
+            // already reversed by OrderService.cancel; payment cleanup must not
+            // reopen them.
+            if (payment.order.status === 'CANCELLED' && wasFullyPaid) {
+                const outstanding = await InventoryConsumptionService.reverseForOrder(tx, {
+                    orderId: payment.orderId,
+                    userId,
+                    companyId
+                });
+                if (outstanding.reversed && payment.order.discountCode) {
+                    const promo = await tx.promotion.findFirst({
+                        where: { companyId, code: payment.order.discountCode.toUpperCase() },
+                        select: { id: true, usageCount: true }
+                    });
+                    if (promo && promo.usageCount > 0) {
+                        await tx.promotion.update({
+                            where: { id: promo.id },
+                            data: { usageCount: { decrement: 1 } }
+                        });
                     }
                 }
             }

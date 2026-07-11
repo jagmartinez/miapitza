@@ -11,6 +11,7 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { useCurrency } from '../hooks/useCurrency';
 import { getUserRoleNames } from '../utils/authz';
+import { effectiveUnitCost } from '../utils/productCost';
 import {
     FlaskConical, Plus, Pencil, Power, Copy, Trash2, Save, Info, Layers,
     Search
@@ -234,7 +235,7 @@ export default function ProductionRecipes() {
     const estimatedRowCost = (row: ComponentRow): number => {
         const prod = row.componentProductId ? productById.get(Number(row.componentProductId)) : undefined;
         if (!prod) return 0;
-        const unitCost = prod.currentAverageCost ?? prod.cost ?? 0;
+        const unitCost = effectiveUnitCost(prod.currentAverageCost, prod.cost);
         const qty = parseFloat(row.quantity);
         if (!Number.isFinite(qty)) return 0;
         return unitCost * qty;

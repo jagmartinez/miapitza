@@ -22,6 +22,7 @@ import type { SingleValue } from 'react-select';
 import { formatCurrency, currencyInputPadding, type CurrencySettings } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
 import { isCategoryVisibleInInventory } from '../utils/categoryVisibility';
+import { effectiveUnitCost } from '../utils/productCost';
 import './Inventory.css';
 
 interface CategoryRow {
@@ -1015,8 +1016,8 @@ export default function Inventory() {
 
                                 <div className="product-pricing-new">
                                     <div className="pricing-item">
-                                        <span className="pricing-label">Costo Prom.</span>
-                                        <span className="pricing-value">{formatCurrency(Number((product as ProductInventory).currentAverageCost ?? product.cost), settings)}</span>
+                                        <span className="pricing-label">Costo unit.</span>
+                                        <span className="pricing-value">{formatCurrency(effectiveUnitCost((product as ProductInventory).currentAverageCost, product.cost), settings)}</span>
                                     </div>
                                     <div className="pricing-item">
                                         <span className="pricing-label">Precio</span>
@@ -1106,7 +1107,7 @@ export default function Inventory() {
                                 <th>Unidad</th>
                                 <th className="text-right">Stock Actual</th>
                                 <th className="text-right">Mín.</th>
-                                <th className="text-right">Costo Prom.</th>
+                                <th className="text-right">Costo unit.</th>
                                 <th className="text-right">Precio</th>
                                 <th>Estado</th>
                                 <th className="text-right">Acciones</th>
@@ -1126,7 +1127,7 @@ export default function Inventory() {
                                         <td>{product.baseUnit?.abbreviation || product.unit}</td>
                                         <td className="text-right">{stock.toLocaleString('es-NI', { maximumFractionDigits: 2 })}</td>
                                         <td className="text-right">{product.minStock}</td>
-                                        <td className="text-right">{formatCurrency(Number((product as ProductInventory).currentAverageCost ?? product.cost), settings)}</td>
+                                        <td className="text-right">{formatCurrency(effectiveUnitCost((product as ProductInventory).currentAverageCost, product.cost), settings)}</td>
                                         <td className="text-right">{product.price ? formatCurrency(Number(product.price), settings) : '-'}</td>
                                         <td>
                                             {isLow
@@ -1468,9 +1469,9 @@ export default function Inventory() {
                                             </div>
                                             <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                                 <div>
-                                                    <div style={{ fontSize: '11px', color: 'var(--color-neutral-500)', marginBottom: '4px' }}>Costo Promedio</div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--color-neutral-500)', marginBottom: '4px' }}>Costo unitario</div>
                                                     <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--color-neutral-800)' }}>
-                                                        {formatCurrency(Number((editingProduct as ProductInventory).currentAverageCost ?? editingProduct.cost), settings)}
+                                                        {formatCurrency(effectiveUnitCost((editingProduct as ProductInventory).currentAverageCost, editingProduct.cost), settings)}
                                                     </div>
                                                 </div>
                                                 <div>

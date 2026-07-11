@@ -231,6 +231,71 @@
       "baseUnit": "g",
       "productType": "INGREDIENT",
       "activate": true
+    },
+    {
+      "sourceName": "Harina Napoli producción",
+      "productSku": "ING-000002",
+      "mode": "EXISTING",
+      "catalogName": "Harina Napoli",
+      "baseUnit": "qq",
+      "recipeUnits": ["g"],
+      "productType": "INGREDIENT",
+      "activate": true
+    },
+    {
+      "sourceName": "Agua de proceso",
+      "productSku": "CCI-AGUA-PROCESO",
+      "mode": "CREATE",
+      "catalogName": "Agua de proceso",
+      "baseUnit": "ml",
+      "productType": "INGREDIENT",
+      "storageType": "NON_PERISHABLE",
+      "referenceCost": 0,
+      "activate": true
+    },
+    {
+      "sourceName": "Salsa vodka producida",
+      "productSku": "RCP-000009",
+      "mode": "CREATE",
+      "catalogName": "Salsa vodka",
+      "baseUnit": "g",
+      "productType": "INTERMEDIATE",
+      "storageType": "PERISHABLE",
+      "referenceCost": 0.13982546770239815,
+      "activate": true
+    },
+    {
+      "sourceName": "Queso Ricotta producido",
+      "productSku": "RCP-000010",
+      "mode": "CREATE",
+      "catalogName": "Queso Ricotta producido",
+      "baseUnit": "g",
+      "productType": "INTERMEDIATE",
+      "storageType": "PERISHABLE",
+      "referenceCost": 0.17995594713656388,
+      "activate": true
+    },
+    {
+      "sourceName": "Masa integral producida",
+      "productSku": "RCP-000011",
+      "mode": "CREATE",
+      "catalogName": "Masa integral",
+      "baseUnit": "unidad",
+      "productType": "INTERMEDIATE",
+      "storageType": "PERISHABLE",
+      "referenceCost": 5.860443281938326,
+      "activate": true
+    },
+    {
+      "sourceName": "Brownie producido",
+      "productSku": "RCP-000012",
+      "mode": "CREATE",
+      "catalogName": "Brownie",
+      "baseUnit": "unidad",
+      "productType": "INTERMEDIATE",
+      "storageType": "NON_PERISHABLE",
+      "referenceCost": 40.4525,
+      "activate": true
     }
   ]
 }

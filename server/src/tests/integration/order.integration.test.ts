@@ -115,8 +115,15 @@ describe('Order API Integration Tests', () => {
         });
 
         it('should return 401 without authentication', async () => {
-            const response = await request(app)
+            // Satisfy the independent double-submit CSRF protection first so
+            // this assertion specifically exercises the authentication layer.
+            const agent = request.agent(app);
+            const csrfResponse = await agent.get('/api/health');
+            const csrfToken = csrfResponse.headers['x-csrf-token'];
+
+            const response = await agent
                 .post('/api/orders')
+                .set('X-CSRF-Token', csrfToken)
                 .send({
                     branchId: testBranchId,
                     customerName: 'Unauthorized Test'

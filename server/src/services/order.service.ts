@@ -973,54 +973,74 @@ export class OrderService {
         // It reverses any consumed inventory instead of rejecting the cancel.
         options?: { allowPaidReversal?: boolean }
     ) {
-        const order = await prisma.order.findFirst({
-            where: { id, companyId },
-            include: { table: true, payments: true }
-        });
+        return await prisma.$transaction(async (tx) => {
+            // Serialize cancel with payment, delivery and another cancellation.
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const order = await tx.order.findFirst({
+                where: { id, companyId },
+                include: { table: true, payments: true }
+            });
 
-        if (!order) {
-            throw new Error('Order not found');
-        }
+            if (!order) throw new Error('Order not found');
+            if (order.status === 'CANCELLED') throw new Error('Order is already cancelled');
 
-        if (order.status === 'CANCELLED') {
-            throw new Error('Order is already cancelled');
-        }
-
-        // PAID orders are terminal for manual cancellation; only channel
-        // integrations may cancel them (with inventory reversal below).
-        if (order.status === 'PAID' && !options?.allowPaidReversal) {
-            throw new Error('Cannot cancel paid orders');
-        }
-
-        // For non-PAID orders, require partial payments to be refunded first.
-        // (A PAID channel cancellation reverses inventory and is settled by the
-        // platform, so the local payment-refund gate does not apply.)
-        if (order.status !== 'PAID' && order.payments && order.payments.length > 0) {
             const totalPaid = order.payments.reduce((sum, p) => sum + Number(p.amount), 0);
-            if (totalPaid > 0) {
+            const fullyPaid = order.payments.length > 0 && totalPaid + 0.01 >= Number(order.total);
+
+            // Payment state is authoritative. A paid order may currently display
+            // PAID or DELIVERED; both require an explicit financial reversal.
+            if (fullyPaid && !options?.allowPaidReversal) {
+                throw new Error('Cannot cancel paid orders');
+            }
+            if (!fullyPaid && totalPaid > 0) {
                 throw new Error(`Order has existing payments totaling ${totalPaid.toFixed(2)}. Please refund/delete payments before cancelling.`);
             }
-        }
 
-        const reversalUserId = cancelledById ?? order.userId;
+            const reversalUserId = cancelledById ?? order.userId;
 
-        return await prisma.$transaction(async (tx) => {
+            // Restore outstanding recipe consumption before changing the terminal
+            // state. The operation is idempotent by ORD-{id} net movements.
+            await InventoryConsumptionService.reverseForOrder(tx, {
+                orderId: id,
+                userId: reversalUserId,
+                companyId
+            });
+
+            // Authoritative channel cancellations also reverse the local payment
+            // ledger. This prevents cancelled delivery orders from remaining as
+            // revenue/cash and mirrors PaymentService.delete semantics atomically.
+            if (fullyPaid && options?.allowPaidReversal) {
+                const paymentIds = order.payments.map((payment) => payment.id);
+                if (paymentIds.length > 0) {
+                    await tx.cashMovement.deleteMany({
+                        where: { reference: { in: paymentIds.map((paymentId) => `PAY-${paymentId}`) } }
+                    });
+                    await tx.payment.deleteMany({ where: { id: { in: paymentIds }, orderId: id } });
+                }
+
+                if (order.discountCode) {
+                    const promo = await tx.promotion.findFirst({
+                        where: { companyId, code: order.discountCode.toUpperCase() },
+                        select: { id: true, usageCount: true }
+                    });
+                    if (promo && promo.usageCount > 0) {
+                        await tx.promotion.update({
+                            where: { id: promo.id },
+                            data: { usageCount: { decrement: 1 } }
+                        });
+                    }
+                }
+            }
+
             const updatedOrder = await tx.order.update({
                 where: { id },
                 data: {
                     status: 'CANCELLED',
                     cancelledById: cancelledById || null,
                     cancelReason: cancelReason || null,
-                    cancelledAt: new Date()
+                    cancelledAt: new Date(),
+                    closedAt: fullyPaid ? new Date() : order.closedAt
                 }
-            });
-
-            // Restore any inventory deducted for this order. Idempotent no-op for
-            // orders that never reached PAID (no outstanding consumption).
-            await InventoryConsumptionService.reverseForOrder(tx, {
-                orderId: id,
-                userId: reversalUserId,
-                companyId
             });
 
             if (order.tableId) {
@@ -1042,7 +1062,9 @@ export class OrderService {
                             reason: cancelReason || null,
                             previousStatus: order.status,
                             orderedBy: order.userId,
-                            tableId: order.tableId
+                            tableId: order.tableId,
+                            reversedPayments: fullyPaid ? order.payments.length : 0,
+                            reversedAmount: fullyPaid ? totalPaid : 0
                         }
                     }
                 });

@@ -229,6 +229,9 @@ export class ProductionOrderService {
         });
 
         const order = await prisma.$transaction(async (tx) => {
+            // Serialize code allocation per tenant. The unique constraint remains
+            // the backstop, while the Company row lock prevents PRD-number races.
+            await tx.$queryRaw`SELECT id FROM \`Company\` WHERE id = ${companyId} FOR UPDATE`;
             const code = await this.generateCode(companyId, tx);
             return tx.productionOrder.create({
                 data: {
@@ -280,18 +283,24 @@ export class ProductionOrderService {
             throw new Error('Solo se pueden editar órdenes en estado Borrador o Pendiente.');
         }
 
-        const plannedQuantity = data.plannedQuantity ?? Number(order.plannedQuantity);
-        const warehouseId = data.warehouseId ?? order.warehouseId;
-        const recipeId = data.recipeId ?? order.recipeId ?? undefined;
+        const applied = await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`ProductionOrder\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const lockedOrder = await tx.productionOrder.findFirst({ where: { id, companyId } });
+            if (!lockedOrder) throw new Error('Orden de producción no encontrada');
+            if (lockedOrder.status !== 'DRAFT' && lockedOrder.status !== 'PENDING') {
+                throw new Error('Solo se pueden editar órdenes en estado Borrador o Pendiente.');
+            }
 
-        const preview = await this.computeRequirements(companyId, {
-            productId: order.productId,
-            recipeId,
-            plannedQuantity,
-            warehouseId
-        });
+            const plannedQuantity = data.plannedQuantity ?? Number(lockedOrder.plannedQuantity);
+            const warehouseId = data.warehouseId ?? lockedOrder.warehouseId;
+            const recipeId = data.recipeId ?? lockedOrder.recipeId ?? undefined;
+            const preview = await this.computeRequirements(companyId, {
+                productId: lockedOrder.productId,
+                recipeId,
+                plannedQuantity,
+                warehouseId
+            }, tx);
 
-        await prisma.$transaction(async (tx) => {
             await tx.productionOrderItem.deleteMany({ where: { productionOrderId: id } });
             await tx.productionOrder.update({
                 where: { id },
@@ -313,11 +322,12 @@ export class ProductionOrderService {
                     }
                 }
             });
+            return { plannedQuantity, warehouseId };
         });
 
         AuditLogService.log({
             companyId, userId, entityType: 'ProductionOrder', entityId: id,
-            action: 'UPDATE', details: { plannedQuantity, warehouseId }
+            action: 'UPDATE', details: applied
         }).catch((err) => console.error('[ProductionOrderService] audit log failed:', err));
 
         return this.getById(id, companyId);
@@ -325,14 +335,17 @@ export class ProductionOrderService {
 
     /** Simple status transitions that do NOT touch inventory (DRAFT/PENDING/IN_PROGRESS). */
     static async setStatus(id: number, companyId: number, status: 'PENDING' | 'IN_PROGRESS' | 'DRAFT', userId: number) {
-        const order = await prisma.productionOrder.findFirst({ where: { id, companyId } });
-        if (!order) throw new Error('Orden de producción no encontrada');
-        if (order.status === 'FINISHED' || order.status === 'CANCELLED') {
-            throw new Error('La orden ya está finalizada o anulada.');
-        }
-        const data: Prisma.ProductionOrderUpdateInput = { status };
-        if (status === 'IN_PROGRESS' && !order.startedAt) data.startedAt = new Date();
-        await prisma.productionOrder.update({ where: { id }, data });
+        await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`ProductionOrder\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const order = await tx.productionOrder.findFirst({ where: { id, companyId } });
+            if (!order) throw new Error('Orden de producción no encontrada');
+            if (order.status === 'FINISHED' || order.status === 'CANCELLED') {
+                throw new Error('La orden ya está finalizada o anulada.');
+            }
+            const updateData: Prisma.ProductionOrderUpdateInput = { status };
+            if (status === 'IN_PROGRESS' && !order.startedAt) updateData.startedAt = new Date();
+            await tx.productionOrder.update({ where: { id }, data: updateData });
+        });
 
         AuditLogService.log({
             companyId, userId, entityType: 'ProductionOrder', entityId: id,
@@ -382,9 +395,6 @@ export class ProductionOrderService {
             if (!recipe) throw new Error('La receta utilizada ya no existe.');
         }
 
-        const producedQuantity = payload.producedQuantity ?? Number(order.plannedQuantity);
-        if (!(producedQuantity > 0)) throw new Error('La cantidad producida debe ser mayor a 0.');
-
         // Map of real consumption overrides
         const overrides = new Map<number, number>();
         for (const c of payload.consumptions || []) {
@@ -392,12 +402,33 @@ export class ProductionOrderService {
         }
 
         const result = await prisma.$transaction(async (tx) => {
+            // Serialize finish/cancel/retry on this order. Re-read the order only
+            // after acquiring the row lock so a second request cannot consume the
+            // same BOM twice.
+            await tx.$queryRaw`SELECT id FROM \`ProductionOrder\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const lockedOrder = await tx.productionOrder.findFirst({
+                where: { id, companyId },
+                include: { items: true }
+            });
+            if (!lockedOrder) throw new Error('Orden de producción no encontrada');
+            if (lockedOrder.status === 'FINISHED') throw new Error('La orden ya está finalizada.');
+            if (lockedOrder.status === 'CANCELLED') throw new Error('No se puede finalizar una orden anulada.');
+            if (lockedOrder.items.length === 0) throw new Error('La orden no tiene insumos definidos.');
+
+            if (lockedOrder.recipeId) {
+                const recipe = await tx.productionRecipe.findFirst({ where: { id: lockedOrder.recipeId, companyId } });
+                if (!recipe) throw new Error('La receta utilizada ya no existe.');
+            }
+
+            const producedQuantity = payload.producedQuantity ?? Number(lockedOrder.plannedQuantity);
+            if (!(producedQuantity > 0)) throw new Error('La cantidad producida debe ser mayor a 0.');
+
             let realCost = 0;
 
             // 1. Consume inputs (OUT) through the single inventory engine. Under
             // WEIGHTED_AVERAGE the OUT is valued by the shared outflow contract
             // (identical to the legacy code); the engine also consumes FIFO layers.
-            for (const item of order.items) {
+            for (const item of lockedOrder.items) {
                 const consumedQuantity = overrides.has(item.componentProductId)
                     ? Number(overrides.get(item.componentProductId))
                     : Number(item.requiredQuantity);
@@ -420,12 +451,12 @@ export class ProductionOrderService {
                 const moved = await InventoryEngineService.applyMovement(tx, {
                     type: 'OUT',
                     companyId,
-                    warehouseId: order.warehouseId,
+                    warehouseId: lockedOrder.warehouseId,
                     productId: item.componentProductId,
                     userId,
                     quantity: consumedQuantity,
-                    reason: `Producción ${order.code}: consumo de insumo`,
-                    reference: PROD_REF(order.id),
+                    reason: `Producción ${lockedOrder.code}: consumo de insumo`,
+                    reference: PROD_REF(lockedOrder.id),
                     allowNegative: payload.allowNegative,
                     productName: product.name
                 });
@@ -446,7 +477,7 @@ export class ProductionOrderService {
             // las bodegas), capturado antes de que el motor mute la bodega destino:
             // el costeo global se alimenta de este stock global.
             const globalAgg = await tx.stock.aggregate({
-                where: { productId: order.productId, companyId },
+                where: { productId: lockedOrder.productId, companyId },
                 _sum: { quantity: true }
             });
             const previousGlobalStock = Number(globalAgg._sum.quantity || 0);
@@ -457,20 +488,20 @@ export class ProductionOrderService {
             await InventoryEngineService.applyMovement(tx, {
                 type: 'IN',
                 companyId,
-                warehouseId: order.warehouseId,
-                productId: order.productId,
+                warehouseId: lockedOrder.warehouseId,
+                productId: lockedOrder.productId,
                 userId,
                 quantity: producedQuantity,
                 unitCost: realUnitCost,
-                reason: `Producción ${order.code}: entrada de producto fabricado`,
-                reference: PROD_REF(order.id),
+                reason: `Producción ${lockedOrder.code}: entrada de producto fabricado`,
+                reference: PROD_REF(lockedOrder.id),
                 sourceType: 'PRODUCTION'
             });
 
             // 3. Fold into the OUTPUT product's weighted-average cost using GLOBAL stock
             // (coherente con el costeo global; previousGlobalStock = suma de todas las bodegas).
             // productionOrderId enables exact cost reversal on cancellation (#1).
-            await CostingService.applyProductionCost(tx, order.productId, companyId, producedQuantity, realUnitCost, previousGlobalStock, order.id);
+            await CostingService.applyProductionCost(tx, lockedOrder.productId, companyId, producedQuantity, realUnitCost, previousGlobalStock, lockedOrder.id);
 
             // 4. Mark order finished
             const updated = await tx.productionOrder.update({
@@ -486,7 +517,13 @@ export class ProductionOrderService {
                 include: this.orderInclude()
             });
 
-            return { updated, realCost, realUnitCost, producedQuantity };
+            return {
+                updated,
+                realCost,
+                realUnitCost,
+                producedQuantity,
+                plannedQuantity: Number(lockedOrder.plannedQuantity)
+            };
         });
 
         AuditLogService.log({
@@ -494,7 +531,7 @@ export class ProductionOrderService {
             action: 'UPDATE',
             details: {
                 status: 'FINISHED',
-                plannedQuantity: Number(order.plannedQuantity),
+                plannedQuantity: result.plannedQuantity,
                 producedQuantity: result.producedQuantity,
                 realCost: result.realCost,
                 realUnitCost: result.realUnitCost
@@ -515,24 +552,31 @@ export class ProductionOrderService {
         if (!order) throw new Error('Orden de producción no encontrada');
         if (order.status === 'CANCELLED') throw new Error('La orden ya está anulada.');
 
-        const wasFinished = order.status === 'FINISHED';
+        const cancelResult = await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`ProductionOrder\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const lockedOrder = await tx.productionOrder.findFirst({
+                where: { id, companyId },
+                include: { items: true }
+            });
+            if (!lockedOrder) throw new Error('Orden de producción no encontrada');
+            if (lockedOrder.status === 'CANCELLED') throw new Error('La orden ya está anulada.');
 
-        await prisma.$transaction(async (tx) => {
+            const wasFinished = lockedOrder.status === 'FINISHED';
             if (wasFinished) {
                 // Reverse the produced OUTPUT: take it back OUT of stock (valued at
                 // the product's current moving-average cost — bespoke, passed
                 // explicitly so the engine preserves the legacy number).
-                const producedQuantity = Number(order.producedQuantity);
+                const producedQuantity = Number(lockedOrder.producedQuantity);
                 if (producedQuantity > 0) {
                     const product = await tx.product.findFirst({
-                        where: { id: order.productId, companyId },
+                        where: { id: lockedOrder.productId, companyId },
                         select: { name: true, currentAverageCost: true, cost: true }
                     });
                     // Friendly guard: cannot reverse if the produced output is no
                     // longer fully in stock (already consumed/sold). The engine's
                     // own locked check is the race-safe backstop.
                     const outStock = await tx.stock.findUnique({
-                        where: { warehouseId_productId: { warehouseId: order.warehouseId, productId: order.productId } },
+                        where: { warehouseId_productId: { warehouseId: lockedOrder.warehouseId, productId: lockedOrder.productId } },
                         select: { quantity: true }
                     });
                     const currentQty = outStock ? Number(outStock.quantity) : 0;
@@ -545,32 +589,33 @@ export class ProductionOrderService {
                     await InventoryEngineService.applyMovement(tx, {
                         type: 'OUT',
                         companyId,
-                        warehouseId: order.warehouseId,
-                        productId: order.productId,
+                        warehouseId: lockedOrder.warehouseId,
+                        productId: lockedOrder.productId,
                         userId,
                         quantity: producedQuantity,
                         unitCost,
-                        reason: `Anulación producción ${order.code}: reversa de producto fabricado`,
-                        reference: PROD_REF(order.id),
+                        reason: `Anulación producción ${lockedOrder.code}: reversa de producto fabricado`,
+                        reference: PROD_REF(lockedOrder.id),
+                        consumeSourceRef: PROD_REF(lockedOrder.id),
                         productName: product?.name
                     });
                 }
 
                 // Restore consumed inputs back IN (valued at the cost they were
                 // consumed at — bespoke item.unitCost).
-                for (const item of order.items) {
+                for (const item of lockedOrder.items) {
                     const consumed = Number(item.consumedQuantity);
                     if (consumed <= 0) continue;
                     await InventoryEngineService.applyMovement(tx, {
                         type: 'IN',
                         companyId,
-                        warehouseId: order.warehouseId,
+                        warehouseId: lockedOrder.warehouseId,
                         productId: item.componentProductId,
                         userId,
                         quantity: consumed,
                         unitCost: Number(item.unitCost),
-                        reason: `Anulación producción ${order.code}: reversa de insumo`,
-                        reference: PROD_REF(order.id),
+                        reason: `Anulación producción ${lockedOrder.code}: reversa de insumo`,
+                        reference: PROD_REF(lockedOrder.id),
                         sourceType: 'ADJUSTMENT'
                     });
                 }
@@ -591,11 +636,12 @@ export class ProductionOrderService {
                     cancelReason: reason ?? null
                 }
             });
+            return { wasFinished };
         });
 
         AuditLogService.log({
             companyId, userId, entityType: 'ProductionOrder', entityId: id,
-            action: 'CANCEL', details: { reason, wasFinished }
+            action: 'CANCEL', details: { reason, wasFinished: cancelResult.wasFinished }
         }).catch((err) => console.error('[ProductionOrderService] audit log failed:', err));
 
         return this.getById(id, companyId);

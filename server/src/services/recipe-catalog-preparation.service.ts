@@ -545,7 +545,11 @@ export class RecipeCatalogPreparationService {
                         baseUnitId: action.baseUnitId,
                         minStock: 0,
                         cost: Number((action.referenceCost ?? 0).toFixed(2)),
-                        currentAverageCost: action.referenceCost ?? 0,
+                        // A source/reference cost is not a received purchase or a
+                        // completed production. Keep the moving average empty;
+                        // effectiveUnitCost() will use Product.cost until real
+                        // inventory establishes a positive average.
+                        currentAverageCost: 0,
                         lastPurchaseCost: 0,
                         type: action.productType,
                         storageType: action.storageType,

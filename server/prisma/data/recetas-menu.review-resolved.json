@@ -1,0 +1,4631 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "file": "Recetas Menu.xlsx",
+    "sheet": "reviewRequired resuelto",
+    "generatedAt": "1970-01-01T00:00:00.000Z",
+    "sha256": "46c13ed9520540712c1d791a89804884d4392f05e1272f759183ae4e2274019b",
+    "templateFile": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+    "templateSha256": "ea76e30de15952e025bba93eef6e7c17e38936559ebe55faaa9627835ece7d50"
+  },
+  "recipes": [
+    {
+      "sourceKey": "Pastas!C5",
+      "sourceRow": 5,
+      "variantQualifier": "salsa 4 quesos",
+      "menuItem": {
+        "name": "Canelones ricotta y espinaca — Salsa 4 quesos",
+        "category": "Pastas Frescas",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "PASTA CANELONES",
+          "sourceName": "Canelones",
+          "sku": "CON-000064",
+          "productSku": "CON-000064",
+          "quantity": 140,
+          "unit": "g",
+          "quantityRaw": 140,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Pastas",
+            "row": 10,
+            "cells": {
+              "ingredient": "C10",
+              "unit": "D10",
+              "quantity": "E10",
+              "directPrice": "F10",
+              "extendedCost": "G10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 140,
+            "directPrice": 0.8480176211453745,
+            "extendedCost": 118.72246696035243
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G72",
+            "extendedCost": "=E10*F10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Salsa 4 quesos",
+          "sourceName": "Salsa 4 quesos",
+          "sku": "RCP-000003",
+          "productSku": "RCP-000003",
+          "quantity": 199,
+          "unit": "g",
+          "quantityRaw": 199,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 11,
+          "source": {
+            "sheet": "Pastas",
+            "row": 11,
+            "cells": {
+              "ingredient": "C11",
+              "unit": "D11",
+              "quantity": "E11",
+              "directPrice": "F11",
+              "extendedCost": "G11"
+            }
+          },
+          "sourceValues": {
+            "quantity": 199,
+            "directPrice": 0.14567031144782036,
+            "extendedCost": 28.98839197811625
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Salsas!AF3",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Salsa 4 quesos",
+            "productSku": "MP-007",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 8
+            }
+          },
+          "issues": []
+        }
+      ],
+      "source": {
+        "sheet": "Pastas",
+        "nameCell": "C5",
+        "headerCell": "C9",
+        "yield": {
+          "quantity": 1,
+          "unit": "g",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "G3",
+            "valueCell": "J3",
+            "calculatedValue": 147.71085893846868,
+            "formula": "=D36"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "I31",
+            "valueCell": "J31",
+            "calculatedValue": 407,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "C34",
+            "valueCell": "D34",
+            "calculatedValue": 147.71085893846868,
+            "formula": "=SUM(G10:G32)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "C36",
+            "valueCell": "D36",
+            "calculatedValue": 147.71085893846868,
+            "formula": "=D34/G5"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Pastas!N5",
+      "sourceRow": 5,
+      "variantQualifier": "salsa roja",
+      "menuItem": {
+        "name": "Canelones ricotta y espinaca — Salsa roja",
+        "category": "Pastas Frescas",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "PASTA CANELONES",
+          "sourceName": "Canelones",
+          "sku": "CON-000064",
+          "productSku": "CON-000064",
+          "quantity": 140,
+          "unit": "g",
+          "quantityRaw": 140,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Pastas",
+            "row": 10,
+            "cells": {
+              "ingredient": "N10",
+              "unit": "O10",
+              "quantity": "P10",
+              "directPrice": "Q10",
+              "extendedCost": "R10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 140,
+            "directPrice": 0.8590308370044053,
+            "extendedCost": 120.26431718061674
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G73",
+            "extendedCost": "=P10*Q10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Salsa roja",
+          "sourceName": "Salsa roja",
+          "sku": "RCP-000001",
+          "productSku": "RCP-000001",
+          "quantity": 199,
+          "unit": "g",
+          "quantityRaw": 199,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 11,
+          "source": {
+            "sheet": "Pastas",
+            "row": 11,
+            "cells": {
+              "ingredient": "N11",
+              "unit": "O11",
+              "quantity": "P11",
+              "directPrice": "Q11",
+              "extendedCost": "R11"
+            }
+          },
+          "sourceValues": {
+            "quantity": 199,
+            "directPrice": 0.11336436464263813,
+            "extendedCost": 22.55950856388499
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Salsas!J3",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Salsa roja",
+            "productSku": "MP-005",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 6
+            }
+          },
+          "issues": []
+        }
+      ],
+      "source": {
+        "sheet": "Pastas",
+        "nameCell": "N5",
+        "headerCell": "N9",
+        "yield": {
+          "quantity": 1,
+          "unit": "g",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "R3",
+            "valueCell": "U3",
+            "calculatedValue": 142.82382574450173,
+            "formula": "=O36"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "T31",
+            "valueCell": "U31",
+            "calculatedValue": 350,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "N34",
+            "valueCell": "O34",
+            "calculatedValue": 142.82382574450173,
+            "formula": "=SUM(R10:R32)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "N36",
+            "valueCell": "O36",
+            "calculatedValue": 142.82382574450173,
+            "formula": "=O34/R5"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Pastas!Z5",
+      "sourceRow": 5,
+      "variantQualifier": "salsa roja",
+      "menuItem": {
+        "name": "Mezzaluna ricotta y espinaca — Salsa roja",
+        "category": "Pastas Frescas",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "PASTA MEZZALUNA",
+          "sourceName": "Mezzaluna",
+          "sku": "CON-000065",
+          "productSku": "CON-000065",
+          "quantity": 121,
+          "unit": "g",
+          "quantityRaw": 121,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Pastas",
+            "row": 10,
+            "cells": {
+              "ingredient": "Z10",
+              "unit": "AA10",
+              "quantity": "AB10",
+              "directPrice": "AC10",
+              "extendedCost": "AD10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 121,
+            "directPrice": 0.8480176211453745,
+            "extendedCost": 102.61013215859032
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G72",
+            "extendedCost": "=AB10*AC10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Salsa roja",
+          "sourceName": "Salsa roja",
+          "sku": "RCP-000001",
+          "productSku": "RCP-000001",
+          "quantity": 168,
+          "unit": "g",
+          "quantityRaw": 168,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 11,
+          "source": {
+            "sheet": "Pastas",
+            "row": 11,
+            "cells": {
+              "ingredient": "Z11",
+              "unit": "AA11",
+              "quantity": "AB11",
+              "directPrice": "AC11",
+              "extendedCost": "AD11"
+            }
+          },
+          "sourceValues": {
+            "quantity": 168,
+            "directPrice": 0.11336436464263813,
+            "extendedCost": 19.045213259963205
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Salsas!J3",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Salsa roja",
+            "productSku": "MP-005",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 6
+            }
+          },
+          "issues": []
+        }
+      ],
+      "source": {
+        "sheet": "Pastas",
+        "nameCell": "Z5",
+        "headerCell": "Z9",
+        "yield": {
+          "quantity": 1,
+          "unit": "g",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "AD3",
+            "valueCell": "AG3",
+            "calculatedValue": 121.65534541855352,
+            "formula": "=AA36"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "AF31",
+            "valueCell": "AG31",
+            "calculatedValue": 350,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "Z34",
+            "valueCell": "AA34",
+            "calculatedValue": 121.65534541855352,
+            "formula": "=SUM(AD10:AD32)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "Z36",
+            "valueCell": "AA36",
+            "calculatedValue": 121.65534541855352,
+            "formula": "=AA34/AD5"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Pastas!AL5",
+      "sourceRow": 5,
+      "variantQualifier": "salsa 4 quesos",
+      "menuItem": {
+        "name": "Mezzaluna ricotta y espinaca — Salsa 4 quesos",
+        "category": "Pastas Frescas",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "PASTA MEZZALUNA",
+          "sourceName": "Mezzaluna",
+          "sku": "CON-000065",
+          "productSku": "CON-000065",
+          "quantity": 121,
+          "unit": "g",
+          "quantityRaw": 121,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Pastas",
+            "row": 10,
+            "cells": {
+              "ingredient": "AL10",
+              "unit": "AM10",
+              "quantity": "AN10",
+              "directPrice": "AO10",
+              "extendedCost": "AP10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 121,
+            "directPrice": 0.8480176211453745,
+            "extendedCost": 102.61013215859032
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G72",
+            "extendedCost": "=AN10*AO10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Salsa 4 quesos",
+          "sourceName": "Salsa 4 quesos",
+          "sku": "RCP-000003",
+          "productSku": "RCP-000003",
+          "quantity": 168,
+          "unit": "g",
+          "quantityRaw": 168,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 11,
+          "source": {
+            "sheet": "Pastas",
+            "row": 11,
+            "cells": {
+              "ingredient": "AL11",
+              "unit": "AM11",
+              "quantity": "AN11",
+              "directPrice": "AO11",
+              "extendedCost": "AP11"
+            }
+          },
+          "sourceValues": {
+            "quantity": 168,
+            "directPrice": 0.14567031144782036,
+            "extendedCost": 24.47261232323382
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Salsas!AF3",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Salsa 4 quesos",
+            "productSku": "MP-007",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 8
+            }
+          },
+          "issues": []
+        }
+      ],
+      "source": {
+        "sheet": "Pastas",
+        "nameCell": "AL5",
+        "headerCell": "AL9",
+        "yield": {
+          "quantity": 1,
+          "unit": "g",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "AP3",
+            "valueCell": "AS3",
+            "calculatedValue": 127.08274448182414,
+            "formula": "=AM36"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "AR31",
+            "valueCell": "AS31",
+            "calculatedValue": 407,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "AL34",
+            "valueCell": "AM34",
+            "calculatedValue": 127.08274448182414,
+            "formula": "=SUM(AP10:AP32)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "AL36",
+            "valueCell": "AM36",
+            "calculatedValue": 127.08274448182414,
+            "formula": "=AM34/AP5"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Pastas!AX5",
+      "sourceRow": 5,
+      "variantQualifier": "salsa pesto",
+      "menuItem": {
+        "name": "Mezzaluna — Salsa pesto",
+        "category": "Pastas Frescas",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "PASTA MEZZALUNA",
+          "sourceName": "mezzaluna",
+          "sku": "CON-000065",
+          "productSku": "CON-000065",
+          "quantity": 140,
+          "unit": "g",
+          "quantityRaw": 140,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Pastas",
+            "row": 10,
+            "cells": {
+              "ingredient": "AX10",
+              "unit": "AY10",
+              "quantity": "AZ10",
+              "directPrice": "BA10",
+              "extendedCost": "BB10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 140,
+            "directPrice": 0.8480176211453745,
+            "extendedCost": 118.72246696035243
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G72",
+            "extendedCost": "=AZ10*BA10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Salsa pesto",
+          "sourceName": "salsa pesto",
+          "sku": "RCP-000002",
+          "productSku": "RCP-000002",
+          "quantity": 85,
+          "unit": "g",
+          "quantityRaw": 85,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 11,
+          "source": {
+            "sheet": "Pastas",
+            "row": 11,
+            "cells": {
+              "ingredient": "AX11",
+              "unit": "AY11",
+              "quantity": "AZ11",
+              "directPrice": "BA11",
+              "extendedCost": "BB11"
+            }
+          },
+          "sourceValues": {
+            "quantity": 85,
+            "directPrice": 0.5516231248214366,
+            "extendedCost": 46.88796560982211
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Salsas!U3",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Salsa pesto",
+            "productSku": "MP-006",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 7
+            }
+          },
+          "issues": []
+        }
+      ],
+      "source": {
+        "sheet": "Pastas",
+        "nameCell": "AX5",
+        "headerCell": "AX9",
+        "yield": {
+          "quantity": 1,
+          "unit": "g",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "BB3",
+            "valueCell": "BE3",
+            "calculatedValue": 165.61043257017454,
+            "formula": "=AY36"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "BD31",
+            "valueCell": "BE31",
+            "calculatedValue": 390,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "AX34",
+            "valueCell": "AY34",
+            "calculatedValue": 165.61043257017454,
+            "formula": "=SUM(BB10:BB32)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "AX36",
+            "valueCell": "AY36",
+            "calculatedValue": 165.61043257017454,
+            "formula": "=AY34/BB5"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Pastas!BJ5",
+      "sourceRow": 5,
+      "variantQualifier": "salsa vodka",
+      "menuItem": {
+        "name": "Mezzaluna — Salsa vodka",
+        "category": "Pastas Frescas",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "PASTA MEZZALUNA",
+          "sourceName": "Mezzaluna",
+          "sku": "CON-000065",
+          "productSku": "CON-000065",
+          "quantity": 140,
+          "unit": "g",
+          "quantityRaw": 140,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Pastas",
+            "row": 10,
+            "cells": {
+              "ingredient": "BJ10",
+              "unit": "BK10",
+              "quantity": "BL10",
+              "directPrice": "BM10",
+              "extendedCost": "BN10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 140,
+            "directPrice": 0.8480176211453745,
+            "extendedCost": 118.72246696035243
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G72",
+            "extendedCost": "=BL10*BM10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Salsa vodka",
+          "sourceName": "Salsa vodka",
+          "sku": "RCP-000009",
+          "productSku": "RCP-000009",
+          "quantity": 85,
+          "unit": "g",
+          "quantityRaw": 85,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 11,
+          "source": {
+            "sheet": "Pastas",
+            "row": 11,
+            "cells": {
+              "ingredient": "BJ11",
+              "unit": "BK11",
+              "quantity": "BL11",
+              "directPrice": "BM11",
+              "extendedCost": "BN11"
+            }
+          },
+          "sourceValues": {
+            "quantity": 85,
+            "directPrice": 0.13982546770239815,
+            "extendedCost": 11.885164754703842
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Salsas!AQ3",
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Pastas",
+        "nameCell": "BJ5",
+        "headerCell": "BJ9",
+        "yield": {
+          "quantity": 1,
+          "unit": "g",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "BN3",
+            "valueCell": "BQ3",
+            "calculatedValue": 130.60763171505627,
+            "formula": "=BK36"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "BP31",
+            "valueCell": "BQ31",
+            "calculatedValue": 380,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "BJ34",
+            "valueCell": "BK34",
+            "calculatedValue": 130.60763171505627,
+            "formula": "=SUM(BN10:BN32)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "BJ36",
+            "valueCell": "BK36",
+            "calculatedValue": 130.60763171505627,
+            "formula": "=BK34/BN5"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Pastas!BV5",
+      "sourceRow": 5,
+      "variantQualifier": "salsa vodka",
+      "menuItem": {
+        "name": "Canelones — Salsa vodka",
+        "category": "Pastas Frescas",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "PASTA CANELONES",
+          "sourceName": "Canelones",
+          "sku": "CON-000064",
+          "productSku": "CON-000064",
+          "quantity": 140,
+          "unit": "g",
+          "quantityRaw": 140,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Pastas",
+            "row": 10,
+            "cells": {
+              "ingredient": "BV10",
+              "unit": "BW10",
+              "quantity": "BX10",
+              "directPrice": "BY10",
+              "extendedCost": "BZ10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 140,
+            "directPrice": 0.8590308370044053,
+            "extendedCost": 120.26431718061674
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G73",
+            "extendedCost": "=BX10*BY10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Salsa vodka",
+          "sourceName": "Salsa vodka",
+          "sku": "RCP-000009",
+          "productSku": "RCP-000009",
+          "quantity": 85,
+          "unit": "g",
+          "quantityRaw": 85,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 11,
+          "source": {
+            "sheet": "Pastas",
+            "row": 11,
+            "cells": {
+              "ingredient": "BV11",
+              "unit": "BW11",
+              "quantity": "BX11",
+              "directPrice": "BY11",
+              "extendedCost": "BZ11"
+            }
+          },
+          "sourceValues": {
+            "quantity": 85,
+            "directPrice": 0.13982546770239815,
+            "extendedCost": 11.885164754703842
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Salsas!AQ3",
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Pastas",
+        "nameCell": "BV5",
+        "headerCell": "BV9",
+        "yield": {
+          "quantity": 1,
+          "unit": "g",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "BZ3",
+            "valueCell": "CC3",
+            "calculatedValue": 132.14948193532058,
+            "formula": "=BW36"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "CB31",
+            "valueCell": "CC31",
+            "calculatedValue": 380,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "BV34",
+            "valueCell": "BW34",
+            "calculatedValue": 132.14948193532058,
+            "formula": "=SUM(BZ10:BZ32)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "BV36",
+            "valueCell": "BW36",
+            "calculatedValue": 132.14948193532058,
+            "formula": "=BW34/BZ5"
+          },
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "BZ40",
+            "valueCell": "CC40",
+            "calculatedValue": 179.62666666666667,
+            "formula": "=BW73"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Pastas!BV42",
+      "sourceRow": 42,
+      "variantQualifier": "salsa 4 quesos",
+      "menuItem": {
+        "name": "Raviolis con champiñones — Salsa 4 quesos",
+        "category": "Pastas Frescas",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "PASTA RAVIOLI",
+          "sourceName": "Raviolis",
+          "sku": "CON-000066",
+          "productSku": "CON-000066",
+          "quantity": 0.333,
+          "unit": "lb",
+          "quantityRaw": 1,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 47,
+          "source": {
+            "sheet": "Pastas",
+            "row": 47,
+            "cells": {
+              "ingredient": "BV47",
+              "unit": "BW47",
+              "quantity": "BX47",
+              "directPrice": "BY47",
+              "extendedCost": "BZ47"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1,
+            "directPrice": 470,
+            "extendedCost": 470
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": "=BX47*BY47"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Salsa 4 quesos",
+          "sourceName": "4 quesos",
+          "sku": "RCP-000003",
+          "productSku": "RCP-000003",
+          "quantity": 56,
+          "unit": "g",
+          "quantityRaw": 168,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 48,
+          "source": {
+            "sheet": "Pastas",
+            "row": 48,
+            "cells": {
+              "ingredient": "BV48",
+              "unit": "BW48",
+              "quantity": "BX48",
+              "directPrice": "BY48",
+              "extendedCost": "BZ48"
+            }
+          },
+          "sourceValues": {
+            "quantity": 168,
+            "directPrice": 0.41,
+            "extendedCost": 68.88
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Pastas",
+        "nameCell": "BV42",
+        "headerCell": "BV46",
+        "yield": {
+          "quantity": 3,
+          "unit": "g",
+          "quantityRaw": 3,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "BZ40",
+            "valueCell": "CC40",
+            "calculatedValue": 179.62666666666667,
+            "formula": "=BW73"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "CB68",
+            "valueCell": "CC68",
+            "calculatedValue": 390,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "BV71",
+            "valueCell": "BW71",
+            "calculatedValue": 538.88,
+            "formula": "=SUM(BZ47:BZ69)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "BV73",
+            "valueCell": "BW73",
+            "calculatedValue": 179.62666666666667,
+            "formula": "=BW71/BZ42"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Antipastos!C4",
+      "sourceRow": 4,
+      "variantQualifier": "nombre fuente: Tabla anti pastos",
+      "menuItem": {
+        "name": "Tabla de Antipasto",
+        "category": "Antipastos",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "Rodaja de pan integral",
+          "sourceName": "Pan integtal",
+          "sku": "CCI-RVW-PAN-INTEGRAL",
+          "productSku": "CCI-RVW-PAN-INTEGRAL",
+          "quantity": 3,
+          "unit": "unidad",
+          "quantityRaw": 3,
+          "unitRaw": "und",
+          "unitNormalization": "alias",
+          "sourceRow": 9,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 9,
+            "cells": {
+              "ingredient": "C9",
+              "unit": "D9",
+              "quantity": "E9",
+              "directPrice": "F9",
+              "extendedCost": "G9"
+            }
+          },
+          "sourceValues": {
+            "quantity": 3,
+            "directPrice": 5,
+            "extendedCost": 15
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": "=E9*F9"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Queso Ricotta producido",
+          "sourceName": "ricotta",
+          "sku": "RCP-000010",
+          "productSku": "RCP-000010",
+          "quantity": 40,
+          "unit": "g",
+          "quantityRaw": 40,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 10,
+            "cells": {
+              "ingredient": "C10",
+              "unit": "D10",
+              "quantity": "E10",
+              "directPrice": "F10",
+              "extendedCost": "G10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 40,
+            "directPrice": 0.17,
+            "extendedCost": 6.800000000000001
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Ricotta",
+            "productSku": "MP-009",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 10
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "PROSCIUTTO",
+          "sourceName": "Prosciutto",
+          "sku": "CON-000069",
+          "productSku": "CON-000069",
+          "quantity": 2,
+          "unit": "unidad",
+          "quantityRaw": 2,
+          "unitRaw": "und",
+          "unitNormalization": "alias",
+          "sourceRow": 11,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 11,
+            "cells": {
+              "ingredient": "C11",
+              "unit": "D11",
+              "quantity": "E11",
+              "directPrice": "F11",
+              "extendedCost": "G11"
+            }
+          },
+          "sourceValues": {
+            "quantity": 2,
+            "directPrice": 23.285714285714285,
+            "extendedCost": 46.57142857142857
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G37",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Prosciutto",
+            "productSku": "MP-019",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 20
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "Rúcula",
+          "sourceName": "rucula",
+          "sku": "VGR-000003",
+          "productSku": "VGR-000003",
+          "quantity": 20,
+          "unit": "g",
+          "quantityRaw": 20,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 12,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 12,
+            "cells": {
+              "ingredient": "C12",
+              "unit": "D12",
+              "quantity": "E12",
+              "directPrice": "F12",
+              "extendedCost": "G12"
+            }
+          },
+          "sourceValues": {
+            "quantity": 20,
+            "directPrice": 0.3524229074889868,
+            "extendedCost": 7.048458149779736
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G40",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Rúcula",
+            "productSku": "MP-020",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 21
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "Tomate cherry",
+          "sourceName": "tomate cherry",
+          "sku": "VGR-000002",
+          "productSku": "VGR-000002",
+          "quantity": 60,
+          "unit": "g",
+          "quantityRaw": 60,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 13,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 13,
+            "cells": {
+              "ingredient": "C13",
+              "unit": "D13",
+              "quantity": "E13",
+              "directPrice": "F13",
+              "extendedCost": "G13"
+            }
+          },
+          "sourceValues": {
+            "quantity": 60,
+            "directPrice": 0.11013215859030837,
+            "extendedCost": 6.607929515418502
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G5",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Tomate cherry",
+            "productSku": "MP-013",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 14
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "FRESAS FRESCAS",
+          "sourceName": "fresa",
+          "sku": "CCI-01F3E4B742",
+          "productSku": "CCI-01F3E4B742",
+          "quantity": 30,
+          "unit": "g",
+          "quantityRaw": 30,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 14,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 14,
+            "cells": {
+              "ingredient": "C14",
+              "unit": "D14",
+              "quantity": "E14",
+              "directPrice": "F14",
+              "extendedCost": "G14"
+            }
+          },
+          "sourceValues": {
+            "quantity": 30,
+            "directPrice": 0.44,
+            "extendedCost": 13.2
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Salsa pesto",
+          "sourceName": "Salsa pesto",
+          "sku": "RCP-000002",
+          "productSku": "RCP-000002",
+          "quantity": 15,
+          "unit": "g",
+          "quantityRaw": 15,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 15,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 15,
+            "cells": {
+              "ingredient": "C15",
+              "unit": "D15",
+              "quantity": "E15",
+              "directPrice": "F15",
+              "extendedCost": "G15"
+            }
+          },
+          "sourceValues": {
+            "quantity": 15,
+            "directPrice": 0.5516231248214366,
+            "extendedCost": 8.27434687232155
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Salsas!U3",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Salsa pesto",
+            "productSku": "MP-006",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 7
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "PEPPERONI",
+          "sourceName": "Pepperoni",
+          "sku": "CON-000067",
+          "productSku": "CON-000067",
+          "quantity": 15,
+          "unit": "g",
+          "quantityRaw": 15,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 16,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 16,
+            "cells": {
+              "ingredient": "C16",
+              "unit": "D16",
+              "quantity": "E16",
+              "directPrice": "F16",
+              "extendedCost": "G16"
+            }
+          },
+          "sourceValues": {
+            "quantity": 15,
+            "directPrice": 0.5066079295154186,
+            "extendedCost": 7.599118942731279
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G38",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Pepperoni",
+            "productSku": "MP-010",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 11
+            }
+          },
+          "issues": []
+        }
+      ],
+      "source": {
+        "sheet": "Antipastos",
+        "nameCell": "C4",
+        "headerCell": "C8",
+        "yield": {
+          "quantity": 1,
+          "unit": "g",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "C19",
+            "valueCell": "D19",
+            "calculatedValue": 111.10128205167963,
+            "formula": "=SUM(G9:G17)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "C20",
+            "valueCell": "D20",
+            "calculatedValue": 587,
+            "formula": null
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Antipastos!L4",
+      "sourceRow": 4,
+      "variantQualifier": "nombre fuente: Pan rustico",
+      "menuItem": {
+        "name": "Pan Rústico",
+        "category": "Antipastos",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "Rodaja de pan integral",
+          "sourceName": "rodaja de pan",
+          "sku": "CCI-RVW-PAN-INTEGRAL",
+          "productSku": "CCI-RVW-PAN-INTEGRAL",
+          "quantity": 2,
+          "unit": "unidad",
+          "quantityRaw": 2,
+          "unitRaw": "und",
+          "unitNormalization": "alias",
+          "sourceRow": 9,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 9,
+            "cells": {
+              "ingredient": "L9",
+              "unit": "M9",
+              "quantity": "N9",
+              "directPrice": "O9",
+              "extendedCost": "P9"
+            }
+          },
+          "sourceValues": {
+            "quantity": 2,
+            "directPrice": 5,
+            "extendedCost": 10
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": "=N9*O9"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Queso Ricotta producido",
+          "sourceName": "ricotta",
+          "sku": "RCP-000010",
+          "productSku": "RCP-000010",
+          "quantity": 20,
+          "unit": "g",
+          "quantityRaw": 20,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 10,
+            "cells": {
+              "ingredient": "L10",
+              "unit": "M10",
+              "quantity": "N10",
+              "directPrice": "O10",
+              "extendedCost": "P10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 20,
+            "directPrice": 0.17,
+            "extendedCost": 3.4000000000000004
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Ricotta",
+            "productSku": "MP-009",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 10
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "Salsa pesto",
+          "sourceName": "salsa pesto",
+          "sku": "RCP-000002",
+          "productSku": "RCP-000002",
+          "quantity": 20,
+          "unit": "g",
+          "quantityRaw": 20,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 11,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 11,
+            "cells": {
+              "ingredient": "L11",
+              "unit": "M11",
+              "quantity": "N11",
+              "directPrice": "O11",
+              "extendedCost": "P11"
+            }
+          },
+          "sourceValues": {
+            "quantity": 20,
+            "directPrice": 0.5516231248214366,
+            "extendedCost": 11.032462496428732
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Salsas!U3",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Salsa pesto",
+            "productSku": "MP-006",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 7
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "Rúcula",
+          "sourceName": "rucula",
+          "sku": "VGR-000003",
+          "productSku": "VGR-000003",
+          "quantity": 80,
+          "unit": "g",
+          "quantityRaw": 80,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 12,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 12,
+            "cells": {
+              "ingredient": "L12",
+              "unit": "M12",
+              "quantity": "N12",
+              "directPrice": "O12",
+              "extendedCost": "P12"
+            }
+          },
+          "sourceValues": {
+            "quantity": 80,
+            "directPrice": 0.3524229074889868,
+            "extendedCost": 28.193832599118945
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G40",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Rúcula",
+            "productSku": "MP-020",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 21
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "PROSCIUTTO",
+          "sourceName": "Prosciutto",
+          "sku": "CON-000069",
+          "productSku": "CON-000069",
+          "quantity": 2,
+          "unit": "unidad",
+          "quantityRaw": 2,
+          "unitRaw": "und",
+          "unitNormalization": "alias",
+          "sourceRow": 13,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 13,
+            "cells": {
+              "ingredient": "L13",
+              "unit": "M13",
+              "quantity": "N13",
+              "directPrice": "O13",
+              "extendedCost": "P13"
+            }
+          },
+          "sourceValues": {
+            "quantity": 2,
+            "directPrice": 23.285714285714285,
+            "extendedCost": 46.57142857142857
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G37",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Prosciutto",
+            "productSku": "MP-019",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 20
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "Tomate cherry",
+          "sourceName": "tomate cherry",
+          "sku": "VGR-000002",
+          "productSku": "VGR-000002",
+          "quantity": 50,
+          "unit": "g",
+          "quantityRaw": 50,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 14,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 14,
+            "cells": {
+              "ingredient": "L14",
+              "unit": "M14",
+              "quantity": "N14",
+              "directPrice": "O14",
+              "extendedCost": "P14"
+            }
+          },
+          "sourceValues": {
+            "quantity": 50,
+            "directPrice": 0.11013215859030837,
+            "extendedCost": 5.506607929515418
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G5",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Tomate cherry",
+            "productSku": "MP-013",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 14
+            }
+          },
+          "issues": []
+        }
+      ],
+      "source": {
+        "sheet": "Antipastos",
+        "nameCell": "L4",
+        "headerCell": "L8",
+        "yield": {
+          "quantity": 1,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES",
+          "normalization": "semantic_portion"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "L17",
+            "valueCell": "M17",
+            "calculatedValue": 104.70433159649167,
+            "formula": "=SUM(P9:P15)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "L18",
+            "valueCell": "M18",
+            "calculatedValue": 495,
+            "formula": null
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Antipastos!U4",
+      "sourceRow": 4,
+      "variantQualifier": "nombre fuente: Hongos al vino",
+      "menuItem": {
+        "name": "Rúcula & Hongos al Vino",
+        "category": "Antipastos",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "Rodaja de pan integral",
+          "sourceName": "Pan integtal",
+          "sku": "CCI-RVW-PAN-INTEGRAL",
+          "productSku": "CCI-RVW-PAN-INTEGRAL",
+          "quantity": 2,
+          "unit": "unidad",
+          "quantityRaw": 2,
+          "unitRaw": "und",
+          "unitNormalization": "alias",
+          "sourceRow": 9,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 9,
+            "cells": {
+              "ingredient": "U9",
+              "unit": "V9",
+              "quantity": "W9",
+              "directPrice": "X9",
+              "extendedCost": "Y9"
+            }
+          },
+          "sourceValues": {
+            "quantity": 2,
+            "directPrice": 5,
+            "extendedCost": 10
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": "=W9*X9"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Queso Ricotta producido",
+          "sourceName": "ricotta",
+          "sku": "RCP-000010",
+          "productSku": "RCP-000010",
+          "quantity": 20,
+          "unit": "g",
+          "quantityRaw": 20,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 10,
+            "cells": {
+              "ingredient": "U10",
+              "unit": "V10",
+              "quantity": "W10",
+              "directPrice": "X10",
+              "extendedCost": "Y10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 20,
+            "directPrice": 0.17995594713656388,
+            "extendedCost": 3.5991189427312777
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Pitzas!U2",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Ricotta",
+            "productSku": "MP-009",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 10
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "JAMON SELVA NEGRA",
+          "sourceName": "Jamon selva negra",
+          "sku": "CON-000053",
+          "productSku": "CON-000053",
+          "quantity": 80,
+          "unit": "g",
+          "quantityRaw": 80,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 11,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 11,
+            "cells": {
+              "ingredient": "U11",
+              "unit": "V11",
+              "quantity": "W11",
+              "directPrice": "X11",
+              "extendedCost": "Y11"
+            }
+          },
+          "sourceValues": {
+            "quantity": 80,
+            "directPrice": 0.4356828193832599,
+            "extendedCost": 34.85462555066079
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G39",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Jamón selva negra",
+            "productSku": "MP-011",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 12
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "Rúcula",
+          "sourceName": "rucula",
+          "sku": "VGR-000003",
+          "productSku": "VGR-000003",
+          "quantity": 40,
+          "unit": "g",
+          "quantityRaw": 40,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 12,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 12,
+            "cells": {
+              "ingredient": "U12",
+              "unit": "V12",
+              "quantity": "W12",
+              "directPrice": "X12",
+              "extendedCost": "Y12"
+            }
+          },
+          "sourceValues": {
+            "quantity": 40,
+            "directPrice": 0.3524229074889868,
+            "extendedCost": 14.096916299559473
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G40",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Rúcula",
+            "productSku": "MP-020",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 21
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "Tomate cherry",
+          "sourceName": "tomate cherry",
+          "sku": "VGR-000002",
+          "productSku": "VGR-000002",
+          "quantity": 40,
+          "unit": "g",
+          "quantityRaw": 40,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 13,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 13,
+            "cells": {
+              "ingredient": "U13",
+              "unit": "V13",
+              "quantity": "W13",
+              "directPrice": "X13",
+              "extendedCost": "Y13"
+            }
+          },
+          "sourceValues": {
+            "quantity": 40,
+            "directPrice": 0.11013215859030837,
+            "extendedCost": 4.405286343612334
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G5",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Tomate cherry",
+            "productSku": "MP-013",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 14
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "Champiñones enteros",
+          "sourceName": "Hongos",
+          "sku": "CCI-B4C1CC42C4",
+          "productSku": "CCI-B4C1CC42C4",
+          "quantity": 100,
+          "unit": "g",
+          "quantityRaw": 100,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 14,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 14,
+            "cells": {
+              "ingredient": "U14",
+              "unit": "V14",
+              "quantity": "W14",
+              "directPrice": "X14",
+              "extendedCost": "Y14"
+            }
+          },
+          "sourceValues": {
+            "quantity": 100,
+            "directPrice": 0.71288,
+            "extendedCost": 71.288
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G3",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Hongos",
+            "productSku": "MP-012",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 13
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "fiel",
+          "sourceName": "Vino",
+          "sku": "CCI-3EA0C30FFA",
+          "productSku": "CCI-3EA0C30FFA",
+          "quantity": 60,
+          "unit": "g",
+          "quantityRaw": 60,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 15,
+          "source": {
+            "sheet": "Antipastos",
+            "row": 15,
+            "cells": {
+              "ingredient": "U15",
+              "unit": "V15",
+              "quantity": "W15",
+              "directPrice": "X15",
+              "extendedCost": "Y15"
+            }
+          },
+          "sourceValues": {
+            "quantity": 60,
+            "directPrice": 0.40099285714285715,
+            "extendedCost": 24.05957142857143
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G44",
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Antipastos",
+        "nameCell": "U4",
+        "headerCell": "U8",
+        "yield": {
+          "quantity": 1,
+          "unit": "g",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "U19",
+            "valueCell": "V19",
+            "calculatedValue": 162.30351856513528,
+            "formula": "=SUM(Y9:Y17)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "U20",
+            "valueCell": "V20",
+            "calculatedValue": 587,
+            "formula": null
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Pitzas!ED3",
+      "sourceRow": 3,
+      "variantQualifier": "Alla Vodka",
+      "menuItem": {
+        "name": "Alla Vodka",
+        "category": "Pizzas",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "Masa precocida",
+          "sourceName": "Masa pizza",
+          "sku": "PRD-000002",
+          "productSku": "PRD-000002",
+          "quantity": 1,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "unitRaw": "und",
+          "unitNormalization": "alias",
+          "sourceRow": 8,
+          "source": {
+            "sheet": "Pitzas",
+            "row": 8,
+            "cells": {
+              "ingredient": "ED8",
+              "unit": "EE8",
+              "quantity": "EF8",
+              "directPrice": "EG8",
+              "extendedCost": "EH8"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1,
+            "directPrice": 5.320730837004406,
+            "extendedCost": 5.320730837004406
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "='Pitzas nuevas'!AF3",
+            "extendedCost": "=EF8*EG8"
+          },
+          "catalogMatch": {
+            "matchType": "reviewed_alias",
+            "catalogName": "Masa precocida",
+            "productSku": "MP-022",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 23
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "Salsa vodka",
+          "sourceName": "Salsa vodka",
+          "sku": "RCP-000009",
+          "productSku": "RCP-000009",
+          "quantity": 170,
+          "unit": "g",
+          "quantityRaw": 170,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 9,
+          "source": {
+            "sheet": "Pitzas",
+            "row": 9,
+            "cells": {
+              "ingredient": "ED9",
+              "unit": "EE9",
+              "quantity": "EF9",
+              "directPrice": "EG9",
+              "extendedCost": "EH9"
+            }
+          },
+          "sourceValues": {
+            "quantity": 170,
+            "directPrice": 0.13982546770239815,
+            "extendedCost": 23.770329509407684
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Salsas!AQ3",
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Queso mozzarella para receta",
+          "sourceName": "Queso mozarella",
+          "sku": "RCP-000004",
+          "productSku": "RCP-000004",
+          "quantity": 199,
+          "unit": "g",
+          "quantityRaw": 199,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Pitzas",
+            "row": 10,
+            "cells": {
+              "ingredient": "ED10",
+              "unit": "EE10",
+              "quantity": "EF10",
+              "directPrice": "EG10",
+              "extendedCost": "EH10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 199,
+            "directPrice": 0.26594383259911897,
+            "extendedCost": 52.922822687224674
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G28",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "reviewed_alias",
+            "catalogName": "Queso mozzarella",
+            "productSku": "MP-008",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 9
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "PROSCIUTTO",
+          "sourceName": "Prosciutto",
+          "sku": "CON-000069",
+          "productSku": "CON-000069",
+          "quantity": 2,
+          "unit": "unidad",
+          "quantityRaw": 2,
+          "unitRaw": "und",
+          "unitNormalization": "alias",
+          "sourceRow": 11,
+          "source": {
+            "sheet": "Pitzas",
+            "row": 11,
+            "cells": {
+              "ingredient": "ED11",
+              "unit": "EE11",
+              "quantity": "EF11",
+              "directPrice": "EG11",
+              "extendedCost": "EH11"
+            }
+          },
+          "sourceValues": {
+            "quantity": 2,
+            "directPrice": 23.285714285714285,
+            "extendedCost": 46.57142857142857
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G37",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Prosciutto",
+            "productSku": "MP-019",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 20
+            }
+          },
+          "issues": []
+        }
+      ],
+      "source": {
+        "sheet": "Pitzas",
+        "nameCell": "ED3",
+        "headerCell": "ED7",
+        "yield": {
+          "quantity": 1,
+          "unit": "g",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "ED18",
+            "valueCell": "EE18",
+            "calculatedValue": 128.58531160506533,
+            "formula": "=SUM(EH8:EH16)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "ED19",
+            "valueCell": "EE19",
+            "calculatedValue": 575,
+            "formula": null
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Pitzas!EM3",
+      "sourceRow": 3,
+      "variantQualifier": "kit",
+      "menuItem": {
+        "name": "Kit de pizza",
+        "category": "Kids Menú",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "Masa precocida",
+          "sourceName": "Masa pizza",
+          "sku": "PRD-000002",
+          "productSku": "PRD-000002",
+          "quantity": 1,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "unitRaw": "und",
+          "unitNormalization": "alias",
+          "sourceRow": 8,
+          "source": {
+            "sheet": "Pitzas",
+            "row": 8,
+            "cells": {
+              "ingredient": "EM8",
+              "unit": "EN8",
+              "quantity": "EO8",
+              "directPrice": "EP8",
+              "extendedCost": "EQ8"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1,
+            "directPrice": 5.320730837004406,
+            "extendedCost": 5.320730837004406
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "='Pitzas nuevas'!AF3",
+            "extendedCost": "=EO8*EP8"
+          },
+          "catalogMatch": {
+            "matchType": "reviewed_alias",
+            "catalogName": "Masa precocida",
+            "productSku": "MP-022",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 23
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "Salsa roja",
+          "sourceName": "Salsa",
+          "sku": "RCP-000001",
+          "productSku": "RCP-000001",
+          "quantity": 170,
+          "unit": "g",
+          "quantityRaw": 170,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 9,
+          "source": {
+            "sheet": "Pitzas",
+            "row": 9,
+            "cells": {
+              "ingredient": "EM9",
+              "unit": "EN9",
+              "quantity": "EO9",
+              "directPrice": "EP9",
+              "extendedCost": "EQ9"
+            }
+          },
+          "sourceValues": {
+            "quantity": 170,
+            "directPrice": 0.11336436464263813,
+            "extendedCost": 19.271941989248482
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Salsas!J3",
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Queso mozzarella para receta",
+          "sourceName": "Queso mozarella",
+          "sku": "RCP-000004",
+          "productSku": "RCP-000004",
+          "quantity": 199,
+          "unit": "g",
+          "quantityRaw": 199,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Pitzas",
+            "row": 10,
+            "cells": {
+              "ingredient": "EM10",
+              "unit": "EN10",
+              "quantity": "EO10",
+              "directPrice": "EP10",
+              "extendedCost": "EQ10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 199,
+            "directPrice": 0.26594383259911897,
+            "extendedCost": 52.922822687224674
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G28",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "reviewed_alias",
+            "catalogName": "Queso mozzarella",
+            "productSku": "MP-008",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 9
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "CAJAS PARA PIZZA",
+          "sourceName": "caja para pizza",
+          "sku": "EMP-000041",
+          "productSku": "EMP-000041",
+          "quantity": 1,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "unitRaw": "und",
+          "unitNormalization": "alias",
+          "sourceRow": 11,
+          "source": {
+            "sheet": "Pitzas",
+            "row": 11,
+            "cells": {
+              "ingredient": "EM11",
+              "unit": "EN11",
+              "quantity": "EO11",
+              "directPrice": "EP11",
+              "extendedCost": "EQ11"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1,
+            "directPrice": 16,
+            "extendedCost": 16
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Pitzas",
+        "nameCell": "EM3",
+        "headerCell": "EM7",
+        "yield": {
+          "quantity": 1,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES EN UND",
+          "normalization": "semantic_portion"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "EM18",
+            "valueCell": "EN18",
+            "calculatedValue": 93.51549551347756,
+            "formula": "=SUM(EQ8:EQ16)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "EM19",
+            "valueCell": "EN19",
+            "calculatedValue": 243.5,
+            "formula": null
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Pitzas nuevas!S5",
+      "sourceRow": 5,
+      "variantQualifier": "La reina",
+      "menuItem": {
+        "name": "La Reina",
+        "category": "Pizzas",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "Masa precocida",
+          "sourceName": "Masa de pitza",
+          "sku": "PRD-000002",
+          "productSku": "PRD-000002",
+          "quantity": 1,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "unitRaw": "UND",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Pitzas nuevas",
+            "row": 10,
+            "cells": {
+              "ingredient": "S10",
+              "unit": "T10",
+              "quantity": "U10",
+              "directPrice": "V10",
+              "extendedCost": "W10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1,
+            "directPrice": 5.320730837004406,
+            "extendedCost": 5.320730837004406
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=AF3",
+            "extendedCost": "=U10*V10"
+          },
+          "catalogMatch": {
+            "matchType": "reviewed_alias",
+            "catalogName": "Masa precocida",
+            "productSku": "MP-022",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 23
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "Salsa roja",
+          "sourceName": "Salsa",
+          "sku": "RCP-000001",
+          "productSku": "RCP-000001",
+          "quantity": 224,
+          "unit": "g",
+          "quantityRaw": 224,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 11,
+          "source": {
+            "sheet": "Pitzas nuevas",
+            "row": 11,
+            "cells": {
+              "ingredient": "S11",
+              "unit": "T11",
+              "quantity": "U11",
+              "directPrice": "V11",
+              "extendedCost": "W11"
+            }
+          },
+          "sourceValues": {
+            "quantity": 224,
+            "directPrice": 0.11336436464263813,
+            "extendedCost": 25.393617679950943
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Salsas!J3",
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "QUESO PARMESANO (base g)",
+          "sourceName": "parmesano",
+          "sku": "CCI-B227D34CC2",
+          "productSku": "CCI-B227D34CC2",
+          "quantity": 25,
+          "unit": "g",
+          "quantityRaw": 25,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 12,
+          "source": {
+            "sheet": "Pitzas nuevas",
+            "row": 12,
+            "cells": {
+              "ingredient": "S12",
+              "unit": "T12",
+              "quantity": "U12",
+              "directPrice": "V12",
+              "extendedCost": "W12"
+            }
+          },
+          "sourceValues": {
+            "quantity": 25,
+            "directPrice": 0.5958303808680248,
+            "extendedCost": 14.895759521700619
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G30",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "reviewed_alias",
+            "catalogName": "Queso parmesano",
+            "productSku": "MP-023",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 24
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "Albahaca",
+          "sourceName": "albahaca",
+          "sku": "VGR-000001",
+          "productSku": "VGR-000001",
+          "quantity": 10,
+          "unit": "g",
+          "quantityRaw": 10,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 13,
+          "source": {
+            "sheet": "Pitzas nuevas",
+            "row": 13,
+            "cells": {
+              "ingredient": "S13",
+              "unit": "T13",
+              "quantity": "U13",
+              "directPrice": "V13",
+              "extendedCost": "W13"
+            }
+          },
+          "sourceValues": {
+            "quantity": 10,
+            "directPrice": 0.3524229074889868,
+            "extendedCost": 3.524229074889868
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G8",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Albahaca",
+            "productSku": "MP-003",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 4
+            }
+          },
+          "issues": []
+        }
+      ],
+      "source": {
+        "sheet": "Pitzas nuevas",
+        "nameCell": "S5",
+        "headerCell": "S9",
+        "yield": {
+          "quantity": 1,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES",
+          "normalization": "semantic_portion"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "S20",
+            "valueCell": "T20",
+            "calculatedValue": 49.13433711354583,
+            "formula": "=SUM(W10:W18)"
+          },
+          {
+            "labelRaw": "PRECIO POR SERVICIO",
+            "labelCell": "S21",
+            "valueCell": "T21",
+            "calculatedValue": 560,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "S22",
+            "valueCell": "T22",
+            "calculatedValue": 0.08773988770276042,
+            "formula": "=T20/T21"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Pitzas nuevas!K29",
+      "sourceRow": 29,
+      "variantQualifier": "masa directa de focaccia",
+      "menuItem": {
+        "name": "Focaccia",
+        "category": "Focaccias",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "Harina Napoli",
+          "sourceName": "Harina",
+          "sku": "ING-000002",
+          "productSku": "ING-000002",
+          "quantity": 800,
+          "unit": "g",
+          "quantityRaw": 800,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 34,
+          "source": {
+            "sheet": "Pitzas nuevas",
+            "row": 34,
+            "cells": {
+              "ingredient": "K34",
+              "unit": "L34",
+              "quantity": "M34",
+              "directPrice": "N34",
+              "extendedCost": "O34"
+            }
+          },
+          "sourceValues": {
+            "quantity": 800,
+            "directPrice": 0.028788546255506607,
+            "extendedCost": 23.030837004405285
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G45",
+            "extendedCost": "=M34*N34"
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Harina",
+            "productSku": "MP-001",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 2
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "ACEITE DE OLIVA",
+          "sourceName": "Aceite de oliva",
+          "sku": "MIS-000041",
+          "productSku": "MIS-000041",
+          "quantity": 80,
+          "unit": "ml",
+          "quantityRaw": 80,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 35,
+          "source": {
+            "sheet": "Pitzas nuevas",
+            "row": 35,
+            "cells": {
+              "ingredient": "K35",
+              "unit": "L35",
+              "quantity": "M35",
+              "directPrice": "N35",
+              "extendedCost": "O35"
+            }
+          },
+          "sourceValues": {
+            "quantity": 80,
+            "directPrice": 0.26226750353606787,
+            "extendedCost": 20.98140028288543
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G12",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Aceite de oliva",
+            "productSku": "MP-002",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 3
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "Miel envase de mesa",
+          "sourceName": "Miel",
+          "sku": "RCP-000008",
+          "productSku": "RCP-000008",
+          "quantity": 20,
+          "unit": "g",
+          "quantityRaw": 20,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 36,
+          "source": {
+            "sheet": "Pitzas nuevas",
+            "row": 36,
+            "cells": {
+              "ingredient": "K36",
+              "unit": "L36",
+              "quantity": "M36",
+              "directPrice": "N36",
+              "extendedCost": "O36"
+            }
+          },
+          "sourceValues": {
+            "quantity": 20,
+            "directPrice": 0.12962962962962962,
+            "extendedCost": 2.5925925925925926
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G16",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Miel",
+            "productSku": "MP-016",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 17
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "Sal (base g)",
+          "sourceName": "Sal",
+          "sku": "CCI-FFE2D77F8F",
+          "productSku": "CCI-FFE2D77F8F",
+          "quantity": 20,
+          "unit": "g",
+          "quantityRaw": 20,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 37,
+          "source": {
+            "sheet": "Pitzas nuevas",
+            "row": 37,
+            "cells": {
+              "ingredient": "K37",
+              "unit": "L37",
+              "quantity": "M37",
+              "directPrice": "N37",
+              "extendedCost": "O37"
+            }
+          },
+          "sourceValues": {
+            "quantity": 20,
+            "directPrice": 0.048,
+            "extendedCost": 0.96
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G27",
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "LEVADURA",
+          "sourceName": "Levadura",
+          "sku": "CCI-DAB047458A",
+          "productSku": "CCI-DAB047458A",
+          "quantity": 16,
+          "unit": "g",
+          "quantityRaw": 16,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 38,
+          "source": {
+            "sheet": "Pitzas nuevas",
+            "row": 38,
+            "cells": {
+              "ingredient": "K38",
+              "unit": "L38",
+              "quantity": "M38",
+              "directPrice": "N38",
+              "extendedCost": "O38"
+            }
+          },
+          "sourceValues": {
+            "quantity": 16,
+            "directPrice": 0.198,
+            "extendedCost": 3.168
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G80",
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Pitzas nuevas",
+        "nameCell": "K29",
+        "headerCell": "K33",
+        "yield": {
+          "quantity": 1,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES",
+          "normalization": "semantic_portion"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "K44",
+            "valueCell": "L44",
+            "calculatedValue": 50.73282987988331,
+            "formula": "=SUM(O34:O42)"
+          },
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "K45",
+            "valueCell": "L45",
+            "calculatedValue": 50.73282987988331,
+            "formula": "=L44/O29"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Postres!L5",
+      "sourceRow": 5,
+      "variantQualifier": "Brownie con helado",
+      "menuItem": {
+        "name": "Brownie con helado",
+        "category": "Postres",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "Brownie",
+          "sourceName": "Brownie",
+          "sku": "RCP-000012",
+          "productSku": "RCP-000012",
+          "quantity": 1,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "unitRaw": "UND",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Postres",
+            "row": 10,
+            "cells": {
+              "ingredient": "L10",
+              "unit": "M10",
+              "quantity": "N10",
+              "directPrice": "O10",
+              "extendedCost": "P10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1,
+            "directPrice": 40.4525,
+            "extendedCost": 40.4525
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Z3",
+            "extendedCost": "=N10*O10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Helado de vainilla (base ml)",
+          "sourceName": "Helado",
+          "sku": "CCI-94F1042B24",
+          "productSku": "CCI-94F1042B24",
+          "quantity": 120,
+          "unit": "ml",
+          "quantityRaw": 120,
+          "unitRaw": "GR",
+          "unitNormalization": "alias",
+          "sourceRow": 11,
+          "source": {
+            "sheet": "Postres",
+            "row": 11,
+            "cells": {
+              "ingredient": "L11",
+              "unit": "M11",
+              "quantity": "N11",
+              "directPrice": "O11",
+              "extendedCost": "P11"
+            }
+          },
+          "sourceValues": {
+            "quantity": 120,
+            "directPrice": 0.10747767857142856,
+            "extendedCost": 12.897321428571427
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G31",
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Postres",
+        "nameCell": "L5",
+        "headerCell": "L9",
+        "yield": {
+          "quantity": 1,
+          "unit": "g",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "L22",
+            "valueCell": "M22",
+            "calculatedValue": 53.34982142857143,
+            "formula": "=SUM(P10:P20)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "L23",
+            "valueCell": "M23",
+            "calculatedValue": 185,
+            "formula": null
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Postres!AD5",
+      "sourceRow": 5,
+      "variantQualifier": "fuente dice Masa para pizza; componentes son torta de banano + helado",
+      "menuItem": {
+        "name": "Pan de Banano Ala Mode",
+        "category": "Postres",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "Bizcocho de banano",
+          "sourceName": "Torta de banano",
+          "sku": "CCI-C5285D9C30",
+          "productSku": "CCI-C5285D9C30",
+          "quantity": 1,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "unitRaw": "UND",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Postres",
+            "row": 10,
+            "cells": {
+              "ingredient": "AD10",
+              "unit": "AE10",
+              "quantity": "AF10",
+              "directPrice": "AG10",
+              "extendedCost": "AH10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1,
+            "directPrice": 40.4525,
+            "extendedCost": 40.4525
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Z3",
+            "extendedCost": "=AF10*AG10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Helado de vainilla (base ml)",
+          "sourceName": "Helado de vainilla",
+          "sku": "CCI-94F1042B24",
+          "productSku": "CCI-94F1042B24",
+          "quantity": 120,
+          "unit": "ml",
+          "quantityRaw": 120,
+          "unitRaw": "GR",
+          "unitNormalization": "alias",
+          "sourceRow": 11,
+          "source": {
+            "sheet": "Postres",
+            "row": 11,
+            "cells": {
+              "ingredient": "AD11",
+              "unit": "AE11",
+              "quantity": "AF11",
+              "directPrice": "AG11",
+              "extendedCost": "AH11"
+            }
+          },
+          "sourceValues": {
+            "quantity": 120,
+            "directPrice": 0.10747767857142856,
+            "extendedCost": 12.897321428571427
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G31",
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Postres",
+        "nameCell": "AD5",
+        "headerCell": "AD9",
+        "yield": {
+          "quantity": 1,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES",
+          "normalization": "semantic_portion"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "AF3",
+            "valueCell": "AH3",
+            "calculatedValue": 53.34982142857143,
+            "formula": "=AE19/AH5"
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "AD19",
+            "valueCell": "AE19",
+            "calculatedValue": 53.34982142857143,
+            "formula": "=SUM(AH10:AH17)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "AD20",
+            "valueCell": "AE20",
+            "calculatedValue": 145,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "AL20",
+            "valueCell": null,
+            "calculatedValue": null,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "AD21",
+            "valueCell": "AE21",
+            "calculatedValue": 0.367929802955665,
+            "formula": "=AE19/AE20"
+          },
+          {
+            "labelRaw": "PRECIO POR SERVICIO",
+            "labelCell": "AL21",
+            "valueCell": null,
+            "calculatedValue": null,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "AL22",
+            "valueCell": null,
+            "calculatedValue": null,
+            "formula": null
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Postres!U27",
+      "sourceRow": 27,
+      "variantQualifier": "1 cheesecake → 9 porciones",
+      "menuItem": {
+        "name": "Cheesecake de fresas",
+        "category": "Postres",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "Cheesecake entero",
+          "sourceName": "Cheesecake",
+          "sku": "CCI-RVW-CHEESECAKE",
+          "productSku": "CCI-RVW-CHEESECAKE",
+          "quantity": 0.111,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "unitRaw": "UND",
+          "unitNormalization": "alias",
+          "sourceRow": 32,
+          "source": {
+            "sheet": "Postres",
+            "row": 32,
+            "cells": {
+              "ingredient": "U32",
+              "unit": "V32",
+              "quantity": "W32",
+              "directPrice": "X32",
+              "extendedCost": "Y32"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1,
+            "directPrice": 1000,
+            "extendedCost": 1000
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": "=W32*X32"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Postres",
+        "nameCell": "U27",
+        "headerCell": "U31",
+        "yield": {
+          "quantity": 9,
+          "unit": "unidad",
+          "quantityRaw": 9,
+          "labelRaw": "PORCIONES",
+          "normalization": "semantic_portion"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "X25",
+            "valueCell": "Z25",
+            "calculatedValue": 111.11111111111111,
+            "formula": "=X32/Y27"
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "U41",
+            "valueCell": "V41",
+            "calculatedValue": 111.11111111111111,
+            "formula": "=Z25"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "U42",
+            "valueCell": "V42",
+            "calculatedValue": 250,
+            "formula": null
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Bebidas!D5",
+      "sourceRow": 5,
+      "variantQualifier": "1 botella → 5 copas",
+      "menuItem": {
+        "name": "La Vielle Ferme — Copa",
+        "category": "Bebidas y Vinos",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "La Vielle Ferme botella",
+          "sourceName": "La vielle ferme bot",
+          "sku": "BEB-RVW-VIELLE-FERME",
+          "productSku": "BEB-RVW-VIELLE-FERME",
+          "quantity": 0.2,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "unitRaw": "und",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Bebidas",
+            "row": 10,
+            "cells": {
+              "ingredient": "D10",
+              "unit": "E10",
+              "quantity": "F10",
+              "directPrice": "G10",
+              "extendedCost": "H10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1,
+            "directPrice": 593,
+            "extendedCost": 593
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": "=F10*G10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Bebidas",
+        "nameCell": "D5",
+        "headerCell": "D9",
+        "yield": {
+          "quantity": 5,
+          "unit": "g",
+          "quantityRaw": 5,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "H3",
+            "valueCell": "K3",
+            "calculatedValue": 118.6,
+            "formula": "=E36"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "J31",
+            "valueCell": "K31",
+            "calculatedValue": 296,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "D34",
+            "valueCell": "E34",
+            "calculatedValue": 593,
+            "formula": "=SUM(H10:H32)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "D36",
+            "valueCell": "E36",
+            "calculatedValue": 118.6,
+            "formula": "=E34/H5"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Bebidas!P5",
+      "sourceRow": 5,
+      "variantQualifier": "1 botella → 5 porciones",
+      "menuItem": {
+        "name": "Don Luciano — Copa",
+        "category": "Bebidas y Vinos",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "Don Luciano botella",
+          "sourceName": "Don Luciano",
+          "sku": "BEB-RVW-DON-LUCIANO",
+          "productSku": "BEB-RVW-DON-LUCIANO",
+          "quantity": 0.2,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "unitRaw": "und",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Bebidas",
+            "row": 10,
+            "cells": {
+              "ingredient": "P10",
+              "unit": "Q10",
+              "quantity": "R10",
+              "directPrice": "S10",
+              "extendedCost": "T10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1,
+            "directPrice": 335,
+            "extendedCost": 335
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": "=R10*S10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Bebidas",
+        "nameCell": "P5",
+        "headerCell": "P9",
+        "yield": {
+          "quantity": 5,
+          "unit": "unidad",
+          "quantityRaw": 5,
+          "labelRaw": "PORCIONES EN UND",
+          "normalization": "semantic_portion"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "T3",
+            "valueCell": "W3",
+            "calculatedValue": 67,
+            "formula": "=Q36"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "V31",
+            "valueCell": "W31",
+            "calculatedValue": 220,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "P34",
+            "valueCell": "Q34",
+            "calculatedValue": 335,
+            "formula": "=SUM(T10:T32)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "P36",
+            "valueCell": "Q36",
+            "calculatedValue": 67,
+            "formula": "=Q34/T5"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Bebidas!AB5",
+      "sourceRow": 5,
+      "variantQualifier": "1 botella → 8 porciones",
+      "menuItem": {
+        "name": "Pinot Grigio Pasqua — Copa",
+        "category": "Bebidas y Vinos",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "Pinot Grigio Pasqua botella",
+          "sourceName": "PINOT GRIGIO",
+          "sku": "BEB-RVW-PINOT-PASQUA",
+          "productSku": "BEB-RVW-PINOT-PASQUA",
+          "quantity": 0.125,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "unitRaw": "UND",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Bebidas",
+            "row": 10,
+            "cells": {
+              "ingredient": "AB10",
+              "unit": "AC10",
+              "quantity": "AD10",
+              "directPrice": "AE10",
+              "extendedCost": "AF10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1,
+            "directPrice": 915,
+            "extendedCost": 915
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": "=AD10*AE10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Bebidas",
+        "nameCell": "AB5",
+        "headerCell": "AB9",
+        "yield": {
+          "quantity": 8,
+          "unit": "g",
+          "quantityRaw": 8,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "AF3",
+            "valueCell": "AI3",
+            "calculatedValue": 114.375,
+            "formula": "=AC36"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "AH31",
+            "valueCell": "AI31",
+            "calculatedValue": 300,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "AB34",
+            "valueCell": "AC34",
+            "calculatedValue": 915,
+            "formula": "=SUM(AF10:AF32)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "AB36",
+            "valueCell": "AC36",
+            "calculatedValue": 114.375,
+            "formula": "=AC34/AF5"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Bebidas!AN5",
+      "sourceRow": 5,
+      "variantQualifier": "botella 750 ml 1:1",
+      "menuItem": {
+        "name": "Rosé — Botella",
+        "category": "Bebidas y Vinos",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "Rosé botella 750 ml",
+          "sourceName": "BOT 750ML",
+          "sku": "BEB-RVW-ROSE-750",
+          "productSku": "BEB-RVW-ROSE-750",
+          "quantity": 1,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "unitRaw": "UND",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Bebidas",
+            "row": 10,
+            "cells": {
+              "ingredient": "AN10",
+              "unit": "AO10",
+              "quantity": "AP10",
+              "directPrice": "AQ10",
+              "extendedCost": "AR10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1,
+            "directPrice": 593.18,
+            "extendedCost": 593.18
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": "=AP10*AQ10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Bebidas",
+        "nameCell": "AN5",
+        "headerCell": "AN9",
+        "yield": {
+          "quantity": 1,
+          "unit": "g",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "AR3",
+            "valueCell": "AU3",
+            "calculatedValue": 593.18,
+            "formula": "=AO36"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "AT31",
+            "valueCell": "AU31",
+            "calculatedValue": 1375,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "AN34",
+            "valueCell": "AO34",
+            "calculatedValue": 593.18,
+            "formula": "=SUM(AR10:AR32)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "AN36",
+            "valueCell": "AO36",
+            "calculatedValue": 593.18,
+            "formula": "=AO34/AR5"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Bebidas!AZ5",
+      "sourceRow": 5,
+      "variantQualifier": "precio actual C$350",
+      "menuItem": {
+        "name": "19 Crimes — Copa",
+        "category": "Bebidas y Vinos",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "19 CRIMES CABERNET SAUVIGNON",
+          "sourceName": "BOT 750ML",
+          "sku": "CCI-DE0BA9340D",
+          "productSku": "CCI-DE0BA9340D",
+          "quantity": 0.2,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "unitRaw": "UND",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Bebidas",
+            "row": 10,
+            "cells": {
+              "ingredient": "AZ10",
+              "unit": "BA10",
+              "quantity": "BB10",
+              "directPrice": "BC10",
+              "extendedCost": "BD10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1,
+            "directPrice": 840,
+            "extendedCost": 840
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": "=BB10*BC10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Bebidas",
+        "nameCell": "AZ5",
+        "headerCell": "AZ9",
+        "yield": {
+          "quantity": 5,
+          "unit": "g",
+          "quantityRaw": 5,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "BD3",
+            "valueCell": "BG3",
+            "calculatedValue": 168,
+            "formula": "=BA36"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "BF31",
+            "valueCell": "BG31",
+            "calculatedValue": 350,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "AZ34",
+            "valueCell": "BA34",
+            "calculatedValue": 840,
+            "formula": "=SUM(BD10:BD32)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "AZ36",
+            "valueCell": "BA36",
+            "calculatedValue": 168,
+            "formula": "=BA34/BD5"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Bebidas!BX5",
+      "sourceRow": 5,
+      "variantQualifier": "1 botella → 5 copas",
+      "menuItem": {
+        "name": "Rosé — Copa",
+        "category": "Bebidas y Vinos",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "Rosé botella 750 ml",
+          "sourceName": "BOT 750ML",
+          "sku": "BEB-RVW-ROSE-750",
+          "productSku": "BEB-RVW-ROSE-750",
+          "quantity": 0.2,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "unitRaw": "UND",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Bebidas",
+            "row": 10,
+            "cells": {
+              "ingredient": "BX10",
+              "unit": "BY10",
+              "quantity": "BZ10",
+              "directPrice": "CA10",
+              "extendedCost": "CB10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1,
+            "directPrice": 593.18,
+            "extendedCost": 593.18
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": "=BZ10*CA10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Bebidas",
+        "nameCell": "BX5",
+        "headerCell": "BX9",
+        "yield": {
+          "quantity": 5,
+          "unit": "g",
+          "quantityRaw": 5,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "CB3",
+            "valueCell": "CE3",
+            "calculatedValue": 118.636,
+            "formula": "=BY36"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "CD31",
+            "valueCell": "CE31",
+            "calculatedValue": 250,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "BX34",
+            "valueCell": "BY34",
+            "calculatedValue": 593.18,
+            "formula": "=SUM(CB10:CB32)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "BX36",
+            "valueCell": "BY36",
+            "calculatedValue": 118.636,
+            "formula": "=BY34/CB5"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Bebidas!CJ5",
+      "sourceRow": 5,
+      "variantQualifier": "1 botella → 5 copas",
+      "menuItem": {
+        "name": "Verdejo Quintaluna — Copa",
+        "category": "Bebidas y Vinos",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "Verdejo Quintaluna botella 750 ml",
+          "sourceName": "BOT 750ML",
+          "sku": "BEB-RVW-VERDEJO-750",
+          "productSku": "BEB-RVW-VERDEJO-750",
+          "quantity": 0.2,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "unitRaw": "UND",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Bebidas",
+            "row": 10,
+            "cells": {
+              "ingredient": "CJ10",
+              "unit": "CK10",
+              "quantity": "CL10",
+              "directPrice": "CM10",
+              "extendedCost": "CN10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1,
+            "directPrice": 806,
+            "extendedCost": 806
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": "=CL10*CM10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Bebidas",
+        "nameCell": "CJ5",
+        "headerCell": "CJ9",
+        "yield": {
+          "quantity": 5,
+          "unit": "g",
+          "quantityRaw": 5,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "CN3",
+            "valueCell": "CQ3",
+            "calculatedValue": 161.2,
+            "formula": "=CK36"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "CP31",
+            "valueCell": "CQ31",
+            "calculatedValue": 350,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "CJ34",
+            "valueCell": "CK34",
+            "calculatedValue": 806,
+            "formula": "=SUM(CN10:CN32)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "CJ36",
+            "valueCell": "CK36",
+            "calculatedValue": 161.2,
+            "formula": "=CK34/CN5"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Bebidas!CV5",
+      "sourceRow": 5,
+      "variantQualifier": "botella 750 ml 1:1",
+      "menuItem": {
+        "name": "Verdejo Quintaluna — Botella",
+        "category": "Bebidas y Vinos",
+        "brand": "Mia Pitza"
+      },
+      "ingredients": [
+        {
+          "name": "Verdejo Quintaluna botella 750 ml",
+          "sourceName": "BOT 750ML",
+          "sku": "BEB-RVW-VERDEJO-750",
+          "productSku": "BEB-RVW-VERDEJO-750",
+          "quantity": 1,
+          "unit": "unidad",
+          "quantityRaw": 1,
+          "unitRaw": "UND",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Bebidas",
+            "row": 10,
+            "cells": {
+              "ingredient": "CV10",
+              "unit": "CW10",
+              "quantity": "CX10",
+              "directPrice": "CY10",
+              "extendedCost": "CZ10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1,
+            "directPrice": 623.69,
+            "extendedCost": 623.69
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": "=CX10*CY10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Bebidas",
+        "nameCell": "CV5",
+        "headerCell": "CV9",
+        "yield": {
+          "quantity": 1,
+          "unit": "g",
+          "quantityRaw": 1,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "CZ3",
+            "valueCell": "DC3",
+            "calculatedValue": 623.69,
+            "formula": "=CW36"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "DB31",
+            "valueCell": "DC31",
+            "calculatedValue": 1549,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "CV34",
+            "valueCell": "CW34",
+            "calculatedValue": 623.69,
+            "formula": "=SUM(CZ10:CZ32)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "CV36",
+            "valueCell": "CW36",
+            "calculatedValue": 623.69,
+            "formula": "=CW34/CZ5"
+          }
+        ]
+      }
+    }
+  ],
+  "productionRecipes": [
+    {
+      "sourceKey": "Pastas!CG5",
+      "sourceRow": 5,
+      "name": "Receta de Pan de acompañamiento",
+      "status": "DRAFT",
+      "output": {
+        "name": "Pan de acompañamiento",
+        "sourceName": "PAN",
+        "sku": "RCP-000013",
+        "productSku": "RCP-000013"
+      },
+      "yield": {
+        "quantity": 2,
+        "unit": "unidad"
+      },
+      "components": [
+        {
+          "name": "Harina Napoli",
+          "sourceName": "Harina",
+          "sku": "ING-000002",
+          "productSku": "ING-000002",
+          "quantity": 1199,
+          "unit": "g",
+          "quantityRaw": 1199,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Pastas",
+            "row": 10,
+            "cells": {
+              "ingredient": "CG10",
+              "unit": "CH10",
+              "quantity": "CI10",
+              "directPrice": "CJ10",
+              "extendedCost": "CK10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1199,
+            "directPrice": 0.028788546255506607,
+            "extendedCost": 34.51746696035242
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G45",
+            "extendedCost": "=CI10*CJ10"
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Harina",
+            "productSku": "MP-001",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 2
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "LEVADURA",
+          "sourceName": "levadura",
+          "sku": "CCI-DAB047458A",
+          "productSku": "CCI-DAB047458A",
+          "quantity": 40,
+          "unit": "g",
+          "quantityRaw": 40,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 11,
+          "source": {
+            "sheet": "Pastas",
+            "row": 11,
+            "cells": {
+              "ingredient": "CG11",
+              "unit": "CH11",
+              "quantity": "CI11",
+              "directPrice": "CJ11",
+              "extendedCost": "CK11"
+            }
+          },
+          "sourceValues": {
+            "quantity": 40,
+            "directPrice": 0.198,
+            "extendedCost": 7.92
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G80",
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "QUESO PARMESANO (base g)",
+          "sourceName": "parmesano",
+          "sku": "CCI-B227D34CC2",
+          "productSku": "CCI-B227D34CC2",
+          "quantity": 60,
+          "unit": "g",
+          "quantityRaw": 60,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 12,
+          "source": {
+            "sheet": "Pastas",
+            "row": 12,
+            "cells": {
+              "ingredient": "CG12",
+              "unit": "CH12",
+              "quantity": "CI12",
+              "directPrice": "CJ12",
+              "extendedCost": "CK12"
+            }
+          },
+          "sourceValues": {
+            "quantity": 60,
+            "directPrice": 0.5958303808680248,
+            "extendedCost": 35.749822852081486
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": "=Compras!G30",
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "reviewed_alias",
+            "catalogName": "Queso parmesano",
+            "productSku": "MP-023",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 24
+            }
+          },
+          "issues": []
+        },
+        {
+          "name": "ACEITUNAS NEGRAS",
+          "sourceName": "aceitunas",
+          "sku": "CCI-66473E67BB",
+          "productSku": "CCI-66473E67BB",
+          "quantity": 100,
+          "unit": "g",
+          "quantityRaw": 100,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 13,
+          "source": {
+            "sheet": "Pastas",
+            "row": 13,
+            "cells": {
+              "ingredient": "CG13",
+              "unit": "CH13",
+              "quantity": "CI13",
+              "directPrice": "CJ13",
+              "extendedCost": "CK13"
+            }
+          },
+          "sourceValues": {
+            "quantity": 100,
+            "directPrice": 0.04,
+            "extendedCost": 4
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "AJO",
+          "sourceName": "ajo",
+          "sku": "VEG-000001",
+          "productSku": "VEG-000001",
+          "quantity": 20,
+          "unit": "g",
+          "quantityRaw": 20,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 14,
+          "source": {
+            "sheet": "Pastas",
+            "row": 14,
+            "cells": {
+              "ingredient": "CG14",
+              "unit": "CH14",
+              "quantity": "CI14",
+              "directPrice": "CJ14",
+              "extendedCost": "CK14"
+            }
+          },
+          "sourceValues": {
+            "quantity": 20,
+            "directPrice": 0.15,
+            "extendedCost": 3
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "ACEITE DE OLIVA",
+          "sourceName": "aceite",
+          "sku": "MIS-000041",
+          "productSku": "MIS-000041",
+          "quantity": 15,
+          "unit": "ml",
+          "quantityRaw": 15,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 15,
+          "source": {
+            "sheet": "Pastas",
+            "row": 15,
+            "cells": {
+              "ingredient": "CG15",
+              "unit": "CH15",
+              "quantity": "CI15",
+              "directPrice": "CJ15",
+              "extendedCost": "CK15"
+            }
+          },
+          "sourceValues": {
+            "quantity": 15,
+            "directPrice": 0.36,
+            "extendedCost": 5.3999999999999995
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Oregano (base g)",
+          "sourceName": "oregano",
+          "sku": "CCI-8440C685DE",
+          "productSku": "CCI-8440C685DE",
+          "quantity": 10,
+          "unit": "g",
+          "quantityRaw": 10,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 16,
+          "source": {
+            "sheet": "Pastas",
+            "row": 16,
+            "cells": {
+              "ingredient": "CG16",
+              "unit": "CH16",
+              "quantity": "CI16",
+              "directPrice": "CJ16",
+              "extendedCost": "CK16"
+            }
+          },
+          "sourceValues": {
+            "quantity": 10,
+            "directPrice": null,
+            "extendedCost": 0
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Miel envase de mesa",
+          "sourceName": "miel",
+          "sku": "RCP-000008",
+          "productSku": "RCP-000008",
+          "quantity": 90,
+          "unit": "g",
+          "quantityRaw": 90,
+          "unitRaw": "gr",
+          "unitNormalization": "alias",
+          "sourceRow": 17,
+          "source": {
+            "sheet": "Pastas",
+            "row": 17,
+            "cells": {
+              "ingredient": "CG17",
+              "unit": "CH17",
+              "quantity": "CI17",
+              "directPrice": "CJ17",
+              "extendedCost": "CK17"
+            }
+          },
+          "sourceValues": {
+            "quantity": 90,
+            "directPrice": 0.32,
+            "extendedCost": 28.8
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": null
+          },
+          "catalogMatch": {
+            "matchType": "exact_normalized",
+            "catalogName": "Miel",
+            "productSku": "MP-016",
+            "source": {
+              "file": "Plantilla_Inventario_Recetas_MiaPitza.xlsx",
+              "sheet": "Inventario_Base",
+              "row": 17
+            }
+          },
+          "issues": []
+        }
+      ],
+      "source": {
+        "sheet": "Pastas",
+        "nameCell": "CG5",
+        "headerCell": "CG9",
+        "yield": {
+          "quantity": 2,
+          "unit": "unidad",
+          "quantityRaw": 2,
+          "labelRaw": "PORCIONES EN BARRA",
+          "normalization": "semantic_portion"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "CK3",
+            "valueCell": "CN3",
+            "calculatedValue": 59.69364490621695,
+            "formula": "=CH36"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "CM31",
+            "valueCell": "CN31",
+            "calculatedValue": 390,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "CG34",
+            "valueCell": "CH34",
+            "calculatedValue": 119.3872898124339,
+            "formula": "=SUM(CK10:CK32)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "CG36",
+            "valueCell": "CH36",
+            "calculatedValue": 59.69364490621695,
+            "formula": "=CH34/CK5"
+          },
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "CK40",
+            "valueCell": "CN40",
+            "calculatedValue": 143.705,
+            "formula": "=CH73"
+          }
+        ]
+      }
+    },
+    {
+      "sourceKey": "Bebidas!DH5",
+      "sourceRow": 5,
+      "name": "Receta de Té preparado",
+      "status": "DRAFT",
+      "output": {
+        "name": "Té preparado",
+        "sourceName": "TE",
+        "sku": "RCP-000016",
+        "productSku": "RCP-000016"
+      },
+      "yield": {
+        "quantity": 20,
+        "unit": "unidad"
+      },
+      "components": [
+        {
+          "name": "Agua de proceso",
+          "sourceName": "AGUA",
+          "sku": "CCI-AGUA-PROCESO",
+          "productSku": "CCI-AGUA-PROCESO",
+          "quantity": 1,
+          "unit": "gal",
+          "quantityRaw": 1,
+          "unitRaw": "GALON",
+          "unitNormalization": "alias",
+          "sourceRow": 10,
+          "source": {
+            "sheet": "Bebidas",
+            "row": 10,
+            "cells": {
+              "ingredient": "DH10",
+              "unit": "DI10",
+              "quantity": "DJ10",
+              "directPrice": "DK10",
+              "extendedCost": "DL10"
+            }
+          },
+          "sourceValues": {
+            "quantity": 1,
+            "directPrice": 0,
+            "extendedCost": 0
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": "=DJ10*DK10"
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "Bolsa de té",
+          "sourceName": "BOLSAS DE TE",
+          "sku": "CCI-RVW-BOLSA-TE",
+          "productSku": "CCI-RVW-BOLSA-TE",
+          "quantity": 15,
+          "unit": "unidad",
+          "quantityRaw": 15,
+          "unitRaw": "UND",
+          "unitNormalization": "alias",
+          "sourceRow": 11,
+          "source": {
+            "sheet": "Bebidas",
+            "row": 11,
+            "cells": {
+              "ingredient": "DH11",
+              "unit": "DI11",
+              "quantity": "DJ11",
+              "directPrice": "DK11",
+              "extendedCost": "DL11"
+            }
+          },
+          "sourceValues": {
+            "quantity": 15,
+            "directPrice": 2.26,
+            "extendedCost": 33.9
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "AZUCAR",
+          "sourceName": "AZUCAR",
+          "sku": "MIS-000047",
+          "productSku": "MIS-000047",
+          "quantity": 639,
+          "unit": "g",
+          "quantityRaw": 639,
+          "unitRaw": "GR",
+          "unitNormalization": "alias",
+          "sourceRow": 12,
+          "source": {
+            "sheet": "Bebidas",
+            "row": 12,
+            "cells": {
+              "ingredient": "DH12",
+              "unit": "DI12",
+              "quantity": "DJ12",
+              "directPrice": "DK12",
+              "extendedCost": "DL12"
+            }
+          },
+          "sourceValues": {
+            "quantity": 639,
+            "directPrice": 0.07,
+            "extendedCost": 44.730000000000004
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        },
+        {
+          "name": "LIMON (base unidad)",
+          "sourceName": "JUGO DE LIMON",
+          "sku": "CCI-3E32349CA2",
+          "productSku": "CCI-3E32349CA2",
+          "quantity": 20,
+          "unit": "unidad",
+          "quantityRaw": 20,
+          "unitRaw": "UND",
+          "unitNormalization": "alias",
+          "sourceRow": 13,
+          "source": {
+            "sheet": "Bebidas",
+            "row": 13,
+            "cells": {
+              "ingredient": "DH13",
+              "unit": "DI13",
+              "quantity": "DJ13",
+              "directPrice": "DK13",
+              "extendedCost": "DL13"
+            }
+          },
+          "sourceValues": {
+            "quantity": 20,
+            "directPrice": 6,
+            "extendedCost": 120
+          },
+          "sourceFormulas": {
+            "quantity": null,
+            "directPrice": null,
+            "extendedCost": null
+          },
+          "catalogMatch": null,
+          "issues": [
+            "CATALOG_PRODUCT_UNRESOLVED"
+          ]
+        }
+      ],
+      "source": {
+        "sheet": "Bebidas",
+        "nameCell": "DH5",
+        "headerCell": "DH9",
+        "yield": {
+          "quantity": 20,
+          "unit": "g",
+          "quantityRaw": 20,
+          "labelRaw": "PORCIONES EN GR",
+          "normalization": "label_alias"
+        },
+        "financialEvidence": [
+          {
+            "labelRaw": "COSTO POR PORCION",
+            "labelCell": "DL3",
+            "valueCell": "DO3",
+            "calculatedValue": 9.9315,
+            "formula": "=DI36"
+          },
+          {
+            "labelRaw": "PRECIO ACTUAL EN MENU",
+            "labelCell": "DN31",
+            "valueCell": "DO31",
+            "calculatedValue": 48,
+            "formula": null
+          },
+          {
+            "labelRaw": "COSTO DE INGREDIENTES:",
+            "labelCell": "DH34",
+            "valueCell": "DI34",
+            "calculatedValue": 198.63,
+            "formula": "=SUM(DL10:DL32)"
+          },
+          {
+            "labelRaw": "COSTO POR SERVICIO:",
+            "labelCell": "DH36",
+            "valueCell": "DI36",
+            "calculatedValue": 9.9315,
+            "formula": "=DI34/DL5"
+          }
+        ]
+      }
+    }
+  ],
+  "reviewRequired": []
+}

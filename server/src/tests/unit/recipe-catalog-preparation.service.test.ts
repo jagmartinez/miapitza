@@ -214,6 +214,9 @@ describe('RecipeCatalogPreparationService', () => {
         expect(state[0]).toEqual(expect.objectContaining({ active: true, type: 'INTERMEDIATE' }));
         expect(state[1]).toEqual(expect.objectContaining({ sku: 'RCP-000001', active: true }));
         expect(db.product.create).toHaveBeenCalledTimes(1);
+        expect(db.product.create).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ cost: 0.11, currentAverageCost: 0 })
+        }));
         expect(db.auditLog.create).toHaveBeenCalledTimes(2);
         expect(transaction).toHaveBeenNthCalledWith(1, expect.any(Function), {
             isolationLevel: 'Serializable',

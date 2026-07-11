@@ -1,4 +1,5 @@
 import prisma from '../utils/prisma';
+import { effectiveUnitCost } from '../utils/product-cost';
 import { StockAlertService } from './stock-alert.service';
 import { UnitConversionService } from './unit-conversion.service';
 
@@ -26,6 +27,7 @@ export class AutoPurchaseOrderService {
                         name: true,
                         unit: true,
                         cost: true,
+                        currentAverageCost: true,
                         minStock: true
                     }
                 });
@@ -41,7 +43,9 @@ export class AutoPurchaseOrderService {
                     currentStock: product.currentStock,
                     minStock: product.minStock,
                     suggestedQuantity,
-                    estimatedCost: Math.round(suggestedQuantity * Number(productDetails?.cost || 0) * 100) / 100,
+                    estimatedCost: Math.round(
+                        suggestedQuantity * effectiveUnitCost(productDetails?.currentAverageCost, productDetails?.cost) * 100
+                    ) / 100,
                     warehouseId: product.warehouseId,
                     warehouseName: product.warehouseName,
                     priority: product.currentStock === 0 ? 'URGENT' : 'NORMAL'
@@ -197,7 +201,8 @@ export class AutoPurchaseOrderService {
                 id: true,
                 name: true,
                 minStock: true,
-                cost: true
+                cost: true,
+                currentAverageCost: true
             }
         });
 
@@ -211,7 +216,7 @@ export class AutoPurchaseOrderService {
             minStock: Number(product.minStock),
             reorderPoint: Number(product.minStock), // Currently same as minStock
             reorderQuantity: Number(product.minStock) * 2, // Order up to 2x minimum
-            estimatedCost: Number(product.cost)
+            estimatedCost: effectiveUnitCost(product.currentAverageCost, product.cost)
         };
     }
 }
