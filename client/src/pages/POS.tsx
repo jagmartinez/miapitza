@@ -196,7 +196,7 @@ export default function POS() {
         } finally {
             setLoading(false);
         }
-    }, [menuCacheKey]);
+    }, [menuCacheKey, showError]);
 
     // Check if user has an active shift
     const checkShiftStatus = useCallback(async () => {
@@ -212,7 +212,7 @@ export default function POS() {
         } catch {
             warning('No se pudo verificar el estado del turno de caja. Los cobros podrían no estar disponibles.');
         }
-    }, []);
+    }, [warning]);
 
     // Proactively detect whether the active branch has at least one warehouse.
     // Mirrors the backend payment guard so the cashier is warned BEFORE trying to
@@ -281,7 +281,7 @@ export default function POS() {
         });
 
         return unsubscribe;
-    }, [loadData]);
+    }, [info, loadData, success]);
 
     // Cache products in localStorage
     useEffect(() => {
@@ -353,7 +353,7 @@ export default function POS() {
             setCurrentOrderId(null);
             setActiveTableOrder(null);
         }
-    }, []);
+    }, [info]);
 
     const handleSelectTable = useCallback(async (table: Table) => {
         if (selectedTable?.id === table.id) {
@@ -372,7 +372,7 @@ export default function POS() {
         setSelectedTable(table);
         setShowTableModal(false);
         await loadActiveOrderForTable(table);
-    }, [cart.length, clearDraftCart, loadActiveOrderForTable, selectedTable?.id]);
+    }, [cart.length, clearDraftCart, confirm, loadActiveOrderForTable, selectedTable?.id]);
 
     // Selector de modificadores: producto en edición + sus grupos cargados.
     const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
@@ -732,7 +732,7 @@ export default function POS() {
             const axiosErr = error as { response?: { data?: { message?: string } } };
             showError(axiosErr.response?.data?.message || 'No se pudo marcar la orden como entregada.');
         }
-    }, [activeTableOrder, loadData, syncOrderContext]);
+    }, [activeTableOrder, loadData, showError, success, syncOrderContext]);
 
     const handleCancelActiveOrder = useCallback(async () => {
         if (!activeTableOrder) {
@@ -759,7 +759,7 @@ export default function POS() {
             const axiosErr = error as { response?: { data?: { message?: string } } };
             showError(axiosErr.response?.data?.message || 'No se pudo cancelar la orden.');
         }
-    }, [activeTableOrder, canCancelActive, clearTableContext, confirm, loadData]);
+    }, [activeTableOrder, canCancelActive, clearTableContext, confirm, loadData, showError, success, warning]);
     const handleApplyPromotion = async (code: string) => {
         try {
             const res = await promotionsAPI.validate(code, subtotal);
@@ -1406,4 +1406,3 @@ function ModifierSelectorModal({
         </div>
     );
 }
-

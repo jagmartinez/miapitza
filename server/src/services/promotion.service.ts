@@ -67,9 +67,13 @@ export class PromotionService {
     static async update(id: number, companyId: number, data: Prisma.PromotionUpdateInput) {
         const promo = await prisma.promotion.findFirst({ where: { id, companyId } });
         if (!promo) throw new Error('Promoción no encontrada');
+        const normalizedData: Prisma.PromotionUpdateInput = {
+            ...data,
+            ...(typeof data.code === 'string' ? { code: data.code.toUpperCase() } : {})
+        };
         return await prisma.promotion.update({
             where: { id },
-            data
+            data: normalizedData
         });
     }
 
@@ -130,7 +134,7 @@ export class PromotionService {
         discount = Math.min(discount, orderTotal);
 
         const settings = await prisma.setting.findMany({ where: { companyId: promotion.companyId } });
-        const currencySymbol = settings.find((s) => s.name === 'currency_symbol')?.value || 'C$';
+        const currencySymbol = settings.find((s) => s.name === `${promotion.companyId}_currency_symbol`)?.value || 'C$';
 
         const roundedDiscount = Math.round(discount * 100) / 100;
 

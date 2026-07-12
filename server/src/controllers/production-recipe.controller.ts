@@ -37,6 +37,15 @@ export class ProductionRecipeController {
         }
     }
 
+    static async previewCost(req: Request, res: Response, next: NextFunction) {
+        try {
+            const data = await ProductionRecipeService.previewCost(req.user!.companyId, req.body);
+            res.json({ success: true, data });
+        } catch (error: unknown) {
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
     static async create(req: Request, res: Response, next: NextFunction) {
         try {
             const data = await ProductionRecipeService.create(req.user!.companyId, req.body, req.user!.userId);

@@ -331,13 +331,10 @@ export class InventoryMovementService {
             });
             if (!product) throw new Error('Product not found or unauthorized');
 
-            // A transfer keeps the product's moving-average cost on both legs, so we
-            // pass it explicitly to the engine (bespoke valuation) to preserve the
-            // exact legacy numbers regardless of the active costing method.
-            const unitCost = Number(product.currentAverageCost || product.cost || 0);
-
             // --- OUT from source warehouse (TRANSFER, outbound leg) ---
-            await InventoryEngineService.applyMovement(tx, {
+            // Let the engine derive the actual outbound valuation: moving average
+            // for WEIGHTED_AVERAGE, consumed-layer COGS for FIFO.
+            const outbound = await InventoryEngineService.applyMovement(tx, {
                 type: 'TRANSFER',
                 direction: 'OUT',
                 companyId,
@@ -345,7 +342,6 @@ export class InventoryMovementService {
                 productId: data.productId,
                 userId: data.userId,
                 quantity: baseQuantity,
-                unitCost,
                 originalQuantity,
                 originalUnit,
                 conversionFactor: convFactor,
@@ -364,7 +360,10 @@ export class InventoryMovementService {
                 productId: data.productId,
                 userId: data.userId,
                 quantity: baseQuantity,
-                unitCost,
+                // Preserve value across warehouses. For FIFO this is the weighted
+                // cost of the exact layers consumed by the outbound leg.
+                unitCost: outbound.unitCost,
+                inboundLayers: outbound.consumedLayers,
                 originalQuantity,
                 originalUnit,
                 conversionFactor: convFactor,

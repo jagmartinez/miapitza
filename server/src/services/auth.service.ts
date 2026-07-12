@@ -1,6 +1,5 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
 import prisma from '../utils/prisma';
 import { SessionService } from './session.service';
 import { TwoFactorService } from './twoFactor.service';
@@ -38,25 +37,9 @@ function clearFailedAttempts(username: string): void {
     loginAttempts.delete(username);
 }
 
-/** Temporary 2FA tokens mapping (opaque token → userId) */
-const pending2FATokens = new Map<string, { userId: number; expiresAt: number }>();
-
-/** Resolve a temp 2FA token to a userId, then remove it */
-export function resolve2FAToken(tempToken: string): number | null {
-    const entry = pending2FATokens.get(tempToken);
-    if (!entry) return null;
-    // Check expiry before consuming so an expired token is never treated as valid.
-    if (entry.expiresAt < Date.now()) {
-        pending2FATokens.delete(tempToken);
-        return null;
-    }
-    pending2FATokens.delete(tempToken);
-    return entry.userId;
-}
 
 /**
  * Periodic cleanup of expired in-memory entries.
- * - Removes expired 2FA pending tokens (TTL: 5 min)
  * - Removes stale login-attempt records whose lockout has long passed (> 30 min old)
  * Runs every 5 minutes.
  */
@@ -64,13 +47,6 @@ const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 
 function cleanupExpiredEntries(): void {
     const now = Date.now();
-
-    // Purge expired 2FA tokens
-    for (const [token, entry] of pending2FATokens) {
-        if (entry.expiresAt < now) {
-            pending2FATokens.delete(token);
-        }
-    }
 
     // Purge stale login-attempt records (lockout expired more than 30 min ago)
     const STALE_THRESHOLD_MS = 30 * 60 * 1000;
@@ -192,10 +168,8 @@ export class AuthService {
         if (user.twoFactorEnabled) {
             if (!twoFactorCode) {
                 // Return a temporary opaque token instead of userId
-                const tempToken = crypto.randomBytes(32).toString('hex');
                 // Store temp token → userId mapping (expires in 5 min)
-                pending2FATokens.set(tempToken, { userId: user.id, expiresAt: Date.now() + 5 * 60 * 1000 });
-                return { requires2FA: true, tempToken };
+                return { requires2FA: true };
             }
             let valid2FA = await TwoFactorService.validateCode(user.id, twoFactorCode);
             if (!valid2FA) {
@@ -213,7 +187,7 @@ export class AuthService {
         let passwordExpired = false;
         if (user.passwordChangedAt && user.companyId) {
             const expirySetting = await prisma.setting.findFirst({
-                where: { companyId: user.companyId, name: 'password_expiry_days' }
+                where: { companyId: user.companyId, name: `${user.companyId}_password_expiry_days` }
             });
             const expiryDays = expirySetting ? parseInt(expirySetting.value) : 90;
             if (expiryDays > 0) {
@@ -226,7 +200,7 @@ export class AuthService {
         let sessionTimeoutMinutes = 30;
         if (user.companyId) {
             const timeoutSetting = await prisma.setting.findFirst({
-                where: { companyId: user.companyId, name: 'session_timeout_minutes' }
+                where: { companyId: user.companyId, name: `${user.companyId}_session_timeout_minutes` }
             });
             if (timeoutSetting) sessionTimeoutMinutes = parseInt(timeoutSetting.value) || 30;
         }

@@ -14,6 +14,7 @@ const MANAGE = Array.from(new Set([...MENU_MANAGEMENT, ...INVENTORY]));
 
 router.get('/', ProductionRecipeController.getAll);
 router.get('/product/:productId', ProductionRecipeController.getByProduct);
+router.post('/preview-cost', requireRole(...MANAGE), ProductionRecipeController.previewCost);
 router.get('/:id', validate(s.idParam), ProductionRecipeController.getById);
 
 router.post('/', requireRole(...MANAGE), validate(s.createProductionRecipe), ProductionRecipeController.create);

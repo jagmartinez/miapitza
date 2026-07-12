@@ -170,7 +170,7 @@ const WasteReport: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [filters.endDate, filters.productId, filters.startDate, filters.warehouseId]);
+    }, [filters.endDate, filters.productId, filters.startDate, filters.warehouseId, showError]);
 
     useEffect(() => {
         void loadInitialData();

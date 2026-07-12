@@ -100,11 +100,13 @@ export class InvoiceService {
         // Check order status before consuming an invoice number
         const orderCheck = await prisma.order.findFirst({
             where: { id: orderId, companyId },
-            select: { status: true }
+            select: { status: true, total: true, payments: { select: { amount: true } } }
         });
         if (!orderCheck) throw new Error('Order not found');
-        if (orderCheck.status !== 'PAID') {
-            throw new Error(`Only paid orders can be invoiced. Current status: ${orderCheck.status}`);
+        const collected = orderCheck.payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+        const legacyPaidStatus = orderCheck.status === 'PAID';
+        if (orderCheck.status === 'CANCELLED' || (!legacyPaidStatus && collected + 0.01 < Number(orderCheck.total))) {
+            throw new Error(`Only fully paid, non-cancelled orders can be invoiced. Current status: ${orderCheck.status}`);
         }
 
         let order = await prisma.order.findFirst({

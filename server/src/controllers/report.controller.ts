@@ -266,13 +266,13 @@ export class ReportController {
     static async getInventoryReport(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const filters: Record<string, unknown> = {};
+            const filters: NonNullable<Parameters<typeof ReportService.getInventoryReport>[1]> = {};
             if (req.query.warehouseId) filters.warehouseId = parseInt(req.query.warehouseId as string);
             if (req.query.categoryId) filters.categoryId = parseInt(req.query.categoryId as string);
             if (req.query.productId) filters.productId = parseInt(req.query.productId as string);
             if (req.query.lowStockOnly === 'true') filters.lowStockOnly = true;
 
-            const data = await ReportService.getInventoryReport(companyId, filters as any);
+            const data = await ReportService.getInventoryReport(companyId, filters);
             res.json({ success: true, data });
         } catch (error: unknown) {
             next({ statusCode: 500, message: getErrorMessage(error) });
@@ -282,12 +282,12 @@ export class ReportController {
     static async exportInventoryReport(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const filters: Record<string, unknown> = {};
+            const filters: NonNullable<Parameters<typeof ReportService.getInventoryReport>[1]> = {};
             if (req.query.warehouseId) filters.warehouseId = parseInt(req.query.warehouseId as string);
             if (req.query.categoryId) filters.categoryId = parseInt(req.query.categoryId as string);
             if (req.query.lowStockOnly === 'true') filters.lowStockOnly = true;
 
-            const data = await ReportService.getInventoryReport(companyId, filters as any);
+            const data = await ReportService.getInventoryReport(companyId, filters);
             const appliedFilters: Record<string, string> = {};
             if (req.query.warehouseId) appliedFilters['Almacén ID'] = req.query.warehouseId as string;
             if (req.query.categoryId) appliedFilters['Categoría ID'] = req.query.categoryId as string;
@@ -330,7 +330,7 @@ export class ReportController {
     static async getPurchasesReport(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const filters: Record<string, unknown> = {};
+            const filters: NonNullable<Parameters<typeof ReportService.getPurchasesReport>[1]> = {};
             if (req.query.dateFrom) filters.dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string);
             if (req.query.dateTo) filters.dateTo = parseOptionalQueryDateTo(req.query.dateTo as string);
             if (req.query.supplierId) filters.supplierId = parseInt(req.query.supplierId as string);
@@ -342,7 +342,7 @@ export class ReportController {
             }
             if (req.query.status) filters.status = req.query.status as string;
 
-            const data = await ReportService.getPurchasesReport(companyId, filters as any);
+            const data = await ReportService.getPurchasesReport(companyId, filters);
             res.json({ success: true, data });
         } catch (error: unknown) {
             next({ statusCode: 500, message: getErrorMessage(error) });
@@ -352,7 +352,7 @@ export class ReportController {
     static async exportPurchasesReport(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const filters: Record<string, unknown> = {};
+            const filters: NonNullable<Parameters<typeof ReportService.getPurchasesReport>[1]> = {};
             if (req.query.dateFrom) filters.dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string);
             if (req.query.dateTo) filters.dateTo = parseOptionalQueryDateTo(req.query.dateTo as string);
             if (req.query.supplierId) filters.supplierId = parseInt(req.query.supplierId as string);
@@ -362,7 +362,7 @@ export class ReportController {
                 filters.branchId = ReportController.resolveBranchScope(req, undefined);
             }
 
-            const data = await ReportService.getPurchasesReport(companyId, filters as any);
+            const data = await ReportService.getPurchasesReport(companyId, filters);
             const appliedFilters: Record<string, string> = {};
             if (req.query.dateFrom) appliedFilters['Desde'] = req.query.dateFrom as string;
             if (req.query.dateTo) appliedFilters['Hasta'] = req.query.dateTo as string;
@@ -403,7 +403,7 @@ export class ReportController {
     static async getSalesReport(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const filters: Record<string, unknown> = {};
+            const filters: NonNullable<Parameters<typeof ReportService.getSalesReport>[1]> = {};
             if (req.query.dateFrom) filters.dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string);
             if (req.query.dateTo) filters.dateTo = parseOptionalQueryDateTo(req.query.dateTo as string);
             if (req.query.branchId) {
@@ -415,7 +415,7 @@ export class ReportController {
             if (req.query.brandId) filters.brandId = parseInt(req.query.brandId as string);
             if (req.query.userId) filters.userId = parseInt(req.query.userId as string);
 
-            const data = await ReportService.getSalesReport(companyId, filters as any);
+            const data = await ReportService.getSalesReport(companyId, filters);
             res.json({ success: true, data });
         } catch (error: unknown) {
             next({ statusCode: 500, message: getErrorMessage(error) });
@@ -425,7 +425,7 @@ export class ReportController {
     static async exportSalesReport(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const filters: Record<string, unknown> = {};
+            const filters: NonNullable<Parameters<typeof ReportService.getSalesReport>[1]> = {};
             if (req.query.dateFrom) filters.dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string);
             if (req.query.dateTo) filters.dateTo = parseOptionalQueryDateTo(req.query.dateTo as string);
             if (req.query.branchId) {
@@ -436,7 +436,7 @@ export class ReportController {
             if (req.query.categoryId) filters.categoryId = parseInt(req.query.categoryId as string);
             if (req.query.brandId) filters.brandId = parseInt(req.query.brandId as string);
 
-            const data = await ReportService.getSalesReport(companyId, filters as any);
+            const data = await ReportService.getSalesReport(companyId, filters);
             const appliedFilters: Record<string, string> = {};
             if (req.query.dateFrom) appliedFilters['Desde'] = req.query.dateFrom as string;
             if (req.query.dateTo) appliedFilters['Hasta'] = req.query.dateTo as string;
@@ -465,6 +465,10 @@ export class ReportController {
                     'Total Órdenes': data.summary.totalOrders,
                     'Ventas Totales': data.summary.totalSales,
                     'Descuento Total': data.summary.totalDiscount,
+                    'Impuesto': data.summary.tax,
+                    'Propina': data.summary.tip,
+                    'Total Bruto Ordenes': data.summary.grossOrderTotal,
+                    'Total Cobrado': data.summary.collected,
                     'Ticket Promedio': data.summary.averageTicket,
                 },
                 userName: req.user?.roleObj?.name || req.user?.role || 'Admin',
@@ -481,10 +485,10 @@ export class ReportController {
     static async getProfitabilityReport(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const filters: Record<string, unknown> = {};
+            const filters: NonNullable<Parameters<typeof ReportService.getProfitabilityReport>[1]> = {};
             if (req.query.categoryId) filters.categoryId = parseInt(req.query.categoryId as string);
 
-            const data = await ReportService.getProfitabilityReport(companyId, filters as any);
+            const data = await ReportService.getProfitabilityReport(companyId, filters);
             res.json({ success: true, data });
         } catch (error: unknown) {
             next({ statusCode: 500, message: getErrorMessage(error) });
@@ -494,10 +498,10 @@ export class ReportController {
     static async exportProfitabilityReport(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const filters: Record<string, unknown> = {};
+            const filters: NonNullable<Parameters<typeof ReportService.getProfitabilityReport>[1]> = {};
             if (req.query.categoryId) filters.categoryId = parseInt(req.query.categoryId as string);
 
-            const data = await ReportService.getProfitabilityReport(companyId, filters as any);
+            const data = await ReportService.getProfitabilityReport(companyId, filters);
 
             const buffer = await ExcelExporter.generateReport({
                 title: 'Reporte de Rentabilidad por Producto',
@@ -531,11 +535,11 @@ export class ReportController {
     static async getLowStockReport(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const filters: Record<string, unknown> = {};
+            const filters: NonNullable<Parameters<typeof ReportService.getLowStockReport>[1]> = {};
             if (req.query.warehouseId) filters.warehouseId = parseInt(req.query.warehouseId as string);
             if (req.query.categoryId) filters.categoryId = parseInt(req.query.categoryId as string);
 
-            const data = await ReportService.getLowStockReport(companyId, filters as any);
+            const data = await ReportService.getLowStockReport(companyId, filters);
             res.json({ success: true, data });
         } catch (error: unknown) {
             next({ statusCode: 500, message: getErrorMessage(error) });
@@ -545,11 +549,11 @@ export class ReportController {
     static async exportLowStockReport(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const filters: Record<string, unknown> = {};
+            const filters: NonNullable<Parameters<typeof ReportService.getLowStockReport>[1]> = {};
             if (req.query.warehouseId) filters.warehouseId = parseInt(req.query.warehouseId as string);
             if (req.query.categoryId) filters.categoryId = parseInt(req.query.categoryId as string);
 
-            const data = await ReportService.getLowStockReport(companyId, filters as any);
+            const data = await ReportService.getLowStockReport(companyId, filters);
 
             const buffer = await ExcelExporter.generateReport({
                 title: 'Reporte de Stock Bajo',

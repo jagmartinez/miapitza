@@ -24,12 +24,26 @@ export class UserController {
     static async getById(req: Request, res: Response, next: NextFunction) {
         try {
             const id = parseInt(req.params.id);
+            const actingRoles = req.user!.roles || [req.user!.role];
+            const mayReadOtherUsers = actingRoles.some((role) => role === 'ADMIN' || role === 'SUPERADMIN');
+            if (id !== req.user!.userId && !mayReadOtherUsers) {
+                return next({ statusCode: 403, message: 'No autorizado para consultar otro usuario' });
+            }
             const companyId = req.user!.companyId;
             const user = await UserService.getById(id, companyId);
             res.json({
                 success: true,
                 data: user
             });
+        } catch (error: unknown) {
+            next({ statusCode: 404, message: getErrorMessage(error) });
+        }
+    }
+
+    static async getProfile(req: Request, res: Response, next: NextFunction) {
+        try {
+            const user = await UserService.getById(req.user!.userId, req.user!.companyId);
+            res.json({ success: true, data: user });
         } catch (error: unknown) {
             next({ statusCode: 404, message: getErrorMessage(error) });
         }
@@ -61,6 +75,9 @@ export class UserController {
             delete updateData.roleIds;
             delete updateData.status;
             delete updateData.companyId;
+            // Password changes must go through /auth/change-password so the
+            // current password is verified and all existing sessions are revoked.
+            delete updateData.password;
             // Branch assignment/rotation is a SUPERADMIN-only action, never self-service.
             delete updateData.branchId;
             delete updateData.branchIds;

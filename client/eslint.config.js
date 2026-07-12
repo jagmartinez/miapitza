@@ -32,5 +32,18 @@ export default tseslint.config(
       'no-case-declarations': 'off',
       'no-useless-escape': 'off',
     },
+  },
+  {
+    // Context modules intentionally colocate their provider and consumer hook.
+    // They are application singletons, not leaf components eligible for HMR
+    // replacement in isolation.
+    files: [
+      'src/context/ConfirmContext.tsx',
+      'src/context/ToastContext.tsx',
+      'src/hooks/useConfirm.tsx',
+    ],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
   }
 );

@@ -1398,10 +1398,6 @@ export default function Dashboard() {
                                 <span className="detail-value">{selectedInvoice.customer}</span>
                             </div>
                         )}
-                        <div className="detail-row">
-                            <span className="detail-label">Propina Sugerida (15%)</span>
-                            <span className="detail-value">{formatCurrency(selectedInvoice.amount * 0.15)}</span>
-                        </div>
                         <div className="detail-note">
                             <span>🧾 Factura generada automáticamente. Disponible para reimpresión.</span>
                         </div>

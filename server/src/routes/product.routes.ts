@@ -25,6 +25,5 @@ router.get('/:id/cost-history', validate(s.idParam), CostingController.getCostHi
 router.post('/', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.createProduct), ProductController.create);
 router.put('/:id', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.updateProduct), ProductController.update);
 router.delete('/:id', requireRole('SUPERADMIN'), validate(s.idParam), ProductController.delete);
-router.post('/:id/recalculate-cost', requireRole('SUPERADMIN'), validate(s.idParam), CostingController.recalculateCost);
 
 export default router;

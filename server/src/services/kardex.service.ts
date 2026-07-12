@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import ExcelJS from 'exceljs';
 import { getErrorMessage } from '../utils/error';
+import { effectiveUnitCost } from '../utils/product-cost';
 
 /**
  * Service for generating Kardex (inventory movement) reports
@@ -162,7 +163,7 @@ export class KardexService {
 
             const enrichedMovements = movements.map((movement) => {
                 const quantity = Number(movement.quantity);
-                const unitCost = Number(movement.unitCost || product.currentAverageCost || 0);
+                const unitCost = effectiveUnitCost(movement.unitCost, product.currentAverageCost);
 
                 // A TRANSFER has two legs sharing a transferGroupId: the OUT leg (source
                 // warehouse) and the IN leg (destination warehouse). Distinguish them by

@@ -12,6 +12,7 @@ import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { cateringAPI, menuAPI, paymentsAPI, branchesAPI, settingsAPI, categoriesAPI } from '../services/api';
+import { getCateringStatusOptions, isCateringStatusTerminal } from '../utils/cateringStatus';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
@@ -177,7 +178,7 @@ export default function Catering() {
             console.error('Error generating contract PDF:', error);
             showError('Error al generar el contrato en PDF');
         }
-    }, [settings]);
+    }, [settings, showError]);
 
     const loadEvents = useCallback(async () => {
         try {
@@ -447,6 +448,10 @@ export default function Catering() {
                 eventDate.getFullYear() === date.getFullYear();
         });
     };
+
+    const configuredTaxRate = Number(settings.tax_rate ?? settings.taxRate ?? 15);
+    const taxRate = Number.isFinite(configuredTaxRate) && configuredTaxRate >= 0 ? configuredTaxRate : 15;
+    const taxDivisor = 1 + taxRate / 100;
 
     return (
         <div className="catering-page">
@@ -921,15 +926,16 @@ export default function Catering() {
                                             value={{ value: formData.status, label: getStatusText(formData.status) }}
                                             onChange={(option: SingleValue<{ value: CateringEvent['status']; label: string }>) =>
                                                 option && setFormData({ ...formData, status: option.value })}
-                                            options={[
-                                                { value: 'QUOTED', label: 'Cotizado' },
-                                                { value: 'RESERVED', label: 'Reservado' },
-                                                { value: 'PAID', label: 'Pagado' },
-                                                { value: 'FINISHED', label: 'Finalizado' },
-                                                { value: 'CANCELLED', label: 'Cancelado' }
-                                            ]}
+                                            options={getCateringStatusOptions(selectedEvent?.status).map((value) => ({
+                                                value,
+                                                label: getStatusText(value),
+                                            }))}
+                                            isDisabled={Boolean(selectedEvent && isCateringStatusTerminal(selectedEvent.status))}
                                             isSearchable={false}
                                         />
+                                        {selectedEvent?.status === 'RESERVED' && (
+                                            <small>El estado Pagado se asigna automÃ¡ticamente al completar el saldo.</small>
+                                        )}
                                         <div className="modal-input-group">
                                             <label>Invitados</label>
                                             <input
@@ -1202,11 +1208,11 @@ export default function Catering() {
                                     <div className="financial-secondary-row">
                                         <div className="summary-box-plain">
                                             <span className="label">Subtotal</span>
-                                            <span className="value">${(Number(selectedEvent.totalAmount || 0) / 1.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                            <span className="value">${(Number(selectedEvent.totalAmount || 0) / taxDivisor).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                         </div>
                                         <div className="summary-box-plain">
-                                            <span className="label">IVA (15%)</span>
-                                            <span className="value">${(Number(selectedEvent.totalAmount || 0) * 0.15 / 1.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                            <span className="label">IVA ({taxRate}%)</span>
+                                            <span className="value">${(Number(selectedEvent.totalAmount || 0) * (taxRate / 100) / taxDivisor).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                         </div>
                                     </div>
 

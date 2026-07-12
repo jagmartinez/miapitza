@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
+import { effectiveUnitCost } from '../utils/product-cost';
 
 const CHART_COLORS = ['#60a5fa', '#34d399', '#818cf8', '#fbbf24', '#f87171', '#a78bfa'];
 
@@ -797,7 +798,7 @@ export class ReportService {
             });
 
             const paymentRows = await prisma.payment.findMany({
-                where: { order: { companyId, status: 'PAID', closedAt: { gte: today } } },
+                where: { status: 'ACTIVE', order: { companyId, status: 'PAID', closedAt: { gte: today } } },
                 include: { paymentMethod: { select: { name: true } } }
             });
             const breakdownMap = new Map<string, number>();
@@ -961,7 +962,7 @@ export class ReportService {
         });
 
         const expirySetting = await prisma.setting.findFirst({
-            where: { companyId, name: 'password_expiry_days' }
+            where: { companyId, name: `${companyId}_password_expiry_days` }
         });
         const expiryDays = expirySetting ? parseInt(expirySetting.value) : 90;
 
@@ -1124,7 +1125,7 @@ export class ReportService {
                     } catch {
                         // Fallback to legacy quantity when conversion is not configured
                     }
-                    const unitCost = Number(recipe.product.currentAverageCost || recipe.product.cost || 0);
+                    const unitCost = effectiveUnitCost(recipe.product.currentAverageCost, recipe.product.cost);
                     estimatedCOGS += qtyInBase * item.quantity * unitCost;
                 }
             }
@@ -1220,7 +1221,7 @@ export class ReportService {
             companyId,
             ...(filters?.branchId ? { branchId: filters.branchId } : {}),
             ...(filters?.supplierId ? { supplierId: filters.supplierId } : {}),
-            ...(filters?.status ? { status: filters.status as any } : {}),
+            ...(filters?.status ? { status: filters.status as Prisma.PurchaseOrderWhereInput['status'] } : {}),
             ...(filters?.dateFrom || filters?.dateTo
                 ? {
                       date: {
@@ -1315,7 +1316,7 @@ export class ReportService {
                   }
                 : {}),
             ...(filters?.paymentMethodId
-                ? { payments: { some: { paymentMethodId: filters.paymentMethodId } } }
+                ? { payments: { some: { paymentMethodId: filters.paymentMethodId, status: 'ACTIVE' } } }
                 : {}),
         };
 
@@ -1334,6 +1335,7 @@ export class ReportService {
                     }
                 },
                 payments: {
+                    where: { status: 'ACTIVE' },
                     include: {
                         paymentMethod: { select: { name: true } }
                     }
@@ -1354,15 +1356,31 @@ export class ReportService {
 
         let totalSales = 0;
         let totalDiscount = 0;
+        let totalTax = 0;
+        let totalTip = 0;
+        let grossOrderTotal = 0;
+        let collected = 0;
+        const matchedOrderIds = new Set<number>();
 
         for (const order of orders) {
             const paymentMethodName = order.payments.map(p => p.paymentMethod.name).join(', ') || 'N/A';
             const orderDiscount = Math.round(Number(order.discount) * 100) / 100;
-            totalDiscount += orderDiscount;
+            const matchingItems = order.items.filter((item) => {
+                if (filters?.categoryId && item.menuItem?.categoryId !== filters.categoryId) return false;
+                if (filters?.brandId && item.menuItem?.brandId !== filters.brandId) return false;
+                return true;
+            });
 
-            for (const item of order.items) {
-                if (filters?.categoryId && item.menuItem?.categoryId !== filters.categoryId) continue;
-                if (filters?.brandId && item.menuItem?.brandId !== filters.brandId) continue;
+            if (matchingItems.length === 0) continue;
+
+            matchedOrderIds.add(order.id);
+            totalDiscount += orderDiscount;
+            totalTax += Number(order.tax);
+            totalTip += Number(order.tipAmount);
+            grossOrderTotal += Number(order.total);
+            collected += order.payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+
+            for (const [itemIndex, item] of matchingItems.entries()) {
                 const subtotal = Math.round(Number(item.subtotal) * 100) / 100;
                 totalSales += subtotal;
                 items.push({
@@ -1373,7 +1391,8 @@ export class ReportService {
                     brandName: item.menuItem?.brand?.name || null,
                     quantity: item.quantity,
                     unitPrice: Math.round(Number(item.price) * 100) / 100,
-                    discount: orderDiscount,
+                    // An order-level discount is shown once so exported rows remain summable.
+                    discount: itemIndex === 0 ? orderDiscount : 0,
                     totalSale: subtotal,
                     paymentMethod: paymentMethodName,
                     userName: order.user?.name || 'Unknown',
@@ -1386,10 +1405,17 @@ export class ReportService {
         return {
             items,
             summary: {
-                totalOrders: orders.length,
+                totalOrders: matchedOrderIds.size,
+                // Backwards compatible: totalSales remains the sum of matching item subtotals.
                 totalSales: Math.round(totalSales * 100) / 100,
+                netItemSales: Math.round(totalSales * 100) / 100,
+                orderDiscount: Math.round(totalDiscount * 100) / 100,
+                tax: Math.round(totalTax * 100) / 100,
+                tip: Math.round(totalTip * 100) / 100,
+                grossOrderTotal: Math.round(grossOrderTotal * 100) / 100,
+                collected: Math.round(collected * 100) / 100,
                 totalDiscount: Math.round(totalDiscount * 100) / 100,
-                averageTicket: orders.length > 0 ? Math.round((totalSales / orders.length) * 100) / 100 : 0
+                averageTicket: matchedOrderIds.size > 0 ? Math.round((grossOrderTotal / matchedOrderIds.size) * 100) / 100 : 0
             }
         };
     }
@@ -1451,7 +1477,7 @@ export class ReportService {
                 } catch {
                     // Legacy products without configured units fall back to 1:1.
                 }
-                const unitCost = Number(r.product.currentAverageCost || r.product.cost || 0);
+                const unitCost = effectiveUnitCost(r.product.currentAverageCost, r.product.cost);
                 rawCost += qtyInBase * unitCost;
             }
 

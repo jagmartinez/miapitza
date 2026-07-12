@@ -4,6 +4,7 @@ import { CostingService } from './costing.service';
 import { ProductionRecipeService } from './production-recipe.service';
 import { AuditLogService } from './audit-log.service';
 import { InventoryEngineService } from './inventory-engine.service';
+import { effectiveUnitCost } from '../utils/product-cost';
 
 type Tx = Prisma.TransactionClient;
 
@@ -421,7 +422,9 @@ export class ProductionOrderService {
             }
 
             const producedQuantity = payload.producedQuantity ?? Number(lockedOrder.plannedQuantity);
-            if (!(producedQuantity > 0)) throw new Error('La cantidad producida debe ser mayor a 0.');
+            if (!Number.isFinite(producedQuantity) || !(producedQuantity > 0)) {
+                throw new Error('La cantidad producida debe ser un nÃºmero finito mayor a 0.');
+            }
 
             let realCost = 0;
 
@@ -585,7 +588,7 @@ export class ProductionOrderService {
                             'No se puede anular: el producto fabricado ya fue consumido/vendido y no hay existencia suficiente para revertir.'
                         );
                     }
-                    const unitCost = Number(product?.currentAverageCost || product?.cost || 0);
+                    const unitCost = effectiveUnitCost(product?.currentAverageCost, product?.cost);
                     await InventoryEngineService.applyMovement(tx, {
                         type: 'OUT',
                         companyId,

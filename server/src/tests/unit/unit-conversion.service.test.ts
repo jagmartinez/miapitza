@@ -35,6 +35,24 @@ const flourBaseGrams = {
     ]
 };
 
+describe('Unit conversion numeric invariants', () => {
+    it.each([
+        [0.001, 2.5, 0.0025], [0.125, 8, 1], [1000, 2.5, 2500], [1_000_000, 0.000001, 1]
+    ])('preserves quantity times factor for factor %s and quantity %s', async (factor, quantity, expected) => {
+        const db = makeDb({ ...flourBaseGrams, allowedUnits: [{ conversionFactor: factor, unit: { abbreviation: 'x' } }] });
+        const res = await UnitConversionService.convert(1, 1, quantity, 'x', db);
+        expect(res.baseQuantity).toBeCloseTo(expected, 12);
+    });
+
+    it.each([NaN, Infinity, -Infinity, 0, -1])('rejects invalid quantity %s', async (quantity) => {
+        await expect(UnitConversionService.convert(1, 1, quantity, 'kg', makeDb(flourBaseGrams))).rejects.toThrow(/finito/i);
+    });
+
+    it.each([NaN, Infinity, -Infinity, -0.01])('rejects invalid unit cost %s', async (cost) => {
+        await expect(UnitConversionService.convertWithCost(1, 1, 1, 'kg', cost, makeDb(flourBaseGrams))).rejects.toThrow(/costo/i);
+    });
+});
+
 describe('UnitConversionService.convert — base-unit math', () => {
     it('converts a purchase in kg to grams (base = g): 1 kg -> 1000 g', async () => {
         const db = makeDb(flourBaseGrams);

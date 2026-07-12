@@ -1,24 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
 import { ReservationService } from '../services/reservation.service';
 import { getErrorMessage } from '../utils/error';
+import { assertBranchAccess, BranchScopeError, isCompanyWide, resolveBranchScope } from '../utils/branch-scope';
 
 export class ReservationController {
     private static resolveBranchScope(req: Request, requestedBranchId?: number): number | undefined {
-        const isSuperAdmin = req.user?.role === 'SUPERADMIN';
-        if (isSuperAdmin) {
-            return requestedBranchId;
-        }
+        return resolveBranchScope(req.user!, requestedBranchId);
+    }
 
-        const userBranchId = req.user?.branchId;
-        if (!userBranchId) {
-            throw new Error('Usuario sin sucursal asignada');
-        }
-
-        if (requestedBranchId && requestedBranchId !== userBranchId) {
-            throw new Error('No autorizado para consultar otra sucursal');
-        }
-
-        return userBranchId;
+    private static async assertReservationBranch(req: Request, id: number) {
+        const reservation = await ReservationService.getById(id, req.user!.companyId);
+        assertBranchAccess(req.user!, reservation.branchId);
+        return reservation;
     }
 
     static async getAll(req: Request, res: Response, next: NextFunction) {
@@ -27,7 +20,7 @@ export class ReservationController {
             type ReservationFilters = NonNullable<Parameters<typeof ReservationService.getAll>[1]>;
             const filters: ReservationFilters = {};
 
-            if (req.user?.role === 'SUPERADMIN') {
+            if (isCompanyWide(req.user!)) {
                 if (req.query.branchId) {
                     filters.branchId = parseInt(req.query.branchId as string);
                 }
@@ -65,13 +58,13 @@ export class ReservationController {
     static async getById(req: Request, res: Response, next: NextFunction) {
         try {
             const id = parseInt(req.params.id);
-            const companyId = req.user!.companyId;
-            const reservation = await ReservationService.getById(id, companyId);
+            const reservation = await ReservationController.assertReservationBranch(req, id);
             res.json({
                 success: true,
                 data: reservation
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 404, message: getErrorMessage(error) });
         }
     }
@@ -154,6 +147,7 @@ export class ReservationController {
                 data: reservation
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -162,6 +156,7 @@ export class ReservationController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            await ReservationController.assertReservationBranch(req, id);
 
             // Whitelist updatable fields. `status` is excluded on purpose; status
             // changes must go through updateStatus() which validates transitions.
@@ -181,6 +176,7 @@ export class ReservationController {
                 data: reservation
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -189,6 +185,7 @@ export class ReservationController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            await ReservationController.assertReservationBranch(req, id);
             const { status } = req.body;
 
             if (!status) {
@@ -202,6 +199,7 @@ export class ReservationController {
                 data: reservation
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -210,12 +208,14 @@ export class ReservationController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            await ReservationController.assertReservationBranch(req, id);
             await ReservationService.delete(id, companyId);
             res.json({
                 success: true,
                 message: 'Reservación eliminada exitosamente'
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }

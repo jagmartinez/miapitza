@@ -919,12 +919,22 @@ model Payment {
   payerName       String? // Name of the person paying (for split bills)
   registeredById  Int? // User (cashier) who registered the payment
   createdAt       DateTime @default(now())
+  status          SalesPaymentStatus @default(ACTIVE)
+  reversedAt      DateTime?
+  reversedById    Int?
+  reversalReason  String?
 
   order         Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
   paymentMethod PaymentMethod @relation(fields: [paymentMethodId], references: [id])
 
   @@index([orderId])
   @@index([paymentMethodId])
+  @@index([status, createdAt])
+}
+
+enum SalesPaymentStatus {
+  ACTIVE
+  REVERSED
 }
 
 // ==========================================
@@ -1279,6 +1289,24 @@ model AuditLog {
   @@index([companyId, entityType, entityId])
   @@index([companyId, createdAt])
   @@index([userId])
+}
+
+// Durable cross-instance HTTP idempotency ledger.
+model IdempotencyRecord {
+  id          Int      @id @default(autoincrement())
+  namespace   String   @db.VarChar(64)
+  scope       String   @db.VarChar(191)
+  key         String   @db.VarChar(191)
+  fingerprint String   @db.Char(64)
+  status      String   @db.VarChar(20)
+  httpStatus  Int?
+  response    Json?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([namespace, scope, key])
+  @@index([expiresAt])
 }
 
 // ==========================================

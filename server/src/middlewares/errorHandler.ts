@@ -83,11 +83,17 @@ export const errorHandler = (
     _next: NextFunction
 ) => {
     const { statusCode, message: errMessage, stack } = normalizeError(err);
+    // Some legacy controllers wrap domain errors with a generic 500. Preserve
+    // the authorization semantics for branch-scope failures at the boundary.
+    const responseStatus = statusCode === 500 && (
+        errMessage.startsWith('No autorizado') ||
+        errMessage.startsWith('Su usuario no tiene una sucursal activa')
+    ) ? 403 : statusCode;
 
     // Log full error server-side (sanitize sensitive data)
     console.error('Error:', {
         message: errMessage,
-        statusCode,
+        statusCode: responseStatus,
         path: req.path,
         method: req.method,
         ...(process.env.NODE_ENV === 'development' && stack && { stack })
@@ -96,15 +102,15 @@ export const errorHandler = (
     const rawMessage = errMessage || 'Error interno del servidor';
 
     // Only forward safe messages to client; generic message for everything else
-    const message = statusCode < 500 && isSafeMessage(rawMessage)
+    const message = responseStatus < 500 && isSafeMessage(rawMessage)
         ? rawMessage
-        : statusCode === 503 && isSafeMessage(rawMessage)
+        : responseStatus === 503 && isSafeMessage(rawMessage)
             ? rawMessage
             : statusCode >= 500
                 ? 'Error interno del servidor'
                 : rawMessage.length < 200 && isSafeMessage(rawMessage) ? rawMessage : 'Ocurrió un error';
 
-    res.status(statusCode).json({
+    res.status(responseStatus).json({
         success: false,
         message,
     });

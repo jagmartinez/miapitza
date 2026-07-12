@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: mysql:8.0
@@ -33,37 +31,28 @@ services:
       DATABASE_URL: mysql://${MYSQL_USER:-restaurant_user}:${MYSQL_PASSWORD:?MYSQL_PASSWORD is required (see .env.example)}@db:3306/${MYSQL_DATABASE:-restaurante}
       NODE_ENV: ${NODE_ENV:-production}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required (see .env.example)}
+      TWO_FA_ENCRYPTION_KEY: ${TWO_FA_ENCRYPTION_KEY:?TWO_FA_ENCRYPTION_KEY is required (see .env.example)}
       CLIENT_URL: ${CLIENT_URL:-http://localhost:5173}
+      DOCS_USER: ${DOCS_USER:-admin}
+      DOCS_PASSWORD: ${DOCS_PASSWORD:-}
       PORT: 3000
     depends_on:
       db:
         condition: service_healthy
-    # NOTE: these bind mounts are a DEVELOPMENT convenience (live source + isolated
-    # node_modules). There is no separate dev override file, so they are kept here to
-    # avoid breaking local dev. For a hardened production deploy, remove these volumes
-    # so the image's built artifacts are used instead of the host source tree.
-    volumes:
-      - ./server:/app
-      - /app/node_modules
 
   client:
     build:
       context: ./client
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000/api}
+        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:3000}
     container_name: restaurant_client
     restart: always
     ports:
       - "${CLIENT_PORT:-5173}:5173"
-    environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:3000/api}
-      VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:3000}
     depends_on:
       - server
-    # NOTE: DEVELOPMENT bind mounts (see the server service note above). Remove for
-    # a hardened production deploy so the built image is used instead of host source.
-    volumes:
-      - ./client:/app
-      - /app/node_modules
 
 # See .env.example for required environment variables
 

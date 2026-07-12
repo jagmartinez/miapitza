@@ -38,6 +38,14 @@ export interface CateringEventWriteBody {
     companyId?: unknown;
 }
 
+export const CATERING_STATUS_TRANSITIONS: Record<CateringStatus, readonly CateringStatus[]> = {
+    QUOTED: ['RESERVED', 'CANCELLED'],
+    RESERVED: ['CANCELLED'],
+    PAID: ['FINISHED'],
+    FINISHED: [],
+    CANCELLED: [],
+};
+
 export class CateringService {
     private static async convertRecipeQuantityToBase(
         recipe: { productId: number; quantity: Decimal | number | string; unit?: string | null; product: { unit: string } },
@@ -46,28 +54,16 @@ export class CateringService {
     ) {
         const recipeUnit = recipe.unit || recipe.product.unit;
         const recipeQty = Number(recipe.quantity);
-        let baseQuantity = recipeQty;
-        let originalQuantity: number | null = null;
-        let originalUnit: string | null = null;
-        let conversionFactor: number | null = null;
-
-        try {
-            const conv = await UnitConversionService.convert(
-                recipe.productId,
-                companyId,
-                recipeQty,
-                recipeUnit,
-                tx
-            );
-            baseQuantity = conv.baseQuantity;
-            originalQuantity = conv.originalQuantity;
-            originalUnit = conv.originalUnit;
-            conversionFactor = conv.conversionFactor;
-        } catch {
-            // Fallback to legacy 1:1 when conversion is not configured
-        }
-
-        return { baseQuantity, originalQuantity, originalUnit, conversionFactor, recipeUnit };
+        const conv = await UnitConversionService.convert(
+            recipe.productId, companyId, recipeQty, recipeUnit, tx
+        );
+        return {
+            baseQuantity: conv.baseQuantity,
+            originalQuantity: conv.originalQuantity,
+            originalUnit: conv.originalUnit,
+            conversionFactor: conv.conversionFactor,
+            recipeUnit
+        };
     }
 
     static async getAllEvents(companyId: number, filters?: {
@@ -216,11 +212,15 @@ export class CateringService {
 
         // Menu items total
         const menuItemsToCreate = menuItems?.map((m) => {
+            const quantity = Number(m.quantity);
+            if (!Number.isInteger(quantity) || quantity <= 0) {
+                throw new Error('La cantidad de platos del menÃº debe ser un entero mayor a 0');
+            }
             const subtotal = new Decimal(m.quantity).mul(new Decimal(m.unitPrice));
             totalAmount = totalAmount.add(subtotal);
             return {
                 menuItemId: parseInt(String(m.menuItemId), 10),
-                quantity: parseInt(String(m.quantity), 10),
+                quantity,
                 unitPrice: new Decimal(m.unitPrice),
                 subtotal
             };
@@ -285,14 +285,14 @@ export class CateringService {
         // Tenant-scoped load: never operate on another company's event.
         const oldEvent = await prisma.cateringEvent.findFirst({
             where: { id, companyId },
-            select: { status: true, customerId: true }
+            select: { status: true, customerId: true, _count: { select: { payments: true } } }
         });
 
         if (!oldEvent) throw new Error('Catering event not found');
 
         // Validate status transition if status is changing
         if (data.status && oldEvent && data.status !== oldEvent.status) {
-            const validNext = this.VALID_STATUS_TRANSITIONS[oldEvent.status] || [];
+            const validNext = CATERING_STATUS_TRANSITIONS[oldEvent.status] || [];
             if (!validNext.includes(data.status)) {
                 throw new Error(`Transición de estado inválida: ${oldEvent.status} → ${data.status}`);
             }
@@ -358,11 +358,18 @@ export class CateringService {
         }) || [];
 
         const menuItemsToUpdate = menuItems?.map((m) => {
+            const quantity = Number(m.quantity);
+            if (!Number.isInteger(quantity) || quantity <= 0) {
+                throw new Error('La cantidad de platos del menÃº debe ser un entero mayor a 0');
+            }
+            if (data.status === 'CANCELLED' && oldEvent._count.payments > 0) {
+                throw new Error('No se puede cancelar un evento con pagos registrados; revierta los pagos primero');
+            }
             const subtotal = new Decimal(m.quantity).mul(new Decimal(m.unitPrice));
             totalAmount = totalAmount.add(subtotal);
             return {
                 menuItemId: parseInt(String(m.menuItemId), 10),
-                quantity: parseInt(String(m.quantity), 10),
+                quantity,
                 unitPrice: new Decimal(m.unitPrice),
                 subtotal
             };
@@ -516,16 +523,6 @@ export class CateringService {
         });
     }
 
-    private static readonly VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
-        'QUOTED': ['RESERVED', 'CANCELLED'],
-        'RESERVED': ['CONFIRMED', 'CANCELLED'],
-        'CONFIRMED': ['IN_PROGRESS', 'CANCELLED'],
-        'IN_PROGRESS': ['FINISHED', 'CANCELLED'],
-        'PAID': ['FINISHED'],
-        'FINISHED': [],
-        'CANCELLED': []
-    };
-
     static async addPayment(
         eventId: number,
         companyId: number,
@@ -557,6 +554,9 @@ export class CateringService {
 
             if (event.status === 'CANCELLED') {
                 throw new Error('No se pueden agregar pagos a eventos cancelados');
+            }
+            if (event.status !== 'RESERVED') {
+                throw new Error('Solo se pueden registrar pagos en eventos reservados');
             }
 
             // Payment method must be global (companyId null) or belong to this company.

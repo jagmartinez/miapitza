@@ -204,7 +204,7 @@ export default function CashShiftPage() {
         } finally {
             setLoading(false);
         }
-    }, [id]);
+    }, [id, showError]);
 
     useEffect(() => {
         void loadData();

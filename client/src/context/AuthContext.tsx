@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import { authAPI } from '../services/api';
 import { closeWebSocket } from '../utils/websocket';
+import { offlineManager } from '../services/offlineManager';
 import { AuthContext } from './auth-context';
 import type { User } from '../types';
 
@@ -37,27 +38,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [passwordExpired, setPasswordExpired] = useState(false);
     const [sessionTimeout, setSessionTimeout] = useState(30);
     const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const logoutInFlight = useRef<Promise<void> | null>(null);
 
-    const logout = useCallback(() => {
-        authAPI.getSessions?.()
-            .then(res => {
-                const currentSession = res?.data?.data?.find?.((s: { id: string; isCurrent: boolean }) => s.isCurrent);
-                if (currentSession) {
-                    authAPI.revokeSession?.(currentSession.id).catch(() => {});
+    const logout = useCallback(async () => {
+        if (logoutInFlight.current) return logoutInFlight.current;
+
+        const operation = (async () => {
+            try {
+                await authAPI.logout();
+            } catch {
+                // Local logout must remain available during network/API outages.
+            } finally {
+                closeWebSocket();
+                await offlineManager.clearSessionData();
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                localStorage.removeItem('authFlags');
+                setUser(null);
+                setMustChangePassword(false);
+                setPasswordExpired(false);
+
+                if (inactivityTimer.current) {
+                    clearTimeout(inactivityTimer.current);
                 }
-            })
-            .catch(() => {});
+            }
+        })();
 
-        closeWebSocket();
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        localStorage.removeItem('authFlags');
-        setUser(null);
-        setMustChangePassword(false);
-        setPasswordExpired(false);
-
-        if (inactivityTimer.current) {
-            clearTimeout(inactivityTimer.current);
+        logoutInFlight.current = operation;
+        try {
+            await operation;
+        } finally {
+            logoutInFlight.current = null;
         }
     }, []);
 
@@ -160,6 +171,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             } = data;
 
             if (token) {
+                // The offline database is not shared across authenticated identities.
+                await offlineManager.clearSessionData();
                 // Backward compatibility during migration from Bearer-only auth.
                 localStorage.setItem('token', token);
             } else {

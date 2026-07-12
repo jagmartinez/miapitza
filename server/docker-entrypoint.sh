@@ -30,13 +30,9 @@ fi
 export DATABASE_URL
 
 echo "Syncing database schema..."
-set +e
+# Production must fail closed. `db push --accept-data-loss` is intentionally
+# forbidden here: a migration failure must never turn into an implicit,
+# potentially destructive schema rewrite.
 npx prisma migrate deploy
-migrate_status=$?
-set -e
-if [ "$migrate_status" -ne 0 ]; then
-  echo "migrate deploy failed (code $migrate_status); falling back to prisma db push..."
-  npx prisma db push --accept-data-loss --skip-generate
-fi
 
 exec node dist/index.js

@@ -1,7 +1,9 @@
 import Dexie, { Table } from 'dexie';
 
 export interface CacheEntry {
-    id: string; // URL or custom key
+    id: string; // ownerKey + URL
+    url: string;
+    ownerKey: string;
     data: unknown;
     timestamp: number;
 }
@@ -32,6 +34,7 @@ export interface SyncItem {
     entityTempId?: string | null;
     lastError?: string | null;
     idempotencyKey?: string | null;
+    ownerKey: string;
 }
 
 export class RestaurantDB extends Dexie {
@@ -64,6 +67,10 @@ export class RestaurantDB extends Dexie {
             await tx.table('syncQueue').toCollection().modify((item: Partial<SyncItem>) => {
                 item.idempotencyKey = item.idempotencyKey ?? null;
             });
+        });
+        this.version(4).stores({
+            caches: 'id, ownerKey, url, timestamp',
+            syncQueue: '++id, ownerKey, status, timestamp, operationType, dependencyKey, entityTempId, idempotencyKey'
         });
     }
 }

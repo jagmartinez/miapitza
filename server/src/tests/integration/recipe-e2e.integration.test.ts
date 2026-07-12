@@ -269,7 +269,7 @@ describe('Recipe inventory flows (integration)', () => {
             where: { companyId, reference: `ORD-${orderId}`, type: 'OUT' }
         })).toBe(1);
 
-        await PaymentService.delete(firstPayment.id, companyId, userId);
+        await PaymentService.delete(firstPayment.id, companyId, userId, 'Integration refund');
         expect(await quantity(saleIngredientId)).toBeCloseTo(100, 6);
 
         const reversedMovements = await prisma.inventoryMovement.findMany({
@@ -305,7 +305,7 @@ describe('Recipe inventory flows (integration)', () => {
 
         // DELIVERED is an operational status, not proof that the payment still
         // exists. Removing the last payment must reopen and reverse the order.
-        await PaymentService.delete(secondPayment.id, companyId, userId);
+        await PaymentService.delete(secondPayment.id, companyId, userId, 'Second integration refund');
         expect(await quantity(saleIngredientId)).toBeCloseTo(100, 6);
         const reopened = await prisma.order.findUnique({ where: { id: orderId } });
         expect(reopened?.status).toBe('OPEN');
@@ -354,7 +354,8 @@ describe('Recipe inventory flows (integration)', () => {
         );
         expect(cancelled.status).toBe('CANCELLED');
         expect(await quantity(saleIngredientId)).toBeCloseTo(100, 6);
-        expect(await prisma.payment.count({ where: { orderId: order.id } })).toBe(0);
+        expect(await prisma.payment.count({ where: { orderId: order.id, status: 'ACTIVE' } })).toBe(0);
+        expect(await prisma.payment.count({ where: { orderId: order.id, status: 'REVERSED' } })).toBe(1);
         expect((await prisma.promotion.findUnique({ where: { id: promotion.id } }))?.usageCount).toBe(0);
 
         const movements = await prisma.inventoryMovement.findMany({

@@ -11,13 +11,12 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { useCurrency } from '../hooks/useCurrency';
 import { getUserRoleNames } from '../utils/authz';
-import { effectiveUnitCost } from '../utils/productCost';
 import {
     FlaskConical, Plus, Pencil, Power, Copy, Trash2, Save, Info, Layers,
     Search
 } from 'lucide-react';
 import type { SingleValue } from 'react-select';
-import type { ProductionRecipe, Product, UnitOfMeasure } from '../types';
+import type { ProductionRecipe, Product, UnitOfMeasure, RecipeCost } from '../types';
 import './Inventory.css';
 import './ProductionRecipes.css';
 
@@ -89,6 +88,9 @@ export default function ProductionRecipes() {
     const [notes, setNotes] = useState('');
     const [rows, setRows] = useState<ComponentRow[]>([emptyRow()]);
     const [activateOnSave, setActivateOnSave] = useState(false);
+    const [previewCost, setPreviewCost] = useState<RecipeCost | null>(null);
+    const [previewCostError, setPreviewCostError] = useState<string | null>(null);
+    const [previewCostLoading, setPreviewCostLoading] = useState(false);
 
     useEffect(() => {
         loadAll();
@@ -97,6 +99,52 @@ export default function ProductionRecipes() {
     useEffect(() => {
         setCurrentPage(1);
     }, [statusFilter, searchQuery]);
+
+    useEffect(() => {
+        if (!isSidebarOpen || !productId || !yieldQuantity) {
+            setPreviewCost(null);
+            setPreviewCostError(null);
+            return;
+        }
+        const components = rows
+            .filter(row => row.componentProductId && Number(row.quantity) > 0)
+            .map(row => ({
+                componentProductId: Number(row.componentProductId),
+                quantity: Number(row.quantity),
+                unitId: row.unitId ? Number(row.unitId) : undefined,
+            }));
+        if (components.length === 0 || !(Number(yieldQuantity) > 0)) {
+            setPreviewCost(null);
+            setPreviewCostError(null);
+            return;
+        }
+
+        let active = true;
+        const timer = window.setTimeout(async () => {
+            setPreviewCostLoading(true);
+            try {
+                const response = await productionRecipesAPI.previewCost({
+                    productId: Number(productId),
+                    yieldQuantity: Number(yieldQuantity),
+                    yieldUnitId: yieldUnitId ? Number(yieldUnitId) : undefined,
+                    components,
+                });
+                if (!active) return;
+                setPreviewCost(response.data.data as RecipeCost);
+                setPreviewCostError(null);
+            } catch (error: unknown) {
+                if (!active) return;
+                setPreviewCost(null);
+                setPreviewCostError(errMsg(error, 'No se pudo calcular el costo con las unidades seleccionadas'));
+            } finally {
+                if (active) setPreviewCostLoading(false);
+            }
+        }, 300);
+        return () => {
+            active = false;
+            window.clearTimeout(timer);
+        };
+    }, [isSidebarOpen, productId, yieldQuantity, yieldUnitId, rows]);
 
     const loadAll = async () => {
         try {
@@ -168,6 +216,8 @@ export default function ProductionRecipes() {
         setNotes('');
         setRows([emptyRow()]);
         setActivateOnSave(false);
+        setPreviewCost(null);
+        setPreviewCostError(null);
     };
 
     const handleOpenCreate = () => {
@@ -233,15 +283,9 @@ export default function ProductionRecipes() {
     };
 
     const estimatedRowCost = (row: ComponentRow): number => {
-        const prod = row.componentProductId ? productById.get(Number(row.componentProductId)) : undefined;
-        if (!prod) return 0;
-        const unitCost = effectiveUnitCost(prod.currentAverageCost, prod.cost);
-        const qty = parseFloat(row.quantity);
-        if (!Number.isFinite(qty)) return 0;
-        return unitCost * qty;
+        const line = previewCost?.lines.find(candidate => candidate.componentProductId === Number(row.componentProductId));
+        return Number(line?.totalCost) || 0;
     };
-
-    const estimatedTotal = rows.reduce((sum, r) => sum + estimatedRowCost(r), 0);
 
     const validateForm = (): string | null => {
         if (!productId) return 'Selecciona el producto que genera esta receta';
@@ -273,6 +317,14 @@ export default function ProductionRecipes() {
         const validationError = validateForm();
         if (validationError) {
             showWarning(validationError);
+            return;
+        }
+        if (previewCostLoading) {
+            showWarning('Espera a que termine el cálculo de costo');
+            return;
+        }
+        if (previewCostError || !previewCost) {
+            showWarning(previewCostError || 'No se pudo validar el costo y las unidades de la receta');
             return;
         }
 
@@ -460,6 +512,7 @@ export default function ProductionRecipes() {
                                 <th>Versión</th>
                                 <th>Estado</th>
                                 <th className="text-right"># Componentes</th>
+                                <th className="text-right">Rendimiento</th>
                                 <th className="text-right">Costo unitario estimado</th>
                                 <th className="text-right">Costo lote</th>
                                 <th className="text-right">Acciones</th>
@@ -484,15 +537,19 @@ export default function ProductionRecipes() {
                                     <td data-label="# Componentes" className="text-right">
                                         {recipe.components?.length ?? 0}
                                     </td>
+                                    <td data-label="Rendimiento" className="text-right">
+                                        {Number(recipe.yieldQuantity).toLocaleString(undefined, { maximumFractionDigits: 6 })}{' '}
+                                        {recipe.yieldUnit?.abbreviation || recipe.product?.unit || 'unidad'}
+                                    </td>
                                     <td data-label="Costo unitario estimado" className="text-right">
                                         {recipe.cost
                                             ? formatMoney(Number(recipe.cost.unitCost) || 0)
-                                            : <span className="text-muted">—</span>}
+                                            : <span className="text-danger" title={recipe.costError || undefined}>Revisar UOM</span>}
                                     </td>
                                     <td data-label="Costo lote" className="text-right">
                                         {recipe.cost
                                             ? formatMoney(Number(recipe.cost.batchCost) || 0)
-                                            : <span className="text-muted">—</span>}
+                                            : <span className="text-danger" title={recipe.costError || undefined}>Revisar UOM</span>}
                                     </td>
                                     <td data-label="Acciones" className="text-right">
                                         <div className="table-actions">
@@ -552,7 +609,7 @@ export default function ProductionRecipes() {
                             ))}
                             {filteredRecipes.length === 0 && (
                                 <tr>
-                                    <td colSpan={8}>
+                                    <td colSpan={9}>
                                         <div className="empty-state">
                                             <FlaskConical size={48} />
                                             <p>
@@ -727,10 +784,10 @@ export default function ProductionRecipes() {
                                     <h3>Costo estimado</h3>
                                 </div>
 
-                                {editingRecipe?.cost ? (
+                                {previewCost ? (
                                     <div className="pr-cost-panel">
                                         <div className="pr-cost-lines">
-                                            {editingRecipe.cost.lines.map((line) => (
+                                            {previewCost.lines.map((line) => (
                                                 <div key={line.componentProductId} className="pr-cost-line">
                                                     <span className="pr-cost-line-name">{line.componentName}</span>
                                                     <span className="pr-cost-line-qty">
@@ -743,25 +800,30 @@ export default function ProductionRecipes() {
                                         <div className="pr-cost-totals">
                                             <div className="pr-cost-total-row">
                                                 <span>Costo del lote</span>
-                                                <strong>{formatMoney(Number(editingRecipe.cost.batchCost) || 0)}</strong>
+                                                <strong>{formatMoney(Number(previewCost.batchCost) || 0)}</strong>
                                             </div>
                                             <div className="pr-cost-total-row highlight">
                                                 <span>
                                                     Costo unitario
-                                                    {editingRecipe.cost.yieldBaseUnit ? ` (por ${editingRecipe.cost.yieldBaseUnit})` : ''}
+                                                    {previewCost.yieldBaseUnit ? ` (por ${previewCost.yieldBaseUnit})` : ''}
                                                 </span>
-                                                <strong>{formatMoney(Number(editingRecipe.cost.unitCost) || 0)}</strong>
+                                                <strong>{formatMoney(Number(previewCost.unitCost) || 0)}</strong>
                                             </div>
                                         </div>
+                                    </div>
+                                ) : previewCostError ? (
+                                    <div className="pr-cost-panel">
+                                        <p className="text-danger">{previewCostError}</p>
+                                        <p className="pr-helper-text">Corrige la unidad o su factor antes de guardar.</p>
                                     </div>
                                 ) : (
                                     <div className="pr-cost-panel">
                                         <div className="pr-cost-total-row highlight">
-                                            <span>Costo estimado (referencial)</span>
-                                            <strong>{formatMoney(estimatedTotal)}</strong>
+                                            <span>Costo estimado</span>
+                                            <strong>{previewCostLoading ? 'Calculando…' : '—'}</strong>
                                         </div>
                                         <p className="pr-helper-text">
-                                            Estimado a partir del costo promedio actual de los componentes. El costo definitivo se calcula al guardar.
+                                            Cálculo autoritativo con conversión a unidad base y costo operativo vigente.
                                         </p>
                                     </div>
                                 )}

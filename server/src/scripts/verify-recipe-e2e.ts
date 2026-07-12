@@ -19,6 +19,7 @@ import path from 'path';
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { UnitConversionService } from '../services/unit-conversion.service';
+import { effectiveUnitCost } from '../utils/product-cost';
 
 const DEMO_PREFIX = 'DEMO-CYCLE';
 const EPSILON = 1e-6;
@@ -261,7 +262,7 @@ async function verifyMenuRecipes(
                 });
             }
 
-            if (numeric(recipe.product.currentAverageCost || recipe.product.cost) <= 0) {
+            if (effectiveUnitCost(recipe.product.currentAverageCost, recipe.product.cost) <= 0) {
                 costProducts.add(recipe.productId);
                 finding(
                     findings,
@@ -582,7 +583,7 @@ async function verifyProduction(
             if (!component.componentProduct.active) {
                 finding(findings, 'ERROR', 'INACTIVE_PRODUCTION_COMPONENT', componentScope, `${component.componentProduct.name} esta inactivo.`);
             }
-            if (numeric(component.componentProduct.currentAverageCost || component.componentProduct.cost) <= 0) {
+            if (effectiveUnitCost(component.componentProduct.currentAverageCost, component.componentProduct.cost) <= 0) {
                 finding(findings, 'ERROR', 'PRODUCTION_COMPONENT_WITHOUT_COST', componentScope, `${component.componentProduct.name} no tiene costo positivo.`);
             }
             try {

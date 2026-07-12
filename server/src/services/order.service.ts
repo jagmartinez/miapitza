@@ -280,6 +280,7 @@ export class OrderService {
         tableId?: number;
         userId: number;
         customerName?: string;
+        orderType?: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY';
         items?: Array<{
             menuItemId: number;
             quantity: number;
@@ -399,6 +400,7 @@ export class OrderService {
                     tableId: data.tableId,
                     userId: data.userId,
                     customerName: data.customerName,
+                    orderType: data.orderType,
                     total: 0,
                     status: 'OPEN'
                 },
@@ -978,7 +980,7 @@ export class OrderService {
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
             const order = await tx.order.findFirst({
                 where: { id, companyId },
-                include: { table: true, payments: true }
+                include: { table: true, payments: { where: { status: 'ACTIVE' } } }
             });
 
             if (!order) throw new Error('Order not found');
@@ -1012,10 +1014,23 @@ export class OrderService {
             if (fullyPaid && options?.allowPaidReversal) {
                 const paymentIds = order.payments.map((payment) => payment.id);
                 if (paymentIds.length > 0) {
-                    await tx.cashMovement.deleteMany({
-                        where: { reference: { in: paymentIds.map((paymentId) => `PAY-${paymentId}`) } }
+                    const cashIns = await tx.cashMovement.findMany({
+                        where: { reference: { in: paymentIds.map((paymentId) => `PAY-${paymentId}`) }, type: 'IN' }
                     });
-                    await tx.payment.deleteMany({ where: { id: { in: paymentIds }, orderId: id } });
+                    for (const cashIn of cashIns) {
+                        const paymentId = Number(cashIn.reference?.replace('PAY-', ''));
+                        await tx.cashMovement.create({
+                            data: {
+                                shiftId: cashIn.shiftId, type: 'OUT', amount: cashIn.amount,
+                                description: `Reverso Pago #${paymentId} Orden #${id}`,
+                                reference: `REV-PAY-${paymentId}`
+                            }
+                        });
+                    }
+                    await tx.payment.updateMany({
+                        where: { id: { in: paymentIds }, orderId: id, status: 'ACTIVE' },
+                        data: { status: 'REVERSED', reversedAt: new Date(), reversedById: reversalUserId, reversalReason: cancelReason || 'Order cancellation' }
+                    });
                 }
 
                 if (order.discountCode) {
@@ -1105,8 +1120,34 @@ export class OrderService {
             }
 
             const subtotal = await this.getOrderItemsSubtotal(tx, id);
+            const requestedCode = data.discountCode === undefined
+                ? undefined
+                : String(data.discountCode || '').trim().toUpperCase();
+            let authoritativeDiscount = data.discount ?? Number(order.discount || 0);
+            if (requestedCode) {
+                const now = new Date();
+                const promotion = await tx.promotion.findFirst({
+                    where: { companyId, code: requestedCode }
+                });
+                if (!promotion || !promotion.active) throw new Error('Promotion is not active');
+                if (promotion.validFrom && promotion.validFrom > now) throw new Error('Promotion is not active yet');
+                if (promotion.validTo && promotion.validTo < now) throw new Error('Promotion has expired');
+                if (promotion.usageLimit !== null && promotion.usageCount >= promotion.usageLimit) {
+                    throw new Error('Promotion usage limit reached');
+                }
+                if (promotion.minOrderAmount !== null && subtotal < Number(promotion.minOrderAmount)) {
+                    throw new Error('Order does not meet promotion minimum');
+                }
+                authoritativeDiscount = promotion.type === 'PERCENTAGE'
+                    ? subtotal * (Number(promotion.value) / 100)
+                    : Number(promotion.value);
+                if (promotion.maxDiscount !== null) {
+                    authoritativeDiscount = Math.min(authoritativeDiscount, Number(promotion.maxDiscount));
+                }
+                authoritativeDiscount = Math.round(authoritativeDiscount * 100) / 100;
+            }
             const nextDiscount = Math.min(
-                Math.max(0, Number(data.discount ?? Number(order.discount || 0))),
+                Math.max(0, Number(authoritativeDiscount)),
                 Math.max(0, subtotal)
             );
             const discountedSubtotal = Math.max(0, subtotal - nextDiscount);
@@ -1121,7 +1162,7 @@ export class OrderService {
                 where: { id },
                 data: {
                     discount: nextDiscount,
-                    discountCode: data.discountCode === undefined ? undefined : (data.discountCode || null),
+                    discountCode: requestedCode === undefined ? undefined : (requestedCode || null),
                     tax: nextTax,
                     tipAmount: nextTip,
                     total: nextTotal

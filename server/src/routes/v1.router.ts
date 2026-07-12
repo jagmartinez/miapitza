@@ -65,7 +65,6 @@ v1.get('/', (_req: Request, res: Response) => {
             documentation: '/api/docs',
             endpoints: {
                 health: '/api/v1/health',
-                apiKeys: '/api/v1/api-keys',
                 auth: '/api/auth/*',
                 resources: '/api/*'
             }
@@ -120,6 +119,7 @@ v1.post('/api-keys',
             res.status(201).json({
                 success: true,
                 data: { ...apiKey, key: plainKey },
+                experimental: true,
                 message: 'Guarda esta clave, no se mostrará de nuevo',
             });
         } catch (error) {
@@ -202,7 +202,7 @@ v1.delete('/api-keys/:id',
     }
 );
 
-v1.get('/api-keys/scopes', (_req: Request, res: Response) => {
+v1.get('/api-keys/scopes', authMiddleware, requireRole('ADMIN', 'SUPERADMIN'), (_req: Request, res: Response) => {
     res.json({ success: true, data: VALID_SCOPES });
 });
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { purchaseOrdersAPI, autoPurchaseOrdersAPI, branchesAPI, suppliersAPI } from '../services/api';
+import { purchaseOrdersAPI, autoPurchaseOrdersAPI, branchesAPI, suppliersAPI, normalizeApiBaseUrl } from '../services/api';
 import api from '../services/api';
 import Button from '../components/Button';
 import Pagination from '../components/Pagination';
@@ -621,7 +621,7 @@ export default function PurchaseOrders() {
                                             )}
                                             {order.invoicePdf && (
                                                 <a
-                                                    href={`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}${order.invoicePdf}`}
+                                                    href={`${normalizeApiBaseUrl()}${order.invoicePdf}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="table-action-btn"

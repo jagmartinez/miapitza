@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
+import { effectiveUnitCost } from '../utils/product-cost';
 
 export class ReportExtendedService {
     // ── PURCHASES: By Day ──
@@ -468,7 +469,7 @@ export class ReportExtendedService {
         const orders = await prisma.order.findMany({
             where: orderWhere,
             include: {
-                payments: { include: { paymentMethod: { select: { name: true } } } }
+                payments: { where: { status: 'ACTIVE' }, include: { paymentMethod: { select: { name: true } } } }
             }
         });
 
@@ -626,7 +627,7 @@ export class ReportExtendedService {
                     } catch {
                         // Fallback to legacy quantity when conversion is not configured
                     }
-                    const unitCost = Number(recipe.product.currentAverageCost || recipe.product.cost || 0);
+                    const unitCost = effectiveUnitCost(recipe.product.currentAverageCost, recipe.product.cost);
                     channelMap[ch].estimatedCOGS += qtyInBase * item.quantity * unitCost;
                 }
             }
@@ -746,7 +747,7 @@ export class ReportExtendedService {
                     } catch {
                         // Fallback to legacy quantity when conversion is not configured
                     }
-                    const unitCost = Number(recipe.product.currentAverageCost || recipe.product.cost || 0);
+                    const unitCost = effectiveUnitCost(recipe.product.currentAverageCost, recipe.product.cost);
                     catMap[catName].cogs += qtyInBase * item.quantity * unitCost;
                 }
             }
@@ -837,7 +838,7 @@ export class ReportExtendedService {
                     } catch {
                         // Fallback to legacy quantity when conversion is not configured
                     }
-                    const unitCost = Number(recipe.product.currentAverageCost || recipe.product.cost || 0);
+                    const unitCost = effectiveUnitCost(recipe.product.currentAverageCost, recipe.product.cost);
                     prodMap[id].cogs += qtyInBase * item.quantity * unitCost;
                 }
             }
@@ -1018,7 +1019,7 @@ export class ReportExtendedService {
             companyId,
             ...(filters?.branchId ? { branchId: filters.branchId } : {}),
             ...(filters?.supplierId ? { supplierId: filters.supplierId } : {}),
-            ...(filters?.status ? { status: filters.status as any } : {}),
+            ...(filters?.status ? { status: filters.status as Prisma.PurchaseOrderWhereInput['status'] } : {}),
             ...(filters?.dateFrom || filters?.dateTo ? {
                 date: {
                     ...(filters?.dateFrom ? { gte: filters.dateFrom } : {}),
@@ -1036,7 +1037,7 @@ export class ReportExtendedService {
             companyId,
             status: 'PAID',
             ...(filters?.branchId ? { branchId: filters.branchId } : {}),
-            ...(filters?.salesChannel ? { salesChannel: filters.salesChannel as any } : {}),
+            ...(filters?.salesChannel ? { salesChannel: filters.salesChannel as Prisma.OrderWhereInput['salesChannel'] } : {}),
             ...(filters?.userId ? { userId: filters.userId } : {}),
             ...(filters?.dateFrom || filters?.dateTo ? {
                 createdAt: {

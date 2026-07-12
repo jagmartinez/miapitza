@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
+import { effectiveUnitCost } from '../utils/product-cost';
 
 export class ReportProductionService {
     /**
@@ -26,7 +27,7 @@ export class ReportProductionService {
 
         const items = await Promise.all(menuItems.map(async (mi) => {
             const ingredients = await Promise.all(mi.recipes.map(async (r) => {
-                const unitCost = Number(r.product.currentAverageCost || r.product.cost || 0);
+                const unitCost = effectiveUnitCost(r.product.currentAverageCost, r.product.cost);
                 const recipeUnit = r.unit || r.product.unit;
                 const qty = Number(r.quantity);
                 let baseQty = qty;
@@ -241,7 +242,7 @@ export class ReportProductionService {
                 } catch {
                     // Fallback to legacy quantity when conversion is not configured
                 }
-                recipeCost += qtyInBase * Number(r.product.currentAverageCost || r.product.cost || 0);
+                recipeCost += qtyInBase * effectiveUnitCost(r.product.currentAverageCost, r.product.cost);
             }
             const margin = Number(mi.price) - recipeCost;
 
@@ -365,7 +366,7 @@ export class ReportProductionService {
             const projectedNeed = dailyUsage * projectionDays;
             const deficit = projectedNeed - currentStock;
             const daysUntilStockout = dailyUsage > 0 ? Math.floor(currentStock / dailyUsage) : 999;
-            const cost = Number(p.currentAverageCost || p.cost || 0);
+            const cost = effectiveUnitCost(p.currentAverageCost, p.cost);
 
             return {
                 productId: p.id,

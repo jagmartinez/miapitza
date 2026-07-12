@@ -29,6 +29,9 @@ function makeTx(opts: {
     const stockUpdates: Array<Record<string, unknown>> = [];
 
     const tx = {
+        warehouse: {
+            findFirst: jest.fn(async () => ({ id: 1 }))
+        },
         stock: {
             findUnique: jest.fn(async () => ({ id: 1, quantity: opts.stockQuantity })),
             create: jest.fn(async () => ({ id: 1, quantity: 0 })),
@@ -69,6 +72,62 @@ function makeTx(opts: {
 
     return { tx, batchCreates, batchUpdates, movementCreates, stockUpdates };
 }
+
+describe('Inventory engine numeric invariants', () => {
+    it('rejects a warehouse from another tenant before reading or creating stock', async () => {
+        const { tx, stockUpdates } = makeTx({ costingMethod: 'WEIGHTED_AVERAGE', stockQuantity: 0 });
+        (tx.warehouse.findFirst as ReturnType<typeof jest.fn>).mockResolvedValueOnce(null);
+        await expect(InventoryEngineService.applyMovement(tx, {
+            type: 'IN', companyId: 99, warehouseId: 1, productId: 1, userId: 1, quantity: 1
+        })).rejects.toThrow(/AlmacÃ©n no encontrado/i);
+        expect(tx.stock.findUnique).not.toHaveBeenCalled();
+        expect(stockUpdates).toHaveLength(0);
+    });
+
+    it('rejects a product from another tenant before reading or creating stock', async () => {
+        const { tx, stockUpdates } = makeTx({ costingMethod: 'WEIGHTED_AVERAGE', stockQuantity: 0 });
+        (tx.product.findFirst as ReturnType<typeof jest.fn>).mockResolvedValueOnce(null);
+        await expect(InventoryEngineService.applyMovement(tx, {
+            type: 'IN', companyId: 99, warehouseId: 1, productId: 1, userId: 1, quantity: 1
+        })).rejects.toThrow(/Producto no encontrado/i);
+        expect(tx.stock.findUnique).not.toHaveBeenCalled();
+        expect(stockUpdates).toHaveLength(0);
+    });
+
+    it.each([NaN, Infinity, -Infinity, 0, -1])('rejects invalid quantity %s without mutation', async (quantity) => {
+        const { tx, stockUpdates } = makeTx({ costingMethod: 'WEIGHTED_AVERAGE', stockQuantity: 0 });
+        await expect(InventoryEngineService.applyMovement(tx, {
+            type: 'IN', companyId: 1, warehouseId: 1, productId: 1, userId: 1, quantity
+        })).rejects.toThrow(/cantidad/i);
+        expect(stockUpdates).toHaveLength(0);
+    });
+
+    it.each([NaN, Infinity, -Infinity, -1])('rejects invalid cost %s without mutation', async (unitCost) => {
+        const { tx, stockUpdates } = makeTx({ costingMethod: 'WEIGHTED_AVERAGE', stockQuantity: 0 });
+        await expect(InventoryEngineService.applyMovement(tx, {
+            type: 'IN', companyId: 1, warehouseId: 1, productId: 1, userId: 1, quantity: 1, unitCost
+        })).rejects.toThrow(/costo unitario/i);
+        expect(stockUpdates).toHaveLength(0);
+    });
+
+    it('consumes fractional FIFO layers as sum of take times layer cost', async () => {
+        const { tx, batchUpdates } = makeTx({
+            costingMethod: 'FIFO', stockQuantity: 2.25, avgCost: 4,
+            batches: [
+                { id: 1, unitCost: 1.25, remainingQty: 0.5 },
+                { id: 2, unitCost: 2.5, remainingQty: 0.75 },
+                { id: 3, unitCost: 10, remainingQty: 1 }
+            ]
+        });
+        // 0.5*1.25 + 0.75*2.5 + 0.25*10 = 5; layer 3 retains 0.75.
+        const result = await InventoryEngineService.applyMovement(tx, {
+            type: 'OUT', companyId: 1, warehouseId: 1, productId: 1, userId: 1, quantity: 1.5
+        });
+        expect(result.totalCost).toBeCloseTo(5, 12);
+        expect(result.balanceQty).toBeCloseTo(0.75, 12);
+        expect(batchUpdates.map((u) => u.data.remainingQty)).toEqual([0, 0, 0.75]);
+    });
+});
 
 describe('InventoryEngineService.applyMovement — IN opens a FIFO layer', () => {
     it('opens a batch and accumulates the valued balance on an inbound movement', async () => {

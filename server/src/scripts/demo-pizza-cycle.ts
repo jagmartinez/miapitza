@@ -571,7 +571,7 @@ export async function runDemoCycle(
     }
 
     // Masa: por cada 10 unidades → 2500 g harina + 1 aceite
-    const masaRecipe = await upsertProductionRecipe(
+    await upsertProductionRecipe(
         masaProduct.id,
         `Receta ${DEMO.MASA_NAME}`,
         10,
@@ -583,7 +583,7 @@ export async function runDemoCycle(
     );
 
     // Salsa: por cada 5000 g → 6 latas tomate + 0.5 aceite + 50 g orégano
-    const salsaRecipe = await upsertProductionRecipe(
+    await upsertProductionRecipe(
         salsaProduct.id,
         `Receta ${DEMO.SALSA_NAME}`,
         5000,

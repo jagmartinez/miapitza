@@ -25,9 +25,11 @@ const resolveWebSocketUrl = () => {
         if (host.includes('-web-') && host.endsWith('.up.railway.app')) {
             return `wss://${host.replace('-web-', '-')}`;
         }
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        return `${protocol}//${window.location.host}`;
     }
 
-    return 'ws://localhost:3001';
+    return 'ws://localhost:3000';
 };
 
 /** Build WS URL without token in query string (security fix) */

@@ -158,7 +158,7 @@ export function validate(schema: ValidationSchema) {
             const rules = schema[source];
             if (!rules) continue;
 
-            const data: Record<string, unknown> = (req as Record<string, any>)[source] ?? {};
+            const data: Record<string, unknown> = req[source] ?? {};
 
             for (const [field, rule] of Object.entries(rules)) {
                 const error = validateField(data[field], rule, `${source}.${field}`);

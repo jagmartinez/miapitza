@@ -9,8 +9,8 @@ const router = Router();
 
 router.use(authMiddleware);
 
-router.get('/', RoleController.getAll);
-router.get('/:id', validate(s.idParam), RoleController.getById);
+router.get('/', requireRole(...ADMINS), RoleController.getAll);
+router.get('/:id', requireRole(...ADMINS), validate(s.idParam), RoleController.getById);
 router.post('/', requireRole(...ADMINS), validate(s.createRole), RoleController.create);
 router.put('/:id', requireRole(...ADMINS), validate(s.idParam), RoleController.update);
 router.delete('/:id', requireRole(ROLES.SUPERADMIN), validate(s.idParam), RoleController.delete);

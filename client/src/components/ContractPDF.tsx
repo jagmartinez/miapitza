@@ -264,6 +264,8 @@ interface ContractSettings {
     phone?: string;
     email?: string;
     currency_symbol?: string;
+    tax_rate?: string;
+    taxRate?: string;
 }
 
 interface ContractProps {
@@ -272,7 +274,9 @@ interface ContractProps {
 }
 
 const ContractPDF = ({ event, settings = {} }: ContractProps) => {
-    const subtotal = Number(event.totalAmount) / 1.15;
+    const configuredRate = Number(settings.tax_rate ?? settings.taxRate ?? 15);
+    const taxRate = Number.isFinite(configuredRate) && configuredRate >= 0 ? configuredRate : 15;
+    const subtotal = Number(event.totalAmount) / (1 + taxRate / 100);
     const tax = Number(event.totalAmount) - subtotal;
 
     return (
@@ -372,7 +376,7 @@ const ContractPDF = ({ event, settings = {} }: ContractProps) => {
                             <Text>{settings.currency_symbol || '$'}{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
                         </View>
                         <View style={styles.summaryRow}>
-                            <Text style={{ color: '#718096' }}>IVA (15%):</Text>
+                            <Text style={{ color: '#718096' }}>IVA ({taxRate}%):</Text>
                             <Text>{settings.currency_symbol || '$'}{tax.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
                         </View>
                         <View style={styles.totalRow}>

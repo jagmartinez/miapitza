@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 import prisma from '../../utils/prisma';
 import { BankReconciliationService } from '../../services/bank-reconciliation.service';
+import { SettingService } from '../../services/setting.service';
 
 describe('BankReconciliationService.getReconciliationStatus', () => {
     beforeEach(() => {
@@ -9,6 +10,7 @@ describe('BankReconciliationService.getReconciliationStatus', () => {
     });
 
     it('classifies totals by payment method from payments', async () => {
+        jest.spyOn(SettingService, 'getCashReconciliationTolerance').mockResolvedValue(1);
         jest.spyOn(prisma.payment, 'findMany').mockResolvedValue([
             { amount: 100, paymentMethod: { name: 'Efectivo' } },
             { amount: 40, paymentMethod: { name: 'Tarjeta' } },
@@ -39,4 +41,3 @@ describe('BankReconciliationService.getReconciliationStatus', () => {
         expect(result.totals.byMethod.transfer).toBe(30);
     });
 });
-

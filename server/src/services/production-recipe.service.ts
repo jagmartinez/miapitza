@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
 import { AuditLogService } from './audit-log.service';
+import { effectiveUnitCost } from '../utils/product-cost';
 
 type Tx = Prisma.TransactionClient;
 
@@ -100,7 +101,12 @@ export class ProductionRecipeService {
         return Promise.all(
             recipes.map(async (r) => ({
                 ...r,
-                cost: await this.computeRecipeCost(r.id, companyId).catch(() => null)
+                ...(await this.computeRecipeCost(r.id, companyId)
+                    .then((cost) => ({ cost, costError: null }))
+                    .catch((error: unknown) => ({
+                        cost: null,
+                        costError: error instanceof Error ? error.message : String(error)
+                    })))
             }))
         );
     }
@@ -111,8 +117,12 @@ export class ProductionRecipeService {
             include: this.recipeInclude()
         });
         if (!recipe) throw new Error('Receta de producción no encontrada');
-        const cost = await this.computeRecipeCost(id, companyId).catch(() => null);
-        return { ...recipe, cost };
+        try {
+            const cost = await this.computeRecipeCost(id, companyId);
+            return { ...recipe, cost, costError: null };
+        } catch (error: unknown) {
+            return { ...recipe, cost: null, costError: error instanceof Error ? error.message : String(error) };
+        }
     }
 
     /** Active recipe for a given output product (used by production orders). */
@@ -166,7 +176,10 @@ export class ProductionRecipeService {
                 unitAbbr,
                 db as Tx
             );
-            const unitCost = Number(c.componentProduct.currentAverageCost || c.componentProduct.cost || 0);
+            const unitCost = effectiveUnitCost(
+                c.componentProduct.currentAverageCost,
+                c.componentProduct.cost
+            );
             const totalCost = conv.baseQuantity * unitCost;
             batchCost += totalCost;
             lines.push({
@@ -199,6 +212,84 @@ export class ProductionRecipeService {
             yieldBaseQuantity,
             yieldBaseUnit: yieldConv.baseUnit,
             unitCost: round6(unitCost),
+            lines
+        };
+    }
+
+    static async previewCost(companyId: number, data: {
+        productId: number;
+        yieldQuantity: number;
+        yieldUnitId?: number | null;
+        components: RecipeComponentInput[];
+    }): Promise<RecipeCost> {
+        const output = await this.validateOutputProduct(data.productId, companyId);
+        await this.validateComponents(companyId, data.components);
+        if (!Number.isFinite(data.yieldQuantity) || data.yieldQuantity <= 0) {
+            throw new Error('El rendimiento debe ser un número mayor a 0.');
+        }
+
+        const componentProducts = await prisma.product.findMany({
+            where: { companyId, id: { in: data.components.map(component => component.componentProductId) } },
+            select: { id: true, name: true, type: true, unit: true, currentAverageCost: true, cost: true }
+        });
+        const unitIds = [
+            ...data.components.flatMap(component => component.unitId ? [component.unitId] : []),
+            ...(data.yieldUnitId ? [data.yieldUnitId] : [])
+        ];
+        const units = unitIds.length > 0
+            ? await prisma.unitOfMeasure.findMany({
+                where: { companyId, id: { in: [...new Set(unitIds)] } },
+                select: { id: true, abbreviation: true }
+            })
+            : [];
+        const unitById = new Map(units.map(unit => [unit.id, unit.abbreviation]));
+        if (units.length !== new Set(unitIds).size) {
+            throw new Error('Una o más unidades no pertenecen a esta empresa.');
+        }
+
+        const lines: RecipeCostBreakdownLine[] = [];
+        let batchCost = 0;
+        for (const component of data.components) {
+            const product = componentProducts.find(candidate => candidate.id === component.componentProductId)!;
+            const unit = component.unitId
+                ? unitById.get(component.unitId)!
+                : component.unit || product.unit;
+            const conversion = await UnitConversionService.convert(
+                product.id,
+                companyId,
+                Number(component.quantity),
+                unit
+            );
+            const unitCost = effectiveUnitCost(product.currentAverageCost, product.cost);
+            const totalCost = conversion.baseQuantity * unitCost;
+            batchCost += totalCost;
+            lines.push({
+                componentProductId: product.id,
+                componentName: product.name,
+                componentType: product.type,
+                unit,
+                baseUnit: conversion.baseUnit,
+                quantity: Number(component.quantity),
+                baseQuantity: conversion.baseQuantity,
+                unitCost,
+                totalCost: round6(totalCost)
+            });
+        }
+
+        const yieldUnit = data.yieldUnitId
+            ? unitById.get(data.yieldUnitId)!
+            : output.unit;
+        const yieldConversion = await UnitConversionService.convert(
+            output.id,
+            companyId,
+            data.yieldQuantity,
+            yieldUnit
+        );
+        return {
+            batchCost: round6(batchCost),
+            yieldBaseQuantity: yieldConversion.baseQuantity,
+            yieldBaseUnit: yieldConversion.baseUnit,
+            unitCost: round6(batchCost / yieldConversion.baseQuantity),
             lines
         };
     }
@@ -295,10 +386,21 @@ export class ProductionRecipeService {
                 throw new Error('La cantidad de cada componente debe ser mayor a 0.');
             }
         }
+        const unitIds = components.flatMap(component => component.unitId ? [component.unitId] : []);
+        const units = unitIds.length > 0
+            ? await prisma.unitOfMeasure.findMany({
+                where: { companyId, id: { in: [...new Set(unitIds)] } },
+                select: { id: true, abbreviation: true }
+            })
+            : [];
+        const unitById = new Map(units.map(unit => [unit.id, unit.abbreviation]));
+        if (units.length !== new Set(unitIds).size) {
+            throw new Error('Una o más unidades de componentes no pertenecen a esta empresa.');
+        }
         // Validate unit compatibility for every component (throws if incompatible).
         for (const c of components) {
             const prod = products.find((p) => p.id === c.componentProductId)!;
-            const unitAbbr = c.unit || prod.unit;
+            const unitAbbr = c.unitId ? unitById.get(c.unitId)! : c.unit || prod.unit;
             await UnitConversionService.convert(c.componentProductId, companyId, Number(c.quantity), unitAbbr);
         }
     }

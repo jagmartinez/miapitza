@@ -46,12 +46,31 @@ export class SettingService {
                 throw new Error('La tasa de propina debe ser un número entre 0 y 100');
             }
         }
-        if (name === 'session_timeout' || name === 'timeout') {
+        if (name === 'session_timeout_minutes' || name === 'session_timeout' || name === 'timeout') {
             const timeout = parseInt(value, 10);
-            if (!Number.isFinite(timeout) || timeout <= 0) {
+            if (!Number.isInteger(timeout) || timeout < 1 || timeout > 1440) {
                 throw new Error('El tiempo de espera debe ser un número positivo');
             }
         }
+        if (name === 'cash_reconciliation_tolerance') {
+            const tolerance = Number(value);
+            if (!Number.isFinite(tolerance) || tolerance < 0) {
+                throw new Error('La tolerancia de conciliación de caja debe ser un número mayor o igual a cero');
+            }
+        }
+        if (name === 'password_expiry_days') {
+            const days = Number(value);
+            if (!Number.isInteger(days) || days < 0 || days > 3650) {
+                throw new Error('La expiracion de contrasena debe estar entre 0 y 3650 dias');
+            }
+        }
+    }
+
+    /** Shared cash/arqueo tolerance. Default C$1 preserves the historical arqueo contract. */
+    static async getCashReconciliationTolerance(companyId: number): Promise<number> {
+        const settings = await this.getAll(companyId);
+        const configured = Number(settings.cash_reconciliation_tolerance);
+        return Number.isFinite(configured) && configured >= 0 ? configured : 1;
     }
 
     static async update(companyId: number, data: Record<string, string>) {

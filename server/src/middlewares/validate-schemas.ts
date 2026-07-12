@@ -23,7 +23,7 @@ export const dateRange: ValidationSchema = {
 export const createOrder: ValidationSchema = {
     body: {
         tableId: { type: 'number', min: 1 },
-        orderType: { type: 'string', enum: ['DINE_IN', 'TAKEAWAY', 'DELIVERY'] },
+        orderType: { type: 'string', enum: ['DINE_IN', 'TAKEOUT', 'DELIVERY'] },
     },
 };
 

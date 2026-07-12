@@ -158,6 +158,14 @@ export class PurchaseOrderService {
             purchaseUnit?: string;
         }>;
     }) {
+        for (const item of data.items) {
+            if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+                throw new Error('La cantidad de cada artÃ­culo debe ser un nÃºmero finito mayor a 0');
+            }
+            if (!Number.isFinite(item.cost) || item.cost < 0) {
+                throw new Error('El costo de cada artÃ­culo debe ser un nÃºmero finito mayor o igual a 0');
+            }
+        }
         // Verify branch (findFirst guarantees the companyId scope; findUnique can't
         // filter by a non-unique companyId and would leak cross-tenant branches).
         const branch = await prisma.branch.findFirst({
@@ -321,6 +329,10 @@ export class PurchaseOrderService {
         }
         if (data.invoiceType === 'CASH') {
             updateData.paymentStatus = 'PAID';
+            updateData.paidAmount = existing.total;
+        } else if (data.invoiceType === 'CREDIT' && existing.invoiceType === 'CASH') {
+            updateData.paymentStatus = 'PENDING';
+            updateData.paidAmount = 0;
         }
 
         return await prisma.purchaseOrder.update({
@@ -404,12 +416,26 @@ export class PurchaseOrderService {
         }
 
         return await prisma.$transaction(async (tx: Tx) => {
+            // Serialize receipt attempts. Without locking the order row, two workers
+            // can both observe ISSUED and duplicate stock, FIFO layers and costing.
+            await tx.$queryRaw`SELECT id FROM \`PurchaseOrder\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const lockedOrder = await tx.purchaseOrder.findFirst({
+                where: { id, companyId },
+                include: { items: true }
+            });
+            if (!lockedOrder) throw new Error('Purchase order not found');
+            if (lockedOrder.status === 'RECEIVED') throw new Error('Purchase order already received');
+            if (lockedOrder.status === 'CANCELLED') throw new Error('Cannot receive cancelled purchase order');
+            if (lockedOrder.status !== 'ISSUED') {
+                throw new Error('Cannot receive a draft purchase order. It must be issued first.');
+            }
+
             // Import CostingService / engine dynamically to avoid circular deps.
             const { CostingService } = await import('./costing.service');
             const { InventoryEngineService } = await import('./inventory-engine.service');
 
             // Update each product's stock and cost (using base-unit quantities)
-            for (const item of order.items) {
+            for (const item of lockedOrder.items) {
                 // Resolve the base-unit quantity/cost. Prefer the stored converted
                 // values; check `!= null` (not truthiness) so a legitimate 0 is kept
                 // instead of falling back to the raw figures.
@@ -461,7 +487,7 @@ export class PurchaseOrderService {
                     originalUnit: item.purchaseUnit || null,
                     conversionFactor: conversionFactor != null ? conversionFactor : null,
                     reason: 'Purchase order received',
-                    reference: `PO-${order.id}`,
+                    reference: `PO-${lockedOrder.id}`,
                     sourceType: 'PURCHASE'
                 });
 
@@ -487,8 +513,8 @@ export class PurchaseOrderService {
                 where: { id },
                 data: {
                     status: 'RECEIVED',
-                    ...(order.invoiceType === 'CASH'
-                        ? { paymentStatus: 'PAID', paidAmount: order.total }
+                    ...(lockedOrder.invoiceType === 'CASH'
+                        ? { paymentStatus: 'PAID', paidAmount: lockedOrder.total }
                         : {})
                 },
                 include: {
@@ -511,6 +537,12 @@ export class PurchaseOrderService {
         cost: number;
         purchaseUnit?: string;
     }) {
+        if (!Number.isFinite(data.quantity) || data.quantity <= 0) {
+            throw new Error('La cantidad del artÃ­culo debe ser un nÃºmero finito mayor a 0');
+        }
+        if (!Number.isFinite(data.cost) || data.cost < 0) {
+            throw new Error('El costo del artÃ­culo debe ser un nÃºmero finito mayor o igual a 0');
+        }
         const order = await prisma.purchaseOrder.findFirst({
             where: { id: orderId, companyId }
         });
@@ -643,6 +675,9 @@ export class PurchaseOrderService {
         referenceNumber?: string;
         observations?: string;
     }) {
+        if (!Number.isFinite(data.amount) || data.amount <= 0) {
+            throw new Error('El monto del pago debe ser finito y mayor a 0');
+        }
         const order = await prisma.purchaseOrder.findFirst({
             where: { id: purchaseOrderId, companyId }
         });
@@ -671,13 +706,21 @@ export class PurchaseOrderService {
                 }
             });
 
-            await tx.purchaseOrder.update({
-                where: { id: purchaseOrderId },
+            const claimed = await tx.purchaseOrder.updateMany({
+                where: {
+                    id: purchaseOrderId,
+                    companyId,
+                    invoiceType: 'CREDIT',
+                    paidAmount: order.paidAmount
+                },
                 data: {
                     paidAmount: currentPaid,
                     paymentStatus
                 }
             });
+            if (claimed.count !== 1) {
+                throw new Error('La orden cambiÃ³ durante el pago; vuelva a consultar el saldo e intente de nuevo');
+            }
 
             return payment;
         });

@@ -296,9 +296,10 @@ export interface ProductionRecipe {
   createdBy?: { id: number; name: string } | null;
   createdAt: string;
   updatedAt: string;
-  components: ProductionRecipeComponent[];
-  cost?: RecipeCost | null;
-}
+    components: ProductionRecipeComponent[];
+    cost?: RecipeCost | null;
+    costError?: string | null;
+  }
 
 export type ProductionOrderStatus = 'DRAFT' | 'PENDING' | 'IN_PROGRESS' | 'FINISHED' | 'CANCELLED';
 

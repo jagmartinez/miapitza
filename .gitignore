@@ -26,5 +26,13 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# Local audit/import artifacts (never upload or commit)
+.claude/worktrees/
+.tmp/
+outputs/
+*.pdf
+*.xlsx
+*.b64
+
 # Package lock (keep per-project)
 # package-lock.json

@@ -26,6 +26,9 @@ function makeTx(opts: {
     const movementCreates: Array<Record<string, unknown>> = [];
 
     const tx = {
+        warehouse: {
+            findFirst: jest.fn(async () => ({ id: 1 }))
+        },
         stock: {
             findUnique: jest.fn(async () => ({ id: 1, quantity: opts.stockQuantity })),
             create: jest.fn(async () => ({ id: 1, quantity: 0 })),

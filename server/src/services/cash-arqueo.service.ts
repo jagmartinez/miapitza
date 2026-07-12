@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { SettingService } from './setting.service';
 
 /**
  * Cash Register Arqueo Service
@@ -9,8 +10,6 @@ export class CashArqueoService {
     // Acceptable cash count difference (in córdobas) before a shift is flagged.
     // TODO: ideally this becomes per-company configuration (a Setting) rather than a
     // hardcoded constant, since tolerance expectations vary by business.
-    private static readonly TOLERANCE = 1.0;
-
     private static calculateCountedAmount(breakdown: {
         bills?: { denomination: number; count: number }[];
         coins?: { denomination: number; count: number }[];
@@ -33,16 +32,16 @@ export class CashArqueoService {
         };
     }
 
-    private static classifyDifference(difference: number) {
+    private static classifyDifference(difference: number, tolerance: number) {
         const absoluteDifference = Math.abs(difference);
         return {
             difference,
             absoluteDifference,
             status: difference === 0 ? 'CUADRADO' : (difference > 0 ? 'SOBRANTE' : 'FALTANTE'),
-            withinTolerance: absoluteDifference <= this.TOLERANCE,
-            requiresNote: absoluteDifference > 0 && absoluteDifference <= this.TOLERANCE,
-            exceedsTolerance: absoluteDifference > this.TOLERANCE,
-            tolerance: this.TOLERANCE
+            withinTolerance: absoluteDifference <= tolerance,
+            requiresNote: absoluteDifference > 0 && absoluteDifference <= tolerance,
+            exceedsTolerance: absoluteDifference > tolerance,
+            tolerance
         };
     }
 
@@ -152,7 +151,8 @@ export class CashArqueoService {
         const details = await this.getShiftDetails(shiftId, companyId);
         const counted = this.calculateCountedAmount(closeData);
         const endAmount = closeData.endAmount ?? counted.totalCounted;
-        const differenceSummary = this.classifyDifference(endAmount - details.amounts.expectedEndAmount);
+        const tolerance = await SettingService.getCashReconciliationTolerance(companyId);
+        const differenceSummary = this.classifyDifference(endAmount - details.amounts.expectedEndAmount, tolerance);
 
         return {
             expectedAmount: details.amounts.expectedEndAmount,
@@ -192,7 +192,8 @@ export class CashArqueoService {
 
         // Get expected amount
         const details = await this.getShiftDetails(shiftId, companyId);
-        const differenceSummary = this.classifyDifference(counted.totalCounted - details.amounts.expectedEndAmount);
+        const tolerance = await SettingService.getCashReconciliationTolerance(companyId);
+        const differenceSummary = this.classifyDifference(counted.totalCounted - details.amounts.expectedEndAmount, tolerance);
 
         return {
             counted: {
@@ -254,7 +255,7 @@ export class CashArqueoService {
                 const diffAmount = Math.abs(difference).toFixed(2);
                 throw new Error(
                     `No se puede cerrar el turno con ${diffType} de C$ ${diffAmount}. ` +
-                    `La diferencia excede la tolerancia de C$ ${this.TOLERANCE.toFixed(2)}.`
+                    `La diferencia excede la tolerancia de C$ ${preview.tolerance.toFixed(2)}.`
                 );
             }
 

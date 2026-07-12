@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma';
 import { formatCurrency } from '../utils/currency';
+import { SettingService } from './setting.service';
 
 /**
  * Thrown by endpoints whose backing persistence does not yet exist. Routes map
@@ -19,34 +20,20 @@ export class NotImplementedError extends Error {
 export class BankReconciliationService {
     // Tolerances for treating a cash difference as "balanced". These are reasonable
     // defaults; ideally they would become per-company configuration (e.g. a Setting).
-    private static readonly OVERALL_TOLERANCE_RATIO = 0.005; // 0.5% of expected cash
-    private static readonly OVERALL_TOLERANCE_MAX = 1.0; // or $1, whichever is smaller
-    private static readonly SHIFT_TOLERANCE = 0.5; // per-shift variance tolerance
-
     /**
      * Get reconciliation status for a date range
      */
     static async getReconciliationStatus(companyId: number, startDate: Date, endDate: Date) {
+        const tolerance = await SettingService.getCashReconciliationTolerance(companyId);
         const payments = await prisma.payment.findMany({
             where: {
+                createdAt: {
+                    gte: startDate,
+                    lte: endDate
+                },
                 order: {
                     companyId,
-                    status: 'PAID',
-                    OR: [
-                        {
-                            closedAt: {
-                                gte: startDate,
-                                lte: endDate
-                            }
-                        },
-                        {
-                            closedAt: null,
-                            createdAt: {
-                                gte: startDate,
-                                lte: endDate
-                            }
-                        }
-                    ]
+                    status: { not: 'CANCELLED' }
                 }
             },
             include: {
@@ -127,13 +114,18 @@ export class BankReconciliationService {
                 salesIn: shiftSalesIn,
                 cashOut: shiftCashOut,
                 difference: Math.round(shiftDiff * 100) / 100,
-                status: this.calculateShiftStatus(shiftDiff)
+                status: this.calculateShiftStatus(shiftDiff, tolerance)
             });
         }
 
         // Use registered payments as the source of truth for sales by method.
-        totalSales = payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+        const grossCollected = payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+        const refunded = payments
+            .filter((payment) => payment.status === 'REVERSED')
+            .reduce((sum, payment) => sum + Number(payment.amount), 0);
+        totalSales = grossCollected - refunded;
         for (const payment of payments) {
+            if (payment.status === 'REVERSED') continue;
             const methodName = (payment.paymentMethod?.name || '').toLowerCase();
             const amount = Number(payment.amount);
             if (methodName.includes('tarjeta') || methodName.includes('card') || methodName.includes('pos')) {
@@ -154,7 +146,7 @@ export class BankReconciliationService {
         const expectedCash = Math.round(totalExpectedCash * 100) / 100;
         const countedCash = Math.round(totalCash * 100) / 100;
         const cashDifference = countedCash - expectedCash;
-        const overallStatus = this.calculateReconciliationStatus(cashDifference, expectedCash);
+        const overallStatus = this.calculateReconciliationStatus(cashDifference, tolerance);
 
         return {
             period: {
@@ -165,6 +157,9 @@ export class BankReconciliationService {
             shiftDetails,
             totals: {
                 totalSales,
+                grossCollected,
+                refunded,
+                netCollected: totalSales,
                 totalExpenses,
                 netSales: totalSales - totalExpenses,
                 byMethod: totalsByMethod,
@@ -203,6 +198,7 @@ export class BankReconciliationService {
      * Get pending reconciliations
      */
     static async getPendingReconciliations(companyId: number) {
+        const tolerance = await SettingService.getCashReconciliationTolerance(companyId);
         // Get shifts without matching deposits
         const unreconciledShifts = await prisma.cashShift.findMany({
             where: {
@@ -252,7 +248,7 @@ export class BankReconciliationService {
                 expectedCash: Math.round(expectedCash * 100) / 100,
                 cashVariance,
                 closingDifference: Math.round(diff * 100) / 100,
-                status: this.calculateShiftStatus(cashVariance)
+                status: this.calculateShiftStatus(cashVariance, tolerance)
             };
         });
     }
@@ -283,12 +279,11 @@ export class BankReconciliationService {
      * Calculate reconciliation status based on the difference and expected amount.
      * Allows a small tolerance (0.5% of expected or max $1) for rounding differences.
      */
-    private static calculateReconciliationStatus(difference: number, expected: number): string {
+    private static calculateReconciliationStatus(difference: number, tolerance: number): string {
         const absDiff = Math.abs(difference);
         if (absDiff === 0) return 'RECONCILED';
 
         // Tolerance: 0.5% of expected cash or $1, whichever is smaller
-        const tolerance = Math.min(expected * this.OVERALL_TOLERANCE_RATIO, this.OVERALL_TOLERANCE_MAX);
         if (absDiff <= tolerance) return 'RECONCILED';
         if (difference > 0) return 'SURPLUS';
         return 'DEFICIT';
@@ -297,9 +292,9 @@ export class BankReconciliationService {
     /**
      * Calculate individual shift status based on cash variance.
      */
-    private static calculateShiftStatus(variance: number): string {
+    private static calculateShiftStatus(variance: number, tolerance: number): string {
         const absVariance = Math.abs(variance);
-        if (absVariance <= this.SHIFT_TOLERANCE) return 'BALANCED';
+        if (absVariance <= tolerance) return 'BALANCED';
         if (variance > 0) return 'SURPLUS';
         return 'DEFICIT';
     }

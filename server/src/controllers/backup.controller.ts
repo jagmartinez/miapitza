@@ -14,6 +14,35 @@ export class BackupController {
         throw new Error(`Missing required environment variable: ${name}`);
     }
 
+    private static getDatabaseConfig() {
+        const databaseUrl = process.env.DATABASE_URL;
+        if (databaseUrl) {
+            const parsed = new URL(databaseUrl);
+            if (parsed.protocol !== 'mysql:') {
+                throw new Error('DATABASE_URL must use the mysql protocol for backups');
+            }
+            const database = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+            if (!parsed.hostname || !parsed.username || !database) {
+                throw new Error('DATABASE_URL is incomplete for backups');
+            }
+            return {
+                host: parsed.hostname,
+                port: parsed.port || '3306',
+                user: decodeURIComponent(parsed.username),
+                password: decodeURIComponent(parsed.password),
+                database,
+            };
+        }
+
+        return {
+            host: BackupController.getRequiredEnv('DATABASE_HOST'),
+            port: process.env.DATABASE_PORT || '3306',
+            user: BackupController.getRequiredEnv('DATABASE_USER'),
+            password: process.env.DATABASE_PASSWORD || '',
+            database: BackupController.getRequiredEnv('DATABASE_NAME'),
+        };
+    }
+
     /**
      * Validates that a filename is safe (no path traversal).
      * Returns the sanitized basename or null if invalid.
@@ -38,33 +67,26 @@ export class BackupController {
             const filename = `backup-${timestamp}.sql`;
             const filepath = path.join(backupDir, filename);
 
-            const isProduction = process.env.NODE_ENV === 'production';
-            const dbName = isProduction
-                ? BackupController.getRequiredEnv('DATABASE_NAME')
-                : (process.env.DATABASE_NAME || 'restaurante');
-            const dbUser = isProduction
-                ? BackupController.getRequiredEnv('DATABASE_USER')
-                : (process.env.DATABASE_USER || 'root');
-            const dbPassword = process.env.DATABASE_PASSWORD || '';
-            const dbHost = isProduction
-                ? BackupController.getRequiredEnv('DATABASE_HOST')
-                : (process.env.DATABASE_HOST || '127.0.0.1');
-            const mysqldumpPath = isProduction
-                ? BackupController.getRequiredEnv('MYSQLDUMP_PATH')
-                : (process.env.MYSQLDUMP_PATH || 'C:\\xampp\\mysql\\bin\\mysqldump.exe');
+            const db = BackupController.getDatabaseConfig();
+            const mysqldumpPath = process.env.MYSQLDUMP_PATH ||
+                (process.platform === 'win32' ? 'C:\\xampp\\mysql\\bin\\mysqldump.exe' : 'mysqldump');
 
             // MySQL dump command using execFile (safe from command injection)
             const args = [
-                '-u', dbUser,
-                '-h', dbHost,
+                '-u', db.user,
+                '-h', db.host,
+                '-P', db.port,
+                '--single-transaction',
+                '--routines',
+                '--triggers',
                 '--result-file', filepath,
-                dbName
+                db.database
             ];
 
             execFile(
                 mysqldumpPath,
                 args,
-                { env: { ...process.env, ...(dbPassword ? { MYSQL_PWD: dbPassword } : {}) } },
+                { env: { ...process.env, ...(db.password ? { MYSQL_PWD: db.password } : {}) } },
                 (error) => {
                 if (error) {
                     console.error('Backup error:', error.message);

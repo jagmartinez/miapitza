@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { CostingService } from './costing.service';
+import { effectiveUnitCost } from '../utils/product-cost';
 
 /**
  * Single inventory engine (#5). Centralizes the stock + movement + FIFO-batch
@@ -62,6 +63,8 @@ export interface ApplyMovementParams {
     direction?: 'IN' | 'OUT';
     /** Optional product name to enrich the insufficient-stock error message. */
     productName?: string;
+    /** FIFO portions to recreate on an inbound transfer without averaging layers. */
+    inboundLayers?: Array<{ quantity: number; unitCost: number; sourceRef?: string | null }>;
 }
 
 export interface ApplyMovementResult {
@@ -70,6 +73,7 @@ export interface ApplyMovementResult {
     totalCost: number;
     balanceQty: number;
     balanceCost: number;
+    consumedLayers?: Array<{ quantity: number; unitCost: number; sourceRef?: string | null }>;
 }
 
 const EPS = 1e-9;
@@ -98,11 +102,27 @@ export class InventoryEngineService {
     static async applyMovement(tx: Tx, params: ApplyMovementParams): Promise<ApplyMovementResult> {
         const { type, companyId, warehouseId, productId, userId } = params;
         const quantity = Number(params.quantity);
-        if (!(quantity > 0)) {
+        if (!Number.isFinite(quantity) || !(quantity > 0)) {
             throw new Error('La cantidad del movimiento debe ser mayor a 0');
+        }
+        if (params.unitCost != null && (!Number.isFinite(Number(params.unitCost)) || Number(params.unitCost) < 0)) {
+            throw new Error('El costo unitario del movimiento debe ser finito y mayor o igual a 0');
         }
 
         const direction = this.resolveDirection(type, params.direction);
+
+        // The engine is a shared write boundary used by purchases, production,
+        // transfers and waste. Validate both foreign resources here so a caller
+        // cannot create or mutate a Stock row that mixes tenants.
+        const [warehouse, product] = await Promise.all([
+            tx.warehouse.findFirst({ where: { id: warehouseId, companyId }, select: { id: true } }),
+            tx.product.findFirst({
+                where: { id: productId, companyId },
+                select: { currentAverageCost: true, cost: true }
+            })
+        ]);
+        if (!warehouse) throw new Error('AlmacÃ©n no encontrado para la empresa');
+        if (!product) throw new Error('Producto no encontrado para la empresa');
 
         // 1. Locate (or create) the Stock row, lock it FOR UPDATE and re-read the
         //    locked quantity — same serialization pattern as order.service.updateStatus.
@@ -125,11 +145,7 @@ export class InventoryEngineService {
 
         // Costing context: the product's moving-average cost (reference for the
         // valued balance and the IN fallback) and the company's costing method.
-        const product = await tx.product.findFirst({
-            where: { id: productId, companyId },
-            select: { currentAverageCost: true, cost: true }
-        });
-        const avgCost = Number(product?.currentAverageCost || product?.cost || 0);
+        const avgCost = effectiveUnitCost(product?.currentAverageCost, product?.cost);
 
         const company = await tx.company.findUnique({
             where: { id: companyId },
@@ -153,6 +169,7 @@ export class InventoryEngineService {
         let unitCost: number;
         let totalCost: number;
         let balanceCost: number;
+        const consumedLayers: Array<{ quantity: number; unitCost: number; sourceRef?: string | null }> = [];
 
         if (direction === 'IN') {
             // Load layers only when needed to value the FIFO balance.
@@ -160,23 +177,33 @@ export class InventoryEngineService {
                 ? await this.sumRemainingLayers(tx, companyId, warehouseId, productId)
                 : currentQty * avgCost;
 
-            unitCost = params.unitCost != null ? Number(params.unitCost) : avgCost;
-            totalCost = quantity * unitCost;
+            if (params.inboundLayers?.length) {
+                const layerQty = params.inboundLayers.reduce((sum, layer) => sum + layer.quantity, 0);
+                if (Math.abs(layerQty - quantity) > EPS) {
+                    throw new Error('Las capas de entrada no cuadran con la cantidad del movimiento');
+                }
+                totalCost = params.inboundLayers.reduce((sum, layer) => sum + layer.quantity * layer.unitCost, 0);
+                unitCost = totalCost / quantity;
+            } else {
+                unitCost = params.unitCost != null ? Number(params.unitCost) : avgCost;
+                totalCost = quantity * unitCost;
+            }
             balanceCost = prevValued + totalCost;
 
             // Open a FIFO cost layer for this entry.
-            await tx.inventoryBatch.create({
-                data: {
+            const layersToCreate = params.inboundLayers ?? [{ quantity, unitCost, sourceRef: params.reference ?? null }];
+            for (const layer of layersToCreate) {
+                await tx.inventoryBatch.create({ data: {
                     companyId,
                     warehouseId,
                     productId,
-                    unitCost,
-                    originalQty: quantity,
-                    remainingQty: quantity,
+                    unitCost: layer.unitCost,
+                    originalQty: layer.quantity,
+                    remainingQty: layer.quantity,
                     sourceType: params.sourceType ?? 'ADJUSTMENT',
-                    sourceRef: params.reference ?? null
-                }
-            });
+                    sourceRef: layer.sourceRef ?? params.reference ?? null
+                } });
+            }
         } else {
             // OUT: load the layers (oldest first), lock them, and consume them so
             // FIFO stays consistent regardless of the active costing method.
@@ -204,6 +231,7 @@ export class InventoryEngineService {
                 const take = Math.min(available, remaining);
                 if (take <= 0) continue;
                 fifoCogs += take * Number(layer.unitCost);
+                consumedLayers.push({ quantity: take, unitCost: Number(layer.unitCost), sourceRef: layer.sourceRef });
                 remaining -= take;
                 await tx.inventoryBatch.update({
                     where: { id: layer.id },
@@ -222,6 +250,7 @@ export class InventoryEngineService {
             // Graceful degradation for ordinary legacy stock without layers.
             if (remaining > EPS) {
                 fifoCogs += remaining * avgCost;
+                consumedLayers.push({ quantity: remaining, unitCost: avgCost, sourceRef: null });
                 remaining = 0;
             }
 
@@ -274,7 +303,8 @@ export class InventoryEngineService {
             unitCost,
             totalCost,
             balanceQty: newQty,
-            balanceCost
+            balanceCost,
+            consumedLayers: direction === 'OUT' ? consumedLayers : undefined
         };
     }
 

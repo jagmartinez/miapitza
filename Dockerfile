@@ -2,7 +2,7 @@
 FROM node:20-bookworm-slim
 WORKDIR /app
 RUN apt-get update -y \
-    && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && apt-get install -y --no-install-recommends openssl ca-certificates default-mysql-client \
     && rm -rf /var/lib/apt/lists/*
 COPY server/package.json server/package-lock.json ./
 RUN npm ci --include=dev

@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { effectiveUnitCost } from '../utils/product-cost';
 
 interface BaseFilters {
     branchId?: number;
@@ -237,7 +238,7 @@ export class ProductionReportService {
                     orderBy: { finishedAt: 'desc' },
                     select: { realUnitCost: true, finishedAt: true }
                 });
-                const cost = Number(p.currentAverageCost || p.cost || 0);
+                const cost = effectiveUnitCost(p.currentAverageCost, p.cost);
                 const price = p.price != null ? Number(p.price) : null;
                 const margin = price != null ? price - cost : null;
                 const marginPct = price != null && price > 0 ? Math.round(((price - cost) / price) * 10000) / 100 : null;

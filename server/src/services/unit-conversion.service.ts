@@ -139,6 +139,10 @@ export class UnitConversionService {
     ): Promise<ConversionResult> {
         const db = tx || prisma;
 
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+            throw new Error('La cantidad a convertir debe ser un nÃºmero finito mayor a 0');
+        }
+
         const product = await db.product.findFirst({
             where: { id: productId, companyId },
             include: {
@@ -317,6 +321,9 @@ export class UnitConversionService {
         costPerUnit: number,
         tx?: Tx
     ): Promise<CostConversionResult> {
+        if (!Number.isFinite(costPerUnit) || costPerUnit < 0) {
+            throw new Error('El costo por unidad debe ser un nÃºmero finito mayor o igual a 0');
+        }
         const result = await this.convert(productId, companyId, quantity, unitAbbreviation, tx);
 
         // costPerUnit is per original unit. Convert to cost per base unit.

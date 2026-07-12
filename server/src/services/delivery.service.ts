@@ -183,11 +183,8 @@ export class DeliveryService {
      * PedidosYaConfig, so a valid signature can only be produced by a party
      * that knows THAT company's secret — closing the tenant-spoofing hole.
      *
-     * For Uber Eats / Rappi there is no per-company secret model yet, so we
-     * fall back to a global env secret. RESIDUAL GAP: the env secret is shared
-     * across tenants, so a holder of the global secret could still target an
-     * arbitrary companyId. Needs a per-company secret store for those platforms
-     * (see report).
+     * Uber Eats / Rappi remain disabled here until a per-company secret model
+     * exists; shared environment secrets are not accepted for tenant requests.
      */
     private static async resolveWebhookSecret(platform: string, companyId: number): Promise<string | null> {
         if (platform === 'pedidosya') {
@@ -205,11 +202,10 @@ export class DeliveryService {
             }
         }
 
-        const envSecrets: Record<string, string | undefined> = {
-            'uber-eats': process.env.UBER_EATS_WEBHOOK_SECRET,
-            'rappi': process.env.RAPPI_WEBHOOK_SECRET,
-        };
-        return envSecrets[platform] ?? null;
+        // Uber Eats/Rappi do not yet have tenant-bound secret storage. A shared
+        // environment secret would let its holder impersonate any companyId,
+        // so those public webhook variants remain fail-closed until supported.
+        return null;
     }
 
     /**

@@ -3,7 +3,7 @@ import Select from '../components/Select';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
-import { purchaseOrdersAPI, suppliersAPI, productsAPI, branchesAPI, warehousesAPI, unitsAPI } from '../services/api';
+import { purchaseOrdersAPI, suppliersAPI, productsAPI, branchesAPI, warehousesAPI, unitsAPI, normalizeApiBaseUrl } from '../services/api';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import Modal from '../components/Modal';
@@ -567,7 +567,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                     </label>
                                     {order?.invoicePdf && !invoiceFile && (
                                         <a
-                                            href={`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}${order.invoicePdf}`}
+                                            href={`${normalizeApiBaseUrl()}${order.invoicePdf}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="view-pdf-link"

@@ -9,8 +9,8 @@ const router = Router();
 
 router.use(authMiddleware);
 
-router.get('/', UserController.getAll);
-router.get('/profile', UserController.getById);
+router.get('/', requireRole(...ADMINS), UserController.getAll);
+router.get('/profile', UserController.getProfile);
 router.get('/:id', validate(s.idParam), UserController.getById);
 router.put('/profile', UserController.updateMe);
 router.post('/', requireRole(...ADMINS), validate(s.createUser), UserController.create);

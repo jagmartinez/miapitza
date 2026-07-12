@@ -37,6 +37,7 @@ export default function Settings() {
         companyName: '',
         taxRate: '',
         tipRate: '',
+        cash_reconciliation_tolerance: '1',
         tipEnabled: 'false',
         currency_symbol: DEFAULT_CURRENCY_SYMBOL,
 
@@ -73,6 +74,7 @@ export default function Settings() {
                 companyName: settings.companyName || '',
                 taxRate: settings.taxRate || '',
                 tipRate: settings.tipRate || '',
+                cash_reconciliation_tolerance: settings.cash_reconciliation_tolerance || '1',
                 tipEnabled: settings.tipEnabled || 'false',
                 currency_symbol: settings.currency_symbol || settings.currency || DEFAULT_CURRENCY_SYMBOL,
                 nif: settings.nif || '',
@@ -246,6 +248,15 @@ export default function Settings() {
                                 />
                             </div>
                             <div className="form-row">
+                                <Input
+                                    label="Tolerancia de caja"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={formData.cash_reconciliation_tolerance}
+                                    onChange={(e) => setFormData({ ...formData, cash_reconciliation_tolerance: e.target.value })}
+                                    placeholder="1.00"
+                                />
                                 <Input
                                     label="Símbolo de Moneda"
                                     value={formData.currency_symbol}

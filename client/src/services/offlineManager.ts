@@ -29,9 +29,19 @@ function generateIdempotencyKey(): string {
     return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
+export function getCurrentOfflineOwnerKey(): string | null {
+    try {
+        const user = JSON.parse(localStorage.getItem('user') || 'null') as { id?: number; companyId?: number } | null;
+        return user?.id && user?.companyId ? `${user.companyId}:${user.id}` : null;
+    } catch {
+        return null;
+    }
+}
+
 class OfflineManager {
     private isOnline: boolean = navigator.onLine;
     private listeners: ((online: boolean) => void)[] = [];
+    private syncInFlight: Promise<void> | null = null;
 
     constructor() {
         window.addEventListener('online', () => this.handleStatusChange(true));
@@ -65,9 +75,12 @@ class OfflineManager {
         return this.isOnline;
     }
 
-    public async enqueueRequest(item: Omit<SyncItem, 'id' | 'timestamp' | 'status' | 'retryCount' | 'lastError' | 'idempotencyKey'>) {
+    public async enqueueRequest(item: Omit<SyncItem, 'id' | 'timestamp' | 'status' | 'retryCount' | 'lastError' | 'idempotencyKey' | 'ownerKey'>) {
+        const ownerKey = getCurrentOfflineOwnerKey();
+        if (!ownerKey) throw new Error('No authenticated offline owner');
         await db.syncQueue.add({
             ...item,
+            ownerKey,
             timestamp: Date.now(),
             status: item.dependencyKey ? 'blocked' : 'pending',
             retryCount: 0,
@@ -77,7 +90,9 @@ class OfflineManager {
     }
 
     public async isCacheValid(url: string): Promise<boolean> {
-        const entry = await db.caches.get(url);
+        const ownerKey = getCurrentOfflineOwnerKey();
+        if (!ownerKey) return false;
+        const entry = await db.caches.get(`${ownerKey}|${url}`);
         if (!entry) return false;
         const ttl = getTTL(url);
         return (Date.now() - entry.timestamp) < ttl;
@@ -86,15 +101,23 @@ class OfflineManager {
     public async getCachedData(url: string): Promise<unknown | null> {
         const valid = await this.isCacheValid(url);
         if (!valid) return null;
-        const entry = await db.caches.get(url);
+        const ownerKey = getCurrentOfflineOwnerKey();
+        if (!ownerKey) return null;
+        const entry = await db.caches.get(`${ownerKey}|${url}`);
         return entry?.data ?? null;
+    }
+
+    public async putCachedData(url: string, data: unknown): Promise<void> {
+        const ownerKey = getCurrentOfflineOwnerKey();
+        if (!ownerKey) return;
+        await db.caches.put({ id: `${ownerKey}|${url}`, url, ownerKey, data, timestamp: Date.now() });
     }
 
     public async purgeExpiredCache(): Promise<number> {
         const all = await db.caches.toArray();
         let purged = 0;
         for (const entry of all) {
-            const ttl = getTTL(entry.id);
+            const ttl = getTTL(entry.url || entry.id);
             if ((Date.now() - entry.timestamp) >= ttl) {
                 await db.caches.delete(entry.id);
                 purged++;
@@ -104,15 +127,22 @@ class OfflineManager {
     }
 
     public async getPendingCount(): Promise<number> {
-        return db.syncQueue.where('status').anyOf('pending', 'blocked', 'processing').count();
+        const ownerKey = getCurrentOfflineOwnerKey();
+        if (!ownerKey) return 0;
+        return db.syncQueue.where('ownerKey').equals(ownerKey)
+            .filter((item) => ['pending', 'blocked', 'processing'].includes(item.status)).count();
     }
 
     public async getFailedItems(): Promise<SyncItem[]> {
-        return db.syncQueue.where('status').equals('failed').toArray();
+        const ownerKey = getCurrentOfflineOwnerKey();
+        if (!ownerKey) return [];
+        return db.syncQueue.where('ownerKey').equals(ownerKey).filter((item) => item.status === 'failed').toArray();
     }
 
     public async retryFailed(): Promise<void> {
-        await db.syncQueue.where('status').equals('failed').modify({
+        const ownerKey = getCurrentOfflineOwnerKey();
+        if (!ownerKey) return;
+        await db.syncQueue.where('ownerKey').equals(ownerKey).filter((item) => item.status === 'failed').modify({
             status: 'pending',
             retryCount: 0,
             lastError: null,
@@ -121,15 +151,42 @@ class OfflineManager {
     }
 
     public async clearFailed(): Promise<void> {
-        await db.syncQueue.where('status').equals('failed').delete();
+        const ownerKey = getCurrentOfflineOwnerKey();
+        if (!ownerKey) return;
+        await db.syncQueue.where('ownerKey').equals(ownerKey).filter((item) => item.status === 'failed').delete();
     }
 
-    public async processSyncQueue() {
+    public async clearSessionData(): Promise<void> {
+        // Session switching preserves owner-partitioned data. Legacy unowned rows
+        // remain fail-closed and can only be removed explicitly.
+    }
+
+    public async purgeOwnerData(ownerKey: string): Promise<void> {
+        await db.transaction('rw', db.caches, db.syncQueue, async () => {
+            await db.caches.where('ownerKey').equals(ownerKey).delete();
+            await db.syncQueue.where('ownerKey').equals(ownerKey).delete();
+        });
+    }
+
+    public processSyncQueue(): Promise<void> {
+        if (this.syncInFlight) return this.syncInFlight;
+        const run = this.runSyncQueue();
+        this.syncInFlight = run;
+        void run.finally(() => {
+            if (this.syncInFlight === run) this.syncInFlight = null;
+        });
+        return run;
+    }
+
+    private async runSyncQueue() {
         if (!this.isOnline) return;
 
+        const ownerKey = getCurrentOfflineOwnerKey();
+        if (!ownerKey) return;
+
         const items = await db.syncQueue
-            .where('status')
-            .anyOf('pending', 'blocked')
+            .where('ownerKey').equals(ownerKey)
+            .filter((item) => item.status === 'pending' || item.status === 'blocked')
             .sortBy('timestamp');
 
         if (items.length === 0) return;
@@ -161,9 +218,8 @@ class OfflineManager {
             // Check dependency resolution
             if (item.dependencyKey) {
                 const dependencyPending = await db.syncQueue
-                    .where('entityTempId')
-                    .equals(item.dependencyKey)
-                    .filter(candidate => candidate.id !== item.id && candidate.status !== 'failed')
+                    .where('ownerKey').equals(ownerKey)
+                    .filter(candidate => candidate.entityTempId === item.dependencyKey && candidate.id !== item.id && candidate.status !== 'failed')
                     .count();
 
                 if (dependencyPending > 0) {

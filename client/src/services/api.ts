@@ -124,7 +124,7 @@ export async function invalidateApiCacheForPath(pathPrefix: string): Promise<voi
         const entries = await db.caches.toArray();
         await Promise.all(
             entries
-                .filter((e) => e.id === pathPrefix || e.id.startsWith(`${pathPrefix}?`))
+                .filter((e) => e.ownerKey && (e.url === pathPrefix || e.url.startsWith(`${pathPrefix}?`)))
                 .map((e) => db.caches.delete(e.id))
         );
     } catch {
@@ -186,11 +186,7 @@ api.interceptors.response.use(
         const url = response.config.url || '';
         if (method === 'get' && !url.startsWith('/auth/') && response.config.responseType !== 'arraybuffer') {
             try {
-                await db.caches.put({
-                    id: buildCacheKey(response.config),
-                    data: response.data,
-                    timestamp: Date.now()
-                });
+                await offlineManager.putCachedData(buildCacheKey(response.config), response.data);
             } catch {
                 // IndexedDB quota exceeded or unavailable — non-critical
             }
@@ -269,6 +265,8 @@ export const authAPI = {
 
     changePassword: (oldPassword: string, newPassword: string) =>
         api.post('/auth/change-password', { oldPassword, newPassword }),
+
+    logout: () => api.post('/auth/logout'),
 
     // Sessions
     getSessions: () => api.get('/auth/sessions'),
@@ -448,6 +446,8 @@ export const productionRecipesAPI = {
         api.get(`/production-recipes/${id}`),
     getByProduct: (productId: number) =>
         api.get(`/production-recipes/product/${productId}`),
+    previewCost: (data: Record<string, unknown>) =>
+        api.post('/production-recipes/preview-cost', data),
     create: (data: Record<string, unknown>) =>
         api.post('/production-recipes', data),
     update: (id: number, data: Record<string, unknown>) =>

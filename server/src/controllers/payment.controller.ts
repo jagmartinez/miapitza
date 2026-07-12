@@ -85,7 +85,9 @@ export class PaymentController {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
             const userId = req.user!.userId;
-            await PaymentService.delete(id, companyId, userId);
+            const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+            if (!reason) return next({ statusCode: 400, message: 'El motivo de reversión es obligatorio' });
+            await PaymentService.delete(id, companyId, userId, reason);
             res.json({
                 success: true,
                 message: 'Pago eliminado exitosamente'

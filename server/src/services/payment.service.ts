@@ -66,7 +66,7 @@ export class PaymentService {
 
             const order = await tx.order.findFirst({
                 where: { id: data.orderId, companyId },
-                include: { payments: true, items: { include: { menuItem: { include: { recipes: { include: { product: true, unitOfMeasure: { select: { abbreviation: true } } } } } } } } }
+                include: { payments: { where: { status: 'ACTIVE' } }, items: { include: { menuItem: { include: { recipes: { include: { product: true, unitOfMeasure: { select: { abbreviation: true } } } } } } } } }
             });
 
             if (!order) {
@@ -143,13 +143,18 @@ export class PaymentService {
                         select: { id: true, usageLimit: true, usageCount: true }
                     });
                     if (promo) {
-                        if (promo.usageLimit !== null && promo.usageCount >= promo.usageLimit) {
-                            throw new Error('Promotion usage limit reached');
-                        }
-                        await tx.promotion.update({
-                            where: { id: promo.id },
+                        const claimed = await tx.promotion.updateMany({
+                            where: {
+                                id: promo.id,
+                                ...(promo.usageLimit === null
+                                    ? {}
+                                    : { usageCount: { lt: promo.usageLimit } })
+                            },
                             data: { usageCount: { increment: 1 } }
                         });
+                        if (claimed.count !== 1) {
+                            throw new Error('Promotion usage limit reached');
+                        }
                     }
                 }
 
@@ -204,9 +209,10 @@ export class PaymentService {
         });
     }
 
-    static async delete(id: number, companyId: number, userId: number) {
+    static async delete(id: number, companyId: number, userId: number, reversalReason?: string) {
+        if (!reversalReason?.trim()) throw new Error('Reversal reason is required');
         const target = await prisma.payment.findFirst({
-            where: { id, order: { companyId } },
+            where: { id, status: 'ACTIVE', order: { companyId } },
             select: { orderId: true }
         });
 
@@ -221,22 +227,33 @@ export class PaymentService {
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${target.orderId} AND companyId = ${companyId} FOR UPDATE`;
 
             const payment = await tx.payment.findFirst({
-                where: { id, orderId: target.orderId, order: { companyId } },
+                where: { id, orderId: target.orderId, status: 'ACTIVE', order: { companyId } },
                 include: {
                     order: {
-                        include: { payments: true, items: true }
+                        include: { payments: { where: { status: 'ACTIVE' } }, items: true }
                     }
                 }
             });
             if (!payment) throw new Error('Payment not found');
 
-            // Delete corresponding cash movement if exists
-            await tx.cashMovement.deleteMany({
-                where: { reference: `PAY-${id}` }
-            });
+            // Preserve the original payment and cash IN as immutable ledger rows.
+            // A cash refund is represented by a compensating OUT movement.
+            const originalCashMovement = await tx.cashMovement.findFirst({ where: { reference: `PAY-${id}`, type: 'IN' } });
+            if (originalCashMovement) {
+                await tx.cashMovement.create({
+                    data: {
+                        shiftId: originalCashMovement.shiftId,
+                        type: 'OUT',
+                        amount: payment.amount,
+                        description: `Reverso Pago #${id} Orden #${payment.orderId}`,
+                        reference: `REV-PAY-${id}`
+                    }
+                });
+            }
 
-            await tx.payment.delete({
-                where: { id }
+            await tx.payment.update({
+                where: { id },
+                data: { status: 'REVERSED', reversedAt: new Date(), reversedById: userId, reversalReason: reversalReason.trim() }
             });
 
             const totalBefore = payment.order.payments.reduce((sum, p) => sum + Number(p.amount), 0);
@@ -322,6 +339,7 @@ export class PaymentService {
             where: { id: orderId, companyId },
             include: {
                 payments: {
+                    where: { status: 'ACTIVE' },
                     include: {
                         paymentMethod: true
                     }

@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { ReportExtendedService } from '../services/report-extended.service';
 import { ExcelExporter, sendExcelResponse } from '../utils/excel-export';
 import { getErrorMessage } from '../utils/error';
-import { resolveBranchScope, BranchScopeError } from '../utils/branch-scope';
+import { resolveBranchScope } from '../utils/branch-scope';
 import { parseOptionalQueryDateFrom, parseOptionalQueryDateTo } from '../utils/date-range';
 
 export class ReportExtendedController {
