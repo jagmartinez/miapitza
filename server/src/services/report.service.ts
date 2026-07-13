@@ -13,8 +13,28 @@ const SETTLED_ORDER_WHERE: Prisma.OrderWhereInput = {
     status: { in: ['PAID', 'DELIVERED'] },
     closedAt: { not: null }
 };
+const ACTIVE_ORDER_WHERE: Prisma.OrderWhereInput = {
+    OR: [
+        { status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] } },
+        { status: 'DELIVERED', closedAt: null }
+    ]
+};
+export type ReportPeriod = 'today' | 'week' | 'month' | 'year';
 
 export class ReportService {
+    private static async periodStart(companyId: number, period: ReportPeriod): Promise<Date> {
+        const now = new Date();
+        if (period === 'today') {
+            const timeZone = await SettingService.getTimezone(companyId);
+            return getZonedDayBounds(timeZone, now).start;
+        }
+        const start = new Date(now);
+        if (period === 'week') start.setDate(start.getDate() - 7);
+        else if (period === 'month') start.setMonth(start.getMonth() - 1);
+        else start.setFullYear(start.getFullYear() - 1);
+        return start;
+    }
+
     private static async recipeQuantityInBase(companyId: number, recipe: {
         quantity: Prisma.Decimal | number | string;
         unit?: string | null;
@@ -56,7 +76,7 @@ export class ReportService {
         const activeOrders = await prisma.order.count({
             where: {
                 ...orderBase,
-                status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED'] }
+                ...ACTIVE_ORDER_WHERE
             }
         });
 
@@ -83,18 +103,9 @@ export class ReportService {
         });
         const occupancyRate = totalTables > 0 ? Math.round((occupiedTables / totalTables) * 100) : 0;
 
-        // 6. Clients (Proxy: Sum of PeopleCount in Reservations today + Number of paid orders)
-        const todayReservations = await prisma.reservation.aggregate({
-            where: {
-                companyId,
-                ...branchFilter,
-                date: { gte: today, lt: new Date(today.getTime() + 24 * 60 * 60 * 1000) },
-                status: 'COMPLETED'
-            },
-            _sum: { peopleCount: true }
-        });
-
-        const clientsCount = (todayReservations._sum.peopleCount || 0) + todayOrders.length;
+        // Exact count of settled tickets. The former "clients" proxy mixed
+        // reservation guests with orders and could count the same visit twice.
+        const settledOrdersCount = todayOrders.length;
 
         return {
             todaySales,
@@ -102,21 +113,13 @@ export class ReportService {
             pendingPurchaseOrders: pendingPO,
             averageTicket: avgTicket,
             occupancyRate,
-            clientsCount
+            settledOrdersCount
         };
     }
 
-    static async getIncomeBreakdown(companyId: number, branchId?: number, period: 'today' | 'week' | 'month' | 'year' = 'month') {
+    static async getIncomeBreakdown(companyId: number, branchId?: number, period: ReportPeriod = 'month') {
         const branchFilter: { branchId?: number } = branchId ? { branchId } : {};
-
-        const startDate = new Date();
-        if (period === 'today') {
-            const timeZone = await SettingService.getTimezone(companyId);
-            startDate.setTime(getZonedDayBounds(timeZone).start.getTime());
-        }
-        else if (period === 'week') startDate.setDate(startDate.getDate() - 7);
-        else if (period === 'month') startDate.setMonth(startDate.getMonth() - 1);
-        else startDate.setFullYear(startDate.getFullYear() - 1);
+        const startDate = await ReportService.periodStart(companyId, period);
 
         const where: Prisma.OrderItemWhereInput = {
             order: {
@@ -160,17 +163,17 @@ export class ReportService {
         }));
     }
 
-    static async getOccupancyHeatmap(companyId: number, branchId?: number) {
+    static async getOccupancyHeatmap(companyId: number, branchId?: number, period: ReportPeriod = 'week') {
         const branchFilter: { branchId?: number } = branchId ? { branchId } : {};
-
-        // Last 30 days of data for the heatmap
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - 30);
+        const [startDate, timeZone] = await Promise.all([
+            ReportService.periodStart(companyId, period),
+            SettingService.getTimezone(companyId)
+        ]);
         const where: Prisma.OrderWhereInput = {
             companyId,
             ...SETTLED_ORDER_WHERE,
             ...branchFilter,
-            createdAt: { gte: startDate },
+            closedAt: { gte: startDate },
         };
 
         const orders = await prisma.order.findMany({
@@ -183,8 +186,8 @@ export class ReportService {
 
         orders.forEach((order) => {
             const date = new Date(order.createdAt);
-            const day = days[date.getDay()];
-            const hour = date.getHours();
+            const day = days[zonedWeekday(date, timeZone)];
+            const hour = zonedHour(date, timeZone);
             const key = `${day}-${hour}`;
             heatmap[key] = (heatmap[key] || 0) + 1;
         });
@@ -207,18 +210,16 @@ export class ReportService {
         return result;
     }
 
-    static async getShiftEvaluation(companyId: number, branchId?: number) {
-        // This is a complex metric, we'll simplify it for now to return aggregations by shift (AM/PM)
-        // Radar expects: { subject, A, B, fullMark }
+    static async getShiftEvaluation(companyId: number, branchId?: number, period: ReportPeriod = 'week') {
         const branchFilter: { branchId?: number } = branchId ? { branchId } : {};
 
         const timeZone = await SettingService.getTimezone(companyId);
-        const today = getZonedDayBounds(timeZone).start;
+        const startDate = await ReportService.periodStart(companyId, period);
         const where: Prisma.OrderWhereInput = {
             companyId,
             ...SETTLED_ORDER_WHERE,
             ...branchFilter,
-            createdAt: { gte: today },
+            closedAt: { gte: startDate },
         };
 
         const orders = await prisma.order.findMany({
@@ -249,23 +250,26 @@ export class ReportService {
         const statsA = getStats(shiftA);
         const statsB = getStats(shiftB);
 
-        const maxShiftCount = Math.max(statsA.count, statsB.count, 1);
-        const serviceScore = (avgMinutes: number) => {
-            // 15 min => ~150, 90+ min => low score. Avoid placeholder constants.
-            if (avgMinutes <= 0) return 0;
-            const normalized = Math.max(0, 150 - ((avgMinutes - 15) * 2));
-            return Math.min(150, Math.round(normalized));
+        const relativePair = (a: number, b: number, lowerIsBetter = false) => {
+            if (a <= 0 && b <= 0) return [0, 0] as const;
+            if (lowerIsBetter) {
+                const best = Math.min(...[a, b].filter((v) => v > 0));
+                return [a > 0 ? Math.round((best / a) * 100) : 0, b > 0 ? Math.round((best / b) * 100) : 0] as const;
+            }
+            const best = Math.max(a, b);
+            return [Math.round((a / best) * 100), Math.round((b / best) * 100)] as const;
         };
-
-        // Normalize for Radar (0-150) using only real measured data.
-        return [
-            { subject: 'Ventas', A: Math.min(150, statsA.ventas / 100), B: Math.min(150, statsB.ventas / 100), fullMark: 150 },
-            { subject: 'Ticket', A: Math.min(150, statsA.ticket / 5), B: Math.min(150, statsB.ticket / 5), fullMark: 150 },
-            { subject: 'Volumen', A: Math.min(150, statsA.count * 10), B: Math.min(150, statsB.count * 10), fullMark: 150 },
-            { subject: 'Mix', A: Math.min(150, statsA.items * 30), B: Math.min(150, statsB.items * 30), fullMark: 150 },
-            { subject: 'Servicio', A: serviceScore(statsA.avgServiceMinutes), B: serviceScore(statsB.avgServiceMinutes), fullMark: 150 },
-            { subject: 'Eficiencia', A: Math.round((statsA.count / maxShiftCount) * 150), B: Math.round((statsB.count / maxShiftCount) * 150), fullMark: 150 },
-        ];
+        const metrics = [
+            ['Ventas', statsA.ventas, statsB.ventas, false],
+            ['Ticket', statsA.ticket, statsB.ticket, false],
+            ['Volumen', statsA.count, statsB.count, false],
+            ['Mix', statsA.items, statsB.items, false],
+            ['Servicio', statsA.avgServiceMinutes, statsB.avgServiceMinutes, true]
+        ] as const;
+        return metrics.map(([subject, a, b, lowerIsBetter]) => {
+            const [A, B] = relativePair(a, b, lowerIsBetter);
+            return { subject, A, B, fullMark: 100 };
+        });
     }
 
     static async getConversionFunnel(companyId: number, branchId?: number) {
@@ -307,18 +311,23 @@ export class ReportService {
         ];
     }
 
-    static async getServiceTrends(companyId: number, branchId?: number) {
+    static async getServiceTrends(companyId: number, branchId?: number, tipsPeriod: ReportPeriod = 'week', spendPeriod: ReportPeriod = 'week') {
         const branchFilter: { branchId?: number } = branchId ? { branchId } : {};
+        const [tipsStart, spendStart] = await Promise.all([
+            ReportService.periodStart(companyId, tipsPeriod),
+            ReportService.periodStart(companyId, spendPeriod)
+        ]);
+        const earliestStart = new Date(Math.min(tipsStart.getTime(), spendStart.getTime()));
         const where: Prisma.OrderWhereInput = {
             companyId,
             ...SETTLED_ORDER_WHERE,
             ...branchFilter,
+            closedAt: { gte: earliestStart }
         };
 
         const orders = await prisma.order.findMany({
             where,
-            take: 50,
-            orderBy: { createdAt: 'desc' },
+            orderBy: { closedAt: 'desc' },
             select: {
                 createdAt: true,
                 closedAt: true,
@@ -328,14 +337,14 @@ export class ReportService {
         });
 
         const tips = orders
-            .filter((o) => o.closedAt)
+            .filter((o) => o.closedAt && new Date(o.closedAt).getTime() >= tipsStart.getTime())
             .map((o) => ({
                 waitTime: Math.round((new Date(o.closedAt as Date).getTime() - new Date(o.createdAt).getTime()) / 60000),
                 tip: Number(o.tipAmount || 0)
             }));
 
         const spend = orders
-            .filter((o) => o.closedAt)
+            .filter((o) => o.closedAt && new Date(o.closedAt).getTime() >= spendStart.getTime())
             .map((o) => ({
                 dwellTime: Math.round((new Date(o.closedAt as Date).getTime() - new Date(o.createdAt).getTime()) / 60000),
                 spend: Number(o.total)
@@ -520,9 +529,7 @@ export class ReportService {
         const orders = await prisma.order.findMany({
             where: {
                 ...where,
-                status: {
-                    in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED']
-                }
+                ...ACTIVE_ORDER_WHERE
             },
             select: {
                 id: true,
@@ -843,7 +850,7 @@ export class ReportService {
             const paymentBreakdown = Array.from(breakdownMap, ([method, total]) => ({ method, total }));
 
             const myActiveOrders = await prisma.order.findMany({
-                where: { companyId, userId, status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED'] } },
+                where: { companyId, userId, ...ACTIVE_ORDER_WHERE },
                 select: { id: true, total: true, status: true, table: { select: { number: true } } },
                 orderBy: { createdAt: 'desc' }, take: 10
             });
@@ -884,7 +891,7 @@ export class ReportService {
         }));
 
         const activeOrders = await prisma.order.findMany({
-                where: { companyId, userId, status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED'] } },
+                where: { companyId, userId, ...ACTIVE_ORDER_WHERE },
             select: { id: true, total: true, status: true, table: { select: { number: true } }, _count: { select: { items: true } } },
             orderBy: { createdAt: 'desc' }, take: 20
         });

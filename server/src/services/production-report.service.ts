@@ -273,16 +273,38 @@ export class ProductionReportService {
         const dw = dateWhere(filters);
         if (dw) orderWhere.date = dw;
 
+        const orderInclude = {
+            product: { select: { id: true, name: true, sku: true, type: true, unit: true, baseUnit: { select: { abbreviation: true } } } },
+            warehouse: { select: { id: true, name: true } },
+            branch: { select: { id: true, name: true } },
+            user: { select: { id: true, name: true } },
+            items: {
+                include: {
+                    componentProduct: {
+                        select: { id: true, name: true, sku: true, unit: true, type: true, baseUnit: { select: { abbreviation: true } } }
+                    },
+                    unitOfMeasure: { select: { abbreviation: true } }
+                }
+            }
+        } satisfies Prisma.ProductionOrderInclude;
+
+        // Planned/order-state metrics follow the scheduled date. Realized metrics
+        // follow finishedAt and only include FINISHED orders. Keeping both cohorts
+        // separate prevents cancellations and cross-period completions from
+        // contaminating actual production and cost figures.
         const orders = await prisma.productionOrder.findMany({
             where: orderWhere,
-            include: {
-                product: { select: { id: true, name: true, sku: true, type: true } },
-                warehouse: { select: { id: true, name: true } },
-                branch: { select: { id: true, name: true } },
-                user: { select: { id: true, name: true } },
-                items: { include: { componentProduct: { select: { id: true, name: true, sku: true, unit: true, type: true } } } }
-            },
+            include: orderInclude,
             orderBy: { date: 'desc' }
+        });
+
+        const finishedWhere: Prisma.ProductionOrderWhereInput = { companyId, status: 'FINISHED' };
+        if (filters.branchId) finishedWhere.branchId = filters.branchId;
+        if (dw) finishedWhere.finishedAt = dw;
+        const finishedOrders = await prisma.productionOrder.findMany({
+            where: finishedWhere,
+            include: orderInclude,
+            orderBy: { finishedAt: 'desc' }
         });
 
         const kpis = {
@@ -300,21 +322,17 @@ export class ProductionReportService {
             avgYieldPct: 0
         };
 
-        const dayMap = new Map<string, { date: string; orders: number; produced: number; realCost: number; estimatedCost: number }>();
-        const producedMap = new Map<number, { productId: number; name: string; sku: string | null; type: string; orders: number; produced: number; planned: number; realCost: number; estimatedCost: number }>();
+        const dayMap = new Map<string, { date: string; orders: number; realCost: number; estimatedCost: number }>();
+        const producedMap = new Map<number, { productId: number; name: string; sku: string | null; type: string; unit: string; orders: number; produced: number; planned: number; realCost: number; estimatedCost: number }>();
         const inputMap = new Map<number, { componentProductId: number; name: string; sku: string | null; unit: string; consumedQuantity: number; totalCost: number }>();
-        const branchMap = new Map<number, { branchId: number; name: string; orders: number; produced: number; planned: number; realCost: number }>();
-        const operatorMap = new Map<number, { userId: number; name: string; orders: number; produced: number; realCost: number }>();
+        const branchMap = new Map<number, { branchId: number; name: string; orders: number; realCost: number }>();
+        const operatorMap = new Map<number, { userId: number; name: string; orders: number; realCost: number }>();
 
-        let finishedPlanned = 0;
-        let finishedProduced = 0;
+        let yieldPctSum = 0;
+        let yieldOrderCount = 0;
 
         for (const o of orders) {
             kpis.total += 1;
-            kpis.totalPlanned += Number(o.plannedQuantity);
-            kpis.totalProduced += Number(o.producedQuantity);
-            kpis.totalEstimatedCost += Number(o.estimatedCost);
-            kpis.totalRealCost += Number(o.realCost);
 
             switch (o.status) {
                 case 'DRAFT': kpis.draft += 1; break;
@@ -324,15 +342,22 @@ export class ProductionReportService {
                 case 'CANCELLED': kpis.cancelled += 1; break;
             }
 
-            if (o.status === 'FINISHED') {
-                finishedPlanned += Number(o.plannedQuantity);
-                finishedProduced += Number(o.producedQuantity);
+        }
 
-                const effDate = (o.finishedAt ?? o.date);
-                const key = zonedDateKey(effDate, timeZone);
-                const day = dayMap.get(key) || { date: key, orders: 0, produced: 0, realCost: 0, estimatedCost: 0 };
+        for (const o of finishedOrders) {
+                kpis.totalPlanned += Number(o.plannedQuantity);
+                kpis.totalProduced += Number(o.producedQuantity);
+                kpis.totalEstimatedCost += Number(o.estimatedCost);
+                kpis.totalRealCost += Number(o.realCost);
+                const plannedQuantity = Number(o.plannedQuantity);
+                if (plannedQuantity > 0) {
+                    yieldPctSum += (Number(o.producedQuantity) / plannedQuantity) * 100;
+                    yieldOrderCount += 1;
+                }
+
+                const key = zonedDateKey(o.finishedAt as Date, timeZone);
+                const day = dayMap.get(key) || { date: key, orders: 0, realCost: 0, estimatedCost: 0 };
                 day.orders += 1;
-                day.produced += Number(o.producedQuantity);
                 day.realCost += Number(o.realCost);
                 day.estimatedCost += Number(o.estimatedCost);
                 dayMap.set(key, day);
@@ -342,6 +367,7 @@ export class ProductionReportService {
                     name: o.product.name,
                     sku: o.product.sku,
                     type: o.product.type,
+                    unit: o.product.baseUnit?.abbreviation || o.product.unit,
                     orders: 0,
                     produced: 0,
                     planned: 0,
@@ -359,13 +385,9 @@ export class ProductionReportService {
                     branchId: o.branchId,
                     name: o.branch?.name ?? ('Sucursal ' + o.branchId),
                     orders: 0,
-                    produced: 0,
-                    planned: 0,
                     realCost: 0
                 };
                 bp.orders += 1;
-                bp.produced += Number(o.producedQuantity);
-                bp.planned += Number(o.plannedQuantity);
                 bp.realCost += Number(o.realCost);
                 branchMap.set(o.branchId, bp);
 
@@ -374,11 +396,9 @@ export class ProductionReportService {
                         userId: o.userId,
                         name: o.user.name,
                         orders: 0,
-                        produced: 0,
                         realCost: 0
                     };
                     op.orders += 1;
-                    op.produced += Number(o.producedQuantity);
                     op.realCost += Number(o.realCost);
                     operatorMap.set(o.userId, op);
                 }
@@ -390,7 +410,7 @@ export class ProductionReportService {
                         componentProductId: it.componentProductId,
                         name: it.componentProduct.name,
                         sku: it.componentProduct.sku,
-                        unit: it.componentProduct.unit,
+                        unit: it.unitOfMeasure?.abbreviation || it.unit || it.componentProduct.baseUnit?.abbreviation || it.componentProduct.unit,
                         consumedQuantity: 0,
                         totalCost: 0
                     };
@@ -398,16 +418,15 @@ export class ProductionReportService {
                     ip.totalCost += Number(it.totalCost);
                     inputMap.set(it.componentProductId, ip);
                 }
-            }
         }
 
         kpis.costVariance = Math.round((kpis.totalRealCost - kpis.totalEstimatedCost) * 100) / 100;
-        kpis.avgYieldPct = finishedPlanned > 0 ? Math.round((finishedProduced / finishedPlanned) * 10000) / 100 : 0;
+        kpis.avgYieldPct = yieldOrderCount > 0 ? Math.round((yieldPctSum / yieldOrderCount) * 100) / 100 : 0;
 
         const activeOrders = kpis.draft + kpis.pending + kpis.inProgress;
         const completionRate = kpis.total > 0 ? Math.round((kpis.finished / kpis.total) * 10000) / 100 : 0;
         const cancelRate = kpis.total > 0 ? Math.round((kpis.cancelled / kpis.total) * 10000) / 100 : 0;
-        const avgRealUnitCost = kpis.totalProduced > 0 ? Math.round((kpis.totalRealCost / kpis.totalProduced) * 100) / 100 : 0;
+        const avgRealOrderCost = finishedOrders.length > 0 ? Math.round((kpis.totalRealCost / finishedOrders.length) * 100) / 100 : 0;
         const costVariancePct = kpis.totalEstimatedCost > 0 ? Math.round((kpis.costVariance / kpis.totalEstimatedCost) * 10000) / 100 : 0;
 
         const kpisExtended = {
@@ -415,7 +434,8 @@ export class ProductionReportService {
             activeOrders,
             completionRate,
             cancelRate,
-            avgRealUnitCost,
+            realizedOrders: finishedOrders.length,
+            avgRealOrderCost,
             costVariancePct
         };
 
@@ -428,6 +448,7 @@ export class ProductionReportService {
                 name: p.name,
                 sku: p.sku,
                 type: p.type,
+                unit: p.unit,
                 orders: p.orders,
                 produced: p.produced,
                 realCost: p.realCost,
@@ -438,24 +459,21 @@ export class ProductionReportService {
         const topConsumed = Array.from(inputMap.values()).sort((a, b) => b.totalCost - a.totalCost).slice(0, 8);
 
         const branchComparison = Array.from(branchMap.values())
-            .sort((a, b) => b.produced - a.produced)
+            .sort((a, b) => b.realCost - a.realCost)
             .map((b) => ({
                 branchId: b.branchId,
                 name: b.name,
                 orders: b.orders,
-                produced: b.produced,
-                realCost: b.realCost,
-                yieldPct: b.planned > 0 ? Math.round((b.produced / b.planned) * 10000) / 100 : 0
+                realCost: b.realCost
             }));
 
         const topOperators = Array.from(operatorMap.values())
-            .sort((a, b) => b.produced - a.produced)
+            .sort((a, b) => b.orders - a.orders || b.realCost - a.realCost)
             .slice(0, 8)
             .map((o) => ({
                 userId: o.userId,
                 name: o.name,
                 orders: o.orders,
-                produced: o.produced,
                 realCost: o.realCost
             }));
 
@@ -479,26 +497,36 @@ export class ProductionReportService {
             };
             if (filters.branchId) prevWhere.branchId = filters.branchId;
 
-            const prevOrders = await prisma.productionOrder.findMany({
+            const [prevOrders, prevFinishedOrders] = await Promise.all([prisma.productionOrder.findMany({
                 where: prevWhere,
-                select: { status: true, plannedQuantity: true, producedQuantity: true, estimatedCost: true, realCost: true }
-            });
+                select: { status: true }
+            }), prisma.productionOrder.findMany({
+                where: { companyId, ...(filters.branchId ? { branchId: filters.branchId } : {}), status: 'FINISHED', finishedAt: { gte: prevFrom, lte: prevTo } },
+                select: { plannedQuantity: true, producedQuantity: true, estimatedCost: true, realCost: true }
+            })]);
 
             const prevAgg = prevOrders.reduce(
                 (acc, o) => {
                     acc.total += 1;
-                    acc.totalProduced += Number(o.producedQuantity);
-                    acc.totalEstimatedCost += Number(o.estimatedCost);
-                    acc.totalRealCost += Number(o.realCost);
                     if (o.status === 'FINISHED') {
                         acc.finished += 1;
-                        acc.finishedPlanned += Number(o.plannedQuantity);
-                        acc.finishedProduced += Number(o.producedQuantity);
                     }
                     return acc;
                 },
                 { total: 0, finished: 0, totalProduced: 0, totalEstimatedCost: 0, totalRealCost: 0, finishedPlanned: 0, finishedProduced: 0 }
             );
+            let previousYieldPctSum = 0;
+            let previousYieldOrderCount = 0;
+            for (const o of prevFinishedOrders) {
+                prevAgg.totalProduced += Number(o.producedQuantity);
+                prevAgg.totalEstimatedCost += Number(o.estimatedCost);
+                prevAgg.totalRealCost += Number(o.realCost);
+                const plannedQuantity = Number(o.plannedQuantity);
+                if (plannedQuantity > 0) {
+                    previousYieldPctSum += (Number(o.producedQuantity) / plannedQuantity) * 100;
+                    previousYieldOrderCount += 1;
+                }
+            }
 
             previous = {
                 total: prevAgg.total,
@@ -506,7 +534,7 @@ export class ProductionReportService {
                 totalProduced: prevAgg.totalProduced,
                 totalRealCost: prevAgg.totalRealCost,
                 costVariance: Math.round((prevAgg.totalRealCost - prevAgg.totalEstimatedCost) * 100) / 100,
-                avgYieldPct: prevAgg.finishedPlanned > 0 ? Math.round((prevAgg.finishedProduced / prevAgg.finishedPlanned) * 10000) / 100 : 0
+                avgYieldPct: previousYieldOrderCount > 0 ? Math.round((previousYieldPctSum / previousYieldOrderCount) * 100) / 100 : 0
             };
         }
 

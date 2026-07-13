@@ -67,7 +67,7 @@ interface DashboardStats {
     pendingPurchaseOrders: number;
     occupancyRate?: number;
     averageTicket?: number;
-    clientsCount?: number;
+    settledOrdersCount?: number;
 }
 
 interface TopProduct {
@@ -233,7 +233,7 @@ interface CategoryOption {
 export default function Dashboard() {
     const navigate = useNavigate();
     const { user } = useAuth();
-    const { formatMoney: formatCurrency } = useCurrency();
+    const { formatMoney: formatCurrency, symbol: currencySymbol } = useCurrency();
     const isAdmin = hasAnyRole(user, ADMIN);
     const [stats, setStats] = useState({
         todaySales: 0,
@@ -345,9 +345,9 @@ export default function Dashboard() {
                 Promise.race([reportsAPI.getRecentInvoices(undefined, 50, true), timeout(5000)]),
                 Promise.race([reportsAPI.getTodaysReservations(undefined, 7), timeout(5000)]),
                 Promise.race([reportsAPI.getIncomeBreakdown(incomePeriod), timeout(5000)]),
-                Promise.race([reportsAPI.getOccupancyHeatmap(), timeout(5000)]),
-                Promise.race([reportsAPI.getShiftEvaluation(), timeout(5000)]),
-                Promise.race([reportsAPI.getServiceTrends(), timeout(5000)]),
+                Promise.race([reportsAPI.getOccupancyHeatmap(heatmapPeriod), timeout(5000)]),
+                Promise.race([reportsAPI.getShiftEvaluation(radarPeriod), timeout(5000)]),
+                Promise.race([reportsAPI.getServiceTrends(tipsPeriod, spendPeriod), timeout(5000)]),
                 Promise.race([productsAPI.getLowStock(), timeout(5000)]),
             ]);
 
@@ -355,41 +355,44 @@ export default function Dashboard() {
                 const data = (statsRes.value as ApiResponse).data.data as DashboardStats;
                 setStats(data);
             } else {
-                setLoadError('No se pudieron cargar las estadísticas del panel.');
+                setStats({ todaySales: 0, activeOrders: 0, pendingPurchaseOrders: 0 });
             }
 
             if (topProductsRes.status === 'fulfilled') {
                 setTopProducts((topProductsRes.value as ApiResponse).data.data as TopProduct[]);
-            }
+            } else setTopProducts([]);
 
             if (ordersRes.status === 'fulfilled') {
                 setRecentOrders((ordersRes.value as ApiResponse).data.data as RecentOrder[]);
-            }
+            } else setRecentOrders([]);
 
             if (invoicesRes.status === 'fulfilled') {
                 setRecentInvoices((invoicesRes.value as ApiResponse).data.data as RecentInvoice[]);
-            }
+            } else setRecentInvoices([]);
 
             if (reservationsRes.status === 'fulfilled') {
                 setTodaysReservations((reservationsRes.value as ApiResponse).data.data as ReservationSummary[]);
-            }
+            } else setTodaysReservations([]);
 
             if (incomeRes.status === 'fulfilled') {
                 setIncomeData((incomeRes.value as ApiResponse).data.data as IncomeDataPoint[]);
-            }
+            } else setIncomeData([]);
 
             if (heatmapRes.status === 'fulfilled') {
                 setHeatmapData((heatmapRes.value as ApiResponse).data.data as HeatmapPoint[]);
-            }
+            } else setHeatmapData([]);
 
             if (radarRes.status === 'fulfilled') {
                 setRadarData((radarRes.value as ApiResponse).data.data as RadarDataPoint[]);
-            }
+            } else setRadarData([]);
 
             if (trendsRes.status === 'fulfilled') {
                 const data = (trendsRes.value as ApiResponse).data.data as { tips: ScatterDataPoint[]; spend: ScatterDataPoint[] };
                 setScatterTipsData(data.tips);
                 setScatterSpendData(data.spend);
+            } else {
+                setScatterTipsData([]);
+                setScatterSpendData([]);
             }
 
             if (lowStockRes.status === 'fulfilled') {
@@ -399,12 +402,24 @@ export default function Dashboard() {
                 setStockAlerts([]);
             }
 
+            const widgetResults: Array<{ name: string; result: PromiseSettledResult<unknown> }> = [
+                { name: 'indicadores', result: statsRes }, { name: 'productos', result: topProductsRes },
+                { name: 'órdenes', result: ordersRes }, { name: 'facturas', result: invoicesRes },
+                { name: 'reservaciones', result: reservationsRes }, { name: 'ingresos', result: incomeRes },
+                { name: 'demanda horaria', result: heatmapRes }, { name: 'turnos', result: radarRes },
+                { name: 'tendencias', result: trendsRes }, { name: 'inventario', result: lowStockRes }
+            ];
+            const failedWidgets = widgetResults.filter(({ result }) => result.status === 'rejected').map(({ name }) => name);
+            if (failedWidgets.length > 0) {
+                setLoadError(`No se pudieron actualizar: ${failedWidgets.join(', ')}. Los componentes afectados se muestran vacíos.`);
+            }
+
         } catch {
             setLoadError('No se pudieron cargar los datos del panel.');
         } finally {
             setLoading(false);
         }
-    }, [incomePeriod, isAdmin]);
+    }, [heatmapPeriod, incomePeriod, isAdmin, radarPeriod, spendPeriod, tipsPeriod]);
 
     useEffect(() => {
         void loadData();
@@ -417,7 +432,7 @@ export default function Dashboard() {
 
     const occupancyRate = (stats as DashboardStats).occupancyRate || 0;
     const averageTicket = (stats as DashboardStats).averageTicket || 0;
-    const customersCount = (stats as DashboardStats).clientsCount || 0;
+    const settledOrdersCount = (stats as DashboardStats).settledOrdersCount || 0;
 
     if (loading) {
         return <LoadingOverlay text="Cargando panel..." />;
@@ -952,8 +967,8 @@ export default function Dashboard() {
                         <div className="stat-icon-bg bg-green"><Users size={20} className="text-green" /></div>
                     </div>
                     <div className="stat-body">
-                        <h3>Clientes</h3>
-                        <div className="stat-number">{customersCount.toLocaleString()}</div>
+                        <h3>Órdenes cobradas</h3>
+                        <div className="stat-number">{settledOrdersCount.toLocaleString()}</div>
                     </div>
                 </div>
 
@@ -961,7 +976,7 @@ export default function Dashboard() {
 
                 <div className="bento-item heatmap-section">
                     <div className="section-header mb-large">
-                        <h3>Mapa de Ocupación</h3>
+                        <h3>Demanda relativa por hora</h3>
                         <PeriodSelector value={heatmapPeriod} onChange={setHeatmapPeriod} />
                     </div>
                     <div className="heatmap-container">
@@ -981,7 +996,7 @@ export default function Dashboard() {
                                                 key={`${d}-${h}`}
                                                 className="hm-cell"
                                                 style={{ backgroundColor: `rgba(99, 102, 241, ${opacity})` }}
-                                                title={`${d} ${h}:00 - ${point.value}%`}
+                                                title={`${d} ${h}:00 - ${point.value}% del pico del período`}
                                             ></div>
                                         )
                                     })}
@@ -1001,7 +1016,7 @@ export default function Dashboard() {
                             <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
                                 <PolarGrid />
                                 <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10 }} />
-                                <PolarRadiusAxis angle={30} domain={[0, 150]} tick={false} />
+                                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} />
                                 <Radar name="Turno A" dataKey="A" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} />
                                 <Radar name="Turno B" dataKey="B" stroke="#82ca9d" fill="#82ca9d" fillOpacity={0.6} />
                                 <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px' }} />
@@ -1010,6 +1025,7 @@ export default function Dashboard() {
                         <div className="chart-legend-center">
                             <span style={{ color: '#8884d8' }}>● Turno A</span>
                             <span style={{ color: '#82ca9d' }}>● Turno B</span>
+                            <span>Índice relativo (mejor turno = 100)</span>
                         </div>
                     </div>
                 </div>
@@ -1018,7 +1034,7 @@ export default function Dashboard() {
 
                 <div className="bento-item waterfall-section">
                     <div className="section-header mb-large">
-                        <h3>Desglose de Ingresos</h3>
+                        <h3>Venta bruta por categoría</h3>
                         <PeriodSelector value={incomePeriod} onChange={setIncomePeriod} />
                     </div>
                     <div className="chart-wrapper">
@@ -1026,10 +1042,10 @@ export default function Dashboard() {
                             <BarChart data={incomeData}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                                <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `$${v / 1000}k`} />
+                                <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${currencySymbol}${Number(v) / 1000}k`} />
                                 <Tooltip
                                     cursor={{ fill: '#f1f5f9' }}
-                                    formatter={(value) => [`$${value}`, 'Ingresos']}
+                                    formatter={(value) => [formatCurrency(Number(value)), 'Venta bruta']}
                                     contentStyle={{ borderRadius: '8px' }}
                                 />
                                 <Bar dataKey="value" radius={[4, 4, 0, 0]}>
@@ -1044,7 +1060,7 @@ export default function Dashboard() {
 
                 <div className="bento-item treemap-section">
                     <div className="section-header mb-large">
-                        <h3>Demanda por Producto</h3>
+                        <h3>Demanda histórica por producto</h3>
                         <div className="treemap-filters" style={{ width: '250px' }}>
                             <Select
                                 className="category-select-container"
@@ -1107,7 +1123,7 @@ export default function Dashboard() {
                         <ScatterChart margin={{ top: 10, right: 10, bottom: 20, left: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
                             <XAxis type="number" dataKey="waitTime" name="Espera" unit="min" tick={{ fontSize: 10 }} label={{ value: 'Tiempo Espera (min)', position: 'insideBottom', offset: -10 }} />
-                            <YAxis type="number" dataKey="tip" name="Propina" unit="$" tick={{ fontSize: 10 }} />
+                            <YAxis type="number" dataKey="tip" name="Propina" tickFormatter={(v) => `${currencySymbol}${v}`} tick={{ fontSize: 10 }} />
                             <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ borderRadius: '8px' }} />
                             <Scatter name="Mesas" data={scatterTipsData} fill="#8884d8" />
                         </ScatterChart>
@@ -1123,7 +1139,7 @@ export default function Dashboard() {
                         <ScatterChart margin={{ top: 10, right: 10, bottom: 20, left: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
                             <XAxis type="number" dataKey="dwellTime" name="Tiempo" unit="min" tick={{ fontSize: 10 }} label={{ value: 'Permanencia (min)', position: 'insideBottom', offset: -10 }} />
-                            <YAxis type="number" dataKey="spend" name="Consumo" unit="$" tick={{ fontSize: 10 }} />
+                            <YAxis type="number" dataKey="spend" name="Consumo" tickFormatter={(v) => `${currencySymbol}${v}`} tick={{ fontSize: 10 }} />
                             <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ borderRadius: '8px' }} />
                             <Scatter name="Mesas" data={scatterSpendData} fill="#82ca9d" />
                         </ScatterChart>

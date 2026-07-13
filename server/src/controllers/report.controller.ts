@@ -1,9 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
-import { ReportService } from '../services/report.service';
+import { ReportService, type ReportPeriod } from '../services/report.service';
 import { ExcelExporter, sendExcelResponse } from '../utils/excel-export';
 import { getErrorMessage } from '../utils/error';
 import { resolveBranchScope } from '../utils/branch-scope';
 import { parseOptionalQueryDateFrom, parseOptionalQueryDateTo } from '../utils/date-range';
+
+function reportPeriod(value: unknown, fallback: ReportPeriod): ReportPeriod {
+    return value === 'today' || value === 'week' || value === 'month' || value === 'year' ? value : fallback;
+}
 
 export class ReportController {
     private static resolveBranchScope(req: Request, requestedBranchId?: number): number | undefined {
@@ -150,7 +154,7 @@ export class ReportController {
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
             const branchId = ReportController.resolveBranchScope(req, requestedBranchId);
             const companyId = req.user!.companyId;
-            const data = await ReportService.getOccupancyHeatmap(companyId, branchId);
+            const data = await ReportService.getOccupancyHeatmap(companyId, branchId, reportPeriod(req.query.period, 'week'));
             res.json({ success: true, data });
         } catch (error: unknown) {
             next({ statusCode: 500, message: getErrorMessage(error) });
@@ -162,7 +166,7 @@ export class ReportController {
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
             const branchId = ReportController.resolveBranchScope(req, requestedBranchId);
             const companyId = req.user!.companyId;
-            const data = await ReportService.getShiftEvaluation(companyId, branchId);
+            const data = await ReportService.getShiftEvaluation(companyId, branchId, reportPeriod(req.query.period, 'week'));
             res.json({ success: true, data });
         } catch (error: unknown) {
             next({ statusCode: 500, message: getErrorMessage(error) });
@@ -186,7 +190,12 @@ export class ReportController {
             const companyId = req.user!.companyId;
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
             const branchId = ReportController.resolveBranchScope(req, requestedBranchId);
-            const data = await ReportService.getServiceTrends(companyId, branchId);
+            const data = await ReportService.getServiceTrends(
+                companyId,
+                branchId,
+                reportPeriod(req.query.tipsPeriod, 'week'),
+                reportPeriod(req.query.spendPeriod, 'week')
+            );
             res.json({ success: true, data });
         } catch (error: unknown) {
             next({ statusCode: 500, message: getErrorMessage(error) });

@@ -26,23 +26,23 @@ interface Kpis {
     totalPlanned: number; totalProduced: number; totalEstimatedCost: number; totalRealCost: number;
     costVariance: number; avgYieldPct: number;
     activeOrders: number; completionRate: number; cancelRate: number;
-    avgRealUnitCost: number; costVariancePct: number;
+    realizedOrders: number; avgRealOrderCost: number; costVariancePct: number;
 }
 interface PreviousKpis {
     total: number; finished: number; totalProduced: number; totalRealCost: number;
     costVariance: number; avgYieldPct: number;
 }
 interface StatusRow { status: string; count: number; [k: string]: string | number }
-interface DaySeries { date: string; orders: number; produced: number; realCost: number; estimatedCost: number }
+interface DaySeries { date: string; orders: number; realCost: number; estimatedCost: number }
 interface ProducedRow {
     productId: number; name: string; sku: string | null; type: string; orders: number;
-    produced: number; realCost: number; estimatedCost: number; costVariance: number; yieldPct: number;
+    unit: string; produced: number; realCost: number; estimatedCost: number; costVariance: number; yieldPct: number;
 }
 interface ConsumedRow { componentProductId: number; name: string; sku: string | null; unit: string; consumedQuantity: number; totalCost: number }
-interface BranchRow { branchId: number; name: string; orders: number; produced: number; realCost: number; yieldPct: number }
-interface OperatorRow { userId: number; name: string; orders: number; produced: number; realCost: number }
+interface BranchRow { branchId: number; name: string; orders: number; realCost: number }
+interface OperatorRow { userId: number; name: string; orders: number; realCost: number }
 interface RecentRow {
-    id: number; code: string; product?: { id: number; name: string; sku: string | null };
+    id: number; code: string; product?: { id: number; name: string; sku: string | null; unit: string; baseUnit?: { abbreviation: string } | null };
     status: string; plannedQuantity: number; producedQuantity: number; realCost: number; estimatedCost: number;
     date: string; finishedAt: string | null;
 }
@@ -193,9 +193,8 @@ export default function ProductionDashboard() {
                             <KpiCard icon={<ClipboardCheck size={18} />} tone="indigo" label="Órdenes" value={fmtNum(kpis.total)}
                                 hint={`${fmtNum(kpis.finished)} finalizadas · ${fmtNum(kpis.inProgress)} en proceso`}
                                 badge={<DeltaBadge current={kpis.total} previous={prev?.total} />} />
-                            <KpiCard icon={<Boxes size={18} />} tone="blue" label="Producido" value={fmtNum(kpis.totalProduced)}
-                                hint={`Planificado: ${fmtNum(kpis.totalPlanned)}`}
-                                badge={<DeltaBadge current={kpis.totalProduced} previous={prev?.totalProduced} />} />
+                            <KpiCard icon={<Boxes size={18} />} tone="blue" label="Producciones realizadas" value={fmtNum(kpis.realizedOrders)}
+                                hint="Finalizadas dentro del período seleccionado" />
                             <KpiCard icon={<DollarSign size={18} />} tone="green" label="Costo real" value={formatCurrencyGrouped(kpis.totalRealCost, settings)}
                                 hint={`Estimado: ${formatCurrencyGrouped(kpis.totalEstimatedCost, settings)}`}
                                 badge={<DeltaBadge current={kpis.totalRealCost} previous={prev?.totalRealCost} invert />} />
@@ -218,8 +217,8 @@ export default function ProductionDashboard() {
                                 label="Tasa de finalización" value={fmtPct(kpis.completionRate)} hint={`${fmtNum(kpis.cancelled)} anuladas (${fmtPct(kpis.cancelRate)})`} />
                             <KpiCard icon={<Activity size={18} />} tone="blue" label="Órdenes activas" value={fmtNum(kpis.activeOrders)}
                                 hint={`${fmtNum(kpis.draft)} borrador · ${fmtNum(kpis.pending)} pend.`} />
-                            <KpiCard icon={<Coins size={18} />} tone="amber" label="Costo real unitario prom." value={formatCurrencyGrouped(kpis.avgRealUnitCost, settings)}
-                                hint="Costo real / unidad producida" />
+                            <KpiCard icon={<Coins size={18} />} tone="amber" label="Costo promedio por orden" value={formatCurrencyGrouped(kpis.avgRealOrderCost, settings)}
+                                hint="Costo real / producciones realizadas" />
                             <KpiCard icon={<Scale size={18} />} tone={kpis.costVariancePct > 0 ? 'red' : 'green'} label="% variación de costo"
                                 value={fmtPct(kpis.costVariancePct)} hint="Real vs estimado" />
                             <KpiCard icon={<FlaskConical size={18} />} tone="violet" label="Recetas activas" value={fmtNum(data!.catalog.activeRecipes)}
@@ -230,7 +229,7 @@ export default function ProductionDashboard() {
                     {/* Charts */}
                     <div className="prod-dash-grid">
                         <div className="prod-card prod-card-wide">
-                            <div className="prod-card-head"><h3>Costo real vs estimado por día</h3><span>Tendencia de costos y unidades producidas</span></div>
+                            <div className="prod-card-head"><h3>Costo real vs estimado por día</h3><span>Costos y órdenes finalizadas por fecha de finalización</span></div>
                             {data!.timeSeries.length === 0 ? (
                                 <div className="prod-empty">Sin producciones finalizadas en el período.</div>
                             ) : (
@@ -244,12 +243,12 @@ export default function ProductionDashboard() {
                                         </defs>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
                                         <XAxis dataKey="date" tickFormatter={fmtDay} tick={{ fontSize: 11 }} />
-                                        <YAxis yAxisId="left" tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(Number(v))} />
+                                        <YAxis yAxisId="left" allowDecimals={false} tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(Number(v))} />
                                         <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(Number(v))} />
                                         <Tooltip contentStyle={tooltipStyle} labelFormatter={(l) => `Día ${fmtDay(String(l))}`}
-                                            formatter={(value: number, name: string) => [name === 'Producido' ? fmtNum(Number(value)) : formatCurrencyGrouped(Number(value), settings), name]} />
+                                            formatter={(value: number, name: string) => [name === 'Órdenes finalizadas' ? fmtNum(Number(value)) : formatCurrencyGrouped(Number(value), settings), name]} />
                                         <Legend wrapperStyle={{ fontSize: '12px' }} />
-                                        <Area yAxisId="left" type="monotone" dataKey="produced" name="Producido" stroke="#3b82f6" strokeWidth={2} fill="url(#prodArea)" />
+                                        <Area yAxisId="left" type="monotone" dataKey="orders" name="Órdenes finalizadas" stroke="#3b82f6" strokeWidth={2} fill="url(#prodArea)" />
                                         <Line yAxisId="right" type="monotone" dataKey="estimatedCost" name="Costo estimado" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 4" dot={false} />
                                         <Line yAxisId="right" type="monotone" dataKey="realCost" name="Costo real" stroke="#22c55e" strokeWidth={2} dot={{ r: 2 }} />
                                     </ComposedChart>
@@ -300,7 +299,7 @@ export default function ProductionDashboard() {
                                                 <td className="strong">{p.name}</td>
                                                 <td className="muted">{p.sku || '-'}</td>
                                                 <td className="num">{fmtNum(p.orders)}</td>
-                                                <td className="num">{fmtNum(p.produced)}</td>
+                                                <td className="num">{fmtNum(p.produced)} {p.unit}</td>
                                                 <td className="num">{formatCurrencyGrouped(p.realCost, settings)}</td>
                                                 <td className={`num ${p.costVariance > 0 ? 'neg' : 'pos'}`}>
                                                     {formatCurrencyGrouped(p.costVariance, settings)}
@@ -319,7 +318,7 @@ export default function ProductionDashboard() {
                     {/* Branch comparison + Operators */}
                     <div className="prod-dash-grid">
                         <div className="prod-card">
-                            <div className="prod-card-head"><h3>Comparativa por sucursal</h3><span>Producido y costo real</span></div>
+                            <div className="prod-card-head"><h3>Comparativa por sucursal</h3><span>Órdenes finalizadas y costo real</span></div>
                             {data!.branchComparison.length === 0 ? (
                                 <div className="prod-empty"><Building2 size={26} /><p>Sin datos por sucursal en el período.</p></div>
                             ) : data!.branchComparison.length === 1 ? (
@@ -332,9 +331,9 @@ export default function ProductionDashboard() {
                                         <YAxis yAxisId="left" tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(Number(v))} />
                                         <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(Number(v))} />
                                         <Tooltip contentStyle={tooltipStyle}
-                                            formatter={(value: number, name: string) => [name === 'Producido' ? fmtNum(Number(value)) : formatCurrencyGrouped(Number(value), settings), name]} />
+                                            formatter={(value: number, name: string) => [name === 'Órdenes finalizadas' ? fmtNum(Number(value)) : formatCurrencyGrouped(Number(value), settings), name]} />
                                         <Legend wrapperStyle={{ fontSize: '12px' }} />
-                                        <Bar yAxisId="left" dataKey="produced" name="Producido" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                        <Bar yAxisId="left" dataKey="orders" name="Órdenes finalizadas" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                                         <Bar yAxisId="right" dataKey="realCost" name="Costo real" fill="#22c55e" radius={[4, 4, 0, 0]} />
                                     </BarChart>
                                 </ResponsiveContainer>
@@ -351,7 +350,7 @@ export default function ProductionDashboard() {
                                         <thead>
                                             <tr>
                                                 <th>Operario</th><th className="num">Órdenes</th>
-                                                <th className="num">Producido</th><th className="num">Costo real</th>
+                                                <th className="num">Costo real</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -359,7 +358,6 @@ export default function ProductionDashboard() {
                                                 <tr key={op.userId}>
                                                     <td className="strong">{op.name}</td>
                                                     <td className="num">{fmtNum(op.orders)}</td>
-                                                    <td className="num">{fmtNum(op.produced)}</td>
                                                     <td className="num">{formatCurrencyGrouped(op.realCost, settings)}</td>
                                                 </tr>
                                             ))}
@@ -431,8 +429,8 @@ export default function ProductionDashboard() {
                                                         background: `${STATUS_META[o.status]?.color}1a`
                                                     }}>{STATUS_META[o.status]?.label || o.status}</span>
                                                 </td>
-                                                <td className="num">{fmtNum(o.plannedQuantity)}</td>
-                                                <td className="num">{fmtNum(o.producedQuantity)}</td>
+                                                <td className="num">{fmtNum(o.plannedQuantity)} {o.product?.baseUnit?.abbreviation || o.product?.unit || ''}</td>
+                                                <td className="num">{fmtNum(o.producedQuantity)} {o.product?.baseUnit?.abbreviation || o.product?.unit || ''}</td>
                                                 <td className="num">{formatCurrencyGrouped(o.realCost, settings)}</td>
                                                 <td className="muted">{fmtDate(o.finishedAt || o.date)}</td>
                                             </tr>
@@ -473,10 +471,8 @@ function SingleBranchSummary({ branch, settings }: { branch: BranchRow; settings
         <div className="prod-branch-single">
             <div className="prod-branch-single-name"><Building2 size={16} /> {branch.name}</div>
             <div className="prod-branch-single-grid">
-                <div><span className="prod-branch-single-label">Órdenes</span><span className="prod-branch-single-val">{fmtNum(branch.orders)}</span></div>
-                <div><span className="prod-branch-single-label">Producido</span><span className="prod-branch-single-val">{fmtNum(branch.produced)}</span></div>
+                <div><span className="prod-branch-single-label">Órdenes finalizadas</span><span className="prod-branch-single-val">{fmtNum(branch.orders)}</span></div>
                 <div><span className="prod-branch-single-label">Costo real</span><span className="prod-branch-single-val">{formatCurrencyGrouped(branch.realCost, settings)}</span></div>
-                <div><span className="prod-branch-single-label">Rendimiento</span><span className={`prod-branch-single-val prod-yield-text-${yieldTone(branch.yieldPct)}`}>{fmtPct(branch.yieldPct)}</span></div>
             </div>
         </div>
     );

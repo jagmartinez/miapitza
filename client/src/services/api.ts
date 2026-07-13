@@ -753,17 +753,17 @@ export const reportsAPI = {
     getIncomeBreakdown: (period: string, branchId?: number) =>
         api.get('/reports/income-breakdown', { params: { period, branchId } }),
 
-    getOccupancyHeatmap: (branchId?: number) =>
-        api.get('/reports/occupancy-heatmap', { params: { branchId } }),
+    getOccupancyHeatmap: (period: string, branchId?: number) =>
+        api.get('/reports/occupancy-heatmap', { params: { period, branchId } }),
 
-    getShiftEvaluation: (branchId?: number) =>
-        api.get('/reports/shift-evaluation', { params: { branchId } }),
+    getShiftEvaluation: (period: string, branchId?: number) =>
+        api.get('/reports/shift-evaluation', { params: { period, branchId } }),
 
     getConversionFunnel: (branchId?: number) =>
         api.get('/reports/conversion-funnel', { params: { branchId } }),
 
-    getServiceTrends: (branchId?: number) =>
-        api.get('/reports/service-trends', { params: { branchId } }),
+    getServiceTrends: (tipsPeriod: string, spendPeriod: string, branchId?: number) =>
+        api.get('/reports/service-trends', { params: { tipsPeriod, spendPeriod, branchId } }),
     getMyStats: () => api.get('/reports/my-stats'),
     getMyActivity: (limit?: number) => api.get('/reports/my-activity', { params: { limit } }),
     getMyPerformance: () => api.get('/reports/my-performance'),

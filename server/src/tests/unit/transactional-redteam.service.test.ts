@@ -153,7 +153,7 @@ describe('transactional red-team regressions', () => {
         jest.spyOn(prisma.setting, 'findUnique').mockResolvedValue({ value: 'America/Managua' } as never);
         const orderLookup = jest.spyOn(prisma.order, 'findMany')
             .mockResolvedValue([{ total: 125 }] as never);
-        jest.spyOn(prisma.order, 'count').mockResolvedValue(0);
+        const orderCount = jest.spyOn(prisma.order, 'count').mockResolvedValue(0);
         jest.spyOn(prisma.purchaseOrder, 'count').mockResolvedValue(0);
         jest.spyOn(prisma.table, 'count').mockResolvedValue(0);
         jest.spyOn(prisma.reservation, 'aggregate').mockResolvedValue({
@@ -167,6 +167,14 @@ describe('transactional red-team regressions', () => {
             where: expect.objectContaining({
                 status: { in: ['PAID', 'DELIVERED'] },
                 closedAt: { gte: expect.any(Date) }
+            })
+        }));
+        expect(orderCount).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({
+                OR: [
+                    { status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] } },
+                    { status: 'DELIVERED', closedAt: null }
+                ]
             })
         }));
     });
