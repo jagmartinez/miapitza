@@ -1272,14 +1272,16 @@ export default function Inventory() {
                                     <div className="inventory-detail-identity">
                                         <span className="inventory-detail-eyebrow">Ficha de inventario</span>
                                         <h3>{viewingProduct.name}</h3>
-                                        <div className="inventory-detail-badges">
+                                        <div className="inventory-detail-meta">
                                             {viewingProduct.sku && <span className="inventory-detail-badge sku">SKU {viewingProduct.sku}</span>}
-                                            <span className={`inventory-detail-badge ${viewingProduct.active ? 'active' : 'inactive'}`}>
-                                                {viewingProduct.active ? 'Activo' : 'Inactivo'}
-                                            </span>
-                                            <span className={`inventory-detail-badge ${isLow ? 'warning' : 'ok'}`}>
-                                                {isLow ? 'Requiere reposición' : 'Stock saludable'}
-                                            </span>
+                                            <div className="inventory-detail-status-row">
+                                                <span className={`inventory-detail-badge ${viewingProduct.active ? 'active' : 'inactive'}`}>
+                                                    {viewingProduct.active ? 'Activo' : 'Inactivo'}
+                                                </span>
+                                                <span className={`inventory-detail-badge ${isLow ? 'warning' : 'ok'}`}>
+                                                    {isLow ? 'Requiere reposición' : 'Stock saludable'}
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
