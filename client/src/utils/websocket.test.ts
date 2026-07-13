@@ -11,4 +11,9 @@ describe('buildWebSocketUrl', () => {
         expect(buildWebSocketUrl('ws://localhost:3001/socket?branch=4'))
             .toBe('ws://localhost:3001/socket?branch=4');
     });
+
+    it('normalizes accidental HTTP(S) build-time values to WebSocket schemes', () => {
+        expect(buildWebSocketUrl('https://api.example.com')).toBe('wss://api.example.com');
+        expect(buildWebSocketUrl(' http://localhost:3000 ')).toBe('ws://localhost:3000');
+    });
 });

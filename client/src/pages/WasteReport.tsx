@@ -11,6 +11,7 @@ import {
     DollarSign, BarChart3, Save
 } from 'lucide-react';
 import { useAppToast } from '../context/ToastContext';
+import { formatLocalDateInput } from '../utils/dateInput';
 
 type StrOption = { value: string; label: string };
 
@@ -94,8 +95,8 @@ const WasteReport: React.FC = () => {
     });
 
     const [filters, setFilters] = useState({
-        startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        endDate: new Date().toISOString().split('T')[0],
+        startDate: formatLocalDateInput(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)),
+        endDate: formatLocalDateInput(),
         warehouseId: '',
         productId: ''
     });

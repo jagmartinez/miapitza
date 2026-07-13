@@ -3,7 +3,7 @@ import Select from '../components/Select';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
-import { purchaseOrdersAPI, suppliersAPI, productsAPI, branchesAPI, warehousesAPI, unitsAPI, normalizeApiBaseUrl } from '../services/api';
+import { purchaseOrdersAPI, suppliersAPI, productsAPI, branchesAPI, warehousesAPI, unitsAPI } from '../services/api';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import Modal from '../components/Modal';
@@ -12,6 +12,7 @@ import { Plus, Trash2, Save, CheckCircle, Package, Info, MapPin, Building2, File
 import type { PurchaseOrder, PurchaseOrderItem, Supplier, Product, Branch, Warehouse, ProductAllowedUnit } from '../types';
 import type { SingleValue } from 'react-select';
 import { useCurrency } from '../hooks/useCurrency';
+import { formatLocalDateInput } from '../utils/dateInput';
 import { BANK_OPTIONS, INVOICE_TYPE_OPTIONS, type StrOption } from '../constants/purchaseOrderOptions';
 import './PurchaseOrderForm.css';
 
@@ -54,7 +55,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
         supplierId: '',
         notes: '',
         invoiceNumber: '',
-        invoiceDate: new Date().toISOString().split('T')[0],
+        invoiceDate: formatLocalDateInput(),
         invoiceType: 'CASH' as 'CASH' | 'CREDIT',
         paymentDueDate: '',
         bank: '',
@@ -139,7 +140,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 supplierId: '',
                 notes: '',
                 invoiceNumber: '',
-                invoiceDate: new Date().toISOString().split('T')[0],
+                invoiceDate: formatLocalDateInput(),
                 invoiceType: 'CASH' as 'CASH' | 'CREDIT',
                 paymentDueDate: '',
                 bank: '',
@@ -238,6 +239,24 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
         } catch (error) {
             console.error('Error downloading template:', error);
             showError('No se pudo descargar la plantilla');
+        }
+    };
+
+    const handleDownloadInvoice = async () => {
+        if (!effectiveId) return;
+        try {
+            const response = await purchaseOrdersAPI.getInvoice(Number(effectiveId));
+            const url = window.URL.createObjectURL(response.data as Blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = order?.invoiceNumber ? `Factura-${order.invoiceNumber}` : `Factura-OC-${effectiveId}`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Error downloading invoice:', error);
+            showError('No se pudo descargar la factura adjunta');
         }
     };
 
@@ -566,14 +585,13 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                         {invoiceFile ? invoiceFile.name : (order?.invoicePdf ? 'Cambiar archivo' : 'Adjuntar factura')}
                                     </label>
                                     {order?.invoicePdf && !invoiceFile && (
-                                        <a
-                                            href={`${normalizeApiBaseUrl()}${order.invoicePdf}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
+                                        <button
+                                            type="button"
+                                            onClick={() => void handleDownloadInvoice()}
                                             className="view-pdf-link"
                                         >
                                             <Eye size={14} /> Ver actual
-                                        </a>
+                                        </button>
                                     )}
                                 </div>
                             </div>
@@ -655,7 +673,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                                             </td>
                                             <td className="text-right font-mono">{Number(item.quantity).toFixed(2)}</td>
                                             <td className="text-right font-mono">{formatMoney(Number(item.cost))}</td>
-                                            <td className="text-right font-bold">${(Number(item.quantity) * Number(item.cost)).toFixed(2)}</td>
+                                            <td className="text-right font-bold">{formatMoney(Number(item.quantity) * Number(item.cost))}</td>
                                             {isDraft && (
                                                 <td className="text-center">
                                                     <button

@@ -62,11 +62,17 @@ export class InventoryMovementController {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
             const movement = await InventoryMovementService.getById(id, companyId);
+            assertBranchAccess(
+                req.user!,
+                (movement as { warehouse: { branch: { id: number } | null } }).warehouse.branch?.id ?? null,
+                { allowGlobal: true }
+            );
             res.json({
                 success: true,
                 data: movement
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 404, message: getErrorMessage(error) });
         }
     }

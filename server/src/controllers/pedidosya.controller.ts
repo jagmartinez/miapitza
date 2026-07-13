@@ -1,15 +1,19 @@
 import type { Request, Response } from 'express';
 import { PedidosYaService } from '../services/pedidosya.service';
+import { BranchScopeError, resolveBranchScope } from '../utils/branch-scope';
 
 export class PedidosYaController {
     static async getConfig(req: Request, res: Response) {
         try {
             const companyId = req.user!.companyId;
-            const branchId = req.query.branchId ? Number(req.query.branchId) : undefined;
+            const branchId = resolveBranchScope(
+                req.user!,
+                req.query.branchId ? Number(req.query.branchId) : undefined
+            );
             const config = await PedidosYaService.getMaskedConfig(companyId, branchId);
             res.json({ success: true, data: config });
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: (error as Error).message });
+            res.status(error instanceof BranchScopeError ? 403 : 500).json({ success: false, message: (error as Error).message });
         }
     }
 
@@ -17,10 +21,12 @@ export class PedidosYaController {
         try {
             const companyId = req.user!.companyId;
             const userId = req.user!.userId;
-            const config = await PedidosYaService.upsertConfig(companyId, req.body, userId);
+            const branchId = resolveBranchScope(req.user!, req.body.branchId ? Number(req.body.branchId) : undefined);
+            await PedidosYaService.upsertConfig(companyId, { ...req.body, branchId }, userId);
+            const config = await PedidosYaService.getMaskedConfig(companyId, branchId);
             res.json({ success: true, data: config });
         } catch (error: unknown) {
-            res.status(500).json({ success: false, message: (error as Error).message });
+            res.status(error instanceof BranchScopeError ? 403 : 500).json({ success: false, message: (error as Error).message });
         }
     }
 
@@ -109,8 +115,9 @@ export class PedidosYaController {
             }
 
             const config = await PedidosYaService.getConfig(companyId);
-            if (!config || !config.webhookSecret) {
-                res.status(404).json({ error: 'Configuration not found' });
+            if (!config || !config.active || !config.webhookSecret) {
+                // Do not reveal whether a tenant/configuration exists.
+                res.status(401).json({ error: 'Invalid signature' });
                 return;
             }
 

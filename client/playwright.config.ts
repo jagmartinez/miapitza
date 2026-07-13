@@ -27,6 +27,9 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5173',
+    // Deterministic API mocking and route assertions; service-worker behavior is
+    // covered separately by unit tests for the offline manager.
+    serviceWorkers: 'block',
 
     trace: 'on-first-retry',
   },

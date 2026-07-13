@@ -79,7 +79,12 @@ export class MenuBrandService {
 
         return await prisma.menuBrand.update({
             where: { id },
-            data
+            data: {
+                ...(data.name !== undefined ? { name: data.name } : {}),
+                ...(data.color !== undefined ? { color: data.color } : {}),
+                ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
+                ...(data.active !== undefined ? { active: data.active } : {})
+            }
         });
     }
 

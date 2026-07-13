@@ -63,5 +63,21 @@ describe('PromotionService.validateAndApply', () => {
         expect(result.valid).toBe(true);
         expect(result.discount).toBe(18);
     });
-});
 
+    it('rejects invalid date ranges before writing', async () => {
+        const create = jest.spyOn(prisma.promotion, 'create');
+        await expect(PromotionService.create(1, {
+            code: 'DATE', name: 'Invalid date', type: 'PERCENTAGE', value: 10,
+            validFrom: new Date('invalid')
+        })).rejects.toThrow('fecha inicial');
+        expect(create).not.toHaveBeenCalled();
+    });
+
+    it('rejects percentages over 100 before writing', async () => {
+        const create = jest.spyOn(prisma.promotion, 'create');
+        await expect(PromotionService.create(1, {
+            code: 'TOO-MUCH', name: 'Too much', type: 'PERCENTAGE', value: 101
+        })).rejects.toThrow('100');
+        expect(create).not.toHaveBeenCalled();
+    });
+});

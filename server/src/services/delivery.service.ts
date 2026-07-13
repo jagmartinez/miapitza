@@ -36,6 +36,28 @@ export interface DeliveryStatusUpdate {
 }
 
 export class DeliveryService {
+    static async assertStatusUpdateTarget(
+        companyId: number,
+        orderId: number,
+        platform: string,
+        externalOrderId: string
+    ): Promise<{ branchId: number }> {
+        const order = await prisma.order.findFirst({
+            where: { id: orderId, companyId },
+            select: { branchId: true, orderType: true, customerName: true }
+        });
+        if (!order || order.orderType !== 'DELIVERY') throw new Error('Delivery order not found');
+
+        const normalizedPlatform = String(platform || '').trim().toUpperCase();
+        const normalizedExternalId = String(externalOrderId || '').trim();
+        if (!normalizedPlatform || !normalizedExternalId) throw new Error('Delivery platform and external order ID are required');
+        const metadata = order.customerName || '';
+        if (!metadata.startsWith(`[${normalizedPlatform}] `) || !metadata.includes(`| ID:${normalizedExternalId} |`)) {
+            throw new Error('External delivery identity does not match the local order');
+        }
+        return { branchId: order.branchId };
+    }
+
     /**
      * Process incoming order from delivery platform
      */
@@ -44,6 +66,9 @@ export class DeliveryService {
         branchId: number,
         deliveryOrder: DeliveryOrder
     ) {
+        const externalId = String(deliveryOrder.externalId || '').trim();
+        if (!externalId || externalId === 'unknown') throw new Error('External order ID is required');
+        if (!Array.isArray(deliveryOrder.items) || deliveryOrder.items.length === 0) throw new Error('Delivery order must contain items');
         // Never trust a caller-supplied branch: ensure it belongs to the tenant.
         const branch = await prisma.branch.findFirst({
             where: { id: branchId, companyId },
@@ -54,16 +79,16 @@ export class DeliveryService {
         }
 
         // Check for duplicate order by matching external ID embedded in customerName
-        const externalIdTag = `ID:${deliveryOrder.externalId}`;
+        const externalIdTag = `ID:${externalId}`;
+        const platformTag = `[${deliveryOrder.platform}]`;
         const existing = await prisma.order.findFirst({
             where: {
                 companyId,
                 branchId,
-                customerName: { contains: externalIdTag },
-                // Only consider orders from the last 48 hours to avoid false matches with old data
-                createdAt: {
-                    gte: new Date(Date.now() - 48 * 60 * 60 * 1000)
-                }
+                AND: [
+                    { customerName: { contains: platformTag } },
+                    { customerName: { contains: externalIdTag } }
+                ]
             },
             include: {
                 items: {
@@ -91,7 +116,22 @@ export class DeliveryService {
         const customerNameWithMeta = `[${deliveryOrder.platform}] ${deliveryOrder.customerName} | ID:${deliveryOrder.externalId} | ${deliveryOrder.customerPhone || 'N/A'} | ${deliveryOrder.customerAddress}`;
 
         // Match delivery items with internal menu items
-        const matchedItems = await this.matchDeliveryItems(companyId, deliveryOrder.items);
+        for (const item of deliveryOrder.items) {
+            if (!item.name?.trim()) throw new Error('Delivery item name is required');
+            if (!Number.isInteger(Number(item.quantity)) || Number(item.quantity) <= 0) {
+                throw new Error(`Invalid delivery quantity for "${item.name}"`);
+            }
+            if (!Number.isFinite(Number(item.price)) || Number(item.price) < 0) {
+                throw new Error(`Invalid delivery price for "${item.name}"`);
+            }
+        }
+
+        const matchedItems = await this.matchDeliveryItems(companyId, branchId, deliveryOrder.items);
+        if (matchedItems.length !== deliveryOrder.items.length) {
+            throw new Error('Delivery order contains unmapped menu items; no partial order was created');
+        }
+        const computedTotal = Math.round(matchedItems.reduce((sum, item) => sum + item.quantity * item.price, 0) * 100) / 100;
+        if (!Number.isFinite(computedTotal) || computedTotal < 0) throw new Error('Delivery order total is invalid');
 
         // Determine sales channel and calculate commission/markup
         const channelMap: Record<string, 'RESTAURANT' | 'DELIVERY' | 'PEDIDOSYA'> = {
@@ -107,7 +147,7 @@ export class DeliveryService {
         if (salesChannel === 'PEDIDOSYA') {
             const config = await SalesChannelService.getByChannel(companyId, 'PEDIDOSYA');
             if (config) {
-                channelCommission = Math.round(deliveryOrder.total * Number(config.commissionPct) / 100 * 100) / 100;
+                channelCommission = Math.round(computedTotal * Number(config.commissionPct) / 100 * 100) / 100;
                 channelMarkup = Number(config.priceMarkupPct);
             }
         }
@@ -123,7 +163,7 @@ export class DeliveryService {
                 channelCommission,
                 channelMarkup,
                 status: 'OPEN',
-                total: deliveryOrder.total,
+                total: computedTotal,
                 items: matchedItems.length > 0 ? {
                     create: matchedItems.map(item => ({
                         menuItemId: item.menuItemId,
@@ -143,13 +183,6 @@ export class DeliveryService {
 
         console.log(`Created order ${order.id} from ${deliveryOrder.platform} order ${deliveryOrder.externalId} with ${matchedItems.length} matched items`);
 
-        // Send confirmation back to platform
-        await this.sendStatusUpdate(
-            deliveryOrder.platform,
-            deliveryOrder.externalId,
-            'ACCEPTED'
-        );
-
         return order;
     }
 
@@ -161,19 +194,10 @@ export class DeliveryService {
         externalOrderId: string,
         status: DeliveryStatusUpdate['status']
     ) {
-        // Mock implementation - in production, this would call the platform's API
-        console.log(`[${platform}] Sending status update for order ${externalOrderId}: ${status}`);
-
-        // Simulate API call
-        const mockResponse = {
-            success: true,
-            platform,
-            externalOrderId,
-            status,
-            timestamp: new Date().toISOString()
-        };
-
-        return mockResponse;
+        void platform;
+        void externalOrderId;
+        void status;
+        throw new Error('Outbound delivery status integration is not configured; status was not sent');
     }
 
     /**
@@ -252,13 +276,18 @@ export class DeliveryService {
      */
     private static async matchDeliveryItems(
         companyId: number,
+        branchId: number,
         deliveryItems: DeliveryOrderItem[]
     ): Promise<Array<{ menuItemId: number; quantity: number; price: number; notes?: string }>> {
         if (!deliveryItems || deliveryItems.length === 0) return [];
 
-        // Load all active menu items for this company
+        // Load only global items or items assigned to the destination branch.
         const menuItems = await prisma.menuItem.findMany({
-            where: { companyId, active: true },
+            where: {
+                companyId,
+                active: true,
+                OR: [{ branchId: null }, { branchId }]
+            },
             select: { id: true, name: true, price: true }
         });
 

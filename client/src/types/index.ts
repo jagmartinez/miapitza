@@ -285,7 +285,7 @@ export interface ProductionRecipe {
   id: number;
   companyId: number;
   productId: number;
-  product?: Pick<Product, 'id' | 'name' | 'sku' | 'type' | 'unit'>;
+  product?: Pick<Product, 'id' | 'name' | 'sku' | 'type' | 'unit' | 'baseUnit'>;
   name: string;
   version: number;
   status: ProductionRecipeStatus;

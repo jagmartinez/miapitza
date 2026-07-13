@@ -4,6 +4,7 @@ import Select from '../components/Select';
 import Button from '../components/Button';
 import Pagination from '../components/Pagination';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
+import { formatLocalDateInput } from '../utils/dateInput';
 import {
     DollarSign, TrendingUp, ShoppingCart, BarChart3,
     Search, RefreshCw, Calendar, Tag, Building2, Truck, Package
@@ -49,8 +50,8 @@ export default function CostReport() {
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
     const [filters, setFilters] = useState({
-        dateFrom: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-        dateTo: new Date().toISOString().split('T')[0],
+        dateFrom: formatLocalDateInput(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
+        dateTo: formatLocalDateInput(),
         branchId: '',
         categoryId: '',
         supplierId: ''

@@ -2,23 +2,50 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
 import { effectiveUnitCost } from '../utils/product-cost';
+import { SettingService } from './setting.service';
+import { getZonedDayBounds, getZonedDaysBounds, getZonedDayStartOffset, zonedDateKey, zonedHour, zonedWeekday } from '../utils/timezone';
 
 const CHART_COLORS = ['#60a5fa', '#34d399', '#818cf8', '#fbbf24', '#f87171', '#a78bfa'];
+// Payment marks an order PAID and operational completion later changes it to
+// DELIVERED. `closedAt` is cleared on payment reversal, so this predicate keeps
+// financial reports reconciled without counting unpaid delivered orders.
+const SETTLED_ORDER_WHERE: Prisma.OrderWhereInput = {
+    status: { in: ['PAID', 'DELIVERED'] },
+    closedAt: { not: null }
+};
 
 export class ReportService {
+    private static async recipeQuantityInBase(companyId: number, recipe: {
+        quantity: Prisma.Decimal | number | string;
+        unit?: string | null;
+        product: { id: number; name: string; unit: string };
+    }): Promise<number> {
+        const recipeUnit = recipe.unit || recipe.product.unit;
+        try {
+            return (await UnitConversionService.convert(
+                recipe.product.id, companyId, Number(recipe.quantity), recipeUnit
+            )).baseQuantity;
+        } catch (error) {
+            throw new Error(
+                `Reporte no calculado: receta de "${recipe.product.name}" usa la unidad "${recipeUnit}" sin conversión válida: ${(error as Error).message}`
+            );
+        }
+    }
+
     static async getDashboardStats(companyId: number, branchId?: number) {
         const branchFilter: { branchId?: number } = branchId ? { branchId } : {};
         const orderBase: Prisma.OrderWhereInput = { companyId, ...branchFilter };
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const timeZone = await SettingService.getTimezone(companyId);
+        const todayBounds = getZonedDayBounds(timeZone);
+        const today = todayBounds.start;
 
         // 1. Sales today
         const todayOrders = await prisma.order.findMany({
             where: {
                 ...orderBase,
-                createdAt: { gte: today },
-                status: 'PAID'
+                ...SETTLED_ORDER_WHERE,
+                closedAt: { gte: today }
             },
             select: { total: true }
         });
@@ -83,7 +110,10 @@ export class ReportService {
         const branchFilter: { branchId?: number } = branchId ? { branchId } : {};
 
         const startDate = new Date();
-        if (period === 'today') startDate.setHours(0, 0, 0, 0);
+        if (period === 'today') {
+            const timeZone = await SettingService.getTimezone(companyId);
+            startDate.setTime(getZonedDayBounds(timeZone).start.getTime());
+        }
         else if (period === 'week') startDate.setDate(startDate.getDate() - 7);
         else if (period === 'month') startDate.setMonth(startDate.getMonth() - 1);
         else startDate.setFullYear(startDate.getFullYear() - 1);
@@ -91,9 +121,9 @@ export class ReportService {
         const where: Prisma.OrderItemWhereInput = {
             order: {
                 companyId,
-                status: 'PAID',
+                ...SETTLED_ORDER_WHERE,
                 ...branchFilter,
-                createdAt: { gte: startDate },
+                closedAt: { gte: startDate },
             },
         };
 
@@ -138,7 +168,7 @@ export class ReportService {
         startDate.setDate(startDate.getDate() - 30);
         const where: Prisma.OrderWhereInput = {
             companyId,
-            status: 'PAID',
+            ...SETTLED_ORDER_WHERE,
             ...branchFilter,
             createdAt: { gte: startDate },
         };
@@ -182,11 +212,11 @@ export class ReportService {
         // Radar expects: { subject, A, B, fullMark }
         const branchFilter: { branchId?: number } = branchId ? { branchId } : {};
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const timeZone = await SettingService.getTimezone(companyId);
+        const today = getZonedDayBounds(timeZone).start;
         const where: Prisma.OrderWhereInput = {
             companyId,
-            status: 'PAID',
+            ...SETTLED_ORDER_WHERE,
             ...branchFilter,
             createdAt: { gte: today },
         };
@@ -196,8 +226,8 @@ export class ReportService {
             include: { items: true }
         });
 
-        const shiftA = orders.filter((o) => new Date(o.createdAt).getHours() < 16);
-        const shiftB = orders.filter((o) => new Date(o.createdAt).getHours() >= 16);
+        const shiftA = orders.filter((o) => zonedHour(o.createdAt, timeZone) < 16);
+        const shiftB = orders.filter((o) => zonedHour(o.createdAt, timeZone) >= 16);
 
         const getStats = (obs: typeof orders) => ({
             ventas: obs.reduce((s, o) => s + Number(o.total), 0),
@@ -242,8 +272,8 @@ export class ReportService {
         const branchFilter: { branchId?: number } = branchId ? { branchId } : {};
         const companyBranch = { companyId, ...branchFilter };
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const timeZone = await SettingService.getTimezone(companyId);
+        const today = getZonedDayBounds(timeZone).start;
 
         const reservations = await prisma.reservation.count({
             where: { ...companyBranch, date: { gte: today } }
@@ -254,15 +284,15 @@ export class ReportService {
         });
 
         const paid = await prisma.order.count({
-            where: { ...companyBranch, createdAt: { gte: today }, status: 'PAID' }
+            where: { ...companyBranch, closedAt: { gte: today }, status: { in: ['PAID', 'DELIVERED'] } }
         });
 
         const frequentCustomers = await prisma.order.groupBy({
             by: ['customerName'],
             where: {
                 ...companyBranch,
-                createdAt: { gte: today },
-                status: 'PAID',
+                ...SETTLED_ORDER_WHERE,
+                closedAt: { gte: today },
                 customerName: { not: null }
             },
             _count: { customerName: true }
@@ -281,7 +311,7 @@ export class ReportService {
         const branchFilter: { branchId?: number } = branchId ? { branchId } : {};
         const where: Prisma.OrderWhereInput = {
             companyId,
-            status: 'PAID',
+            ...SETTLED_ORDER_WHERE,
             ...branchFilter,
         };
 
@@ -317,6 +347,7 @@ export class ReportService {
     static async getSalesChart(companyId: number, period: 'week' | 'month' = 'week', branchId?: number) {
         const branchFilter: { branchId?: number } = branchId ? { branchId } : {};
         const where: Prisma.OrderWhereInput = { companyId, ...branchFilter };
+        const timeZone = await SettingService.getTimezone(companyId);
 
         const endDate = new Date();
         const startDate = new Date();
@@ -330,23 +361,23 @@ export class ReportService {
         const orders = await prisma.order.findMany({
             where: {
                 ...where,
-                createdAt: {
+                closedAt: {
                     gte: startDate,
                     lte: endDate
                 },
-                status: 'PAID'
+                ...SETTLED_ORDER_WHERE
             },
             select: {
-                createdAt: true,
+                closedAt: true,
                 total: true
             },
             orderBy: {
-                createdAt: 'asc'
+                closedAt: 'asc'
             }
         });
 
         const grouped = orders.reduce((acc, order) => {
-            const date = order.createdAt.toISOString().split('T')[0];
+            const date = zonedDateKey(order.closedAt as Date, timeZone);
             if (!acc[date]) {
                 acc[date] = 0;
             }
@@ -367,7 +398,7 @@ export class ReportService {
         const whereItems: Prisma.OrderItemWhereInput = {
             order: {
                 companyId,
-                status: 'PAID',
+                ...SETTLED_ORDER_WHERE,
                 ...branchFilter,
             },
         };
@@ -424,11 +455,11 @@ export class ReportService {
         const branchFilter: { branchId?: number } = branchId ? { branchId } : {};
         const where: Prisma.OrderWhereInput = {
             companyId,
-            status: 'PAID',
+            ...SETTLED_ORDER_WHERE,
             ...branchFilter,
             ...(startDate || endDate
                 ? {
-                      createdAt: {
+                      closedAt: {
                           ...(startDate ? { gte: startDate } : {}),
                           ...(endDate ? { lte: endDate } : {}),
                       },
@@ -522,10 +553,11 @@ export class ReportService {
     static async getRecentInvoices(companyId: number, branchId?: number, limit: number = 5, todayOnly: boolean = false) {
         const branchFilter: { branchId?: number } = branchId ? { branchId } : {};
         let closedAt: Prisma.DateTimeFilter | undefined;
+        let timeZone: string | undefined;
         if (todayOnly) {
-            const start = new Date(); start.setHours(0, 0, 0, 0);
-            const end = new Date(); end.setHours(23, 59, 59, 999);
-            closedAt = { gte: start, lte: end };
+            timeZone = await SettingService.getTimezone(companyId);
+            const bounds = getZonedDayBounds(timeZone);
+            closedAt = { gte: bounds.start, lt: bounds.endExclusive };
         }
         const where: Prisma.OrderWhereInput = {
             companyId,
@@ -536,15 +568,16 @@ export class ReportService {
         const orders = await prisma.order.findMany({
             where: {
                 ...where,
-                status: {
-                    in: ['PAID', 'CANCELLED']
-                }
+                status: { in: ['PAID', 'DELIVERED'] },
+                invoiceNumber: { not: null },
+                closedAt: closedAt ?? { not: null }
             },
             select: {
                 id: true,
+                invoiceNumber: true,
                 total: true,
                 status: true,
-                createdAt: true,
+                closedAt: true,
                 items: {
                     select: {
                         id: true
@@ -552,18 +585,20 @@ export class ReportService {
                 }
             },
             orderBy: {
-                createdAt: 'desc'
+                closedAt: 'desc'
             },
             take: limit
         });
 
         return orders.map((order) => {
-            const time = new Date(order.createdAt);
+            const time = new Date(order.closedAt as Date);
             return {
-                id: `I-${String(order.id).padStart(3, '0')}`,
-                time: time.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+                id: order.invoiceNumber || `I-${String(order.id).padStart(3, '0')}`,
+                time: time.toLocaleTimeString('es-MX', {
+                    hour: '2-digit', minute: '2-digit', ...(timeZone ? { timeZone } : {})
+                }),
                 amount: Number(order.total),
-                status: order.status === 'PAID' ? 'paid' : 'cancelled',
+                status: 'paid',
                 items: order.items?.length || 0
             };
         });
@@ -573,15 +608,13 @@ export class ReportService {
         const branchFilter: { branchId?: number } = branchId ? { branchId } : {};
         const where: Prisma.ReservationWhereInput = { companyId, ...branchFilter };
 
-        const start = new Date();
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(start);
-        end.setDate(end.getDate() + days);
+        const timeZone = await SettingService.getTimezone(companyId);
+        const bounds = getZonedDaysBounds(timeZone, days);
 
         const reservations = await prisma.reservation.findMany({
             where: {
                 ...where,
-                date: { gte: start, lt: end },
+                date: { gte: bounds.start, lt: bounds.endExclusive },
                 status: { notIn: ['CANCELLED', 'NO_SHOW'] }
             },
             select: {
@@ -601,8 +634,8 @@ export class ReportService {
             return {
                 id: res.id,
                 date: res.date,
-                time: d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
-                day: d.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' }),
+                time: d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone }),
+                day: d.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', timeZone }),
                 name: res.customerName,
                 pax: res.peopleCount,
                 status: res.status.toLowerCase()
@@ -611,7 +644,8 @@ export class ReportService {
     }
 
     static async getMyStats(userId: number, companyId: number, role: string = 'MESERO') {
-        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const timeZone = await SettingService.getTimezone(companyId);
+        const today = getZonedDayBounds(timeZone).start;
 
         // ── COCINA ──
         if (role === 'COCINA') {
@@ -619,14 +653,14 @@ export class ReportService {
             const readyOrders = await prisma.order.count({ where: { companyId, status: 'READY' } });
 
             const todayPaidItems = await prisma.orderItem.findMany({
-                where: { order: { companyId, status: 'PAID', createdAt: { gte: today } } },
+                where: { order: { companyId, status: { in: ['PAID', 'DELIVERED'] }, closedAt: { gte: today } } },
                 select: { quantity: true }
             });
             const dishesToday = todayPaidItems.reduce((s, i) => s + i.quantity, 0);
 
             const topDishData = await prisma.orderItem.groupBy({
                 by: ['menuItemId'],
-                where: { order: { companyId, createdAt: { gte: today }, status: { in: ['PAID', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] } } },
+                where: { order: { companyId, createdAt: { gte: today }, status: { in: ['PAID', 'DELIVERED', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] } } },
                 _sum: { quantity: true },
                 orderBy: { _sum: { quantity: 'desc' } },
                 take: 5
@@ -662,14 +696,14 @@ export class ReportService {
             const readyOrders = await prisma.order.count({ where: { companyId, status: 'READY' } });
 
             const todayPaidItems = await prisma.orderItem.findMany({
-                where: { order: { companyId, status: 'PAID', createdAt: { gte: today } } },
+                where: { order: { companyId, status: { in: ['PAID', 'DELIVERED'] }, closedAt: { gte: today } } },
                 select: { quantity: true }
             });
             const dishesToday = todayPaidItems.reduce((s, i) => s + i.quantity, 0);
 
             const topDishData = await prisma.orderItem.groupBy({
                 by: ['menuItemId'],
-                where: { order: { companyId, createdAt: { gte: today }, status: { in: ['PAID', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] } } },
+                where: { order: { companyId, createdAt: { gte: today }, status: { in: ['PAID', 'DELIVERED', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] } } },
                 _sum: { quantity: true },
                 orderBy: { _sum: { quantity: 'desc' } },
                 take: 5
@@ -769,7 +803,7 @@ export class ReportService {
         // ── CAJERO ──
         if (role === 'CAJERO') {
             const paidOrders = await prisma.order.findMany({
-                where: { companyId, userId, createdAt: { gte: today }, status: 'PAID' },
+                where: { companyId, userId, status: { in: ['PAID', 'DELIVERED'] }, closedAt: { gte: today } },
                 select: { total: true }
             });
             const salesToday = paidOrders.reduce((s, o) => s + Number(o.total), 0);
@@ -794,11 +828,11 @@ export class ReportService {
             }
 
             const invoicesToday = await prisma.order.count({
-                where: { companyId, status: 'PAID', closedAt: { gte: today } }
+                where: { companyId, status: { in: ['PAID', 'DELIVERED'] }, closedAt: { gte: today } }
             });
 
             const paymentRows = await prisma.payment.findMany({
-                where: { status: 'ACTIVE', order: { companyId, status: 'PAID', closedAt: { gte: today } } },
+                where: { status: 'ACTIVE', order: { companyId, status: { in: ['PAID', 'DELIVERED'] }, closedAt: { gte: today } } },
                 include: { paymentMethod: { select: { name: true } } }
             });
             const breakdownMap = new Map<string, number>();
@@ -822,7 +856,7 @@ export class ReportService {
 
         // ── MESERO / HOST / DEFAULT ──
         const paidOrders = await prisma.order.findMany({
-            where: { companyId, userId, createdAt: { gte: today }, status: 'PAID' },
+            where: { companyId, userId, status: { in: ['PAID', 'DELIVERED'] }, closedAt: { gte: today } },
             select: { total: true }
         });
         const salesToday = paidOrders.reduce((s, o) => s + Number(o.total), 0);
@@ -832,7 +866,7 @@ export class ReportService {
         const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         const topProductData = await prisma.orderItem.groupBy({
             by: ['menuItemId'],
-            where: { order: { userId, companyId, status: 'PAID', createdAt: { gte: thirtyDaysAgo } } },
+            where: { order: { userId, companyId, status: { in: ['PAID', 'DELIVERED'] }, closedAt: { gte: thirtyDaysAgo } } },
             _sum: { quantity: true, subtotal: true },
             orderBy: { _sum: { quantity: 'desc' } },
             take: 5
@@ -887,20 +921,19 @@ export class ReportService {
     /** Weekly performance data for the profile chart */
     static async getMyPerformance(userId: number, companyId: number) {
         const now = new Date();
-        const weekAgo = new Date(now);
-        weekAgo.setDate(weekAgo.getDate() - 6);
-        weekAgo.setHours(0, 0, 0, 0);
+        const timeZone = await SettingService.getTimezone(companyId);
+        const weekAgo = getZonedDayStartOffset(timeZone, -6, now);
 
         // Daily sales for current user (last 7 days)
         const myOrders = await prisma.order.findMany({
-            where: { userId, companyId, status: 'PAID', createdAt: { gte: weekAgo } },
-            select: { total: true, createdAt: true }
+            where: { userId, companyId, status: { in: ['PAID', 'DELIVERED'] }, closedAt: { gte: weekAgo } },
+            select: { total: true, closedAt: true }
         });
 
         // Team average (all users, same period)
         const teamOrders = await prisma.order.findMany({
-            where: { companyId, status: 'PAID', createdAt: { gte: weekAgo } },
-            select: { total: true, userId: true, createdAt: true }
+            where: { companyId, status: { in: ['PAID', 'DELIVERED'] }, closedAt: { gte: weekAgo } },
+            select: { total: true, userId: true, closedAt: true }
         });
 
         // Build daily data
@@ -910,22 +943,20 @@ export class ReportService {
         const teamSize = Math.max(teamUserIds.size, 1);
 
         for (let i = 0; i < 7; i++) {
-            const d = new Date(weekAgo);
-            d.setDate(weekAgo.getDate() + i);
-            const dayStart = new Date(d); dayStart.setHours(0, 0, 0, 0);
-            const dayEnd = new Date(d); dayEnd.setHours(23, 59, 59, 999);
+            const dayStart = getZonedDayStartOffset(timeZone, -6 + i, now);
+            const dayEnd = new Date(getZonedDayStartOffset(timeZone, -5 + i, now).getTime() - 1);
 
             const mySales = myOrders
-                .filter((o) => new Date(o.createdAt) >= dayStart && new Date(o.createdAt) <= dayEnd)
+                .filter((o) => new Date(o.closedAt as Date) >= dayStart && new Date(o.closedAt as Date) <= dayEnd)
                 .reduce((s, o) => s + Number(o.total), 0);
 
             const teamTotal = teamOrders
-                .filter((o) => new Date(o.createdAt) >= dayStart && new Date(o.createdAt) <= dayEnd)
+                .filter((o) => new Date(o.closedAt as Date) >= dayStart && new Date(o.closedAt as Date) <= dayEnd)
                 .reduce((s, o) => s + Number(o.total), 0);
 
             dailyData.push({
-                day: dayNames[d.getDay()],
-                date: d.toISOString().slice(0, 10),
+                day: dayNames[zonedWeekday(dayStart, timeZone)],
+                date: zonedDateKey(dayStart, timeZone),
                 mySales: Math.round(mySales * 100) / 100,
                 teamAvg: Math.round((teamTotal / teamSize) * 100) / 100,
             });
@@ -1071,11 +1102,11 @@ export class ReportService {
         // COGS estimate from sold orders in the period
         const orderWhere: Prisma.OrderWhereInput = {
             companyId,
-            status: { in: ['PAID', 'DELIVERED'] },
+            ...SETTLED_ORDER_WHERE,
             ...(filters?.branchId ? { branchId: filters.branchId } : {}),
             ...(filters?.dateFrom || filters?.dateTo
                 ? {
-                      createdAt: {
+                      closedAt: {
                           ...(filters?.dateFrom ? { gte: filters.dateFrom } : {}),
                           ...(filters?.dateTo ? { lte: filters.dateTo } : {}),
                       },
@@ -1096,7 +1127,7 @@ export class ReportService {
                                     select: {
                                         quantity: true,
                                         unit: true,
-                                        product: { select: { id: true, unit: true, currentAverageCost: true, cost: true } }
+                                        product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true } }
                                     }
                                 }
                             }
@@ -1112,19 +1143,7 @@ export class ReportService {
             totalRevenue += Number(order.total);
             for (const item of order.items) {
                 for (const recipe of (item.menuItem?.recipes || [])) {
-                    const recipeUnit = recipe.unit || recipe.product.unit;
-                    let qtyInBase = Number(recipe.quantity);
-                    try {
-                        const conv = await UnitConversionService.convert(
-                            recipe.product.id,
-                            companyId,
-                            Number(recipe.quantity),
-                            recipeUnit
-                        );
-                        qtyInBase = conv.baseQuantity;
-                    } catch {
-                        // Fallback to legacy quantity when conversion is not configured
-                    }
+                    const qtyInBase = await this.recipeQuantityInBase(companyId, recipe);
                     const unitCost = effectiveUnitCost(recipe.product.currentAverageCost, recipe.product.cost);
                     estimatedCOGS += qtyInBase * item.quantity * unitCost;
                 }
@@ -1304,12 +1323,12 @@ export class ReportService {
     }) {
         const orderWhere: Prisma.OrderWhereInput = {
             companyId,
-            status: 'PAID',
+            ...SETTLED_ORDER_WHERE,
             ...(filters?.branchId ? { branchId: filters.branchId } : {}),
             ...(filters?.userId ? { userId: filters.userId } : {}),
             ...(filters?.dateFrom || filters?.dateTo
                 ? {
-                      createdAt: {
+                      closedAt: {
                           ...(filters?.dateFrom ? { gte: filters.dateFrom } : {}),
                           ...(filters?.dateTo ? { lte: filters.dateTo } : {}),
                       },
@@ -1344,7 +1363,7 @@ export class ReportService {
                 branch: { select: { name: true } },
                 company: { select: { name: true } }
             },
-            orderBy: { createdAt: 'desc' }
+            orderBy: { closedAt: 'desc' }
         });
 
         const items: {
@@ -1384,7 +1403,7 @@ export class ReportService {
                 const subtotal = Math.round(Number(item.subtotal) * 100) / 100;
                 totalSales += subtotal;
                 items.push({
-                    date: order.createdAt,
+                    date: order.closedAt as Date,
                     orderNumber: order.invoiceNumber || String(order.id),
                     productName: item.menuItem?.name || 'Unknown',
                     categoryName: item.menuItem?.category?.name || null,
@@ -1439,7 +1458,7 @@ export class ReportService {
                     select: {
                         quantity: true,
                         unit: true,
-                        product: { select: { id: true, unit: true, currentAverageCost: true, cost: true } }
+                        product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true } }
                     }
                 }
             }
@@ -1464,19 +1483,7 @@ export class ReportService {
             // product costed per kg would massively overstate the cost.
             let rawCost = 0;
             for (const r of mi.recipes) {
-                const recipeUnit = r.unit || r.product.unit;
-                let qtyInBase = Number(r.quantity);
-                try {
-                    const conv = await UnitConversionService.convert(
-                        r.product.id,
-                        companyId,
-                        Number(r.quantity),
-                        recipeUnit
-                    );
-                    qtyInBase = conv.baseQuantity;
-                } catch {
-                    // Legacy products without configured units fall back to 1:1.
-                }
+                const qtyInBase = await this.recipeQuantityInBase(companyId, r);
                 const unitCost = effectiveUnitCost(r.product.currentAverageCost, r.product.cost);
                 rawCost += qtyInBase * unitCost;
             }

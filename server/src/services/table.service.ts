@@ -94,7 +94,10 @@ export class TableService {
 
     return await prisma.table.create({
       data: {
-        ...data,
+        branchId: data.branchId,
+        number: data.number,
+        capacity: data.capacity,
+        location: data.location,
         companyId,
         status: 'AVAILABLE'
       },
@@ -121,7 +124,12 @@ export class TableService {
 
     return await prisma.table.update({
       where: { id },
-      data,
+      data: {
+        ...(data.number !== undefined ? { number: data.number } : {}),
+        ...(data.capacity !== undefined ? { capacity: data.capacity } : {}),
+        ...(data.location !== undefined ? { location: data.location } : {}),
+        ...(data.status !== undefined ? { status: data.status } : {})
+      },
       include: {
         branch: {
           select: {

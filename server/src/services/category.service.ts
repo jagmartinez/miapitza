@@ -168,8 +168,13 @@ export class CategoryService {
 
         return await prisma.category.create({
             data: {
-                ...data,
+                name: data.name,
+                description: data.description,
                 codePrefix,
+                sortOrder: data.sortOrder,
+                active: data.active,
+                showInMenu: data.showInMenu,
+                showInInventory: data.showInInventory,
                 companyId
             }
         });
@@ -191,7 +196,15 @@ export class CategoryService {
             showInInventory: data.showInInventory ?? category.showInInventory,
         });
 
-        const updateData = { ...data };
+        const updateData = {
+            ...(data.name !== undefined ? { name: data.name } : {}),
+            ...(data.description !== undefined ? { description: data.description } : {}),
+            ...(data.codePrefix !== undefined ? { codePrefix: data.codePrefix } : {}),
+            ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
+            ...(data.active !== undefined ? { active: data.active } : {}),
+            ...(data.showInMenu !== undefined ? { showInMenu: data.showInMenu } : {}),
+            ...(data.showInInventory !== undefined ? { showInInventory: data.showInInventory } : {})
+        };
         if ('codePrefix' in data) {
             updateData.codePrefix = this.normalizeCodePrefix(data.codePrefix);
         }

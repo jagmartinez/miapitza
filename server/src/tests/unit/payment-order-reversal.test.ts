@@ -24,6 +24,8 @@ describe('PaymentService.delete financial-state reversal', () => {
                     amount: 100,
                     order: {
                         id: 7,
+                        branchId: 2,
+                        invoiceNumber: null,
                         status: 'DELIVERED',
                         total: 100,
                         tableId: 3,
@@ -38,6 +40,7 @@ describe('PaymentService.delete financial-state reversal', () => {
                 findFirst: jest.fn(async () => ({ shiftId: 2, type: 'IN', amount: 100 })),
                 create: jest.fn(async (_args: unknown) => ({}))
             },
+            cashShift: { findFirst: jest.fn(async () => ({ id: 8 })) },
             order: { update: jest.fn(async (_args: unknown) => ({})) },
             table: { update: jest.fn(async (_args: unknown) => ({})) },
             promotion: {
@@ -51,11 +54,62 @@ describe('PaymentService.delete financial-state reversal', () => {
 
         expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
             where: { id: 7 },
-            data: expect.objectContaining({ status: 'READY', closedAt: null })
+            data: expect.objectContaining({ status: 'DELIVERED', closedAt: null })
         }));
         expect(reverse).toHaveBeenCalledWith(tx as never, { orderId: 7, userId: 9, companyId: 1 });
         expect(tx.table.update).toHaveBeenCalledWith({ where: { id: 3 }, data: { status: 'OCCUPIED' } });
         expect(tx.promotion.update).toHaveBeenCalledWith({ where: { id: 4 }, data: { usageCount: { decrement: 1 } } });
+        expect(tx.cashMovement.create).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ shiftId: 8, type: 'OUT', reference: 'REV-PAY-11' })
+        }));
+    });
+
+    it('does not rewrite a closed shift when no open shift can receive the cash refund', async () => {
+        jest.spyOn(prisma.payment, 'findFirst').mockResolvedValue({ orderId: 7 } as never);
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            payment: {
+                findFirst: jest.fn(async () => ({
+                    id: 11, orderId: 7, amount: 100,
+                    order: {
+                        id: 7, branchId: 2, invoiceNumber: null, status: 'PAID', total: 100,
+                        tableId: null, discountCode: null, payments: [{ id: 11, amount: 100 }], items: []
+                    }
+                })),
+                update: jest.fn()
+            },
+            cashMovement: {
+                findFirst: jest.fn(async () => ({ shiftId: 2, type: 'IN', amount: 100 })),
+                create: jest.fn()
+            },
+            cashShift: { findFirst: jest.fn(async () => null) }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
+
+        await expect(PaymentService.delete(11, 1, 9, 'Customer refund')).rejects.toThrow(/abrir un turno/i);
+        expect(tx.cashMovement.create).not.toHaveBeenCalled();
+        expect(tx.payment.update).not.toHaveBeenCalled();
+    });
+
+    it('blocks payment reversal after an invoice number was assigned', async () => {
+        jest.spyOn(prisma.payment, 'findFirst').mockResolvedValue({ orderId: 7 } as never);
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            payment: {
+                findFirst: jest.fn(async () => ({
+                    id: 11, orderId: 7, amount: 100,
+                    order: {
+                        id: 7, branchId: 2, invoiceNumber: 'FAC-2-000001', status: 'PAID', total: 100,
+                        tableId: null, discountCode: null, payments: [{ id: 11, amount: 100 }], items: []
+                    }
+                }))
+            },
+            cashMovement: { findFirst: jest.fn(), create: jest.fn() }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
+
+        await expect(PaymentService.delete(11, 1, 9, 'Customer refund')).rejects.toThrow(/nota de crédito/i);
+        expect(tx.cashMovement.findFirst).not.toHaveBeenCalled();
     });
 });
 
@@ -67,6 +121,8 @@ describe('OrderService.cancel paid-like states', () => {
                 findFirst: jest.fn(async () => ({
                     id: 7,
                     companyId: 1,
+                    branchId: 2,
+                    invoiceNumber: null,
                     userId: 9,
                     tableId: 3,
                     status: 'DELIVERED',
@@ -76,12 +132,14 @@ describe('OrderService.cancel paid-like states', () => {
                     payments: [{ id: 11, amount: 100 }],
                     table: { id: 3 }
                 })),
-                update: jest.fn(async (args: { data: { status: string } }) => ({ id: 7, status: args.data.status }))
+                update: jest.fn(async (args: { data: { status: string } }) => ({ id: 7, status: args.data.status })),
+                count: jest.fn(async () => 0)
             },
             cashMovement: {
                 findMany: jest.fn(async () => [{ shiftId: 2, reference: 'PAY-11', amount: 100 }]),
                 create: jest.fn(async (_args: unknown) => ({}))
             },
+            cashShift: { findFirst: jest.fn(async () => ({ id: 8 })) },
             payment: { updateMany: jest.fn(async (_args: unknown) => ({ count: 1 })) },
             promotion: {
                 findFirst: jest.fn(async () => ({ id: 4, usageCount: 1 })),

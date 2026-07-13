@@ -150,11 +150,11 @@ export class PurchaseOrderImportService {
                 rowErrors.push(`El SKU "${sku}" no existe en el catálogo`);
             }
 
-            if (isNaN(quantity) || quantity <= 0) {
+            if (!Number.isFinite(quantity) || quantity <= 0) {
                 rowErrors.push('La cantidad debe ser mayor a 0');
             }
 
-            if (isNaN(unitCost) || unitCost < 0) {
+            if (!Number.isFinite(unitCost) || unitCost < 0) {
                 rowErrors.push('El costo unitario debe ser 0 o mayor');
             }
 
@@ -224,10 +224,13 @@ export class PurchaseOrderImportService {
                             ?? allowedUnits.find(u => u.isDefault)
                             ?? allowedUnits[0];
                         purchaseUnit = defaultUnit ? defaultUnit.abbreviation : null;
-                    } catch {
-                        // If units can't be resolved, leave it null and let create() treat
-                        // the quantity as already being in base unit (legacy behavior).
-                        purchaseUnit = null;
+                    } catch (error) {
+                        // Fail closed: otherwise create() could select a non-base
+                        // default and multiply quantities imported as base units.
+                        throw new Error(
+                            `No se pudo resolver la unidad base del producto ${productId}: ` +
+                            `${error instanceof Error ? error.message : String(error)}`
+                        );
                     }
                 }
 

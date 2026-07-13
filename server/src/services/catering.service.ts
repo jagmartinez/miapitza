@@ -153,6 +153,10 @@ export class CateringService {
 
     static async createEvent(companyId: number, userId: number, data: CateringEventWriteBody) {
         const { services, menuItems, customerName, customerPhone, customerTaxId, customerId: cid, ...eventData } = data;
+        if (data.status !== undefined && data.status !== 'QUOTED') {
+            throw new Error('Los eventos nuevos deben iniciar en estado COTIZADO');
+        }
+        eventData.status = 'QUOTED';
 
         // Ensure branchId is an Int
         const branchId = parseInt(String(eventData.branchId), 10);
@@ -165,6 +169,7 @@ export class CateringService {
         if (!branch) throw new Error('Sucursal no encontrada para esta empresa');
 
         let customerId = cid != null && cid !== '' ? parseInt(String(cid), 10) : undefined;
+        let createCustomer = false;
 
         // If no customerId but name is provided, find or create
         if (!customerId && customerName) {
@@ -174,23 +179,8 @@ export class CateringService {
 
             if (customer) {
                 customerId = customer.id;
-                // Update taxId if provided
-                if (customerTaxId && customer.taxId !== customerTaxId) {
-                    await prisma.customer.update({
-                        where: { id: customer.id },
-                        data: { taxId: customerTaxId }
-                    });
-                }
             } else {
-                const newCustomer = await prisma.customer.create({
-                    data: {
-                        name: customerName,
-                        phone: customerPhone,
-                        taxId: customerTaxId,
-                        companyId
-                    }
-                });
-                customerId = newCustomer.id;
+                createCustomer = true;
             }
         }
 
@@ -199,6 +189,10 @@ export class CateringService {
 
         // Services total
         const servicesToCreate = services?.map((s) => {
+            const quantity = Number(s.quantity);
+            const unitPrice = Number(s.unitPrice);
+            if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('La cantidad del servicio debe ser mayor a 0');
+            if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('El precio del servicio no puede ser negativo');
             const subtotal = new Decimal(s.quantity).mul(new Decimal(s.unitPrice));
             totalAmount = totalAmount.add(subtotal);
             return {
@@ -215,6 +209,9 @@ export class CateringService {
             const quantity = Number(m.quantity);
             if (!Number.isInteger(quantity) || quantity <= 0) {
                 throw new Error('La cantidad de platos del menÃº debe ser un entero mayor a 0');
+            }
+            if (!Number.isFinite(Number(m.unitPrice)) || Number(m.unitPrice) < 0) {
+                throw new Error('El precio del plato no puede ser negativo');
             }
             const subtotal = new Decimal(m.quantity).mul(new Decimal(m.unitPrice));
             totalAmount = totalAmount.add(subtotal);
@@ -233,15 +230,25 @@ export class CateringService {
             menuItemIds: menuItemsToCreate.map((m) => m.menuItemId),
         });
 
-        const cleanEventData = { ...eventData } as Record<string, unknown>;
-        delete cleanEventData.branchId;
-        delete cleanEventData.companyId;
-        delete cleanEventData.customerId;
+        const cleanEventData: Record<string, unknown> = {
+            title: eventData.title,
+            peopleCount: eventData.peopleCount,
+            status: 'QUOTED',
+            location: eventData.location,
+            notes: eventData.notes,
+            clauses: eventData.clauses
+        };
 
         try {
             // Create the event and (if it starts FINISHED) deduct inventory in the
             // SAME transaction so a deduction failure rolls back the event.
             const event = await prisma.$transaction(async (tx) => {
+                if (createCustomer && customerName) {
+                    const customer = await tx.customer.create({ data: { name: customerName, phone: customerPhone, taxId: customerTaxId, companyId } });
+                    customerId = customer.id;
+                } else if (customerId && (customerPhone || customerTaxId)) {
+                    await tx.customer.updateMany({ where: { id: customerId, companyId }, data: { phone: customerPhone, taxId: customerTaxId } });
+                }
                 const created = await tx.cateringEvent.create({
                     data: {
                         ...cleanEventData,
@@ -285,7 +292,13 @@ export class CateringService {
         // Tenant-scoped load: never operate on another company's event.
         const oldEvent = await prisma.cateringEvent.findFirst({
             where: { id, companyId },
-            select: { status: true, customerId: true, _count: { select: { payments: true } } }
+            select: {
+                status: true,
+                customerId: true,
+                services: { select: { subtotal: true } },
+                menuItems: { select: { subtotal: true } },
+                payments: { select: { status: true } }
+            }
         });
 
         if (!oldEvent) throw new Error('Catering event not found');
@@ -297,6 +310,9 @@ export class CateringService {
                 throw new Error(`Transición de estado inválida: ${oldEvent.status} → ${data.status}`);
             }
         }
+        if (data.status === 'CANCELLED' && oldEvent.payments.some((payment) => payment.status === 'ACTIVE')) {
+            throw new Error('No se puede cancelar un evento con pagos registrados; revierta los pagos primero');
+        }
 
         // Optional conversions
         const branchId =
@@ -304,6 +320,7 @@ export class CateringService {
                 ? parseInt(String(eventData.branchId), 10)
                 : undefined;
         let customerId = cid != null && cid !== '' ? parseInt(String(cid), 10) : undefined;
+        let createCustomer = false;
 
         // If no customerId but name is provided, find or create
         if (!customerId && customerName) {
@@ -313,39 +330,25 @@ export class CateringService {
 
             if (customer) {
                 customerId = customer.id;
-                // Update taxId if provided
-                if (customerTaxId && customer.taxId !== customerTaxId) {
-                    await prisma.customer.update({
-                        where: { id: customer.id },
-                        data: { taxId: customerTaxId }
-                    });
-                }
+                createCustomer = false;
             } else {
-                const newCustomer = await prisma.customer.create({
-                    data: {
-                        name: customerName,
-                        phone: customerPhone,
-                        taxId: customerTaxId,
-                        companyId
-                    }
-                });
-                customerId = newCustomer.id;
+                createCustomer = true;
             }
-        } else if (customerId && (customerName || customerPhone || customerTaxId)) {
-            // Update existing customer info (tenant-scoped)
-            await prisma.customer.updateMany({
-                where: { id: customerId, companyId },
-                data: {
-                    name: customerName,
-                    phone: customerPhone,
-                    taxId: customerTaxId
-                }
-            });
         }
 
         // Recalculate totals
         let totalAmount = new Decimal(0);
+        if (services === undefined) {
+            totalAmount = oldEvent.services.reduce((sum, line) => sum.add(new Decimal(line.subtotal)), totalAmount);
+        }
+        if (menuItems === undefined) {
+            totalAmount = oldEvent.menuItems.reduce((sum, line) => sum.add(new Decimal(line.subtotal)), totalAmount);
+        }
         const servicesToUpdate = services?.map((s) => {
+            const quantity = Number(s.quantity);
+            const unitPrice = Number(s.unitPrice);
+            if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('La cantidad del servicio debe ser mayor a 0');
+            if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('El precio del servicio no puede ser negativo');
             const subtotal = new Decimal(s.quantity).mul(new Decimal(s.unitPrice));
             totalAmount = totalAmount.add(subtotal);
             return {
@@ -362,9 +365,7 @@ export class CateringService {
             if (!Number.isInteger(quantity) || quantity <= 0) {
                 throw new Error('La cantidad de platos del menÃº debe ser un entero mayor a 0');
             }
-            if (data.status === 'CANCELLED' && oldEvent._count.payments > 0) {
-                throw new Error('No se puede cancelar un evento con pagos registrados; revierta los pagos primero');
-            }
+            if (!Number.isFinite(Number(m.unitPrice)) || Number(m.unitPrice) < 0) throw new Error('El precio del plato no puede ser negativo');
             const subtotal = new Decimal(m.quantity).mul(new Decimal(m.unitPrice));
             totalAmount = totalAmount.add(subtotal);
             return {
@@ -383,25 +384,42 @@ export class CateringService {
             menuItemIds: menuItemsToUpdate.map((m) => m.menuItemId),
         });
 
-        const { date, ...mutableEventData } = eventData;
-        const cleanEventData = { ...mutableEventData } as Record<string, unknown>;
-        delete cleanEventData.branchId;
-        delete cleanEventData.companyId;
-        delete cleanEventData.customerId;
+        const { date } = eventData;
+        const cleanEventData: Record<string, unknown> = {};
+        for (const field of ['title', 'peopleCount', 'status', 'location', 'notes', 'clauses'] as const) {
+            if (eventData[field] !== undefined) cleanEventData[field] = eventData[field];
+        }
 
         try {
             const updatedEvent = await prisma.$transaction(async (tx) => {
-                // Remove old items
-                await tx.cateringServiceItem.deleteMany({ where: { cateringEventId: id } });
-                await tx.cateringMenuItem.deleteMany({ where: { cateringEventId: id } });
+                if (createCustomer && customerName) {
+                    const customer = await tx.customer.create({ data: { name: customerName, phone: customerPhone, taxId: customerTaxId, companyId } });
+                    customerId = customer.id;
+                } else if (customerId && (customerName || customerPhone || customerTaxId)) {
+                    await tx.customer.updateMany({ where: { id: customerId, companyId }, data: { name: customerName, phone: customerPhone, taxId: customerTaxId } });
+                }
+                await tx.$queryRaw`SELECT id FROM \`CateringEvent\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+                const locked = await tx.cateringEvent.findFirst({
+                    where: { id, companyId },
+                    select: { status: true, payments: { where: { status: 'ACTIVE' }, select: { id: true } } }
+                });
+                if (!locked) throw new Error('Catering event not found');
+                if (locked.status !== oldEvent.status) throw new Error('El evento cambió de estado; recargue e intente nuevamente');
+                if (data.status === 'CANCELLED' && locked.payments.length > 0) throw new Error('No se puede cancelar un evento con pagos activos; revierta los pagos primero');
+                if ((services !== undefined || menuItems !== undefined) && locked.payments.length > 0) {
+                    throw new Error('No se pueden modificar conceptos o totales de un evento con pagos activos; revierta los pagos primero');
+                }
+                if (services !== undefined) await tx.cateringServiceItem.deleteMany({ where: { cateringEventId: id } });
+                if (menuItems !== undefined) await tx.cateringMenuItem.deleteMany({ where: { cateringEventId: id } });
 
                 const updateData = {
                     ...cleanEventData,
                     totalAmount,
-                    services: { create: servicesToUpdate },
-                    menuItems: { create: menuItemsToUpdate },
                     updatedAt: new Date()
                 } as Prisma.CateringEventUpdateInput;
+
+                if (services !== undefined) updateData.services = { create: servicesToUpdate };
+                if (menuItems !== undefined) updateData.menuItems = { create: menuItemsToUpdate };
 
                 if (branchId) updateData.branch = { connect: { id: branchId } };
                 if (customerId) updateData.customer = { connect: { id: customerId } };
@@ -414,7 +432,9 @@ export class CateringService {
                 });
 
                 // Recalculate balance inside transaction
-                const paid = event.payments.reduce((sum, p) => sum.add(new Decimal(p.amount)), new Decimal(0));
+                const paid = event.payments
+                    .filter((payment) => payment.status === 'ACTIVE')
+                    .reduce((sum, payment) => sum.add(new Decimal(payment.amount)), new Decimal(0));
                 const newBalance = totalAmount.sub(paid);
 
                 const finalEvent = await tx.cateringEvent.update({
@@ -505,18 +525,19 @@ export class CateringService {
     }
 
     static async deleteEvent(id: number, companyId: number) {
-        const event = await this.getEventById(id, companyId);
-
-        if (event.status !== 'QUOTED' && event.status !== 'CANCELLED') {
-            throw new Error('Solo se pueden eliminar eventos en estado COTIZADO o CANCELADO');
-        }
-
-        const paymentCount = event.payments?.length || 0;
-        if (paymentCount > 0) {
-            throw new Error('No se puede eliminar un evento con pagos registrados');
-        }
-
         return await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`CateringEvent\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const event = await tx.cateringEvent.findFirst({
+                where: { id, companyId },
+                select: { status: true, payments: { select: { id: true } } }
+            });
+            if (!event) throw new Error('Catering event not found');
+            if (event.status !== 'QUOTED' && event.status !== 'CANCELLED') {
+                throw new Error('Solo se pueden eliminar eventos en estado COTIZADO o CANCELADO');
+            }
+            if (event.payments.length > 0) {
+                throw new Error('No se puede eliminar un evento con pagos registrados');
+            }
             await tx.cateringServiceItem.deleteMany({ where: { cateringEventId: id } });
             await tx.cateringMenuItem.deleteMany({ where: { cateringEventId: id } });
             return await tx.cateringEvent.delete({ where: { id } });
@@ -533,8 +554,12 @@ export class CateringService {
             reference?: string | null;
         }
     ) {
-        const amount = Number(paymentData.amount);
-        if (!amount || amount <= 0) {
+        const rawAmount = Number(paymentData.amount);
+        if (!Number.isFinite(rawAmount)) {
+            throw new Error('El monto debe ser un numero finito');
+        }
+        const amount = Math.round(rawAmount * 100) / 100;
+        if (amount <= 0) {
             throw new Error('El monto debe ser mayor a 0');
         }
 
@@ -550,6 +575,21 @@ export class CateringService {
 
             if (!event) {
                 throw new Error('Catering event not found');
+            }
+
+            const reference = paymentData.reference?.trim();
+            if (reference) {
+                const existingPayment = event.payments.find((payment) => payment.reference === reference);
+                if (existingPayment) {
+                    if (existingPayment.status === 'REVERSED') {
+                        throw new Error('La referencia pertenece a un pago revertido y no puede reutilizarse');
+                    }
+                    const sameRequest = Number(existingPayment.amount) === amount
+                        && existingPayment.paymentMethodId === paymentData.paymentMethodId
+                        && existingPayment.type === (paymentData.type || 'ADVANCE');
+                    if (!sameRequest) throw new Error('La referencia de pago ya fue usada con datos diferentes');
+                    return existingPayment;
+                }
             }
 
             if (event.status === 'CANCELLED') {
@@ -568,7 +608,9 @@ export class CateringService {
 
             // Recompute balance from the authoritative total minus paid amounts
             // INSIDE the locked transaction (do not trust the stored balance).
-            const paid = event.payments.reduce((sum, p) => sum.add(new Decimal(p.amount)), new Decimal(0));
+            const paid = event.payments
+                .filter((payment) => payment.status === 'ACTIVE')
+                .reduce((sum, payment) => sum.add(new Decimal(payment.amount)), new Decimal(0));
             const currentBalance = new Decimal(event.totalAmount).sub(paid);
 
             if (amount > Number(currentBalance) + 0.01) {
@@ -577,10 +619,10 @@ export class CateringService {
 
             const payment = await tx.cateringPayment.create({
                 data: {
-                    amount: paymentData.amount,
+                    amount,
                     paymentMethodId: paymentData.paymentMethodId,
                     type: paymentData.type || 'ADVANCE',
-                    reference: paymentData.reference || null,
+                    reference: reference || null,
                     cateringEventId: eventId
                 }
             });
@@ -598,6 +640,70 @@ export class CateringService {
         });
     }
 
+    static async reversePayment(
+        eventId: number,
+        paymentId: number,
+        companyId: number,
+        userId: number,
+        reason: string
+    ) {
+        const reversalReason = reason?.trim();
+        if (!reversalReason || reversalReason.length < 3) {
+            throw new Error('Debe indicar un motivo de reverso');
+        }
+
+        return prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`CateringEvent\` WHERE id = ${eventId} AND companyId = ${companyId} FOR UPDATE`;
+            const event = await tx.cateringEvent.findFirst({
+                where: { id: eventId, companyId },
+                include: { payments: true }
+            });
+            if (!event) throw new Error('Catering event not found');
+            if (event.status === 'FINISHED') {
+                throw new Error('No se puede revertir un pago de un evento finalizado');
+            }
+
+            const payment = event.payments.find((candidate) => candidate.id === paymentId);
+            if (!payment) throw new Error('Pago de catering no encontrado');
+            if (payment.status === 'REVERSED') return payment;
+
+            const reversed = await tx.cateringPayment.update({
+                where: { id: payment.id },
+                data: {
+                    status: 'REVERSED',
+                    reversedAt: new Date(),
+                    reversedById: userId,
+                    reversalReason
+                }
+            });
+
+            const remainingPaid = event.payments
+                .filter((candidate) => candidate.id !== payment.id && candidate.status === 'ACTIVE')
+                .reduce((sum, candidate) => sum.add(new Decimal(candidate.amount)), new Decimal(0));
+            const balance = Decimal.max(new Decimal(event.totalAmount).sub(remainingPaid), 0);
+            await tx.cateringEvent.update({
+                where: { id: event.id },
+                data: {
+                    balance,
+                    status: event.status === 'PAID' ? 'RESERVED' : event.status
+                }
+            });
+
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    userId,
+                    entityType: 'CateringPayment',
+                    entityId: payment.id,
+                    action: 'REVERSE',
+                    details: { eventId, amount: Number(payment.amount), reason: reversalReason }
+                }
+            });
+
+            return reversed;
+        });
+    }
+
     // Services Catalog
     static async getAllServices(companyId: number) {
         return await prisma.cateringService.findMany({
@@ -610,14 +716,27 @@ export class CateringService {
         data: Omit<Prisma.CateringServiceUncheckedCreateInput, 'companyId'>
     ) {
         return await prisma.cateringService.create({
-            data: { ...data, companyId }
+            data: {
+                companyId,
+                name: String(data.name).trim(),
+                description: data.description,
+                internalCost: data.internalCost,
+                salePrice: data.salePrice,
+                active: data.active ?? true
+            }
         });
     }
 
     static async updateService(id: number, companyId: number, data: Prisma.CateringServiceUpdateInput) {
         return await prisma.cateringService.update({
             where: { id, companyId },
-            data
+            data: {
+                ...(data.name !== undefined ? { name: data.name } : {}),
+                ...(data.description !== undefined ? { description: data.description } : {}),
+                ...(data.internalCost !== undefined ? { internalCost: data.internalCost } : {}),
+                ...(data.salePrice !== undefined ? { salePrice: data.salePrice } : {}),
+                ...(data.active !== undefined ? { active: data.active } : {})
+            }
         });
     }
 

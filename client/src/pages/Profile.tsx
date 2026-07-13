@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useTheme } from '../hooks/useTheme';
 import { useLanguage } from '../hooks/useLanguage';
+import { useCurrency } from '../hooks/useCurrency';
 import { usersAPI, reportsAPI, authAPI } from '../services/api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import Button from '../components/Button';
@@ -87,6 +88,7 @@ function getInitials(name: string): string {
 }
 
 export default function Profile() {
+    const { formatMoney } = useCurrency();
     const { user, logout } = useAuth();
     const { theme, toggleTheme } = useTheme();
     const { language, setLanguage } = useLanguage();
@@ -259,7 +261,7 @@ export default function Profile() {
                             <div className="stats-cards-grid">
                                 <div className="stat-card-mini">
                                     <div className="stat-icon sales"><CreditCard size={22} /></div>
-                                    <div><div className="stat-label">Ventas Hoy</div><div className="stat-value">${stats?.salesToday?.toFixed(2) || '0.00'}</div></div>
+                                    <div><div className="stat-label">Ventas Hoy</div><div className="stat-value">{formatMoney(stats?.salesToday || 0)}</div></div>
                                 </div>
                                 <div className="stat-card-mini">
                                     <div className="stat-icon orders"><ShoppingBag size={22} /></div>
@@ -267,7 +269,7 @@ export default function Profile() {
                                 </div>
                                 <div className="stat-card-mini">
                                     <div className="stat-icon ticket"><TrendingUp size={22} /></div>
-                                    <div><div className="stat-label">Ticket Prom.</div><div className="stat-value">${stats?.averageTicket?.toFixed(2) || '0.00'}</div></div>
+                                    <div><div className="stat-label">Ticket Prom.</div><div className="stat-value">{formatMoney(stats?.averageTicket || 0)}</div></div>
                                 </div>
                                 <div className="stat-card-mini">
                                     <div className="stat-icon product"><Star size={22} /></div>
@@ -301,7 +303,7 @@ export default function Profile() {
                                         </ResponsiveContainer>
                                     </div>
                                     <div className="perf-week-total">
-                                        Total semana: <strong>${performance.myWeekTotal?.toFixed(2)}</strong>
+                                        Total semana: <strong>{formatMoney(performance.myWeekTotal || 0)}</strong>
                                     </div>
                                 </div>
                             )}
@@ -319,7 +321,7 @@ export default function Profile() {
                                                     <div className="activity-meta">{new Date(act.date).toLocaleString('es-MX')}</div>
                                                 </div>
                                                 <div className="act-right">
-                                                    <span className="act-amount">${act.amount.toFixed(2)}</span>
+                                                    <span className="act-amount">{formatMoney(act.amount)}</span>
                                                     <span className={`act-status ${act.status.toLowerCase()}`}>{act.status}</span>
                                                 </div>
                                             </div>

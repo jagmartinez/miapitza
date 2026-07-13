@@ -188,6 +188,7 @@ export class ProductService {
         type?: ProductTypeValue;
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE';
         observation?: string | null;
+        active?: boolean;
     }, userId?: number) {
         // La categoría, si se indica, debe pertenecer a la empresa (evita asociar
         // productos a categorías de otro tenant).
@@ -217,11 +218,18 @@ export class ProductService {
 
         const product = await prisma.product.create({
             data: {
-                ...data,
+                name: data.name,
+                sku: data.sku,
+                categoryId: data.categoryId,
+                unit: data.unit,
                 companyId,
-                minStock: data.minStock || 0,
-                cost: data.cost || 0,
-                type: data.type || 'INGREDIENT'
+                minStock: data.minStock ?? 0,
+                cost: data.cost ?? 0,
+                price: data.price,
+                type: data.type || 'INGREDIENT',
+                storageType: data.storageType,
+                observation: data.observation,
+                active: data.active ?? true
             },
             include: {
                 category: {
@@ -298,7 +306,19 @@ export class ProductService {
         // Edición manual del costo: sincronizamos las tres fuentes de costo
         // (cost, currentAverageCost, lastPurchaseCost) para que no diverjan. No se
         // registra ProductCostHistory porque es un ajuste manual, no un movimiento.
-        const updateData: typeof data & { currentAverageCost?: number; lastPurchaseCost?: number } = { ...data };
+        const updateData: Prisma.ProductUncheckedUpdateInput = {
+            ...(data.name !== undefined ? { name: data.name } : {}),
+            ...(data.sku !== undefined ? { sku: data.sku } : {}),
+            ...(data.categoryId !== undefined ? { categoryId: data.categoryId } : {}),
+            ...(data.unit !== undefined ? { unit: data.unit } : {}),
+            ...(data.minStock !== undefined ? { minStock: data.minStock } : {}),
+            ...(data.cost !== undefined ? { cost: data.cost } : {}),
+            ...(data.price !== undefined ? { price: data.price } : {}),
+            ...(data.type !== undefined ? { type: data.type } : {}),
+            ...(data.storageType !== undefined ? { storageType: data.storageType } : {}),
+            ...(data.observation !== undefined ? { observation: data.observation } : {}),
+            ...(data.active !== undefined ? { active: data.active } : {})
+        };
         if (data.cost !== undefined && data.cost !== null) {
             updateData.currentAverageCost = data.cost;
             updateData.lastPurchaseCost = data.cost;

@@ -7,11 +7,12 @@ import fs from 'fs';
 import { authMiddleware, requireRole } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
+import { getUploadsDir } from '../utils/storage';
 
 // Configure multer for invoice uploads
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const dir = 'uploads/invoices';
+        const dir = getUploadsDir('invoices');
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
         }
@@ -49,6 +50,7 @@ router.post('/import/confirm', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), Pur
 
 router.get('/', PurchaseOrderController.getAll);
 router.get('/:id', validate(s.idParam), PurchaseOrderController.getById);
+router.get('/:id/invoice', validate(s.idParam), PurchaseOrderController.downloadInvoice);
 router.post('/', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), uploadInvoice.single('invoicePdf'), PurchaseOrderController.create);
 router.put('/:id', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.idParam), uploadInvoice.single('invoicePdf'), PurchaseOrderController.update);
 router.delete('/:id', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), PurchaseOrderController.delete);

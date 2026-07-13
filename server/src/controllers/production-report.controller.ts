@@ -9,8 +9,8 @@ export class ProductionReportController {
         const requested = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
         return {
             branchId: resolveBranchScope(req.user!, requested),
-            dateFrom: parseOptionalQueryDateFrom(req.query.dateFrom as string | undefined),
-            dateTo: parseOptionalQueryDateTo(req.query.dateTo as string | undefined),
+            dateFrom: parseOptionalQueryDateFrom(req.query.dateFrom as string | undefined, req.user!.timezone),
+            dateTo: parseOptionalQueryDateTo(req.query.dateTo as string | undefined, req.user!.timezone),
             productId: req.query.productId ? parseInt(req.query.productId as string) : undefined,
             warehouseId: req.query.warehouseId ? parseInt(req.query.warehouseId as string) : undefined,
             status: req.query.status as string | undefined

@@ -39,8 +39,8 @@ export class PaymentService {
         reference?: string;
         payerName?: string;
     }, userId: number) {
-        // Validate amount upfront
-        if (!data.amount || data.amount <= 0) {
+        const amount = Math.round(Number(data.amount) * 100) / 100;
+        if (!Number.isFinite(amount) || amount <= 0) {
             throw new Error('Amount must be a positive number');
         }
 
@@ -82,18 +82,20 @@ export class PaymentService {
             }
 
             // Calculate total paid INSIDE the transaction
-            const totalPaid = order.payments.reduce((sum: number, p: { amount: unknown }) => sum + Number(p.amount), 0);
-            const remaining = Number(order.total) - totalPaid;
+            const totalCents = Math.round(Number(order.total) * 100);
+            const totalPaidCents = order.payments.reduce((sum: number, p: { amount: unknown }) => sum + Math.round(Number(p.amount) * 100), 0);
+            const amountCents = Math.round(amount * 100);
+            const remainingCents = totalCents - totalPaidCents;
 
-            if (data.amount > remaining + 0.01) { // Allow 1 cent tolerance for rounding
-                throw new Error(`Amount exceeds remaining balance. Remaining: ${remaining.toFixed(2)}`);
+            if (amountCents > remainingCents) {
+                throw new Error(`Amount exceeds remaining balance. Remaining: ${(remainingCents / 100).toFixed(2)}`);
             }
 
             const payment = await tx.payment.create({
                 data: {
                     orderId: data.orderId,
                     paymentMethodId: data.paymentMethodId,
-                    amount: data.amount,
+                    amount,
                     reference: data.reference || null,
                     payerName: data.payerName || null,
                     registeredById: userId
@@ -109,29 +111,54 @@ export class PaymentService {
                     where: {
                         userId,
                         companyId,
-                        endDate: null
-                    }
+                        endDate: null,
+                        cashRegister: { branchId: order.branchId }
+                    },
+                    select: { id: true, cashRegisterId: true }
                 });
 
                 if (!activeShift) {
                     throw new Error('No active cash shift found for this user. Please open a shift first.');
                 }
 
+                // Serialize with shift close. Otherwise this payment can observe
+                // an open shift and post cash after a concurrent close commits.
+                await tx.$queryRaw`SELECT id FROM \`CashShift\` WHERE id = ${activeShift.id} AND companyId = ${companyId} FOR UPDATE`;
+                const lockedShift = await tx.cashShift.findFirst({
+                    where: {
+                        id: activeShift.id,
+                        userId,
+                        companyId,
+                        endDate: null,
+                        cashRegister: { branchId: order.branchId }
+                    },
+                    select: { id: true, cashRegisterId: true }
+                });
+                if (!lockedShift) {
+                    throw new Error('El turno de caja fue cerrado durante el cobro; vuelva a intentarlo');
+                }
+
                 await tx.cashMovement.create({
                     data: {
-                        shiftId: activeShift.id,
+                        shiftId: lockedShift.id,
                         type: 'IN',
-                        amount: data.amount,
+                        amount,
                         description: `Venta Orden #${data.orderId}`,
                         reference: `PAY-${payment.id}`
                     }
                 });
+                if (order.cashRegisterId && order.cashRegisterId !== lockedShift.cashRegisterId) {
+                    throw new Error('La orden ya está asociada a otra caja registradora');
+                }
+                if (!order.cashRegisterId) {
+                    await tx.order.update({ where: { id: order.id }, data: { cashRegisterId: lockedShift.cashRegisterId } });
+                }
             }
 
             // Check if order is fully paid
-            const newTotalPaid = totalPaid + data.amount;
+            const newTotalPaidCents = totalPaidCents + amountCents;
 
-            if (newTotalPaid >= Number(order.total)) {
+            if (newTotalPaidCents >= totalCents) {
                 await tx.order.update({
                     where: { id: data.orderId },
                     data: { status: 'PAID', closedAt: new Date() }
@@ -235,20 +262,56 @@ export class PaymentService {
                 }
             });
             if (!payment) throw new Error('Payment not found');
+            if (payment.order.invoiceNumber) {
+                throw new Error('No se puede revertir un pago de una orden facturada; emita una nota de crédito');
+            }
 
             // Preserve the original payment and cash IN as immutable ledger rows.
-            // A cash refund is represented by a compensating OUT movement.
+            // A cash refund is represented by a compensating OUT movement in an
+            // OPEN shift. Never mutate a closed shift: doing so would rewrite its
+            // historical arqueo after it was signed off.
             const originalCashMovement = await tx.cashMovement.findFirst({ where: { reference: `PAY-${id}`, type: 'IN' } });
             if (originalCashMovement) {
+                let refundShift = await tx.cashShift.findFirst({
+                    where: {
+                        userId,
+                        companyId,
+                        endDate: null,
+                        cashRegister: { branchId: payment.order.branchId }
+                    },
+                    select: { id: true }
+                });
+                if (!refundShift) {
+                    const originalShift = await tx.cashShift.findFirst({
+                        where: {
+                            id: originalCashMovement.shiftId,
+                            companyId,
+                            endDate: null,
+                            cashRegister: { branchId: payment.order.branchId }
+                        },
+                        select: { id: true }
+                    });
+                    refundShift = originalShift;
+                }
+                if (!refundShift) {
+                    throw new Error('Debe abrir un turno de caja en la sucursal de la orden para registrar el reembolso en efectivo');
+                }
+                await tx.$queryRaw`SELECT id FROM \`CashShift\` WHERE id = ${refundShift.id} AND companyId = ${companyId} FOR UPDATE`;
+                const lockedRefundShift = await tx.cashShift.findFirst({
+                    where: { id: refundShift.id, companyId, endDate: null },
+                    select: { id: true }
+                });
+                if (!lockedRefundShift) throw new Error('El turno de caja para el reembolso ya fue cerrado');
                 await tx.cashMovement.create({
                     data: {
-                        shiftId: originalCashMovement.shiftId,
+                        shiftId: lockedRefundShift.id,
                         type: 'OUT',
                         amount: payment.amount,
                         description: `Reverso Pago #${id} Orden #${payment.orderId}`,
                         reference: `REV-PAY-${id}`
                     }
                 });
+
             }
 
             await tx.payment.update({
@@ -265,7 +328,11 @@ export class PaymentService {
             const becomesUnderpaid = remainingPaid + 0.01 < orderTotal;
 
             if (becomesUnderpaid && payment.order.status !== 'CANCELLED') {
-                const newStatus = this.deriveOrderStatus(payment.order);
+                // Financial reversal must preserve the operational fact that the
+                // order was already delivered.
+                const newStatus = payment.order.status === 'DELIVERED'
+                    ? 'DELIVERED'
+                    : this.deriveOrderStatus(payment.order);
 
                 await tx.order.update({
                     where: { id: payment.orderId },

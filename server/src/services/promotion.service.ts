@@ -6,6 +6,62 @@ import prisma from '../utils/prisma';
  * Handles discounts and promotional codes
  */
 export class PromotionService {
+    private static normalizeAndValidate(data: {
+        code?: string; name?: string; description?: string | null;
+        type?: 'PERCENTAGE' | 'FIXED_AMOUNT'; value?: number | Prisma.Decimal;
+        minOrderAmount?: number | Prisma.Decimal | null; maxDiscount?: number | Prisma.Decimal | null;
+        validFrom?: Date | string; validTo?: Date | string | null;
+        usageLimit?: number | null; active?: boolean;
+    }) {
+        const normalized: Record<string, unknown> = {};
+        if (data.code !== undefined) {
+            const code = data.code.trim().toUpperCase();
+            if (!code) throw new Error('El código de promoción es requerido');
+            normalized.code = code;
+        }
+        if (data.name !== undefined) {
+            const name = data.name.trim();
+            if (!name) throw new Error('El nombre de promoción es requerido');
+            normalized.name = name;
+        }
+        if (data.description !== undefined) normalized.description = data.description;
+        if (data.type !== undefined) normalized.type = data.type;
+        if (data.value !== undefined) {
+            const value = Number(data.value);
+            if (!Number.isFinite(value) || value <= 0) throw new Error('El valor de la promoción debe ser mayor a 0');
+            normalized.value = value;
+        }
+        for (const field of ['minOrderAmount', 'maxDiscount'] as const) {
+            if (data[field] === undefined) continue;
+            if (data[field] === null) normalized[field] = null;
+            else {
+                const value = Number(data[field]);
+                if (!Number.isFinite(value) || value < 0) throw new Error(`${field} no puede ser negativo`);
+                normalized[field] = value;
+            }
+        }
+        if (data.usageLimit !== undefined) {
+            if (data.usageLimit === null) normalized.usageLimit = null;
+            else if (!Number.isInteger(Number(data.usageLimit)) || Number(data.usageLimit) <= 0) {
+                throw new Error('El límite de usos debe ser un entero mayor a 0');
+            } else normalized.usageLimit = Number(data.usageLimit);
+        }
+        if (data.validFrom !== undefined) {
+            const validFrom = new Date(data.validFrom);
+            if (Number.isNaN(validFrom.getTime())) throw new Error('La fecha inicial no es válida');
+            normalized.validFrom = validFrom;
+        }
+        if (data.validTo !== undefined) {
+            if (data.validTo === null) normalized.validTo = null;
+            else {
+                const validTo = new Date(data.validTo);
+                if (Number.isNaN(validTo.getTime())) throw new Error('La fecha final no es válida');
+                normalized.validTo = validTo;
+            }
+        }
+        if (data.active !== undefined) normalized.active = data.active;
+        return normalized;
+    }
     /**
      * Get all promotions for a company
      */
@@ -52,25 +108,35 @@ export class PromotionService {
         validTo?: Date;
         usageLimit?: number;
     }) {
+        const normalized = this.normalizeAndValidate(data);
+        const validFrom = (normalized.validFrom as Date | undefined) ?? new Date();
+        const validTo = normalized.validTo as Date | null | undefined;
+        if (data.type === 'PERCENTAGE' && Number(data.value) > 100) throw new Error('El porcentaje no puede exceder 100');
+        if (validTo && validTo < validFrom) throw new Error('La fecha final no puede ser anterior a la fecha inicial');
         return await prisma.promotion.create({
-            data: {
-                companyId,
-                ...data,
-                code: data.code.toUpperCase() // Normalize to uppercase for consistent lookups
-            }
+            data: { companyId, ...normalized, validFrom } as Prisma.PromotionUncheckedCreateInput
         });
     }
 
     /**
      * Update a promotion
      */
-    static async update(id: number, companyId: number, data: Prisma.PromotionUpdateInput) {
+    static async update(id: number, companyId: number, data: {
+        code?: string; name?: string; description?: string | null;
+        type?: 'PERCENTAGE' | 'FIXED_AMOUNT'; value?: number;
+        minOrderAmount?: number | null; maxDiscount?: number | null;
+        validFrom?: Date | string; validTo?: Date | string | null;
+        usageLimit?: number | null; active?: boolean;
+    }) {
         const promo = await prisma.promotion.findFirst({ where: { id, companyId } });
         if (!promo) throw new Error('Promoción no encontrada');
-        const normalizedData: Prisma.PromotionUpdateInput = {
-            ...data,
-            ...(typeof data.code === 'string' ? { code: data.code.toUpperCase() } : {})
-        };
+        const normalizedData = this.normalizeAndValidate(data) as Prisma.PromotionUpdateInput;
+        const nextType = data.type ?? promo.type;
+        const nextValue = data.value ?? Number(promo.value);
+        if (nextType === 'PERCENTAGE' && nextValue > 100) throw new Error('El porcentaje no puede exceder 100');
+        const nextFrom = data.validFrom === undefined ? promo.validFrom : new Date(data.validFrom);
+        const nextTo = data.validTo === undefined ? promo.validTo : (data.validTo === null ? null : new Date(data.validTo));
+        if (nextTo && nextTo < nextFrom) throw new Error('La fecha final no puede ser anterior a la fecha inicial');
         return await prisma.promotion.update({
             where: { id },
             data: normalizedData

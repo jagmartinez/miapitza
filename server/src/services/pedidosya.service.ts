@@ -73,9 +73,29 @@ export class PedidosYaService {
         active?: boolean;
     }, userId?: number) {
         const branchId = data.branchId || null;
+        if (branchId !== null) {
+            const branch = await prisma.branch.findFirst({ where: { id: branchId, companyId }, select: { id: true } });
+            if (!branch) throw new Error('Sucursal no encontrada para esta empresa');
+        }
+        if (data.defaultWarehouseId !== undefined) {
+            const warehouse = await prisma.warehouse.findFirst({
+                where: { id: data.defaultWarehouseId, companyId, ...(branchId ? { branchId } : {}) },
+                select: { id: true }
+            });
+            if (!warehouse) throw new Error('Almacén no encontrado para esta empresa/sucursal');
+        }
 
-        // Encrypt integration secrets at rest before persisting.
-        const payload: Record<string, unknown> = { ...data };
+        // Explicit allowlist prevents mass assignment of tenant ownership,
+        // stored OAuth tokens, timestamps or record identity through req.body.
+        const payload: Record<string, unknown> = {};
+        const assignIfPresent = (field: keyof typeof data) => {
+            if (Object.prototype.hasOwnProperty.call(data, field)) payload[field] = data[field];
+        };
+        for (const field of [
+            'clientId', 'clientSecret', 'restaurantId', 'webhookSecret',
+            'environment', 'autoAcceptOrders', 'autoSyncStatus',
+            'defaultWarehouseId', 'active'
+        ] as const) assignIfPresent(field);
         for (const field of SECRET_FIELDS) {
             if (field in payload) {
                 payload[field] = this.encryptSecret(payload[field] as string | null | undefined);
@@ -221,7 +241,8 @@ export class PedidosYaService {
     }
 
     private static async handleNewOrder(companyId: number, payload: Record<string, unknown>) {
-        const externalId = payload.id as string;
+        const externalId = String(payload.id || '').trim();
+        if (!externalId) throw new Error('PedidosYa external order ID is required');
 
         const existingSync = await prisma.pedidosYaOrderSync.findFirst({
             where: { companyId, externalId },
@@ -232,12 +253,23 @@ export class PedidosYaService {
             where: { companyId, active: true },
         });
         if (!config) throw new Error('PedidosYa config not found');
+        const branchId = config.branchId || (await prisma.branch.findFirst({ where: { companyId, status: 'ACTIVE' }, orderBy: { id: 'asc' } }))?.id;
+        if (!branchId) throw new Error('No active branch configured');
 
         const items = (payload.items || payload.products || []) as Array<{
             id?: string; name: string; quantity: number; price?: number; notes?: string;
         }>;
+        if (items.length === 0) throw new Error(`Orden PedidosYa ${externalId} sin productos`);
+        for (const item of items) {
+            if (!Number.isInteger(Number(item.quantity)) || Number(item.quantity) <= 0) {
+                throw new Error(`Cantidad inválida para ${item.name || item.id || 'producto'}`);
+            }
+            if (item.price !== undefined && (!Number.isFinite(Number(item.price)) || Number(item.price) < 0)) {
+                throw new Error(`Precio inválido para ${item.name || item.id || 'producto'}`);
+            }
+        }
 
-        const { mapped: mappedItems, unmapped } = await this.mapOrderItems(companyId, items);
+        const { mapped: mappedItems, unmapped } = await this.mapOrderItems(companyId, branchId, items);
 
         // Never create a partial order: if any incoming item has no menu mapping,
         // reject the whole sync so it is not silently dropped. The thrown error is
@@ -251,17 +283,18 @@ export class PedidosYaService {
         }
 
         const systemUser = await prisma.user.findFirst({
-            where: { companyId, username: 'system' },
+            where: { companyId, status: 'ACTIVE' },
+            orderBy: [{ username: 'asc' }, { id: 'asc' }],
             select: { id: true },
         });
-        const userId = systemUser?.id || 1;
-        const branchId = config.branchId || (await prisma.branch.findFirst({ where: { companyId } }))?.id;
-        if (!branchId) throw new Error('No branch configured');
+        if (!systemUser) throw new Error('No active user found to assign PedidosYa order');
+        const userId = systemUser.id;
 
         const customerName = `[PEDIDOSYA] ${payload.customerName || 'Cliente'} | ID:${externalId}`;
         const total = mappedItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
 
-        const order = await prisma.order.create({
+        const order = await prisma.$transaction(async (tx) => {
+        const created = await tx.order.create({
             data: {
                 companyId,
                 branchId,
@@ -284,16 +317,18 @@ export class PedidosYaService {
             },
         });
 
-        await prisma.pedidosYaOrderSync.create({
+        await tx.pedidosYaOrderSync.create({
             data: {
                 companyId,
-                orderId: order.id,
+                orderId: created.id,
                 externalId,
                 externalStatus: payload.status as string || 'NEW',
                 internalStatus: 'OPEN',
                 syncDirection: 'INBOUND',
                 metadata: payload as Prisma.InputJsonValue,
             },
+        });
+        return created;
         });
 
         AuditLogService.log({
@@ -327,18 +362,15 @@ export class PedidosYaService {
                 { allowPaidReversal: true }
             );
         } catch (err) {
+            if ((err as Error).message === 'Order is already cancelled') {
+                // Idempotent webhook replay: local and external state already agree.
+            } else {
             // The order may already be in a terminal/incompatible state (e.g.
             // already cancelled). Don't break the webhook: log it and still
             // update the sync record so it reflects the external cancellation.
             console.error(`[PedidosYa] No se pudo cancelar la orden ${sync.orderId} vía OrderService:`, err);
-            AuditLogService.log({
-                companyId,
-                userId: systemUser?.id || 1,
-                entityType: 'Order',
-                entityId: sync.orderId,
-                action: 'CANCEL',
-                details: { source: 'PEDIDOSYA', externalId, cancelFailed: true, error: (err as Error).message },
-            }).catch(() => {});
+                throw err;
+            }
         }
 
         await prisma.pedidosYaOrderSync.update({
@@ -363,7 +395,7 @@ export class PedidosYaService {
     }
 
     // ── Product Mapping ──
-    private static async mapOrderItems(companyId: number, items: Array<{
+    private static async mapOrderItems(companyId: number, branchId: number, items: Array<{
         id?: string; name: string; quantity: number; price?: number; notes?: string;
     }>) {
         const result: Array<{ menuItemId: number; quantity: number; price: number; notes?: string }> = [];
@@ -378,9 +410,9 @@ export class PedidosYaService {
             if (item.id) {
                 const mapping = await prisma.pedidosYaProductMapping.findFirst({
                     where: { companyId, externalId: item.id, isActive: true },
-                    include: { menuItem: { select: { id: true, price: true } } },
+                    include: { menuItem: { select: { id: true, price: true, branchId: true, active: true } } },
                 });
-                if (mapping?.menuItem) {
+                if (mapping?.menuItem?.active && (mapping.menuItem.branchId === null || mapping.menuItem.branchId === branchId)) {
                     menuItemId = mapping.menuItem.id;
                     price = price || Number(mapping.menuItem.price);
                 }
@@ -388,7 +420,7 @@ export class PedidosYaService {
 
             if (!menuItemId) {
                 const menuItem = await prisma.menuItem.findFirst({
-                    where: { companyId, name: { contains: item.name }, active: true },
+                    where: { companyId, name: { contains: item.name }, active: true, OR: [{ branchId: null }, { branchId }] },
                     select: { id: true, price: true },
                 });
                 if (menuItem) {
@@ -422,13 +454,12 @@ export class PedidosYaService {
         const platformStatus = this.mapInternalToPlatformStatus(newStatus);
         if (!platformStatus) return;
 
-        try {
-            const token = await this.getValidToken(companyId);
+        const token = await this.getValidToken(companyId);
             const baseUrl = config.environment === 'production'
                 ? 'https://api.pedidosya.com'
                 : 'https://api-sandbox.pedidosya.com';
 
-            await fetch(`${baseUrl}/v3/orders/${sync.externalId}/status`, {
+            const response = await fetch(`${baseUrl}/v3/orders/${sync.externalId}/status`, {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -436,8 +467,9 @@ export class PedidosYaService {
                 },
                 body: JSON.stringify({ status: platformStatus }),
             });
+            if (!response.ok) throw new Error(`PedidosYa status sync failed: HTTP ${response.status}`);
 
-            await prisma.pedidosYaOrderSync.update({
+        await prisma.pedidosYaOrderSync.update({
                 where: { id: sync.id },
                 data: {
                     internalStatus: newStatus,
@@ -445,10 +477,7 @@ export class PedidosYaService {
                     lastSyncAt: new Date(),
                     syncDirection: 'OUTBOUND',
                 },
-            });
-        } catch (error) {
-            console.error('[PedidosYa] Status sync failed:', error);
-        }
+        });
     }
 
     private static mapInternalToPlatformStatus(status: string): string | null {
@@ -479,6 +508,11 @@ export class PedidosYaService {
         menuItemId?: number | null;
         isActive?: boolean;
     }) {
+        if (!data.externalId?.trim() || !data.externalName?.trim()) throw new Error('External ID and name are required');
+        if (data.menuItemId !== undefined && data.menuItemId !== null) {
+            const menuItem = await prisma.menuItem.findFirst({ where: { id: data.menuItemId, companyId, active: true }, select: { id: true } });
+            if (!menuItem) throw new Error('Menu item not found for company');
+        }
         const existing = await prisma.pedidosYaProductMapping.findFirst({
             where: { companyId, externalId: data.externalId },
         });

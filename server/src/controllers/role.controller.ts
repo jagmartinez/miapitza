@@ -34,7 +34,12 @@ export class RoleController {
     static async create(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const role = await RoleService.create(companyId, req.body);
+            const role = await RoleService.create(
+                companyId,
+                req.body,
+                req.user!.userId,
+                req.user!.roles || [req.user!.role]
+            );
             res.json({
                 success: true,
                 data: role
@@ -48,7 +53,13 @@ export class RoleController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
-            const role = await RoleService.update(id, companyId, req.body);
+            const role = await RoleService.update(
+                id,
+                companyId,
+                req.body,
+                req.user!.userId,
+                req.user!.roles || [req.user!.role]
+            );
             res.json({
                 success: true,
                 data: role

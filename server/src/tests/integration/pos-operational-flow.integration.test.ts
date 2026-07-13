@@ -181,6 +181,12 @@ describe('POS operational flow', () => {
         expect(finished.body.data.allDone).toBe(true);
         expect((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status).toBe('READY');
 
+        // Generic status writes must not bypass the cancellation counterflow.
+        await request(app).patch(`/api/orders/${orderId}/status`).set('Authorization', `Bearer ${token}`)
+            .send({ status: 'CANCELLED' }).expect(400);
+        expect((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status).toBe('READY');
+        expect((await prisma.table.findUniqueOrThrow({ where: { id: tableId } })).status).toBe('OCCUPIED');
+
         await request(app).post(`/api/orders/${orderId}/cancel`).set('Authorization', `Bearer ${token}`)
             .send({ cancelReason: 'Kitchen certification rollback' }).expect(200);
         expect((await prisma.table.findUniqueOrThrow({ where: { id: tableId } })).status).toBe('AVAILABLE');
@@ -249,6 +255,12 @@ describe('POS operational flow', () => {
             .send({ branchId, customerName: 'Reservation Flow', peopleCount: 2, date });
         expect(created.status).toBe(201);
         reservationId = created.body.data.id;
+        expect(created.body.data.table.id).toBe(tableId);
+        expect((await prisma.reservation.findUnique({ where: { id: reservationId } }))?.tableId).toBe(tableId);
+        const conflict = await request(app).post('/api/reservations').set('Authorization', `Bearer ${token}`)
+            .send({ branchId, customerName: 'Conflicting Reservation', peopleCount: 2, date });
+        expect(conflict.status).toBe(400);
+        expect(await prisma.reservation.count({ where: { companyId, branchId, date: new Date(date) } })).toBe(1);
         const cancelled = await request(app).patch(`/api/reservations/${reservationId}/status`).set('Authorization', `Bearer ${token}`)
             .send({ status: 'CANCELLED' });
         expect(cancelled.status).toBe(200);

@@ -13,14 +13,19 @@ describe('Auth API Integration Tests', () => {
     };
 
     let testRoleId: number;
+    let testCompanyId: number;
     beforeAll(async () => {
+        let company = await prisma.company.findFirst({ where: { name: 'TEST_AUTH_COMPANY' } });
+        if (!company) company = await prisma.company.create({ data: { name: 'TEST_AUTH_COMPANY' } });
+        testCompanyId = company.id;
+
         // Get or create a test role
         let role = await prisma.role.findFirst({
-            where: { name: 'TEST_ROLE' }
+            where: { name: 'TEST_ROLE', companyId: testCompanyId }
         });
         if (!role) {
             role = await prisma.role.create({
-                data: { name: 'TEST_ROLE', description: 'Test role for auth tests' }
+                data: { name: 'TEST_ROLE', description: 'Test role for auth tests', companyId: testCompanyId }
             });
         }
         testRoleId = role.id;
@@ -37,6 +42,7 @@ describe('Auth API Integration Tests', () => {
                 username: testUser.username,
                 password: hashedPassword,
                 roleId: testRoleId,
+                companyId: testCompanyId,
                 status: 'ACTIVE'
             }
         });
@@ -45,7 +51,8 @@ describe('Auth API Integration Tests', () => {
     afterAll(async () => {
         // Cleanup
         await prisma.user.deleteMany({ where: { username: testUser.username } });
-        await prisma.role.deleteMany({ where: { name: 'TEST_ROLE' } });
+        await prisma.role.deleteMany({ where: { name: 'TEST_ROLE', companyId: testCompanyId } });
+        await prisma.company.delete({ where: { id: testCompanyId } });
     });
 
     describe('POST /api/auth/login', () => {

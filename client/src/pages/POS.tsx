@@ -24,6 +24,7 @@ import { LoadingOverlay } from '../components/LoadingSpinner';
 import { Send, CreditCard, Printer, X, Search, Grid3x3, AlertTriangle, ChevronLeft, Check } from 'lucide-react';
 import type { MenuItem, ModifierGroupWithModifiers, ModifierOption, Order, Table } from '../types';
 import { useCurrency } from '../hooks/useCurrency';
+import { hasUsableCashShift } from '../utils/paymentAccess';
 import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
 import './POS.css';
 
@@ -75,7 +76,7 @@ interface POSSettings {
 }
 
 interface ShiftInfo {
-    cashRegister?: { name: string };
+    cashRegister?: { name: string; branch?: { id: number; name: string } };
     startDate: string;
 }
 
@@ -630,15 +631,6 @@ export default function POS() {
             return;
         }
 
-        if (!shiftStatus?.hasActiveShift) {
-            if (canManageShift) {
-                setShowShiftWarning(true);
-            } else {
-                warning('No hay turno de caja activo. Solicita al cajero que abra un turno para procesar pagos.');
-            }
-            return;
-        }
-
         setProcessingPayment(true);
         try {
             const requestedDiscountPercent = discount;
@@ -1184,6 +1176,7 @@ export default function POS() {
                     onPaymentSuccess={handlePaymentComplete}
                     currencySymbol={currencySymbol}
                     branchHasWarehouse={hasWarehouse !== false}
+                    hasUsableCashShift={hasUsableCashShift(shiftStatus, selectedTable?.branchId)}
                 />
             )}
 

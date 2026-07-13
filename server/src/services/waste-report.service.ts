@@ -87,6 +87,7 @@ export class WasteReportService {
         endDate?: Date;
         warehouseId?: number;
         productId?: number;
+        branchId?: number;
     }) {
         const where: Prisma.InventoryMovementWhereInput = {
             companyId, // Multi-tenant filter
@@ -95,6 +96,8 @@ export class WasteReportService {
 
         if (filters.warehouseId) {
             where.warehouseId = filters.warehouseId;
+        } else if (filters.branchId) {
+            where.warehouse = { OR: [{ branchId: filters.branchId }, { branchId: null }] };
         }
 
         if (filters.productId) {

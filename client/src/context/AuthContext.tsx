@@ -163,21 +163,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             }
 
             const {
-                token,
                 user: userData,
                 mustChangePassword: mustUpdatePassword,
                 passwordExpired: isPasswordExpired,
                 sessionTimeoutMinutes
             } = data;
 
-            if (token) {
-                // The offline database is not shared across authenticated identities.
-                await offlineManager.clearSessionData();
-                // Backward compatibility during migration from Bearer-only auth.
-                localStorage.setItem('token', token);
-            } else {
-                localStorage.removeItem('token');
-            }
+            // The offline database is not shared across authenticated identities.
+            await offlineManager.clearSessionData();
+            localStorage.removeItem('token');
             localStorage.setItem('user', JSON.stringify(userData));
             localStorage.setItem('authFlags', JSON.stringify({
                 mustChangePassword: mustUpdatePassword || false,

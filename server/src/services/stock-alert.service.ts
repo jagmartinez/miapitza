@@ -86,13 +86,14 @@ export class StockAlertService {
     /**
      * Check if a specific product needs restocking
      */
-    static async checkProductStock(productId: number, companyId: number) {
+    static async checkProductStock(productId: number, companyId: number, branchId?: number) {
         const product = await prisma.product.findFirst({
             where: { id: productId, companyId },
             select: {
                 name: true,
                 minStock: true,
                 stocks: {
+                    where: branchId ? { warehouse: { OR: [{ branchId }, { branchId: null }] } } : undefined,
                     include: {
                         warehouse: { select: { name: true } }
                     }

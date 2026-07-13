@@ -51,6 +51,8 @@ import productionRecipeRoutes from './routes/production-recipe.routes';
 import productionOrderRoutes from './routes/production-order.routes';
 import productionReportRoutes from './routes/production-report.routes';
 import adminRoutes from './routes/admin.routes';
+import { getUploadsDir } from './utils/storage';
+import prisma from './utils/prisma';
 
 dotenv.config();
 
@@ -68,7 +70,7 @@ app.set('trust proxy', 1);
 app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' } // Allow uploads to be served cross-origin
 }));
-const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000')
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
@@ -99,9 +101,35 @@ app.use('/api', csrfProtection);
 app.use('/api', idempotency);
 
 // Protect uploads with authentication — require valid JWT to access uploaded files
-import path from 'path';
 import { auth as authMiddlewareForUploads } from './middlewares/auth';
-app.use('/uploads', authMiddlewareForUploads, express.static(path.resolve(__dirname, '..', 'uploads')));
+// Purchase invoices are private tenant documents and are only served through
+// the scoped /api/purchase-orders/:id/invoice endpoint, never by filename.
+app.use('/uploads/invoices', (_req, res) => res.status(404).json({ success: false, message: 'Archivo no encontrado' }));
+app.use('/uploads', authMiddlewareForUploads, async (req, res, next) => {
+    try {
+        // Runtime uploads are tenant-owned. Authentication alone is insufficient:
+        // a guessed filename must not expose another company's logo/file.
+        const relativePath = req.path.replace(/^\/+/, '');
+        if (!relativePath || relativePath.includes('/') || relativePath.includes('\\')) {
+            return res.status(404).json({ success: false, message: 'Archivo no encontrado' });
+        }
+        const expectedUrl = `/uploads/${relativePath}`;
+        const ownsFile = await prisma.company.findFirst({
+            where: { id: req.user!.companyId, logo: expectedUrl },
+            select: { id: true }
+        });
+        if (!ownsFile) {
+            return res.status(404).json({ success: false, message: 'Archivo no encontrado' });
+        }
+        next();
+    } catch (error) {
+        next(error);
+    }
+}, express.static(getUploadsDir(), {
+    fallthrough: false,
+    dotfiles: 'deny',
+    index: false
+}));
 
 // Swagger docs — protected by basic auth in production
 const swaggerAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -149,6 +177,13 @@ const authLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false
 });
+const webhookLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: isProd ? 120 : 2000,
+    message: { success: false, message: 'Too many webhook requests, please try again later' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
 
 // Routes
 app.use('/api/auth', authLimiter, authRoutes);
@@ -178,7 +213,9 @@ app.use('/api/export', exportRoutes);
 app.use('/api/modifiers', modifierRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/invoices', invoiceRoutes);
+app.use('/api/delivery/webhook', webhookLimiter);
 app.use('/api/delivery', deliveryRoutes);
+app.use('/api/pedidosya/webhook', webhookLimiter);
 app.use('/api/pedidosya', pedidosYaRoutes);
 app.use('/api/stock-alerts', stockAlertRoutes);
 app.use('/api/promotions', promotionRoutes);

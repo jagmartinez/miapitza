@@ -294,11 +294,11 @@ export default function CateringServices() {
                                         <div className="financial-main-row">
                                             <div className="summary-item">
                                                 <span className="label">Costo</span>
-                                                <span className="value">${parseFloat(formData.internalCost).toLocaleString()}</span>
+                                                <span className="value">{money(parseFloat(formData.internalCost) || 0)}</span>
                                             </div>
                                             <div className="summary-item success">
                                                 <span className="label">Utilidad</span>
-                                                <span className="value">${(parseFloat(formData.salePrice) - parseFloat(formData.internalCost)).toLocaleString()}</span>
+                                                <span className="value">{money((parseFloat(formData.salePrice) || 0) - (parseFloat(formData.internalCost) || 0))}</span>
                                             </div>
                                             <div className="summary-item highlighted">
                                                 <span className="label">Margen %</span>

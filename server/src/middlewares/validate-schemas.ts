@@ -38,7 +38,7 @@ export const addOrderItem: ValidationSchema = {
 export const updateOrderStatus: ValidationSchema = {
     params: { id: { type: 'number', required: true, min: 1 } },
     body: {
-        status: { type: 'string', required: true },
+        status: { type: 'string', required: true, enum: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED', 'PAID', 'CANCELLED'] },
     },
 };
 
@@ -130,7 +130,7 @@ export const createTable: ValidationSchema = {
 export const updateTableStatus: ValidationSchema = {
     params: { id: { type: 'number', required: true, min: 1 } },
     body: {
-        status: { type: 'string', required: true },
+        status: { type: 'string', required: true, enum: ['AVAILABLE', 'OCCUPIED', 'RESERVED', 'OUT_OF_SERVICE'] },
     },
 };
 
@@ -275,15 +275,20 @@ export const addPOItem: ValidationSchema = {
 export const createCateringService: ValidationSchema = {
     body: {
         name: { type: 'string', required: true, min: 1, max: 200 },
-        pricePerPerson: { type: 'number', required: true, min: 0 },
+        internalCost: { type: 'number', required: true, min: 0 },
+        salePrice: { type: 'number', required: true, min: 0 },
     },
 };
 
 export const createCateringEvent: ValidationSchema = {
     body: {
         customerName: { type: 'string', required: true, min: 1, max: 200 },
-        eventDate: { type: 'date', required: true },
-        guestCount: { type: 'number', required: true, min: 1 },
+        title: { type: 'string', required: true, min: 1, max: 200 },
+        date: { type: 'date', required: true },
+        peopleCount: { type: 'number', required: true, min: 1 },
+        branchId: { type: 'number', required: true, min: 1 },
+        services: { type: 'array' },
+        menuItems: { type: 'array' },
     },
 };
 
@@ -306,8 +311,30 @@ export const splitByItems: ValidationSchema = {
 export const createPromotion: ValidationSchema = {
     body: {
         code: { type: 'string', required: true, min: 1, max: 50 },
-        discountType: { type: 'string', required: true, enum: ['PERCENTAGE', 'FIXED'] },
-        discountValue: { type: 'number', required: true, min: 0 },
+        name: { type: 'string', required: true, min: 1, max: 200 },
+        type: { type: 'string', required: true, enum: ['PERCENTAGE', 'FIXED_AMOUNT'] },
+        value: { type: 'number', required: true, min: 0 },
+        minOrderAmount: { type: 'number', min: 0 },
+        maxDiscount: { type: 'number', min: 0 },
+        validFrom: { type: 'date' },
+        validTo: { type: 'date' },
+        usageLimit: { type: 'number', min: 1 },
+    },
+};
+
+export const updatePromotion: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1 } },
+    body: {
+        code: { type: 'string', min: 1, max: 50 },
+        name: { type: 'string', min: 1, max: 200 },
+        type: { type: 'string', enum: ['PERCENTAGE', 'FIXED_AMOUNT'] },
+        value: { type: 'number', min: 0 },
+        minOrderAmount: { type: 'number', min: 0 },
+        maxDiscount: { type: 'number', min: 0 },
+        validFrom: { type: 'date' },
+        validTo: { type: 'date' },
+        usageLimit: { type: 'number', min: 1 },
+        active: { type: 'boolean' },
     },
 };
 
@@ -366,9 +393,18 @@ export const calculateYield: ValidationSchema = {
 // ── Advanced Features: Bank Reconciliation ──
 export const recordDeposit: ValidationSchema = {
     body: {
-        amount: { type: 'number', required: true, min: 0 },
-        depositDate: { type: 'date', required: true },
+        date: { type: 'date', required: true },
+        amount: { type: 'number', required: true, min: 0.01 },
+        bankAccount: { type: 'string', required: true, min: 1, max: 191 },
+        reference: { type: 'string', required: true, min: 1, max: 191 },
+        notes: { type: 'string', max: 191 },
+        shiftIds: { type: 'array' },
     },
+};
+
+export const reverseDeposit: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1 } },
+    body: { reason: { type: 'string', required: true, min: 1, max: 191 } },
 };
 
 export const markReconciled: ValidationSchema = {
@@ -386,8 +422,10 @@ export const shiftIdParam: ValidationSchema = {
 export const cashCount: ValidationSchema = {
     params: { shiftId: { type: 'number', required: true, min: 1 } },
     body: {
-        bills: { type: 'object' },
-        coins: { type: 'object' },
+        bills: { type: 'array', required: true },
+        coins: { type: 'array', required: true },
+        usdBills: { type: 'array' },
+        exchangeRate: { type: 'number', min: 0 },
     },
 };
 
@@ -395,6 +433,11 @@ export const closeShift: ValidationSchema = {
     params: { shiftId: { type: 'number', required: true, min: 1 } },
     body: {
         endAmount: { type: 'number', required: true, min: 0 },
+        bills: { type: 'array' },
+        coins: { type: 'array' },
+        usdBills: { type: 'array' },
+        exchangeRate: { type: 'number', min: 0 },
+        forceClose: { type: 'boolean' },
     },
 };
 

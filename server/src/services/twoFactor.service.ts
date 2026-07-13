@@ -41,9 +41,12 @@ export class TwoFactorService {
     static async setup(userId: number) {
         const user = await prisma.user.findUnique({
             where: { id: userId },
-            select: { username: true, company: { select: { name: true } } },
+            select: { username: true, twoFactorEnabled: true, company: { select: { name: true } } },
         });
         if (!user) throw new Error('User not found');
+        if (user.twoFactorEnabled) {
+            throw new Error('2FA ya estÃ¡ habilitado; desactÃ­velo con un cÃ³digo vÃ¡lido antes de reconfigurarlo');
+        }
 
         const secret = generateSecret();
         const issuer = user.company?.name || 'RestaurantPOS';
@@ -149,10 +152,17 @@ export class TwoFactorService {
             if (match) {
                 const remaining = [...stored];
                 remaining.splice(i, 1);
-                await prisma.user.update({
-                    where: { id: userId },
+                const consumed = await prisma.user.updateMany({
+                    where: {
+                        id: userId,
+                        twoFactorRecoveryCodes: { equals: stored as Prisma.InputJsonValue }
+                    },
                     data: { twoFactorRecoveryCodes: remaining },
                 });
+
+                // Optimistic compare-and-swap makes recovery codes one-time even
+                // when two login requests race with the same code.
+                if (consumed.count !== 1) return false;
 
                 await TwoFactorService.logAudit(
                     userId,

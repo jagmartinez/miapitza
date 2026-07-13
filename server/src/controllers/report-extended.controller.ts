@@ -9,8 +9,8 @@ export class ReportExtendedController {
     private static parseFilters(req: Request) {
         const branchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
         return {
-            dateFrom: parseOptionalQueryDateFrom(req.query.dateFrom as string | undefined),
-            dateTo: parseOptionalQueryDateTo(req.query.dateTo as string | undefined),
+            dateFrom: parseOptionalQueryDateFrom(req.query.dateFrom as string | undefined, req.user!.timezone),
+            dateTo: parseOptionalQueryDateTo(req.query.dateTo as string | undefined, req.user!.timezone),
             branchId: resolveBranchScope(req.user!, branchId),
             supplierId: req.query.supplierId ? parseInt(req.query.supplierId as string) : undefined,
             categoryId: req.query.categoryId ? parseInt(req.query.categoryId as string) : undefined,
@@ -690,8 +690,8 @@ export class ReportExtendedController {
         try {
             const companyId = req.user!.companyId;
             const filters: Parameters<typeof ReportExtendedService.getAuditReport>[1] = {};
-            if (req.query.dateFrom) filters.dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string);
-            if (req.query.dateTo) filters.dateTo = parseOptionalQueryDateTo(req.query.dateTo as string);
+            if (req.query.dateFrom) filters.dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string, req.user!.timezone);
+            if (req.query.dateTo) filters.dateTo = parseOptionalQueryDateTo(req.query.dateTo as string, req.user!.timezone);
             if (req.query.userId) filters.userId = parseInt(req.query.userId as string);
             if (req.query.entityType) filters.entityType = req.query.entityType as string;
             if (req.query.action) filters.action = req.query.action as string;
@@ -707,8 +707,8 @@ export class ReportExtendedController {
         try {
             const companyId = req.user!.companyId;
             const filters: Parameters<typeof ReportExtendedService.getAuditReport>[1] = {};
-            if (req.query.dateFrom) filters.dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string);
-            if (req.query.dateTo) filters.dateTo = parseOptionalQueryDateTo(req.query.dateTo as string);
+            if (req.query.dateFrom) filters.dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string, req.user!.timezone);
+            if (req.query.dateTo) filters.dateTo = parseOptionalQueryDateTo(req.query.dateTo as string, req.user!.timezone);
             if (req.query.userId) filters.userId = parseInt(req.query.userId as string);
             if (req.query.entityType) filters.entityType = req.query.entityType as string;
             if (req.query.action) filters.action = req.query.action as string;

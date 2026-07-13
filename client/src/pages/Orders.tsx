@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { ordersAPI, settingsAPI, cashShiftsAPI } from '../services/api';
+import { ordersAPI, invoicesAPI, cashShiftsAPI } from '../services/api';
 import { canSendOrderToKitchen, canCancelOrder, canCreatePayment } from '../utils/authz';
 import { useDebounce } from '../utils/useDebounce';
 import Button from '../components/Button';
@@ -10,31 +10,28 @@ import Modal from '../components/Modal';
 import Select from '../components/Select';
 import { NoResultsEmptyState } from '../components/EmptyState';
 import { LoadingOverlay } from '../components/LoadingSpinner';
-import { escapeHtml } from '../utils/escapeHtml';
 import {
     Send, CheckCircle, XCircle, CreditCard,
     Clock, User, Printer, Package, Info, ClipboardList
 } from 'lucide-react';
 import type { Order } from '../types';
-import type { CurrencySettings } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
+import { hasUsableCashShift } from '../utils/paymentAccess';
 import type { SingleValue } from 'react-select';
 import { getOrderStatusClassName, getOrderStatusLabel } from '../utils/orderStatus';
 import { useAppToast } from '../context/ToastContext';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
 import './Orders.css';
 
-type CompanyDisplaySettings = CurrencySettings & {
-    logoUrl?: string;
-    companyName?: string;
-    nif?: string;
-    address?: string;
-    phone?: string;
-};
+interface ActiveShiftStatus {
+    hasActiveShift: boolean;
+    requiresClose: boolean;
+    shift?: { cashRegister?: { branch?: { id: number } } } | null;
+}
 
 export default function Orders() {
     const { user } = useAuth();
-    const { symbol: currencySymbol, formatMoney } = useCurrency();
+    const { formatMoney, symbol: currencySymbol } = useCurrency();
     const { error: showError, warning: showWarning } = useAppToast();
     const canSendKitchen = canSendOrderToKitchen(user);
     const canCancel = canCancelOrder(user);
@@ -57,23 +54,12 @@ export default function Orders() {
     // Payment Modal State
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
-    const [settings, setSettings] = useState<CompanyDisplaySettings>({});
-    // null = unknown/not yet checked
-    const [hasActiveShift, setHasActiveShift] = useState<boolean | null>(null);
+    const [activeShiftStatus, setActiveShiftStatus] = useState<ActiveShiftStatus | null>(null);
 
     // Cancel modal state
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancelOrderId, setCancelOrderId] = useState<number | null>(null);
     const [cancelReason, setCancelReason] = useState('');
-
-    const loadSettings = useCallback(async () => {
-        try {
-            const res = await settingsAPI.getAll();
-            setSettings(res.data.data);
-        } catch (error) {
-            console.error('Error loading settings:', error);
-        }
-    }, []);
 
     const loadOrders = useCallback(async () => {
         try {
@@ -120,16 +106,15 @@ export default function Orders() {
     const loadShiftStatus = useCallback(async () => {
         try {
             const res = await cashShiftsAPI.getActiveStatus();
-            setHasActiveShift(Boolean(res.data.data?.hasActiveShift));
+            setActiveShiftStatus(res.data.data as ActiveShiftStatus);
         } catch {
-            setHasActiveShift(false);
+            setActiveShiftStatus({ hasActiveShift: false, requiresClose: false, shift: null });
         }
     }, []);
 
     useEffect(() => {
-        void loadSettings();
         void loadShiftStatus();
-    }, [loadSettings, loadShiftStatus]);
+    }, [loadShiftStatus]);
 
     useEffect(() => {
         void loadOrders();
@@ -165,7 +150,11 @@ export default function Orders() {
             return;
         }
         try {
-            await ordersAPI.updateStatus(orderId, newStatus);
+            if (newStatus === 'SENT_TO_KITCHEN') {
+                await ordersAPI.sendToKitchen(orderId);
+            } else {
+                await ordersAPI.updateStatus(orderId, newStatus);
+            }
             loadOrders();
             setIsSidebarOpen(false);
         } catch (error) {
@@ -177,11 +166,6 @@ export default function Orders() {
     const handlePaymentClick = (order: Order) => {
         if (!canPayOrder) {
             showWarning('Tu rol no puede registrar pagos. Pide apoyo a un cajero o administrador.');
-            return;
-        }
-        // Mirror the POS guard: payments require an active cash shift.
-        if (hasActiveShift === false) {
-            showWarning('No hay un turno de caja activo. Solicita al cajero o administrador que abra un turno para procesar pagos.');
             return;
         }
         setPaymentOrder(order);
@@ -227,122 +211,23 @@ export default function Orders() {
         }
     };
 
-    const handleReprintInvoice = (order: Order) => {
-        // Open print dialog with order details
-        const printWindow = window.open('', '_blank');
-        if (!printWindow) {
-            showWarning('Por favor permite ventanas emergentes para imprimir');
-            return;
+    const handleReprintInvoice = async (order: Order) => {
+        try {
+            const invoice = await invoicesAPI.getData(order.id);
+            const invoiceNumber = invoice.data.data.invoiceNumber as string;
+            const pdf = await invoicesAPI.downloadPdf(order.id);
+            const url = URL.createObjectURL(new Blob([pdf.data], { type: 'application/pdf' }));
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${invoiceNumber}.pdf`;
+            link.click();
+            URL.revokeObjectURL(url);
+        } catch (error: unknown) {
+            const message = typeof error === 'object' && error !== null && 'response' in error
+                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                : undefined;
+            showError(message || 'No se pudo generar la factura oficial.');
         }
-
-        const printSymbol = settings.currency_symbol || currencySymbol;
-        const e = escapeHtml;
-        const invoiceHTML = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Factura #${e(order.id)}</title>
-                <style>
-                    body {
-                        font-family: 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                        font-size: 13px;
-                        line-height: 1.5;
-                        padding: 10px;
-                        max-width: 80mm;
-                        color: #333;
-                        background-color: #fff;
-                        margin: 0 auto;
-                    }
-                    .center { text-align: center; }
-                    .bold { font-weight: bold; }
-                    .header-logo { max-width: 60%; margin: 0 auto 10px; display: block; }
-                    .business-name { font-size: 18px; font-weight: 800; color: #000; margin-bottom: 5px; }
-                    .separator { border-top: 1px dashed #ccc; margin: 10px 0; }
-                    .line { display: flex; justify-content: space-between; margin: 4px 0; }
-                    .item-line { display: flex; align-items: flex-start; margin-bottom: 6px; }
-                    .item-qty { font-weight: bold; width: 30px; }
-                    .item-desc { flex: 1; }
-                    .item-price { text-align: right; font-weight: bold; }
-                    .total { font-size: 18px; font-weight: 900; margin-top: 5px; border-top: 2px solid #000; padding-top: 10px; }
-                    .footer { font-size: 11px; margin-top: 15px; color: #666; font-style: italic; }
-                    @media print { body { padding: 0; } }
-                </style>
-            </head>
-            <body>
-                ${settings.logoUrl ? `<img src="${e(settings.logoUrl)}" class="header-logo" />` : ''}
-                <div class="center business-name">${e(settings.companyName || 'Restaurante')}</div>
-                ${settings.nif ? `<div class="center">RUC: ${e(settings.nif)}</div>` : ''}
-                ${settings.address ? `<div class="center">${e(settings.address)}</div>` : ''}
-                ${settings.phone ? `<div class="center">Tel: ${e(settings.phone)}</div>` : ''}
-                <div class="separator"></div>
-
-                <div class="line">
-                    <span>FACTURA #:</span>
-                    <span class="bold">${e(String(order.id).padStart(6, '0'))}</span>
-                </div>
-                <div class="line">
-                    <span>Fecha:</span>
-                    <span>${e(new Date(order.createdAt).toLocaleString())}</span>
-                </div>
-                <div class="line">
-                    <span>Mesa / Mesero:</span>
-                    <span>${order.table ? `Mesa ${e(order.table.number)}` : 'Para Llevar'} / ${e(order.user?.name || 'N/A')}</span>
-                </div>
-                ${order.customerName ? `<div class="line"><span>Cliente:</span><span class="bold">${e(order.customerName)}</span></div>` : ''}
-                <div class="separator"></div>
-
-                <div class="bold" style="margin-bottom: 10px;">Productos:</div>
-                ${order.items?.map(item => `
-                    <div class="item-line">
-                        <span class="item-qty">${e(item.quantity)}x</span>
-                        <div class="item-desc">
-                            <span class="bold">${e(item.menuItem?.name || 'Item')}</span>
-                            <div style="font-size: 10px; color: #666;">Precio: ${e(printSymbol)}${Number(item.price || (Number(item.subtotal) / item.quantity)).toFixed(2)}</div>
-                        </div>
-                        <span class="item-price">${e(printSymbol)}${Number(item.subtotal).toFixed(2)}</span>
-                    </div>
-                `).join('')}
-
-                <div class="separator"></div>
-                <div class="line">
-                    <span>Subtotal:</span>
-                    <span>${e(printSymbol)}${Number(order.items?.reduce((sum, i) => sum + Number(i.subtotal), 0) || order.total).toFixed(2)}</span>
-                </div>
-                <div class="line">
-                    <span>IVA:</span>
-                    <span>${e(printSymbol)}${Number(order.tax || 0).toFixed(2)}</span>
-                </div>
-                ${order.discount ? `
-                    <div class="line" style="color: #d32f2f;">
-                        <span>Descuento:</span>
-                        <span>-${e(printSymbol)}${Number(order.discount).toFixed(2)}</span>
-                    </div>
-                ` : ''}
-                ${order.tipAmount ? `
-                    <div class="line">
-                        <span>Propina:</span>
-                        <span>${e(printSymbol)}${Number(order.tipAmount).toFixed(2)}</span>
-                    </div>
-                ` : ''}
-                <div class="line total">
-                    <span>TOTAL:</span>
-                    <span>${e(printSymbol)}${Number(order.total).toFixed(2)}</span>
-                </div>
-
-                <div class="footer center">
-                    <p style="margin-bottom: 5px;">¡Gracias por su preferencia!</p>
-                    <p>Factura reimpresa el ${new Date().toLocaleString()}</p>
-                </div>
-            </body>
-            </html>
-        `;
-
-        printWindow.document.write(invoiceHTML);
-        printWindow.document.close();
-        printWindow.focus();
-        setTimeout(() => {
-            printWindow.print();
-        }, 250);
     };
 
     const getStatusColor = (status: string) => {
@@ -403,8 +288,8 @@ export default function Orders() {
         // Add reprint invoice button for paid orders
         if (order.status === 'PAID') {
             buttons.push(
-                <Button key="reprint" variant="secondary" onClick={() => handleReprintInvoice(order)}>
-                    <Printer size={16} /> Reimprimir Factura
+                <Button key="reprint" variant="secondary" onClick={() => void handleReprintInvoice(order)}>
+                    <Printer size={16} /> Descargar Factura
                 </Button>
             );
         }
@@ -751,6 +636,8 @@ export default function Orders() {
                         orderTotal={Number(paymentOrder.total)}
                         order={paymentOrder}
                         onPaymentSuccess={handlePaymentComplete}
+                        currencySymbol={currencySymbol}
+                        hasUsableCashShift={hasUsableCashShift(activeShiftStatus, paymentOrder.branchId)}
                     />
                 )
             }

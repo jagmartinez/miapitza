@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { purchaseOrdersAPI, autoPurchaseOrdersAPI, branchesAPI, suppliersAPI, normalizeApiBaseUrl } from '../services/api';
+import { purchaseOrdersAPI, autoPurchaseOrdersAPI, branchesAPI, suppliersAPI } from '../services/api';
 import api from '../services/api';
 import Button from '../components/Button';
 import Pagination from '../components/Pagination';
@@ -15,6 +15,7 @@ import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
 import { Plus, Eye, Zap, X, ShoppingCart, FileDown, FileText, CreditCard, DollarSign, Info, Save, AlertTriangle, History } from 'lucide-react';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
+import { formatLocalDateInput } from '../utils/dateInput';
 import { BANK_OPTIONS, type StrOption } from '../constants/purchaseOrderOptions';
 import type { SingleValue } from 'react-select';
 import type { AutoPurchaseSuggestion, Branch, PurchaseOrder, PurchaseOrderPayment, Supplier } from '../types';
@@ -61,7 +62,7 @@ export default function PurchaseOrders() {
     const [isImportSidebarOpen, setIsImportSidebarOpen] = useState(false);
     const [settings, setSettings] = useState<CurrencySettings>({});
     const [paymentModalOrder, setPaymentModalOrder] = useState<PurchaseOrder | null>(null);
-    const [paymentForm, setPaymentForm] = useState({ amount: '', date: new Date().toISOString().split('T')[0], bank: '', referenceNumber: '', observations: '' });
+    const [paymentForm, setPaymentForm] = useState({ amount: '', date: formatLocalDateInput(), bank: '', referenceNumber: '', observations: '' });
     const [paymentHistory, setPaymentHistory] = useState<PurchaseOrderPayment[]>([]);
     const [loadingPaymentHistory, setLoadingPaymentHistory] = useState(false);
     const [branches, setBranches] = useState<Branch[]>([]);
@@ -80,9 +81,9 @@ export default function PurchaseOrders() {
     const [startDate, setStartDate] = useState(() => {
         const d = new Date();
         d.setMonth(d.getMonth() - 1);
-        return d.toISOString().split('T')[0];
+        return formatLocalDateInput(d);
     });
-    const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+    const [endDate, setEndDate] = useState(() => formatLocalDateInput());
 
     useEffect(() => {
         loadOrders();
@@ -286,8 +287,8 @@ export default function PurchaseOrders() {
             return;
         }
         const order = orders.find(o => o.id === id);
-        if (order?.status === 'RECEIVED') {
-            showWarning('No se pueden eliminar órdenes con estado RECIBIDA.');
+        if (order?.status !== 'DRAFT') {
+            showWarning('Solo se pueden eliminar órdenes en borrador.');
             return;
         }
 
@@ -307,7 +308,7 @@ export default function PurchaseOrders() {
         const balance = Number(order.total) - Number(order.paidAmount || 0);
         setPaymentForm({
             amount: balance > 0 ? balance.toFixed(2) : '',
-            date: new Date().toISOString().split('T')[0],
+            date: formatLocalDateInput(),
             bank: '',
             referenceNumber: '',
             observations: '',
@@ -320,6 +321,22 @@ export default function PurchaseOrders() {
             setPaymentHistory(order.payments || []);
         } finally {
             setLoadingPaymentHistory(false);
+        }
+    };
+
+    const handleDownloadInvoice = async (order: PurchaseOrder) => {
+        try {
+            const response = await purchaseOrdersAPI.getInvoice(order.id);
+            const url = window.URL.createObjectURL(response.data as Blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = order.invoiceNumber ? `Factura-${order.invoiceNumber}` : `Factura-OC-${order.id}`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (error: unknown) {
+            showError(errMsg(error, 'No se pudo descargar la factura adjunta'));
         }
     };
 
@@ -596,7 +613,7 @@ export default function PurchaseOrders() {
                                     <td data-label="Estado">{getStatusBadge(order.status)}</td>
                                     <td className="text-right" onClick={(e) => e.stopPropagation()}>
                                         <div className="table-actions">
-                                            {canManagePurchaseOrders && order.invoiceType === 'CREDIT' && (
+                                            {canManagePurchaseOrders && order.invoiceType === 'CREDIT' && order.status === 'RECEIVED' && (
                                                 <button
                                                     type="button"
                                                     className="table-action-btn"
@@ -620,18 +637,19 @@ export default function PurchaseOrders() {
                                                 </button>
                                             )}
                                             {order.invoicePdf && (
-                                                <a
-                                                    href={`${normalizeApiBaseUrl()}${order.invoicePdf}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
+                                                <button
+                                                    type="button"
                                                     className="table-action-btn"
-                                                    onClick={(e) => e.stopPropagation()}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        void handleDownloadInvoice(order);
+                                                    }}
                                                     title="Ver Factura PDF"
                                                 >
                                                     <FileText size={16} />
-                                                </a>
+                                                </button>
                                             )}
-                                            {canDeletePurchaseOrders && (
+                                            {canDeletePurchaseOrders && order.status === 'DRAFT' && (
                                                 <button
                                                     type="button"
                                                     className="table-action-btn danger"
@@ -639,8 +657,7 @@ export default function PurchaseOrders() {
                                                         e.stopPropagation();
                                                         handleDeleteOrder(order.id);
                                                     }}
-                                                    title={order.status === 'RECEIVED' ? 'No se puede eliminar' : 'Eliminar'}
-                                                    disabled={order.status === 'RECEIVED'}
+                                                    title="Eliminar borrador"
                                                 >
                                                     <X size={16} />
                                                 </button>

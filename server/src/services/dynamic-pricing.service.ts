@@ -19,7 +19,7 @@ export class DynamicPricingService {
 
         // First check for branch-specific price. Only active branch prices apply;
         // a deactivated branch price must fall back to the base MenuItem price.
-        const branchPrice = await prisma.menuItemBranchPrice?.findFirst({
+        const branchPrice = await prisma.menuItemBranchPrice.findFirst({
             where: {
                 menuItemId,
                 branchId,
@@ -69,7 +69,7 @@ export class DynamicPricingService {
         }
 
         // Upsert branch price
-        return await prisma.menuItemBranchPrice?.upsert({
+        return await prisma.menuItemBranchPrice.upsert({
             where: {
                 menuItemId_branchId: { menuItemId, branchId }
             },
@@ -81,13 +81,13 @@ export class DynamicPricingService {
             update: {
                 price
             }
-        }) || { menuItemId, branchId, price, simulated: true };
+        });
     }
 
     /**
      * Get all branch prices for a menu item
      */
-    static async getBranchPrices(menuItemId: number, companyId: number) {
+    static async getBranchPrices(menuItemId: number, companyId: number, branchId?: number) {
         const menuItem = await prisma.menuItem.findFirst({
             where: { id: menuItemId, companyId },
             select: {
@@ -101,15 +101,16 @@ export class DynamicPricingService {
             throw new Error('Item de menú no encontrado');
         }
 
-        const branchPrices = await prisma.menuItemBranchPrice?.findMany({
+        const branchPrices = await prisma.menuItemBranchPrice.findMany({
             where: {
                 menuItemId,
-                branch: { companyId }
+                branch: { companyId },
+                ...(branchId ? { branchId } : {})
             },
             include: {
                 branch: { select: { id: true, name: true } }
             }
-        }) || [];
+        });
 
         return {
             menuItem: {
@@ -128,8 +129,13 @@ export class DynamicPricingService {
     /**
      * Remove branch-specific price (revert to default)
      */
-    static async removeBranchPrice(menuItemId: number, branchId: number) {
-        return await prisma.menuItemBranchPrice?.delete({
+    static async removeBranchPrice(menuItemId: number, branchId: number, companyId: number) {
+        const existing = await prisma.menuItemBranchPrice.findFirst({
+            where: { menuItemId, branchId, menuItem: { companyId }, branch: { companyId } },
+            select: { id: true }
+        });
+        if (!existing) throw new Error('Precio por sucursal no encontrado');
+        return await prisma.menuItemBranchPrice.delete({
             where: {
                 menuItemId_branchId: { menuItemId, branchId }
             }

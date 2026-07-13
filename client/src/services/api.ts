@@ -8,6 +8,7 @@ import type {
 } from '../types';
 import { db, type SyncItem } from './db';
 import { offlineManager } from './offlineManager';
+import { shouldQueueOfflineMutation } from './offlinePolicy';
 import { closeWebSocket } from '../utils/websocket';
 
 type OfflineRequestMeta = Pick<SyncItem, 'operationType' | 'dependencyKey' | 'entityTempId'>;
@@ -138,12 +139,6 @@ api.interceptors.request.use(
         const requestConfig = config as InternalAxiosRequestConfig;
         const url = requestConfig.url || '';
         const isAuthRequest = url.startsWith('/auth/');
-        const token = localStorage.getItem('token');
-
-        if (token && !requestConfig.headers.Authorization) {
-            requestConfig.headers.Authorization = `Bearer ${token}`;
-        }
-
         // CSRF: sessionStorage (cross-origin) or cookie (same-origin) on mutations
         if (requestConfig.method !== 'get' && requestConfig.method !== 'GET') {
             const csrfToken = await resolveCsrfToken();
@@ -152,8 +147,15 @@ api.interceptors.request.use(
             }
         }
 
-        // If offline and NOT a GET request, enqueue for sync
-        if (!isAuthRequest && !offlineManager.getStatus() && requestConfig.method !== 'get' && requestConfig.method !== 'GET') {
+        // Only mutations whose caller supplies an explicit replay contract may be
+        // queued. Treating every offline mutation as a synthetic success can make
+        // destructive/admin workflows appear committed when they were not.
+        if (shouldQueueOfflineMutation(
+            requestConfig.method,
+            offlineManager.getStatus(),
+            isAuthRequest,
+            Boolean(requestConfig.offlineMeta),
+        )) {
             await offlineManager.enqueueRequest({
                 url,
                 method: (requestConfig.method?.toUpperCase() as SyncItem['method']) || 'POST',
@@ -163,7 +165,8 @@ api.interceptors.request.use(
                 entityTempId: requestConfig.offlineMeta?.entityTempId || null,
             });
 
-            // Return a fake successful response to keep the UI moving
+            // The response interceptor exposes `_offline`; opted-in callers must
+            // present it as pending rather than as a server-confirmed mutation.
             return Promise.reject({
                 isOfflineQueue: true,
                 config: requestConfig,
@@ -184,7 +187,9 @@ api.interceptors.response.use(
         // Cache successful GET responses (skip auth endpoints and binary responses)
         const method = response.config.method?.toLowerCase();
         const url = response.config.url || '';
-        if (method === 'get' && !url.startsWith('/auth/') && response.config.responseType !== 'arraybuffer') {
+        const isBinaryResponse = response.config.responseType === 'arraybuffer'
+            || response.config.responseType === 'blob';
+        if (method === 'get' && !url.startsWith('/auth/') && !isBinaryResponse) {
             try {
                 await offlineManager.putCachedData(buildCacheKey(response.config), response.data);
             } catch {
@@ -623,6 +628,9 @@ export const purchaseOrdersAPI = {
 
     getById: (id: number) =>
         api.get(`/purchase-orders/${id}`),
+
+    getInvoice: (id: number) =>
+        api.get(`/purchase-orders/${id}/invoice`, { responseType: 'blob' }),
 
     create: (data: Record<string, unknown> | FormData) => {
         if (data instanceof FormData) {
@@ -1069,6 +1077,9 @@ export const cateringAPI = {
 
     addPayment: (eventId: number, data: Record<string, unknown>) =>
         api.post(`/catering/${eventId}/payments`, data),
+
+    reversePayment: (eventId: number, paymentId: number, reason: string) =>
+        api.post(`/catering/${eventId}/payments/${paymentId}/reverse`, { reason }),
 
     getAllServices: () =>
         api.get('/catering/services'),

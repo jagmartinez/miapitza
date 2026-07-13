@@ -12,8 +12,8 @@ function parseFilters(req: Request) {
         categoryId: categoryId ? Number(categoryId) : undefined,
         warehouseId: warehouseId ? Number(warehouseId) : undefined,
         branchId: resolveBranchScope(req.user!, requestedBranch),
-        dateFrom: parseOptionalQueryDateFrom(dateFrom as string | undefined),
-        dateTo: parseOptionalQueryDateTo(dateTo as string | undefined),
+        dateFrom: parseOptionalQueryDateFrom(dateFrom as string | undefined, req.user!.timezone),
+        dateTo: parseOptionalQueryDateTo(dateTo as string | undefined, req.user!.timezone),
         days: days ? Number(days) : undefined,
     };
 }

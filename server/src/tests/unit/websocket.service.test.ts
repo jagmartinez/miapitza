@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { WebSocketService } from '../../services/websocket.service';
+import jwt from 'jsonwebtoken';
+import prisma from '../../utils/prisma';
+import { SessionService } from '../../services/session.service';
 
 type MockClient = {
     readyState: number;
@@ -57,5 +60,62 @@ describe('WebSocketService.broadcast', () => {
 
     expect(kitchenClient.send).toHaveBeenCalledTimes(1);
     expect(waiterClient.send).not.toHaveBeenCalled();
+  });
+});
+
+describe('WebSocketService authentication scope', () => {
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  it('uses the current database tenant, branch and roles instead of stale JWT claims', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ userId: 7, companyId: 999, branchId: 999, roles: ['SUPERADMIN'] } as never);
+    jest.spyOn(SessionService, 'isValid').mockResolvedValue(true);
+    jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: 7,
+      companyId: 10,
+      branchId: 2,
+      status: 'ACTIVE',
+      mustChangePassword: false,
+      company: { active: true },
+      branch: { status: 'ACTIVE' },
+      allowedBranches: [],
+      role: { name: 'CAJERO' },
+      userRoles: []
+    } as never);
+    const client: Record<string, unknown> = {};
+    const authenticate = (WebSocketService as unknown as {
+      authenticateClient(target: Record<string, unknown>, token: string): Promise<boolean>;
+    }).authenticateClient.bind(WebSocketService);
+    const previousSecret = process.env.JWT_SECRET;
+    process.env.JWT_SECRET = 'test-secret';
+    try {
+      await expect(authenticate(client, 'signed-token')).resolves.toBe(true);
+      expect(client).toEqual(expect.objectContaining({
+        userId: 7, companyId: 10, branchId: 2, roles: ['CAJERO'], authenticated: true
+      }));
+    } finally {
+      if (previousSecret === undefined) delete process.env.JWT_SECRET;
+      else process.env.JWT_SECRET = previousSecret;
+    }
+  });
+
+  it('rejects a session whose user is now inactive', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ userId: 7 } as never);
+    jest.spyOn(SessionService, 'isValid').mockResolvedValue(true);
+    jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: 7, companyId: 10, branchId: 2, status: 'INACTIVE', mustChangePassword: false,
+      company: { active: true }, branch: { status: 'ACTIVE' }, role: { name: 'CAJERO' }, userRoles: [],
+      allowedBranches: []
+    } as never);
+    const authenticate = (WebSocketService as unknown as {
+      authenticateClient(target: Record<string, unknown>, token: string): Promise<boolean>;
+    }).authenticateClient.bind(WebSocketService);
+    const previousSecret = process.env.JWT_SECRET;
+    process.env.JWT_SECRET = 'test-secret';
+    try {
+      await expect(authenticate({}, 'signed-token')).resolves.toBe(false);
+    } finally {
+      if (previousSecret === undefined) delete process.env.JWT_SECRET;
+      else process.env.JWT_SECRET = previousSecret;
+    }
   });
 });

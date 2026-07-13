@@ -3,6 +3,7 @@ import { execFile } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { getErrorMessage } from '../utils/error';
+import { getBackupsDir } from '../utils/storage';
 
 export class BackupController {
 
@@ -58,7 +59,7 @@ export class BackupController {
 
     static async createBackup(req: Request, res: Response, next: NextFunction) {
         try {
-            const backupDir = path.join(__dirname, '../../backups');
+            const backupDir = getBackupsDir();
             if (!fs.existsSync(backupDir)) {
                 fs.mkdirSync(backupDir, { recursive: true });
             }
@@ -113,7 +114,7 @@ export class BackupController {
 
     static async listBackups(req: Request, res: Response, next: NextFunction) {
         try {
-            const backupDir = path.join(__dirname, '../../backups');
+            const backupDir = getBackupsDir();
             if (!fs.existsSync(backupDir)) {
                 return res.json({
                     success: true,
@@ -151,7 +152,7 @@ export class BackupController {
                 return res.status(400).json({ success: false, message: 'Nombre de archivo inválido' });
             }
 
-            const filepath = path.join(__dirname, '../../backups', sanitized);
+            const filepath = path.join(getBackupsDir(), sanitized);
 
             if (!fs.existsSync(filepath)) {
                 return res.status(404).json({
@@ -174,7 +175,7 @@ export class BackupController {
                 return res.status(400).json({ success: false, message: 'Nombre de archivo inválido' });
             }
 
-            const filepath = path.join(__dirname, '../../backups', sanitized);
+            const filepath = path.join(getBackupsDir(), sanitized);
 
             if (fs.existsSync(filepath)) {
                 fs.unlinkSync(filepath);

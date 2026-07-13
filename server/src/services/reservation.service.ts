@@ -2,17 +2,18 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 
 export class ReservationService {
-    private static async checkAvailabilityWithClient(
+    private static async getAvailableTablesWithClient(
         db: Prisma.TransactionClient | typeof prisma,
         branchId: number,
         companyId: number,
         date: Date,
         peopleCount: number,
         excludeReservationId?: number
-    ): Promise<boolean> {
+    ) {
         // Range: reservation time +/- 2 hours
         const startTime = new Date(date.getTime() - 2 * 60 * 60 * 1000);
         const endTime = new Date(date.getTime() + 2 * 60 * 60 * 1000);
+        const isNearTerm = date.getTime() - Date.now() <= 2 * 60 * 60 * 1000;
 
         // Lock compatible tables in this branch so concurrent booking checks serialize.
         if ('$queryRaw' in db) {
@@ -33,14 +34,18 @@ export class ReservationService {
                 branchId,
                 companyId,
                 capacity: { gte: peopleCount },
-                status: { not: 'OUT_OF_SERVICE' }
-            }
+                status: isNearTerm
+                    ? { in: ['AVAILABLE', 'RESERVED'] }
+                    : { not: 'OUT_OF_SERVICE' }
+            },
+            orderBy: [{ capacity: 'asc' }, { id: 'asc' }]
         });
 
-        if (compatibleTables.length === 0) return false;
+        if (compatibleTables.length === 0) return [];
 
-        // 2. Count active reservations in that time bracket
-        const conflictCount = await db.reservation.count({
+        // Explicit assignments make conflicts exact. Legacy rows without a
+        // tableId consume a conservative slot until they are edited/reassigned.
+        const conflicts = await db.reservation.findMany({
             where: {
                 branchId,
                 companyId,
@@ -50,11 +55,17 @@ export class ReservationService {
                     lte: endTime
                 },
                 ...(excludeReservationId ? { id: { not: excludeReservationId } } : {})
-            }
+            },
+            select: { tableId: true }
         });
 
-        // Simple availability: total tables capable of holding peopleCount vs reservations at that time
-        return compatibleTables.length > conflictCount;
+        const occupiedTableIds = new Set(
+            conflicts.flatMap((reservation) => reservation.tableId == null ? [] : [reservation.tableId])
+        );
+        const unassignedLegacyCount = conflicts.filter((reservation) => reservation.tableId == null).length;
+        const unoccupied = compatibleTables.filter((table) => !occupiedTableIds.has(table.id));
+
+        return unoccupied.slice(Math.min(unassignedLegacyCount, unoccupied.length));
     }
 
     static async getAll(companyId: number, filters?: {
@@ -95,7 +106,8 @@ export class ReservationService {
                         name: true,
                         code: true
                     }
-                }
+                },
+                table: { select: { id: true, number: true, capacity: true, location: true } }
             },
             orderBy: [
                 { date: 'asc' },
@@ -116,7 +128,8 @@ export class ReservationService {
                         address: true,
                         phone: true
                     }
-                }
+                },
+                table: { select: { id: true, number: true, capacity: true, location: true } }
             }
         });
 
@@ -142,12 +155,13 @@ export class ReservationService {
     }) {
         // Validate date is in the future
         const now = new Date();
-        if (new Date(data.date) < now) {
+        const requestedDate = new Date(data.date);
+        if (Number.isNaN(requestedDate.getTime()) || requestedDate < now) {
             throw new Error('Reservation date must be in the future');
         }
 
         // Validate people count
-        if (data.peopleCount < 1) {
+        if (!Number.isInteger(Number(data.peopleCount)) || Number(data.peopleCount) < 1) {
             throw new Error('People count must be at least 1');
         }
 
@@ -165,14 +179,14 @@ export class ReservationService {
         }
 
         return await prisma.$transaction(async (tx) => {
-            const isAvailable = await this.checkAvailabilityWithClient(
+            const availableTables = await this.getAvailableTablesWithClient(
                 tx,
                 data.branchId,
                 companyId,
                 new Date(data.date),
                 data.peopleCount
             );
-            if (!isAvailable) {
+            if (availableTables.length === 0) {
                 throw new Error('No tables available for this capacity at the requested time');
             }
 
@@ -180,6 +194,7 @@ export class ReservationService {
                 data: {
                     ...data,
                     companyId,
+                    tableId: availableTables[0].id,
                     status: 'PENDING'
                 },
                 include: {
@@ -189,17 +204,11 @@ export class ReservationService {
                             name: true,
                             code: true
                         }
-                    }
+                    },
+                    table: { select: { id: true, number: true, capacity: true, location: true } }
                 }
             });
         });
-    }
-
-    /**
-     * Private helper to check availability
-     */
-    private static async checkAvailability(branchId: number, companyId: number, date: Date, peopleCount: number, excludeReservationId?: number): Promise<boolean> {
-        return this.checkAvailabilityWithClient(prisma, branchId, companyId, date, peopleCount, excludeReservationId);
     }
 
     static async update(id: number, companyId: number, data: {
@@ -210,49 +219,51 @@ export class ReservationService {
         peopleCount?: number;
         notes?: string;
     }) {
-        // Always load the reservation scoped to the tenant before mutating it.
-        const current = await prisma.reservation.findFirst({ where: { id, companyId } });
-        if (!current) {
-            throw new Error('Reservation not found');
-        }
+        return await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`Reservation\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const current = await tx.reservation.findFirst({ where: { id, companyId } });
+            if (!current) throw new Error('Reservation not found');
+            if (!['PENDING', 'CONFIRMED'].includes(current.status)) {
+                throw new Error('Completed, cancelled or no-show reservations cannot be edited');
+            }
 
-        // Whitelist updatable fields. `status` is intentionally excluded so it can
-        // only change through updateStatus(), which enforces VALID_STATUS_TRANSITIONS.
-        const updateData: Prisma.ReservationUpdateInput = {};
-        if (data.customerName !== undefined) updateData.customerName = data.customerName;
-        if (data.phone !== undefined) updateData.phone = data.phone;
-        if (data.email !== undefined) updateData.email = data.email;
-        if (data.notes !== undefined) updateData.notes = data.notes;
-        if (data.date !== undefined) updateData.date = data.date;
-        if (data.peopleCount !== undefined) updateData.peopleCount = data.peopleCount;
+            const updateData: Prisma.ReservationUpdateInput = {};
+            if (data.customerName !== undefined) updateData.customerName = data.customerName;
+            if (data.phone !== undefined) updateData.phone = data.phone;
+            if (data.email !== undefined) updateData.email = data.email;
+            if (data.notes !== undefined) updateData.notes = data.notes;
 
-        // If updating date or peopleCount, validate it's in the future and check availability
-        if (data.date || data.peopleCount) {
-            const newDate = data.date ? new Date(data.date) : current.date;
-            const newPeopleCount = data.peopleCount || current.peopleCount;
-
-            if (newDate < new Date()) {
+            const newDate = data.date !== undefined ? new Date(data.date) : current.date;
+            const newPeopleCount = data.peopleCount !== undefined ? Number(data.peopleCount) : current.peopleCount;
+            if (Number.isNaN(newDate.getTime()) || newDate < new Date()) {
                 throw new Error('Reservation date must be in the future');
             }
+            if (!Number.isInteger(newPeopleCount) || newPeopleCount < 1) {
+                throw new Error('People count must be at least 1');
+            }
 
-            const isAvailable = await this.checkAvailability(current.branchId, companyId, newDate, newPeopleCount, id);
-            if (!isAvailable) {
+            if (data.date !== undefined) updateData.date = newDate;
+            if (data.peopleCount !== undefined) updateData.peopleCount = newPeopleCount;
+
+            // Re-run allocation under the same table locks even when only contact
+            // details change. This backfills legacy null tableId rows safely.
+            const availableTables = await this.getAvailableTablesWithClient(
+                tx, current.branchId, companyId, newDate, newPeopleCount, id
+            );
+            const selectedTable = availableTables.find((table) => table.id === current.tableId) ?? availableTables[0];
+            if (!selectedTable) {
                 throw new Error('No tables available for this capacity at the requested time');
             }
-        }
+            updateData.table = { connect: { id: selectedTable.id } };
 
-        return await prisma.reservation.update({
-            where: { id },
-            data: updateData,
-            include: {
-                branch: {
-                    select: {
-                        id: true,
-                        name: true,
-                        code: true
-                    }
+            return await tx.reservation.update({
+                where: { id },
+                data: updateData,
+                include: {
+                    branch: { select: { id: true, name: true, code: true } },
+                    table: { select: { id: true, number: true, capacity: true, location: true } }
                 }
-            }
+            });
         });
     }
 
@@ -269,7 +280,10 @@ export class ReservationService {
         companyId: number,
         status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW' | 'COMPLETED'
     ) {
-        const reservation = await this.getById(id, companyId);
+        return await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM \`Reservation\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+        const reservation = await tx.reservation.findFirst({ where: { id, companyId } });
+        if (!reservation) throw new Error('Reservation not found');
 
         const currentStatus = reservation.status;
         const validNext = this.VALID_STATUS_TRANSITIONS[currentStatus] || [];
@@ -277,7 +291,7 @@ export class ReservationService {
             throw new Error(`Transición de estado inválida: ${currentStatus} → ${status}`);
         }
 
-        return await prisma.reservation.update({
+        return await tx.reservation.update({
             where: { id },
             data: { status },
             include: {
@@ -290,50 +304,28 @@ export class ReservationService {
                 }
             }
         });
+        });
     }
 
     static async delete(id: number, companyId: number) {
-        // Only allow deletion of pending or cancelled reservations
-        const reservation = await prisma.reservation.findFirst({
-            where: { id, companyId }
-        });
-
-        if (!reservation) {
-            throw new Error('Reservation not found');
-        }
-
-        if (!['PENDING', 'CANCELLED'].includes(reservation.status)) {
-            throw new Error('Can only delete pending or cancelled reservations');
-        }
-
-        return await prisma.reservation.delete({
-            where: { id }
+        return prisma.$transaction(async (tx) => {
+            // Serialize deletion with confirmation/completion so a stale PENDING
+            // read cannot delete a concurrently confirmed reservation.
+            await tx.$queryRaw`SELECT id FROM \`Reservation\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const reservation = await tx.reservation.findFirst({ where: { id, companyId } });
+            if (!reservation) throw new Error('Reservation not found');
+            if (!['PENDING', 'CANCELLED'].includes(reservation.status)) {
+                throw new Error('Can only delete pending or cancelled reservations');
+            }
+            return tx.reservation.delete({ where: { id } });
         });
     }
 
     // Get available tables for a reservation
     static async getAvailableTables(branchId: number, companyId: number, date: Date, peopleCount: number) {
-        // Get all tables in the branch with sufficient capacity
-        const tables = await prisma.table.findMany({
-            where: {
-                branchId,
-                companyId,
-                capacity: {
-                    gte: peopleCount
-                },
-                status: {
-                    in: ['AVAILABLE', 'RESERVED']
-                }
-            },
-            orderBy: {
-                capacity: 'asc' // Prefer smaller tables first
-            }
-        });
-
-        // Check which tables are available at the requested time
-        // For now, we'll return all tables with sufficient capacity
-        // In a real system, you'd check for other reservations at the same time
-        return tables;
+        const requestedDate = new Date(date);
+        if (Number.isNaN(requestedDate.getTime()) || !Number.isInteger(peopleCount) || peopleCount < 1) return [];
+        return this.getAvailableTablesWithClient(prisma, branchId, companyId, requestedDate, peopleCount);
     }
 
     // Get today's reservations

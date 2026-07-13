@@ -8,14 +8,19 @@ import { SettingService } from './setting.service';
  */
 export class CashArqueoService {
     // Acceptable cash count difference (in córdobas) before a shift is flagged.
-    // TODO: ideally this becomes per-company configuration (a Setting) rather than a
-    // hardcoded constant, since tolerance expectations vary by business.
     private static calculateCountedAmount(breakdown: {
         bills?: { denomination: number; count: number }[];
         coins?: { denomination: number; count: number }[];
         usdBills?: { denomination: number; count: number }[];
         exchangeRate?: number;
     }) {
+        const rows = [...(breakdown.bills || []), ...(breakdown.coins || []), ...(breakdown.usdBills || [])];
+        if (rows.some((row) => !Number.isFinite(row.denomination) || row.denomination <= 0 || !Number.isInteger(row.count) || row.count < 0)) {
+            throw new Error('El desglose contiene denominaciones o cantidades invÃ¡lidas');
+        }
+        if (breakdown.exchangeRate !== undefined && (!Number.isFinite(breakdown.exchangeRate) || breakdown.exchangeRate < 0)) {
+            throw new Error('La tasa de cambio no es vÃ¡lida');
+        }
         const billsTotal = (breakdown.bills || []).reduce((sum, b) => sum + (b.denomination * b.count), 0);
         const coinsTotal = (breakdown.coins || []).reduce((sum, c) => sum + (c.denomination * c.count), 0);
         const usdTotal = (breakdown.usdBills || []).reduce((sum, b) => sum + (b.denomination * b.count), 0);
@@ -28,7 +33,7 @@ export class CashArqueoService {
             usdTotal,
             usdInCordobas,
             exchangeRate,
-            totalCounted: billsTotal + coinsTotal + usdInCordobas
+            totalCounted: Math.round((billsTotal + coinsTotal + usdInCordobas) * 100) / 100
         };
     }
 
@@ -94,7 +99,7 @@ export class CashArqueoService {
 
         // Calculate expected vs actual
         const expectedEndAmount = Number(shift.startAmount) + totalIn - totalOut;
-        const actualEndAmount = shift.endAmount ? Number(shift.endAmount) : null;
+        const actualEndAmount = shift.endAmount !== null ? Number(shift.endAmount) : null;
         const difference = actualEndAmount !== null ? actualEndAmount - expectedEndAmount : null;
 
         return {
@@ -148,6 +153,9 @@ export class CashArqueoService {
             exchangeRate?: number;
         }
     ) {
+        if (!Number.isFinite(closeData.endAmount) || Number(closeData.endAmount) < 0) {
+            throw new Error('El monto contado debe ser un número finito mayor o igual a cero');
+        }
         const details = await this.getShiftDetails(shiftId, companyId);
         const counted = this.calculateCountedAmount(closeData);
         const endAmount = closeData.endAmount ?? counted.totalCounted;
@@ -234,6 +242,9 @@ export class CashArqueoService {
             forceClose?: boolean;
         }
     ) {
+        if (!Number.isFinite(endAmount) || endAmount < 0) {
+            throw new Error('El monto de cierre debe ser un número finito mayor o igual a cero');
+        }
         const preview = await this.previewClose(shiftId, companyId, {
             endAmount,
             notes,
@@ -265,12 +276,31 @@ export class CashArqueoService {
         }
 
         return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            await tx.$queryRaw`SELECT id FROM \`CashShift\` WHERE id = ${shiftId} AND companyId = ${companyId} FOR UPDATE`;
+            const lockedShift = await tx.cashShift.findFirst({
+                where: { id: shiftId, companyId },
+                include: { movements: { select: { type: true, amount: true } } }
+            });
+            if (!lockedShift) throw new Error('Turno de caja no encontrado');
+            if (lockedShift.endDate) throw new Error('El turno de caja ya está cerrado');
+
+            const expectedNow = Number(lockedShift.startAmount) + lockedShift.movements.reduce(
+                (sum, movement) => sum + (movement.type === 'IN' ? Number(movement.amount) : -Number(movement.amount)),
+                0
+            );
+            const currentSummary = this.classifyDifference(endAmount - expectedNow, preview.tolerance);
+            if (currentSummary.requiresNote && !notes?.trim()) throw new Error('Debe agregar una observación cuando exista diferencia dentro de tolerancia.');
+            if (currentSummary.exceedsTolerance && !(options?.forceClose && isAdminOverride)) {
+                throw new Error(`No se puede cerrar el turno: la diferencia de C$ ${Math.abs(currentSummary.difference).toFixed(2)} excede la tolerancia.`);
+            }
+            if (currentSummary.exceedsTolerance && !notes?.trim()) throw new Error('El cierre forzado requiere una observación obligatoria.');
+
             const updatedShift = await tx.cashShift.update({
                 where: { id: shiftId },
                 data: {
                     endDate: new Date(),
                     endAmount,
-                    difference,
+                    difference: currentSummary.difference,
                     notes: notes || 'Cuadrado'
                 }
             });

@@ -5,6 +5,10 @@ import { UnitConversionService } from './unit-conversion.service';
 type Tx = Prisma.TransactionClient;
 
 export class PurchaseOrderService {
+    private static roundMoney(value: number): number {
+        return Math.round((value + Number.EPSILON) * 100) / 100;
+    }
+
     static async getAll(companyId: number, filters?: {
         branchId?: number;
         supplierId?: number;
@@ -178,7 +182,7 @@ export class PurchaseOrderService {
 
         // Verify supplier belongs to this company
         const supplier = await prisma.supplier.findFirst({
-            where: { id: data.supplierId, companyId }
+            where: { id: data.supplierId, companyId, active: true }
         });
 
         if (!supplier) {
@@ -192,7 +196,7 @@ export class PurchaseOrderService {
         }
 
         const products = await prisma.product.findMany({
-            where: { id: { in: productIds }, companyId },
+            where: { id: { in: productIds }, companyId, active: true },
             select: { id: true }
         });
 
@@ -201,9 +205,10 @@ export class PurchaseOrderService {
         }
 
         // Calculate total
-        const total = data.items.reduce((sum, item) => {
+        const total = this.roundMoney(data.items.reduce((sum, item) => {
             return sum + (item.quantity * item.cost);
-        }, 0);
+        }, 0));
+        const invoiceType = data.invoiceType || 'CASH';
 
         return await prisma.$transaction(async (tx: Tx) => {
             // Create purchase order
@@ -215,14 +220,14 @@ export class PurchaseOrderService {
                     invoiceNumber: data.invoiceNumber,
                     invoicePdf: data.invoicePdf,
                     invoiceDate: data.invoiceDate ? new Date(data.invoiceDate) : null,
-                    invoiceType: data.invoiceType || 'CASH',
+                    invoiceType,
                     paymentDueDate: data.paymentDueDate ? new Date(data.paymentDueDate) : null,
                     bank: data.bank,
                     transferNumber: data.transferNumber,
-                    paymentStatus: data.invoiceType === 'CASH' ? 'PAID' : 'PENDING',
+                    paymentStatus: invoiceType === 'CASH' ? 'PAID' : 'PENDING',
                     // A8: a CASH purchase is settled immediately; keep paidAmount in
                     // sync with the total so PAID never coexists with paidAmount = 0.
-                    paidAmount: data.invoiceType === 'CASH' ? total : 0,
+                    paidAmount: invoiceType === 'CASH' ? total : 0,
                     companyId,
                     total,
                     status: 'DRAFT'
@@ -294,17 +299,6 @@ export class PurchaseOrderService {
         transferNumber?: string;
         status?: 'DRAFT' | 'ISSUED' | 'RECEIVED' | 'CANCELLED';
     }) {
-        // Verify PO belongs to this company
-        const existing = await prisma.purchaseOrder.findFirst({
-            where: { id, companyId }
-        });
-        if (!existing) throw new Error('Purchase order not found');
-
-        // Don't allow updating received or cancelled orders
-        if (existing.status === 'RECEIVED' || existing.status === 'CANCELLED') {
-            throw new Error(`Cannot update purchase order with status ${existing.status}`);
-        }
-
         // Receiving must go through the receive() flow so stock movements and costs
         // are generated. Block marking RECEIVED via a plain edit.
         if (data.status === 'RECEIVED') {
@@ -314,57 +308,74 @@ export class PurchaseOrderService {
         // If reassigning the supplier, ensure it belongs to this company.
         if (data.supplierId !== undefined) {
             const supplier = await prisma.supplier.findFirst({
-                where: { id: data.supplierId, companyId },
+                where: { id: data.supplierId, companyId, active: true },
                 select: { id: true }
             });
             if (!supplier) throw new Error('Proveedor no encontrado para esta empresa');
         }
 
-        const updateData: Record<string, unknown> = { ...data };
-        if (data.invoiceDate !== undefined) {
-            updateData.invoiceDate = data.invoiceDate ? new Date(data.invoiceDate) : null;
-        }
-        if (data.paymentDueDate !== undefined) {
-            updateData.paymentDueDate = data.paymentDueDate ? new Date(data.paymentDueDate) : null;
-        }
-        if (data.invoiceType === 'CASH') {
-            updateData.paymentStatus = 'PAID';
-            updateData.paidAmount = existing.total;
-        } else if (data.invoiceType === 'CREDIT' && existing.invoiceType === 'CASH') {
-            updateData.paymentStatus = 'PENDING';
-            updateData.paidAmount = 0;
-        }
+        return await prisma.$transaction(async (tx: Tx) => {
+            await tx.$queryRaw`SELECT id FROM \`PurchaseOrder\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const existing = await tx.purchaseOrder.findFirst({ where: { id, companyId } });
+            if (!existing) throw new Error('Purchase order not found');
+            if (existing.status === 'RECEIVED' || existing.status === 'CANCELLED') {
+                throw new Error(`Cannot update purchase order with status ${existing.status}`);
+            }
 
-        return await prisma.purchaseOrder.update({
-            where: { id },
-            data: updateData,
-            include: {
-                supplier: true,
-                branch: true,
-                items: {
-                    include: {
-                        product: true
-                    }
+            // Once issued, commercial terms and lines are immutable; the only
+            // legal mutation is cancellation. This prevents a PO from changing
+            // underneath an approval/receipt workflow.
+            if (existing.status === 'ISSUED') {
+                const keys = Object.keys(data).filter((key) => data[key as keyof typeof data] !== undefined);
+                if (data.status !== 'CANCELLED' || keys.some((key) => key !== 'status')) {
+                    throw new Error('Una orden emitida es inmutable; solo puede cancelarse');
                 }
             }
+
+            const updateData: Record<string, unknown> = { ...data };
+            if (data.invoiceDate !== undefined) {
+                updateData.invoiceDate = data.invoiceDate ? new Date(data.invoiceDate) : null;
+            }
+            if (data.paymentDueDate !== undefined) {
+                updateData.paymentDueDate = data.paymentDueDate ? new Date(data.paymentDueDate) : null;
+            }
+            if (data.invoiceType === 'CASH') {
+                updateData.paymentStatus = 'PAID';
+                updateData.paidAmount = existing.total;
+            } else if (data.invoiceType === 'CREDIT' && existing.invoiceType === 'CASH') {
+                updateData.paymentStatus = 'PENDING';
+                updateData.paidAmount = 0;
+            }
+
+            if (data.status && data.status !== existing.status) {
+                const allowed: Record<'DRAFT' | 'ISSUED', Array<'ISSUED' | 'CANCELLED'>> = {
+                    DRAFT: ['ISSUED', 'CANCELLED'],
+                    ISSUED: ['CANCELLED']
+                };
+                if (!allowed[existing.status as 'DRAFT' | 'ISSUED']?.includes(data.status as 'ISSUED' | 'CANCELLED')) {
+                    throw new Error(`Transición de orden de compra inválida: ${existing.status} -> ${data.status}`);
+                }
+            }
+
+            return tx.purchaseOrder.update({
+                where: { id },
+                data: updateData,
+                include: {
+                    supplier: true,
+                    branch: true,
+                    items: { include: { product: true } }
+                }
+            });
         });
     }
 
     static async delete(id: number, companyId: number) {
-        // Only allow deletion of draft orders
-        const order = await prisma.purchaseOrder.findFirst({
-            where: { id, companyId }
-        });
-
-        if (!order) {
-            throw new Error('Purchase order not found');
-        }
-
-        if (order.status !== 'DRAFT') {
-            throw new Error('Can only delete draft purchase orders');
-        }
-
         return await prisma.$transaction(async (tx: Tx) => {
+            await tx.$queryRaw`SELECT id FROM \`PurchaseOrder\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const order = await tx.purchaseOrder.findFirst({ where: { id, companyId } });
+            if (!order) throw new Error('Purchase order not found');
+            if (order.status !== 'DRAFT') throw new Error('Can only delete draft purchase orders');
+
             // Delete items first
             await tx.purchaseOrderItem.deleteMany({
                 where: { purchaseOrderId: id }
@@ -435,7 +446,8 @@ export class PurchaseOrderService {
             const { InventoryEngineService } = await import('./inventory-engine.service');
 
             // Update each product's stock and cost (using base-unit quantities)
-            for (const item of lockedOrder.items) {
+            const orderedItems = [...lockedOrder.items].sort((a, b) => a.productId - b.productId);
+            for (const item of orderedItems) {
                 // Resolve the base-unit quantity/cost. Prefer the stored converted
                 // values; check `!= null` (not truthiness) so a legitimate 0 is kept
                 // instead of falling back to the raw figures.
@@ -460,6 +472,10 @@ export class PurchaseOrderService {
 
                 const stockQty = baseQuantity != null ? baseQuantity : Number(item.quantity);
                 const costPerBase = baseCost != null ? baseCost : Number(item.cost);
+
+                // Serialize company-wide cost updates for this product even when
+                // simultaneous receipts target different warehouses.
+                await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${item.productId} AND companyId = ${companyId} FOR UPDATE`;
 
                 // C1: capture the pre-receipt GLOBAL stock (sum across ALL of the
                 // company's warehouses for this product) BEFORE the engine mutates
@@ -557,12 +573,17 @@ export class PurchaseOrderService {
 
         // Ensure the product belongs to this company (avoid cross-tenant items).
         const product = await prisma.product.findFirst({
-            where: { id: data.productId, companyId },
+            where: { id: data.productId, companyId, active: true },
             select: { id: true }
         });
         if (!product) throw new Error('Producto no encontrado para esta empresa');
 
         return await prisma.$transaction(async (tx: Tx) => {
+            await tx.$queryRaw`SELECT id FROM \`PurchaseOrder\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
+            const lockedOrder = await tx.purchaseOrder.findFirst({ where: { id: orderId, companyId } });
+            if (!lockedOrder) throw new Error('Purchase order not found');
+            if (lockedOrder.status !== 'DRAFT') throw new Error('Can only add items to draft orders');
+
             let purchaseUnit: string | null = data.purchaseUnit || null;
             let conversionFactor: number | null = null;
             let baseQuantity: number | null = null;
@@ -606,11 +627,14 @@ export class PurchaseOrderService {
                 where: { purchaseOrderId: orderId }
             });
 
-            const newTotal = items.reduce((sum, i) => sum + Number(i.subtotal), 0);
+            const newTotal = this.roundMoney(items.reduce((sum, i) => sum + Number(i.subtotal), 0));
 
             await tx.purchaseOrder.update({
                 where: { id: orderId },
-                data: { total: newTotal }
+                data: {
+                    total: newTotal,
+                    ...(lockedOrder.invoiceType === 'CASH' ? { paidAmount: newTotal, paymentStatus: 'PAID' as const } : {})
+                }
             });
 
             return item;
@@ -648,6 +672,11 @@ export class PurchaseOrderService {
         }
 
         return await prisma.$transaction(async (tx: Tx) => {
+            await tx.$queryRaw`SELECT id FROM \`PurchaseOrder\` WHERE id = ${item.purchaseOrderId} AND companyId = ${companyId} FOR UPDATE`;
+            const lockedOrder = await tx.purchaseOrder.findFirst({ where: { id: item.purchaseOrderId, companyId } });
+            if (!lockedOrder) throw new Error('Purchase order not found');
+            if (lockedOrder.status !== 'DRAFT') throw new Error('Can only remove items from draft orders');
+
             await tx.purchaseOrderItem.delete({
                 where: { id: itemId }
             });
@@ -657,11 +686,16 @@ export class PurchaseOrderService {
                 where: { purchaseOrderId: item.purchaseOrderId }
             });
 
-            const newTotal = items.reduce((sum, i) => sum + Number(i.subtotal), 0);
+            const newTotal = this.roundMoney(items.reduce((sum, i) => sum + Number(i.subtotal), 0));
 
             await tx.purchaseOrder.update({
                 where: { id: item.purchaseOrderId },
-                data: { total: newTotal }
+                data: {
+                    total: newTotal,
+                    ...(lockedOrder.invoiceType === 'CASH'
+                        ? { paidAmount: newTotal, paymentStatus: 'PAID' as const }
+                        : {})
+                }
             });
 
             return { success: true };
@@ -675,17 +709,20 @@ export class PurchaseOrderService {
         referenceNumber?: string;
         observations?: string;
     }) {
-        if (!Number.isFinite(data.amount) || data.amount <= 0) {
-            throw new Error('El monto del pago debe ser finito y mayor a 0');
+        if (!Number.isFinite(data.amount)) {
+            throw new Error('El monto del pago debe ser finito');
         }
+        const paymentAmount = this.roundMoney(data.amount);
+        if (paymentAmount <= 0) throw new Error('El monto mínimo del pago es C$ 0.01');
         const order = await prisma.purchaseOrder.findFirst({
             where: { id: purchaseOrderId, companyId }
         });
 
         if (!order) throw new Error('Orden de compra no encontrada');
         if (order.invoiceType !== 'CREDIT') throw new Error('Solo se pueden registrar pagos en facturas a crédito');
+        if (order.status !== 'RECEIVED') throw new Error('Solo se pueden registrar pagos en órdenes recibidas');
 
-        const currentPaid = Number(order.paidAmount) + data.amount;
+        const currentPaid = this.roundMoney(Number(order.paidAmount) + paymentAmount);
         const orderTotal = Number(order.total);
 
         if (currentPaid > orderTotal) {
@@ -698,7 +735,7 @@ export class PurchaseOrderService {
             const payment = await tx.purchaseOrderPayment.create({
                 data: {
                     purchaseOrderId,
-                    amount: data.amount,
+                    amount: paymentAmount,
                     date: data.date ? new Date(data.date) : new Date(),
                     bank: data.bank,
                     referenceNumber: data.referenceNumber,
@@ -711,6 +748,7 @@ export class PurchaseOrderService {
                     id: purchaseOrderId,
                     companyId,
                     invoiceType: 'CREDIT',
+                    status: 'RECEIVED',
                     paidAmount: order.paidAmount
                 },
                 data: {

@@ -4,7 +4,6 @@ import { CostingService } from './costing.service';
 import { ProductionRecipeService } from './production-recipe.service';
 import { AuditLogService } from './audit-log.service';
 import { InventoryEngineService } from './inventory-engine.service';
-import { effectiveUnitCost } from '../utils/product-cost';
 
 type Tx = Prisma.TransactionClient;
 
@@ -84,7 +83,15 @@ export class ProductionOrderService {
         db: Tx | typeof prisma = prisma
     ): Promise<ProductionPreview> {
         const { productId, plannedQuantity, warehouseId } = params;
-        if (!(plannedQuantity > 0)) throw new Error('La cantidad a producir debe ser mayor a 0.');
+        if (!Number.isFinite(plannedQuantity) || !(plannedQuantity > 0)) {
+            throw new Error('La cantidad a producir debe ser un número finito mayor a 0.');
+        }
+
+        const warehouse = await db.warehouse.findFirst({
+            where: { id: warehouseId, companyId },
+            select: { id: true }
+        });
+        if (!warehouse) throw new Error('Almacén no encontrado para la empresa.');
 
         let recipe;
         if (params.recipeId) {
@@ -210,6 +217,12 @@ export class ProductionOrderService {
         },
         userId: number
     ) {
+        const branch = await prisma.branch.findFirst({
+            where: { id: data.branchId, companyId },
+            select: { id: true }
+        });
+        if (!branch) throw new Error('Sucursal no encontrada para la empresa.');
+
         // Validate warehouse belongs to company (and branch if scoped)
         const warehouse = await prisma.warehouse.findFirst({
             where: { id: data.warehouseId, companyId },
@@ -295,6 +308,14 @@ export class ProductionOrderService {
             const plannedQuantity = data.plannedQuantity ?? Number(lockedOrder.plannedQuantity);
             const warehouseId = data.warehouseId ?? lockedOrder.warehouseId;
             const recipeId = data.recipeId ?? lockedOrder.recipeId ?? undefined;
+            const warehouse = await tx.warehouse.findFirst({
+                where: { id: warehouseId, companyId },
+                select: { branchId: true }
+            });
+            if (!warehouse) throw new Error('Almacén no encontrado para la empresa.');
+            if (warehouse.branchId && warehouse.branchId !== lockedOrder.branchId) {
+                throw new Error('El almacén no pertenece a la sucursal de la orden de producción.');
+            }
             const preview = await this.computeRequirements(companyId, {
                 productId: lockedOrder.productId,
                 recipeId,
@@ -342,6 +363,15 @@ export class ProductionOrderService {
             if (!order) throw new Error('Orden de producción no encontrada');
             if (order.status === 'FINISHED' || order.status === 'CANCELLED') {
                 throw new Error('La orden ya está finalizada o anulada.');
+            }
+            const allowed: Record<'DRAFT' | 'PENDING' | 'IN_PROGRESS', Array<'DRAFT' | 'PENDING' | 'IN_PROGRESS'>> = {
+                DRAFT: ['DRAFT', 'PENDING', 'IN_PROGRESS'],
+                PENDING: ['PENDING', 'IN_PROGRESS'],
+                IN_PROGRESS: ['IN_PROGRESS']
+            };
+            const currentStatus = order.status as 'DRAFT' | 'PENDING' | 'IN_PROGRESS';
+            if (!allowed[currentStatus].includes(status)) {
+                throw new Error(`Transición de estado inválida: ${currentStatus} -> ${status}.`);
             }
             const updateData: Prisma.ProductionOrderUpdateInput = { status };
             if (status === 'IN_PROGRESS' && !order.startedAt) updateData.startedAt = new Date();
@@ -399,7 +429,18 @@ export class ProductionOrderService {
         // Map of real consumption overrides
         const overrides = new Map<number, number>();
         for (const c of payload.consumptions || []) {
-            overrides.set(c.componentProductId, c.consumedQuantity);
+            const componentProductId = Number(c.componentProductId);
+            const consumedQuantity = Number(c.consumedQuantity);
+            if (!Number.isInteger(componentProductId) || componentProductId <= 0) {
+                throw new Error('Cada consumo debe indicar un componente válido.');
+            }
+            if (!Number.isFinite(consumedQuantity) || consumedQuantity < 0) {
+                throw new Error('La cantidad consumida debe ser un número finito mayor o igual a 0.');
+            }
+            if (overrides.has(componentProductId)) {
+                throw new Error(`El componente ${componentProductId} está duplicado en los consumos.`);
+            }
+            overrides.set(componentProductId, consumedQuantity);
         }
 
         const result = await prisma.$transaction(async (tx) => {
@@ -416,6 +457,13 @@ export class ProductionOrderService {
             if (lockedOrder.status === 'CANCELLED') throw new Error('No se puede finalizar una orden anulada.');
             if (lockedOrder.items.length === 0) throw new Error('La orden no tiene insumos definidos.');
 
+            const componentIds = new Set(lockedOrder.items.map((item) => item.componentProductId));
+            for (const componentProductId of overrides.keys()) {
+                if (!componentIds.has(componentProductId)) {
+                    throw new Error(`El componente ${componentProductId} no pertenece a esta orden de producción.`);
+                }
+            }
+
             if (lockedOrder.recipeId) {
                 const recipe = await tx.productionRecipe.findFirst({ where: { id: lockedOrder.recipeId, companyId } });
                 if (!recipe) throw new Error('La receta utilizada ya no existe.');
@@ -431,12 +479,15 @@ export class ProductionOrderService {
             // 1. Consume inputs (OUT) through the single inventory engine. Under
             // WEIGHTED_AVERAGE the OUT is valued by the shared outflow contract
             // (identical to the legacy code); the engine also consumes FIFO layers.
-            for (const item of lockedOrder.items) {
+            const orderedItems = [...lockedOrder.items].sort((a, b) => a.componentProductId - b.componentProductId);
+            for (const item of orderedItems) {
                 const consumedQuantity = overrides.has(item.componentProductId)
                     ? Number(overrides.get(item.componentProductId))
                     : Number(item.requiredQuantity);
 
-                if (consumedQuantity < 0) throw new Error('La cantidad consumida no puede ser negativa.');
+                if (!Number.isFinite(consumedQuantity) || consumedQuantity < 0) {
+                    throw new Error('La cantidad consumida debe ser un número finito mayor o igual a 0.');
+                }
                 if (consumedQuantity === 0) {
                     await tx.productionOrderItem.update({
                         where: { id: item.id },
@@ -468,7 +519,18 @@ export class ProductionOrderService {
 
                 await tx.productionOrderItem.update({
                     where: { id: item.id },
-                    data: { consumedQuantity, unitCost: moved.unitCost, totalCost: moved.totalCost }
+                    data: {
+                        consumedQuantity,
+                        unitCost: moved.unitCost,
+                        totalCost: moved.totalCost,
+                        consumedLayers: (moved.consumedLayers || []).map((layer) => ({
+                            quantity: layer.quantity,
+                            unitCost: layer.unitCost,
+                            sourceRef: layer.sourceRef ?? null,
+                            sourceType: layer.sourceType ?? 'ADJUSTMENT',
+                            createdAt: layer.createdAt?.toISOString() ?? null
+                        })) as Prisma.InputJsonValue
+                    }
                 });
             }
 
@@ -479,6 +541,8 @@ export class ProductionOrderService {
             // Stock GLOBAL del producto fabricado ANTES de la entrada (suma de todas
             // las bodegas), capturado antes de que el motor mute la bodega destino:
             // el costeo global se alimenta de este stock global.
+            // Serialize company-wide moving-average updates for this output product.
+            await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${lockedOrder.productId} AND companyId = ${companyId} FOR UPDATE`;
             const globalAgg = await tx.stock.aggregate({
                 where: { productId: lockedOrder.productId, companyId },
                 _sum: { quantity: true }
@@ -573,7 +637,7 @@ export class ProductionOrderService {
                 if (producedQuantity > 0) {
                     const product = await tx.product.findFirst({
                         where: { id: lockedOrder.productId, companyId },
-                        select: { name: true, currentAverageCost: true, cost: true }
+                        select: { name: true }
                     });
                     // Friendly guard: cannot reverse if the produced output is no
                     // longer fully in stock (already consumed/sold). The engine's
@@ -588,7 +652,10 @@ export class ProductionOrderService {
                             'No se puede anular: el producto fabricado ya fue consumido/vendido y no hay existencia suficiente para revertir.'
                         );
                     }
-                    const unitCost = effectiveUnitCost(product?.currentAverageCost, product?.cost);
+                    // Reconcile against the original production entry, not the
+                    // product's later moving average. The exact source layer guard
+                    // below ensures only this order's still-open output is removed.
+                    const unitCost = Number(lockedOrder.realUnitCost);
                     await InventoryEngineService.applyMovement(tx, {
                         type: 'OUT',
                         companyId,
@@ -609,6 +676,26 @@ export class ProductionOrderService {
                 for (const item of lockedOrder.items) {
                     const consumed = Number(item.consumedQuantity);
                     if (consumed <= 0) continue;
+                    const storedLayers = Array.isArray(item.consumedLayers)
+                        ? item.consumedLayers.map((raw) => {
+                            const layer = raw as Record<string, unknown>;
+                            return {
+                                quantity: Number(layer.quantity),
+                                unitCost: Number(layer.unitCost),
+                                sourceRef: typeof layer.sourceRef === 'string' ? layer.sourceRef : null,
+                                sourceType: typeof layer.sourceType === 'string'
+                                    ? layer.sourceType as 'PURCHASE' | 'PRODUCTION' | 'ADJUSTMENT' | 'TRANSFER' | 'OPENING'
+                                    : 'ADJUSTMENT' as const,
+                                createdAt: typeof layer.createdAt === 'string' ? new Date(layer.createdAt) : undefined
+                            };
+                        }).filter((layer) =>
+                            Number.isFinite(layer.quantity) && layer.quantity > 0 &&
+                            Number.isFinite(layer.unitCost) && layer.unitCost >= 0 &&
+                            (!layer.createdAt || !Number.isNaN(layer.createdAt.getTime()))
+                        )
+                        : [];
+                    const restoredQuantity = storedLayers.reduce((sum, layer) => sum + layer.quantity, 0);
+                    const exactLayers = Math.abs(restoredQuantity - consumed) <= 1e-6 ? storedLayers : undefined;
                     await InventoryEngineService.applyMovement(tx, {
                         type: 'IN',
                         companyId,
@@ -617,9 +704,10 @@ export class ProductionOrderService {
                         userId,
                         quantity: consumed,
                         unitCost: Number(item.unitCost),
+                        inboundLayers: exactLayers,
                         reason: `Anulación producción ${lockedOrder.code}: reversa de insumo`,
                         reference: PROD_REF(lockedOrder.id),
-                        sourceType: 'ADJUSTMENT'
+                        sourceType: exactLayers ? undefined : 'ADJUSTMENT'
                     });
                 }
 

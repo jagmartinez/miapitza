@@ -1,6 +1,8 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { effectiveUnitCost } from '../utils/product-cost';
+import { SettingService } from './setting.service';
+import { zonedDateKey } from '../utils/timezone';
 
 interface BaseFilters {
     branchId?: number;
@@ -265,6 +267,7 @@ export class ProductionReportService {
      * recientes. Todo en una sola consulta para alimentar el dashboard.
      */
     static async getDashboard(companyId: number, filters: BaseFilters) {
+        const timeZone = await SettingService.getTimezone(companyId);
         const orderWhere: Prisma.ProductionOrderWhereInput = { companyId };
         if (filters.branchId) orderWhere.branchId = filters.branchId;
         const dw = dateWhere(filters);
@@ -326,7 +329,7 @@ export class ProductionReportService {
                 finishedProduced += Number(o.producedQuantity);
 
                 const effDate = (o.finishedAt ?? o.date);
-                const key = effDate.toISOString().slice(0, 10);
+                const key = zonedDateKey(effDate, timeZone);
                 const day = dayMap.get(key) || { date: key, orders: 0, produced: 0, realCost: 0, estimatedCost: 0 };
                 day.orders += 1;
                 day.produced += Number(o.producedQuantity);

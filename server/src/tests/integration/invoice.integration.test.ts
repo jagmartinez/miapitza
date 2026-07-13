@@ -16,6 +16,7 @@ describe('Order to Invoice Flow & Multi-tenancy Isolation', () => {
     let adminRoleId: number;
     let user1Id: number;
     let user2Id: number;
+    let paymentMethodId: number;
 
     beforeAll(async () => {
         const existingAdminRole = await prisma.role.findFirst({
@@ -111,6 +112,11 @@ describe('Order to Invoice Flow & Multi-tenancy Isolation', () => {
         });
         user2Id = user2.id;
 
+        const paymentMethod = await prisma.paymentMethod.create({
+            data: { companyId: company1.id, name: 'Invoice test card', active: true }
+        });
+        paymentMethodId = paymentMethod.id;
+
         order1 = await prisma.order.create({
             data: {
                 companyId: company1.id,
@@ -119,6 +125,14 @@ describe('Order to Invoice Flow & Multi-tenancy Isolation', () => {
                 status: 'PAID',
                 total: 100,
                 customerName: 'Test customer'
+            }
+        });
+        await prisma.payment.create({
+            data: {
+                orderId: order1.id,
+                paymentMethodId,
+                amount: 100,
+                registeredById: user1.id
             }
         });
 
@@ -135,7 +149,9 @@ describe('Order to Invoice Flow & Multi-tenancy Isolation', () => {
     });
 
     afterAll(async () => {
+        await prisma.payment.deleteMany({ where: { order: { companyId: { in: [998, 999] } } } });
         await prisma.order.deleteMany({ where: { companyId: { in: [998, 999] } } });
+        await prisma.paymentMethod.deleteMany({ where: { id: paymentMethodId } });
         await prisma.invoiceSequence.deleteMany({ where: { companyId: { in: [998, 999] } } });
         await prisma.user.deleteMany({ where: { id: { in: [user1Id, user2Id] } } });
         await prisma.branch.deleteMany({ where: { id: { in: [998, 999] } } });

@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import prisma from '../utils/prisma';
 import { auth } from './auth';
+import { SettingService } from '../services/setting.service';
 
 /**
  * Standalone API key authentication middleware.
@@ -29,6 +30,7 @@ export const apiKeyAuth = async (
 
         const record = await prisma.apiKey.findUnique({
             where: { keyHash },
+            include: { company: { select: { active: true } } }
         });
 
         if (!record) {
@@ -41,6 +43,12 @@ export const apiKeyAuth = async (
             return res
                 .status(403)
                 .json({ success: false, message: 'API key desactivada' });
+        }
+
+        if (record.company.active !== true) {
+            return res
+                .status(403)
+                .json({ success: false, message: 'Empresa inactiva' });
         }
 
         if (record.expiresAt && new Date(record.expiresAt) < new Date()) {
@@ -59,6 +67,7 @@ export const apiKeyAuth = async (
             role: 'API_CLIENT',
             roles: scopes,
             companyId: record.companyId,
+            timezone: await SettingService.getTimezone(record.companyId)
         };
 
         // Fire-and-forget: update lastUsedAt

@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { UnitConversionService } from './unit-conversion.service';
 
 export class ModifierService {
     // Modifier Groups CRUD
@@ -32,9 +33,16 @@ export class ModifierService {
         maxSelect?: number;
         isRequired?: boolean;
     }) {
+        const { isRequired } = data;
+        const minSelect = data.minSelect ?? (isRequired === true ? 1 : 0);
+        if (minSelect !== undefined && minSelect < 0) throw new Error('La selección mínima no puede ser negativa');
+        if (data.maxSelect !== undefined && data.maxSelect < minSelect) throw new Error('La selección máxima no puede ser menor que la mínima');
         return await prisma.modifierGroup.create({
             data: {
-                ...data,
+                name: data.name,
+                description: data.description,
+                maxSelect: data.maxSelect,
+                minSelect,
                 companyId
             },
         });
@@ -52,9 +60,20 @@ export class ModifierService {
         const group = await this.getById(id, companyId);
         if (!group) throw new Error("Not found or unauthorized");
 
+        const { isRequired } = data;
+        const minSelect = data.minSelect ?? (isRequired === true ? Math.max(1, group.minSelect) : isRequired === false ? 0 : undefined);
+        const maxSelect = data.maxSelect ?? group.maxSelect;
+        if (minSelect !== undefined && minSelect < 0) throw new Error('La selección mínima no puede ser negativa');
+        if (maxSelect !== null && minSelect !== undefined && maxSelect < minSelect) throw new Error('La selección máxima no puede ser menor que la mínima');
         return await prisma.modifierGroup.update({
             where: { id },
-            data,
+            data: {
+                ...(data.name !== undefined ? { name: data.name } : {}),
+                ...(data.description !== undefined ? { description: data.description } : {}),
+                ...(data.maxSelect !== undefined ? { maxSelect: data.maxSelect } : {}),
+                ...(data.active !== undefined ? { active: data.active } : {}),
+                ...(minSelect !== undefined ? { minSelect } : {})
+            },
         });
     }
 
@@ -82,7 +101,7 @@ export class ModifierService {
                 link.productId = null;
             } else {
                 const product = await prisma.product.findFirst({
-                    where: { id: Number(data.productId), companyId }
+                    where: { id: Number(data.productId), companyId, active: true }
                 });
                 if (!product) {
                     throw new Error('El producto a consumir no existe o no pertenece a la empresa');
@@ -108,7 +127,7 @@ export class ModifierService {
                 link.unitId = null;
             } else {
                 const unit = await prisma.unitOfMeasure.findFirst({
-                    where: { id: Number(data.unitId), companyId }
+                    where: { id: Number(data.unitId), companyId, active: true }
                 });
                 if (!unit) {
                     throw new Error('La unidad seleccionada no existe o no pertenece a la empresa');
@@ -118,6 +137,30 @@ export class ModifierService {
         }
 
         return link;
+    }
+
+    private static async assertCompleteInventoryLink(companyId: number, link: {
+        productId: number | null;
+        consumeQuantity: number | null;
+        unitId: number | null;
+    }) {
+        if (link.productId === null) {
+            if (link.consumeQuantity !== null || link.unitId !== null) {
+                throw new Error('Una cantidad o unidad de consumo requiere un producto vinculado');
+            }
+            return;
+        }
+        if (!(Number(link.consumeQuantity) > 0)) {
+            throw new Error('Un modificador vinculado a inventario requiere una cantidad de consumo mayor a 0');
+        }
+        if (link.unitId !== null) {
+            const unit = await prisma.unitOfMeasure.findFirst({
+                where: { id: link.unitId, companyId, active: true },
+                select: { abbreviation: true }
+            });
+            if (!unit) throw new Error('La unidad de consumo no existe o está inactiva');
+            await UnitConversionService.convert(link.productId, companyId, Number(link.consumeQuantity), unit.abbreviation);
+        }
     }
 
     // Modifiers CRUD
@@ -140,6 +183,11 @@ export class ModifierService {
         }
 
         const link = await this.resolveInventoryLink(companyId, data);
+        await this.assertCompleteInventoryLink(companyId, {
+            productId: link.productId ?? null,
+            consumeQuantity: link.consumeQuantity ?? null,
+            unitId: link.unitId ?? null
+        });
 
         // API contract keeps `extraPrice`; the Prisma model field is `price`.
         return await prisma.modifier.create({
@@ -165,8 +213,11 @@ export class ModifierService {
         }
 
         // API contract keeps `extraPrice`; map it to the Prisma model field `price`.
-        const { extraPrice, productId, consumeQuantity, unitId, ...rest } = data;
-        const updateData: Prisma.ModifierUncheckedUpdateInput = { ...rest };
+        const { extraPrice, productId, consumeQuantity, unitId } = data;
+        const updateData: Prisma.ModifierUncheckedUpdateInput = {
+            ...(data.name !== undefined ? { name: data.name } : {}),
+            ...(data.active !== undefined ? { active: data.active } : {})
+        };
         if (extraPrice !== undefined) {
             updateData.price = Number(extraPrice);
         }
@@ -182,6 +233,21 @@ export class ModifierService {
             if (!modifier || modifier.modifierGroup.companyId !== companyId) {
                 throw new Error('Modificador no encontrado');
             }
+            const nextLink = {
+                productId: link.productId !== undefined ? link.productId : modifier.productId,
+                consumeQuantity: link.consumeQuantity !== undefined ? link.consumeQuantity : modifier.consumeQuantity == null ? null : Number(modifier.consumeQuantity),
+                unitId: link.unitId !== undefined ? link.unitId : modifier.unitId
+            };
+            if (productId === null) {
+                if ((consumeQuantity !== undefined && consumeQuantity !== null) || (unitId !== undefined && unitId !== null)) {
+                    throw new Error('No se puede configurar consumo sin un producto vinculado');
+                }
+                nextLink.consumeQuantity = null;
+                nextLink.unitId = null;
+                updateData.consumeQuantity = null;
+                updateData.unitId = null;
+            }
+            await this.assertCompleteInventoryLink(companyId, nextLink);
             return await tx.modifier.update({ where: { id }, data: updateData });
         });
     }

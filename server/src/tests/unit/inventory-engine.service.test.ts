@@ -9,6 +9,8 @@ interface BatchRow {
     unitCost: number;
     remainingQty: number;
     sourceRef?: string | null;
+    sourceType?: string;
+    createdAt?: Date;
 }
 
 /**
@@ -130,6 +132,17 @@ describe('Inventory engine numeric invariants', () => {
 });
 
 describe('InventoryEngineService.applyMovement — IN opens a FIFO layer', () => {
+    it('rejects FIFO inbound movement when legacy stock has no opening layer', async () => {
+        const { tx, stockUpdates } = makeTx({
+            costingMethod: 'FIFO', stockQuantity: 3, avgCost: 5, batches: []
+        });
+        await expect(InventoryEngineService.applyMovement(tx, {
+            type: 'IN', companyId: 1, warehouseId: 1, productId: 1, userId: 1,
+            quantity: 1, unitCost: 6
+        })).rejects.toThrow(/FIFO inconsistente/i);
+        expect(stockUpdates).toHaveLength(0);
+    });
+
     it('opens a batch and accumulates the valued balance on an inbound movement', async () => {
         const { tx, batchCreates, movementCreates } = makeTx({
             costingMethod: 'WEIGHTED_AVERAGE',
@@ -186,6 +199,35 @@ describe('InventoryEngineService.applyMovement — IN opens a FIFO layer', () =>
         expect(result.unitCost).toBe(4);
         expect(result.totalCost).toBe(20);
         expect(batchCreates[0].unitCost).toBe(4);
+    });
+
+    it('restores exact FIFO layer metadata instead of averaging a reversal', async () => {
+        const { tx, batchCreates } = makeTx({
+            costingMethod: 'FIFO',
+            stockQuantity: 0,
+            avgCost: 5,
+            batches: []
+        });
+        const acquiredAt = new Date('2025-01-02T03:04:05.000Z');
+
+        await InventoryEngineService.applyMovement(tx, {
+            type: 'IN', companyId: 1, warehouseId: 1, productId: 1, userId: 1,
+            quantity: 5,
+            inboundLayers: [
+                { quantity: 2, unitCost: 3, sourceRef: 'PO-1', sourceType: 'PURCHASE', createdAt: acquiredAt },
+                { quantity: 3, unitCost: 7, sourceRef: 'PO-2', sourceType: 'PURCHASE', createdAt: acquiredAt }
+            ]
+        });
+
+        expect(batchCreates).toHaveLength(2);
+        expect(batchCreates[0]).toMatchObject({
+            originalQty: 2, remainingQty: 2, unitCost: 3,
+            sourceRef: 'PO-1', sourceType: 'PURCHASE', createdAt: acquiredAt
+        });
+        expect(batchCreates[1]).toMatchObject({
+            originalQty: 3, remainingQty: 3, unitCost: 7,
+            sourceRef: 'PO-2', sourceType: 'PURCHASE', createdAt: acquiredAt
+        });
     });
 });
 

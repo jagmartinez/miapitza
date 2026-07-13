@@ -159,7 +159,11 @@ export class OrderController {
         try {
             const itemId = parseInt(req.params.itemId);
             const companyId = req.user!.companyId;
-            await OrderService.removeItem(itemId, companyId);
+            await OrderService.removeItem(
+                itemId,
+                companyId,
+                req.user!.role === 'SUPERADMIN' ? undefined : req.user!.branchId
+            );
             res.json({
                 success: true,
                 message: 'Artículo eliminado exitosamente'

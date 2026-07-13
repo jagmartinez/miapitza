@@ -57,6 +57,10 @@ function formatDate(value?: string | null): string {
     return new Date(value).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function outputUnit(product?: Pick<Product, 'unit' | 'baseUnit'> | null): string {
+    return product?.baseUnit?.abbreviation || product?.unit || '';
+}
+
 export default function ProductionOrders() {
     const { user } = useAuth();
     const { success: showSuccess, error: showError, warning: showWarning } = useAppToast();
@@ -420,10 +424,10 @@ export default function ProductionOrders() {
                                     </div>
                                 </td>
                                 <td data-label="Cant. Planificada" className="text-right">
-                                    {Number(order.plannedQuantity).toFixed(2)} {order.product?.unit ?? ''}
+                                    {Number(order.plannedQuantity).toFixed(2)} {outputUnit(order.product)}
                                 </td>
                                 <td data-label="Cant. Producida" className="text-right">
-                                    {Number(order.producedQuantity).toFixed(2)} {order.product?.unit ?? ''}
+                                    {Number(order.producedQuantity).toFixed(2)} {outputUnit(order.product)}
                                 </td>
                                 <td data-label="Estado">{statusBadge(order.status)}</td>
                                 <td data-label="Costo estimado" className="text-right">{formatCurrency(Number(order.estimatedCost) || 0, settings)}</td>
@@ -704,8 +708,8 @@ export default function ProductionOrders() {
                             <div className="po-detail-item"><span className="po-detail-label">Receta</span><span className="po-detail-value">{detailOrder.recipe ? `${detailOrder.recipe.name} v${detailOrder.recipe.version}` : '-'}</span></div>
                             <div className="po-detail-item"><span className="po-detail-label">Almacén</span><span className="po-detail-value">{detailOrder.warehouse?.name ?? '-'}</span></div>
                             <div className="po-detail-item"><span className="po-detail-label">Estado</span><span className="po-detail-value">{statusBadge(detailOrder.status)}</span></div>
-                            <div className="po-detail-item"><span className="po-detail-label">Cant. planificada</span><span className="po-detail-value">{Number(detailOrder.plannedQuantity).toFixed(2)} {detailOrder.product?.unit ?? ''}</span></div>
-                            <div className="po-detail-item"><span className="po-detail-label">Cant. producida</span><span className="po-detail-value">{Number(detailOrder.producedQuantity).toFixed(2)} {detailOrder.product?.unit ?? ''}</span></div>
+                            <div className="po-detail-item"><span className="po-detail-label">Cant. planificada</span><span className="po-detail-value">{Number(detailOrder.plannedQuantity).toFixed(2)} {outputUnit(detailOrder.product)}</span></div>
+                            <div className="po-detail-item"><span className="po-detail-label">Cant. producida</span><span className="po-detail-value">{Number(detailOrder.producedQuantity).toFixed(2)} {outputUnit(detailOrder.product)}</span></div>
                             <div className="po-detail-item"><span className="po-detail-label">Costo estimado</span><span className="po-detail-value">{formatCurrency(Number(detailOrder.estimatedCost) || 0, settings)} ({formatCurrency(Number(detailOrder.estimatedUnitCost) || 0, settings)}/u)</span></div>
                             <div className="po-detail-item"><span className="po-detail-label">Costo real</span><span className="po-detail-value">{formatCurrency(Number(detailOrder.realCost) || 0, settings)} ({formatCurrency(Number(detailOrder.realUnitCost) || 0, settings)}/u)</span></div>
                             <div className="po-detail-item"><span className="po-detail-label">Responsable</span><span className="po-detail-value">{detailOrder.user?.name ?? '-'}</span></div>
@@ -799,7 +803,7 @@ export default function ProductionOrders() {
                                     variant="modal"
                                 />
                                 <span className="po-field-hint">
-                                    Planificado: {Number(finishOrder.plannedQuantity).toFixed(2)} {finishOrder.product?.unit ?? ''} · Rendimiento: {finishYield.toFixed(1)}%
+                                    Planificado: {Number(finishOrder.plannedQuantity).toFixed(2)} {outputUnit(finishOrder.product)} · Rendimiento: {finishYield.toFixed(1)}%
                                 </span>
                             </div>
                         </div>

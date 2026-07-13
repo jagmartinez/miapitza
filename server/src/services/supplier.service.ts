@@ -51,7 +51,12 @@ export class SupplierService {
     }) {
         return await prisma.supplier.create({
             data: {
-                ...data,
+                name: data.name,
+                contact: data.contact,
+                phone: data.phone,
+                email: data.email,
+                address: data.address,
+                taxId: data.taxId,
                 companyId,
                 active: true
             }
@@ -69,7 +74,15 @@ export class SupplierService {
     }) {
         return await prisma.supplier.update({
             where: { id, companyId },
-            data
+            data: {
+                ...(data.name !== undefined ? { name: data.name } : {}),
+                ...(data.contact !== undefined ? { contact: data.contact } : {}),
+                ...(data.phone !== undefined ? { phone: data.phone } : {}),
+                ...(data.email !== undefined ? { email: data.email } : {}),
+                ...(data.address !== undefined ? { address: data.address } : {}),
+                ...(data.taxId !== undefined ? { taxId: data.taxId } : {}),
+                ...(data.active !== undefined ? { active: data.active } : {})
+            }
         });
     }
 

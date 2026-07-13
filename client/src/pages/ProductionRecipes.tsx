@@ -539,7 +539,7 @@ export default function ProductionRecipes() {
                                     </td>
                                     <td data-label="Rendimiento" className="text-right">
                                         {Number(recipe.yieldQuantity).toLocaleString(undefined, { maximumFractionDigits: 6 })}{' '}
-                                        {recipe.yieldUnit?.abbreviation || recipe.product?.unit || 'unidad'}
+                                        {recipe.yieldUnit?.abbreviation || recipe.product?.baseUnit?.abbreviation || recipe.product?.unit || 'unidad'}
                                     </td>
                                     <td data-label="Costo unitario estimado" className="text-right">
                                         {recipe.cost
@@ -553,7 +553,7 @@ export default function ProductionRecipes() {
                                     </td>
                                     <td data-label="Acciones" className="text-right">
                                         <div className="table-actions">
-                                            {canManage && recipe.status !== 'INACTIVE' && (
+                                            {canManage && recipe.status === 'DRAFT' && (
                                                 <button
                                                     type="button"
                                                     className="table-action-btn"

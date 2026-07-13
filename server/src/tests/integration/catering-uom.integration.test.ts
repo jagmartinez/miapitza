@@ -8,6 +8,7 @@ describe('Catering recipe UOM atomicity (integration)', () => {
     let companyId: number, branchId: number, roleId: number, userId: number;
     let categoryId: number, warehouseId: number, gramId: number, kgId: number;
     let validProductId: number, invalidProductId: number, validMenuId: number, invalidMenuId: number;
+    let paymentMethodId: number;
 
     beforeAll(async () => {
         const company = await prisma.company.create({ data: { name: `Catering UOM ${suffix}`, costingMethod: 'FIFO' } });
@@ -47,6 +48,7 @@ describe('Catering recipe UOM atomicity (integration)', () => {
             prisma.menuItem.create({ data: { companyId, branchId, categoryId, name: `Invalid menu ${suffix}`, price: 10, type: 'PREPARED', recipes: { create: { productId: invalidProductId, quantity: 1, unit: 'l' } } } })
         ]);
         validMenuId = validMenu.id; invalidMenuId = invalidMenu.id;
+        paymentMethodId = (await prisma.paymentMethod.create({ data: { companyId, name: `CU payment ${suffix}` } })).id;
         await prisma.$transaction(async (tx) => {
             for (const productId of [validProductId, invalidProductId]) {
                 await InventoryEngineService.applyMovement(tx, { type: 'IN', companyId, warehouseId, productId, userId, quantity: 2000, unitCost: 0.5, sourceType: 'OPENING', reference: `CU-OPEN-${productId}` });
@@ -57,6 +59,7 @@ describe('Catering recipe UOM atomicity (integration)', () => {
     afterAll(async () => {
         if (!companyId) return;
         await prisma.cateringPayment.deleteMany({ where: { event: { companyId } } });
+        await prisma.auditLog.deleteMany({ where: { companyId } });
         await prisma.cateringMenuItem.deleteMany({ where: { event: { companyId } } });
         await prisma.cateringEvent.deleteMany({ where: { companyId } });
         await prisma.inventoryMovement.deleteMany({ where: { companyId } });
@@ -68,6 +71,7 @@ describe('Catering recipe UOM atomicity (integration)', () => {
         await prisma.product.deleteMany({ where: { companyId } });
         await prisma.unitOfMeasure.deleteMany({ where: { companyId } });
         await prisma.warehouse.deleteMany({ where: { companyId } });
+        await prisma.paymentMethod.deleteMany({ where: { companyId } });
         await prisma.user.deleteMany({ where: { companyId } }); await prisma.role.deleteMany({ where: { companyId } });
         await prisma.category.deleteMany({ where: { companyId } }); await prisma.branch.deleteMany({ where: { companyId } });
         await prisma.company.delete({ where: { id: companyId } });
@@ -79,7 +83,10 @@ describe('Catering recipe UOM atomicity (integration)', () => {
     });
 
     it('converts kg recipe to base grams and records exact FIFO COGS', async () => {
-        const event = await CateringService.createEvent(companyId, userId, eventData(validMenuId, 'FINISHED'));
+        const quoted = await CateringService.createEvent(companyId, userId, eventData(validMenuId, 'QUOTED'));
+        // Payment lifecycle is covered separately; this test starts from its PAID precondition.
+        await prisma.cateringEvent.update({ where: { id: quoted.id }, data: { status: 'PAID' } });
+        const event = await CateringService.updateEvent(quoted.id, companyId, userId, eventData(validMenuId, 'FINISHED'));
         const [stock, movements, batches] = await Promise.all([
             prisma.stock.findUniqueOrThrow({ where: { warehouseId_productId: { warehouseId, productId: validProductId } } }),
             prisma.inventoryMovement.findMany({ where: { companyId, reference: `EVT-${event.id}` } }),
@@ -115,5 +122,31 @@ describe('Catering recipe UOM atomicity (integration)', () => {
         expect(Number(stock.quantity)).toBe(Number(before[0].quantity));
         expect(batches.map((b) => [b.id, Number(b.remainingQty)])).toEqual(before[1].map((b) => [b.id, Number(b.remainingQty)]));
         expect(movementCount).toBe(before[2]); expect(paymentCount).toBe(before[3]);
+    });
+
+    it('reverses a catering payment immutably and reopens the balance', async () => {
+        const event = await CateringService.createEvent(companyId, userId, eventData(validMenuId, 'QUOTED'));
+        await CateringService.updateEvent(event.id, companyId, userId, { status: 'RESERVED' });
+        const payment = await CateringService.addPayment(event.id, companyId, {
+            amount: 40,
+            paymentMethodId,
+            reference: `CU-PAY-${event.id}`
+        });
+        expect((await prisma.cateringEvent.findUniqueOrThrow({ where: { id: event.id } })).status).toBe('PAID');
+
+        const reversed = await CateringService.reversePayment(
+            event.id, payment.id, companyId, userId, 'Pago duplicado de prueba'
+        );
+        expect(reversed.status).toBe('REVERSED');
+        const reopened = await prisma.cateringEvent.findUniqueOrThrow({ where: { id: event.id } });
+        expect(reopened.status).toBe('RESERVED');
+        expect(Number(reopened.balance)).toBe(40);
+        expect(await prisma.cateringPayment.count({ where: { id: payment.id } })).toBe(1);
+
+        const replay = await CateringService.reversePayment(
+            event.id, payment.id, companyId, userId, 'Reintento idempotente'
+        );
+        expect(replay.id).toBe(payment.id);
+        expect(await prisma.auditLog.count({ where: { companyId, entityType: 'CateringPayment', entityId: payment.id, action: 'REVERSE' } })).toBe(1);
     });
 });

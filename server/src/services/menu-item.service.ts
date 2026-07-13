@@ -4,6 +4,33 @@ import { effectiveUnitCost } from '../utils/product-cost';
 import { UnitConversionService } from './unit-conversion.service';
 
 export class MenuItemService {
+    static async getOwnerBranch(menuItemId: number, companyId: number): Promise<number | null> {
+        const item = await prisma.menuItem.findFirst({
+            where: { id: menuItemId, companyId },
+            select: { branchId: true }
+        });
+        if (!item) throw new Error('Menu item not found');
+        return item.branchId;
+    }
+
+    static async getRecipeOwnerBranch(recipeId: number, companyId: number): Promise<number | null> {
+        const recipe = await prisma.recipe.findFirst({
+            where: { id: recipeId, menuItem: { companyId } },
+            select: { menuItem: { select: { branchId: true } } }
+        });
+        if (!recipe) throw new Error('Receta no encontrada para esta empresa');
+        return recipe.menuItem.branchId;
+    }
+
+    static async getImageOwnerBranch(imageId: number, companyId: number): Promise<number | null> {
+        const image = await prisma.menuItemImage.findFirst({
+            where: { id: imageId, menuItem: { companyId } },
+            select: { menuItem: { select: { branchId: true } } }
+        });
+        if (!image) throw new Error('Imagen no encontrada para esta empresa');
+        return image.menuItem.branchId;
+    }
+
     static async getAll(companyId: number, filters?: {
         branchId?: number;
         categoryId?: number;
@@ -158,12 +185,11 @@ export class MenuItemService {
                     recipeUnit
                 );
                 return unitCost * conv.baseQuantity;
-            } catch {
+            } catch (error) {
                 // Conversion failed with an incompatible configured base unit: a
-                // silent 1:1 would inflate the cost (e.g. ×1000 treating kg as g).
-                // Surface a non-inflated 0 for this recipe instead of a misleading
-                // number, and keep the menu list working (no crash).
-                return 0;
+                // silent 1:1 or zero would hide a corrupt recipe cost. Fail closed
+                // with the exact product/unit context.
+                throw new Error(`No se pudo calcular el costo de "${recipe.product.name}" en unidad "${recipeUnit}": ${(error as Error).message}`);
             }
         }));
 
@@ -207,10 +233,19 @@ export class MenuItemService {
         price: number;
         type?: 'PREPARED' | 'DIRECT';
     }) {
+        const price = Number(data.price);
+        if (!Number.isFinite(price) || price < 0) throw new Error('El precio debe ser un número válido mayor o igual a 0');
+        const name = data.name?.trim();
+        if (!name) throw new Error('El nombre del elemento de menú es requerido');
         await this.assertScopedRefs(companyId, { categoryId: data.categoryId, brandId: data.brandId, branchId: data.branchId });
         return await prisma.menuItem.create({
             data: {
-                ...data,
+                branchId: data.branchId,
+                brandId: data.brandId,
+                categoryId: data.categoryId,
+                name,
+                description: data.description,
+                price,
                 companyId,
                 type: data.type || 'PREPARED'
             },
@@ -249,9 +284,19 @@ export class MenuItemService {
             const item = await tx.menuItem.findFirst({ where: { id, companyId } });
             if (!item) throw new Error('Elemento de menú no encontrado');
 
+            const safeData: Prisma.MenuItemUncheckedUpdateInput = {
+                ...(data.branchId !== undefined ? { branchId: data.branchId } : {}),
+                ...(data.brandId !== undefined ? { brandId: data.brandId } : {}),
+                ...(data.categoryId !== undefined ? { categoryId: data.categoryId } : {}),
+                ...(data.name !== undefined ? { name: data.name.trim() } : {}),
+                ...(data.description !== undefined ? { description: data.description } : {}),
+                ...(data.price !== undefined ? { price: Number(data.price) } : {}),
+                ...(data.active !== undefined ? { active: data.active } : {}),
+                ...(data.type !== undefined ? { type: data.type } : {})
+            };
             return await tx.menuItem.update({
                 where: { id },
-                data,
+                data: safeData,
                 include: {
                     category: { select: { id: true, name: true } }
                 }

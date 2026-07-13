@@ -97,7 +97,8 @@ export class CashRegisterService {
 
         return await prisma.cashRegister.create({
             data: {
-                ...data,
+                branchId: data.branchId,
+                name: data.name,
                 companyId
             },
             include: {
@@ -120,7 +121,9 @@ export class CashRegisterService {
 
         return await prisma.cashRegister.update({
             where: { id },
-            data,
+            data: {
+                ...(data.name !== undefined ? { name: data.name } : {})
+            },
             include: {
                 branch: {
                     select: {

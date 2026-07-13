@@ -1,23 +1,14 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import bcrypt from 'bcryptjs';
-import { BCRYPT_ROUNDS } from './auth.service';
+import { BCRYPT_ROUNDS, PASSWORD_REGEX } from './auth.service';
 import { ROLES } from '../constants/roles';
 import { invalidatePermissionCache } from '../middlewares/auth';
 
 export class UserService {
     private static validatePassword(password: string) {
-        if (!password || password.length < 8) {
-            throw new Error('La contraseña debe tener al menos 8 caracteres');
-        }
-        if (!/[A-Z]/.test(password)) {
-            throw new Error('La contraseña debe contener al menos una letra mayúscula');
-        }
-        if (!/[a-z]/.test(password)) {
-            throw new Error('La contraseña debe contener al menos una letra minúscula');
-        }
-        if (!/[0-9]/.test(password)) {
-            throw new Error('La contraseña debe contener al menos un número');
+        if (!PASSWORD_REGEX.test(password)) {
+            throw new Error('La contraseña debe tener mínimo 8 caracteres, incluyendo mayúscula, minúscula, número y símbolo');
         }
     }
 
@@ -216,11 +207,19 @@ export class UserService {
             data.password = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
         }
 
-        await this.getById(id, companyId);
+        const existingUser = await this.getById(id, companyId);
 
         const { roleIds, branchIds, ...rest } = data;
 
         const isSuperAdmin = actingRoles.includes(ROLES.SUPERADMIN);
+
+        const targetRoles = [
+            existingUser.role.name,
+            ...existingUser.userRoles.map((entry) => entry.role.name)
+        ];
+        if (targetRoles.includes(ROLES.SUPERADMIN) && !isSuperAdmin) {
+            throw new Error('No autorizado para modificar un usuario SUPERADMIN');
+        }
 
         // Branch assignment / rotation (active branch + permitted set) is a
         // SUPERADMIN-only action.
@@ -230,6 +229,10 @@ export class UserService {
 
         if (branchIds !== undefined) {
             await this.assertBranchesAssignable(companyId, branchIds);
+            const effectiveActiveBranch = rest.branchId ?? existingUser.branchId;
+            if (effectiveActiveBranch != null && !branchIds.includes(effectiveActiveBranch)) {
+                throw new Error('La sucursal activa debe permanecer dentro de las sucursales permitidas del usuario');
+            }
         }
 
         // The active branch must be one of the user's permitted branches.
@@ -266,6 +269,10 @@ export class UserService {
                 phone: rest.phone
             }).filter(([, v]) => v !== undefined)
         ) as Prisma.UserUpdateInput;
+        if (rest.password !== undefined) {
+            updateData.mustChangePassword = true;
+            updateData.passwordChangedAt = null;
+        }
 
         const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const user = await tx.user.update({
@@ -284,6 +291,15 @@ export class UserService {
                     userRoles: { select: { role: { select: { id: true, name: true } } } }
                 }
             });
+
+            // Password resets and deactivation invalidate every outstanding
+            // browser/Bearer/WebSocket session in the same transaction.
+            if (rest.password !== undefined || rest.status === 'INACTIVE') {
+                await tx.userSession.updateMany({
+                    where: { userId: id, revoked: false },
+                    data: { revoked: true }
+                });
+            }
 
             // Replace the permitted branch set when provided.
             if (branchIds !== undefined) {

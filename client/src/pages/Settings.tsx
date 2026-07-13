@@ -8,6 +8,9 @@ import { Settings as SettingsIcon, Building2, FileText, Users, Database, Upload,
 import { useAppToast } from '../context/ToastContext';
 import { useCurrency } from '../hooks/useCurrency';
 import { DEFAULT_CURRENCY_SYMBOL } from '../utils/currency';
+import { resolveAssetUrl } from '../utils/assets';
+import { useAuth } from '../hooks/useAuth';
+import { hasAnyRole } from '../utils/authz';
 import './Settings.css';
 
 interface SalesChannelConfig {
@@ -22,6 +25,8 @@ type SettingsTab = 'general' | 'company' | 'invoice' | 'roles' | 'channels' | 's
 
 export default function Settings() {
     const navigate = useNavigate();
+    const { user } = useAuth();
+    const canOperateGlobalBackups = hasAnyRole(user, ['SUPERADMIN']);
     const { error: showError, success } = useAppToast();
     const { refresh: refreshCurrency } = useCurrency();
     const [activeTab, setActiveTab] = useState<SettingsTab>('general');
@@ -90,7 +95,7 @@ export default function Settings() {
                 session_timeout_minutes: settings.session_timeout_minutes || '30'
             });
             if (settings.logoUrl) {
-                setLogoPreview(settings.logoUrl);
+                setLogoPreview(resolveAssetUrl(settings.logoUrl));
             }
         } catch (error) {
             console.error('Error loading settings:', error);
@@ -160,6 +165,7 @@ export default function Settings() {
                 formDataUpload.append('logo', logoFile);
                 const uploadRes = await uploadAPI.uploadLogo(formDataUpload);
                 formData.logoUrl = uploadRes.data.data.url;
+                setLogoPreview(resolveAssetUrl(formData.logoUrl));
             }
 
             await settingsAPI.update(formData);
@@ -180,7 +186,10 @@ export default function Settings() {
             success(`Respaldo creado exitosamente: ${res.data.data.filename}`);
         } catch (error) {
             console.error('Error creating backup:', error);
-            showError('Error al crear el respaldo');
+            const message = typeof error === 'object' && error !== null && 'response' in error
+                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                : undefined;
+            showError(message || 'Error al crear el respaldo');
         }
     };
 
@@ -503,7 +512,7 @@ export default function Settings() {
                                 Contraseña 0 = sin expiración. Inactividad mínimo 5 min.
                             </p>
 
-                            <div className="system-actions">
+                            {canOperateGlobalBackups && <div className="system-actions">
                                 <h4>Respaldo de Base de Datos</h4>
                                 <p className="section-description">
                                     Genera un respaldo de la base de datos para mantener tus datos seguros.
@@ -516,7 +525,7 @@ export default function Settings() {
                                     <Database size={18} />
                                     Generar Respaldo
                                 </Button>
-                            </div>
+                            </div>}
                         </div>
                     )}
 

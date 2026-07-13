@@ -2,8 +2,34 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
 import { effectiveUnitCost } from '../utils/product-cost';
+import { SettingService } from './setting.service';
+import {
+    getZonedMonthBounds,
+    parseZonedDateStart,
+    zonedDateKey,
+    zonedHour,
+    zonedMonthKey,
+    zonedWeekday
+} from '../utils/timezone';
 
 export class ReportExtendedService {
+    private static async recipeQuantityInBase(companyId: number, recipe: {
+        quantity: Prisma.Decimal | number | string;
+        unit?: string | null;
+        product: { id: number; name: string; unit: string };
+    }): Promise<number> {
+        const recipeUnit = recipe.unit || recipe.product.unit;
+        try {
+            return (await UnitConversionService.convert(
+                recipe.product.id, companyId, Number(recipe.quantity), recipeUnit
+            )).baseQuantity;
+        } catch (error) {
+            throw new Error(
+                `Reporte no calculado: receta de "${recipe.product.name}" usa la unidad "${recipeUnit}" sin conversión válida: ${(error as Error).message}`
+            );
+        }
+    }
+
     // ── PURCHASES: By Day ──
     static async getPurchasesByDay(companyId: number, filters?: {
         dateFrom?: Date; dateTo?: Date; branchId?: number; supplierId?: number;
@@ -11,7 +37,7 @@ export class ReportExtendedService {
     }) {
         const poWhere = this.buildPurchaseWhere(companyId, filters);
         const orders = await prisma.purchaseOrder.findMany({
-            where: poWhere,
+            where: { ...poWhere, status: 'RECEIVED' },
             include: {
                 supplier: { select: { name: true } },
                 items: {
@@ -50,7 +76,7 @@ export class ReportExtendedService {
     }) {
         const poWhere = this.buildPurchaseWhere(companyId, filters);
         const orders = await prisma.purchaseOrder.findMany({
-            where: poWhere,
+            where: { ...poWhere, status: 'RECEIVED' },
             select: { date: true, total: true },
             orderBy: { date: 'asc' }
         });
@@ -271,10 +297,9 @@ export class ReportExtendedService {
         // when no date window is supplied, consistent with other report defaults.
         let effectiveFilters = filters;
         if (!filters?.dateFrom && !filters?.dateTo) {
-            const now = new Date();
-            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-            const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-            effectiveFilters = { ...filters, dateFrom: monthStart, dateTo: monthEnd };
+            const timeZone = await SettingService.getTimezone(companyId);
+            const month = getZonedMonthBounds(timeZone);
+            effectiveFilters = { ...filters, dateFrom: month.start, dateTo: month.endInclusive };
         }
         const orderWhere = this.buildOrderWhere(companyId, effectiveFilters);
         const orders = await prisma.order.findMany({
@@ -326,10 +351,9 @@ export class ReportExtendedService {
     }) {
         let effectiveFilters = filters;
         if (!filters?.dateFrom && !filters?.dateTo) {
-            const now = new Date();
-            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-            const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-            effectiveFilters = { ...filters, dateFrom: monthStart, dateTo: monthEnd };
+            const timeZone = await SettingService.getTimezone(companyId);
+            const month = getZonedMonthBounds(timeZone);
+            effectiveFilters = { ...filters, dateFrom: month.start, dateTo: month.endInclusive };
         }
         const orderWhere = this.buildOrderWhere(companyId, effectiveFilters);
         const orders = await prisma.order.findMany({
@@ -379,17 +403,18 @@ export class ReportExtendedService {
     static async getSalesDaily(companyId: number, filters?: {
         dateFrom?: Date; dateTo?: Date; branchId?: number; salesChannel?: string;
     }) {
+        const timeZone = await SettingService.getTimezone(companyId);
         const orderWhere = this.buildOrderWhere(companyId, filters);
         const orders = await prisma.order.findMany({
             where: orderWhere,
-            select: { createdAt: true, total: true, discount: true, id: true, salesChannel: true },
-            orderBy: { createdAt: 'asc' }
+            select: { closedAt: true, total: true, discount: true, id: true, salesChannel: true },
+            orderBy: { closedAt: 'asc' }
         });
 
         const byDay: Record<string, { date: string; totalSales: number; orderCount: number; avgTicket: number; totalDiscount: number }> = {};
 
         for (const order of orders) {
-            const day = order.createdAt.toISOString().split('T')[0];
+            const day = zonedDateKey(order.closedAt as Date, timeZone);
             if (!byDay[day]) byDay[day] = { date: day, totalSales: 0, orderCount: 0, avgTicket: 0, totalDiscount: 0 };
             byDay[day].totalSales += Number(order.total);
             byDay[day].orderCount += 1;
@@ -422,15 +447,16 @@ export class ReportExtendedService {
     static async getSalesMonthly(companyId: number, filters?: {
         dateFrom?: Date; dateTo?: Date; branchId?: number;
     }) {
+        const timeZone = await SettingService.getTimezone(companyId);
         const orderWhere = this.buildOrderWhere(companyId, filters);
         const orders = await prisma.order.findMany({
             where: orderWhere,
-            select: { createdAt: true, total: true, id: true }
+            select: { closedAt: true, total: true, id: true }
         });
 
         const byMonth: Record<string, { month: string; totalSales: number; orderCount: number }> = {};
         for (const o of orders) {
-            const m = o.createdAt.toISOString().substring(0, 7);
+            const m = zonedMonthKey(o.closedAt as Date, timeZone);
             if (!byMonth[m]) byMonth[m] = { month: m, totalSales: 0, orderCount: 0 };
             byMonth[m].totalSales += Number(o.total);
             byMonth[m].orderCount += 1;
@@ -576,7 +602,7 @@ export class ReportExtendedService {
                                     select: {
                                         quantity: true,
                                         unit: true,
-                                        product: { select: { id: true, unit: true, currentAverageCost: true, cost: true } }
+                                        product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true } }
                                     }
                                 }
                             }
@@ -614,19 +640,7 @@ export class ReportExtendedService {
 
             for (const item of order.items) {
                 for (const recipe of (item.menuItem?.recipes || [])) {
-                    const recipeUnit = recipe.unit || recipe.product.unit;
-                    let qtyInBase = Number(recipe.quantity);
-                    try {
-                        const conv = await UnitConversionService.convert(
-                            recipe.product.id,
-                            companyId,
-                            Number(recipe.quantity),
-                            recipeUnit
-                        );
-                        qtyInBase = conv.baseQuantity;
-                    } catch {
-                        // Fallback to legacy quantity when conversion is not configured
-                    }
+                    const qtyInBase = await this.recipeQuantityInBase(companyId, recipe);
                     const unitCost = effectiveUnitCost(recipe.product.currentAverageCost, recipe.product.cost);
                     channelMap[ch].estimatedCOGS += qtyInBase * item.quantity * unitCost;
                 }
@@ -662,17 +676,18 @@ export class ReportExtendedService {
     static async getSalesByHour(companyId: number, filters?: {
         dateFrom?: Date; dateTo?: Date; branchId?: number;
     }) {
+        const timeZone = await SettingService.getTimezone(companyId);
         const orderWhere = this.buildOrderWhere(companyId, filters);
         const orders = await prisma.order.findMany({
             where: orderWhere,
-            select: { createdAt: true, total: true, id: true }
+            select: { closedAt: true, total: true, id: true }
         });
 
         const hourMap: Record<number, { hour: number; totalSales: number; orderCount: number }> = {};
         for (let h = 0; h < 24; h++) hourMap[h] = { hour: h, totalSales: 0, orderCount: 0 };
 
         for (const order of orders) {
-            const hour = new Date(order.createdAt).getHours();
+            const hour = zonedHour(order.closedAt as Date, timeZone);
             hourMap[hour].totalSales += Number(order.total);
             hourMap[hour].orderCount += 1;
         }
@@ -716,7 +731,7 @@ export class ReportExtendedService {
                                     select: {
                                         quantity: true,
                                         unit: true,
-                                        product: { select: { id: true, unit: true, currentAverageCost: true, cost: true } }
+                                        product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true } }
                                     }
                                 }
                             }
@@ -734,19 +749,7 @@ export class ReportExtendedService {
                 if (!catMap[catName]) catMap[catName] = { categoryName: catName, revenue: 0, cogs: 0 };
                 catMap[catName].revenue += Number(item.subtotal);
                 for (const recipe of (item.menuItem?.recipes || [])) {
-                    const recipeUnit = recipe.unit || recipe.product.unit;
-                    let qtyInBase = Number(recipe.quantity);
-                    try {
-                        const conv = await UnitConversionService.convert(
-                            recipe.product.id,
-                            companyId,
-                            Number(recipe.quantity),
-                            recipeUnit
-                        );
-                        qtyInBase = conv.baseQuantity;
-                    } catch {
-                        // Fallback to legacy quantity when conversion is not configured
-                    }
+                    const qtyInBase = await this.recipeQuantityInBase(companyId, recipe);
                     const unitCost = effectiveUnitCost(recipe.product.currentAverageCost, recipe.product.cost);
                     catMap[catName].cogs += qtyInBase * item.quantity * unitCost;
                 }
@@ -796,7 +799,7 @@ export class ReportExtendedService {
                                     select: {
                                         quantity: true,
                                         unit: true,
-                                        product: { select: { id: true, unit: true, currentAverageCost: true, cost: true } }
+                                        product: { select: { id: true, name: true, unit: true, currentAverageCost: true, cost: true } }
                                     }
                                 }
                             }
@@ -825,19 +828,7 @@ export class ReportExtendedService {
                 prodMap[id].revenue += Number(item.subtotal);
                 prodMap[id].unitsSold += item.quantity;
                 for (const recipe of (item.menuItem.recipes || [])) {
-                    const recipeUnit = recipe.unit || recipe.product.unit;
-                    let qtyInBase = Number(recipe.quantity);
-                    try {
-                        const conv = await UnitConversionService.convert(
-                            recipe.product.id,
-                            companyId,
-                            Number(recipe.quantity),
-                            recipeUnit
-                        );
-                        qtyInBase = conv.baseQuantity;
-                    } catch {
-                        // Fallback to legacy quantity when conversion is not configured
-                    }
+                    const qtyInBase = await this.recipeQuantityInBase(companyId, recipe);
                     const unitCost = effectiveUnitCost(recipe.product.currentAverageCost, recipe.product.cost);
                     prodMap[id].cogs += qtyInBase * item.quantity * unitCost;
                 }
@@ -923,23 +914,24 @@ export class ReportExtendedService {
     static async getDayAnalysis(companyId: number, filters?: {
         dateFrom?: Date; dateTo?: Date; branchId?: number;
     }) {
+        const timeZone = await SettingService.getTimezone(companyId);
         const orderWhere = this.buildOrderWhere(companyId, filters);
         const orders = await prisma.order.findMany({
             where: orderWhere,
-            select: { createdAt: true, total: true, id: true }
+            select: { closedAt: true, total: true, id: true }
         });
 
         const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
         const dayMap: Record<number, { dayName: string; totalSales: number; orderCount: number; weekCount: number }> = {};
         for (let i = 0; i < 7; i++) dayMap[i] = { dayName: dayNames[i], totalSales: 0, orderCount: 0, weekCount: 0 };
 
-        const weeksTracked = new Set<string>();
+        const datesTracked = new Set<string>();
         for (const order of orders) {
-            const d = new Date(order.createdAt);
-            const dayOfWeek = d.getDay();
-            const weekKey = `${d.getFullYear()}-W${Math.ceil((d.getDate() + 6 - dayOfWeek) / 7)}-${dayOfWeek}`;
-            if (!weeksTracked.has(weekKey)) {
-                weeksTracked.add(weekKey);
+            const closedAt = order.closedAt as Date;
+            const dayOfWeek = zonedWeekday(closedAt, timeZone);
+            const localDate = zonedDateKey(closedAt, timeZone);
+            if (!datesTracked.has(localDate)) {
+                datesTracked.add(localDate);
                 dayMap[dayOfWeek].weekCount += 1;
             }
             dayMap[dayOfWeek].totalSales += Number(order.total);
@@ -970,20 +962,25 @@ export class ReportExtendedService {
     static async getMonthComparison(companyId: number, filters?: {
         branchId?: number; monthA?: string; monthB?: string;
     }) {
+        const timeZone = await SettingService.getTimezone(companyId);
         const now = new Date();
-        const monthBStr = filters?.monthB || now.toISOString().substring(0, 7);
-        const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const monthAStr = filters?.monthA || prevDate.toISOString().substring(0, 7);
+        const monthBStr = filters?.monthB || zonedMonthKey(now, timeZone);
+        const [monthBYear, monthBNumber] = monthBStr.split('-').map(Number);
+        const previous = new Date(Date.UTC(monthBYear, monthBNumber - 2, 1));
+        const defaultMonthA = `${previous.getUTCFullYear()}-${String(previous.getUTCMonth() + 1).padStart(2, '0')}`;
+        const monthAStr = filters?.monthA || defaultMonthA;
 
         const buildWhere = (monthStr: string): Prisma.OrderWhereInput => {
+            const from = parseZonedDateStart(`${monthStr}-01`, timeZone);
             const [year, month] = monthStr.split('-').map(Number);
-            const from = new Date(year, month - 1, 1);
-            const to = new Date(year, month, 0, 23, 59, 59, 999);
+            const nextMonth = new Date(Date.UTC(year, month, 1));
+            const nextMonthKey = `${nextMonth.getUTCFullYear()}-${String(nextMonth.getUTCMonth() + 1).padStart(2, '0')}`;
+            const to = new Date(parseZonedDateStart(`${nextMonthKey}-01`, timeZone).getTime() - 1);
             return {
                 companyId,
-                status: 'PAID',
+                status: { in: ['PAID', 'DELIVERED'] },
                 ...(filters?.branchId ? { branchId: filters.branchId } : {}),
-                createdAt: { gte: from, lte: to }
+                closedAt: { gte: from, lte: to }
             };
         };
 
@@ -1035,12 +1032,13 @@ export class ReportExtendedService {
     }): Prisma.OrderWhereInput {
         return {
             companyId,
-            status: 'PAID',
+            status: { in: ['PAID', 'DELIVERED'] },
+            closedAt: { not: null },
             ...(filters?.branchId ? { branchId: filters.branchId } : {}),
             ...(filters?.salesChannel ? { salesChannel: filters.salesChannel as Prisma.OrderWhereInput['salesChannel'] } : {}),
             ...(filters?.userId ? { userId: filters.userId } : {}),
             ...(filters?.dateFrom || filters?.dateTo ? {
-                createdAt: {
+                closedAt: {
                     ...(filters?.dateFrom ? { gte: filters.dateFrom } : {}),
                     ...(filters?.dateTo ? { lte: filters.dateTo } : {}),
                 }

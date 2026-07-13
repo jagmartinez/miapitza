@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react';
-import { pedidosYaAPI, menuAPI } from '../services/api';
+import { useState, useEffect, useCallback } from 'react';
+import { API_BASE_URL, pedidosYaAPI, menuAPI } from '../services/api';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
+import { useCurrency } from '../hooks/useCurrency';
+import { useAuth } from '../hooks/useAuth';
+import { hasAnyRole } from '../utils/authz';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import Input from '../components/Input';
@@ -61,6 +64,9 @@ interface MenuItemOption { id: number; name: string; price: number }
 type ActiveTab = 'config' | 'mappings' | 'orders' | 'logs';
 
 export default function PedidosYaIntegration() {
+    const { formatMoney } = useCurrency();
+    const { user } = useAuth();
+    const isSuperAdmin = hasAnyRole(user, ['SUPERADMIN']);
     const { confirm } = useConfirmDialog();
     const { success, error: showError } = useAppToast();
     const [activeTab, setActiveTab] = useState<ActiveTab>('config');
@@ -80,11 +86,7 @@ export default function PedidosYaIntegration() {
     const [mappingForm, setMappingForm] = useState({ externalId: '', externalName: '', menuItemId: '' });
     const [mappingSearch, setMappingSearch] = useState('');
 
-    useEffect(() => {
-        loadAll();
-    }, []);
-
-    const loadAll = async () => {
+    const loadAll = useCallback(async () => {
         setLoading(true);
         try {
             const [configRes, menuRes] = await Promise.all([
@@ -95,36 +97,43 @@ export default function PedidosYaIntegration() {
             setMenuItems((menuRes.data.data || []).map((mi: { id: number; name: string; price: number }) => ({
                 id: mi.id, name: mi.name, price: mi.price,
             })));
-        } catch { /* empty */ }
+        } catch {
+            showError('No se pudo cargar la configuración de PedidosYa.');
+        }
         setLoading(false);
-    };
+    }, [showError]);
 
-    const loadMappings = async () => {
+    const loadMappings = useCallback(async () => {
         try {
             const res = await pedidosYaAPI.getMappings();
             setMappings(res.data.data || []);
-        } catch { /* empty */ }
-    };
+        } catch { showError('No se pudieron cargar los mapeos.'); }
+    }, [showError]);
 
-    const loadOrderSyncs = async () => {
+    const loadOrderSyncs = useCallback(async () => {
         try {
             const res = await pedidosYaAPI.getOrderSyncs();
             setOrderSyncs(res.data.data || []);
-        } catch { /* empty */ }
-    };
+        } catch { showError('No se pudieron cargar las órdenes sincronizadas.'); }
+    }, [showError]);
 
-    const loadWebhookLogs = async () => {
+    const loadWebhookLogs = useCallback(async () => {
         try {
             const res = await pedidosYaAPI.getWebhookLogs();
             setWebhookLogs(res.data.data || []);
-        } catch { /* empty */ }
-    };
+        } catch { showError('No se pudieron cargar los logs del webhook.'); }
+    }, [showError]);
 
     useEffect(() => {
-        if (activeTab === 'mappings') loadMappings();
-        if (activeTab === 'orders') loadOrderSyncs();
-        if (activeTab === 'logs') loadWebhookLogs();
-    }, [activeTab]);
+        void loadAll();
+    }, [loadAll]);
+
+    useEffect(() => {
+        if (!isSuperAdmin) return;
+        if (activeTab === 'mappings') void loadMappings();
+        if (activeTab === 'orders') void loadOrderSyncs();
+        if (activeTab === 'logs') void loadWebhookLogs();
+    }, [activeTab, isSuperAdmin, loadMappings, loadOrderSyncs, loadWebhookLogs]);
 
     const handleSaveConfig = async () => {
         setSaving(true);
@@ -184,7 +193,7 @@ export default function PedidosYaIntegration() {
 
     if (loading) return <div className="categories-loading">Cargando integración PedidosYa...</div>;
 
-    const webhookUrl = `${window.location.origin}/api/pedidosya/webhook/${config.id || '{companyId}'}`;
+    const webhookUrl = `${API_BASE_URL}/pedidosya/webhook/${user?.companyId || '{companyId}'}`;
 
     return (
         <div className="pedidosya-page">
@@ -207,7 +216,7 @@ export default function PedidosYaIntegration() {
                     { id: 'mappings' as ActiveTab, label: 'Mapeo de Productos', icon: <Package size={18} /> },
                     { id: 'orders' as ActiveTab, label: 'Órdenes Sincronizadas', icon: <ArrowRightLeft size={18} /> },
                     { id: 'logs' as ActiveTab, label: 'Webhook Logs', icon: <Clock size={18} /> },
-                ]).map(tab => (
+                ].filter((tab) => tab.id === 'config' || isSuperAdmin)).map(tab => (
                     <button
                         key={tab.id}
                         className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
@@ -329,12 +338,12 @@ export default function PedidosYaIntegration() {
                             <Button variant="primary" onClick={handleSaveConfig} disabled={saving}>
                                 {saving ? 'Guardando...' : 'Guardar Configuración'}
                             </Button>
-                            <Button variant="secondary" onClick={handleTestConnection}>
+                            {isSuperAdmin && <Button variant="secondary" onClick={handleTestConnection}>
                                 <Zap size={16} /> Probar Conexión
-                            </Button>
-                            <Button variant="secondary" onClick={handleSyncMenu}>
+                            </Button>}
+                            {isSuperAdmin && <Button variant="secondary" onClick={handleSyncMenu}>
                                 <RefreshCw size={16} /> Sincronizar Menú
-                            </Button>
+                            </Button>}
                         </div>
 
                         {connectionStatus.tested && (
@@ -444,7 +453,7 @@ export default function PedidosYaIntegration() {
                                             <td><span className="badge">{sync.externalStatus || '-'}</span></td>
                                             <td><span className="badge">{sync.internalStatus || '-'}</span></td>
                                             <td>{sync.syncDirection === 'INBOUND' ? '← Entrante' : '→ Saliente'}</td>
-                                            <td>C$ {Number(sync.order.total).toFixed(2)}</td>
+                                            <td>{formatMoney(Number(sync.order.total))}</td>
                                             <td>{new Date(sync.lastSyncAt).toLocaleString('es-NI')}</td>
                                         </tr>
                                     ))}
@@ -552,7 +561,7 @@ export default function PedidosYaIntegration() {
                                             ? (() => {
                                                 const mi = menuItems.find((m) => m.id.toString() === mappingForm.menuItemId);
                                                 return mi
-                                                    ? { value: mappingForm.menuItemId, label: `${mi.name} (C$ ${Number(mi.price).toFixed(2)})` }
+                                                    ? { value: mappingForm.menuItemId, label: `${mi.name} (${formatMoney(Number(mi.price))})` }
                                                     : null;
                                             })()
                                             : null
@@ -561,7 +570,7 @@ export default function PedidosYaIntegration() {
                                         setMappingForm({ ...mappingForm, menuItemId: option?.value || '' })}
                                     options={menuItems.map((mi) => ({
                                         value: mi.id.toString(),
-                                        label: `${mi.name} (C$ ${Number(mi.price).toFixed(2)})`
+                                        label: `${mi.name} (${formatMoney(Number(mi.price))})`
                                     }))}
                                     placeholder="-- Sin mapear --"
                                     isClearable

@@ -64,7 +64,13 @@ export interface ApplyMovementParams {
     /** Optional product name to enrich the insufficient-stock error message. */
     productName?: string;
     /** FIFO portions to recreate on an inbound transfer without averaging layers. */
-    inboundLayers?: Array<{ quantity: number; unitCost: number; sourceRef?: string | null }>;
+    inboundLayers?: Array<{
+        quantity: number;
+        unitCost: number;
+        sourceRef?: string | null;
+        sourceType?: BatchSourceType;
+        createdAt?: Date;
+    }>;
 }
 
 export interface ApplyMovementResult {
@@ -73,7 +79,13 @@ export interface ApplyMovementResult {
     totalCost: number;
     balanceQty: number;
     balanceCost: number;
-    consumedLayers?: Array<{ quantity: number; unitCost: number; sourceRef?: string | null }>;
+    consumedLayers?: Array<{
+        quantity: number;
+        unitCost: number;
+        sourceRef?: string | null;
+        sourceType?: BatchSourceType;
+        createdAt?: Date;
+    }>;
 }
 
 const EPS = 1e-9;
@@ -169,13 +181,20 @@ export class InventoryEngineService {
         let unitCost: number;
         let totalCost: number;
         let balanceCost: number;
-        const consumedLayers: Array<{ quantity: number; unitCost: number; sourceRef?: string | null }> = [];
+        const consumedLayers: NonNullable<ApplyMovementResult['consumedLayers']> = [];
 
         if (direction === 'IN') {
             // Load layers only when needed to value the FIFO balance.
-            const prevValued = isFifo
-                ? await this.sumRemainingLayers(tx, companyId, warehouseId, productId)
-                : currentQty * avgCost;
+            const layerTotals = isFifo
+                ? await this.remainingLayerTotals(tx, companyId, warehouseId, productId)
+                : null;
+            if (layerTotals && Math.abs(layerTotals.quantity - currentQty) > EPS) {
+                throw new Error(
+                    `Inventario FIFO inconsistente para el producto ${productId} en almacén ${warehouseId}: ` +
+                    `stock ${currentQty}, capas ${layerTotals.quantity}. Reconcílie el inventario antes de continuar.`
+                );
+            }
+            const prevValued = layerTotals ? layerTotals.value : currentQty * avgCost;
 
             if (params.inboundLayers?.length) {
                 const layerQty = params.inboundLayers.reduce((sum, layer) => sum + layer.quantity, 0);
@@ -200,8 +219,9 @@ export class InventoryEngineService {
                     unitCost: layer.unitCost,
                     originalQty: layer.quantity,
                     remainingQty: layer.quantity,
-                    sourceType: params.sourceType ?? 'ADJUSTMENT',
-                    sourceRef: layer.sourceRef ?? params.reference ?? null
+                    sourceType: params.sourceType ?? layer.sourceType ?? 'ADJUSTMENT',
+                    sourceRef: layer.sourceRef ?? params.reference ?? null,
+                    ...(layer.createdAt ? { createdAt: layer.createdAt } : {})
                 } });
             }
         } else {
@@ -209,16 +229,23 @@ export class InventoryEngineService {
             // FIFO stays consistent regardless of the active costing method.
             const allLayers = await tx.inventoryBatch.findMany({
                 where: { companyId, warehouseId, productId, remainingQty: { gt: 0 } },
-                orderBy: { createdAt: 'asc' },
-                select: { id: true, unitCost: true, remainingQty: true, sourceRef: true }
+                orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+                select: { id: true, unitCost: true, remainingQty: true, sourceRef: true, sourceType: true, createdAt: true }
             });
             if (allLayers.length > 0) {
                 // Lock the candidate layers to avoid concurrent double-consumption.
-                await tx.$queryRaw`SELECT id FROM \`InventoryBatch\` WHERE companyId = ${companyId} AND warehouseId = ${warehouseId} AND productId = ${productId} AND remainingQty > 0 FOR UPDATE`;
+                await tx.$queryRaw`SELECT id FROM \`InventoryBatch\` WHERE companyId = ${companyId} AND warehouseId = ${warehouseId} AND productId = ${productId} AND remainingQty > 0 ORDER BY createdAt, id FOR UPDATE`;
             }
             const layers = params.consumeSourceRef
                 ? allLayers.filter((layer) => layer.sourceRef === params.consumeSourceRef)
                 : allLayers;
+            const allLayerQuantity = allLayers.reduce((sum, layer) => sum + Number(layer.remainingQty), 0);
+            if (isFifo && Math.abs(allLayerQuantity - currentQty) > EPS) {
+                throw new Error(
+                    `Inventario FIFO inconsistente para el producto ${productId} en almacén ${warehouseId}: ` +
+                    `stock ${currentQty}, capas ${allLayerQuantity}. Reconcílie el inventario antes de continuar.`
+                );
+            }
             const prevValued = isFifo
                 ? allLayers.reduce((s, b) => s + Number(b.remainingQty) * Number(b.unitCost), 0)
                 : currentQty * avgCost;
@@ -231,7 +258,13 @@ export class InventoryEngineService {
                 const take = Math.min(available, remaining);
                 if (take <= 0) continue;
                 fifoCogs += take * Number(layer.unitCost);
-                consumedLayers.push({ quantity: take, unitCost: Number(layer.unitCost), sourceRef: layer.sourceRef });
+                consumedLayers.push({
+                    quantity: take,
+                    unitCost: Number(layer.unitCost),
+                    sourceRef: layer.sourceRef,
+                    sourceType: layer.sourceType as BatchSourceType,
+                    createdAt: layer.createdAt
+                });
                 remaining -= take;
                 await tx.inventoryBatch.update({
                     where: { id: layer.id },
@@ -247,8 +280,15 @@ export class InventoryEngineService {
                 );
             }
 
-            // Graceful degradation for ordinary legacy stock without layers.
+            // Weighted-average tenants may still have legacy stock without layers.
+            // FIFO is fail-closed: every unit must have explicit provenance.
             if (remaining > EPS) {
+                if (isFifo) {
+                    throw new Error(
+                        `Capas FIFO insuficientes para el producto ${productId}. ` +
+                        `Faltan ${remaining} unidades por reconciliar.`
+                    );
+                }
                 fifoCogs += remaining * avgCost;
                 consumedLayers.push({ quantity: remaining, unitCost: avgCost, sourceRef: null });
                 remaining = 0;
@@ -309,16 +349,19 @@ export class InventoryEngineService {
     }
 
     /** Sum the valued (remainingQty * unitCost) of the remaining FIFO layers. */
-    private static async sumRemainingLayers(
+    private static async remainingLayerTotals(
         tx: Tx,
         companyId: number,
         warehouseId: number,
         productId: number
-    ): Promise<number> {
+    ): Promise<{ quantity: number; value: number }> {
         const layers = await tx.inventoryBatch.findMany({
             where: { companyId, warehouseId, productId, remainingQty: { gt: 0 } },
             select: { unitCost: true, remainingQty: true }
         });
-        return layers.reduce((s, b) => s + Number(b.remainingQty) * Number(b.unitCost), 0);
+        return layers.reduce((totals, batch) => ({
+            quantity: totals.quantity + Number(batch.remainingQty),
+            value: totals.value + Number(batch.remainingQty) * Number(batch.unitCost)
+        }), { quantity: 0, value: 0 });
     }
 }

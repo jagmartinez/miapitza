@@ -64,6 +64,7 @@ model Company {
   productionRecipes    ProductionRecipe[]
   productionOrders     ProductionOrder[]
   inventoryBatches     InventoryBatch[]
+  bankDeposits         BankDeposit[]
 }
 
 enum CostingMethod {
@@ -167,6 +168,9 @@ model User {
   productionRecipesCreated  ProductionRecipe[]  @relation("ProductionRecipeCreatedBy")
   productionOrders          ProductionOrder[]   @relation("ProductionOrderUser")
   cancelledProductionOrders ProductionOrder[]   @relation("ProductionOrderCancelledBy")
+  bankDepositsCreated        BankDeposit[]       @relation("BankDepositCreatedBy")
+  bankDepositsReversed       BankDeposit[]       @relation("BankDepositReversedBy")
+  cateringPaymentsReversed   CateringPayment[]   @relation("CateringPaymentReversedBy")
 
   // DEFERRED (require data migration / backfill - NOT done in this additive pass):
   //  - email/username are globally @unique; making them tenant-scoped composite
@@ -267,6 +271,7 @@ model Table {
   company Company @relation(fields: [companyId], references: [id])
   branch  Branch  @relation(fields: [branchId], references: [id])
   orders  Order[]
+  reservations Reservation[]
 
   @@unique([branchId, number])
   @@index([companyId])
@@ -288,6 +293,7 @@ model Reservation {
   id           Int               @id @default(autoincrement())
   companyId    Int
   branchId     Int
+  tableId      Int?
   customerName String
   phone        String?
   email        String?
@@ -300,9 +306,11 @@ model Reservation {
 
   company Company @relation(fields: [companyId], references: [id])
   branch  Branch  @relation(fields: [branchId], references: [id])
+  table   Table?  @relation(fields: [tableId], references: [id], onDelete: SetNull)
 
   @@index([companyId])
   @@index([branchId])
+  @@index([tableId])
   @@index([date])
   @@index([status])
 }
@@ -979,10 +987,54 @@ model CashShift {
   user         User           @relation(fields: [userId], references: [id])
   movements    CashMovement[]
   counts       CashCount[]
+  depositLinks BankDepositShift[]
 
   @@index([companyId, cashRegisterId])
   @@index([userId])
   @@index([cashRegisterId])
+}
+
+model BankDeposit {
+  id             Int               @id @default(autoincrement())
+  companyId      Int
+  date           DateTime
+  amount         Decimal           @db.Decimal(10, 2)
+  bankAccount    String
+  reference      String
+  notes          String?
+  status         BankDepositStatus @default(ACTIVE)
+  createdById    Int
+  createdAt      DateTime          @default(now())
+  reversedAt     DateTime?
+  reversedById   Int?
+  reversalReason String?
+
+  company    Company            @relation(fields: [companyId], references: [id])
+  createdBy  User               @relation("BankDepositCreatedBy", fields: [createdById], references: [id])
+  reversedBy User?              @relation("BankDepositReversedBy", fields: [reversedById], references: [id])
+  shifts     BankDepositShift[]
+
+  @@unique([companyId, reference])
+  @@index([companyId, date])
+  @@index([status])
+}
+
+model BankDepositShift {
+  id        Int @id @default(autoincrement())
+  depositId Int
+  shiftId   Int
+
+  deposit BankDeposit @relation(fields: [depositId], references: [id], onDelete: Restrict)
+  shift   CashShift   @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+
+  @@unique([depositId, shiftId])
+  @@index([shiftId])
+  @@index([depositId])
+}
+
+enum BankDepositStatus {
+  ACTIVE
+  REVERSED
 }
 
 model CashCount {
@@ -1255,11 +1307,18 @@ model CateringPayment {
   reference       String?
   type            CateringPaymentType @default(ADVANCE)
   date            DateTime            @default(now())
+  status          SalesPaymentStatus  @default(ACTIVE)
+  reversedAt      DateTime?
+  reversedById    Int?
+  reversalReason  String?
 
   event         CateringEvent @relation(fields: [cateringEventId], references: [id], onDelete: Restrict)
   paymentMethod PaymentMethod @relation(fields: [paymentMethodId], references: [id])
+  reversedBy    User?         @relation("CateringPaymentReversedBy", fields: [reversedById], references: [id])
 
   @@index([cateringEventId])
+  @@index([status])
+  @@index([reversedById])
 }
 
 enum CateringPaymentType {
@@ -1559,6 +1618,10 @@ model ProductionOrderItem {
   unit               String?
   unitCost           Decimal @default(0) @db.Decimal(18, 6) // Costo unitario al consumir (promedio ponderado)
   totalCost          Decimal @default(0) @db.Decimal(18, 6)
+  // Exact FIFO portions consumed when the order is finished. Required to restore
+  // the original layer costs/order on cancellation instead of reopening one
+  // averaged layer. Null on legacy/uncompleted orders.
+  consumedLayers     Json?
 
   productionOrder  ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
   componentProduct Product         @relation("ProductProductionOrderItems", fields: [componentProductId], references: [id])

@@ -177,6 +177,9 @@ export class WarehouseService {
     }
 
     static async delete(id: number, companyId: number) {
+        const warehouse = await prisma.warehouse.findFirst({ where: { id, companyId }, select: { id: true } });
+        if (!warehouse) throw new Error('Warehouse not found');
+
         // Check if warehouse has stock
         const stocks = await prisma.stock.findFirst({
             where: { warehouseId: id, warehouse: { companyId } }

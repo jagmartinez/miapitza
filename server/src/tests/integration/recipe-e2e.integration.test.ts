@@ -303,12 +303,13 @@ describe('Recipe inventory flows (integration)', () => {
         );
         expect(outstanding).toBeCloseTo(4, 6);
 
-        // DELIVERED is an operational status, not proof that the payment still
-        // exists. Removing the last payment must reopen and reverse the order.
+        // DELIVERED is an operational fact, not proof that the payment still
+        // exists. Removing the last payment reverses the financial close while
+        // preserving that the food was delivered.
         await PaymentService.delete(secondPayment.id, companyId, userId, 'Second integration refund');
         expect(await quantity(saleIngredientId)).toBeCloseTo(100, 6);
         const reopened = await prisma.order.findUnique({ where: { id: orderId } });
-        expect(reopened?.status).toBe('OPEN');
+        expect(reopened?.status).toBe('DELIVERED');
         expect(reopened?.closedAt).toBeNull();
     });
 
@@ -845,5 +846,88 @@ describe('Recipe inventory flows (integration)', () => {
         expect(Number((await prisma.inventoryBatch.findFirst({
             where: { productId: output.id, sourceRef: `PROD-${later.id}` }
         }))?.remainingQty)).toBeCloseTo(5, 6);
+    });
+
+    it('restores every original FIFO input layer when finished production is cancelled', async () => {
+        await prisma.company.update({ where: { id: companyId }, data: { costingMethod: 'FIFO' } });
+        const [ingredient, output] = await Promise.all([
+            prisma.product.create({
+                data: {
+                    companyId, categoryId, name: `FIFO cancel ingredient ${suffix}`,
+                    sku: `FIFO-CANCEL-IN-${suffix}`, unit: 'g', baseUnitId: gramUnitId,
+                    type: 'INGREDIENT', cost: 5, currentAverageCost: 5
+                }
+            }),
+            prisma.product.create({
+                data: {
+                    companyId, categoryId, name: `FIFO cancel output ${suffix}`,
+                    sku: `FIFO-CANCEL-OUT-${suffix}`, unit: 'unidad', baseUnitId: unitUnitId,
+                    type: 'INTERMEDIATE', cost: 1, currentAverageCost: 1
+                }
+            })
+        ]);
+        await prisma.stock.createMany({ data: [
+            { companyId, warehouseId, productId: ingredient.id, quantity: 10 },
+            { companyId, warehouseId, productId: output.id, quantity: 0 }
+        ] });
+        const firstDate = new Date('2025-01-01T00:00:00.000Z');
+        const secondDate = new Date('2025-02-01T00:00:00.000Z');
+        await prisma.inventoryBatch.createMany({ data: [
+            {
+                companyId, warehouseId, productId: ingredient.id, unitCost: 2,
+                originalQty: 5, remainingQty: 5, sourceType: 'PURCHASE',
+                sourceRef: `FIFO-PO-A-${suffix}`, createdAt: firstDate
+            },
+            {
+                companyId, warehouseId, productId: ingredient.id, unitCost: 8,
+                originalQty: 5, remainingQty: 5, sourceType: 'PURCHASE',
+                sourceRef: `FIFO-PO-B-${suffix}`, createdAt: secondDate
+            }
+        ] });
+        const recipe = await ProductionRecipeService.create(companyId, {
+            productId: output.id,
+            name: `FIFO cancel recipe ${suffix}`,
+            yieldQuantity: 1,
+            yieldUnitId: unitUnitId,
+            activate: true,
+            components: [{
+                componentProductId: ingredient.id,
+                quantity: 6,
+                unitId: gramUnitId,
+                unit: 'g'
+            }]
+        }, userId);
+        const order = await ProductionOrderService.create(companyId, {
+            productId: output.id,
+            recipeId: recipe.id,
+            plannedQuantity: 1,
+            warehouseId,
+            branchId,
+            status: 'PENDING'
+        }, userId);
+
+        const finished = await ProductionOrderService.finish(order.id, companyId, userId, {});
+        expect(Number(finished.realCost)).toBeCloseTo(18, 6); // 5@2 + 1@8
+        const saved = await prisma.productionOrderItem.findFirstOrThrow({
+            where: { productionOrderId: order.id }
+        });
+        expect(Array.isArray(saved.consumedLayers)).toBe(true);
+
+        await ProductionOrderService.cancel(order.id, companyId, userId, 'Exact FIFO rollback');
+        const restored = await prisma.inventoryBatch.groupBy({
+            by: ['sourceRef'],
+            where: {
+                companyId, warehouseId, productId: ingredient.id,
+                sourceRef: { in: [`FIFO-PO-A-${suffix}`, `FIFO-PO-B-${suffix}`] }
+            },
+            _sum: { remainingQty: true }
+        });
+        const byRef = new Map(restored.map((row) => [row.sourceRef, Number(row._sum.remainingQty)]));
+        expect(byRef.get(`FIFO-PO-A-${suffix}`)).toBeCloseTo(5, 6);
+        expect(byRef.get(`FIFO-PO-B-${suffix}`)).toBeCloseTo(5, 6);
+        expect(await quantity(ingredient.id)).toBeCloseTo(10, 6);
+        expect(await quantity(output.id)).toBeCloseTo(0, 6);
+
+        await prisma.company.update({ where: { id: companyId }, data: { costingMethod: 'WEIGHTED_AVERAGE' } });
     });
 });

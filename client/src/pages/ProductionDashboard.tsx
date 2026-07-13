@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useCurrency } from '../hooks/useCurrency';
 import { getUserRoleNames } from '../utils/authz';
 import { formatCurrencyGrouped } from '../utils/currency';
+import { formatLocalDateInput } from '../utils/dateInput';
 import Button from '../components/Button';
 import Select from '../components/Select';
 import type { SingleValue } from 'react-select';
@@ -76,10 +77,10 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('es-NI
 
 const yieldTone = (pct: number) => (pct >= 100 ? 'green' : pct >= 90 ? 'amber' : 'red');
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const todayStr = () => formatLocalDateInput();
 const monthStartStr = () => {
     const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+    return formatLocalDateInput(new Date(d.getFullYear(), d.getMonth(), 1));
 };
 
 function apiErrorMessage(error: unknown): string {

@@ -4,16 +4,20 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import { useNavigate } from 'react-router-dom';
-import { cashRegistersAPI, cashShiftsAPI } from '../services/api';
+import { branchesAPI, cashRegistersAPI, cashShiftsAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
+import Select from '../components/Select';
 import LoadingSpinner from '../components/LoadingSpinner';
 import {
     Wallet, Unlock, History, Plus,
     Search, Calendar, User, ArrowRight,
     Clock, Building2, Settings
 } from 'lucide-react';
-import type { CashRegister, CashShift } from '../types';
+import type { Branch, CashRegister, CashShift } from '../types';
+import type { SingleValue } from 'react-select';
+import { useCurrency } from '../hooks/useCurrency';
+import { formatLocalDateInput } from '../utils/dateInput';
 import './CashRegisters.css';
 
 export default function CashRegisters() {
@@ -21,6 +25,7 @@ export default function CashRegisters() {
     const { confirm } = useConfirmDialog();
     const { error: showError, warning: showWarning } = useAppToast();
     const navigate = useNavigate();
+    const { formatMoney } = useCurrency();
     const canCreateRegister = hasAnyRole(user, ['ADMIN', 'SUPERADMIN']);
     const [registers, setRegisters] = useState<CashRegister[]>([]);
     const [shifts, setShifts] = useState<CashShift[]>([]);
@@ -32,10 +37,10 @@ export default function CashRegisters() {
     const [startDate, setStartDate] = useState(() => {
         const d = new Date();
         d.setDate(d.getDate() - 7);
-        return d.toISOString().split('T')[0];
+        return formatLocalDateInput(d);
     });
     const [endDate, setEndDate] = useState(() => {
-        return new Date().toISOString().split('T')[0];
+        return formatLocalDateInput();
     });
 
     // Open Shift Modal
@@ -46,6 +51,8 @@ export default function CashRegisters() {
     // Create Register Modal
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [newRegisterName, setNewRegisterName] = useState('');
+    const [newRegisterBranchId, setNewRegisterBranchId] = useState(() => user?.branchId ? String(user.branchId) : '');
+    const [branches, setBranches] = useState<Branch[]>([]);
     const [activeTab, setActiveTab] = useState<'general' | 'configuracion'>('general');
 
     const loadRegisters = useCallback(async () => {
@@ -59,6 +66,22 @@ export default function CashRegisters() {
             setLoading(false);
         }
     }, []);
+
+    useEffect(() => {
+        if (user?.branchId) return;
+        let cancelled = false;
+        branchesAPI.getAll({ status: 'ACTIVE' })
+            .then((response) => {
+                if (cancelled) return;
+                const rows = (response.data.data || []) as Branch[];
+                setBranches(rows);
+                if (rows.length === 1) setNewRegisterBranchId(String(rows[0].id));
+            })
+            .catch(() => {
+                if (!cancelled) showError('No se pudieron cargar las sucursales.');
+            });
+        return () => { cancelled = true; };
+    }, [showError, user?.branchId]);
 
     const loadShifts = useCallback(async () => {
         try {
@@ -89,14 +112,26 @@ export default function CashRegisters() {
             showWarning('Solo administradores pueden crear cajas registradoras.');
             return;
         }
-        const payload: { name: string; branchId?: number } = { name: newRegisterName };
+        if (!newRegisterName.trim()) {
+            showWarning('Indique el nombre de la caja.');
+            return;
+        }
+        if (!user?.branchId && !newRegisterBranchId) {
+            showWarning('Seleccione la sucursal de la caja.');
+            setActiveTab('configuracion');
+            return;
+        }
+        const payload: { name: string; branchId?: number } = { name: newRegisterName.trim() };
         if (user?.branchId) {
             payload.branchId = user.branchId;
+        } else {
+            payload.branchId = Number(newRegisterBranchId);
         }
         try {
             await cashRegistersAPI.create(payload);
             setIsCreateModalOpen(false);
             setNewRegisterName('');
+            setNewRegisterBranchId(user?.branchId ? String(user.branchId) : '');
             loadRegisters();
         } catch (error) {
             console.error('Error creating register:', error);
@@ -161,10 +196,6 @@ export default function CashRegisters() {
         } catch (error) {
             console.error('Error getting active shift:', error);
         }
-    };
-
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('es-NI', { style: 'currency', currency: 'NIO', minimumFractionDigits: 0 }).format(amount);
     };
 
     const selectedRegister = selectedRegisterId
@@ -367,7 +398,7 @@ export default function CashRegisters() {
                                         <div className="shift-amount-footer">
                                             <div className="amount-display">
                                                 <span className="label">Saldo Inicial</span>
-                                                <span className="value">{formatCurrency(Number(shift.startAmount))}</span>
+                                                <span className="value">{formatMoney(Number(shift.startAmount))}</span>
                                             </div>
                                             {shift.endDate && (
                                                 <div className={`amount-display ${Number(shift.difference) >= 0 ? 'profit' : 'loss'}`}>
@@ -375,7 +406,7 @@ export default function CashRegisters() {
                                                         Diferencia
                                                     </span>
                                                     <span className="value">
-                                                        {formatCurrency(Math.abs(Number(shift.difference)))}
+                                                        {formatMoney(Math.abs(Number(shift.difference)))}
                                                     </span>
                                                 </div>
                                             )}
@@ -438,10 +469,24 @@ export default function CashRegisters() {
                         {activeTab === 'configuracion' && (
                             <div className="modal-section">
                                 <h3 className="section-title-v2">Ubicación</h3>
-                                <div className="modal-input-group">
-                                    <label className="modal-input-label" htmlFor="register-branch">Sucursal</label>
-                                    <input id="register-branch" type="text" className="modal-standard-input" value={user?.branch?.name || 'Sucursal Principal'} disabled />
-                                </div>
+                                {user?.branchId ? (
+                                    <div className="modal-input-group">
+                                        <label className="modal-input-label" htmlFor="register-branch">Sucursal</label>
+                                        <input id="register-branch" type="text" className="modal-standard-input" value={user.branch?.name || `Sucursal #${user.branchId}`} disabled />
+                                    </div>
+                                ) : (
+                                    <Select
+                                        variant="modal"
+                                        label="Sucursal"
+                                        options={branches.map((branch) => ({ value: String(branch.id), label: branch.name }))}
+                                        value={branches
+                                            .map((branch) => ({ value: String(branch.id), label: branch.name }))
+                                            .find((option) => option.value === newRegisterBranchId) || null}
+                                        onChange={(option: SingleValue<{ value: string; label: string }>) =>
+                                            setNewRegisterBranchId(option?.value || '')}
+                                        isSearchable
+                                    />
+                                )}
                             </div>
                         )}
                     </div>

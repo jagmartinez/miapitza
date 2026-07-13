@@ -7,7 +7,7 @@ export default defineConfig({
         // Bind on both IPv4 and IPv6 (Windows sometimes resolves localhost to 127.0.0.1
         // instead of ::1, which would otherwise refuse the connection).
         host: '127.0.0.1',
-        port: 3000,
+        port: 5173,
         strictPort: true,
         // Put HMR on its own dedicated port so it can never collide with the /api
         // proxy upgrade path. 24678 is Vite's default.
@@ -25,10 +25,15 @@ export default defineConfig({
             interval: 300,
         },
         proxy: {
-            // The application WebSocket connects directly to ws://localhost:3001
+            // The application WebSocket connects directly to ws://localhost:3000
             // (see VITE_WS_URL), so we intentionally do NOT enable ws: true here.
             '/api': {
-                target: 'http://localhost:3001',
+                target: 'http://localhost:3000',
+                changeOrigin: true,
+                secure: false
+            },
+            '/uploads': {
+                target: 'http://localhost:3000',
                 changeOrigin: true,
                 secure: false
             }

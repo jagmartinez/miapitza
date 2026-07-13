@@ -62,7 +62,17 @@ export class ProductionRecipeService {
 
     static recipeInclude() {
         return {
-            product: { select: { id: true, name: true, sku: true, type: true, unit: true, baseUnitId: true } },
+            product: {
+                select: {
+                    id: true,
+                    name: true,
+                    sku: true,
+                    type: true,
+                    unit: true,
+                    baseUnitId: true,
+                    baseUnit: { select: { id: true, name: true, abbreviation: true } }
+                }
+            },
             yieldUnit: { select: { id: true, name: true, abbreviation: true } },
             createdBy: { select: { id: true, name: true } },
             components: {
@@ -309,7 +319,8 @@ export class ProductionRecipeService {
         companyId: number,
         outputProductId: number,
         componentProductIds: number[],
-        excludeRecipeId?: number
+        excludeRecipeId?: number,
+        db: Tx | typeof prisma = prisma
     ): Promise<void> {
         // Direct self-reference
         if (componentProductIds.includes(outputProductId)) {
@@ -328,7 +339,7 @@ export class ProductionRecipeService {
             if (visited.has(productId)) return;
             visited.add(productId);
 
-            const activeRecipe = await prisma.productionRecipe.findFirst({
+            const activeRecipe = await db.productionRecipe.findFirst({
                 where: {
                     productId,
                     companyId,
@@ -353,8 +364,12 @@ export class ProductionRecipeService {
     // Validation helpers
     // ==========================================
 
-    private static async validateOutputProduct(productId: number, companyId: number) {
-        const product = await prisma.product.findFirst({ where: { id: productId, companyId } });
+    private static async validateOutputProduct(
+        productId: number,
+        companyId: number,
+        db: Tx | typeof prisma = prisma
+    ) {
+        const product = await db.product.findFirst({ where: { id: productId, companyId, active: true } });
         if (!product) throw new Error('Producto de salida no encontrado.');
         if (!PRODUCIBLE_TYPES.includes(product.type as typeof PRODUCIBLE_TYPES[number])) {
             throw new Error(
@@ -365,7 +380,11 @@ export class ProductionRecipeService {
         return product;
     }
 
-    private static async validateComponents(companyId: number, components: RecipeComponentInput[]) {
+    private static async validateComponents(
+        companyId: number,
+        components: RecipeComponentInput[],
+        db: Tx | typeof prisma = prisma
+    ) {
         if (!components || components.length === 0) {
             throw new Error('La receta debe tener al menos un componente.');
         }
@@ -373,8 +392,8 @@ export class ProductionRecipeService {
         if (new Set(ids).size !== ids.length) {
             throw new Error('La receta tiene componentes duplicados.');
         }
-        const products = await prisma.product.findMany({
-            where: { id: { in: ids }, companyId },
+        const products = await db.product.findMany({
+            where: { id: { in: ids }, companyId, active: true },
             select: { id: true, name: true, unit: true }
         });
         const found = new Set(products.map((p) => p.id));
@@ -388,8 +407,8 @@ export class ProductionRecipeService {
         }
         const unitIds = components.flatMap(component => component.unitId ? [component.unitId] : []);
         const units = unitIds.length > 0
-            ? await prisma.unitOfMeasure.findMany({
-                where: { companyId, id: { in: [...new Set(unitIds)] } },
+            ? await db.unitOfMeasure.findMany({
+                where: { companyId, id: { in: [...new Set(unitIds)] }, active: true },
                 select: { id: true, abbreviation: true }
             })
             : [];
@@ -401,8 +420,43 @@ export class ProductionRecipeService {
         for (const c of components) {
             const prod = products.find((p) => p.id === c.componentProductId)!;
             const unitAbbr = c.unitId ? unitById.get(c.unitId)! : c.unit || prod.unit;
-            await UnitConversionService.convert(c.componentProductId, companyId, Number(c.quantity), unitAbbr);
+            await UnitConversionService.convert(c.componentProductId, companyId, Number(c.quantity), unitAbbr, db as Tx);
         }
+    }
+
+    private static async validateYield(
+        companyId: number,
+        productId: number,
+        yieldQuantity: number,
+        yieldUnitId?: number | null,
+        db: Tx | typeof prisma = prisma
+    ): Promise<void> {
+        if (!Number.isFinite(yieldQuantity) || yieldQuantity <= 0) {
+            throw new Error('El rendimiento (yieldQuantity) debe ser un número finito mayor a 0.');
+        }
+
+        let unitAbbreviation: string | undefined;
+        if (yieldUnitId != null) {
+            const yieldUnit = await db.unitOfMeasure.findFirst({
+                where: { id: yieldUnitId, companyId, active: true },
+                select: { abbreviation: true }
+            });
+            if (!yieldUnit) {
+                throw new Error('La unidad de rendimiento no existe, está inactiva o no pertenece a la empresa.');
+            }
+            unitAbbreviation = yieldUnit.abbreviation;
+        } else {
+            const output = await db.product.findFirst({
+                where: { id: productId, companyId },
+                select: { unit: true, baseUnit: { select: { abbreviation: true } } }
+            });
+            if (!output) throw new Error('Producto de salida no encontrado.');
+            unitAbbreviation = output.baseUnit?.abbreviation || output.unit;
+        }
+
+        // This validates dimensional compatibility and rejects unsafe implicit 1:1
+        // conversions before the recipe can be persisted or activated.
+        await UnitConversionService.convert(productId, companyId, yieldQuantity, unitAbbreviation, db as Tx);
     }
 
     // ==========================================
@@ -412,25 +466,38 @@ export class ProductionRecipeService {
     static async create(companyId: number, data: CreateRecipeInput, userId?: number) {
         const product = await this.validateOutputProduct(data.productId, companyId);
         await this.validateComponents(companyId, data.components);
+        await this.validateYield(companyId, data.productId, data.yieldQuantity, data.yieldUnitId);
         await this.assertNoCircularDependency(
             companyId,
             data.productId,
             data.components.map((c) => c.componentProductId)
         );
 
-        if (!(data.yieldQuantity > 0)) {
-            throw new Error('El rendimiento (yieldQuantity) debe ser mayor a 0.');
-        }
-
-        // Next version for this product
-        const last = await prisma.productionRecipe.findFirst({
-            where: { companyId, productId: data.productId },
-            orderBy: { version: 'desc' },
-            select: { version: true }
-        });
-        const version = (last?.version || 0) + 1;
-
         const created = await prisma.$transaction(async (tx) => {
+            // Serialize recipe graph mutations per tenant. Locking only the output
+            // product would let concurrent A->B and B->A activations both pass the
+            // cycle check and commit a circular dependency.
+            await tx.$queryRaw`SELECT id FROM \`Company\` WHERE id = ${companyId} FOR UPDATE`;
+            await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${data.productId} AND companyId = ${companyId} FOR UPDATE`;
+            await this.validateOutputProduct(data.productId, companyId, tx);
+            await this.validateComponents(companyId, data.components, tx);
+            await this.validateYield(companyId, data.productId, data.yieldQuantity, data.yieldUnitId, tx);
+            if (data.activate) {
+                await this.assertNoCircularDependency(
+                    companyId,
+                    data.productId,
+                    data.components.map((component) => component.componentProductId),
+                    undefined,
+                    tx
+                );
+            }
+            const last = await tx.productionRecipe.findFirst({
+                where: { companyId, productId: data.productId },
+                orderBy: { version: 'desc' },
+                select: { version: true }
+            });
+            const version = (last?.version || 0) + 1;
+
             // If activating, deactivate other active versions for this product.
             if (data.activate) {
                 await tx.productionRecipe.updateMany({
@@ -468,7 +535,7 @@ export class ProductionRecipeService {
             AuditLogService.log({
                 companyId, userId, entityType: 'ProductionRecipe', entityId: created.id,
                 action: 'CREATE',
-                details: { productId: data.productId, version, status: created.status, components: data.components.length }
+                details: { productId: data.productId, version: created.version, status: created.status, components: data.components.length }
             }).catch((err) => console.error('[ProductionRecipeService] audit log failed:', err));
         }
 
@@ -481,8 +548,8 @@ export class ProductionRecipeService {
             include: { components: true }
         });
         if (!existing) throw new Error('Receta de producción no encontrada');
-        if (existing.status === 'INACTIVE') {
-            throw new Error('No se puede editar una receta inactiva. Cree una nueva versión.');
+        if (existing.status !== 'DRAFT') {
+            throw new Error('Solo se pueden editar recetas en borrador. Cree una nueva versión para conservar la trazabilidad.');
         }
 
         if (data.components) {
@@ -494,11 +561,22 @@ export class ProductionRecipeService {
                 id
             );
         }
-        if (data.yieldQuantity !== undefined && !(data.yieldQuantity > 0)) {
-            throw new Error('El rendimiento (yieldQuantity) debe ser mayor a 0.');
+        if (data.yieldQuantity !== undefined || data.yieldUnitId !== undefined) {
+            await this.validateYield(
+                companyId,
+                existing.productId,
+                data.yieldQuantity ?? Number(existing.yieldQuantity),
+                data.yieldUnitId === undefined ? existing.yieldUnitId : data.yieldUnitId
+            );
         }
 
         await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`ProductionRecipe\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const locked = await tx.productionRecipe.findFirst({ where: { id, companyId } });
+            if (!locked) throw new Error('Receta de producción no encontrada');
+            if (locked.status !== 'DRAFT') {
+                throw new Error('Solo se pueden editar recetas en borrador. Cree una nueva versión para conservar la trazabilidad.');
+            }
             await tx.productionRecipe.update({
                 where: { id },
                 data: {
@@ -536,27 +614,44 @@ export class ProductionRecipeService {
 
     /** Change recipe status: ACTIVE deactivates other active versions of the same product. */
     static async setStatus(id: number, companyId: number, status: 'DRAFT' | 'ACTIVE' | 'INACTIVE', userId?: number) {
-        const recipe = await prisma.productionRecipe.findFirst({
-            where: { id, companyId },
-            include: { components: { select: { componentProductId: true } } }
-        });
-        if (!recipe) throw new Error('Receta de producción no encontrada');
-
-        if (status === 'ACTIVE') {
-            if (recipe.components.length === 0) {
-                throw new Error('No se puede activar una receta sin componentes.');
-            }
-            // Re-validate circularity against currently active recipes.
-            await this.assertNoCircularDependency(
-                companyId,
-                recipe.productId,
-                recipe.components.map((c) => c.componentProductId),
-                id
-            );
-        }
-
         await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`Company\` WHERE id = ${companyId} FOR UPDATE`;
+            await tx.$queryRaw`SELECT id FROM \`ProductionRecipe\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const recipe = await tx.productionRecipe.findFirst({
+                where: { id, companyId },
+                include: { components: true }
+            });
+            if (!recipe) throw new Error('Receta de producción no encontrada');
+
+            const allowed: Record<typeof recipe.status, Array<typeof recipe.status>> = {
+                DRAFT: ['DRAFT', 'ACTIVE', 'INACTIVE'],
+                ACTIVE: ['ACTIVE', 'INACTIVE'],
+                INACTIVE: ['INACTIVE', 'ACTIVE']
+            };
+            if (!allowed[recipe.status].includes(status)) {
+                throw new Error(`Transición de receta inválida: ${recipe.status} -> ${status}.`);
+            }
+
+            await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${recipe.productId} AND companyId = ${companyId} FOR UPDATE`;
             if (status === 'ACTIVE') {
+                if (recipe.components.length === 0) throw new Error('No se puede activar una receta sin componentes.');
+                const components = recipe.components.map((component) => ({
+                    componentProductId: component.componentProductId,
+                    quantity: Number(component.quantity),
+                    unitId: component.unitId,
+                    unit: component.unit,
+                    notes: component.notes
+                }));
+                await this.validateOutputProduct(recipe.productId, companyId, tx);
+                await this.validateComponents(companyId, components, tx);
+                await this.validateYield(companyId, recipe.productId, Number(recipe.yieldQuantity), recipe.yieldUnitId, tx);
+                await this.assertNoCircularDependency(
+                    companyId,
+                    recipe.productId,
+                    components.map((component) => component.componentProductId),
+                    id,
+                    tx
+                );
                 await tx.productionRecipe.updateMany({
                     where: { companyId, productId: recipe.productId, status: 'ACTIVE', id: { not: id } },
                     data: { status: 'INACTIVE' }
@@ -604,15 +699,20 @@ export class ProductionRecipeService {
     }
 
     static async remove(id: number, companyId: number, userId?: number) {
-        const recipe = await prisma.productionRecipe.findFirst({ where: { id, companyId } });
-        if (!recipe) throw new Error('Receta de producción no encontrada');
-
-        const usedByOrders = await prisma.productionOrder.count({ where: { recipeId: id, companyId } });
-        if (usedByOrders > 0) {
-            throw new Error('No se puede eliminar una receta utilizada por órdenes de producción. Desactívela en su lugar.');
-        }
-
-        await prisma.productionRecipe.delete({ where: { id } });
+        const recipe = await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`ProductionRecipe\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const locked = await tx.productionRecipe.findFirst({ where: { id, companyId } });
+            if (!locked) throw new Error('Receta de producción no encontrada');
+            if (locked.status === 'ACTIVE') {
+                throw new Error('No se puede eliminar una receta activa. Desactívela primero.');
+            }
+            const usedByOrders = await tx.productionOrder.count({ where: { recipeId: id, companyId } });
+            if (usedByOrders > 0) {
+                throw new Error('No se puede eliminar una receta utilizada por órdenes de producción. Desactívela en su lugar.');
+            }
+            await tx.productionRecipe.delete({ where: { id } });
+            return locked;
+        });
 
         if (userId) {
             AuditLogService.log({

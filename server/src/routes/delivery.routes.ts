@@ -19,6 +19,7 @@ import { OPERATIONS, ADMINS } from '../constants/roles';
 import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
 import { getErrorMessage } from '../utils/error';
+import { assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
 
 const router = Router();
 
@@ -112,6 +113,14 @@ router.post('/webhook/:platform', async (req: Request, res: Response, next: Next
 router.put('/:orderId/status', authMiddleware, requireRole(...OPERATIONS), validate(s.updateDeliveryStatus), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { status, platform, externalOrderId } = req.body;
+        const orderId = Number(req.params.orderId);
+        const target = await DeliveryService.assertStatusUpdateTarget(
+            req.user!.companyId,
+            orderId,
+            platform,
+            externalOrderId
+        );
+        assertBranchAccess(req.user!, target.branchId);
 
         // Send status update to platform
         const result = await DeliveryService.sendStatusUpdate(
@@ -126,7 +135,8 @@ router.put('/:orderId/status', authMiddleware, requireRole(...OPERATIONS), valid
             data: result
         });
     } catch (error: unknown) {
-        next({ statusCode: 500, message: getErrorMessage(error) });
+        if (error instanceof BranchScopeError) return next(error);
+        next({ statusCode: 501, message: getErrorMessage(error) });
     }
 });
 

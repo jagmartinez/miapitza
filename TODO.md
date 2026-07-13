@@ -1,5 +1,9 @@
 # 📋 TODO - Plan de Actualización del Sistema de Restaurante
 
+> **Documento histórico.** Su porcentaje y sus checks no representan el estado
+> de producción vigente. Para decisiones de release use
+> `docs/CERTIFICACION_TRANSACCIONAL_E2E_2026-07-12.md`.
+
 > **Objetivo**: Llevar el proyecto al siguiente nivel con mejoras de funcionalidad, rendimiento, seguridad y experiencia de usuario.
 > 
 > **Estado Actual**: ~75% Completado (basado en auditoría real de features) | **Última Actualización**: 2026-04-04

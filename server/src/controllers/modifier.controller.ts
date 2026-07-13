@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { ModifierService } from '../services/modifier.service';
 import { getErrorMessage } from '../utils/error';
+import { MenuItemService } from '../services/menu-item.service';
+import { assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
 
 export class ModifierController {
 
@@ -94,12 +96,14 @@ export class ModifierController {
         try {
             const { menuItemId, groupId } = req.body;
             const companyId = req.user!.companyId;
+            assertBranchAccess(req.user!, await MenuItemService.getOwnerBranch(Number(menuItemId), companyId));
             await ModifierService.assignGroupToMenuItem(menuItemId, groupId, companyId);
             res.json({
                 success: true,
                 message: 'Grupo asignado al platillo exitosamente'
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -108,12 +112,14 @@ export class ModifierController {
         try {
             const { menuItemId, groupId } = req.body;
             const companyId = req.user!.companyId;
+            assertBranchAccess(req.user!, await MenuItemService.getOwnerBranch(Number(menuItemId), companyId));
             await ModifierService.removeGroupFromMenuItem(menuItemId, groupId, companyId);
             res.json({
                 success: true,
                 message: 'Grupo removido del platillo exitosamente'
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }

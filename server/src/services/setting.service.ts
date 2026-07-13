@@ -1,11 +1,28 @@
+import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { isValidTimeZone } from '../utils/timezone';
+
+type SettingClient = Pick<Prisma.TransactionClient, 'setting'>;
+
+export const DEFAULT_COMPANY_SETTINGS: Readonly<Record<string, string>> = Object.freeze({
+    restaurant_name: 'Mi Restaurante',
+    currency: 'NIO',
+    currency_symbol: 'C$',
+    currency_name: 'Córdoba Nicaragüense',
+    tax_rate: '15',
+    timezone: 'America/Managua'
+});
 
 export class SettingService {
+    private static readonly TIMEZONE_CACHE_TTL_MS = 60_000;
+    private static readonly timezoneCache = new Map<number, { value: string; expiresAt: number }>();
+
     static async getAll(companyId: number) {
         // Use prefix to simulate multi-tenancy on a global unique name field
         const prefix = `${companyId}_`;
         const settings = await prisma.setting.findMany({
             where: {
+                companyId,
                 name: {
                     startsWith: prefix
                 }
@@ -64,6 +81,9 @@ export class SettingService {
                 throw new Error('La expiracion de contrasena debe estar entre 0 y 3650 dias');
             }
         }
+        if (name === 'timezone' && !isValidTimeZone(value.trim())) {
+            throw new Error('La zona horaria configurada no es válida');
+        }
     }
 
     /** Shared cash/arqueo tolerance. Default C$1 preserves the historical arqueo contract. */
@@ -71,6 +91,26 @@ export class SettingService {
         const settings = await this.getAll(companyId);
         const configured = Number(settings.cash_reconciliation_tolerance);
         return Number.isFinite(configured) && configured >= 0 ? configured : 1;
+    }
+
+    static async getTimezone(companyId: number): Promise<string> {
+        const cached = this.timezoneCache.get(companyId);
+        if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+        const name = `${companyId}_timezone`;
+        const setting = await prisma.setting.findUnique({
+            where: { companyId_name: { companyId, name } },
+            select: { value: true }
+        });
+        const configured = setting?.value?.trim();
+        const value = configured && isValidTimeZone(configured)
+            ? configured
+            : DEFAULT_COMPANY_SETTINGS.timezone;
+        this.timezoneCache.set(companyId, {
+            value,
+            expiresAt: Date.now() + this.TIMEZONE_CACHE_TTL_MS
+        });
+        return value;
     }
 
     static async update(companyId: number, data: Record<string, string>) {
@@ -111,29 +151,31 @@ export class SettingService {
             }
         });
 
+        if (data.timezone !== undefined) this.timezoneCache.delete(companyId);
+
         return this.getAll(companyId);
+    }
+
+    /** Create only missing defaults, without overwriting tenant configuration. */
+    static async ensureDefaultsForCompany(companyId: number, client: SettingClient = prisma) {
+        const prefix = `${companyId}_`;
+        return client.setting.createMany({
+            data: Object.entries(DEFAULT_COMPANY_SETTINGS).map(([name, value]) => ({
+                companyId,
+                name: `${prefix}${name}`,
+                value
+            })),
+            skipDuplicates: true
+        });
     }
 
     /**
      * Initialize default settings if they don't exist
      */
     static async initializeDefaults() {
-        const defaults: Record<string, string> = {
-            'restaurant_name': 'Mi Restaurante',
-            'currency': 'NIO',
-            'currency_symbol': 'C$',
-            'currency_name': 'Córdoba Nicaragüense',
-            'tax_rate': '15',
-            'timezone': 'America/Managua'
-        };
-
-        const existingCount = await prisma.setting.count();
-        if (existingCount === 0) {
-            // Only initialize if at least one company exists
-            const firstCompany = await prisma.company.findFirst({ select: { id: true } });
-            if (firstCompany) {
-                await this.update(firstCompany.id, defaults);
-            }
+        const companies = await prisma.company.findMany({ select: { id: true } });
+        for (const company of companies) {
+            await this.ensureDefaultsForCompany(company.id);
         }
     }
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
+import { formatLocalDateInput } from '../utils/dateInput';
 import Button from '../components/Button';
 import Pagination from '../components/Pagination';
 import { ToastContainer } from '../components/Toast';
@@ -19,6 +20,7 @@ import {
     AlertTriangle,
     Loader2,
     Save,
+    RotateCcw,
 } from 'lucide-react';
 
 function errorMessage(error: unknown): string {
@@ -57,6 +59,19 @@ interface PendingReconciliation {
     status: string;
 }
 
+interface BankDeposit {
+    id: number;
+    date: string;
+    amount: number | string;
+    bankAccount: string;
+    reference: string;
+    status: 'ACTIVE' | 'REVERSED';
+    createdBy: { name: string };
+    reversedBy?: { name: string } | null;
+    reversalReason?: string | null;
+    shifts: Array<{ shiftId: number }>;
+}
+
 type TabKey = 'status' | 'pending' | 'deposit';
 
 const PAGE_SIZE = 20;
@@ -67,17 +82,18 @@ const BankReconciliation: React.FC = () => {
     const [pendingPage, setPendingPage] = useState(1);
     const [status, setStatus] = useState<ReconciliationStatus | null>(null);
     const [pending, setPending] = useState<PendingReconciliation[]>([]);
+    const [deposits, setDeposits] = useState<BankDeposit[]>([]);
     const [selectedShifts, setSelectedShifts] = useState<number[]>([]);
     const [loading, setLoading] = useState(false);
     const [settings, setSettings] = useState<CurrencySettings>({});
 
     const [dateRange, setDateRange] = useState({
-        startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        endDate: new Date().toISOString().split('T')[0]
+        startDate: formatLocalDateInput(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
+        endDate: formatLocalDateInput()
     });
 
     const [depositForm, setDepositForm] = useState({
-        date: new Date().toISOString().split('T')[0],
+        date: formatLocalDateInput(),
         amount: '',
         bankAccount: '',
         reference: '',
@@ -116,10 +132,20 @@ const BankReconciliation: React.FC = () => {
         }
     }, []);
 
+    const loadDeposits = useCallback(async () => {
+        try {
+            const response = await api.get('/advanced/reconciliation/deposits');
+            setDeposits(response.data.data || []);
+        } catch (error: unknown) {
+            console.error('Error loading deposits:', error);
+        }
+    }, []);
+
     useEffect(() => {
         void loadSettings();
         void loadPendingReconciliations();
-    }, [loadPendingReconciliations, loadSettings]);
+        void loadDeposits();
+    }, [loadDeposits, loadPendingReconciliations, loadSettings]);
 
     useEffect(() => {
         void loadReconciliationStatus();
@@ -146,16 +172,33 @@ const BankReconciliation: React.FC = () => {
             });
             showSuccess('Depósito registrado exitosamente');
             setDepositForm({
-                date: new Date().toISOString().split('T')[0],
+                date: formatLocalDateInput(),
                 amount: '',
                 bankAccount: '',
                 reference: '',
                 notes: ''
             });
             setSelectedShifts([]);
-            loadPendingReconciliations();
+            void loadPendingReconciliations();
+            void loadDeposits();
         } catch (error: unknown) {
             showError('Error al registrar depósito: ' + errorMessage(error));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleReverseDeposit = async (deposit: BankDeposit) => {
+        const reason = prompt(`Motivo para revertir el depósito ${deposit.reference}:`);
+        if (!reason?.trim()) return;
+        setLoading(true);
+        try {
+            await api.post(`/advanced/reconciliation/deposit/${deposit.id}/reverse`, { reason });
+            showSuccess('Depósito revertido; sus turnos vuelven a estar pendientes');
+            void loadDeposits();
+            void loadPendingReconciliations();
+        } catch (error: unknown) {
+            showError('Error al revertir depósito: ' + errorMessage(error));
         } finally {
             setLoading(false);
         }
@@ -554,6 +597,50 @@ const BankReconciliation: React.FC = () => {
                             </Button>
                         </div>
                     </form>
+
+                    <div className="data-table-wrapper" style={{ marginTop: 'var(--spacing-lg)' }}>
+                        <div className="data-table-header">Historial de depósitos</div>
+                        <div className="data-table-scroll">
+                            <table className="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th><th>Referencia</th><th>Cuenta</th>
+                                        <th className="text-right">Monto</th><th>Turnos</th><th>Estado</th><th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {deposits.map((deposit) => (
+                                        <tr key={deposit.id}>
+                                            <td>{new Date(deposit.date).toLocaleDateString()}</td>
+                                            <td>{deposit.reference}</td>
+                                            <td>{deposit.bankAccount}</td>
+                                            <td className="text-right font-semibold">{formatCurrency(Number(deposit.amount), settings)}</td>
+                                            <td>{deposit.shifts.length}</td>
+                                            <td>
+                                                <span className={`status-pill ${deposit.status === 'ACTIVE' ? 'status-success' : 'status-warning'}`}>
+                                                    {deposit.status === 'ACTIVE' ? 'Activo' : 'Revertido'}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {deposit.status === 'ACTIVE' && (
+                                                    <button type="button" className="table-action-btn danger" disabled={loading}
+                                                        onClick={() => void handleReverseDeposit(deposit)} title="Revertir depósito">
+                                                        <RotateCcw size={16} />
+                                                    </button>
+                                                )}
+                                                {deposit.status === 'REVERSED' && deposit.reversalReason && (
+                                                    <span className="text-secondary" title={deposit.reversalReason}>Reverso registrado</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {deposits.length === 0 && (
+                                        <tr><td colSpan={7} className="text-center text-secondary">Sin depósitos registrados.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

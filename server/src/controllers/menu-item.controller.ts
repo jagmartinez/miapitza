@@ -4,6 +4,10 @@ import { getErrorMessage } from '../utils/error';
 import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
 
 export class MenuItemController {
+    private static async assertMenuItemBranch(req: Request, menuItemId: number, allowGlobal: boolean) {
+        const branchId = await MenuItemService.getOwnerBranch(menuItemId, req.user!.companyId);
+        assertBranchAccess(req.user!, branchId, { allowGlobal });
+    }
 
     static async getAll(req: Request, res: Response, next: NextFunction) {
         try {
@@ -64,13 +68,21 @@ export class MenuItemController {
     static async create(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const menuItem = await MenuItemService.create(companyId, req.body);
+            const branchId = resolveBranchScope(
+                req.user!,
+                req.body.branchId ? Number(req.body.branchId) : undefined
+            );
+            const menuItem = await MenuItemService.create(companyId, {
+                ...req.body,
+                branchId: branchId ?? undefined
+            });
             res.status(201).json({
                 success: true,
                 message: 'Platillo creado exitosamente',
                 data: menuItem
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -79,13 +91,19 @@ export class MenuItemController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
-            const menuItem = await MenuItemService.update(id, companyId, req.body);
+            await MenuItemController.assertMenuItemBranch(req, id, false);
+            const updateData = { ...req.body };
+            if (req.body.branchId !== undefined) {
+                updateData.branchId = resolveBranchScope(req.user!, Number(req.body.branchId));
+            }
+            const menuItem = await MenuItemService.update(id, companyId, updateData);
             res.json({
                 success: true,
                 message: 'Platillo actualizado exitosamente',
                 data: menuItem
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -94,12 +112,14 @@ export class MenuItemController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            await MenuItemController.assertMenuItemBranch(req, id, false);
             await MenuItemService.delete(id, companyId);
             res.json({
                 success: true,
                 message: 'Platillo eliminado exitosamente'
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -109,12 +129,14 @@ export class MenuItemController {
         try {
             const menuItemId = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            await MenuItemController.assertMenuItemBranch(req, menuItemId, true);
             const recipes = await MenuItemService.getRecipes(menuItemId, companyId);
             res.json({
                 success: true,
                 data: recipes
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
@@ -123,6 +145,7 @@ export class MenuItemController {
         try {
             const menuItemId = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            await MenuItemController.assertMenuItemBranch(req, menuItemId, false);
             const recipe = await MenuItemService.addRecipe(menuItemId, companyId, req.body);
             res.status(201).json({
                 success: true,
@@ -130,6 +153,7 @@ export class MenuItemController {
                 data: recipe
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -138,6 +162,8 @@ export class MenuItemController {
         try {
             const recipeId = parseInt(req.params.recipeId);
             const companyId = req.user!.companyId;
+            const branchId = await MenuItemService.getRecipeOwnerBranch(recipeId, companyId);
+            assertBranchAccess(req.user!, branchId);
             const recipe = await MenuItemService.updateRecipe(recipeId, companyId, req.body);
             res.json({
                 success: true,
@@ -145,6 +171,7 @@ export class MenuItemController {
                 data: recipe
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -153,12 +180,15 @@ export class MenuItemController {
         try {
             const recipeId = parseInt(req.params.recipeId);
             const companyId = req.user!.companyId;
+            const branchId = await MenuItemService.getRecipeOwnerBranch(recipeId, companyId);
+            assertBranchAccess(req.user!, branchId);
             await MenuItemService.deleteRecipe(recipeId, companyId);
             res.json({
                 success: true,
                 message: 'Receta eliminada exitosamente'
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -168,12 +198,14 @@ export class MenuItemController {
         try {
             const menuItemId = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            await MenuItemController.assertMenuItemBranch(req, menuItemId, true);
             const images = await MenuItemService.getImages(menuItemId, companyId);
             res.json({
                 success: true,
                 data: images
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
@@ -182,6 +214,7 @@ export class MenuItemController {
         try {
             const menuItemId = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            await MenuItemController.assertMenuItemBranch(req, menuItemId, false);
             const { imageUrl } = req.body;
             const image = await MenuItemService.addImage(menuItemId, companyId, imageUrl);
             res.status(201).json({
@@ -190,6 +223,7 @@ export class MenuItemController {
                 data: image
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -198,12 +232,15 @@ export class MenuItemController {
         try {
             const imageId = parseInt(req.params.imageId);
             const companyId = req.user!.companyId;
+            const branchId = await MenuItemService.getImageOwnerBranch(imageId, companyId);
+            assertBranchAccess(req.user!, branchId);
             await MenuItemService.deleteImage(imageId, companyId);
             res.json({
                 success: true,
                 message: 'Imagen eliminada exitosamente'
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }

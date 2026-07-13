@@ -51,24 +51,21 @@ export class RecipeScalingService {
             const scaledQty = Number(r.quantity) * scaleFactor;
             const unitCost = effectiveUnitCost(r.product.currentAverageCost, r.product.cost);
 
-            let totalCost = 0;
             try {
                 const conv = await UnitConversionService.convert(r.productId, companyId, scaledQty, recipeUnit);
-                totalCost = Math.round(unitCost * conv.baseQuantity * 100) / 100;
-            } catch {
-                // Incompatible configured base unit: avoid an inflated 1:1 cost.
-                totalCost = 0;
+                const totalCost = Math.round(unitCost * conv.baseQuantity * 100) / 100;
+                return {
+                    productId: r.productId,
+                    productName: r.product.name,
+                    unit: r.product.unit,
+                    baseQuantity: Number(r.quantity),
+                    scaledQuantity: Math.round(scaledQty * 1000) / 1000,
+                    unitCost,
+                    totalCost
+                };
+            } catch (error) {
+                throw new Error(`No se pudo convertir la unidad "${recipeUnit}" de "${r.product.name}": ${(error as Error).message}`);
             }
-
-            return {
-                productId: r.productId,
-                productName: r.product.name,
-                unit: r.product.unit,
-                baseQuantity: Number(r.quantity),
-                scaledQuantity: Math.round(scaledQty * 1000) / 1000,
-                unitCost,
-                totalCost
-            };
         }));
 
         const totalCost = scaledIngredients.reduce((sum, i) => sum + i.totalCost, 0);
@@ -131,9 +128,8 @@ export class RecipeScalingService {
             try {
                 const conv = await UnitConversionService.convert(r.productId, companyId, Number(r.quantity), recipeUnit);
                 return unitCost * conv.baseQuantity;
-            } catch {
-                // Incompatible configured base unit: avoid an inflated 1:1 cost.
-                return 0;
+            } catch (error) {
+                throw new Error(`No se pudo convertir la unidad "${recipeUnit}" de "${r.product.name}": ${(error as Error).message}`);
             }
         }));
         const totalIngredientCost = ingredientCosts.reduce((sum, v) => sum + v, 0);

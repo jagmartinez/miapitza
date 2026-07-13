@@ -10,6 +10,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import { Plus, Building2, Edit2, CheckCircle, XCircle, FileText } from 'lucide-react';
 import type { SingleValue } from 'react-select';
 import { useAppToast } from '../context/ToastContext';
+import { resolveAssetUrl } from '../utils/assets';
 import './Companies.css';
 
 interface Company {
@@ -216,7 +217,7 @@ export default function Companies() {
                         <div className="company-card-body-new">
                             <div className="company-logo-new">
                                 {company.logo ? (
-                                    <img src={company.logo} alt={company.name} />
+                                    <img src={resolveAssetUrl(company.logo)} alt={company.name} />
                                 ) : (
                                     <Building2 size={40} />
                                 )}

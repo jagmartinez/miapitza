@@ -118,6 +118,25 @@ export class CateringController {
         }
     }
 
+    static async reversePayment(req: Request, res: Response, next: NextFunction) {
+        try {
+            const eventId = parseInt(req.params.id);
+            const paymentId = parseInt(req.params.paymentId);
+            await CateringController.assertEventBranch(req, eventId);
+            const payment = await CateringService.reversePayment(
+                eventId,
+                paymentId,
+                req.user!.companyId,
+                req.user!.userId,
+                req.body.reason
+            );
+            res.json({ success: true, data: payment });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
     // Services Catalog
     static async getAllServices(req: Request, res: Response, next: NextFunction) {
         try {

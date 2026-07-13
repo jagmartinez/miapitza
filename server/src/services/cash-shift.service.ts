@@ -125,12 +125,21 @@ export class CashShiftService {
         startAmount: number;
     }) {
         // Validate startAmount
-        if (data.startAmount < 0) {
+        if (!Number.isFinite(data.startAmount) || data.startAmount < 0) {
             throw new Error('El monto inicial no puede ser negativo');
         }
+        const startAmount = Math.round(data.startAmount * 100) / 100;
 
         // Wrap check + create in a transaction to prevent race condition
         return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            // Serialize openings for both the user and register. Without these locks,
+            // two concurrent requests can both pass the "no open shift" checks.
+            await tx.$queryRaw`SELECT id FROM \`User\` WHERE id = ${data.userId} AND companyId = ${companyId} FOR UPDATE`;
+            await tx.$queryRaw`SELECT id FROM \`CashRegister\` WHERE id = ${data.cashRegisterId} AND companyId = ${companyId} FOR UPDATE`;
+
+            const user = await tx.user.findFirst({ where: { id: data.userId, companyId, status: 'ACTIVE' }, select: { id: true } });
+            if (!user) throw new Error('Usuario no encontrado o inactivo para esta empresa');
+
             // Verify that the cash register belongs to this company
             const cashRegister = await tx.cashRegister.findFirst({
                 where: {
@@ -162,9 +171,16 @@ export class CashShiftService {
                 throw new Error('Esta caja ya tiene un turno abierto');
             }
 
+            const userActiveShift = await tx.cashShift.findFirst({
+                where: { userId: data.userId, companyId, endDate: null },
+                select: { id: true }
+            });
+            if (userActiveShift) throw new Error('El usuario ya tiene un turno de caja abierto');
+
             return await tx.cashShift.create({
                 data: {
                     ...data,
+                    startAmount,
                     companyId
                 },
                 include: {
@@ -196,6 +212,10 @@ export class CashShiftService {
     }
 
     static async close(id: number, companyId: number, endAmount: number, notes?: string) {
+        if (!Number.isFinite(endAmount) || endAmount < 0) {
+            throw new Error('El monto final debe ser un numero finito mayor o igual a 0');
+        }
+        const normalizedEndAmount = Math.round(endAmount * 100) / 100;
         // Read movements + update inside a single transaction, with a row lock on the
         // shift so two concurrent closes can't both compute against the same state.
         return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -229,13 +249,13 @@ export class CashShiftService {
             }, 0);
 
             const expectedBalance = Number(shift.startAmount) + movementTotal;
-            const difference = endAmount - expectedBalance;
+            const difference = normalizedEndAmount - expectedBalance;
 
             return await tx.cashShift.update({
                 where: { id },
                 data: {
                     endDate: new Date(),
-                    endAmount,
+                    endAmount: normalizedEndAmount,
                     difference,
                     notes
                 },
@@ -259,23 +279,12 @@ export class CashShiftService {
         supplierId?: number;
     }) {
         // Validate amount and type
-        if (!data.amount || data.amount <= 0) {
+        if (!Number.isFinite(data.amount) || data.amount <= 0) {
             throw new Error('El monto debe ser mayor a 0');
         }
+        const amount = Math.round(data.amount * 100) / 100;
         if (!['IN', 'OUT'].includes(data.type)) {
             throw new Error('Tipo de movimiento inválido');
-        }
-
-        const shift = await prisma.cashShift.findFirst({
-            where: { id: shiftId, companyId }
-        });
-
-        if (!shift) {
-            throw new Error('Turno de caja no encontrado');
-        }
-
-        if (shift.endDate) {
-            throw new Error('No se pueden agregar movimientos a turnos cerrados');
         }
 
         // If a supplier is referenced, it must belong to this company.
@@ -291,7 +300,7 @@ export class CashShiftService {
         const createData: Prisma.CashMovementUncheckedCreateInput = {
             shiftId,
             type: data.type,
-            amount: data.amount,
+            amount,
             description: data.description,
             reference: data.reference
         };
@@ -319,16 +328,15 @@ export class CashShiftService {
             createData.supplierId = data.supplierId;
         }
 
-        return await prisma.cashMovement.create({
-            data: createData,
-            include: {
-                supplier: {
-                    select: {
-                        id: true,
-                        name: true
-                    }
-                }
-            }
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            await tx.$queryRaw`SELECT id FROM \`CashShift\` WHERE id = ${shiftId} AND companyId = ${companyId} FOR UPDATE`;
+            const shift = await tx.cashShift.findFirst({ where: { id: shiftId, companyId }, select: { endDate: true } });
+            if (!shift) throw new Error('Turno de caja no encontrado');
+            if (shift.endDate) throw new Error('No se pueden agregar movimientos a turnos cerrados');
+            return tx.cashMovement.create({
+                data: createData,
+                include: { supplier: { select: { id: true, name: true } } }
+            });
         });
     }
 
@@ -345,13 +353,7 @@ export class CashShiftService {
             throw new Error('Movement not found');
         }
 
-        if (movement.shift.endDate) {
-            throw new Error('Cannot delete movements from closed shifts');
-        }
-
-        return await prisma.cashMovement.delete({
-            where: { id: movementId }
-        });
+        throw new Error('El libro de caja es inmutable; registre un movimiento compensatorio en lugar de eliminarlo');
     }
 
     // Get shift summary
@@ -376,7 +378,7 @@ export class CashShiftService {
         const totalOut = movementsOut.reduce((sum, m) => sum + Number(m.amount), 0);
 
         // Calculate sales (movements that reference an Order)
-        const totalSalesCash = movementsIn
+        const grossSalesCash = movementsIn
             .filter(
                 (m) =>
                     m.reference &&
@@ -384,9 +386,13 @@ export class CashShiftService {
                         m.description?.toLowerCase().includes('venta'))
             )
             .reduce((sum, m) => sum + Number(m.amount), 0);
+        const cashRefunds = movementsOut
+            .filter((m) => m.reference?.startsWith('REV-PAY-'))
+            .reduce((sum, m) => sum + Number(m.amount), 0);
+        const totalSalesCash = grossSalesCash - cashRefunds;
 
         const expectedBalance = Number(shift.startAmount) + totalIn - totalOut;
-        const actualBalance = shift.endAmount ? Number(shift.endAmount) : null;
+        const actualBalance = shift.endAmount !== null ? Number(shift.endAmount) : null;
         const difference = actualBalance !== null ? actualBalance - expectedBalance : null;
 
         return {
@@ -396,6 +402,8 @@ export class CashShiftService {
                 totalIn,
                 totalOut,
                 totalSalesCash,
+                grossSalesCash,
+                cashRefunds,
                 expectedBalance,
                 expectedAmount: expectedBalance, // Alias for frontend compatibility
                 actualBalance,

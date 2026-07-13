@@ -40,8 +40,11 @@ export class ReportProductionService {
                         recipeUnit
                     );
                     baseQty = conv.baseQuantity;
-                } catch {
-                    // Fallback to legacy quantity when conversion is not configured
+                } catch (error) {
+                    throw new Error(
+                        `No se pudo convertir "${recipeUnit}" para ${r.product.name} en el reporte de costos: ` +
+                        `${error instanceof Error ? error.message : String(error)}`
+                    );
                 }
 
                 return {
@@ -145,8 +148,11 @@ export class ReportProductionService {
                         recipeUnit
                     );
                     needed = conv.baseQuantity;
-                } catch {
-                    // Fallback to legacy quantity when conversion is not configured
+                } catch (error) {
+                    throw new Error(
+                        `No se pudo convertir "${recipeUnit}" para ${recipe.product.name} en el reporte de rendimiento: ` +
+                        `${error instanceof Error ? error.message : String(error)}`
+                    );
                 }
 
                 const portions = needed > 0 ? Math.floor(totalStock / needed) : 0;
@@ -187,7 +193,11 @@ export class ReportProductionService {
      * based on popularity (quantity sold) and profitability (margin).
      */
     static async getMenuEngineering(companyId: number, filters?: { dateFrom?: Date; dateTo?: Date; branchId?: number }) {
-        const orderWhere: Record<string, unknown> = { companyId, status: 'PAID' };
+        const orderWhere: Record<string, unknown> = {
+            companyId,
+            status: { in: ['PAID', 'DELIVERED'] },
+            closedAt: { not: null }
+        };
         if (filters?.branchId) orderWhere.branchId = filters.branchId;
         if (filters?.dateFrom || filters?.dateTo) {
             orderWhere.createdAt = {};
@@ -239,8 +249,11 @@ export class ReportProductionService {
                         recipeUnit
                     );
                     qtyInBase = conv.baseQuantity;
-                } catch {
-                    // Fallback to legacy quantity when conversion is not configured
+                } catch (error) {
+                    throw new Error(
+                        `No se pudo convertir "${recipeUnit}" del producto ${r.product.id} en ingeniería de menú: ` +
+                        `${error instanceof Error ? error.message : String(error)}`
+                    );
                 }
                 recipeCost += qtyInBase * effectiveUnitCost(r.product.currentAverageCost, r.product.cost);
             }
@@ -304,7 +317,12 @@ export class ReportProductionService {
         const since = new Date();
         since.setDate(since.getDate() - lookbackDays);
 
-        const orderWhere: Record<string, unknown> = { companyId, status: 'PAID', createdAt: { gte: since } };
+        const orderWhere: Record<string, unknown> = {
+            companyId,
+            status: { in: ['PAID', 'DELIVERED'] },
+            closedAt: { not: null },
+            createdAt: { gte: since }
+        };
         if (filters?.branchId) orderWhere.branchId = filters.branchId;
 
         const orderItems = await prisma.orderItem.findMany({
@@ -341,8 +359,11 @@ export class ReportProductionService {
                     recipeUnit
                 );
                 qtyInBase = conv.baseQuantity;
-            } catch {
-                // Fallback to legacy quantity when conversion is not configured
+            } catch (error) {
+                throw new Error(
+                    `No se pudo convertir "${recipeUnit}" del producto ${recipe.productId} en la proyección de compras: ` +
+                    `${error instanceof Error ? error.message : String(error)}`
+                );
             }
             const dailyUsage = (miSales * qtyInBase) / lookbackDays;
             productDemand.set(recipe.productId, (productDemand.get(recipe.productId) || 0) + dailyUsage);

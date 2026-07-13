@@ -72,7 +72,7 @@ function validateField(
             break;
 
         case 'number':
-            if (typeof value !== 'number' || Number.isNaN(value)) {
+            if (typeof value !== 'number' || !Number.isFinite(value)) {
                 return { field: fieldPath, message: 'Debe ser un número válido' };
             }
             break;

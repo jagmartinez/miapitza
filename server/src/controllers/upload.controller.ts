@@ -3,11 +3,13 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { getErrorMessage } from '../utils/error';
+import prisma from '../utils/prisma';
+import { getUploadsDir } from '../utils/storage';
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const uploadDir = path.join(__dirname, '../../uploads');
+        const uploadDir = getUploadsDir();
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir, { recursive: true });
         }
@@ -64,7 +66,27 @@ export class UploadController {
                 });
             }
 
+            const header = Buffer.alloc(12);
+            const descriptor = fs.openSync(req.file.path, 'r');
+            try {
+                fs.readSync(descriptor, header, 0, header.length, 0);
+            } finally {
+                fs.closeSync(descriptor);
+            }
+            const isJpeg = header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
+            const isPng = header.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+            const isWebp = header.subarray(0, 4).toString('ascii') === 'RIFF'
+                && header.subarray(8, 12).toString('ascii') === 'WEBP';
+            if (!isJpeg && !isPng && !isWebp) {
+                fs.unlinkSync(req.file.path);
+                return res.status(400).json({ success: false, message: 'El contenido del archivo no es una imagen vÃ¡lida' });
+            }
+
             const fileUrl = `/uploads/${req.file.filename}`;
+            await prisma.company.update({
+                where: { id: req.user!.companyId },
+                data: { logo: fileUrl }
+            });
 
             res.json({
                 success: true,
@@ -90,9 +112,18 @@ export class UploadController {
                 });
             }
 
-            const filePath = path.join(__dirname, '../../uploads', sanitized);
+            const filePath = path.join(getUploadsDir(), sanitized);
+            const expectedUrl = `/uploads/${sanitized}`;
+            const company = await prisma.company.findFirst({
+                where: { id: req.user!.companyId, logo: expectedUrl },
+                select: { id: true }
+            });
+            if (!company) {
+                return res.status(403).json({ success: false, message: 'El archivo no pertenece a esta empresa' });
+            }
 
             if (fs.existsSync(filePath)) {
+                await prisma.company.update({ where: { id: company.id }, data: { logo: null } });
                 fs.unlinkSync(filePath);
                 res.json({
                     success: true,

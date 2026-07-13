@@ -9,7 +9,11 @@ function generateToken(): string {
     return crypto.randomBytes(32).toString('hex');
 }
 
-const CSRF_EXEMPT_PATHS = ['/auth/login', '/auth/register', '/pedidosya/webhook', '/delivery/webhook'];
+function isCsrfExemptPath(path: string): boolean {
+    return path === '/auth/login'
+        || /^\/pedidosya\/webhook\/[^/]+\/?$/.test(path)
+        || /^\/delivery\/webhook\/[^/]+\/?$/.test(path);
+}
 
 function hasBearerAuth(req: Request): boolean {
     const auth = req.headers.authorization;
@@ -45,7 +49,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     }
 
     // Exempt specific public endpoints that have their own protection (rate-limit, HMAC, etc.)
-    if (CSRF_EXEMPT_PATHS.some(p => req.path.startsWith(p))) {
+    if (isCsrfExemptPath(req.path)) {
         next();
         return;
     }

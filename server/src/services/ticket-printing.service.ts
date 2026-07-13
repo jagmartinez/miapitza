@@ -45,6 +45,15 @@ export interface PrintableOrderTicket {
  * Generates printable ticket data for orders
  */
 export class TicketPrintingService {
+    static async getOrderBranch(orderId: number, companyId: number): Promise<number> {
+        const order = await prisma.order.findFirst({
+            where: { id: orderId, companyId },
+            select: { branchId: true }
+        });
+        if (!order) throw new Error('Orden no encontrada');
+        return order.branchId;
+    }
+
     /**
      * Generate order ticket data
      */

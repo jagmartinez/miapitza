@@ -75,7 +75,13 @@ export class BranchService {
         }
 
         return await prisma.branch.create({
-            data
+            data: {
+                companyId: data.companyId,
+                name: data.name,
+                code: data.code,
+                address: data.address,
+                phone: data.phone
+            }
         });
     }
 
@@ -92,7 +98,13 @@ export class BranchService {
 
         return await prisma.branch.update({
             where: { id },
-            data
+            data: {
+                ...(data.name !== undefined ? { name: data.name } : {}),
+                ...(data.code !== undefined ? { code: data.code } : {}),
+                ...(data.address !== undefined ? { address: data.address } : {}),
+                ...(data.phone !== undefined ? { phone: data.phone } : {}),
+                ...(data.status !== undefined ? { status: data.status } : {})
+            }
         });
     }
 

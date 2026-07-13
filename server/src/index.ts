@@ -6,8 +6,10 @@ import { SettingService } from './services/setting.service';
 import { NotificationService } from './services/notification.service';
 import { SessionService } from './services/session.service';
 import { stopAuthCleanup } from './services/auth.service';
+import { ensureStorageReady } from './utils/storage';
 
-const PORT = process.env.PORT || 3001;
+// Keep the local fallback aligned with Docker, examples and the client defaults.
+const PORT = process.env.PORT || 3000;
 
 // Validate required environment before accepting traffic. prisma.ts already
 // validates DATABASE_URL; here we guarantee a usable JWT secret so the server
@@ -57,6 +59,12 @@ function validateEnv(): void {
 }
 
 validateEnv();
+try {
+    ensureStorageReady();
+} catch (error) {
+    console.error('FATAL: STORAGE_DIR is not writable:', error);
+    process.exit(1);
+}
 
 // Create HTTP server
 const server = http.createServer(app);

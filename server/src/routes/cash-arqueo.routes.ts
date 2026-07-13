@@ -2,6 +2,8 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { CashArqueoService } from '../services/cash-arqueo.service';
 import { authMiddleware, requireRole } from '../middlewares/auth';
 import { CASHIERS } from '../constants/roles';
+import prisma from '../utils/prisma';
+import { assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
 import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
 import { getErrorMessage } from '../utils/error';
@@ -11,6 +13,24 @@ const router = Router();
 router.use(authMiddleware);
 // Cash counting/closing is cash-handling: restrict to cashiers and admins.
 router.use(requireRole(...CASHIERS));
+
+// Every endpoint below is shift-addressed. Enforce branch scope once here so a
+// cashier cannot inspect, count, close or export another branch's shift.
+router.param('shiftId', async (req: Request, _res: Response, next: NextFunction, rawId: string) => {
+    try {
+        const shiftId = parseInt(rawId, 10);
+        const shift = await prisma.cashShift.findFirst({
+            where: { id: shiftId, companyId: req.user!.companyId },
+            select: { cashRegister: { select: { branchId: true } } }
+        });
+        if (!shift) return next({ statusCode: 404, message: 'Turno de caja no encontrado' });
+        assertBranchAccess(req.user!, shift.cashRegister.branchId);
+        next();
+    } catch (error: unknown) {
+        if (error instanceof BranchScopeError) return next(error);
+        next({ statusCode: 500, message: getErrorMessage(error) });
+    }
+});
 
 /**
  * @swagger

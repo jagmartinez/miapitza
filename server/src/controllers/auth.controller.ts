@@ -112,6 +112,8 @@ export class AuthController {
                 });
             }
 
+            // Browser clients use the HttpOnly cookie. The token remains in the API
+            // contract for non-browser/Bearer clients, but the web app does not persist it.
             res.json({ success: true, message: 'Inicio de sesión exitoso', data: result });
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);

@@ -87,12 +87,21 @@ export class PaymentController {
             const userId = req.user!.userId;
             const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
             if (!reason) return next({ statusCode: 400, message: 'El motivo de reversión es obligatorio' });
+
+            const payment = await prisma.payment.findFirst({
+                where: { id, order: { companyId } },
+                select: { order: { select: { branchId: true } } }
+            });
+            if (!payment) return next({ statusCode: 404, message: 'Pago no encontrado' });
+            assertBranchAccess(req.user!, payment.order.branchId);
+
             await PaymentService.delete(id, companyId, userId, reason);
             res.json({
                 success: true,
                 message: 'Pago eliminado exitosamente'
             });
         } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }

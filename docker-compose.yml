@@ -9,7 +9,8 @@ services:
       MYSQL_USER: ${MYSQL_USER:-restaurant_user}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required (see .env.example)}
     ports:
-      - "${MYSQL_PORT:-3306}:3306"
+      # Local diagnostics only; do not expose MySQL on every host interface.
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:
@@ -27,6 +28,8 @@ services:
     restart: always
     ports:
       - "${SERVER_PORT:-3000}:3000"
+    volumes:
+      - storage_data:/app/storage
     environment:
       DATABASE_URL: mysql://${MYSQL_USER:-restaurant_user}:${MYSQL_PASSWORD:?MYSQL_PASSWORD is required (see .env.example)}@db:3306/${MYSQL_DATABASE:-restaurante}
       NODE_ENV: ${NODE_ENV:-production}
@@ -35,6 +38,8 @@ services:
       CLIENT_URL: ${CLIENT_URL:-http://localhost:5173}
       DOCS_USER: ${DOCS_USER:-admin}
       DOCS_PASSWORD: ${DOCS_PASSWORD:-}
+      BACKUP_ADMIN_COMPANY_ID: ${BACKUP_ADMIN_COMPANY_ID:-}
+      STORAGE_DIR: /app/storage
       PORT: 3000
     depends_on:
       db:
@@ -50,7 +55,8 @@ services:
     container_name: restaurant_client
     restart: always
     ports:
-      - "${CLIENT_PORT:-5173}:5173"
+      # The runtime image serves the SPA on 8080; CLIENT_PORT is the host port.
+      - "${CLIENT_PORT:-5173}:8080"
     depends_on:
       - server
 
@@ -58,3 +64,4 @@ services:
 
 volumes:
   db_data:
+  storage_data:

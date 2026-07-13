@@ -13,8 +13,8 @@ export class AutoPurchaseOrderService {
     /**
      * Generate purchase order suggestions based on low stock
      */
-    static async generateSuggestions(companyId: number, warehouseId?: number) {
-        const lowStockProducts = await StockAlertService.getLowStockProducts(companyId, warehouseId);
+    static async generateSuggestions(companyId: number, warehouseId?: number, branchId?: number) {
+        const lowStockProducts = await StockAlertService.getLowStockProducts(companyId, warehouseId, branchId);
 
         // Group by supplier if products have preferred suppliers
         const suggestions = await Promise.all(
@@ -105,8 +105,12 @@ export class AutoPurchaseOrderService {
 
             const uniqueProductIds = Array.from(new Set(items.map((item) => item.productId)));
             const products = await tx.product.findMany({
-                where: { id: { in: uniqueProductIds }, companyId },
-                select: { id: true }
+                where: { id: { in: uniqueProductIds }, companyId, active: true },
+                select: {
+                    id: true,
+                    unit: true,
+                    baseUnit: { select: { abbreviation: true } }
+                }
             });
             if (products.length !== uniqueProductIds.length) {
                 throw new Error('Uno o más productos no pertenecen a la empresa');
@@ -121,25 +125,16 @@ export class AutoPurchaseOrderService {
                 }
             }
 
-            const total = items.reduce((sum, item) => sum + (item.quantity * item.cost), 0);
+            const total = Math.round((items.reduce((sum, item) => sum + (item.quantity * item.cost), 0) + Number.EPSILON) * 100) / 100;
 
             // Resolve a purchase unit for every product so the conversion to base
             // unit stays explicit. Suggested quantities come from stock (already in
             // base unit), so we prefer the product's base unit to keep factor 1 and
             // avoid altering the resulting quantities; this change is purely about
             // traceability/consistency.
-            const purchaseUnitByProduct = new Map<number, string | null>();
-            for (const productId of uniqueProductIds) {
-                try {
-                    const allowedUnits = await UnitConversionService.getAllowedUnits(productId, companyId);
-                    const baseUnit = allowedUnits.find(u => u.isBase)
-                        ?? allowedUnits.find(u => u.isDefault)
-                        ?? allowedUnits[0];
-                    purchaseUnitByProduct.set(productId, baseUnit ? baseUnit.abbreviation : null);
-                } catch {
-                    purchaseUnitByProduct.set(productId, null);
-                }
-            }
+            const purchaseUnitByProduct = new Map(
+                products.map((product) => [product.id, product.baseUnit?.abbreviation || product.unit])
+            );
 
             const itemCreates = [];
             for (const item of items) {
@@ -177,6 +172,9 @@ export class AutoPurchaseOrderService {
                     supplierId,
                     status: 'DRAFT',
                     total,
+                    invoiceType: 'CASH',
+                    paymentStatus: 'PAID',
+                    paidAmount: total,
                     items: {
                         create: itemCreates
                     }

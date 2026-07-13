@@ -403,10 +403,6 @@ export class UnitConversionService {
                 }];
             }
 
-            if (!product.baseUnitId) {
-                await this.autoConfigureProduct(productId, companyId, product.unit).catch(() => undefined);
-            }
-
             const compatibleUnits = await prisma.unitOfMeasure.findMany({
                 where: {
                     companyId,

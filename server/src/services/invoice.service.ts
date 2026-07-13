@@ -44,8 +44,14 @@ export class InvoiceService {
         return prisma.$transaction(async (tx) => {
             // Lock the order row FOR UPDATE so two concurrent invoice generations for the
             // SAME order can't each consume a sequence number / assign a different invoice.
-            const locked = await tx.$queryRaw<{ id: number; invoiceNumber: string | null }[]>`
-                SELECT \`id\`, \`invoiceNumber\` FROM \`Order\`
+            const locked = await tx.$queryRaw<Array<{
+                id: number;
+                invoiceNumber: string | null;
+                status: string;
+                total: unknown;
+                branchId: number;
+            }>>`
+                SELECT \`id\`, \`invoiceNumber\`, \`status\`, \`total\`, \`branchId\` FROM \`Order\`
                 WHERE \`id\` = ${orderId} AND \`companyId\` = ${companyId}
                 FOR UPDATE`;
 
@@ -54,6 +60,21 @@ export class InvoiceService {
             }
             if (locked[0].invoiceNumber) {
                 return locked[0].invoiceNumber;
+            }
+            if (locked[0].branchId !== branchId) {
+                throw new Error('La sucursal de la orden cambió durante la facturación');
+            }
+            const activePayments = await tx.payment.findMany({
+                where: { orderId, status: 'ACTIVE' },
+                select: { amount: true }
+            });
+            const collectedCents = activePayments.reduce(
+                (sum, payment) => sum + Math.round(Number(payment.amount) * 100),
+                0
+            );
+            const totalCents = Math.round(Number(locked[0].total) * 100);
+            if (locked[0].status === 'CANCELLED' || collectedCents < totalCents) {
+                throw new Error('La orden dejó de estar completamente pagada durante la facturación');
             }
 
             await tx.invoiceSequence.upsert({
@@ -100,12 +121,12 @@ export class InvoiceService {
         // Check order status before consuming an invoice number
         const orderCheck = await prisma.order.findFirst({
             where: { id: orderId, companyId },
-            select: { status: true, total: true, payments: { select: { amount: true } } }
+            select: { status: true, total: true, payments: { where: { status: 'ACTIVE' }, select: { amount: true } } }
         });
         if (!orderCheck) throw new Error('Order not found');
-        const collected = orderCheck.payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
-        const legacyPaidStatus = orderCheck.status === 'PAID';
-        if (orderCheck.status === 'CANCELLED' || (!legacyPaidStatus && collected + 0.01 < Number(orderCheck.total))) {
+        const collectedCents = orderCheck.payments.reduce((sum, payment) => sum + Math.round(Number(payment.amount) * 100), 0);
+        const totalCents = Math.round(Number(orderCheck.total) * 100);
+        if (orderCheck.status === 'CANCELLED' || collectedCents < totalCents) {
             throw new Error(`Only fully paid, non-cancelled orders can be invoiced. Current status: ${orderCheck.status}`);
         }
 

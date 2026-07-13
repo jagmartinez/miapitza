@@ -6,7 +6,7 @@ import { initializeSound, playNotificationSound } from '../utils/sound';
 import { escapeHtml } from '../utils/escapeHtml';
 import { useDebounce } from '../utils/useDebounce';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
-import { getUserAccentColor, canOperateKitchenLineItems } from '../utils/authz';
+import { getUserAccentColor, canOperateKitchenLineItems, canUpdateWholeOrderStatus } from '../utils/authz';
 import { useAppToast } from '../context/ToastContext';
 import './Kitchen.css';
 import { getOrderStatusLabel, getOrderTimeline } from '../utils/orderStatus';
@@ -51,6 +51,7 @@ export default function Kitchen() {
     const { error: showError, warning: showWarning, success } = useAppToast();
     const { confirm } = useConfirmDialog();
     const canKitchenLineOps = canOperateKitchenLineItems(user);
+    const canMarkWholeOrderReady = canUpdateWholeOrderStatus(user);
 
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
@@ -117,6 +118,10 @@ export default function Kitchen() {
     }, [loadOrders]);
 
     const handleMarkReady = async (orderId: number) => {
+        if (!canMarkWholeOrderReady) {
+            showWarning('Finaliza cada ítem para completar la orden. Tu rol no puede forzar toda la orden como lista.');
+            return;
+        }
         if (!(await confirm('¿Marcar toda la orden como lista?', { variant: 'warning' }))) {
             return;
         }
@@ -481,14 +486,14 @@ export default function Kitchen() {
                                                 <span>Problema</span>
                                             </button>
                                         )}
-                                        <button
+                                        {canMarkWholeOrderReady && <button
                                             className="action-btn-new"
                                             onClick={() => handleMarkReady(order.id)}
                                             title="Marcar toda la orden como lista"
                                         >
                                             <CheckCircle size={20} />
                                             <span>Todo Listo</span>
-                                        </button>
+                                        </button>}
                                     </>
                                 )}
                             </div>
@@ -644,7 +649,7 @@ export default function Kitchen() {
                                             Reportar problema
                                         </button>
                                     )}
-                                    <button
+                                    {canMarkWholeOrderReady && <button
                                         className="btn btn-primary"
                                         onClick={() => {
                                             handleMarkReady(detailOrder.id);
@@ -653,7 +658,7 @@ export default function Kitchen() {
                                     >
                                         <CheckCircle size={16} />
                                         Marcar todo listo
-                                    </button>
+                                    </button>}
                                 </div>
                             )}
                         </div>

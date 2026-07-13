@@ -14,6 +14,7 @@ import {
 import type { Branch, Supplier } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
+import { formatLocalDateInput } from '../utils/dateInput';
 import './Reports.css';
 
 interface CategoryOption { id: number; name: string }
@@ -30,10 +31,10 @@ const fmtDate = (d: string) => {
     return new Date(d).toLocaleDateString('es-NI');
 };
 
-const todayStr = () => new Date().toISOString().split('T')[0];
+const todayStr = () => formatLocalDateInput();
 const monthStartStr = () => {
     const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+    return formatLocalDateInput(new Date(d.getFullYear(), d.getMonth(), 1));
 };
 
 type ReportDef = {

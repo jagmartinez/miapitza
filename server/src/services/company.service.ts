@@ -1,4 +1,5 @@
 import prisma from '../utils/prisma';
+import { SettingService } from './setting.service';
 
 export class CompanyService {
     static async getAll() {
@@ -33,8 +34,10 @@ export class CompanyService {
         ruc?: string;
         logo?: string;
     }) {
-        return await prisma.company.create({
-            data
+        return prisma.$transaction(async (tx) => {
+            const company = await tx.company.create({ data });
+            await SettingService.ensureDefaultsForCompany(company.id, tx);
+            return company;
         });
     }
 

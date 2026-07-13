@@ -19,7 +19,7 @@ export class InventoryMovementService {
 
         if (filters?.branchId) {
             where.warehouse = {
-                branchId: filters.branchId
+                OR: [{ branchId: filters.branchId }, { branchId: null }]
             };
         }
 
@@ -250,7 +250,7 @@ export class InventoryMovementService {
 
         if (branchId) {
             where.warehouse = {
-                branchId: branchId
+                OR: [{ branchId }, { branchId: null }]
             };
         }
 
@@ -330,6 +330,20 @@ export class InventoryMovementService {
                 where: { id: data.productId, companyId }
             });
             if (!product) throw new Error('Product not found or unauthorized');
+
+            // Ensure both stock rows exist, then lock them in deterministic order.
+            // This prevents opposite-direction transfers from deadlocking or both
+            // consuming the same source balance concurrently.
+            for (const warehouseId of [data.fromWarehouseId, data.toWarehouseId]) {
+                await tx.stock.upsert({
+                    where: { warehouseId_productId: { warehouseId, productId: data.productId } },
+                    create: { warehouseId, productId: data.productId, companyId, quantity: 0 },
+                    update: {}
+                });
+            }
+            const firstWarehouseId = Math.min(data.fromWarehouseId, data.toWarehouseId);
+            const secondWarehouseId = Math.max(data.fromWarehouseId, data.toWarehouseId);
+            await tx.$queryRaw`SELECT id FROM \`Stock\` WHERE companyId = ${companyId} AND productId = ${data.productId} AND warehouseId IN (${firstWarehouseId}, ${secondWarehouseId}) ORDER BY warehouseId FOR UPDATE`;
 
             // --- OUT from source warehouse (TRANSFER, outbound leg) ---
             // Let the engine derive the actual outbound valuation: moving average

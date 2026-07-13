@@ -29,10 +29,23 @@ fi
 
 export DATABASE_URL
 
+# Railway mounts persistent volumes after the image is built, normally owned by
+# root. Initialize only the configured storage mount, then run the application
+# as the unprivileged node user. Local/non-root containers remain unchanged.
+if [ "$(id -u)" = "0" ]; then
+  _storage_dir="${STORAGE_DIR:-/app/storage}"
+  mkdir -p "$_storage_dir/uploads/invoices" "$_storage_dir/backups"
+  chown -R node:node "$_storage_dir"
+fi
+
 echo "Syncing database schema..."
 # Production must fail closed. `db push --accept-data-loss` is intentionally
 # forbidden here: a migration failure must never turn into an implicit,
 # potentially destructive schema rewrite.
 npx prisma migrate deploy
+
+if [ "$(id -u)" = "0" ]; then
+  exec gosu node node dist/index.js
+fi
 
 exec node dist/index.js

@@ -10,7 +10,7 @@ describe('ReportService.getSalesReport reconciliation', () => {
     it('reconciles order metrics and counts only orders matching item filters', async () => {
         jest.spyOn(prisma.order, 'findMany').mockResolvedValue([
             {
-                id: 1, createdAt: new Date('2026-01-01'), invoiceNumber: 'F-1',
+                id: 1, createdAt: new Date('2025-12-31T23:55:00Z'), closedAt: new Date('2026-01-01T00:05:00Z'), invoiceNumber: 'F-1',
                 discount: 10, tax: 13.5, tipAmount: 5, total: 98.5,
                 payments: [{ amount: 98.5, paymentMethod: { name: 'Efectivo' } }],
                 user: { name: 'Ana' }, branch: { name: 'Centro' }, company: { name: 'Demo' },
@@ -20,7 +20,7 @@ describe('ReportService.getSalesReport reconciliation', () => {
                 ],
             },
             {
-                id: 2, createdAt: new Date('2026-01-01'), invoiceNumber: 'F-2',
+                id: 2, createdAt: new Date('2026-01-01T00:10:00Z'), closedAt: new Date('2026-01-01T00:20:00Z'), invoiceNumber: 'F-2',
                 discount: 0, tax: 15, tipAmount: 0, total: 115,
                 payments: [{ amount: 115, paymentMethod: { name: 'Tarjeta' } }],
                 user: { name: 'Luis' }, branch: { name: 'Centro' }, company: { name: 'Demo' },
@@ -28,7 +28,13 @@ describe('ReportService.getSalesReport reconciliation', () => {
             },
         ] as never);
 
-        const result = await ReportService.getSalesReport(3, { categoryId: 7 });
+        const dateFrom = new Date('2026-01-01T00:00:00Z');
+        const result = await ReportService.getSalesReport(3, { categoryId: 7, dateFrom });
+
+        expect(prisma.order.findMany).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({ closedAt: { gte: dateFrom } }),
+            orderBy: { closedAt: 'desc' }
+        }));
 
         expect(result.summary).toMatchObject({
             totalOrders: 1,
@@ -44,5 +50,6 @@ describe('ReportService.getSalesReport reconciliation', () => {
         expect(result.summary.netItemSales - result.summary.orderDiscount + result.summary.tax + result.summary.tip)
             .toBe(result.summary.grossOrderTotal);
         expect(result.items.map((item) => item.discount)).toEqual([10, 0]);
+        expect(result.items[0].date).toEqual(new Date('2026-01-01T00:05:00Z'));
     });
 });

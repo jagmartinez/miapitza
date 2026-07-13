@@ -9,7 +9,7 @@ export class SplitBillService {
      * Split order evenly among N people
      */
     static async splitEvenly(orderId: number, companyId: number, numberOfPeople: number) {
-        if (!numberOfPeople || numberOfPeople < 1) {
+        if (!Number.isInteger(numberOfPeople) || numberOfPeople < 1) {
             throw new Error('Number of people must be at least 1');
         }
 
@@ -70,6 +70,21 @@ export class SplitBillService {
 
         if (!order) {
             throw new Error('Orden no encontrada');
+        }
+
+        if (!Array.isArray(itemAssignments) || itemAssignments.length === 0) {
+            throw new Error('Debe asignar todos los articulos de la orden');
+        }
+        const orderItemIds = new Set(order.items.map((item) => item.id));
+        const assignedIds = itemAssignments.flatMap((assignment) => assignment.itemIds);
+        if (assignedIds.some((id) => !Number.isInteger(id) || !orderItemIds.has(id))) {
+            throw new Error('La division contiene articulos que no pertenecen a la orden');
+        }
+        if (new Set(assignedIds).size !== assignedIds.length) {
+            throw new Error('Un articulo no puede asignarse a mas de una persona');
+        }
+        if (assignedIds.length !== order.items.length) {
+            throw new Error('Todos los articulos deben asignarse exactamente una vez');
         }
 
         // Each person's share is driven by their item subtotal. We then split the
@@ -171,8 +186,18 @@ export class SplitBillService {
             throw new Error('Orden no encontrada');
         }
 
+        if (!Array.isArray(customSplits) || customSplits.length === 0) {
+            throw new Error('Debe indicar al menos un monto');
+        }
+        if (customSplits.some((split) => !Number.isFinite(split.amount) || split.amount <= 0)) {
+            throw new Error('Cada monto debe ser un numero finito mayor a cero');
+        }
+        const normalizedSplits = customSplits.map((split) => ({
+            ...split,
+            amount: Math.round(split.amount * 100) / 100
+        }));
         const totalWithTip = Number(order.total);
-        const splitTotal = customSplits.reduce((sum, s) => sum + s.amount, 0);
+        const splitTotal = Math.round(normalizedSplits.reduce((sum, s) => sum + s.amount, 0) * 100) / 100;
 
         if (Math.abs(splitTotal - totalWithTip) > 0.01) {
             const difference = totalWithTip - splitTotal;
@@ -190,7 +215,7 @@ export class SplitBillService {
             orderId: order.id,
             originalTotal: Number(order.total),
             finalTotal: totalWithTip,
-            splits: customSplits.map(s => ({
+            splits: normalizedSplits.map(s => ({
                 ...s,
                 paid: false
             }))

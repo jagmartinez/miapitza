@@ -264,20 +264,26 @@ export class InventoryConsumptionService {
         });
 
         // Aggregate outstanding (un-reversed) consumption per warehouse + product.
-        const net = new Map<string, { warehouseId: number; productId: number; quantity: number; unitCost: number }>();
+        const net = new Map<string, {
+            warehouseId: number;
+            productId: number;
+            quantity: number;
+            value: number;
+        }>();
         for (const m of movements) {
             const key = `${m.warehouseId}|${m.productId}`;
             const delta = m.type === 'OUT' ? Number(m.quantity) : -Number(m.quantity);
+            const valueDelta = delta * Number(m.unitCost ?? 0);
             const entry = net.get(key);
             if (entry) {
                 entry.quantity += delta;
-                if (m.type === 'OUT' && m.unitCost != null) entry.unitCost = Number(m.unitCost);
+                entry.value += valueDelta;
             } else {
                 net.set(key, {
                     warehouseId: m.warehouseId,
                     productId: m.productId,
                     quantity: delta,
-                    unitCost: m.unitCost != null ? Number(m.unitCost) : 0
+                    value: valueDelta
                 });
             }
         }
@@ -286,10 +292,11 @@ export class InventoryConsumptionService {
         for (const entry of net.values()) {
             if (entry.quantity <= 1e-9) continue; // nothing outstanding to restore
 
-            // Restore the net deducted stock with a compensating IN through the
-            // engine. We pass the original OUT unit cost explicitly so the reversal
-            // is valued at the cost it was consumed at (bespoke), and a FIFO layer
-            // is re-opened for the restored quantity.
+            // Restore the outstanding value, not the unit cost of whichever OUT
+            // happened to be read last. The same product can be consumed by several
+            // order lines/layers at different costs; using the last cost corrupts
+            // inventory valuation on reversal.
+            const unitCost = Math.max(0, entry.value / entry.quantity);
             await InventoryEngineService.applyMovement(tx, {
                 type: 'IN',
                 companyId,
@@ -297,7 +304,7 @@ export class InventoryConsumptionService {
                 productId: entry.productId,
                 userId,
                 quantity: entry.quantity,
-                unitCost: entry.unitCost,
+                unitCost,
                 reason: 'Reversa de consumo por orden (pago eliminado)',
                 reference,
                 sourceType: 'ADJUSTMENT'

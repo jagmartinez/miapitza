@@ -2,6 +2,9 @@ import { Request, Response, NextFunction } from 'express';
 import { PurchaseOrderService } from '../services/purchase-order.service';
 import { getErrorMessage } from '../utils/error';
 import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
+import path from 'path';
+import fs from 'fs';
+import { getUploadsDir } from '../utils/storage';
 
 export class PurchaseOrderController {
 
@@ -58,6 +61,28 @@ export class PurchaseOrderController {
                 success: true,
                 data: order
             });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 404, message: getErrorMessage(error) });
+        }
+    }
+
+    static async downloadInvoice(req: Request, res: Response, next: NextFunction) {
+        try {
+            const id = parseInt(req.params.id);
+            const order = await PurchaseOrderController.assertOrderBranch(req, id) as {
+                invoicePdf?: string | null;
+                invoiceNumber?: string | null;
+            };
+            if (!order.invoicePdf) return next({ statusCode: 404, message: 'La orden no tiene factura adjunta' });
+
+            const uploadsRoot = getUploadsDir('invoices');
+            const relativeName = path.basename(order.invoicePdf);
+            const absolutePath = path.resolve(uploadsRoot, relativeName);
+            if (!absolutePath.startsWith(`${uploadsRoot}${path.sep}`) || !fs.existsSync(absolutePath)) {
+                return next({ statusCode: 404, message: 'Archivo de factura no encontrado' });
+            }
+            res.sendFile(absolutePath);
         } catch (error: unknown) {
             if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 404, message: getErrorMessage(error) });
@@ -273,12 +298,14 @@ export class PurchaseOrderController {
         try {
             const purchaseOrderId = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            await PurchaseOrderController.assertOrderBranch(req, purchaseOrderId);
             const payments = await PurchaseOrderService.getPayments(purchaseOrderId, companyId);
             res.json({
                 success: true,
                 data: payments
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }

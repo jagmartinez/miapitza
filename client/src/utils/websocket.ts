@@ -34,7 +34,10 @@ const resolveWebSocketUrl = () => {
 
 /** Build WS URL without token in query string (security fix) */
 export const buildWebSocketUrl = (baseUrl: string) => {
-    return baseUrl;
+    const trimmed = baseUrl.trim();
+    if (trimmed.startsWith('https://')) return `wss://${trimmed.slice('https://'.length)}`;
+    if (trimmed.startsWith('http://')) return `ws://${trimmed.slice('http://'.length)}`;
+    return trimmed;
 };
 
 const notifyListeners = (data: WebSocketMessage) => {
@@ -60,21 +63,17 @@ export const initializeWebSocket = (onMessage?: (data: WebSocketMessage) => void
 
     isManuallyClosed = false;
 
-    const WS_URL = resolveWebSocketUrl();
+    const WS_URL = buildWebSocketUrl(resolveWebSocketUrl());
 
     try {
         isConnecting = true;
-        // Connect without token in URL — send via first message instead
+        // The browser sends the HttpOnly auth cookie with the handshake.
         socket = new WebSocket(WS_URL);
 
         socket.onopen = () => {
             isConnecting = false;
             reconnectAttempts = 0; // Reset on successful connection
             // Backward compatibility: explicit AUTH for legacy bearer flow.
-            const authToken = localStorage.getItem('token');
-            if (authToken && socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({ type: 'AUTH', token: authToken }));
-            }
         };
 
         socket.onmessage = (event) => {

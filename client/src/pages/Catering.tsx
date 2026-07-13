@@ -11,7 +11,7 @@ import type { SingleValue } from 'react-select';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { cateringAPI, menuAPI, paymentsAPI, branchesAPI, settingsAPI, categoriesAPI } from '../services/api';
+import { cateringAPI, menuAPI, paymentsAPI, branchesAPI, settingsAPI } from '../services/api';
 import { getCateringStatusOptions, isCateringStatusTerminal } from '../utils/cateringStatus';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
@@ -20,6 +20,7 @@ import { getUserRoleNames } from '../utils/authz';
 import type { Branch, MenuItem, PaymentMethod } from '../types';
 import type { CurrencySettings } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
+import { formatLocalDateInput } from '../utils/dateInput';
 import './CateringMod.css';
 
 interface CateringClausesForm {
@@ -55,6 +56,9 @@ interface CateringPaymentEntry {
     date?: string;
     amount: number;
     paymentMethod?: { name?: string };
+    status?: 'ACTIVE' | 'REVERSED';
+    reversedAt?: string | null;
+    reversalReason?: string | null;
 }
 
 interface CateringServiceCatalog {
@@ -153,6 +157,7 @@ export default function Catering() {
         amount: 0,
         paymentMethodId: ''
     });
+    const [reversalReason, setReversalReason] = useState('');
 
     const handleDownloadContract = useCallback(async (event: CateringEvent) => {
         try {
@@ -187,33 +192,32 @@ export default function Catering() {
             setEvents(response.data.data);
         } catch (error) {
             console.error('Error loading catering events:', error);
+            showError('No se pudieron cargar los eventos de catering.');
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [showError]);
 
     const loadMasterData = useCallback(async () => {
         try {
-            const [servicesRes, menuRes, paymentsRes, branchesRes, categoriesRes] = await Promise.all([
+            const [servicesRes, menuRes, paymentsRes, branchesRes] = await Promise.all([
                 cateringAPI.getAllServices(),
                 menuAPI.getAll(),
                 paymentsAPI.getPaymentMethods(),
-                branchesAPI.getAll(),
-                categoriesAPI.getAll()
+                branchesAPI.getAll()
             ]);
             setAllServices(servicesRes.data.data);
             setAllMenuItems(menuRes.data.data);
-            setPaymentMethods(paymentsRes.data.data);
+            setPaymentMethods((paymentsRes.data.data as PaymentMethod[]).filter((method) => method.active !== false));
             setAllBranches(branchesRes.data.data);
-            // Categories loaded for future use if needed
-            console.log('Categories loaded:', categoriesRes.data.data.length);
 
             const settingsRes = await settingsAPI.getAll();
             setSettings(settingsRes.data.data);
         } catch (error) {
             console.error('Error loading master data:', error);
+            showError('No se pudieron cargar sucursales, menú o métodos de pago de catering.');
         }
-    }, []);
+    }, [showError]);
 
     useEffect(() => {
         loadEvents();
@@ -235,7 +239,7 @@ export default function Catering() {
                     customerName: fullEvent.customer?.name || '',
                     customerPhone: fullEvent.customer?.phone || '',
                     customerTaxId: fullEvent.customer?.taxId || '',
-                    date: eventDate.toISOString().split('T')[0],
+                    date: formatLocalDateInput(eventDate),
                     time: eventDate.toTimeString().slice(0, 5),
                     peopleCount: fullEvent.peopleCount,
                     location: fullEvent.location || '',
@@ -255,6 +259,8 @@ export default function Catering() {
                 });
             } catch (error) {
                 console.error('Error loading event details:', error);
+                showError('No se pudo cargar el detalle del evento.');
+                return;
             }
         } else {
             setSelectedEvent(null);
@@ -267,7 +273,7 @@ export default function Catering() {
                 customerName: '',
                 customerPhone: '',
                 customerTaxId: '',
-                date: tomorrow.toISOString().split('T')[0],
+                date: formatLocalDateInput(tomorrow),
                 time: '12:00',
                 peopleCount: 10,
                 location: '',
@@ -295,6 +301,16 @@ export default function Catering() {
             showWarning('No tienes permisos para guardar eventos de catering');
             return;
         }
+        if (!formData.title.trim() || !formData.customerName.trim()) {
+            showError('El título y el nombre del cliente son obligatorios.');
+            setActiveTab('info');
+            return;
+        }
+        if (!formData.branchId || !formData.date || !formData.time || Number(formData.peopleCount) < 1) {
+            showError('Selecciona sucursal, fecha, hora y una cantidad válida de personas.');
+            setActiveTab('info');
+            return;
+        }
         try {
             const dataToSave = {
                 ...formData,
@@ -320,6 +336,10 @@ export default function Catering() {
             setIsSidebarOpen(false);
         } catch (error) {
             console.error('Error saving event:', error);
+            const message = typeof error === 'object' && error !== null && 'response' in error
+                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                : undefined;
+            showError(message || 'No se pudo guardar el evento de catering.');
         }
     };
 
@@ -339,6 +359,10 @@ export default function Catering() {
             return;
         }
         if (!selectedEvent || !paymentData.amount || !paymentData.paymentMethodId) return;
+        if (Number(paymentData.amount) <= 0 || Number(paymentData.amount) > Number(selectedEvent.balance)) {
+            showWarning('El pago debe ser mayor a cero y no puede exceder el saldo pendiente.');
+            return;
+        }
         try {
             await cateringAPI.addPayment(selectedEvent.id, {
                 amount: Number(paymentData.amount),
@@ -351,6 +375,31 @@ export default function Catering() {
             loadEvents();
         } catch (error) {
             console.error('Error adding payment:', error);
+            const message = typeof error === 'object' && error !== null && 'response' in error
+                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                : undefined;
+            showError(message || 'No se pudo registrar el pago de catering.');
+        }
+    };
+
+    const handleReversePayment = async (payment: CateringPaymentEntry) => {
+        if (!selectedEvent || !payment.id || payment.status === 'REVERSED') return;
+        if (reversalReason.trim().length < 3) {
+            showWarning('Indica el motivo del reverso');
+            return;
+        }
+        if (!(await confirm('¿Revertir este pago? El registro original se conservará.', { variant: 'warning', confirmText: 'Sí, revertir' }))) return;
+        try {
+            await cateringAPI.reversePayment(selectedEvent.id, payment.id, reversalReason.trim());
+            const response = await cateringAPI.getEventById(selectedEvent.id);
+            setSelectedEvent(response.data.data);
+            setReversalReason('');
+            loadEvents();
+        } catch (error: unknown) {
+            const message = typeof error === 'object' && error !== null && 'response' in error
+                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                : undefined;
+            showError(message || 'No se pudo revertir el pago');
         }
     };
 
@@ -1208,11 +1257,11 @@ export default function Catering() {
                                     <div className="financial-secondary-row">
                                         <div className="summary-box-plain">
                                             <span className="label">Subtotal</span>
-                                            <span className="value">${(Number(selectedEvent.totalAmount || 0) / taxDivisor).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                            <span className="value">{formatMoney(Number(selectedEvent.totalAmount || 0) / taxDivisor)}</span>
                                         </div>
                                         <div className="summary-box-plain">
                                             <span className="label">IVA ({taxRate}%)</span>
-                                            <span className="value">${(Number(selectedEvent.totalAmount || 0) * (taxRate / 100) / taxDivisor).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                            <span className="value">{formatMoney(Number(selectedEvent.totalAmount || 0) * (taxRate / 100) / taxDivisor)}</span>
                                         </div>
                                     </div>
 
@@ -1223,7 +1272,7 @@ export default function Catering() {
                                         </div>
                                         <div className="summary-item success">
                                             <span className="label">Total Pagado</span>
-                                            <span className="value">${(selectedEvent.payments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0).toLocaleString()}</span>
+                                            <span className="value">{formatMoney(selectedEvent.payments?.filter((p) => p.status !== 'REVERSED').reduce((sum, p) => sum + Number(p.amount), 0) || 0)}</span>
                                         </div>
                                         <div className="summary-item danger">
                                             <span className="label">Saldo Pendiente</span>
@@ -1275,17 +1324,36 @@ export default function Catering() {
 
                                 <div className="payments-list">
                                     <h3 style={{ marginTop: '30px', marginBottom: '10px' }}>Historial de Pagos</h3>
+                                    {canManageCatering && selectedEvent.payments?.some((payment) => payment.status !== 'REVERSED') && (
+                                        <div className="modal-input-group" style={{ marginBottom: '12px' }}>
+                                            <label>Motivo del reverso</label>
+                                            <input
+                                                className="modal-standard-input"
+                                                value={reversalReason}
+                                                onChange={(event) => setReversalReason(event.target.value)}
+                                                placeholder="Ej. pago duplicado o devolución autorizada"
+                                            />
+                                        </div>
+                                    )}
                                     <div className="items-table">
-                                        <div className="items-table-header" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+                                        <div className="items-table-header" style={{ gridTemplateColumns: '1fr 1fr 1fr 1fr' }}>
                                             <span>Fecha</span>
                                             <span>Método</span>
                                             <span>Monto</span>
+                                            <span>Estado</span>
                                         </div>
                                         {selectedEvent.payments?.map((p, i) => (
-                                            <div key={i} className="items-table-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+                                            <div key={p.id ?? i} className="items-table-row" style={{ gridTemplateColumns: '1fr 1fr 1fr 1fr' }}>
                                                 <span>{p.date ? new Date(p.date).toLocaleDateString() : '-'}</span>
                                                 <span>{p.paymentMethod?.name}</span>
                                                 <span>{formatMoney(Number(p.amount))}</span>
+                                                <span>
+                                                    {p.status === 'REVERSED' ? `Revertido${p.reversalReason ? `: ${p.reversalReason}` : ''}` : (
+                                                        canManageCatering
+                                                            ? <Button variant="secondary" onClick={() => handleReversePayment(p)}>Revertir</Button>
+                                                            : 'Activo'
+                                                    )}
+                                                </span>
                                             </div>
                                         ))}
                                     </div>
@@ -1298,7 +1366,7 @@ export default function Catering() {
                         <div style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: '15px' }}>
                             <div className="tab-total-preview">
                                 <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Estimado: </span>
-                                <span style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>${calculateTabTotals().toLocaleString()}</span>
+                                <span style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{formatMoney(calculateTabTotals())}</span>
                             </div>
                         </div>
                         <Button variant="secondary" onClick={() => setIsSidebarOpen(false)}>Cancelar</Button>

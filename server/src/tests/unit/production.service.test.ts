@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import prisma from '../../utils/prisma';
 import { CostingService } from '../../services/costing.service';
 import { ProductionRecipeService } from '../../services/production-recipe.service';
+import { ProductionOrderService } from '../../services/production-order.service';
 
 describe('CostingService.calculateWeightedAverageCost', () => {
     it('returns the new cost when there is no current stock', async () => {
@@ -165,5 +166,37 @@ describe('ProductionRecipeService.assertNoCircularDependency', () => {
         await expect(
             ProductionRecipeService.assertNoCircularDependency(1, 1, [2, 3])
         ).resolves.toBeUndefined();
+    });
+});
+
+describe('ProductionOrderService numeric invariants', () => {
+    it.each([NaN, Infinity, -Infinity, 0, -1])('rejects invalid planned quantity %s before querying inventory', async (plannedQuantity) => {
+        await expect(ProductionOrderService.computeRequirements(1, {
+            productId: 1,
+            plannedQuantity,
+            warehouseId: 1
+        })).rejects.toThrow(/finito|mayor a 0/i);
+    });
+});
+
+describe('Production recipe lifecycle invariants', () => {
+    it('does not allow an active version to return to draft/editable state', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            productionRecipe: {
+                findFirst: jest.fn(async () => ({
+                    id: 4, companyId: 1, productId: 7, status: 'ACTIVE', components: []
+                })),
+                update: jest.fn(async () => ({})),
+                updateMany: jest.fn(async () => ({ count: 0 }))
+            }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+
+        await expect(ProductionRecipeService.setStatus(4, 1, 'DRAFT'))
+            .rejects.toThrow(/ACTIVE -> DRAFT/);
+        expect(tx.productionRecipe.update).not.toHaveBeenCalled();
     });
 });

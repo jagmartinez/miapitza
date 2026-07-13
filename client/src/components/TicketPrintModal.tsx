@@ -4,6 +4,7 @@ import api from '../services/api';
 import { X, Printer } from 'lucide-react';
 import type { SingleValue } from 'react-select';
 import { escapeHtml } from '../utils/escapeHtml';
+import { resolveAssetUrl } from '../utils/assets';
 import '../index.css';
 
 interface CustomerTicketData {
@@ -172,7 +173,7 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
 
     const e = escapeHtml;
     return `
-      ${ticketDataCustomer.header.logoUrl ? `<img src="${e(ticketDataCustomer.header.logoUrl)}" class="header-logo" />` : ''}
+      ${ticketDataCustomer.header.logoUrl ? `<img src="${e(resolveAssetUrl(ticketDataCustomer.header.logoUrl))}" class="header-logo" />` : ''}
       <div class="center business-name">${e(ticketDataCustomer.header.businessName)}</div>
       ${ticketDataCustomer.header.ruc ? `<div class="center info-detail">RUC: ${e(ticketDataCustomer.header.ruc)}</div>` : ''}
       ${ticketDataCustomer.header.address ? `<div class="center info-detail">${e(ticketDataCustomer.header.address)}</div>` : ''}

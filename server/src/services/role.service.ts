@@ -1,6 +1,7 @@
 import prisma from '../utils/prisma';
 import { AuditLogService } from './audit-log.service';
 import { invalidatePermissionCache } from '../middlewares/auth';
+import { ROLES } from '../constants/roles';
 
 export class RoleService {
     static async getAll(companyId: number) {
@@ -40,12 +41,18 @@ export class RoleService {
         name: string;
         description?: string;
         permissionIds?: number[];
-    }, userId?: number) {
-        const { permissionIds, ...roleData } = data;
+    }, userId?: number, actingRoles: string[] = []) {
+        const { permissionIds } = data;
+        const name = data.name.trim();
+        if (!name) throw new Error('El nombre del rol es requerido');
+        if (name === ROLES.SUPERADMIN && !actingRoles.includes(ROLES.SUPERADMIN)) {
+            throw new Error('No autorizado para crear o modificar el rol SUPERADMIN');
+        }
 
         const role = await prisma.role.create({
             data: {
-                ...roleData,
+                name,
+                description: data.description,
                 companyId,
                 permissions: permissionIds ? {
                     connect: permissionIds.map(id => ({ id }))
@@ -70,22 +77,33 @@ export class RoleService {
         name?: string;
         description?: string;
         permissionIds?: number[];
-    }, userId?: number) {
-        const { permissionIds, ...roleData } = data;
+    }, userId?: number, actingRoles: string[] = []) {
+        const { permissionIds } = data;
 
         // Tenant scoping: ensure the role belongs to this company before mutating it.
         const existing = await prisma.role.findFirst({
             where: { id, companyId },
-            select: { id: true }
+            select: { id: true, name: true }
         });
         if (!existing) {
             throw new Error('Role not found');
+        }
+        const requestedName = data.name?.trim();
+        if (data.name !== undefined && !requestedName) {
+            throw new Error('El nombre del rol es requerido');
+        }
+        if (
+            (existing.name === ROLES.SUPERADMIN || requestedName === ROLES.SUPERADMIN) &&
+            !actingRoles.includes(ROLES.SUPERADMIN)
+        ) {
+            throw new Error('No autorizado para crear o modificar el rol SUPERADMIN');
         }
 
         const role = await prisma.role.update({
             where: { id },
             data: {
-                ...roleData,
+                ...(requestedName !== undefined ? { name: requestedName } : {}),
+                ...(data.description !== undefined ? { description: data.description } : {}),
                 permissions: permissionIds ? {
                     set: permissionIds.map(id => ({ id }))
                 } : undefined

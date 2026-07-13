@@ -6,6 +6,7 @@ import Select from './Select';
 import type { SingleValue } from 'react-select';
 import { calculateTipAmount, calculateTotalWithTip, splitTotalEvenly } from '../utils/payment';
 import type { Order } from '../types';
+import { isCashPaymentMethodName } from '../utils/paymentAccess';
 import './PaymentModal.css';
 
 interface PaymentMethodOption {
@@ -31,10 +32,7 @@ const resolveMethodIcon = (name: string): LucideIcon => {
 };
 
 /** A cash-like method requires the "amount tendered" / change workflow. */
-const isCashMethodName = (name: string): boolean => {
-    const normalized = name.toLowerCase();
-    return normalized.includes('efectivo') || normalized.includes('cash');
-};
+const isCashMethodName = isCashPaymentMethodName;
 
 interface SplitEntry {
     payerName: string;
@@ -65,9 +63,21 @@ interface PaymentModalProps {
     currencySymbol?: string;
     /** Defensa adicional: si la sucursal no tiene almacén, el cobro se bloquea. */
     branchHasWarehouse?: boolean;
+    /** Efectivo exige un turno abierto, vigente y de la misma sucursal que la orden. */
+    hasUsableCashShift?: boolean;
 }
 
-const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSuccess, currencySymbol = '$', branchHasWarehouse = true }: PaymentModalProps) => {
+const PaymentModal = ({
+    isOpen,
+    onClose,
+    orderTotal,
+    orderId,
+    order,
+    onPaymentSuccess,
+    currencySymbol = '$',
+    branchHasWarehouse = true,
+    hasUsableCashShift = true,
+}: PaymentModalProps) => {
     const [mode, setMode] = useState<'single' | 'split'>('single');
 
     // Payment methods are validated server-side against the company's DB rows;
@@ -80,8 +90,10 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
         [paymentMethods]
     );
     const defaultMethodId = useMemo(
-        () => cashMethodId ?? paymentMethods[0]?.id ?? null,
-        [cashMethodId, paymentMethods]
+        () => (hasUsableCashShift ? cashMethodId : null)
+            ?? paymentMethods.find((method) => method.id !== cashMethodId)?.id
+            ?? null,
+        [cashMethodId, hasUsableCashShift, paymentMethods]
     );
 
     // Single mode state
@@ -90,6 +102,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [pendingNotice, setPendingNotice] = useState('');
+    const [hasQueuedPayment, setHasQueuedPayment] = useState(false);
     const [tipPercentage, setTipPercentage] = useState<number>(0);
     const [customTip, setCustomTip] = useState<string>('');
     const [showCustomTipInput, setShowCustomTipInput] = useState(false);
@@ -131,9 +144,13 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                     .filter((row) => row.active !== false)
                     .map((row) => ({ id: row.id, name: row.name, icon: resolveMethodIcon(row.name) }));
                 setPaymentMethods(options);
-                setSelectedMethod((prev) => (prev !== null && options.some((o) => o.id === prev)
+                setSelectedMethod((prev) => (prev !== null
+                    && options.some((o) => o.id === prev)
+                    && (hasUsableCashShift || prev !== options.find((o) => isCashMethodName(o.name))?.id)
                     ? prev
-                    : options.find((o) => isCashMethodName(o.name))?.id ?? options[0]?.id ?? null));
+                    : (hasUsableCashShift ? options.find((o) => isCashMethodName(o.name))?.id : null)
+                        ?? options.find((o) => !isCashMethodName(o.name))?.id
+                        ?? null));
                 if (options.length === 0) {
                     setMethodsError('No hay métodos de pago configurados. Contacta a un administrador.');
                 }
@@ -146,7 +163,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                 if (!cancelled) setMethodsLoading(false);
             });
         return () => { cancelled = true; };
-    }, [isOpen]);
+    }, [hasUsableCashShift, isOpen]);
 
     useEffect(() => {
         if (isOpen) {
@@ -154,6 +171,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
             setAmountTendered(total.toFixed(2));
             setError('');
             setPendingNotice('');
+            setHasQueuedPayment(false);
             setTipPercentage(0);
             setCustomTip('');
             setShowCustomTipInput(false);
@@ -363,6 +381,11 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
             return;
         }
 
+        if (isCashSelected && !hasUsableCashShift) {
+            setError('Para cobrar en efectivo abre un turno vigente en la misma sucursal de la orden.');
+            return;
+        }
+
         if (isCashSelected && tendered < total) {
             setError('El monto ingresado es menor al total');
             return;
@@ -387,6 +410,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
             // Offline: the request was only queued, NOT confirmed by the server.
             // Do not report success or close the order — keep it open until sync.
             if ((response.data as ApiEnvelope)._offline) {
+                setHasQueuedPayment(true);
                 setPendingNotice('Sin conexión: el pago quedó en cola de sincronización. La orden permanece ABIERTA y solo se marcará como pagada cuando se confirme al reconectar.');
                 setLoading(false);
                 return;
@@ -415,6 +439,11 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
             if (!orderId) { setError('No se ha creado la orden'); setLoading(false); return; }
 
             const effectiveSplits = await recalculateSplitPreview(splitStrategy, splits, itemAssignments) || splits;
+            if (!hasUsableCashShift && effectiveSplits.some((split) => split.paymentMethodId === cashMethodId)) {
+                setError('La división contiene efectivo, pero no hay un turno vigente en la sucursal de la orden.');
+                setLoading(false);
+                return;
+            }
             const previewTotal = effectiveSplits.reduce((sum, split) => sum + (parseFloat(split.amount) || 0), 0);
             const remaining = Math.round((totalWithTip - previewTotal) * 100) / 100;
 
@@ -467,6 +496,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                 // Offline-queued split payments are not confirmed; stop and keep
                 // the order open rather than reporting success.
                 if ((response.data as ApiEnvelope)._offline) {
+                    setHasQueuedPayment(true);
                     setPaidSplitIndexes(succeeded);
                     const okNames = succeeded.map(nameOf);
                     setPendingNotice(
@@ -516,6 +546,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                             type="button"
                             className={`payment-mode-btn ${mode === 'single' ? 'active' : ''}`}
                             onClick={() => setMode('single')}
+                            disabled={hasQueuedPayment || paidSplitIndexes.length > 0}
                         >
                             Pago Único
                         </button>
@@ -529,6 +560,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                                     splitEvenlyAmong(2);
                                 }
                             }}
+                            disabled={hasQueuedPayment || paidSplitIndexes.length > 0}
                         >
                             <Users size={14} />
                             Dividir Cuenta
@@ -571,6 +603,11 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                                                 return (
                                                     <button key={method.id}
                                                         className={`payment-method-card ${selectedMethod === method.id ? 'active' : ''}`}
+                                                        type="button"
+                                                        disabled={!hasUsableCashShift && method.id === cashMethodId}
+                                                        title={!hasUsableCashShift && method.id === cashMethodId
+                                                            ? 'Requiere turno vigente en la misma sucursal'
+                                                            : undefined}
                                                         onClick={() => setSelectedMethod(method.id)}>
                                                         <Icon size={24} /><span>{method.name}</span>
                                                     </button>
@@ -687,6 +724,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                                                 initializeItemAssignments(Math.max(splits.length, 2));
                                             }
                                         }}
+                                        disabled={paidSplitIndexes.length > 0}
                                         style={{
                                             padding: '6px 14px',
                                             borderRadius: '999px',
@@ -711,7 +749,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                                         if (splitStrategy === 'by-items') {
                                             initializeItemAssignments(n);
                                         }
-                                    }}
+                                    }} disabled={paidSplitIndexes.length > 0}
                                         style={{
                                             padding: '6px 16px', borderRadius: '8px', border: '1px solid var(--color-neutral-200)',
                                             background: splits.length === n ? 'var(--color-primary, #2563eb)' : 'var(--color-neutral-50)',
@@ -721,7 +759,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                                         Dividir en {n}
                                     </button>
                                 ))}
-                                <button onClick={() => {
+                                <button disabled={paidSplitIndexes.length > 0} onClick={() => {
                                     addSplit();
                                     if (splitStrategy === 'by-items') {
                                         initializeItemAssignments(splits.length + 1);
@@ -735,7 +773,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                                     <Plus size={14} /> Agregar
                                 </button>
                                 {orderId && (
-                                    <button onClick={() => void recalculateSplitPreview(splitStrategy)}
+                                    <button disabled={paidSplitIndexes.length > 0} onClick={() => void recalculateSplitPreview(splitStrategy)}
                                         style={{
                                             padding: '6px 16px', borderRadius: '8px', border: '1px solid var(--color-neutral-200)',
                                             background: 'var(--color-neutral-50)', cursor: 'pointer',
@@ -757,6 +795,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                                         <input
                                             type="text" value={split.payerName}
                                             onChange={(e) => updateSplit(idx, 'payerName', e.target.value)}
+                                            disabled={paidSplitIndexes.includes(idx)}
                                             placeholder="Nombre" style={{
                                                 flex: 1, padding: '6px 10px', borderRadius: '6px',
                                                 border: '1px solid var(--color-neutral-200)', fontSize: '0.85rem',
@@ -772,7 +811,10 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                                             }
                                             onChange={(option: SingleValue<{ value: number; label: string }>) =>
                                                 option && updateSplit(idx, 'paymentMethodId', option.value)}
-                                            options={paymentMethods.map((m) => ({ value: m.id, label: m.name }))}
+                                            isDisabled={paidSplitIndexes.includes(idx)}
+                                            options={paymentMethods
+                                                .filter((m) => hasUsableCashShift || m.id !== cashMethodId)
+                                                .map((m) => ({ value: m.id, label: m.name }))}
                                             isSearchable={false}
                                         />
 
@@ -780,7 +822,7 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                                             <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{currencySymbol}</span>
                                             <input type="number" step="0.01" value={split.amount}
                                                 onChange={(e) => updateSplit(idx, 'amount', e.target.value)}
-                                                disabled={splitStrategy === 'by-items'}
+                                                disabled={splitStrategy === 'by-items' || paidSplitIndexes.includes(idx)}
                                                 style={{
                                                     width: '80px', padding: '6px 8px', borderRadius: '6px',
                                                     border: '1px solid var(--color-neutral-200)', fontSize: '0.85rem',
@@ -790,13 +832,14 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
 
                                         <input type="text" value={split.reference}
                                             onChange={(e) => updateSplit(idx, 'reference', e.target.value)}
+                                            disabled={paidSplitIndexes.includes(idx)}
                                             placeholder="Ref. (opc.)" style={{
                                                 width: '90px', padding: '6px 8px', borderRadius: '6px',
                                                 border: '1px solid var(--color-neutral-200)', fontSize: '0.8rem',
                                                 background: 'var(--bg-primary, #fff)'
                                             }} />
 
-                                        <button onClick={() => removeSplit(idx)}
+                                        <button onClick={() => removeSplit(idx)} disabled={paidSplitIndexes.length > 0}
                                             style={{
                                                 background: 'none', border: 'none', cursor: 'pointer',
                                                 color: 'var(--color-error, #ef4444)', padding: '4px'
@@ -880,6 +923,11 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                             Configura un almacén en Bodegas para habilitar el cobro.
                         </div>
                     )}
+                    {!hasUsableCashShift && cashMethodId !== null && (
+                        <div className="error-message-new">
+                            Efectivo no está disponible: abre un turno vigente en la misma sucursal. Los otros métodos sí pueden procesarse.
+                        </div>
+                    )}
                     {error && <div className="error-message-new">{error}</div>}
                     {pendingNotice && (
                         <div style={{
@@ -900,8 +948,8 @@ const PaymentModal = ({ isOpen, onClose, orderTotal, orderId, order, onPaymentSu
                         <button className="btn-confirm"
                             onClick={mode === 'single' ? handleSinglePayment : handleSplitPayment}
                             disabled={
-                                loading || previewLoading || !branchHasWarehouse ||
-                                (mode === 'single' && (selectedMethod === null || (isCashSelected && parseFloat(amountTendered) < totalWithTip))) ||
+                                loading || previewLoading || hasQueuedPayment || !branchHasWarehouse ||
+                                (mode === 'single' && (selectedMethod === null || (isCashSelected && (!hasUsableCashShift || parseFloat(amountTendered) < totalWithTip)))) ||
                                 (mode === 'split' && Math.abs(getSplitRemaining()) > 0.02)
                             }>
                             {loading

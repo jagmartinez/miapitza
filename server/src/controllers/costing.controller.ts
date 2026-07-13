@@ -62,11 +62,7 @@ export class CostingController {
                 });
             }
 
-            const company = await prisma.company.update({
-                where: { id: companyId },
-                data: { costingMethod },
-                select: { id: true, name: true, costingMethod: true }
-            });
+            const company = await CostingService.updateCostingMethod(companyId, costingMethod);
 
             res.json(company);
         } catch (error: unknown) {
@@ -75,20 +71,4 @@ export class CostingController {
         }
     }
 
-    /**
-     * Recalculate cost for a product (admin only)
-     * POST /api/products/:id/recalculate-cost
-     */
-    static async recalculateCost(req: Request, res: Response) {
-        try {
-            // This is a placeholder - full implementation would require
-            // recalculating based on purchase history
-            res.status(501).json({
-                error: 'Recálculo aún no implementado. Los costos se calculan automáticamente al recibir órdenes de compra.'
-            });
-        } catch (error: unknown) {
-            console.error('[CostingController] Error recalculating cost:', error);
-            res.status(500).json({ error: getErrorMessage(error) });
-        }
-    }
 }

@@ -8,6 +8,7 @@ import Pagination from '../components/Pagination';
 import { ordersAPI, invoicesAPI, settingsAPI } from '../services/api';
 import type { Order } from '../types';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
+import { formatLocalDateInput } from '../utils/dateInput';
 import './InvoiceHistory.css';
 
 interface Invoice {
@@ -23,10 +24,10 @@ interface Invoice {
 
 const PAGE_SIZE = 20;
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const todayStr = () => formatLocalDateInput();
 const monthStartStr = () => {
     const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+    return formatLocalDateInput(new Date(d.getFullYear(), d.getMonth(), 1));
 };
 
 function dateRangeForFilter(filter: string): { startDate?: string; endDate?: string } {
@@ -37,7 +38,7 @@ function dateRangeForFilter(filter: string): { startDate?: string; endDate?: str
         case 'week': {
             const weekAgo = new Date();
             weekAgo.setDate(weekAgo.getDate() - 7);
-            return { startDate: weekAgo.toISOString().slice(0, 10), endDate: today };
+            return { startDate: formatLocalDateInput(weekAgo), endDate: today };
         }
         case 'month':
             return { startDate: monthStartStr(), endDate: today };
@@ -80,7 +81,7 @@ export default function InvoiceHistory() {
                 .filter((order: Order) => order.status === 'PAID')
                 .map((order: Order) => ({
                     id: order.id,
-                    invoiceNumber: order.invoiceNumber || `FAC-${String(order.id).padStart(6, '0')}`,
+                    invoiceNumber: order.invoiceNumber || 'Pendiente de emisión',
                     date: order.closedAt || order.createdAt,
                     customerName: order.customerName,
                     waiterName: order.user?.name || 'N/A',
@@ -113,14 +114,17 @@ export default function InvoiceHistory() {
 
     const downloadPdf = async (orderId: number, invoiceNumber: string) => {
         try {
+            const invoice = await invoicesAPI.getData(orderId);
+            const officialNumber = (invoice.data.data?.invoiceNumber as string | undefined) || invoiceNumber;
             const res = await invoicesAPI.downloadPdf(orderId);
             const blob = new Blob([res.data], { type: 'application/pdf' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `${invoiceNumber}.pdf`;
+            link.download = `${officialNumber}.pdf`;
             link.click();
             URL.revokeObjectURL(url);
+            await loadInvoices();
         } catch (err) {
             console.error('Error downloading invoice PDF:', err);
             setError('No se pudo descargar el PDF de la factura.');

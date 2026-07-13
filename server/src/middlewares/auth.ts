@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import prisma from '../utils/prisma';
 import { SessionService } from '../services/session.service';
+import { DEFAULT_COMPANY_SETTINGS } from '../services/setting.service';
+import { isValidTimeZone } from '../utils/timezone';
 
 declare global {
     namespace Express {
@@ -13,6 +15,7 @@ declare global {
                 roleObj?: { name: string };
                 branchId?: number;
                 companyId: number;
+                timezone: string;
             };
         }
     }
@@ -49,7 +52,21 @@ export const auth = async (
                 companyId: true,
                 role: { select: { name: true } },
                 userRoles: { select: { role: { select: { name: true } } } },
-                status: true
+                status: true,
+                mustChangePassword: true,
+                passwordChangedAt: true,
+                company: {
+                    select: {
+                        active: true,
+                        settings: {
+                            where: { name: { endsWith: '_timezone' } },
+                            select: { value: true },
+                            take: 1
+                        }
+                    }
+                },
+                branch: { select: { status: true } },
+                allowedBranches: { select: { branchId: true } }
             }
         });
 
@@ -65,9 +82,26 @@ export const auth = async (
             });
         }
 
-        const allRoles: string[] = user.userRoles.length > 0
-            ? user.userRoles.map((ur) => ur.role.name)
-            : [user.role.name];
+        const allRoles: string[] = Array.from(new Set([
+            user.role.name,
+            ...user.userRoles.map((ur) => ur.role.name)
+        ])).filter((name) => name !== 'SUPERADMIN' || user.role.name === 'SUPERADMIN');
+
+        const isSuperAdmin = allRoles.includes('SUPERADMIN');
+        if ((user.company?.active !== true || (user.branchId && user.branch?.status !== 'ACTIVE')) && !isSuperAdmin) {
+            return res.status(403).json({ success: false, message: 'Empresa o sucursal inactiva' });
+        }
+        if (
+            !isSuperAdmin && user.branchId && user.allowedBranches.length > 0 &&
+            !user.allowedBranches.some((entry) => entry.branchId === user.branchId)
+        ) {
+            return res.status(403).json({ success: false, message: 'La sucursal activa no estÃ¡ permitida para este usuario' });
+        }
+
+        const configuredTimezone = user.company?.settings?.[0]?.value?.trim();
+        const timezone = configuredTimezone && isValidTimeZone(configuredTimezone)
+            ? configuredTimezone
+            : DEFAULT_COMPANY_SETTINGS.timezone;
 
         req.user = {
             userId: user.id,
@@ -75,8 +109,40 @@ export const auth = async (
             roles: allRoles,
             roleObj: user.role,
             branchId: user.branchId || undefined,
-            companyId: user.companyId
+            companyId: user.companyId,
+            timezone
         };
+
+        // Password-policy flags are security controls, not UI hints. Keep only
+        // the minimum endpoints needed to inspect/logout/change the password
+        // reachable until the credential is compliant again.
+        const passwordChangeAllowedPaths = new Set([
+            '/api/auth/me',
+            '/api/auth/logout',
+            '/api/auth/change-password'
+        ]);
+        let passwordChangeRequired = user.mustChangePassword;
+        if (!passwordChangeRequired && user.passwordChangedAt) {
+            const expirySetting = await prisma.setting.findFirst({
+                where: {
+                    companyId: user.companyId,
+                    name: `${user.companyId}_password_expiry_days`
+                },
+                select: { value: true }
+            });
+            const expiryDays = expirySetting ? Number.parseInt(expirySetting.value, 10) : 90;
+            if (Number.isInteger(expiryDays) && expiryDays > 0) {
+                passwordChangeRequired = Date.now() - new Date(user.passwordChangedAt).getTime()
+                    >= expiryDays * 24 * 60 * 60 * 1000;
+            }
+        }
+        if (passwordChangeRequired && !passwordChangeAllowedPaths.has(req.originalUrl.split('?')[0])) {
+            return res.status(403).json({
+                success: false,
+                code: 'PASSWORD_CHANGE_REQUIRED',
+                message: 'Debe cambiar su contraseÃ±a antes de continuar'
+            });
+        }
 
         next();
     } catch {

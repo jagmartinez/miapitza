@@ -75,6 +75,10 @@ export const canCreatePayment = (user: User | null | undefined): boolean =>
 export const canOperateKitchenLineItems = (user: User | null | undefined): boolean =>
     hasAnyRole(user, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.COCINA, ROLES.CHEF]);
 
+/** PATCH /orders/:id/status. Kitchen-only roles must finish line items instead. */
+export const canUpdateWholeOrderStatus = (user: User | null | undefined): boolean =>
+    hasAnyRole(user, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.MESERO, ROLES.CAJERO]);
+
 export const getPrimaryRoleName = (user?: User | null): string => {
     return getUserRoleNames(user)[0] || user?.role?.name || '';
 };

@@ -155,12 +155,9 @@ export class CostingService {
                     unitCost
                 );
             } else {
-                // FIFO - new purchase simply adds a batch at its own cost.
-                // The "average cost" stored on the product reflects the FIFO-weighted
-                // average across all remaining batches for display purposes.
+                // The inventory engine already opened this receipt's FIFO layer in
+                // the same transaction. InventoryBatch is the authoritative ledger.
                 const batches = await this.getFifoBatches(productId, companyId, db);
-                // Add the new batch to the list for the average calculation
-                batches.push({ quantity, unitCost });
                 newAvgCost = this.calculateBatchWeightedAverage(batches);
             }
 
@@ -257,10 +254,8 @@ export class CostingService {
                     unitCost
                 );
             } else {
-                // FIFO: the production batch is added at its computed cost; the stored
-                // average reflects the FIFO-weighted average across remaining batches.
+                // The inventory engine already opened this production FIFO layer.
                 const batches = await this.getFifoBatches(productId, companyId, db);
-                batches.push({ quantity, unitCost });
                 newAvgCost = this.calculateBatchWeightedAverage(batches);
             }
 
@@ -474,60 +469,115 @@ export class CostingService {
         }
     }
 
+    /**
+     * Change the tenant costing method. Entering FIFO reconciles every positive
+     * stock row with real cost layers, creating an explicit opening layer only for
+     * legacy quantities that have no layer representation.
+     */
+    static async updateCostingMethod(
+        companyId: number,
+        costingMethod: 'WEIGHTED_AVERAGE' | 'FIFO'
+    ) {
+        return prisma.$transaction(async (tx) => {
+            const company = await tx.company.findUnique({
+                where: { id: companyId },
+                select: { id: true, name: true, costingMethod: true }
+            });
+            if (!company) throw new Error('Empresa no encontrada');
+            // Re-selecting FIFO is also the supported reconciliation path for
+            // legacy tenants whose stock predates explicit cost layers.
+            if (company.costingMethod === costingMethod && costingMethod !== 'FIFO') return company;
+
+            if (costingMethod === 'FIFO') {
+                await tx.$queryRaw`SELECT id FROM \`Stock\` WHERE companyId = ${companyId} ORDER BY id FOR UPDATE`;
+                const [stocks, layers] = await Promise.all([
+                    tx.stock.findMany({
+                        where: { companyId },
+                        select: {
+                            warehouseId: true,
+                            productId: true,
+                            quantity: true,
+                            product: { select: { currentAverageCost: true, cost: true } }
+                        }
+                    }),
+                    tx.inventoryBatch.findMany({
+                        where: { companyId, remainingQty: { gt: 0 } },
+                        select: { warehouseId: true, productId: true, remainingQty: true }
+                    })
+                ]);
+                const represented = new Map<string, number>();
+                for (const layer of layers) {
+                    const key = `${layer.warehouseId}:${layer.productId}`;
+                    represented.set(key, (represented.get(key) || 0) + Number(layer.remainingQty));
+                }
+
+                const EPS = 1e-6;
+                for (const stock of stocks) {
+                    const quantity = Number(stock.quantity);
+                    if (quantity < -EPS) {
+                        throw new Error('No se puede activar FIFO mientras existan existencias negativas.');
+                    }
+                    const key = `${stock.warehouseId}:${stock.productId}`;
+                    const layerQuantity = represented.get(key) || 0;
+                    if (layerQuantity - quantity > EPS) {
+                        throw new Error(
+                            `Las capas FIFO exceden el stock para producto ${stock.productId} en almacén ${stock.warehouseId}.`
+                        );
+                    }
+                    const missing = quantity - layerQuantity;
+                    if (missing > EPS) {
+                        const unitCost = effectiveUnitCost(
+                            stock.product.currentAverageCost,
+                            stock.product.cost
+                        );
+                        if (!(unitCost > 0)) {
+                            throw new Error(
+                                `No se puede crear la capa inicial FIFO del producto ${stock.productId}: falta un costo unitario positivo.`
+                            );
+                        }
+                        await tx.inventoryBatch.create({
+                            data: {
+                                companyId,
+                                warehouseId: stock.warehouseId,
+                                productId: stock.productId,
+                                unitCost,
+                                originalQty: missing,
+                                remainingQty: missing,
+                                sourceType: 'OPENING',
+                                sourceRef: `FIFO-OPENING-${companyId}`
+                            }
+                        });
+                    }
+                }
+            }
+
+            return tx.company.update({
+                where: { id: companyId },
+                data: { costingMethod },
+                select: { id: true, name: true, costingMethod: true }
+            });
+        });
+    }
+
     // ==========================================
     // FIFO Costing Methods
     // ==========================================
 
-    /**
-     * Get remaining FIFO batches for a product.
-     * Each batch is a purchase (from ProductCostHistory) with remaining quantity
-     * calculated by subtracting consumed stock (OUT movements) from oldest batches first.
-     */
+    /** Get authoritative remaining FIFO layers across all company warehouses. */
     static async getFifoBatches(
         productId: number,
         companyId: number,
         db: Db = prisma
     ): Promise<Array<{ quantity: number; unitCost: number }>> {
-        // Get all purchase batches ordered oldest first
-        const purchaseHistory = await db.productCostHistory.findMany({
-            where: { productId, companyId },
-            orderBy: { createdAt: 'asc' }
+        const layers = await db.inventoryBatch.findMany({
+            where: { productId, companyId, remainingQty: { gt: 0 } },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            select: { remainingQty: true, unitCost: true }
         });
-
-        // Build batch list from purchases
-        const batches: Array<{ quantity: number; unitCost: number }> = purchaseHistory.map((entry) => ({
-            quantity: Number(entry.quantity),
-            unitCost: Number(entry.unitCost)
+        return layers.map((layer) => ({
+            quantity: Number(layer.remainingQty),
+            unitCost: Number(layer.unitCost)
         }));
-
-        // Get total consumed quantity from OUT movements
-        const outMovements = await db.inventoryMovement.findMany({
-            where: {
-                productId,
-                companyId,
-                type: 'OUT'
-            },
-            select: { quantity: true }
-        });
-
-        let totalConsumed = outMovements.reduce((sum, m) => sum + Math.abs(Number(m.quantity)), 0);
-
-        // Consume from oldest batches first (FIFO)
-        const remaining: Array<{ quantity: number; unitCost: number }> = [];
-        for (const batch of batches) {
-            if (totalConsumed >= batch.quantity) {
-                totalConsumed -= batch.quantity;
-                // This batch is fully consumed, skip it
-            } else {
-                remaining.push({
-                    quantity: batch.quantity - totalConsumed,
-                    unitCost: batch.unitCost
-                });
-                totalConsumed = 0;
-            }
-        }
-
-        return remaining;
     }
 
     /**
@@ -540,6 +590,9 @@ export class CostingService {
         quantityToConsume: number,
         db: Db = prisma
     ): Promise<{ totalCost: number; costPerUnit: number; batchesUsed: Array<{ quantity: number; unitCost: number }> }> {
+        if (!Number.isFinite(quantityToConsume) || quantityToConsume <= 0) {
+            throw new Error('La cantidad a costear por FIFO debe ser finita y mayor a 0');
+        }
         const batches = await this.getFifoBatches(productId, companyId, db);
 
         let remaining = quantityToConsume;
@@ -556,12 +609,11 @@ export class CostingService {
             batchesUsed.push({ quantity: used, unitCost: batch.unitCost });
         }
 
-        // If remaining > 0, there is insufficient stock in batches.
-        // Fall back to last known cost for the shortfall.
-        if (remaining > 0 && batchesUsed.length > 0) {
-            const lastCost = batchesUsed[batchesUsed.length - 1].unitCost;
-            totalCost += remaining * lastCost;
-            batchesUsed.push({ quantity: remaining, unitCost: lastCost });
+        if (remaining > 1e-9) {
+            throw new Error(
+                `Capas FIFO insuficientes para costear ${quantityToConsume} unidades del producto ${productId}; ` +
+                `faltan ${remaining}. Reconcílie el inventario antes de continuar.`
+            );
         }
 
         const costPerUnit = quantityToConsume > 0 ? totalCost / quantityToConsume : 0;

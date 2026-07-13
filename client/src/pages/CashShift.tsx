@@ -16,6 +16,7 @@ import { hasAnyRole } from '../utils/authz';
 import { useAppToast } from '../context/ToastContext';
 import { DEFAULT_EXCHANGE_RATE } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
+import { formatLocalDateInput } from '../utils/dateInput';
 import './CashShift.css';
 
 interface DenomCountRow {
@@ -519,7 +520,7 @@ export default function CashShiftPage() {
         setMovementForm({
             amount: '',
             description: '',
-            documentDate: new Date().toISOString().split('T')[0], // Default to today
+            documentDate: formatLocalDateInput(), // Default to today
             documentType: '',
             documentNumber: '',
             supplierId: ''

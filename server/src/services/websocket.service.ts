@@ -2,6 +2,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { Server, IncomingMessage } from 'http';
 import jwt from 'jsonwebtoken';
 import { SessionService } from './session.service';
+import prisma from '../utils/prisma';
 
 interface WebSocketClient extends WebSocket {
     id: string;
@@ -11,6 +12,7 @@ interface WebSocketClient extends WebSocket {
     companyId?: number;
     branchId?: number;
     roles?: string[];
+    sessionTokenHash?: string;
     authTimeout?: ReturnType<typeof setTimeout> | null;
 }
 
@@ -31,7 +33,7 @@ export class WebSocketService {
     private static clients: Map<string, WebSocketClient> = new Map();
 
     static initialize(server: Server): void {
-        const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000').split(',').map(o => o.trim());
+        const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173').split(',').map(o => o.trim());
 
         this.wss = new WebSocketServer({
             server,
@@ -48,8 +50,7 @@ export class WebSocketService {
 
         this.wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
             const client = ws as WebSocketClient;
-            const url = new URL(req.url || '', `http://${req.headers.host}`);
-            const token = url.searchParams.get('token') || this.extractTokenFromCookieHeader(req.headers.cookie);
+            const token = this.extractTokenFromCookieHeader(req.headers.cookie);
             const allowUnauthenticated = process.env.WS_ALLOW_UNAUTHENTICATED === 'true' && process.env.NODE_ENV !== 'production';
             client.authenticated = false;
             client.authTimeout = null;
@@ -63,11 +64,8 @@ export class WebSocketService {
                 client.authenticated = true;
                 client.roles = [];
             } else {
-                client.authTimeout = setTimeout(() => {
-                    if (!client.authenticated) {
-                        client.close(4001, 'Authentication required');
-                    }
-                }, 5000);
+                client.close(4001, 'Authentication required');
+                return;
             }
 
             client.id = this.generateClientId();
@@ -109,17 +107,6 @@ export class WebSocketService {
         this.startHeartbeat();
     }
 
-    private static extractAuthTokenFromRawMessage(message: Record<string, unknown>): string | undefined {
-        const payload = message.payload;
-        if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
-            const token = (payload as Record<string, unknown>).token;
-            if (typeof token === 'string') return token;
-        }
-        const top = message.token;
-        if (typeof top === 'string') return top;
-        return undefined;
-    }
-
     private static async handleMessage(clientId: string, raw: unknown): Promise<void> {
         const client = this.clients.get(clientId);
         if (!client) {
@@ -132,21 +119,6 @@ export class WebSocketService {
         const message = raw as Record<string, unknown>;
         const msgType = message.type;
         if (typeof msgType !== 'string') {
-            return;
-        }
-
-        if (msgType === 'AUTH') {
-            const token = this.extractAuthTokenFromRawMessage(message);
-
-            if (!token || !await this.authenticateClient(client, token)) {
-                client.close(4001, 'Authentication failed');
-                return;
-            }
-
-            this.sendToClient(clientId, {
-                type: 'AUTHENTICATED',
-                payload: { timestamp: new Date() }
-            });
             return;
         }
 
@@ -176,24 +148,49 @@ export class WebSocketService {
         try {
             const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] }) as {
                 userId?: number;
-                companyId?: number;
-                branchId?: number;
-                role?: string;
-                roles?: string[];
             };
+            if (!Number.isInteger(decoded.userId) || !decoded.userId) return false;
             const sessionIsValid = await SessionService.isValid(token);
             if (!sessionIsValid) {
                 return false;
             }
 
-            client.userId = decoded.userId;
-            client.companyId = decoded.companyId;
-            client.branchId = decoded.branchId;
-            client.roles = Array.isArray(decoded.roles)
-                ? decoded.roles
-                : decoded.role
-                    ? [decoded.role]
-                    : [];
+            // JWT claims are a login-time snapshot. Reload the authoritative
+            // tenant, branch, status and roles so a disabled/transferred user or
+            // stale role token cannot keep receiving another scope's events.
+            const user = await prisma.user.findUnique({
+                where: { id: decoded.userId },
+                select: {
+                    id: true,
+                    companyId: true,
+                    branchId: true,
+                    status: true,
+                    mustChangePassword: true,
+                    company: { select: { active: true } },
+                    branch: { select: { status: true } },
+                    allowedBranches: { select: { branchId: true } },
+                    role: { select: { name: true } },
+                    userRoles: { select: { role: { select: { name: true } } } }
+                }
+            });
+            if (!user || user.status !== 'ACTIVE' || user.mustChangePassword || !user.companyId) return false;
+
+            const authoritativeRoles = Array.from(new Set([
+                user.role.name,
+                ...user.userRoles.map((entry) => entry.role.name)
+            ])).filter((name) => name !== 'SUPERADMIN' || user.role.name === 'SUPERADMIN');
+            const isSuperAdmin = authoritativeRoles.includes('SUPERADMIN');
+            if ((user.company?.active !== true || (user.branchId && user.branch?.status !== 'ACTIVE')) && !isSuperAdmin) return false;
+            if (
+                !isSuperAdmin && user.branchId && user.allowedBranches.length > 0 &&
+                !user.allowedBranches.some((entry) => entry.branchId === user.branchId)
+            ) return false;
+
+            client.userId = user.id;
+            client.companyId = user.companyId;
+            client.branchId = user.branchId ?? undefined;
+            client.roles = authoritativeRoles;
+            client.sessionTokenHash = SessionService.hashToken(token);
             client.authenticated = true;
 
             if (client.authTimeout) {
@@ -248,6 +245,56 @@ export class WebSocketService {
             }
         }
 
+        return true;
+    }
+
+    /**
+     * Revalidate the authoritative session and scope for long-lived sockets.
+     * HTTP authorization is checked on every request, while a WebSocket can stay
+     * open for hours; without this check a revoked/deactivated/transferred user
+     * would continue receiving events until reconnecting.
+     */
+    private static async revalidateClient(client: WebSocketClient): Promise<boolean> {
+        if (!client.userId || !client.sessionTokenHash) {
+            // Only the explicit non-production unauthenticated mode lacks these.
+            return process.env.WS_ALLOW_UNAUTHENTICATED === 'true' && process.env.NODE_ENV !== 'production';
+        }
+
+        const [sessionIsValid, user] = await Promise.all([
+            SessionService.isHashValid(client.sessionTokenHash),
+            prisma.user.findUnique({
+                where: { id: client.userId },
+                select: {
+                    id: true,
+                    companyId: true,
+                    branchId: true,
+                    status: true,
+                    mustChangePassword: true,
+                    company: { select: { active: true } },
+                    branch: { select: { status: true } },
+                    allowedBranches: { select: { branchId: true } },
+                    role: { select: { name: true } },
+                    userRoles: { select: { role: { select: { name: true } } } }
+                }
+            })
+        ]);
+
+        if (!sessionIsValid || !user || user.status !== 'ACTIVE' || user.mustChangePassword || !user.companyId) return false;
+
+        const authoritativeRoles = Array.from(new Set([
+            user.role.name,
+            ...user.userRoles.map((entry) => entry.role.name)
+        ])).filter((name) => name !== 'SUPERADMIN' || user.role.name === 'SUPERADMIN');
+        const isSuperAdmin = authoritativeRoles.includes('SUPERADMIN');
+        if ((user.company?.active !== true || (user.branchId && user.branch?.status !== 'ACTIVE')) && !isSuperAdmin) return false;
+        if (
+            !isSuperAdmin && user.branchId && user.allowedBranches.length > 0 &&
+            !user.allowedBranches.some((entry) => entry.branchId === user.branchId)
+        ) return false;
+
+        client.companyId = user.companyId;
+        client.branchId = user.branchId ?? undefined;
+        client.roles = authoritativeRoles;
         return true;
     }
 
@@ -364,6 +411,17 @@ export class WebSocketService {
 
                 client.isAlive = false;
                 client.ping();
+
+                void this.revalidateClient(client).then((valid) => {
+                    if (!valid) {
+                        client.close(4001, 'Session revoked or scope changed');
+                        this.clients.delete(clientId);
+                    }
+                }).catch(() => {
+                    // Fail closed when the session/scope store cannot be checked.
+                    client.close(1011, 'Session validation failed');
+                    this.clients.delete(clientId);
+                });
             });
         }, 30000);
 

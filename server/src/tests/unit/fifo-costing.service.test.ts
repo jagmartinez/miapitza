@@ -99,7 +99,7 @@ describe('FIFO costing — engine OUT consumes layers oldest-first', () => {
         expect(batchUpdates[1].data.remainingQty).toBeCloseTo(2, 6);
     });
 
-    it('covers the shortfall at the average cost when layers run out (graceful degradation)', async () => {
+    it('fails closed when FIFO layers do not reconcile with stock', async () => {
         const { tx } = makeTx({
             costingMethod: 'FIFO',
             stockQuantity: 5,
@@ -107,18 +107,13 @@ describe('FIFO costing — engine OUT consumes layers oldest-first', () => {
             batches: [{ id: 1, unitCost: 10, remainingQty: 2 }]
         });
 
-        // Consume 5 -> 2@10 (=20) + 3@avg5 (=15) = 35 ; unit = 35/5 = 7
-        const result = await InventoryEngineService.applyMovement(tx, {
+        await expect(InventoryEngineService.applyMovement(tx, {
             type: 'OUT',
             companyId: 1,
             warehouseId: 1,
             productId: 1,
             userId: 1,
             quantity: 5
-        });
-
-        expect(result.totalCost).toBeCloseTo(35, 6);
-        expect(result.unitCost).toBeCloseTo(7, 6);
-        expect(result.balanceQty).toBe(0);
+        })).rejects.toThrow(/FIFO inconsistente/i);
     });
 });

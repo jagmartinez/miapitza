@@ -75,14 +75,16 @@ router.get('/product/:productId', async (req: Request, res: Response, next: Next
     try {
         const companyId = req.user!.companyId;
         const productId = parseInt(req.params.productId);
+        const branchId = resolveBranchScope(req.user!);
 
-        const status = await StockAlertService.checkProductStock(productId, companyId);
+        const status = await StockAlertService.checkProductStock(productId, companyId, branchId);
 
         res.json({
             success: true,
             data: status
         });
     } catch (error: unknown) {
+        if (error instanceof BranchScopeError) return next(error);
         next({ statusCode: 500, message: getErrorMessage(error) });
     }
 });

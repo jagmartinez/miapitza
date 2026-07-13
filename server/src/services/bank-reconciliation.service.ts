@@ -1,39 +1,29 @@
+import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { formatCurrency } from '../utils/currency';
 import { SettingService } from './setting.service';
-
-/**
- * Thrown by endpoints whose backing persistence does not yet exist. Routes map
- * this to HTTP 501 Not Implemented so callers are not given a fake success.
- */
-export class NotImplementedError extends Error {
-    constructor(message: string) {
-        super(message);
-        this.name = 'NotImplementedError';
-    }
-}
 
 /**
  * Bank Reconciliation Service
  * Handles matching cash register totals with bank deposits
  */
 export class BankReconciliationService {
-    // Tolerances for treating a cash difference as "balanced". These are reasonable
-    // defaults; ideally they would become per-company configuration (e.g. a Setting).
     /**
      * Get reconciliation status for a date range
      */
-    static async getReconciliationStatus(companyId: number, startDate: Date, endDate: Date) {
+    static async getReconciliationStatus(companyId: number, startDate: Date, endDate: Date, branchId?: number) {
         const tolerance = await SettingService.getCashReconciliationTolerance(companyId);
         const payments = await prisma.payment.findMany({
             where: {
+                status: 'ACTIVE',
                 createdAt: {
                     gte: startDate,
                     lte: endDate
                 },
                 order: {
                     companyId,
-                    status: { not: 'CANCELLED' }
+                    status: { not: 'CANCELLED' },
+                    ...(branchId ? { branchId } : {})
                 }
             },
             include: {
@@ -47,6 +37,7 @@ export class BankReconciliationService {
         const shifts = await prisma.cashShift.findMany({
             where: {
                 companyId,
+                ...(branchId ? { cashRegister: { branchId } } : {}),
                 endDate: {
                     gte: startDate,
                     lte: endDate
@@ -177,37 +168,75 @@ export class BankReconciliationService {
     /**
      * Create bank deposit record
      */
-    static async recordDeposit(_companyId: number, _data: {
-        date: Date;
+    static async recordDeposit(companyId: number, userId: number, data: {
+        date: Date | string;
         amount: number;
         bankAccount: string;
         reference: string;
         notes?: string;
         shiftIds?: number[];
-    }): Promise<never> {
-        // There is no BankDeposit model in the schema yet, so we cannot persist a
-        // deposit. Rather than fabricate a success response (which previously returned
-        // a fake `id: Date.now()`), surface this clearly as not implemented. The route
-        // maps NotImplementedError to HTTP 501.
-        throw new NotImplementedError(
-            'El registro de depósitos bancarios no está implementado: falta el modelo BankDeposit en la base de datos.'
-        );
+    }, branchId?: number) {
+        const amount = Math.round(Number(data.amount) * 100) / 100;
+        const date = new Date(data.date);
+        const reference = data.reference?.trim();
+        const bankAccount = data.bankAccount?.trim();
+        const requestedShiftIds = data.shiftIds || [];
+        if (requestedShiftIds.some((id) => !Number.isInteger(id) || id <= 0)) {
+            throw new Error('Los identificadores de turno deben ser enteros positivos');
+        }
+        const shiftIds = Array.from(new Set(requestedShiftIds));
+
+        if (!Number.isFinite(amount) || amount <= 0) throw new Error('El monto del depósito debe ser mayor a cero');
+        if (Number.isNaN(date.getTime())) throw new Error('La fecha del depósito no es válida');
+        if (!reference) throw new Error('La referencia del depósito es obligatoria');
+        if (!bankAccount) throw new Error('La cuenta bancaria es obligatoria');
+
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            const actor = await tx.user.findFirst({ where: { id: userId, companyId, status: 'ACTIVE' }, select: { id: true } });
+            if (!actor) throw new Error('Usuario no válido para esta empresa');
+            if (shiftIds.length > 0) {
+                for (const shiftId of [...shiftIds].sort((a, b) => a - b)) {
+                    await tx.$queryRaw`SELECT id FROM \`CashShift\` WHERE id = ${shiftId} AND companyId = ${companyId} FOR UPDATE`;
+                }
+                const shifts = await tx.cashShift.findMany({
+                    where: {
+                        id: { in: shiftIds }, companyId, endDate: { not: null },
+                        ...(branchId ? { cashRegister: { branchId } } : {})
+                    },
+                    select: { id: true, depositLinks: { where: { deposit: { status: 'ACTIVE' } }, select: { id: true } } }
+                });
+                if (shifts.length !== shiftIds.length) throw new Error('Uno o más turnos no existen, pertenecen a otra empresa o continúan abiertos');
+                if (shifts.some((shift) => shift.depositLinks.length > 0)) throw new Error('Uno o más turnos ya están conciliados con un depósito activo');
+            }
+
+            return tx.bankDeposit.create({
+                data: {
+                    companyId,
+                    createdById: userId,
+                    date,
+                    amount,
+                    bankAccount,
+                    reference,
+                    notes: data.notes?.trim() || null,
+                    shifts: shiftIds.length > 0 ? { create: shiftIds.map((shiftId) => ({ shiftId })) } : undefined
+                },
+                include: { shifts: { select: { shiftId: true } } }
+            });
+        });
     }
 
     /**
      * Get pending reconciliations
      */
-    static async getPendingReconciliations(companyId: number) {
+    static async getPendingReconciliations(companyId: number, branchId?: number) {
         const tolerance = await SettingService.getCashReconciliationTolerance(companyId);
         // Get shifts without matching deposits
         const unreconciledShifts = await prisma.cashShift.findMany({
             where: {
                 companyId,
+                ...(branchId ? { cashRegister: { branchId } } : {}),
                 endDate: { not: null },
-                OR: [
-                    { notes: null },
-                    { notes: { not: { contains: 'RECONCILED' } } }
-                ]
+                depositLinks: { none: { deposit: { status: 'ACTIVE' } } }
             },
             include: {
                 cashRegister: true,
@@ -256,23 +285,83 @@ export class BankReconciliationService {
     /**
      * Mark shifts as reconciled
      */
-    static async markAsReconciled(companyId: number, shiftIds: number[], depositReference: string) {
-        // Scope by companyId so a tenant can never reconcile another tenant's shifts.
-        const result = await prisma.cashShift.updateMany({
-            where: {
-                id: { in: shiftIds },
-                companyId
-            },
-            data: {
-                notes: `RECONCILED - Depósito: ${depositReference}`
-            }
-        });
+    static async markAsReconciled(companyId: number, shiftIds: number[], depositReference: string, branchId?: number) {
+        if (shiftIds.some((id) => !Number.isInteger(id) || id <= 0)) {
+            throw new Error('Los identificadores de turno deben ser enteros positivos');
+        }
+        const uniqueShiftIds = Array.from(new Set(shiftIds));
+        const reference = depositReference.trim();
+        if (uniqueShiftIds.length === 0) throw new Error('Debe seleccionar al menos un turno');
+        if (!reference) throw new Error('La referencia del depósito es obligatoria');
 
-        return {
-            reconciled: result.count,
-            shiftIds,
-            depositReference
-        };
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            await tx.$queryRaw`SELECT id FROM \`BankDeposit\` WHERE companyId = ${companyId} AND reference = ${reference} FOR UPDATE`;
+            const deposit = await tx.bankDeposit.findFirst({ where: { companyId, reference, status: 'ACTIVE' }, select: { id: true } });
+            if (!deposit) throw new Error('Depósito activo no encontrado para esta empresa');
+            for (const shiftId of [...uniqueShiftIds].sort((a, b) => a - b)) {
+                await tx.$queryRaw`SELECT id FROM \`CashShift\` WHERE id = ${shiftId} AND companyId = ${companyId} FOR UPDATE`;
+            }
+            const shifts = await tx.cashShift.findMany({
+                where: {
+                    id: { in: uniqueShiftIds }, companyId, endDate: { not: null },
+                    ...(branchId ? { cashRegister: { branchId } } : {})
+                },
+                select: { id: true, depositLinks: { where: { deposit: { status: 'ACTIVE' } }, select: { id: true } } }
+            });
+            if (shifts.length !== uniqueShiftIds.length) throw new Error('Uno o más turnos no existen, pertenecen a otra empresa o continúan abiertos');
+            if (shifts.some((shift) => shift.depositLinks.length > 0)) throw new Error('Uno o más turnos ya están conciliados');
+            await tx.bankDepositShift.createMany({ data: uniqueShiftIds.map((shiftId) => ({ depositId: deposit.id, shiftId })) });
+            return { reconciled: uniqueShiftIds.length, shiftIds: uniqueShiftIds, depositReference: reference };
+        });
+    }
+
+    static async getDeposits(companyId: number, branchId?: number) {
+        return prisma.bankDeposit.findMany({
+            where: {
+                companyId,
+                ...(branchId ? {
+                    shifts: {
+                        some: { shift: { cashRegister: { branchId } } },
+                        every: { shift: { cashRegister: { branchId } } }
+                    }
+                } : {})
+            },
+            include: {
+                createdBy: { select: { id: true, name: true } },
+                reversedBy: { select: { id: true, name: true } },
+                shifts: { select: { shiftId: true } }
+            },
+            orderBy: [{ date: 'desc' }, { id: 'desc' }],
+            take: 100
+        });
+    }
+
+    static async reverseDeposit(companyId: number, depositId: number, userId: number, reason: string, branchId?: number) {
+        const reversalReason = reason.trim();
+        if (!reversalReason) throw new Error('El motivo del reverso es obligatorio');
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            await tx.$queryRaw`SELECT id FROM \`BankDeposit\` WHERE id = ${depositId} AND companyId = ${companyId} FOR UPDATE`;
+            const actor = await tx.user.findFirst({ where: { id: userId, companyId, status: 'ACTIVE' }, select: { id: true } });
+            if (!actor) throw new Error('Usuario no válido para esta empresa');
+            const deposit = await tx.bankDeposit.findFirst({
+                where: {
+                    id: depositId,
+                    companyId,
+                    status: 'ACTIVE',
+                    ...(branchId ? {
+                        shifts: {
+                            some: { shift: { cashRegister: { branchId } } },
+                            every: { shift: { cashRegister: { branchId } } }
+                        }
+                    } : {})
+                }
+            });
+            if (!deposit) throw new Error('Depósito activo no encontrado');
+            return tx.bankDeposit.update({
+                where: { id: deposit.id },
+                data: { status: 'REVERSED', reversedAt: new Date(), reversedById: userId, reversalReason }
+            });
+        });
     }
 
     /**
@@ -302,11 +391,11 @@ export class BankReconciliationService {
     /**
      * Generate reconciliation report
      */
-    static async generateReport(companyId: number, month: number, year: number) {
+    static async generateReport(companyId: number, month: number, year: number, branchId?: number) {
         const startDate = new Date(year, month - 1, 1);
         const endDate = new Date(year, month, 0, 23, 59, 59);
 
-        const status = await this.getReconciliationStatus(companyId, startDate, endDate);
+        const status = await this.getReconciliationStatus(companyId, startDate, endDate, branchId);
 
         return {
             ...status,

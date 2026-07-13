@@ -78,9 +78,12 @@ export class SessionService {
 
     /** Check if a token's session is still valid (not revoked) */
     static async isValid(token: string): Promise<boolean> {
-        const session = await prisma.userSession.findUnique({
-            where: { tokenHash: hashToken(token) },
-        });
+        return this.isHashValid(hashToken(token));
+    }
+
+    /** Validate a previously hashed token without retaining the bearer token in memory. */
+    static async isHashValid(tokenHash: string): Promise<boolean> {
+        const session = await prisma.userSession.findUnique({ where: { tokenHash } });
         if (!session) return false; // Reject tokens without a tracked session
         return !session.revoked && new Date(session.expiresAt) > new Date();
     }

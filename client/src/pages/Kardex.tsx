@@ -7,6 +7,7 @@ import Pagination from '../components/Pagination';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
+import { formatLocalDateInput } from '../utils/dateInput';
 import { FileText, Download, Calendar, Filter, ArrowLeft } from 'lucide-react';
 import type { SingleValue } from 'react-select';
 import './Kardex.css';
@@ -75,10 +76,10 @@ interface ProductRow {
 
 const PAGE_SIZE = 20;
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const todayStr = () => formatLocalDateInput();
 const monthStartStr = () => {
     const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+    return formatLocalDateInput(new Date(d.getFullYear(), d.getMonth(), 1));
 };
 
 const num = (value: number | string | null | undefined) => {
@@ -228,7 +229,7 @@ export default function Kardex() {
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Kardex_${kardexData?.product.name}_${new Date().toISOString().split('T')[0]}.xlsx`;
+            a.download = `Kardex_${kardexData?.product.name}_${formatLocalDateInput()}.xlsx`;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);

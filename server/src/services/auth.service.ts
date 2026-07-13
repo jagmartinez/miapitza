@@ -145,7 +145,9 @@ export class AuthService {
             include: {
                 role: { select: { id: true, name: true } },
                 userRoles: { select: { role: { select: { id: true, name: true } } } },
-                company: { select: { id: true, name: true, ruc: true } }
+                company: { select: { id: true, name: true, ruc: true, active: true } },
+                branch: { select: { status: true } },
+                allowedBranches: { select: { branchId: true } }
             }
         });
 
@@ -156,6 +158,23 @@ export class AuthService {
         if (user.status !== 'ACTIVE') {
             recordFailedAttempt(username);
             throw new Error('Credenciales inválidas'); // Don't reveal account status
+        }
+
+        const authoritativeRoleNames = Array.from(new Set([
+            user.role.name,
+            ...user.userRoles.map((entry) => entry.role.name)
+        ])).filter((name) => name !== ROLES.SUPERADMIN || user.role.name === ROLES.SUPERADMIN);
+        const isSuperAdmin = authoritativeRoleNames.includes(ROLES.SUPERADMIN);
+        if ((!user.company?.active || (user.branchId && user.branch?.status !== 'ACTIVE')) && !isSuperAdmin) {
+            recordFailedAttempt(username);
+            throw new Error('Credenciales invÃ¡lidas');
+        }
+        if (
+            !isSuperAdmin && user.branchId && user.allowedBranches.length > 0 &&
+            !user.allowedBranches.some((entry) => entry.branchId === user.branchId)
+        ) {
+            recordFailedAttempt(username);
+            throw new Error('Credenciales invÃ¡lidas');
         }
 
         const isValidPassword = await bcrypt.compare(password, user.password);
@@ -208,9 +227,9 @@ export class AuthService {
         const JWT_SECRET = process.env.JWT_SECRET;
         if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is not configured');
 
-        const allRoles = user.userRoles.length > 0
-            ? user.userRoles.map((ur: { role: { id: number; name: string } }) => ur.role)
-            : [user.role];
+        const allRoles = [user.role, ...user.userRoles.map((ur: { role: { id: number; name: string } }) => ur.role)]
+            .filter((role, index, roles) => roles.findIndex((candidate) => candidate.id === role.id) === index)
+            .filter((role) => role.name !== ROLES.SUPERADMIN || user.role.name === ROLES.SUPERADMIN);
         const roleNames = allRoles.map((r: { id: number; name: string }) => r.name);
 
         const token = jwt.sign(

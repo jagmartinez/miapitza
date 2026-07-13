@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { ProductionOrderService } from '../services/production-order.service';
 import { getErrorMessage } from '../utils/error';
 import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
+import { WarehouseService } from '../services/warehouse.service';
 
 export class ProductionOrderController {
     static async getAll(req: Request, res: Response, next: NextFunction) {
@@ -37,6 +38,8 @@ export class ProductionOrderController {
     static async preview(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
+            const warehouse = await WarehouseService.getById(Number(req.body.warehouseId), companyId);
+            assertBranchAccess(req.user!, (warehouse as { branchId: number | null }).branchId, { allowGlobal: true });
             const data = await ProductionOrderService.preview(companyId, {
                 productId: Number(req.body.productId),
                 recipeId: req.body.recipeId ? Number(req.body.recipeId) : undefined,
@@ -45,6 +48,7 @@ export class ProductionOrderController {
             });
             res.json({ success: true, data });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }

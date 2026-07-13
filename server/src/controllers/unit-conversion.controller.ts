@@ -147,6 +147,18 @@ export class UnitConversionController {
                 if (!['MASS', 'VOLUME', 'UNIT', 'PACKAGE'].includes(measurementType)) {
                     return next({ statusCode: 400, message: 'Tipo de medida invalido' });
                 }
+                if (measurementType !== existing.measurementType) {
+                    const [baseUses, allowedUses] = await Promise.all([
+                        prisma.product.count({ where: { companyId, baseUnitId: unitId, active: true } }),
+                        prisma.productUnit.count({ where: { companyId, unitId, active: true } })
+                    ]);
+                    if (baseUses + allowedUses > 0) {
+                        return next({
+                            statusCode: 400,
+                            message: 'No se puede cambiar el tipo de medida mientras la unidad esté asignada a productos activos'
+                        });
+                    }
+                }
                 data.measurementType = measurementType;
             }
 
@@ -160,13 +172,14 @@ export class UnitConversionController {
 
             if (active !== undefined) {
                 if (active === false) {
-                    const productsUsingBase = await prisma.product.count({
-                        where: { companyId, baseUnitId: unitId, active: true }
-                    });
-                    if (productsUsingBase > 0) {
+                    const [productsUsingBase, productsUsingAllowed] = await Promise.all([
+                        prisma.product.count({ where: { companyId, baseUnitId: unitId, active: true } }),
+                        prisma.productUnit.count({ where: { companyId, unitId, active: true } })
+                    ]);
+                    if (productsUsingBase + productsUsingAllowed > 0) {
                         return next({
                             statusCode: 400,
-                            message: `No se puede inhabilitar: ${productsUsingBase} producto(s) la usan como unidad base`
+                            message: `No se puede inhabilitar: ${productsUsingBase + productsUsingAllowed} asignación(es) activas dependen de esta unidad`
                         });
                     }
                 }
@@ -226,19 +239,26 @@ export class UnitConversionController {
             // La unidad base debe existir y pertenecer a la empresa: es el ancla de
             // todas las conversiones, así que validamos contra el catálogo.
             const baseUnit = await prisma.unitOfMeasure.findFirst({
-                where: { id: baseUnitId, companyId }
+                where: { id: baseUnitId, companyId, active: true }
             });
             if (!baseUnit) {
                 return next({ statusCode: 400, message: 'La unidad base no existe o no pertenece a la empresa' });
             }
 
             const safeAllowed = Array.isArray(allowedUnits) ? allowedUnits : [];
+            const requestedIds = safeAllowed.map((unit) => Number(unit.unitId));
+            if (new Set(requestedIds).size !== requestedIds.length) {
+                return next({ statusCode: 400, message: 'No se puede repetir una unidad en las conversiones del producto' });
+            }
+            if (safeAllowed.filter((unit) => unit.isDefault).length > 1) {
+                return next({ statusCode: 400, message: 'Solo una unidad puede ser la predeterminada del producto' });
+            }
 
             // Cargamos las unidades referenciadas desde el catálogo (con scope de
             // empresa) para validar compatibilidad de measurementType vs. la base.
             const unitIds = [...new Set(safeAllowed.map((au) => au.unitId))];
             const catalogUnits = await prisma.unitOfMeasure.findMany({
-                where: { id: { in: unitIds }, companyId }
+                where: { id: { in: unitIds }, companyId, active: true }
             });
             const catalogById = new Map(catalogUnits.map((u) => [u.id, u]));
 

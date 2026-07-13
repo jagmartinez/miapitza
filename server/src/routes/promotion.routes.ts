@@ -106,7 +106,7 @@ router.post('/', requireRole('ADMIN', 'SUPERADMIN'), validate(s.createPromotion)
  *     security:
  *       - bearerAuth: []
  */
-router.put('/:id', requireRole('ADMIN', 'SUPERADMIN'), validate(s.idParam), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id', requireRole('ADMIN', 'SUPERADMIN'), validate(s.updatePromotion), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = parseInt(req.params.id);
         const companyId = req.user!.companyId;

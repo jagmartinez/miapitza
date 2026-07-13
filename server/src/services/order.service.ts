@@ -6,14 +6,14 @@ import { DynamicPricingService } from './dynamic-pricing.service';
 
 /** Valid state transitions for orders */
 const VALID_TRANSITIONS: Record<string, string[]> = {
-    'OPEN': ['SENT_TO_KITCHEN', 'CANCELLED'],
-    'SENT_TO_KITCHEN': ['IN_PREPARATION', 'READY', 'CANCELLED'],
-    'IN_PREPARATION': ['READY', 'CANCELLED'],
+    'OPEN': ['SENT_TO_KITCHEN'],
+    'SENT_TO_KITCHEN': ['IN_PREPARATION', 'READY'],
+    'IN_PREPARATION': ['READY'],
     // PAID is intentionally NOT reachable via manual updateStatus: it must only
     // be set by PaymentService once the order is fully paid (which also triggers
     // inventory consumption). Allowing 'PAID' here would skip cobro y descargue.
-    'READY': ['DELIVERED', 'CANCELLED'],
-    'DELIVERED': ['CANCELLED'],
+    'READY': ['DELIVERED'],
+    'DELIVERED': [],
     'PAID': [],      // terminal
     'CANCELLED': [], // terminal
 };
@@ -249,24 +249,33 @@ export class OrderService {
      */
     private static async resolveItemModifiers(
         tx: Prisma.TransactionClient,
-        menuItem: { modifierGroups: { modifiers: { id: number }[] }[] },
+        menuItem: { modifierGroups: { minSelect: number; maxSelect: number | null; modifiers: { id: number }[] }[] },
         modifierIds?: number[]
     ): Promise<{ create: { modifierId: number; name: string; price: Prisma.Decimal | number }[]; total: number }> {
-        if (!modifierIds || modifierIds.length === 0) {
-            return { create: [], total: 0 };
-        }
+        const selectedIds = modifierIds || [];
+        if (new Set(selectedIds).size !== selectedIds.length) throw new Error('No se puede seleccionar el mismo modificador más de una vez');
 
         const validModifierIds = new Set(
             menuItem.modifierGroups.flatMap((g) => g.modifiers.map((m) => m.id))
         );
-        const invalidIds = modifierIds.filter((id) => !validModifierIds.has(id));
+        const invalidIds = selectedIds.filter((id) => !validModifierIds.has(id));
         if (invalidIds.length > 0) {
             throw new Error('Modificadores inválidos para este producto');
         }
 
+        for (const group of menuItem.modifierGroups) {
+            const count = group.modifiers.filter((modifier) => selectedIds.includes(modifier.id)).length;
+            const minimum = group.minSelect;
+            if (count < minimum) throw new Error(`Debe seleccionar al menos ${minimum} modificador(es)`);
+            if (group.maxSelect !== null && count > group.maxSelect) throw new Error(`Solo puede seleccionar ${group.maxSelect} modificador(es)`);
+        }
+
+        if (selectedIds.length === 0) return { create: [], total: 0 };
+
         const modifiers = await tx.modifier.findMany({
-            where: { id: { in: modifierIds }, active: true }
+            where: { id: { in: selectedIds }, active: true }
         });
+        if (modifiers.length !== selectedIds.length) throw new Error('Uno o más modificadores están inactivos');
         const total = modifiers.reduce((sum, mod) => sum + Number(mod.price), 0);
 
         return {
@@ -289,10 +298,17 @@ export class OrderService {
             modifierIds?: number[];
         }>;
     }) {
+        if (!Number.isInteger(data.branchId) || data.branchId <= 0) throw new Error('Sucursal inválida');
+        for (const item of data.items || []) {
+            if (!Number.isInteger(item.quantity) || item.quantity <= 0) throw new Error('Quantity must be a positive integer');
+        }
         return await prisma.$transaction(async (tx) => {
+            const branch = await tx.branch.findFirst({ where: { id: data.branchId, companyId, status: 'ACTIVE' }, select: { id: true } });
+            if (!branch) throw new Error('Sucursal no encontrada o inactiva para esta empresa');
             // The order's table (if any) must belong to the same company AND the
             // same branch as the order, so branch-scoped reporting/billing stays consistent.
             if (data.tableId) {
+                await tx.$queryRaw`SELECT id FROM \`Table\` WHERE id = ${data.tableId} AND companyId = ${companyId} FOR UPDATE`;
                 const table = await tx.table.findFirst({
                     where: { id: data.tableId, companyId },
                     select: { id: true, branchId: true }
@@ -315,16 +331,20 @@ export class OrderService {
                         branchId: data.branchId
                     },
                     include: {
-                        items: true
+                        items: true,
+                        payments: { where: { status: 'ACTIVE' }, select: { id: true } }
                     }
                 });
 
                 if (existingOrder) {
                     // Merge items into existing order
                     if (data.items && data.items.length > 0) {
+                        if (existingOrder.payments.length > 0) {
+                            throw new Error('No se puede modificar una orden con pagos activos; revierta los pagos primero');
+                        }
                         for (const item of data.items) {
                             const menuItem = await tx.menuItem.findFirst({
-                                where: { id: item.menuItemId, companyId, active: true },
+                                where: { id: item.menuItemId, companyId, active: true, OR: [{ branchId: null }, { branchId: data.branchId }] },
                                 include: {
                                     modifierGroups: {
                                         include: { modifiers: { select: { id: true } } }
@@ -416,7 +436,7 @@ export class OrderService {
 
                 for (const item of data.items) {
                     const menuItem = await tx.menuItem.findFirst({
-                        where: { id: item.menuItemId, companyId, active: true },
+                        where: { id: item.menuItemId, companyId, active: true, OR: [{ branchId: null }, { branchId: data.branchId }] },
                         include: {
                             modifierGroups: {
                                 include: { modifiers: { select: { id: true } } }
@@ -525,6 +545,9 @@ export class OrderService {
         let modifiersTotal = 0;
 
         if (data.modifierIds && data.modifierIds.length > 0) {
+            if (new Set(data.modifierIds).size !== data.modifierIds.length) {
+                throw new Error('No se puede seleccionar el mismo modificador más de una vez');
+            }
             // Validate modifiers belong to this menu item's modifier groups
             const validModifierIds = new Set(
                 menuItem.modifierGroups.flatMap((g: { modifiers: { id: number }[] }) => g.modifiers.map(m => m.id))
@@ -540,21 +563,39 @@ export class OrderService {
                     active: true
                 }
             });
+            if (modifiersData.length !== data.modifierIds.length) {
+                throw new Error('Uno o más modificadores están inactivos');
+            }
             modifiersTotal = modifiersData.reduce((sum, mod) => sum + Number(mod.price), 0);
+        }
+
+        for (const group of menuItem.modifierGroups) {
+            const count = group.modifiers.filter((modifier) => data.modifierIds?.includes(modifier.id)).length;
+            const minimum = group.minSelect;
+            if (count < minimum) throw new Error(`Debe seleccionar al menos ${minimum} modificador(es)`);
+            if (group.maxSelect !== null && count > group.maxSelect) throw new Error(`Solo puede seleccionar ${group.maxSelect} modificador(es)`);
         }
 
         // Move order status check INSIDE transaction to prevent TOCTOU race
         return await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
             const order = await tx.order.findFirst({
-                where: { id: orderId, companyId }
+                where: { id: orderId, companyId },
+                include: { payments: { where: { status: 'ACTIVE' }, select: { id: true } } }
             });
 
             if (!order) {
                 throw new Error('Order not found');
             }
 
-            if (order.status === 'PAID' || order.status === 'CANCELLED') {
-                throw new Error('Cannot add items to paid or cancelled orders');
+            if (order.status === 'PAID' || order.status === 'CANCELLED' || order.status === 'DELIVERED') {
+                throw new Error('Cannot add items to paid, delivered or cancelled orders');
+            }
+            if (order.payments.length > 0) {
+                throw new Error('No se puede modificar una orden con pagos activos; revierta los pagos primero');
+            }
+            if (menuItem.branchId !== null && menuItem.branchId !== order.branchId) {
+                throw new Error('El elemento de menú no está disponible en la sucursal de la orden');
             }
 
             // Resolve the branch-effective price for the order's branch (falls
@@ -597,27 +638,51 @@ export class OrderService {
 
             await tx.order.update({
                 where: { id: orderId },
-                data: { total: newTotal }
+                data: {
+                    total: newTotal,
+                    // READY is no longer truthful after appending an unsent line.
+                    ...(order.status === 'READY' ? { status: 'SENT_TO_KITCHEN' as const } : {})
+                }
             });
 
             return item;
         });
     }
 
-    static async removeItem(itemId: number, companyId: number) {
+    static async removeItem(itemId: number, companyId: number, branchId?: number) {
         return await prisma.$transaction(async (tx) => {
-            // Re-check ownership and status INSIDE the transaction to prevent a TOCTOU race.
+            const target = await tx.orderItem.findFirst({
+                where: { id: itemId, order: { companyId, ...(branchId !== undefined ? { branchId } : {}) } },
+                select: { orderId: true }
+            });
+            if (!target) throw new Error('Item not found');
+
+            // Serialize item removal with payments, cancellation and pricing changes.
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${target.orderId} AND companyId = ${companyId} FOR UPDATE`;
             const item = await tx.orderItem.findUnique({
                 where: { id: itemId },
-                include: { order: true }
+                include: {
+                    order: {
+                        include: { payments: { where: { status: 'ACTIVE' }, select: { id: true } } }
+                    }
+                }
             });
 
             if (!item || item.order.companyId !== companyId) {
                 throw new Error('Item not found');
             }
+            if (branchId !== undefined && item.order.branchId !== branchId) {
+                throw new Error('Item not found');
+            }
 
             if (item.order.status === 'PAID' || item.order.status === 'CANCELLED') {
                 throw new Error('Cannot remove items from paid or cancelled orders');
+            }
+            if (item.sentAt !== null) {
+                throw new Error('No se puede eliminar un articulo ya enviado a cocina; use un flujo de anulacion/merma');
+            }
+            if (item.order.payments.length > 0) {
+                throw new Error('No se puede modificar una orden con pagos activos; revierta los pagos primero');
             }
 
             await tx.orderItem.delete({
@@ -656,6 +721,12 @@ export class OrderService {
 
             if (!existing) {
                 throw new Error('Order not found');
+            }
+
+            // Cancellation has inventory/payment/table/audit counterflows and may
+            // never be represented as a generic status write.
+            if (status === 'CANCELLED') {
+                throw new Error('Use el flujo dedicado de cancelacion de orden');
             }
 
             const allowedTransitions = VALID_TRANSITIONS[existing.status] || [];
@@ -716,6 +787,7 @@ export class OrderService {
         const now = new Date();
 
         return await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
             // Re-check status INSIDE the transaction to prevent a TOCTOU race.
             const order = await tx.order.findFirst({
                 where: { id, companyId },
@@ -766,22 +838,23 @@ export class OrderService {
     }
 
     static async startItem(orderId: number, itemId: number, companyId: number) {
-        const order = await prisma.order.findFirst({ where: { id: orderId, companyId }, select: { status: true } });
-        if (!order) throw new Error('Orden no encontrada');
-        if (order.status === 'CANCELLED') throw new Error('No se puede actualizar items de una orden cancelada');
-
-        const item = await prisma.orderItem.findFirst({
-            where: { id: itemId, order: { id: orderId, companyId } }
-        });
-        if (!item) throw new Error('Item no encontrado');
-        if (item.status !== 'PENDING') throw new Error('El item debe estar PENDIENTE para iniciar');
-
         return await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
+            const order = await tx.order.findFirst({ where: { id: orderId, companyId }, select: { status: true } });
+            if (!order) throw new Error('Orden no encontrada');
+            if (order.status === 'CANCELLED' || order.status === 'PAID' || order.status === 'DELIVERED') {
+                throw new Error(`No se puede actualizar items de una orden ${order.status}`);
+            }
+            const claimed = await tx.orderItem.updateMany({
+                where: { id: itemId, orderId, status: 'PENDING', sentAt: { not: null } },
+                data: { status: 'IN_PROGRESS', startedAt: new Date() }
+            });
+            if (claimed.count !== 1) throw new Error('El item debe estar enviado y PENDIENTE para iniciar');
             const now = new Date();
 
             const updatedItem = await tx.orderItem.update({
                 where: { id: itemId },
-                data: { status: 'IN_PROGRESS', startedAt: now },
+                data: { startedAt: now },
                 include: { menuItem: true }
             });
 
@@ -841,20 +914,22 @@ export class OrderService {
     }
 
     static async finishItem(orderId: number, itemId: number, companyId: number) {
-        const order = await prisma.order.findFirst({ where: { id: orderId, companyId }, select: { status: true } });
-        if (!order) throw new Error('Orden no encontrada');
-        if (order.status === 'CANCELLED') throw new Error('No se puede actualizar items de una orden cancelada');
-
-        const item = await prisma.orderItem.findFirst({
-            where: { id: itemId, order: { id: orderId, companyId } }
-        });
-        if (!item) throw new Error('Item no encontrado');
-        if (item.status !== 'IN_PROGRESS') throw new Error('El item debe estar EN PROGRESO para finalizar');
-
         return await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
+            const order = await tx.order.findFirst({ where: { id: orderId, companyId }, select: { status: true } });
+            if (!order) throw new Error('Orden no encontrada');
+            if (order.status === 'CANCELLED' || order.status === 'PAID' || order.status === 'DELIVERED') {
+                throw new Error(`No se puede actualizar items de una orden ${order.status}`);
+            }
+            const finishedAt = new Date();
+            const claimed = await tx.orderItem.updateMany({
+                where: { id: itemId, orderId, status: 'IN_PROGRESS' },
+                data: { status: 'DONE', finishedAt }
+            });
+            if (claimed.count !== 1) throw new Error('El item debe estar EN PROGRESO para finalizar');
             const updated = await tx.orderItem.update({
                 where: { id: itemId },
-                data: { status: 'DONE', finishedAt: new Date() },
+                data: { finishedAt },
                 include: { menuItem: true }
             });
 
@@ -898,36 +973,33 @@ export class OrderService {
     }
 
     static async complete(id: number, companyId: number, warehouseId: number) {
-        const order = await prisma.order.findFirst({
-            where: { id, companyId },
-            include: {
-                items: {
-                    include: {
-                        menuItem: {
-                            include: {
-                                recipes: {
-                                    include: {
-                                        product: true,
-                                        unitOfMeasure: { select: { abbreviation: true } }
+        return await prisma.$transaction(async (tx) => {
+            // Reversal/payment/cancellation all lock the order. Completion must use
+            // the same lock and re-read its consumable graph inside the transaction.
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const order = await tx.order.findFirst({
+                where: { id, companyId },
+                include: {
+                    items: {
+                        include: {
+                            menuItem: {
+                                include: {
+                                    recipes: {
+                                        include: {
+                                            product: true,
+                                            unitOfMeasure: { select: { abbreviation: true } }
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                },
-                table: true
-            }
-        });
+                    },
+                    table: true
+                }
+            });
+            if (!order) throw new Error('Order not found');
+            if (order.status !== 'PAID') throw new Error('Order must be paid before completing');
 
-        if (!order) {
-            throw new Error('Order not found');
-        }
-
-        if (order.status !== 'PAID') {
-            throw new Error('Order must be paid before completing');
-        }
-
-        return await prisma.$transaction(async (tx) => {
             // Validate the target warehouse belongs to this tenant and branch
             // before touching stock (warehouseId comes from the request body).
             const warehouse = await tx.warehouse.findFirst({
@@ -955,10 +1027,17 @@ export class OrderService {
 
             // Free table if assigned
             if (order.tableId) {
-                await tx.table.update({
-                    where: { id: order.tableId },
-                    data: { status: 'AVAILABLE' }
+                const otherActiveOnTable = await tx.order.count({
+                    where: {
+                        companyId,
+                        tableId: order.tableId,
+                        id: { not: order.id },
+                        status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED'] }
+                    }
                 });
+                if (otherActiveOnTable === 0) {
+                    await tx.table.update({ where: { id: order.tableId }, data: { status: 'AVAILABLE' } });
+                }
             }
 
             return updatedOrder;
@@ -985,6 +1064,9 @@ export class OrderService {
 
             if (!order) throw new Error('Order not found');
             if (order.status === 'CANCELLED') throw new Error('Order is already cancelled');
+            if (order.invoiceNumber) {
+                throw new Error('No se puede cancelar una orden facturada; emita una nota de crédito');
+            }
 
             const totalPaid = order.payments.reduce((sum, p) => sum + Number(p.amount), 0);
             const fullyPaid = order.payments.length > 0 && totalPaid + 0.01 >= Number(order.total);
@@ -1019,9 +1101,38 @@ export class OrderService {
                     });
                     for (const cashIn of cashIns) {
                         const paymentId = Number(cashIn.reference?.replace('PAY-', ''));
+                        let refundShift = await tx.cashShift.findFirst({
+                            where: {
+                                userId: reversalUserId,
+                                companyId,
+                                endDate: null,
+                                cashRegister: { branchId: order.branchId }
+                            },
+                            select: { id: true }
+                        });
+                        if (!refundShift) {
+                            refundShift = await tx.cashShift.findFirst({
+                                where: {
+                                    id: cashIn.shiftId,
+                                    companyId,
+                                    endDate: null,
+                                    cashRegister: { branchId: order.branchId }
+                                },
+                                select: { id: true }
+                            });
+                        }
+                        if (!refundShift) {
+                            throw new Error('Debe existir un turno de caja abierto en la sucursal para registrar el reembolso en efectivo');
+                        }
+                        await tx.$queryRaw`SELECT id FROM \`CashShift\` WHERE id = ${refundShift.id} AND companyId = ${companyId} FOR UPDATE`;
+                        const lockedRefundShift = await tx.cashShift.findFirst({
+                            where: { id: refundShift.id, companyId, endDate: null },
+                            select: { id: true }
+                        });
+                        if (!lockedRefundShift) throw new Error('El turno de caja para el reembolso ya fue cerrado');
                         await tx.cashMovement.create({
                             data: {
-                                shiftId: cashIn.shiftId, type: 'OUT', amount: cashIn.amount,
+                                shiftId: lockedRefundShift.id, type: 'OUT', amount: cashIn.amount,
                                 description: `Reverso Pago #${paymentId} Orden #${id}`,
                                 reference: `REV-PAY-${paymentId}`
                             }
@@ -1059,10 +1170,17 @@ export class OrderService {
             });
 
             if (order.tableId) {
-                await tx.table.update({
-                    where: { id: order.tableId },
-                    data: { status: 'AVAILABLE' }
+                const otherActiveOnTable = await tx.order.count({
+                    where: {
+                        companyId,
+                        tableId: order.tableId,
+                        id: { not: order.id },
+                        status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED'] }
+                    }
                 });
+                if (otherActiveOnTable === 0) {
+                    await tx.table.update({ where: { id: order.tableId }, data: { status: 'AVAILABLE' } });
+                }
             }
 
             if (cancelledById) {
@@ -1099,7 +1217,17 @@ export class OrderService {
             tipAmount?: number;
         }
     ) {
+        for (const [label, value] of [
+            ['discount', data.discount],
+            ['tax', data.tax],
+            ['tipAmount', data.tipAmount]
+        ] as const) {
+            if (value !== undefined && !Number.isFinite(value)) {
+                throw new Error(`${label} debe ser un numero finito`);
+            }
+        }
         return await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
             const order = await tx.order.findFirst({
                 where: { id, companyId },
                 select: {
@@ -1107,7 +1235,8 @@ export class OrderService {
                     status: true,
                     discount: true,
                     tax: true,
-                    tipAmount: true
+                    tipAmount: true,
+                    payments: { where: { status: 'ACTIVE' }, select: { id: true } }
                 }
             });
 
@@ -1117,6 +1246,9 @@ export class OrderService {
 
             if (order.status === 'PAID' || order.status === 'CANCELLED') {
                 throw new Error('Cannot modify pricing for paid or cancelled orders');
+            }
+            if (order.payments.length > 0) {
+                throw new Error('No se puede modificar el total de una orden con pagos activos; revierta los pagos primero');
             }
 
             const subtotal = await this.getOrderItemsSubtotal(tx, id);
@@ -1146,16 +1278,16 @@ export class OrderService {
                 }
                 authoritativeDiscount = Math.round(authoritativeDiscount * 100) / 100;
             }
-            const nextDiscount = Math.min(
+            const nextDiscount = Math.round(Math.min(
                 Math.max(0, Number(authoritativeDiscount)),
                 Math.max(0, subtotal)
-            );
+            ) * 100) / 100;
             const discountedSubtotal = Math.max(0, subtotal - nextDiscount);
-            const nextTax = Math.min(
+            const nextTax = Math.round(Math.min(
                 Math.max(0, Number(data.tax ?? Number(order.tax || 0))),
                 discountedSubtotal
-            );
-            const nextTip = Math.max(0, Number(data.tipAmount ?? Number(order.tipAmount || 0)));
+            ) * 100) / 100;
+            const nextTip = Math.round(Math.max(0, Number(data.tipAmount ?? Number(order.tipAmount || 0))) * 100) / 100;
             const nextTotal = this.calculateFinalTotal(subtotal, nextDiscount, nextTax, nextTip);
 
             return await tx.order.update({

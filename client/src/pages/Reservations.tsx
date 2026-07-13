@@ -1,16 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Calendar, Clock, Users, Phone, Plus, CheckCircle, XCircle, Mail, MessageSquare, Grid3x3, CalendarDays, ChevronLeft, ChevronRight, List, Edit2 } from 'lucide-react';
+import { Calendar, Users, Phone, Plus, CheckCircle, XCircle, Mail, MessageSquare, Grid3x3, CalendarDays, ChevronLeft, ChevronRight, List, Edit2 } from 'lucide-react';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 // import Input from '../components/Input';
-import { reservationsAPI } from '../services/api';
+import { branchesAPI, reservationsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { getUserRoleNames } from '../utils/authz';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import Select from '../components/Select';
 import type { SingleValue } from 'react-select';
+import type { Branch } from '../types';
+import { formatLocalDateInput } from '../utils/dateInput';
 import './Reservations.css';
 
 interface Reservation {
@@ -23,16 +25,19 @@ interface Reservation {
     status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
     notes?: string;
     createdAt: string;
+    branchId: number;
+    branch?: { id: number; name: string };
+    table?: { id: number; number: string; capacity: number; location?: string | null } | null;
 }
 
 // Allowed status transitions. The current status is always selectable; any
 // target not listed here (for a given source) is disabled in the UI.
 const RESERVATION_TRANSITIONS: Record<string, Reservation['status'][]> = {
-    PENDING: ['CONFIRMED', 'CANCELLED', 'NO_SHOW'],
+    PENDING: ['CONFIRMED', 'CANCELLED'],
     CONFIRMED: ['COMPLETED', 'CANCELLED', 'NO_SHOW'],
-    COMPLETED: ['PENDING'],
-    CANCELLED: ['PENDING'],
-    NO_SHOW: ['PENDING'],
+    COMPLETED: [],
+    CANCELLED: [],
+    NO_SHOW: [],
 };
 
 const canTransitionReservation = (from: string, to: string): boolean =>
@@ -62,10 +67,12 @@ export default function Reservations() {
         date: '',
         time: '',
         guests: '2',
-        notes: ''
+        notes: '',
+        branchId: user?.branchId ? String(user.branchId) : ''
     });
     const [activeTab, setActiveTab] = useState<'cliente' | 'reserva' | 'notas'>('cliente');
     const [saving, setSaving] = useState(false);
+    const [branches, setBranches] = useState<Branch[]>([]);
 
 
     const loadReservations = useCallback(async () => {
@@ -83,6 +90,23 @@ export default function Reservations() {
         loadReservations();
     }, [loadReservations]);
 
+    useEffect(() => {
+        let cancelled = false;
+        branchesAPI.getAll({ status: 'ACTIVE' })
+            .then((response) => {
+                if (cancelled) return;
+                const rows = (response.data.data || []) as Branch[];
+                setBranches(rows);
+                if (!user?.branchId && rows.length === 1) {
+                    setFormData((current) => ({ ...current, branchId: String(rows[0].id) }));
+                }
+            })
+            .catch(() => {
+                if (!cancelled) showError('No se pudieron cargar las sucursales para reservar.');
+            });
+        return () => { cancelled = true; };
+    }, [showError, user?.branchId]);
+
     const handleOpenSidebar = (reservation?: Reservation) => {
         if (!reservation && !canManageReservations) {
             showWarning('No tienes permisos para gestionar reservaciones');
@@ -96,10 +120,11 @@ export default function Reservations() {
                 customerName: reservation.customerName,
                 customerPhone: reservation.phone,
                 customerEmail: reservation.email || '',
-                date: reservationDate.toISOString().split('T')[0],
+                date: formatLocalDateInput(reservationDate),
                 time: reservationDate.toTimeString().slice(0, 5),
                 guests: reservation.peopleCount.toString(),
-                notes: reservation.notes || ''
+                notes: reservation.notes || '',
+                branchId: String(reservation.branchId)
             });
         } else {
             setEditingReservation(null);
@@ -109,10 +134,11 @@ export default function Reservations() {
                 customerName: '',
                 customerPhone: '',
                 customerEmail: '',
-                date: tomorrow.toISOString().split('T')[0],
+                date: formatLocalDateInput(tomorrow),
                 time: '19:00',
                 guests: '2',
-                notes: ''
+                notes: '',
+                branchId: user?.branchId ? String(user.branchId) : (branches.length === 1 ? String(branches[0].id) : '')
             });
         }
         setActiveTab('cliente');
@@ -169,6 +195,11 @@ export default function Reservations() {
             setActiveTab('reserva');
             return;
         }
+        if (!editingReservation && !formData.branchId) {
+            showError('Selecciona la sucursal de la reservación');
+            setActiveTab('reserva');
+            return;
+        }
         if (!formData.guests || parseInt(formData.guests, 10) < 1) {
             showError('Indica el número de personas');
             setActiveTab('reserva');
@@ -188,7 +219,8 @@ export default function Reservations() {
                 // time to be treated as UTC, shifting it by the timezone offset).
                 date: new Date(`${formData.date}T${formData.time}:00`).toISOString(),
                 peopleCount: parseInt(formData.guests, 10),
-                notes: formData.notes || undefined
+                notes: formData.notes || undefined,
+                ...(!editingReservation ? { branchId: Number(formData.branchId) } : {})
             };
 
             if (editingReservation) {
@@ -679,7 +711,7 @@ export default function Reservations() {
                                         <div className="reservation-details-new">
                                             <div className="detail-item-new">
                                                 <Users size={16} />
-                                                <span>{reservation.peopleCount} personas</span>
+                                                <span>{reservation.peopleCount} personas{reservation.table ? ` · Mesa ${reservation.table.number}` : ''}</span>
                                             </div>
                                             {reservation.phone && (
                                                 <div className="detail-item-new">
@@ -740,16 +772,6 @@ export default function Reservations() {
                                                 </button>
                                             </>
                                         )}
-                                        {canManageReservations && (reservation.status === 'COMPLETED' || reservation.status === 'CANCELLED') && (
-                                            <button
-                                                className="action-btn-new"
-                                                onClick={() => handleUpdateStatus(reservation.id, 'PENDING')}
-                                                title="Reabrir"
-                                            >
-                                                <Clock size={20} />
-                                                <span>Reabrir</span>
-                                            </button>
-                                        )}
                                     </div>
                                 </div>
 
@@ -784,6 +806,7 @@ export default function Reservations() {
                                 )
                             },
                             { key: 'people', header: 'Personas', align: 'center', render: (r) => r.peopleCount },
+                            { key: 'table', header: 'Mesa', align: 'center', render: (r) => r.table?.number || 'Sin asignar' },
                             { key: 'date', header: 'Fecha y hora', render: (r) => `${formatDate(r.date)} • ${formatTime(r.date)}` },
                             { key: 'email', header: 'Email', render: (r) => r.email || '-' },
                             {
@@ -823,12 +846,7 @@ export default function Reservations() {
                                                 </button>
                                             </>
                                         )}
-                                        {canManageReservations && (r.status === 'COMPLETED' || r.status === 'CANCELLED') && (
-                                            <button className="catalog-action-btn" onClick={() => handleUpdateStatus(r.id, 'PENDING')} title="Reabrir">
-                                                <Clock size={16} />
-                                            </button>
-                                        )}
-                                        {canManageReservations && (
+                                        {canManageReservations && (r.status === 'PENDING' || r.status === 'CONFIRMED') && (
                                             <button className="catalog-action-btn" onClick={() => handleOpenSidebar(r)} title="Editar">
                                                 <Edit2 size={16} />
                                             </button>
@@ -938,6 +956,19 @@ export default function Reservations() {
                                         <Calendar size={18} />
                                         <h3>Detalles de la Reserva</h3>
                                     </div>
+
+                                    <Select
+                                        variant="modal"
+                                        label="Sucursal"
+                                        options={branches.map((branch) => ({ value: String(branch.id), label: branch.name }))}
+                                        value={branches
+                                            .map((branch) => ({ value: String(branch.id), label: branch.name }))
+                                            .find((option) => option.value === formData.branchId) || null}
+                                        onChange={(option: SingleValue<{ value: string; label: string }>) =>
+                                            setFormData({ ...formData, branchId: option?.value || '' })}
+                                        isDisabled={Boolean(editingReservation) || Boolean(user?.branchId)}
+                                        isSearchable
+                                    />
 
                                     <div className="modal-form-row">
                                         <div className="modal-input-group">

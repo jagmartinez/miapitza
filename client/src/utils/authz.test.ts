@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { User } from '../types';
-import { getPrimaryRoleName, getRoleColor, getUserAccentColor, getUserRoleNames, hasAnyRole } from './authz';
+import { canOperateKitchenLineItems, canUpdateWholeOrderStatus, getPrimaryRoleName, getRoleColor, getUserAccentColor, getUserRoleNames, hasAnyRole } from './authz';
 
 const buildUser = (overrides: Partial<User> = {}): User => ({
     id: 1,
@@ -44,5 +44,12 @@ describe('authz utils', () => {
         const user = buildUser({ color: null, role: { id: 2, name: 'CAJERO' } });
         expect(getRoleColor('CAJERO')).toBe('#059669');
         expect(getUserAccentColor(user)).toBe('#059669');
+    });
+
+    it('does not expose whole-order status mutation to kitchen-only roles', () => {
+        const kitchen = buildUser({ role: { id: 3, name: 'COCINA' } });
+        expect(canOperateKitchenLineItems(kitchen)).toBe(true);
+        expect(canUpdateWholeOrderStatus(kitchen)).toBe(false);
+        expect(canUpdateWholeOrderStatus(buildUser())).toBe(true);
     });
 });
