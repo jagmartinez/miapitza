@@ -885,9 +885,11 @@ export default function PurchaseOrders() {
             >
                 {paymentModalOrder && (
                     <div className="premium-modal-content po-sidebar-form payment-sidebar-form">
-                        <div className="modal-tabs">
+                        <div className="modal-tabs" role="tablist" aria-label="Secciones de pagos">
                             <button
                                 type="button"
+                                role="tab"
+                                aria-selected={paymentTab === 'register'}
                                 className={`modal-tab ${paymentTab === 'register' ? 'active' : ''}`}
                                 onClick={() => setPaymentTab('register')}
                             >
@@ -896,6 +898,8 @@ export default function PurchaseOrders() {
                             </button>
                             <button
                                 type="button"
+                                role="tab"
+                                aria-selected={paymentTab === 'history'}
                                 className={`modal-tab ${paymentTab === 'history' ? 'active' : ''}`}
                                 onClick={() => setPaymentTab('history')}
                             >

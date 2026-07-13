@@ -477,6 +477,19 @@
     gap: var(--spacing-sm);
     position: relative;
     overflow: hidden;
+    width: 100%;
+    font: inherit;
+    color: inherit;
+    appearance: none;
+}
+
+.type-option:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+    outline-offset: 2px;
+}
+
+.inventory-observation-input {
+    min-height: 90px;
 }
 
 .label-note {
@@ -1397,4 +1410,18 @@
 .table-action-btn.danger:hover {
     color: #DC2626;
     border-color: #DC2626;
+}
+
+.warehouse-form-hint {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin: 0;
+    color: var(--color-text-tertiary);
+    font-size: var(--font-size-xs);
+}
+
+.warehouse-form-hint svg {
+    flex: 0 0 auto;
+    color: var(--color-primary);
 }

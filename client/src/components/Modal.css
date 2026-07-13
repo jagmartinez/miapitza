@@ -10,6 +10,8 @@
     justify-content: center;
     z-index: 1000;
     backdrop-filter: blur(4px);
+    padding: var(--spacing-lg);
+    box-sizing: border-box;
 }
 
 .modal-container {
@@ -17,8 +19,11 @@
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-xl);
     max-height: 90vh;
-    overflow-y: auto;
+    overflow: hidden;
     animation: modalSlideIn 0.2s ease-out;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 @keyframes modalSlideIn {
@@ -54,11 +59,15 @@
     justify-content: space-between;
     padding: var(--spacing-xl);
     border-bottom: 1px solid var(--color-border);
+    flex: 0 0 auto;
+    gap: var(--spacing-md);
 }
 
 .modal-header h2 {
     margin: 0;
     font-size: var(--font-size-2xl);
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .modal-close {
@@ -80,8 +89,34 @@
     color: var(--color-text);
 }
 
+.modal-close:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
 .modal-body {
     padding: var(--spacing-xl);
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+}
+
+.modal-description {
+    margin: 0 0 var(--spacing-lg);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
+}
+
+.modal-actions {
+    display: flex;
+    flex: 0 0 auto;
+    justify-content: flex-end;
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg) var(--spacing-xl);
+    border-top: 1px solid var(--color-border);
+    background: var(--color-background);
 }
 
 /* Subtle scrollbar matching the main sidebar. */
@@ -134,7 +169,7 @@
     animation: slideInRight 0.3s ease-out !important;
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
+    overflow: hidden;
 }
 
 .modal-sidebar.modal-sm {
@@ -274,6 +309,11 @@
     .modal-sidebar .modal-body {
         padding-bottom: calc(var(--spacing-lg) + 16px + env(safe-area-inset-bottom, 0px));
     }
+
+    .modal-actions {
+        padding: var(--spacing-md) var(--spacing-lg);
+        padding-bottom: calc(var(--spacing-md) + env(safe-area-inset-bottom, 0px));
+    }
 }
 
 @media (max-width: 480px) {
@@ -287,5 +327,21 @@
 
     .modal-body {
         padding: var(--spacing-md);
+    }
+
+    .modal-actions {
+        gap: var(--spacing-sm);
+        padding-inline: var(--spacing-md);
+    }
+
+    .modal-actions > * {
+        flex: 1 1 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .modal-container,
+    .modal-sidebar {
+        animation: none !important;
     }
 }

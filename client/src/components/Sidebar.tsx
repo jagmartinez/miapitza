@@ -1,4 +1,4 @@
-import { ReactNode, useRef } from 'react';
+import { ReactNode, useLayoutEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import './Sidebar.css';
@@ -9,15 +9,28 @@ interface SidebarProps {
     title: string;
     children: ReactNode;
     width?: 'normal' | 'large' | 'wide' | 'full';
+    closeOnBackdrop?: boolean;
+    closeOnEscape?: boolean;
+    description?: ReactNode;
+    footer?: ReactNode;
 }
 
-export default function Sidebar({ isOpen, onClose, title, children, width = 'normal' }: SidebarProps) {
+export default function Sidebar({ isOpen, onClose, title, children, width = 'normal', closeOnBackdrop = true, closeOnEscape = true, description, footer }: SidebarProps) {
     const panelRef = useRef<HTMLDivElement>(null);
-    const { titleId } = useDialogA11y(isOpen, onClose, panelRef);
+    const { titleId, descriptionId } = useDialogA11y(isOpen, onClose, panelRef, { closeOnEscape });
+
+    // React 18's DOM types do not expose `inert` yet. Layout timing removes it
+    // before the shared focus-management effect runs when the panel opens.
+    useLayoutEffect(() => {
+        const panel = panelRef.current;
+        if (!panel) return;
+        if (isOpen) panel.removeAttribute('inert');
+        else panel.setAttribute('inert', '');
+    }, [isOpen]);
 
     return (
         <>
-            {isOpen && <div className="sidebar-overlay" onClick={onClose} aria-hidden="true" />}
+            {isOpen && <div className="sidebar-overlay" onClick={closeOnBackdrop ? onClose : undefined} aria-hidden="true" />}
 
             <div
                 ref={panelRef}
@@ -25,18 +38,21 @@ export default function Sidebar({ isOpen, onClose, title, children, width = 'nor
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={titleId}
+                aria-describedby={description ? descriptionId : undefined}
                 aria-hidden={!isOpen}
                 tabIndex={-1}
             >
                 <div className="sidebar-header">
                     <h2 id={titleId}>{title}</h2>
-                    <button type="button" className="sidebar-close" onClick={onClose} aria-label="Cerrar">
+                    <button type="button" className="sidebar-close" onClick={onClose} aria-label={`Cerrar ${title}`}>
                         <X size={24} aria-hidden="true" />
                     </button>
                 </div>
                 <div className="sidebar-body">
+                    {description && <div id={descriptionId} className="sidebar-description">{description}</div>}
                     {children}
                 </div>
+                {footer && <div className="sidebar-actions">{footer}</div>}
             </div>
         </>
     );

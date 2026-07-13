@@ -185,12 +185,14 @@ export default function RolesPermissions() {
                 onClose={() => setIsSidebarOpen(false)}
                 title={editingRole ? 'Editar Rol' : 'Nuevo Rol'}
             >
-                <form onSubmit={handleSubmit} className="role-form">
-                    <div className="rp-form-group">
-                        <label>Nombre del Rol</label>
+                <form onSubmit={handleSubmit} className="premium-modal-content modal-form-new role-modal-content">
+                    <div className="modal-tab-content role-modal-body">
+                    <div className="modal-input-group role-form-group">
+                        <label className="modal-input-label" htmlFor="role-name">Nombre del rol</label>
                         <input
+                            id="role-name"
                             type="text"
-                            className="rp-input"
+                            className="modal-standard-input"
                             value={formData.name}
                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                             placeholder="Ej: ADMIN, MESERO..."
@@ -198,17 +200,18 @@ export default function RolesPermissions() {
                         />
                     </div>
 
-                    <div className="rp-form-group">
-                        <label>Descripción</label>
+                    <div className="modal-input-group role-form-group">
+                        <label className="modal-input-label" htmlFor="role-description">Descripción</label>
                         <textarea
-                            className="rp-input"
+                            id="role-description"
+                            className="modal-standard-input modal-textarea role-description-input"
                             value={formData.description}
                             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                             placeholder="Describe las responsabilidades del rol..."
                         />
                     </div>
 
-                    <div className="rp-perms-section">
+                    <div className="modal-section role-permissions-section">
                         <label className="rp-perms-title">Permisos</label>
                         <div className="rp-perms-list">
                             {permissions.length === 0 ? (
@@ -229,11 +232,13 @@ export default function RolesPermissions() {
                         </div>
                     </div>
 
-                    <div className="rp-form-actions">
-                        <Button type="button" variant="secondary" onClick={() => setIsSidebarOpen(false)} fullWidth>
+                    </div>
+
+                    <div className="modal-footer">
+                        <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>
                             Cancelar
                         </Button>
-                        <Button type="submit" fullWidth>
+                        <Button type="submit">
                             {editingRole ? 'Actualizar Rol' : 'Crear Rol'}
                         </Button>
                     </div>

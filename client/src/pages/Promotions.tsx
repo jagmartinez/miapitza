@@ -300,9 +300,11 @@ export default function Promotions() {
 
             <Sidebar isOpen={isSidebarOpen} onClose={() => { setIsSidebarOpen(false); setActiveTab('identidad'); }} title={editing ? 'Editar Promoción' : 'Nueva Promoción'}>
                 <div className="premium-modal-content">
-                    <div className="modal-tabs">
+                    <div className="modal-tabs" role="tablist" aria-label="Secciones de la promoción">
                         <button
                             type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'identidad'}
                             className={`modal-tab ${activeTab === 'identidad' ? 'active' : ''}`}
                             onClick={() => setActiveTab('identidad')}
                         >
@@ -311,6 +313,8 @@ export default function Promotions() {
                         </button>
                         <button
                             type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'reglas'}
                             className={`modal-tab ${activeTab === 'reglas' ? 'active' : ''}`}
                             onClick={() => setActiveTab('reglas')}
                         >
@@ -319,6 +323,8 @@ export default function Promotions() {
                         </button>
                         <button
                             type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'vigencia'}
                             className={`modal-tab ${activeTab === 'vigencia' ? 'active' : ''}`}
                             onClick={() => setActiveTab('vigencia')}
                         >

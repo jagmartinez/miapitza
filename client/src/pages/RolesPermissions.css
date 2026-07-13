@@ -197,61 +197,7 @@
 }
 
 /* ── Sidebar Form ── */
-.role-form {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-lg);
-}
-
-.rp-form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.rp-form-group label {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--color-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-}
-
-.rp-input {
-    width: 100%;
-    padding: 10px 14px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-background);
-    color: var(--color-text);
-    font-size: 14px;
-    font-weight: 500;
-    transition: border-color 0.15s;
-}
-
-.rp-input:focus {
-    outline: none;
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-}
-
-textarea.rp-input {
-    resize: vertical;
-    font-family: inherit;
-    min-height: 80px;
-}
-
 /* Permissions Checklist */
-.rp-perms-section label.rp-perms-title {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--color-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    display: block;
-    margin-bottom: var(--spacing-sm);
-}
-
 .rp-perms-list {
     display: flex;
     flex-direction: column;
@@ -299,18 +245,73 @@ textarea.rp-input {
     margin-top: 1px;
 }
 
-/* Form Actions */
-.rp-form-actions {
-    display: flex;
-    gap: var(--spacing-sm);
-    padding-top: var(--spacing-md);
-    border-top: 1px solid var(--color-border);
-}
-
 /* Empty state */
 .rp-empty-perms {
     text-align: center;
     padding: var(--spacing-xl);
     color: var(--color-text-secondary);
     font-size: var(--font-size-sm);
+}
+
+/* Modal contract: same shell, rhythm and footer used by Tables/Reservations. */
+.role-modal-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+}
+
+.role-form-group {
+    margin: 0;
+}
+
+.role-form-group:first-child {
+    margin-top: 0;
+}
+
+.role-description-input {
+    min-height: 96px;
+    resize: vertical;
+}
+
+.role-permissions-section {
+    margin: 0;
+    padding: var(--spacing-lg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-background);
+}
+
+.role-permissions-section .rp-perms-title {
+    display: block;
+    margin-bottom: var(--spacing-sm);
+    color: var(--color-text);
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+.role-permissions-section .rp-perms-list {
+    max-height: min(38vh, 360px);
+    padding: var(--spacing-xs);
+    background: var(--color-surface);
+}
+
+.role-permissions-section .rp-perm-item {
+    border: 1px solid transparent;
+}
+
+.role-permissions-section .rp-perm-item:hover {
+    border-color: var(--color-border);
+}
+
+.role-permissions-section .rp-perm-name,
+.role-permissions-section .rp-perm-desc {
+    display: block;
+}
+
+@media (max-width: 640px) {
+    .role-permissions-section {
+        padding: var(--spacing-md);
+    }
 }

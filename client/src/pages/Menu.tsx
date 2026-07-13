@@ -913,9 +913,11 @@ export default function Menu() {
       >
         <div className="premium-modal-content menu-item-modal-content">
           {/* NAVIGATION TABS */}
-          <div className="modal-tabs">
+          <div className="modal-tabs" role="tablist" aria-label="Secciones del plato">
             <button
               type="button"
+              role="tab"
+              aria-selected={activeTab === 'info'}
               className={`modal-tab ${activeTab === 'info' ? 'active' : ''}`}
               onClick={() => setActiveTab('info')}
             >
@@ -924,6 +926,8 @@ export default function Menu() {
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={activeTab === 'recipe'}
               className={`modal-tab ${activeTab === 'recipe' ? 'active' : ''}`}
               onClick={() => setActiveTab('recipe')}
             >
@@ -932,6 +936,8 @@ export default function Menu() {
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={activeTab === 'gallery'}
               className={`modal-tab ${activeTab === 'gallery' ? 'active' : ''}`}
               onClick={() => setActiveTab('gallery')}
             >
@@ -941,6 +947,8 @@ export default function Menu() {
             {editingItem && (
               <button
                 type="button"
+                role="tab"
+                aria-selected={activeTab === 'pricing'}
                 className={`modal-tab ${activeTab === 'pricing' ? 'active' : ''}`}
                 onClick={() => setActiveTab('pricing')}
               >

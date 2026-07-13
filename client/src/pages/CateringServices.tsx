@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
     Library, Plus, Trash2, Edit2,
-    ClipboardList
+    ClipboardList, FileText, BadgeDollarSign
 } from 'lucide-react';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
@@ -33,11 +33,12 @@ export default function CateringServices() {
     const { user } = useAuth();
     const { formatMoney: money } = useCurrency();
     const { confirm } = useConfirmDialog();
-    const { warning: showWarning } = useAppToast();
+    const { warning: showWarning, error: showError } = useAppToast();
     const userRoleNames = getUserRoleNames(user);
     const canManageCatering = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [services, setServices] = useState<CateringServiceRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editingService, setEditingService] = useState<CateringServiceRow | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -92,11 +93,17 @@ export default function CateringServices() {
     };
 
     const handleSave = async () => {
+        if (saving) return;
         if (!canManageCatering) {
             showWarning('No tienes permisos para guardar servicios');
             return;
         }
+        if (!formData.name.trim()) {
+            showError('El nombre del servicio es obligatorio.');
+            return;
+        }
         try {
+            setSaving(true);
             const data = {
                 ...formData,
                 internalCost: parseFloat(formData.internalCost) || 0,
@@ -113,6 +120,9 @@ export default function CateringServices() {
             setIsSidebarOpen(false);
         } catch (error) {
             console.error('Error saving service:', error);
+            showError('No se pudo guardar el servicio de catering.');
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -238,24 +248,37 @@ export default function CateringServices() {
                 title={editingService ? `Editar: ${editingService.name}` : 'Nuevo Servicio de Catering'}
                 width="normal"
             >
-                <div className="premium-modal-content">
-                    <div className="modal-tab-content">
-                        <div className="animate-slide-in">
-                            <div className="modal-section">
-                                <h3 className="section-title-v2">Información General</h3>
+                <div className="premium-modal-content catering-modal-content catering-service-modal-content">
+                    <form
+                        className="modal-form-new"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            void handleSave();
+                        }}
+                    >
+                        <div className="modal-tab-content">
+                            <div className="modal-section animate-slide-in">
+                                <div className="modal-section-header">
+                                    <FileText size={18} aria-hidden="true" />
+                                    <h3>Información general</h3>
+                                </div>
                                 <div className="modal-input-group">
-                                    <label>Nombre del Servicio</label>
+                                    <label htmlFor="catering-service-name">Nombre del servicio</label>
                                     <input
+                                        id="catering-service-name"
                                         className="modal-standard-input"
                                         placeholder="Ej: Servicio de Mesoneros Premium"
                                         value={formData.name}
                                         onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                        autoComplete="off"
+                                        required
                                     />
                                 </div>
-                                <div className="modal-input-group" style={{ marginTop: '16px' }}>
-                                    <label>Descripción / Detalles</label>
+                                <div className="modal-input-group">
+                                    <label htmlFor="catering-service-description">Descripción / detalles</label>
                                     <textarea
-                                        className="modal-standard-input"
+                                        id="catering-service-description"
+                                        className="modal-textarea"
                                         rows={4}
                                         placeholder="Describa qué incluye este servicio..."
                                         value={formData.description}
@@ -264,27 +287,40 @@ export default function CateringServices() {
                                 </div>
                             </div>
 
-                            <div className="modal-section">
-                                <h3 className="section-title-v2">Análisis de Costos y Precios</h3>
+                            <div className="modal-section animate-slide-in">
+                                <div className="modal-section-header">
+                                    <BadgeDollarSign size={18} aria-hidden="true" />
+                                    <h3>Análisis de costos y precios</h3>
+                                </div>
                                 <div className="modal-form-row">
                                     <div className="modal-input-group">
-                                        <label>Costo Interno ($)</label>
+                                        <label htmlFor="catering-service-cost">Costo interno</label>
                                         <input
+                                            id="catering-service-cost"
                                             type="number"
                                             className="modal-standard-input"
                                             placeholder="0.00"
                                             value={formData.internalCost}
                                             onChange={e => setFormData({ ...formData, internalCost: e.target.value })}
+                                            min="0"
+                                            step="0.01"
+                                            inputMode="decimal"
+                                            required
                                         />
                                     </div>
                                     <div className="modal-input-group">
-                                        <label>Precio de Venta ($)</label>
+                                        <label htmlFor="catering-service-price">Precio de venta</label>
                                         <input
+                                            id="catering-service-price"
                                             type="number"
                                             className="modal-standard-input"
                                             placeholder="0.00"
                                             value={formData.salePrice}
                                             onChange={e => setFormData({ ...formData, salePrice: e.target.value })}
+                                            min="0"
+                                            step="0.01"
+                                            inputMode="decimal"
+                                            required
                                         />
                                     </div>
                                 </div>
@@ -309,14 +345,14 @@ export default function CateringServices() {
                                 )}
                             </div>
                         </div>
-                    </div>
 
-                    <div className="modal-footer" style={{ marginTop: 'auto', padding: '20px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                        <Button variant="secondary" onClick={() => setIsSidebarOpen(false)}>Cancelar</Button>
-                        <Button onClick={handleSave} disabled={!canManageCatering}>
-                            {editingService ? 'Actualizar Servicio' : 'Guardar Servicio'}
-                        </Button>
-                    </div>
+                        <div className="modal-footer">
+                            <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>Cancelar</Button>
+                            <Button type="submit" disabled={!canManageCatering || saving}>
+                            {saving ? 'Guardando...' : editingService ? 'Actualizar Servicio' : 'Guardar Servicio'}
+                            </Button>
+                        </div>
+                    </form>
                 </div>
             </Sidebar>
         </div>

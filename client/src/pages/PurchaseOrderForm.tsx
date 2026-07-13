@@ -761,6 +761,11 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                         </div>
                     </div>
 
+                    <div className="modal-section">
+                        <div className="modal-section-header">
+                            <Building2 size={18} />
+                            <h3>Destino de inventario</h3>
+                        </div>
                     <div className="modal-input-group">
                         <label className="modal-input-label" htmlFor="po-warehouse">
                             <Building2 size={16} /> Almacén de Destino
@@ -779,12 +784,13 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                             );
                         })()}
                     </div>
+                    </div>
 
-                    <div className="modal-footer-actions">
-                        <Button variant="secondary" onClick={() => setIsReceiveModalOpen(false)} fullWidth>
+                    <div className="modal-footer receive-modal-footer">
+                        <Button type="button" variant="ghost" onClick={() => setIsReceiveModalOpen(false)}>
                             Cancelar
                         </Button>
-                        <Button onClick={handleReceive} fullWidth className="receive-confirm-btn">
+                        <Button type="button" onClick={handleReceive} className="receive-confirm-btn">
                             <CheckCircle size={20} />
                             Confirmar Recepción
                         </Button>
@@ -797,8 +803,15 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                 onClose={() => setIsItemSidebarOpen(false)}
                 title="Agregar Ítem"
             >
-                <div className="add-item-form-container">
-                    <div className="add-item-form">
+                <div className="premium-modal-content purchase-item-modal-content">
+                    <div className="modal-form-new">
+                    <div className="modal-tab-content">
+                    <div className="modal-section animate-slide-in">
+                        <div className="modal-section-header">
+                            <Package size={18} />
+                            <h3>Producto de la orden</h3>
+                        </div>
+                        <div className="add-item-form">
                         {(() => {
                             const prod = products.find(p => p.id.toString() === itemForm.productId);
                             return (
@@ -838,8 +851,8 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                             step="any"
                         />
                         {itemForm.purchaseUnit && (
-                            <p style={{ fontSize: '12px', color: 'var(--text-secondary, #6b7280)', margin: '-8px 0 0' }}>
-                                <Info size={12} style={{ verticalAlign: '-2px', marginRight: '4px' }} />
+                            <p className="purchase-unit-hint">
+                                <Info size={12} />
                                 La cantidad se ingresa en <strong>{itemForm.purchaseUnit}</strong>; se convertirá a la unidad base del inventario al recibir.
                             </p>
                         )}
@@ -851,14 +864,17 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
                             min={0}
                             step="0.01"
                         />
-                        <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-                            <Button variant="ghost" onClick={() => setIsItemSidebarOpen(false)} fullWidth>
-                                Cancelar
-                            </Button>
-                            <Button onClick={() => { handleAddItem(); setIsItemSidebarOpen(false); }} disabled={!itemForm.productId} fullWidth>
-                                Agregar
-                            </Button>
-                        </div>
+                    </div>
+                    </div>
+                    </div>
+                    <div className="modal-footer">
+                        <Button type="button" variant="ghost" onClick={() => setIsItemSidebarOpen(false)}>
+                            Cancelar
+                        </Button>
+                        <Button type="button" onClick={() => { handleAddItem(); setIsItemSidebarOpen(false); }} disabled={!itemForm.productId}>
+                            Agregar
+                        </Button>
+                    </div>
                     </div>
                 </div>
             </Sidebar>

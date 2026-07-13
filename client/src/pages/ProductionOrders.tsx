@@ -588,8 +588,8 @@ export default function ProductionOrders() {
                         </div>
 
                         <div className="modal-section animate-slide-in">
-                            <div className="modal-section-header" style={{ justifyContent: 'space-between' }}>
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <div className="modal-section-header po-section-header-actions">
+                                <div className="po-section-heading">
                                     <Calculator size={18} />
                                     <h3>Insumos requeridos</h3>
                                 </div>
@@ -682,7 +682,7 @@ export default function ProductionOrders() {
                     </div>
 
                     <div className="modal-footer">
-                        <div className="action-buttons" style={{ display: 'flex', gap: '8px' }}>
+                        <div className="action-buttons po-modal-actions">
                             <Button variant="secondary" type="button" onClick={() => setIsSidebarOpen(false)}>Cancelar</Button>
                             <Button type="button" className="save-btn-premium" disabled={creating} onClick={handleCreate}>
                                 <Save size={20} />
@@ -753,7 +753,7 @@ export default function ProductionOrders() {
 
                         {canManage && (
                             <div className="modal-footer">
-                                <div className="action-buttons" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                <div className="action-buttons po-modal-actions po-modal-actions-wrap">
                                     {(detailOrder.status === 'DRAFT') && (
                                         <Button variant="secondary" type="button" onClick={() => handleSetStatus(detailOrder.id, 'PENDING')}>
                                             <Clock size={18} /> Marcar Pendiente
@@ -863,7 +863,7 @@ export default function ProductionOrders() {
                         </label>
 
                         <div className="modal-footer">
-                            <div className="action-buttons" style={{ display: 'flex', gap: '8px' }}>
+                            <div className="action-buttons po-modal-actions">
                                 <Button variant="secondary" type="button" onClick={() => setFinishOrder(null)}>Cancelar</Button>
                                 <Button type="button" className="save-btn-premium" disabled={finishing} onClick={handleFinish}>
                                     <CheckCircle size={20} />
@@ -903,7 +903,7 @@ export default function ProductionOrders() {
                             />
                         </div>
                         <div className="modal-footer">
-                            <div className="action-buttons" style={{ display: 'flex', gap: '8px' }}>
+                            <div className="action-buttons po-modal-actions">
                                 <Button variant="secondary" type="button" onClick={() => setCancelOrder(null)}>Cancelar</Button>
                                 <Button variant="danger" type="button" disabled={cancelling} onClick={handleCancel}>
                                     <Ban size={20} />

@@ -13,7 +13,7 @@ import { useCurrency } from '../hooks/useCurrency';
 import { getUserRoleNames } from '../utils/authz';
 import {
     FlaskConical, Plus, Pencil, Power, Copy, Trash2, Save, Info, Layers,
-    Search
+    Search, Calculator
 } from 'lucide-react';
 import type { SingleValue } from 'react-select';
 import type { ProductionRecipe, Product, UnitOfMeasure, RecipeCost } from '../types';
@@ -91,6 +91,7 @@ export default function ProductionRecipes() {
     const [previewCost, setPreviewCost] = useState<RecipeCost | null>(null);
     const [previewCostError, setPreviewCostError] = useState<string | null>(null);
     const [previewCostLoading, setPreviewCostLoading] = useState(false);
+    const [activeFormTab, setActiveFormTab] = useState<'recipe' | 'components' | 'cost'>('recipe');
 
     useEffect(() => {
         loadAll();
@@ -218,6 +219,7 @@ export default function ProductionRecipes() {
         setActivateOnSave(false);
         setPreviewCost(null);
         setPreviewCostError(null);
+        setActiveFormTab('recipe');
     };
 
     const handleOpenCreate = () => {
@@ -316,6 +318,9 @@ export default function ProductionRecipes() {
         }
         const validationError = validateForm();
         if (validationError) {
+            setActiveFormTab(validationError.includes('componente') || validationError.includes('duplicados')
+                ? 'components'
+                : 'recipe');
             showWarning(validationError);
             return;
         }
@@ -324,6 +329,7 @@ export default function ProductionRecipes() {
             return;
         }
         if (previewCostError || !previewCost) {
+            setActiveFormTab('cost');
             showWarning(previewCostError || 'No se pudo validar el costo y las unidades de la receta');
             return;
         }
@@ -645,10 +651,43 @@ export default function ProductionRecipes() {
                 title={editingRecipe ? `Editar Receta · ${editingRecipe.product?.name ?? ''}` : 'Nueva Receta de Producción'}
                 width="large"
             >
-                <div className="premium-modal-content">
+                <div className="premium-modal-content production-recipe-modal-content">
+                    <div className="modal-tabs" role="tablist" aria-label="Secciones de la receta">
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeFormTab === 'recipe'}
+                            className={`modal-tab ${activeFormTab === 'recipe' ? 'active' : ''}`}
+                            onClick={() => setActiveFormTab('recipe')}
+                        >
+                            <FlaskConical size={18} />
+                            <span>Receta</span>
+                        </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeFormTab === 'components'}
+                            className={`modal-tab ${activeFormTab === 'components' ? 'active' : ''}`}
+                            onClick={() => setActiveFormTab('components')}
+                        >
+                            <Layers size={18} />
+                            <span>Componentes</span>
+                            <span className="pr-tab-count" aria-label={`${rows.length} componentes`}>{rows.length}</span>
+                        </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeFormTab === 'cost'}
+                            className={`modal-tab ${activeFormTab === 'cost' ? 'active' : ''}`}
+                            onClick={() => setActiveFormTab('cost')}
+                        >
+                            <Calculator size={18} />
+                            <span>Costo</span>
+                        </button>
+                    </div>
                     <div className="modal-form-new">
                         <div className="modal-tab-content">
-                            <div className="modal-section animate-slide-in">
+                            {activeFormTab === 'recipe' && <div className="modal-section animate-slide-in">
                                 <div className="modal-section-header">
                                     <Info size={18} />
                                     <h3>Datos de la receta</h3>
@@ -705,9 +744,21 @@ export default function ProductionRecipes() {
                                     </div>
                                 </div>
                                 <p className="pr-helper-text">Cantidad que produce una corrida de esta receta.</p>
-                            </div>
+                                <div className="modal-input-group">
+                                    <label className="modal-input-label" htmlFor="pr-notes">Notas de producción</label>
+                                    <textarea
+                                        id="pr-notes"
+                                        className="modal-textarea"
+                                        rows={4}
+                                        value={notes}
+                                        onChange={(event) => setNotes(event.target.value)}
+                                        placeholder="Preparación, controles o indicaciones para el lote..."
+                                    />
+                                    <span className="pr-helper-text">Información operativa que acompañará la receta.</span>
+                                </div>
+                            </div>}
 
-                            <div className="modal-section animate-slide-in">
+                            {activeFormTab === 'components' && <div className="modal-section animate-slide-in">
                                 <div className="modal-section-header">
                                     <Layers size={18} />
                                     <h3>Componentes</h3>
@@ -776,9 +827,9 @@ export default function ProductionRecipes() {
                                     <Plus size={16} />
                                     Agregar componente
                                 </Button>
-                            </div>
+                            </div>}
 
-                            <div className="modal-section animate-slide-in">
+                            {activeFormTab === 'cost' && <div className="modal-section animate-slide-in">
                                 <div className="modal-section-header">
                                     <Info size={18} />
                                     <h3>Costo estimado</h3>
@@ -827,9 +878,9 @@ export default function ProductionRecipes() {
                                         </p>
                                     </div>
                                 )}
-                            </div>
+                            </div>}
 
-                            {!editingRecipe && (
+                            {activeFormTab === 'cost' && !editingRecipe && (
                                 <div className="modal-section animate-slide-in">
                                     <label className="pr-activate-toggle">
                                         <input

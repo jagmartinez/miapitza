@@ -109,6 +109,7 @@ export default function Catering() {
     const [events, setEvents] = useState<CateringEvent[]>([]);
     const [loading, setLoading] = useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [savingEvent, setSavingEvent] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState<CateringEvent | null>(null);
     const [viewMode, setViewMode] = useState<'grid' | 'calendar'>('grid');
     const [calendarViewMode, setCalendarViewMode] = useState<'month' | 'week' | 'day'>('month');
@@ -297,6 +298,7 @@ export default function Catering() {
     };
 
     const handleSave = async () => {
+        if (savingEvent) return;
         if (!canManageCatering) {
             showWarning('No tienes permisos para guardar eventos de catering');
             return;
@@ -312,6 +314,7 @@ export default function Catering() {
             return;
         }
         try {
+            setSavingEvent(true);
             const dataToSave = {
                 ...formData,
                 date: new Date(`${formData.date}T${formData.time}`).toISOString(),
@@ -340,6 +343,8 @@ export default function Catering() {
                 ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
                 : undefined;
             showError(message || 'No se pudo guardar el evento de catering.');
+        } finally {
+            setSavingEvent(false);
         }
     };
 
@@ -840,44 +845,59 @@ export default function Catering() {
                 title={selectedEvent ? `Editar: ${selectedEvent.title}` : 'Nuevo Evento de Catering'}
                 width="large"
             >
-                <div className="premium-modal-content">
-                    <div className="modal-tabs">
-                        <div
+                <div className="premium-modal-content catering-modal-content catering-event-modal-content">
+                    <div className="modal-tabs" role="tablist" aria-label="Secciones del evento de catering">
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'info'}
                             className={`modal-tab ${activeTab === 'info' ? 'active' : ''}`}
                             onClick={() => setActiveTab('info')}
                         >
                             <FileText size={18} />
                             <span>Información</span>
-                        </div>
-                        <div
+                        </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'services'}
                             className={`modal-tab ${activeTab === 'services' ? 'active' : ''}`}
                             onClick={() => setActiveTab('services')}
                         >
                             <ConciergeBell size={18} />
                             <span>Servicios</span>
-                        </div>
-                        <div
+                        </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'menu'}
                             className={`modal-tab ${activeTab === 'menu' ? 'active' : ''}`}
                             onClick={() => setActiveTab('menu')}
                         >
                             <Users size={18} />
                             <span>Menú</span>
-                        </div>
-                        <div
+                        </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'clauses'}
                             className={`modal-tab ${activeTab === 'clauses' ? 'active' : ''}`}
                             onClick={() => setActiveTab('clauses')}
                         >
                             <FileText size={18} />
                             <span>Cláusulas</span>
-                        </div>
+                        </button>
                         {selectedEvent && (
-                            <div
+                            <button
+                                type="button"
+                                role="tab"
+                                aria-selected={activeTab === 'financial'}
                                 className={`modal-tab ${activeTab === 'financial' ? 'active' : ''}`}
                                 onClick={() => setActiveTab('financial')}
                             >
                                 <DollarSign size={18} />
                                 <span>Finanzas</span>
-                            </div>
+                            </button>
                         )}
                     </div>
 
@@ -888,8 +908,9 @@ export default function Catering() {
                                     <h3 className="section-title-v2">Datos del Cliente</h3>
                                     <div className="modal-form-row">
                                         <div className="modal-input-group">
-                                            <label>Nombre del Cliente</label>
+                                            <label htmlFor="catering-customer-name">Nombre del cliente</label>
                                             <input
+                                                id="catering-customer-name"
                                                 className="modal-standard-input"
                                                 placeholder="Ej: Juan Pérez"
                                                 value={formData.customerName}
@@ -897,8 +918,9 @@ export default function Catering() {
                                             />
                                         </div>
                                         <div className="modal-input-group">
-                                            <label>Cédula / RUC</label>
+                                            <label htmlFor="catering-customer-tax-id">Cédula / RUC</label>
                                             <input
+                                                id="catering-customer-tax-id"
                                                 className="modal-standard-input"
                                                 placeholder="Ej: 001-000000-0000X"
                                                 value={formData.customerTaxId}
@@ -906,8 +928,10 @@ export default function Catering() {
                                             />
                                         </div>
                                         <div className="modal-input-group">
-                                            <label>Teléfono</label>
+                                            <label htmlFor="catering-customer-phone">Teléfono</label>
                                             <input
+                                                id="catering-customer-phone"
+                                                type="tel"
                                                 className="modal-standard-input"
                                                 placeholder="Ej: +505 8888-8888"
                                                 value={formData.customerPhone}
@@ -939,8 +963,9 @@ export default function Catering() {
                                             isSearchable
                                         />
                                         <div className="modal-input-group">
-                                            <label>Título del Evento</label>
+                                            <label htmlFor="catering-event-title">Título del evento</label>
                                             <input
+                                                id="catering-event-title"
                                                 className="modal-standard-input"
                                                 placeholder="Ej: Cumpleaños de María"
                                                 value={formData.title}
@@ -950,8 +975,9 @@ export default function Catering() {
                                     </div>
                                     <div className="modal-form-row">
                                         <div className="modal-input-group">
-                                            <label>Fecha</label>
+                                            <label htmlFor="catering-event-date">Fecha</label>
                                             <input
+                                                id="catering-event-date"
                                                 type="date"
                                                 className="modal-standard-input"
                                                 value={formData.date}
@@ -959,8 +985,9 @@ export default function Catering() {
                                             />
                                         </div>
                                         <div className="modal-input-group">
-                                            <label>Hora</label>
+                                            <label htmlFor="catering-event-time">Hora</label>
                                             <input
+                                                id="catering-event-time"
                                                 type="time"
                                                 className="modal-standard-input"
                                                 value={formData.time}
@@ -986,9 +1013,11 @@ export default function Catering() {
                                             <small>El estado Pagado se asigna automÃ¡ticamente al completar el saldo.</small>
                                         )}
                                         <div className="modal-input-group">
-                                            <label>Invitados</label>
+                                            <label htmlFor="catering-people-count">Invitados</label>
                                             <input
+                                                id="catering-people-count"
                                                 type="number"
+                                                min="1"
                                                 className="modal-standard-input"
                                                 value={formData.peopleCount}
                                                 onChange={e => setFormData({ ...formData, peopleCount: parseInt(e.target.value) })}
@@ -1001,16 +1030,18 @@ export default function Catering() {
                                 <div className="modal-section">
                                     <h3 className="section-title-v2">Información Adicional</h3>
                                     <div className="modal-input-group">
-                                        <label>Ubicación</label>
+                                        <label htmlFor="catering-location">Ubicación</label>
                                         <input
+                                            id="catering-location"
                                             className="modal-standard-input"
                                             value={formData.location}
                                             onChange={e => setFormData({ ...formData, location: e.target.value })}
                                         />
                                     </div>
                                     <div className="modal-input-group" style={{ marginTop: '12px' }}>
-                                        <label>Notas</label>
+                                        <label htmlFor="catering-notes">Notas</label>
                                         <textarea
+                                            id="catering-notes"
                                             className="modal-standard-input"
                                             rows={4}
                                             value={formData.notes}
@@ -1070,6 +1101,7 @@ export default function Catering() {
                                             />
                                             <span>{formatMoney(Number(item.quantity * item.unitPrice))}</span>
                                             <button
+                                                type="button"
                                                 className="remove-btn"
                                                 onClick={() => {
                                                     const newServices = formData.services.filter((_, i) => i !== index);
@@ -1077,6 +1109,7 @@ export default function Catering() {
                                                 }}
                                             >
                                                 <Trash2 size={16} />
+                                                <span className="sr-only">Quitar servicio</span>
                                             </button>
                                         </div>
                                     ))}
@@ -1148,6 +1181,7 @@ export default function Catering() {
                                             />
                                             <span>{formatMoney(Number(item.quantity * item.unitPrice))}</span>
                                             <button
+                                                type="button"
                                                 className="remove-btn"
                                                 onClick={() => {
                                                     const newMenu = formData.menuItems.filter((_, i) => i !== index);
@@ -1155,6 +1189,7 @@ export default function Catering() {
                                                 }}
                                             >
                                                 <Trash2 size={16} />
+                                                <span className="sr-only">Quitar plato</span>
                                             </button>
                                         </div>
                                     ))}
@@ -1362,15 +1397,19 @@ export default function Catering() {
                         )}
                     </div>
 
-                    <div className="modal-footer" style={{ marginTop: 'auto', padding: '20px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                        <div style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: '15px' }}>
+                    <div className="modal-footer catering-modal-footer">
+                        <div className="catering-modal-total">
                             <div className="tab-total-preview">
-                                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Estimado: </span>
-                                <span style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{formatMoney(calculateTabTotals())}</span>
+                                <span className="catering-total-label">Total estimado:</span>
+                                <span className="catering-total-value">{formatMoney(calculateTabTotals())}</span>
                             </div>
                         </div>
-                        <Button variant="secondary" onClick={() => setIsSidebarOpen(false)}>Cancelar</Button>
-                        {canManageCatering && <Button onClick={handleSave}>Guardar Cambios</Button>}
+                        <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>Cancelar</Button>
+                        {canManageCatering && (
+                            <Button onClick={handleSave} disabled={savingEvent}>
+                                {savingEvent ? 'Guardando...' : 'Guardar Cambios'}
+                            </Button>
+                        )}
                     </div>
                 </div>
             </Sidebar >

@@ -124,6 +124,26 @@
     gap: var(--spacing-lg);
 }
 
+.purchase-item-modal-content .modal-tab-content {
+    min-height: 0;
+}
+
+.purchase-unit-hint {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+    margin: calc(var(--spacing-sm) * -1) 0 0;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+    line-height: 1.45;
+}
+
+.purchase-unit-hint svg {
+    flex: 0 0 auto;
+    margin-top: 2px;
+    color: var(--color-primary);
+}
+
 .modern-po-table th.text-right {
     text-align: right;
 }
@@ -183,6 +203,25 @@
 .receive-confirm-btn {
     gap: var(--spacing-sm);
     flex: 2 !important;
+}
+
+.receive-modal-footer {
+    margin: 0 calc(var(--spacing-lg) * -1) calc(var(--spacing-lg) * -1);
+}
+
+@media (max-width: 640px) {
+    .receive-modal-container {
+        padding: var(--spacing-md);
+        gap: var(--spacing-lg);
+    }
+
+    .receive-modal-footer {
+        margin: 0 calc(var(--spacing-md) * -1) calc(var(--spacing-md) * -1);
+    }
+
+    .receive-modal-footer > * {
+        flex: 1;
+    }
 }
 
 /* Fix for Select labels in modal */

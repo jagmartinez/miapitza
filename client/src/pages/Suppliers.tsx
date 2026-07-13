@@ -395,9 +395,11 @@ export default function Suppliers() {
                 title={editingSupplier ? 'Editar Proveedor' : 'Nuevo Proveedor'}
             >
                 <div className="premium-modal-content">
-                    <div className="modal-tabs">
+                    <div className="modal-tabs" role="tablist" aria-label="Secciones del proveedor">
                         <button
                             type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'empresa'}
                             className={`modal-tab ${activeTab === 'empresa' ? 'active' : ''}`}
                             onClick={() => setActiveTab('empresa')}
                         >
@@ -406,6 +408,8 @@ export default function Suppliers() {
                         </button>
                         <button
                             type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'contacto'}
                             className={`modal-tab ${activeTab === 'contacto' ? 'active' : ''}`}
                             onClick={() => setActiveTab('contacto')}
                         >
@@ -414,6 +418,8 @@ export default function Suppliers() {
                         </button>
                         <button
                             type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'ubicacion'}
                             className={`modal-tab ${activeTab === 'ubicacion' ? 'active' : ''}`}
                             onClick={() => setActiveTab('ubicacion')}
                         >

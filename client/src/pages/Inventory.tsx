@@ -1198,9 +1198,11 @@ export default function Inventory() {
             >
                 <div className="premium-modal-content product-modal-content">
                     {/* Tabs Navigation */}
-                    <div className="modal-tabs">
+                    <div className="modal-tabs" role="tablist" aria-label="Secciones del producto">
                         <button
                             type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'general'}
                             className={`modal-tab ${activeTab === 'general' ? 'active' : ''}`}
                             onClick={() => setActiveTab('general')}
                         >
@@ -1209,6 +1211,8 @@ export default function Inventory() {
                         </button>
                         <button
                             type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'stock'}
                             className={`modal-tab ${activeTab === 'stock' ? 'active' : ''}`}
                             onClick={() => setActiveTab('stock')}
                         >
@@ -1217,6 +1221,8 @@ export default function Inventory() {
                         </button>
                         <button
                             type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'finanzas'}
                             className={`modal-tab ${activeTab === 'finanzas' ? 'active' : ''}`}
                             onClick={() => setActiveTab('finanzas')}
                         >
@@ -1279,56 +1285,66 @@ export default function Inventory() {
                                     <div className="modal-input-group">
                                         <label className="modal-input-label" id="inventory-product-type-label">Tipo de Producto</label>
                                         <div className="type-selector-grid" role="group" aria-labelledby="inventory-product-type-label">
-                                            <div
+                                            <button
+                                                type="button"
                                                 className={`type-option ${formData.type === 'INGREDIENT' ? 'active' : ''}`}
                                                 onClick={() => setFormData({ ...formData, type: 'INGREDIENT', categoryId: '' })}
+                                                aria-pressed={formData.type === 'INGREDIENT'}
                                             >
                                                 <Package size={20} />
                                                 <div className="type-info">
                                                     <span className="type-name">Ingrediente</span>
                                                     <span className="type-desc">Uso interno</span>
                                                 </div>
-                                            </div>
-                                            <div
+                                            </button>
+                                            <button
+                                                type="button"
                                                 className={`type-option ${formData.type === 'PRODUCT_FOR_SALE' ? 'active' : ''}`}
                                                 onClick={() => setFormData({ ...formData, type: 'PRODUCT_FOR_SALE' })}
+                                                aria-pressed={formData.type === 'PRODUCT_FOR_SALE'}
                                             >
                                                 <ShoppingBag size={20} />
                                                 <div className="type-info">
                                                     <span className="type-name">Venta</span>
                                                     <span className="type-desc">Directo</span>
                                                 </div>
-                                            </div>
-                                            <div
+                                            </button>
+                                            <button
+                                                type="button"
                                                 className={`type-option ${formData.type === 'BOTH' ? 'active' : ''}`}
                                                 onClick={() => setFormData({ ...formData, type: 'BOTH' })}
+                                                aria-pressed={formData.type === 'BOTH'}
                                             >
                                                 <Layers size={20} />
                                                 <div className="type-info">
                                                     <span className="type-name">Ambos</span>
                                                     <span className="type-desc">Uso y Venta</span>
                                                 </div>
-                                            </div>
-                                            <div
+                                            </button>
+                                            <button
+                                                type="button"
                                                 className={`type-option ${formData.type === 'INTERMEDIATE' ? 'active' : ''}`}
                                                 onClick={() => setFormData({ ...formData, type: 'INTERMEDIATE' })}
+                                                aria-pressed={formData.type === 'INTERMEDIATE'}
                                             >
                                                 <FlaskConical size={20} />
                                                 <div className="type-info">
                                                     <span className="type-name">Intermedio</span>
                                                     <span className="type-desc">Semielaborado</span>
                                                 </div>
-                                            </div>
-                                            <div
+                                            </button>
+                                            <button
+                                                type="button"
                                                 className={`type-option ${formData.type === 'PACKAGING' ? 'active' : ''}`}
                                                 onClick={() => setFormData({ ...formData, type: 'PACKAGING' })}
+                                                aria-pressed={formData.type === 'PACKAGING'}
                                             >
                                                 <Box size={20} />
                                                 <div className="type-info">
                                                     <span className="type-name">Empaque</span>
                                                     <span className="type-desc">Material</span>
                                                 </div>
-                                            </div>
+                                            </button>
                                         </div>
                                     </div>
 
@@ -1336,15 +1352,16 @@ export default function Inventory() {
                                         <label className="modal-input-label" id="inventory-storage-type-label">Tipo de Almacenamiento</label>
                                         <div className="type-selector-grid type-selector-grid--storage" role="group" aria-labelledby="inventory-storage-type-label">
                                             {STORAGE_TYPE_OPTIONS.map((opt) => (
-                                                <div key={opt.value || 'none'}
+                                                <button type="button" key={opt.value || 'none'}
                                                     className={`type-option ${formData.storageType === opt.value ? 'active' : ''}`}
                                                     onClick={() => setFormData({ ...formData, storageType: opt.value })}
+                                                    aria-pressed={formData.storageType === opt.value}
                                                 >
                                                     <opt.icon size={18} />
                                                     <div className="type-info">
                                                         <span className="type-name">{opt.label}</span>
                                                     </div>
-                                                </div>
+                                                </button>
                                             ))}
                                         </div>
                                     </div>
@@ -1407,8 +1424,7 @@ export default function Inventory() {
                                         <label className="modal-input-label" htmlFor="inventory-observation">Observación</label>
                                         <textarea
                                             id="inventory-observation"
-                                            className="modal-standard-input"
-                                            style={{ minHeight: '90px', paddingTop: '10px', resize: 'vertical' }}
+                                            className="modal-textarea inventory-observation-input"
                                             value={formData.observation}
                                             onChange={(e) => setFormData({ ...formData, observation: e.target.value })}
                                             placeholder="Notas internas sobre el producto (opcional)..."

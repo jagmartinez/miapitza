@@ -14,7 +14,7 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { hasAnyRole } from '../utils/authz';
 import {
     Warehouse as WarehouseIcon, Plus, ArrowRightLeft, Package, MapPin,
-    Eye, Trash2, Edit2, Search
+    Eye, Trash2, Edit2, Search, Info
 } from 'lucide-react';
 import type { Branch, InventoryMovement, Product, ProductAllowedUnit, Warehouse } from '../types';
 import type { SingleValue } from 'react-select';
@@ -393,12 +393,17 @@ export default function Warehouses() {
                 <div className="premium-modal-content">
                     <form onSubmit={handleCreateUpdate} className="modal-form-new">
                         <div className="modal-tab-content">
-                            <div className="modal-input-group">
+                            <div className="modal-section animate-slide-in">
+                                <div className="modal-section-header">
+                                    <WarehouseIcon size={18} />
+                                    <h3>Información de la bodega</h3>
+                                </div>
+                                <div className="modal-input-group">
                                 <label className="modal-input-label" htmlFor="warehouse-name">Nombre</label>
                                 <input id="warehouse-name" type="text" className="modal-standard-input" value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Ej: Bodega Central" required autoFocus />
-                            </div>
-                            <div className="modal-form-row">
+                                </div>
+                                <div className="modal-form-row">
                                 <div className="modal-input-group">
                                     <label className="modal-input-label" htmlFor="warehouse-code">Código</label>
                                     <input id="warehouse-code" type="text" className="modal-standard-input" value={formData.code}
@@ -414,15 +419,17 @@ export default function Warehouses() {
                                         onChange={(opt: SingleValue<WarehouseTypeOption>) =>
                                             opt && setFormData({ ...formData, type: opt.value, branchId: opt.value === 'CENTRAL' ? '' : formData.branchId })} required />
                                 </div>
-                            </div>
-                            {formData.type === 'BRANCH' && (
-                                <div className="modal-input-group">
+                                </div>
+                                {formData.type === 'BRANCH' && (
+                                    <div className="modal-input-group">
                                     <Select variant="modal" label="Sucursal" placeholder="Seleccionar sucursal"
                                         options={branches.map((b) => ({ value: b.id.toString(), label: b.name }))}
                                         value={formData.branchId ? { value: formData.branchId, label: branches.find((b) => b.id.toString() === formData.branchId)?.name } : null}
                                         onChange={(opt: SingleValue<StrOption>) => opt && setFormData({ ...formData, branchId: opt.value })} required />
-                                </div>
-                            )}
+                                    </div>
+                                )}
+                                <p className="warehouse-form-hint"><Info size={14} /> El código identifica la bodega en movimientos y reportes.</p>
+                            </div>
                         </div>
                         <div className="modal-footer">
                             <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancelar</Button>
@@ -474,25 +481,38 @@ export default function Warehouses() {
                 <div className="premium-modal-content">
                     <form onSubmit={handleTransfer} className="modal-form-new">
                         <div className="modal-tab-content">
-                            <div className="modal-input-group">
+                            <div className="modal-section animate-slide-in">
+                                <div className="modal-section-header">
+                                    <ArrowRightLeft size={18} />
+                                    <h3>Ruta del traslado</h3>
+                                </div>
+                                <div className="modal-form-row">
+                                <div className="modal-input-group">
                                 <Select variant="modal" label="Bodega Origen" placeholder="Seleccionar..."
                                     options={warehouses.map(w => ({ value: w.id.toString(), label: `${w.name} (${w.type === 'CENTRAL' ? 'Central' : w.branch?.name || 'Sin sucursal'})` }))}
                                     value={transferData.fromWarehouseId ? { value: transferData.fromWarehouseId, label: warehouses.find(w => w.id.toString() === transferData.fromWarehouseId)?.name } : null}
                                     onChange={(opt: SingleValue<StrOption>) => opt && setTransferData({ ...transferData, fromWarehouseId: opt.value })} required />
-                            </div>
-                            <div className="modal-input-group">
+                                </div>
+                                <div className="modal-input-group">
                                 <Select variant="modal" label="Bodega Destino" placeholder="Seleccionar..."
                                     options={warehouses.filter(w => w.id.toString() !== transferData.fromWarehouseId).map(w => ({ value: w.id.toString(), label: `${w.name} (${w.type === 'CENTRAL' ? 'Central' : w.branch?.name || 'Sin sucursal'})` }))}
                                     value={transferData.toWarehouseId ? { value: transferData.toWarehouseId, label: warehouses.find(w => w.id.toString() === transferData.toWarehouseId)?.name } : null}
                                     onChange={(opt: SingleValue<StrOption>) => opt && setTransferData({ ...transferData, toWarehouseId: opt.value })} required />
+                                </div>
+                                </div>
                             </div>
-                            <div className="modal-input-group">
+                            <div className="modal-section animate-slide-in">
+                                <div className="modal-section-header">
+                                    <Package size={18} />
+                                    <h3>Producto y cantidad</h3>
+                                </div>
+                                <div className="modal-input-group">
                                 <Select variant="modal" label="Producto" placeholder="Seleccionar producto..."
                                     options={products.map((p) => ({ value: p.id.toString(), label: `${p.name} (${p.unit})` }))}
                                     value={transferData.productId ? { value: transferData.productId, label: products.find((p) => p.id.toString() === transferData.productId)?.name } : null}
                                     onChange={(opt: SingleValue<StrOption>) => opt && handleTransferProductChange(opt.value)} required />
-                            </div>
-                            <div className="modal-form-row">
+                                </div>
+                                <div className="modal-form-row">
                                 <div className="modal-input-group" style={{ flex: 2 }}>
                                     <label className="modal-input-label" htmlFor="transfer-quantity">Cantidad</label>
                                     <input id="transfer-quantity" type="number" step="0.001" className="modal-standard-input" value={transferData.quantity}
@@ -512,11 +532,12 @@ export default function Warehouses() {
                                             isSearchable={false} />
                                     </div>
                                 )}
-                            </div>
-                            <div className="modal-input-group">
+                                </div>
+                                <div className="modal-input-group">
                                 <label className="modal-input-label" htmlFor="transfer-reference">Referencia (opcional)</label>
                                 <input id="transfer-reference" type="text" className="modal-standard-input" value={transferData.reference}
                                     onChange={e => setTransferData({ ...transferData, reference: e.target.value })} placeholder="Ej: TRF-001" />
+                                </div>
                             </div>
                         </div>
                         <div className="modal-footer">
