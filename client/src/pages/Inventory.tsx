@@ -1228,119 +1228,144 @@ export default function Inventory() {
                 onClose={() => setViewingProduct(null)}
                 title="Detalle del Producto"
                 footer={viewingProduct ? (
-                    <>
+                    <div className="inventory-detail-footer">
                         <Button type="button" variant="ghost" onClick={() => setViewingProduct(null)}>
                             Cerrar
                         </Button>
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            onClick={() => navigate(`/kardex?productId=${viewingProduct.id}`)}
-                        >
-                            Ver Kardex
-                        </Button>
-                        {canMutateProduct && (
-                            <Button type="button" variant="primary" onClick={handleEditFromDetail}>
-                                Editar Producto
+                        <div className="inventory-detail-footer-actions">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => navigate(`/kardex?productId=${viewingProduct.id}`)}
+                            >
+                                <FileText size={16} />
+                                Ver Kardex
                             </Button>
-                        )}
-                    </>
+                            {canMutateProduct && (
+                                <Button type="button" variant="primary" onClick={handleEditFromDetail}>
+                                    <Edit2 size={16} />
+                                    Editar Producto
+                                </Button>
+                            )}
+                        </div>
+                    </div>
                 ) : undefined}
             >
                 {viewingProduct && (() => {
                     const isLow = lowStock.some(product => product.id === viewingProduct.id);
                     const stock = Number(viewingProduct.totalStock ?? 0);
+                    const minStock = Number(viewingProduct.minStock);
                     const unit = viewingProduct.baseUnit?.abbreviation || viewingProduct.unit;
                     const storageLabel = STORAGE_TYPE_OPTIONS.find(option => option.value === viewingProduct.storageType)?.label || 'Sin clasificar';
                     const category = categories.find(item => item.id === viewingProduct.categoryId)?.name || 'Sin categoría';
+                    const currentAverageCost = Number(viewingProduct.currentAverageCost || 0);
+                    const hasTransactionalCost = currentAverageCost > 0;
+                    const stockLevel = minStock > 0 ? Math.max(0, Math.min(100, (stock / minStock) * 100)) : 100;
 
                     return (
-                        <div className="inventory-detail">
+                        <div className="inventory-detail" data-testid="inventory-product-detail">
                             <div className="inventory-detail-hero">
-                                <div className="inventory-detail-icon" aria-hidden="true">
-                                    <Package size={28} />
-                                </div>
-                                <div className="inventory-detail-identity">
-                                    <h3>{viewingProduct.name}</h3>
-                                    <div className="inventory-detail-badges">
-                                        {viewingProduct.sku && <span className="inventory-detail-badge">{viewingProduct.sku}</span>}
-                                        <span className={`inventory-detail-badge ${viewingProduct.active ? 'active' : 'inactive'}`}>
-                                            {viewingProduct.active ? 'Activo' : 'Inactivo'}
-                                        </span>
-                                        <span className={`inventory-detail-badge ${isLow ? 'warning' : 'ok'}`}>
-                                            {isLow ? 'Stock bajo' : 'Stock normal'}
-                                        </span>
+                                <div className="inventory-detail-hero-main">
+                                    <div className="inventory-detail-icon" aria-hidden="true">
+                                        <Package size={28} />
                                     </div>
+                                    <div className="inventory-detail-identity">
+                                        <span className="inventory-detail-eyebrow">Ficha de inventario</span>
+                                        <h3>{viewingProduct.name}</h3>
+                                        <div className="inventory-detail-badges">
+                                            {viewingProduct.sku && <span className="inventory-detail-badge sku">SKU {viewingProduct.sku}</span>}
+                                            <span className={`inventory-detail-badge ${viewingProduct.active ? 'active' : 'inactive'}`}>
+                                                {viewingProduct.active ? 'Activo' : 'Inactivo'}
+                                            </span>
+                                            <span className={`inventory-detail-badge ${isLow ? 'warning' : 'ok'}`}>
+                                                {isLow ? 'Requiere reposición' : 'Stock saludable'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="inventory-detail-stock-summary">
+                                    <span>Existencia actual</span>
+                                    <strong className={isLow ? 'warning' : ''}>
+                                        {stock.toLocaleString('es-NI', { maximumFractionDigits: 3 })}
+                                        <small>{unit}</small>
+                                    </strong>
+                                    <div className="inventory-detail-stock-track" aria-hidden="true">
+                                        <span className={isLow ? 'warning' : ''} style={{ width: `${stockLevel}%` }} />
+                                    </div>
+                                    <small>Mínimo configurado: {minStock.toLocaleString('es-NI', { maximumFractionDigits: 3 })} {unit}</small>
                                 </div>
                             </div>
 
                             <section className="inventory-detail-section">
                                 <div className="modal-section-header">
                                     <Box size={18} />
-                                    <h3>Información general</h3>
+                                    <h3>Perfil del producto</h3>
                                 </div>
-                                <dl className="inventory-detail-grid">
-                                    <div><dt>Tipo de producto</dt><dd>{PRODUCT_TYPE_LABELS[viewingProduct.type]}</dd></div>
-                                    <div><dt>Categoría</dt><dd>{category}</dd></div>
-                                    <div><dt>Unidad de referencia</dt><dd>{unit}</dd></div>
-                                    <div><dt>Almacenamiento</dt><dd>{storageLabel}</dd></div>
-                                </dl>
-                            </section>
-
-                            <section className="inventory-detail-section">
-                                <div className="modal-section-header">
-                                    <Activity size={18} />
-                                    <h3>Existencias</h3>
-                                </div>
-                                <div className="inventory-detail-stock">
-                                    <div>
-                                        <span>Stock actual</span>
-                                        <strong className={isLow ? 'warning' : ''}>{stock.toLocaleString('es-NI', { maximumFractionDigits: 3 })} {unit}</strong>
+                                <div className="inventory-detail-profile-grid">
+                                    <div className="inventory-detail-profile-item">
+                                        <Layers size={18} aria-hidden="true" />
+                                        <div><span>Tipo</span><strong>{PRODUCT_TYPE_LABELS[viewingProduct.type]}</strong></div>
                                     </div>
-                                    <div>
-                                        <span>Stock mínimo</span>
-                                        <strong>{Number(viewingProduct.minStock).toLocaleString('es-NI', { maximumFractionDigits: 3 })} {unit}</strong>
+                                    <div className="inventory-detail-profile-item">
+                                        <ShoppingBag size={18} aria-hidden="true" />
+                                        <div><span>Categoría</span><strong>{category}</strong></div>
+                                    </div>
+                                    <div className="inventory-detail-profile-item">
+                                        <FlaskConical size={18} aria-hidden="true" />
+                                        <div><span>Unidad de referencia</span><strong>{unit}</strong></div>
+                                    </div>
+                                    <div className="inventory-detail-profile-item">
+                                        <Truck size={18} aria-hidden="true" />
+                                        <div><span>Almacenamiento</span><strong>{storageLabel}</strong></div>
                                     </div>
                                 </div>
-                                <p className="inventory-detail-scope-note">
-                                    El stock mostrado corresponde a las sucursales y almacenes permitidos para tu usuario.
-                                </p>
                             </section>
 
                             <section className="inventory-detail-section">
                                 <div className="modal-section-header">
                                     <DollarSign size={18} />
-                                    <h3>Información financiera</h3>
+                                    <h3>Costos y precio</h3>
                                 </div>
-                                <dl className="inventory-detail-grid financial">
-                                    <div>
-                                        <dt>Costo efectivo</dt>
-                                        <dd>{formatCurrency(effectiveUnitCost(viewingProduct.currentAverageCost, viewingProduct.cost), settings)}</dd>
+                                <div className="inventory-detail-finance">
+                                    <div className="inventory-detail-effective-cost">
+                                        <div>
+                                            <span>Costo efectivo para recetas</span>
+                                            <strong>{formatCurrency(effectiveUnitCost(viewingProduct.currentAverageCost, viewingProduct.cost), settings)}</strong>
+                                        </div>
+                                        <span className="inventory-detail-cost-source">
+                                            {hasTransactionalCost ? 'Promedio ponderado' : 'Costo de referencia'}
+                                        </span>
                                     </div>
-                                    <div>
-                                        <dt>Costo de referencia</dt>
-                                        <dd>{formatCurrency(Number(viewingProduct.cost), settings)}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Última compra</dt>
-                                        <dd>{Number(viewingProduct.lastPurchaseCost || 0) > 0 ? formatCurrency(Number(viewingProduct.lastPurchaseCost), settings) : 'Sin compras registradas'}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Precio de venta</dt>
-                                        <dd>{viewingProduct.price != null ? formatCurrency(Number(viewingProduct.price), settings) : 'No aplica'}</dd>
-                                    </div>
-                                </dl>
+                                    <dl className="inventory-detail-finance-breakdown">
+                                        <div><dt>Referencia</dt><dd>{formatCurrency(Number(viewingProduct.cost), settings)}</dd></div>
+                                        <div><dt>Última compra</dt><dd>{Number(viewingProduct.lastPurchaseCost || 0) > 0 ? formatCurrency(Number(viewingProduct.lastPurchaseCost), settings) : 'Sin compras'}</dd></div>
+                                        <div><dt>Precio de venta</dt><dd>{viewingProduct.price != null ? formatCurrency(Number(viewingProduct.price), settings) : 'No aplica'}</dd></div>
+                                    </dl>
+                                    <p className="inventory-detail-finance-note">
+                                        {hasTransactionalCost
+                                            ? 'El costo efectivo proviene del promedio ponderado de las compras recibidas.'
+                                            : 'Mientras no existan compras recibidas, las recetas utilizan el costo de referencia.'}
+                                    </p>
+                                </div>
                             </section>
 
-                            <section className="inventory-detail-section">
-                                <div className="modal-section-header">
-                                    <FileText size={18} />
-                                    <h3>Observaciones</h3>
+                            <section className="inventory-detail-section inventory-detail-operational-note">
+                                <Activity size={18} aria-hidden="true" />
+                                <div>
+                                    <strong>Alcance de existencias</strong>
+                                    <p>Las cantidades corresponden solamente a las sucursales y almacenes permitidos para tu usuario.</p>
                                 </div>
-                                <p className={`inventory-detail-observation ${viewingProduct.observation ? '' : 'empty'}`}>
-                                    {viewingProduct.observation || 'Sin observaciones registradas.'}
-                                </p>
                             </section>
+
+                            {viewingProduct.observation && (
+                                <section className="inventory-detail-section">
+                                    <div className="modal-section-header">
+                                        <FileText size={18} />
+                                        <h3>Observaciones</h3>
+                                    </div>
+                                    <p className="inventory-detail-observation">{viewingProduct.observation}</p>
+                                </section>
+                            )}
                         </div>
                     );
                 })()}
