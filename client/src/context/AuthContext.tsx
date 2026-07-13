@@ -4,6 +4,7 @@ import { closeWebSocket } from '../utils/websocket';
 import { offlineManager } from '../services/offlineManager';
 import { AuthContext } from './auth-context';
 import type { User } from '../types';
+import { isAuthoritativeSessionFailure } from '../utils/auth-session';
 
 /**
  * Normalize the roles payload from /auth/me (string names from the JWT, or
@@ -144,11 +145,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                         : prev));
                 }
             })
-            .catch(() => {
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
-                localStorage.removeItem('authFlags');
-                setUser(null);
+            .catch((error: unknown) => {
+                // A timeout, deployment restart or temporary network failure is not
+                // proof that the server revoked the session. Keep the owner-scoped
+                // offline state and let the global 401 interceptor handle a real
+                // authentication rejection.
+                if (isAuthoritativeSessionFailure(error)) {
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('authFlags');
+                    setUser(null);
+                }
             })
             .finally(() => setIsLoading(false));
     }, []);

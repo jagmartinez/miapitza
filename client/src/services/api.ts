@@ -10,6 +10,7 @@ import { db, type SyncItem } from './db';
 import { offlineManager } from './offlineManager';
 import { shouldQueueOfflineMutation } from './offlinePolicy';
 import { closeWebSocket } from '../utils/websocket';
+import { resolveApiBaseUrl } from '../utils/runtime-routing';
 
 type OfflineRequestMeta = Pick<SyncItem, 'operationType' | 'dependencyKey' | 'entityTempId'>;
 
@@ -69,19 +70,12 @@ const resolveCsrfToken = async (): Promise<string | null> => {
 
 export const normalizeApiBaseUrl = () => {
     const envUrl = import.meta.env.VITE_API_URL as string | undefined;
-    if (envUrl) {
-        return envUrl.replace(/\/+$/, '');
-    }
-
-    if (typeof window !== 'undefined') {
-        const host = window.location.hostname;
-        if (host.includes('-web-') && host.endsWith('.up.railway.app')) {
-            // Railway naming convention: <service>-web-<env>.up.railway.app -> <service>-<env>.up.railway.app
-            return `https://${host.replace('-web-', '-')}/api`;
-        }
-    }
-
-    return '/api';
+    const sameOriginProxy = import.meta.env.VITE_API_PROXY_ENABLED === 'true';
+    return resolveApiBaseUrl(
+        envUrl,
+        sameOriginProxy,
+        typeof window !== 'undefined' ? window.location : undefined,
+    );
 };
 
 /** Resolved base URL shared with the offline sync queue so queued mutations hit the same server. */

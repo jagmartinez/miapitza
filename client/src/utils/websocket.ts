@@ -1,5 +1,7 @@
 // WebSocket utility for real-time POS-Kitchen communication
 
+import { resolveWebSocketBaseUrl } from './runtime-routing';
+
 export interface WebSocketMessage {
     type: string;
     payload?: Record<string, unknown>;
@@ -18,18 +20,12 @@ const MAX_RECONNECT_DELAY = 60000; // 60 seconds
 
 const resolveWebSocketUrl = () => {
     const envUrl = import.meta.env.VITE_WS_URL as string | undefined;
-    if (envUrl) return envUrl;
-
-    if (typeof window !== 'undefined') {
-        const host = window.location.hostname;
-        if (host.includes('-web-') && host.endsWith('.up.railway.app')) {
-            return `wss://${host.replace('-web-', '-')}`;
-        }
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        return `${protocol}//${window.location.host}`;
-    }
-
-    return 'ws://localhost:3000';
+    const sameOriginProxy = import.meta.env.VITE_API_PROXY_ENABLED === 'true';
+    return resolveWebSocketBaseUrl(
+        envUrl,
+        sameOriginProxy,
+        typeof window !== 'undefined' ? window.location : undefined,
+    );
 };
 
 /** Build WS URL without token in query string (security fix) */
