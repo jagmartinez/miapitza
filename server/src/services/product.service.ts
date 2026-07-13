@@ -190,6 +190,9 @@ export class ProductService {
         observation?: string | null;
         active?: boolean;
     }, userId?: number) {
+        if (data.cost !== undefined && (!Number.isFinite(data.cost) || data.cost < 0)) {
+            throw new Error('El costo de referencia debe ser un número finito mayor o igual a cero.');
+        }
         // La categoría, si se indica, debe pertenecer a la empresa (evita asociar
         // productos a categorías de otro tenant).
         if (data.categoryId !== undefined && data.categoryId !== null) {
@@ -264,6 +267,9 @@ export class ProductService {
         observation?: string | null;
         active?: boolean;
     }, userId?: number) {
+        if (data.cost !== undefined && (!Number.isFinite(data.cost) || data.cost < 0)) {
+            throw new Error('El costo de referencia debe ser un número finito mayor o igual a cero.');
+        }
         const existing = await this.getById(id, companyId);
 
         // La categoría, si se indica, debe pertenecer a la empresa (evita reasignar
@@ -303,9 +309,10 @@ export class ProductService {
             }
         }
 
-        // Edición manual del costo: sincronizamos las tres fuentes de costo
-        // (cost, currentAverageCost, lastPurchaseCost) para que no diverjan. No se
-        // registra ProductCostHistory porque es un ajuste manual, no un movimiento.
+        // `cost` is a catalog/reference cost used only when no positive moving
+        // average exists. Manual catalog edits must never rewrite transactional
+        // facts (`currentAverageCost` or `lastPurchaseCost`). Those fields are
+        // updated exclusively by received purchases/valued inventory flows.
         const updateData: Prisma.ProductUncheckedUpdateInput = {
             ...(data.name !== undefined ? { name: data.name } : {}),
             ...(data.sku !== undefined ? { sku: data.sku } : {}),
@@ -319,11 +326,6 @@ export class ProductService {
             ...(data.observation !== undefined ? { observation: data.observation } : {}),
             ...(data.active !== undefined ? { active: data.active } : {})
         };
-        if (data.cost !== undefined && data.cost !== null) {
-            updateData.currentAverageCost = data.cost;
-            updateData.lastPurchaseCost = data.cost;
-        }
-
         const product = await prisma.product.update({
             where: { id },
             data: updateData,

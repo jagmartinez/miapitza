@@ -47,6 +47,7 @@ export const createProduct: ValidationSchema = {
     body: {
         name: { type: 'string', required: true, min: 1, max: 200 },
         unit: { type: 'string', required: true },
+        cost: { type: 'number', min: 0 },
     },
 };
 
@@ -54,6 +55,7 @@ export const updateProduct: ValidationSchema = {
     params: { id: { type: 'number', required: true, min: 1 } },
     body: {
         name: { type: 'string', min: 1, max: 200 },
+        cost: { type: 'number', min: 0 },
     },
 };
 

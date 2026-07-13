@@ -367,8 +367,9 @@ export default function Inventory() {
             return;
         }
 
-        if (!formData.cost?.trim() || Number.isNaN(parseFloat(formData.cost))) {
-            showWarning('Indica un costo válido');
+        const referenceCost = Number(formData.cost);
+        if (!formData.cost?.trim() || !Number.isFinite(referenceCost) || referenceCost < 0) {
+            showWarning('Indica un costo de referencia válido mayor o igual a cero');
             setActiveTab('finanzas');
             return;
         }
@@ -380,7 +381,7 @@ export default function Inventory() {
                 ...formData,
                 sku: trimmedSku ? trimmedSku : undefined,
                 categoryId: formData.categoryId ? parseInt(formData.categoryId, 10) : null,
-                cost: parseFloat(formData.cost),
+                cost: referenceCost,
                 // Sale price only applies to sellable products (Producto de Venta / Ambos).
                 price: (formData.type === 'PRODUCT_FOR_SALE' || formData.type === 'BOTH') && formData.price
                     ? parseFloat(formData.price)
@@ -1478,14 +1479,14 @@ export default function Inventory() {
                                             marginBottom: '16px'
                                         }}>
                                             <div style={{ fontSize: '13px', color: 'var(--color-info-700)', marginBottom: '8px', fontWeight: 600 }}>
-                                                💡 Costeo Automático Activo
+                                                💡 Costeo transaccional activo
                                             </div>
                                             <div style={{ fontSize: '12px', color: 'var(--color-info-600)', lineHeight: '1.5' }}>
-                                                El costo se calcula automáticamente usando <strong>Promedio Ponderado</strong> al recibir órdenes de compra.
+                                                El <strong>promedio ponderado</strong> y la <strong>última compra</strong> se actualizan únicamente al recibir compras. El costo de referencia no modifica esos valores.
                                             </div>
                                             <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                                 <div>
-                                                    <div style={{ fontSize: '11px', color: 'var(--color-neutral-500)', marginBottom: '4px' }}>Costo unitario</div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--color-neutral-500)', marginBottom: '4px' }}>Costo efectivo para recetas</div>
                                                     <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--color-neutral-800)' }}>
                                                         {formatCurrency(effectiveUnitCost((editingProduct as ProductInventory).currentAverageCost, editingProduct.cost), settings)}
                                                     </div>
@@ -1500,29 +1501,32 @@ export default function Inventory() {
                                         </div>
                                     )}
 
-                                    {!editingProduct && (
-                                        <div className="modal-form-row">
-                                            <div className="modal-input-group">
-                                                <label className="modal-input-label" htmlFor="inventory-initial-cost">Costo Inicial</label>
-                                                <div className="price-input-wrapper">
-                                                    <span className="price-currency-icon">{symbol}</span>
-                                                    <input
-                                                        id="inventory-initial-cost"
-                                                        type="number"
-                                                        step="0.01"
-                                                        className="modal-standard-input"
-                                                        style={{ paddingLeft: currencyInputPadding(symbol) }}
-                                                        value={formData.cost}
-                                                        onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
-                                                        required
-                                                    />
-                                                </div>
-                                                <small style={{ color: 'var(--color-neutral-500)', fontSize: '11px', marginTop: '4px', display: 'block' }}>
-                                                    Este costo se actualizará automáticamente con las compras.
-                                                </small>
+                                    <div className="modal-form-row">
+                                        <div className="modal-input-group">
+                                            <label className="modal-input-label" htmlFor="inventory-reference-cost">
+                                                Costo de referencia{formData.unit ? ` por ${formData.unit}` : ''}
+                                            </label>
+                                            <div className="price-input-wrapper">
+                                                <span className="price-currency-icon">{symbol}</span>
+                                                <input
+                                                    id="inventory-reference-cost"
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    className="modal-standard-input"
+                                                    style={{ paddingLeft: currencyInputPadding(symbol) }}
+                                                    value={formData.cost}
+                                                    onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
+                                                    required
+                                                />
                                             </div>
+                                            <small style={{ color: 'var(--color-neutral-500)', fontSize: '11px', marginTop: '4px', display: 'block' }}>
+                                                {editingProduct && Number((editingProduct as ProductInventory).currentAverageCost || 0) > 0
+                                                    ? 'Valor alternativo para estimaciones; el promedio transaccional vigente tiene prioridad.'
+                                                    : 'Se usa para recetas y estimaciones mientras no exista un costo promedio transaccional.'}
+                                            </small>
                                         </div>
-                                    )}
+                                    </div>
 
                                     {(() => {
                                         const isSellable = formData.type === 'PRODUCT_FOR_SALE' || formData.type === 'BOTH';
@@ -1535,6 +1539,7 @@ export default function Inventory() {
                                                         id="inventory-sale-price"
                                                         type="number"
                                                         step="0.01"
+                                                        min="0"
                                                         className="modal-standard-input"
                                                         style={{ paddingLeft: currencyInputPadding(symbol) }}
                                                         value={isSellable ? formData.price : ''}
@@ -1546,6 +1551,11 @@ export default function Inventory() {
                                                 {!isSellable && (
                                                     <small style={{ color: 'var(--color-neutral-500)', fontSize: '11px', marginTop: '4px', display: 'block' }}>
                                                         El precio de venta solo aplica a productos de tipo <strong>Producto de Venta</strong> o <strong>Ambos</strong>.
+                                                    </small>
+                                                )}
+                                                {isSellable && (
+                                                    <small style={{ color: 'var(--color-neutral-500)', fontSize: '11px', marginTop: '4px', display: 'block' }}>
+                                                        Importe cobrado al cliente; no se utiliza para costear recetas ni inventario.
                                                     </small>
                                                 )}
                                             </div>
