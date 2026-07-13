@@ -1555,7 +1555,7 @@
 
 .inventory-detail-eyebrow {
     color: var(--color-primary);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 800;
     letter-spacing: .09em;
     text-transform: uppercase;
@@ -1621,7 +1621,7 @@
 
 .inventory-detail-stock-summary > span {
     color: var(--color-text-secondary);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: .045em;
     text-transform: uppercase;
@@ -1647,8 +1647,8 @@
 
 .inventory-detail-stock-summary > small {
     margin-top: 7px;
-    color: var(--color-text-tertiary);
-    font-size: 10px;
+    color: var(--color-text-secondary);
+    font-size: 11px;
 }
 
 .inventory-detail-stock-track {
@@ -1700,8 +1700,8 @@
 .inventory-detail-finance-breakdown dt {
     display: block;
     margin-bottom: 4px;
-    color: var(--color-text-tertiary);
-    font-size: 10px;
+    color: var(--color-text-secondary);
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: .035em;
     text-transform: uppercase;
@@ -1734,7 +1734,7 @@
     display: block;
     margin-bottom: 5px;
     color: var(--color-text-secondary);
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .inventory-detail-effective-cost strong {
@@ -1749,7 +1749,7 @@
     border-radius: 999px;
     background: var(--color-surface);
     color: var(--color-primary);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 800;
     white-space: nowrap;
 }
@@ -1786,8 +1786,8 @@
 .inventory-detail-finance-note {
     margin: 0;
     padding: 0 16px 12px;
-    color: var(--color-text-tertiary);
-    font-size: 10px;
+    color: var(--color-text-secondary);
+    font-size: 11px;
     line-height: 1.5;
 }
 
@@ -1795,9 +1795,9 @@
     flex-direction: row;
     gap: 12px;
     padding: 10px 13px;
-    border: 1px dashed color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+    border: 1px solid color-mix(in srgb, var(--color-primary) 42%, var(--color-border));
     border-radius: 10px;
-    background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface));
+    background: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface));
 }
 
 .inventory-detail-operational-note > svg {
@@ -1810,13 +1810,14 @@
     display: block;
     margin-bottom: 3px;
     color: var(--color-text);
-    font-size: 12px;
+    font-size: 13px;
 }
 
 .inventory-detail-operational-note p {
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: 10px;
+    font-size: 11px;
+    font-weight: 500;
     line-height: 1.5;
 }
 
