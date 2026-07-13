@@ -41,6 +41,7 @@ export default function CateringServices() {
     const [saving, setSaving] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editingService, setEditingService] = useState<CateringServiceRow | null>(null);
+    const [activeServiceTab, setActiveServiceTab] = useState<'general' | 'pricing'>('general');
     const [searchQuery, setSearchQuery] = useState('');
     const { viewMode, setViewMode } = useViewMode('catering-services', 'table');
 
@@ -72,6 +73,7 @@ export default function CateringServices() {
             showWarning('No tienes permisos para gestionar servicios de catering');
             return;
         }
+        setActiveServiceTab('general');
         if (service) {
             setEditingService(service);
             setFormData({
@@ -99,7 +101,22 @@ export default function CateringServices() {
             return;
         }
         if (!formData.name.trim()) {
+            setActiveServiceTab('general');
             showError('El nombre del servicio es obligatorio.');
+            return;
+        }
+        const internalCost = Number(formData.internalCost);
+        const salePrice = Number(formData.salePrice);
+        if (
+            formData.internalCost.trim() === '' ||
+            formData.salePrice.trim() === '' ||
+            !Number.isFinite(internalCost) ||
+            !Number.isFinite(salePrice) ||
+            internalCost < 0 ||
+            salePrice < 0
+        ) {
+            setActiveServiceTab('pricing');
+            showError('Ingresa costos y precios válidos, mayores o iguales a cero.');
             return;
         }
         try {
@@ -249,6 +266,32 @@ export default function CateringServices() {
                 width="normal"
             >
                 <div className="premium-modal-content catering-modal-content catering-service-modal-content">
+                    <div className="modal-tabs" role="tablist" aria-label="Secciones del servicio de catering">
+                        <button
+                            type="button"
+                            id="catering-service-tab-general"
+                            className={`modal-tab ${activeServiceTab === 'general' ? 'active' : ''}`}
+                            role="tab"
+                            aria-selected={activeServiceTab === 'general'}
+                            aria-controls="catering-service-panel-general"
+                            onClick={() => setActiveServiceTab('general')}
+                        >
+                            <FileText size={18} aria-hidden="true" />
+                            <span>General</span>
+                        </button>
+                        <button
+                            type="button"
+                            id="catering-service-tab-pricing"
+                            className={`modal-tab ${activeServiceTab === 'pricing' ? 'active' : ''}`}
+                            role="tab"
+                            aria-selected={activeServiceTab === 'pricing'}
+                            aria-controls="catering-service-panel-pricing"
+                            onClick={() => setActiveServiceTab('pricing')}
+                        >
+                            <BadgeDollarSign size={18} aria-hidden="true" />
+                            <span>Costos y precios</span>
+                        </button>
+                    </div>
                     <form
                         className="modal-form-new"
                         onSubmit={(event) => {
@@ -257,7 +300,12 @@ export default function CateringServices() {
                         }}
                     >
                         <div className="modal-tab-content">
-                            <div className="modal-section animate-slide-in">
+                            {activeServiceTab === 'general' && <div
+                                id="catering-service-panel-general"
+                                className="modal-section animate-slide-in"
+                                role="tabpanel"
+                                aria-labelledby="catering-service-tab-general"
+                            >
                                 <div className="modal-section-header">
                                     <FileText size={18} aria-hidden="true" />
                                     <h3>Información general</h3>
@@ -285,9 +333,14 @@ export default function CateringServices() {
                                         onChange={e => setFormData({ ...formData, description: e.target.value })}
                                     />
                                 </div>
-                            </div>
+                            </div>}
 
-                            <div className="modal-section animate-slide-in">
+                            {activeServiceTab === 'pricing' && <div
+                                id="catering-service-panel-pricing"
+                                className="modal-section animate-slide-in"
+                                role="tabpanel"
+                                aria-labelledby="catering-service-tab-pricing"
+                            >
                                 <div className="modal-section-header">
                                     <BadgeDollarSign size={18} aria-hidden="true" />
                                     <h3>Análisis de costos y precios</h3>
@@ -343,7 +396,7 @@ export default function CateringServices() {
                                         </div>
                                     </div>
                                 )}
-                            </div>
+                            </div>}
                         </div>
 
                         <div className="modal-footer">
