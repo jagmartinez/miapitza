@@ -15,7 +15,7 @@ import {
     AlertTriangle, Package, Plus, Edit2, Trash2,
     Activity, ShoppingBag, Layers, Truck, DollarSign, FileText,
     Upload, Download, FileSpreadsheet, Search, LayoutGrid, List, Printer,
-    FlaskConical, Box
+    FlaskConical, Box, Eye
 } from 'lucide-react';
 import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, UnitOfMeasure, Warehouse } from '../types';
 import type { SingleValue } from 'react-select';
@@ -68,6 +68,14 @@ const STORAGE_TYPE_OPTIONS: { value: '' | 'PERISHABLE' | 'FROZEN' | 'NON_PERISHA
     { value: 'NON_PERISHABLE', label: 'No Perecedero', icon: ShoppingBag }
 ];
 
+const PRODUCT_TYPE_LABELS: Record<Product['type'], string> = {
+    INGREDIENT: 'Ingrediente / insumo',
+    PRODUCT_FOR_SALE: 'Producto de venta',
+    BOTH: 'Insumo y producto de venta',
+    INTERMEDIATE: 'Producto intermedio',
+    PACKAGING: 'Empaque'
+};
+
 export default function Inventory() {
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -95,6 +103,7 @@ export default function Inventory() {
     const [categories, setCategories] = useState<CategoryRow[]>([]);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+    const [viewingProduct, setViewingProduct] = useState<ProductInventory | null>(null);
     const [activeTab, setActiveTab] = useState<'general' | 'stock' | 'finanzas'>('general');
     const [saving, setSaving] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -281,6 +290,17 @@ export default function Inventory() {
         }
         setActiveTab('general');
         setIsSidebarOpen(true);
+    };
+
+    const handleViewProduct = (product: Product) => {
+        setViewingProduct(product as ProductInventory);
+    };
+
+    const handleEditFromDetail = () => {
+        if (!viewingProduct || !canMutateProduct) return;
+        const product = viewingProduct;
+        setViewingProduct(null);
+        void handleOpenSidebar(product);
     };
 
     const loadProductUnits = useCallback(async (productId: number) => {
@@ -1044,6 +1064,14 @@ export default function Inventory() {
                             {/* Actions Bar - Tables Style */}
                             <div className="inventory-card-actions-new">
                                 <button
+                                    className="action-btn-new view"
+                                    onClick={() => handleViewProduct(product)}
+                                    title="Ver detalle"
+                                >
+                                    <Eye size={20} />
+                                    <span>Ver</span>
+                                </button>
+                                <button
                                     className="action-btn-new kardex"
                                     onClick={() => navigate(`/kardex?productId=${product.id}`)}
                                     title="Ver Kardex"
@@ -1137,6 +1165,9 @@ export default function Inventory() {
                                         </td>
                                         <td className="text-right">
                                             <div className="table-actions">
+                                                <button className="table-action-btn" onClick={() => handleViewProduct(product)} title="Ver detalle" aria-label={`Ver detalle de ${product.name}`}>
+                                                    <Eye size={16} />
+                                                </button>
                                                 <button className="table-action-btn" onClick={() => navigate(`/kardex?productId=${product.id}`)} title="Ver Kardex">
                                                     <FileText size={16} />
                                                 </button>
@@ -1192,6 +1223,129 @@ export default function Inventory() {
             }
 
             {/* Product Form Sidebar */}
+            <Sidebar
+                isOpen={Boolean(viewingProduct)}
+                onClose={() => setViewingProduct(null)}
+                title="Detalle del Producto"
+                footer={viewingProduct ? (
+                    <>
+                        <Button type="button" variant="ghost" onClick={() => setViewingProduct(null)}>
+                            Cerrar
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => navigate(`/kardex?productId=${viewingProduct.id}`)}
+                        >
+                            Ver Kardex
+                        </Button>
+                        {canMutateProduct && (
+                            <Button type="button" variant="primary" onClick={handleEditFromDetail}>
+                                Editar Producto
+                            </Button>
+                        )}
+                    </>
+                ) : undefined}
+            >
+                {viewingProduct && (() => {
+                    const isLow = lowStock.some(product => product.id === viewingProduct.id);
+                    const stock = Number(viewingProduct.totalStock ?? 0);
+                    const unit = viewingProduct.baseUnit?.abbreviation || viewingProduct.unit;
+                    const storageLabel = STORAGE_TYPE_OPTIONS.find(option => option.value === viewingProduct.storageType)?.label || 'Sin clasificar';
+                    const category = categories.find(item => item.id === viewingProduct.categoryId)?.name || 'Sin categoría';
+
+                    return (
+                        <div className="inventory-detail">
+                            <div className="inventory-detail-hero">
+                                <div className="inventory-detail-icon" aria-hidden="true">
+                                    <Package size={28} />
+                                </div>
+                                <div className="inventory-detail-identity">
+                                    <h3>{viewingProduct.name}</h3>
+                                    <div className="inventory-detail-badges">
+                                        {viewingProduct.sku && <span className="inventory-detail-badge">{viewingProduct.sku}</span>}
+                                        <span className={`inventory-detail-badge ${viewingProduct.active ? 'active' : 'inactive'}`}>
+                                            {viewingProduct.active ? 'Activo' : 'Inactivo'}
+                                        </span>
+                                        <span className={`inventory-detail-badge ${isLow ? 'warning' : 'ok'}`}>
+                                            {isLow ? 'Stock bajo' : 'Stock normal'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <section className="inventory-detail-section">
+                                <div className="modal-section-header">
+                                    <Box size={18} />
+                                    <h3>Información general</h3>
+                                </div>
+                                <dl className="inventory-detail-grid">
+                                    <div><dt>Tipo de producto</dt><dd>{PRODUCT_TYPE_LABELS[viewingProduct.type]}</dd></div>
+                                    <div><dt>Categoría</dt><dd>{category}</dd></div>
+                                    <div><dt>Unidad de referencia</dt><dd>{unit}</dd></div>
+                                    <div><dt>Almacenamiento</dt><dd>{storageLabel}</dd></div>
+                                </dl>
+                            </section>
+
+                            <section className="inventory-detail-section">
+                                <div className="modal-section-header">
+                                    <Activity size={18} />
+                                    <h3>Existencias</h3>
+                                </div>
+                                <div className="inventory-detail-stock">
+                                    <div>
+                                        <span>Stock actual</span>
+                                        <strong className={isLow ? 'warning' : ''}>{stock.toLocaleString('es-NI', { maximumFractionDigits: 3 })} {unit}</strong>
+                                    </div>
+                                    <div>
+                                        <span>Stock mínimo</span>
+                                        <strong>{Number(viewingProduct.minStock).toLocaleString('es-NI', { maximumFractionDigits: 3 })} {unit}</strong>
+                                    </div>
+                                </div>
+                                <p className="inventory-detail-scope-note">
+                                    El stock mostrado corresponde a las sucursales y almacenes permitidos para tu usuario.
+                                </p>
+                            </section>
+
+                            <section className="inventory-detail-section">
+                                <div className="modal-section-header">
+                                    <DollarSign size={18} />
+                                    <h3>Información financiera</h3>
+                                </div>
+                                <dl className="inventory-detail-grid financial">
+                                    <div>
+                                        <dt>Costo efectivo</dt>
+                                        <dd>{formatCurrency(effectiveUnitCost(viewingProduct.currentAverageCost, viewingProduct.cost), settings)}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Costo de referencia</dt>
+                                        <dd>{formatCurrency(Number(viewingProduct.cost), settings)}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Última compra</dt>
+                                        <dd>{Number(viewingProduct.lastPurchaseCost || 0) > 0 ? formatCurrency(Number(viewingProduct.lastPurchaseCost), settings) : 'Sin compras registradas'}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Precio de venta</dt>
+                                        <dd>{viewingProduct.price != null ? formatCurrency(Number(viewingProduct.price), settings) : 'No aplica'}</dd>
+                                    </div>
+                                </dl>
+                            </section>
+
+                            <section className="inventory-detail-section">
+                                <div className="modal-section-header">
+                                    <FileText size={18} />
+                                    <h3>Observaciones</h3>
+                                </div>
+                                <p className={`inventory-detail-observation ${viewingProduct.observation ? '' : 'empty'}`}>
+                                    {viewingProduct.observation || 'Sin observaciones registradas.'}
+                                </p>
+                            </section>
+                        </div>
+                    );
+                })()}
+            </Sidebar>
+
             <Sidebar
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
@@ -1471,37 +1625,31 @@ export default function Inventory() {
                                     </div>
 
                                     {editingProduct && (
-                                        <div style={{
-                                            padding: '12px',
-                                            backgroundColor: 'var(--color-info-50)',
-                                            border: '1px solid var(--color-info-200)',
-                                            borderRadius: '8px',
-                                            marginBottom: '16px'
-                                        }}>
-                                            <div style={{ fontSize: '13px', color: 'var(--color-info-700)', marginBottom: '8px', fontWeight: 600 }}>
+                                        <div className="inventory-cost-summary">
+                                            <div className="inventory-cost-summary-title">
                                                 💡 Costeo transaccional activo
                                             </div>
-                                            <div style={{ fontSize: '12px', color: 'var(--color-info-600)', lineHeight: '1.5' }}>
+                                            <div className="inventory-cost-summary-copy">
                                                 El <strong>promedio ponderado</strong> y la <strong>última compra</strong> se actualizan únicamente al recibir compras. El costo de referencia no modifica esos valores.
                                             </div>
-                                            <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                                                <div>
-                                                    <div style={{ fontSize: '11px', color: 'var(--color-neutral-500)', marginBottom: '4px' }}>Costo efectivo para recetas</div>
-                                                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--color-neutral-800)' }}>
+                                            <div className="inventory-cost-summary-metrics">
+                                                <div className="inventory-cost-metric">
+                                                    <span>Costo efectivo para recetas</span>
+                                                    <strong>
                                                         {formatCurrency(effectiveUnitCost((editingProduct as ProductInventory).currentAverageCost, editingProduct.cost), settings)}
-                                                    </div>
+                                                    </strong>
                                                 </div>
-                                                <div>
-                                                    <div style={{ fontSize: '11px', color: 'var(--color-neutral-500)', marginBottom: '4px' }}>Última Compra</div>
-                                                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--color-neutral-800)' }}>
+                                                <div className="inventory-cost-metric">
+                                                    <span>Última compra</span>
+                                                    <strong>
                                                         {formatCurrency(Number((editingProduct as ProductInventory).lastPurchaseCost ?? editingProduct.cost), settings)}
-                                                    </div>
+                                                    </strong>
                                                 </div>
                                             </div>
                                         </div>
                                     )}
 
-                                    <div className="modal-form-row">
+                                    <div className="inventory-finance-fields">
                                         <div className="modal-input-group">
                                             <label className="modal-input-label" htmlFor="inventory-reference-cost">
                                                 Costo de referencia{formData.unit ? ` por ${formData.unit}` : ''}
@@ -1520,17 +1668,16 @@ export default function Inventory() {
                                                     required
                                                 />
                                             </div>
-                                            <small style={{ color: 'var(--color-neutral-500)', fontSize: '11px', marginTop: '4px', display: 'block' }}>
+                                            <small className="inventory-finance-helper">
                                                 {editingProduct && Number((editingProduct as ProductInventory).currentAverageCost || 0) > 0
                                                     ? 'Valor alternativo para estimaciones; el promedio transaccional vigente tiene prioridad.'
                                                     : 'Se usa para recetas y estimaciones mientras no exista un costo promedio transaccional.'}
                                             </small>
                                         </div>
-                                    </div>
 
-                                    {(() => {
-                                        const isSellable = formData.type === 'PRODUCT_FOR_SALE' || formData.type === 'BOTH';
-                                        return (
+                                        {(() => {
+                                            const isSellable = formData.type === 'PRODUCT_FOR_SALE' || formData.type === 'BOTH';
+                                            return (
                                             <div className="modal-input-group">
                                                 <label className="modal-input-label" htmlFor="inventory-sale-price">Precio de Venta</label>
                                                 <div className="price-input-wrapper">
@@ -1549,18 +1696,19 @@ export default function Inventory() {
                                                     />
                                                 </div>
                                                 {!isSellable && (
-                                                    <small style={{ color: 'var(--color-neutral-500)', fontSize: '11px', marginTop: '4px', display: 'block' }}>
+                                                    <small className="inventory-finance-helper">
                                                         El precio de venta solo aplica a productos de tipo <strong>Producto de Venta</strong> o <strong>Ambos</strong>.
                                                     </small>
                                                 )}
                                                 {isSellable && (
-                                                    <small style={{ color: 'var(--color-neutral-500)', fontSize: '11px', marginTop: '4px', display: 'block' }}>
+                                                    <small className="inventory-finance-helper">
                                                         Importe cobrado al cliente; no se utiliza para costear recetas ni inventario.
                                                     </small>
                                                 )}
                                             </div>
-                                        );
-                                    })()}
+                                            );
+                                        })()}
+                                    </div>
                                 </div>
                             )}
                         </div>
