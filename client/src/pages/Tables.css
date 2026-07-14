@@ -12,17 +12,13 @@
     height: 100dvh;
     min-height: 0;
     box-sizing: border-box;
-    display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr);
-    gap: 12px;
-    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
     overflow: hidden;
 }
 
-.tables-page--map .page-header,
-.tables-page--map .tables-filters-row {
-    margin-bottom: 0;
-}
+.tables-page--map .table-map-shell { flex: 1; }
 
 .tables-page--list {
     height: 100dvh;

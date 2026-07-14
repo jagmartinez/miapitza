@@ -96,7 +96,7 @@ export default function Tables() {
     const [floorPlan, setFloorPlan] = useState<TableFloorPlan | null>(null);
 
     const loadedBranchIds = Array.from(new Set(tables.map((table) => table.branchId)));
-    const mapBranchId = loadedBranchIds.length === 1 ? loadedBranchIds[0] : undefined;
+    const mapBranchId = branchFilter ?? (loadedBranchIds.length === 1 ? loadedBranchIds[0] : undefined);
 
     const loadTables = useCallback(async () => {
         try {
@@ -137,6 +137,11 @@ export default function Tables() {
             .then((res) => setBranches(res.data.data || []))
             .catch((error) => console.error('Error loading branches:', error));
     }, [canChooseBranch]);
+
+    useEffect(() => {
+        if (!showMap || !canChooseBranch || branchFilter || branches.length === 0) return;
+        setBranchFilter(branches[0].id);
+    }, [showMap, canChooseBranch, branchFilter, branches]);
 
     const handleOpenSidebar = (table?: Table) => {
         if (table && !canEditTable) {
@@ -441,7 +446,7 @@ export default function Tables() {
 
     return (
         <div className={`tables-page ${showMap ? 'tables-page--map' : 'tables-page--list'}`}>
-            <PageHeader
+            {!showMap && <PageHeader
                 title="Gestión de Mesas"
                 icon={Grid3x3}
                 actions={(
@@ -449,14 +454,12 @@ export default function Tables() {
                         <ThemeToggle />
                         <button
                             type="button"
-                            className={`tables-map-toggle ${showMap ? 'active' : ''}`}
-                            onClick={() => setShowMap((value) => !value)}
-                            aria-pressed={showMap}
+                            className="tables-map-toggle"
+                            onClick={() => setShowMap(true)}
                         >
-                            {showMap ? <Grid3x3 size={18} /> : <MapPinned size={18} />}
-                            {showMap ? 'Lista' : 'Plano'}
+                            <MapPinned size={18} /> Plano
                         </button>
-                        {!showMap && <ViewToggle value={viewMode} onChange={setViewMode} />}
+                        <ViewToggle value={viewMode} onChange={setViewMode} />
                         {canTransfer && (
                             <button type="button" className="tables-map-toggle" onClick={() => setOperation('TRANSFER')}>
                                 <ArrowRightLeft size={18} /> Cambiar mesa
@@ -475,10 +478,10 @@ export default function Tables() {
                         )}
                     </div>
                 )}
-            />
+            />}
 
             {/* Filters Row */}
-            <div className="tables-filters-row">
+            {!showMap && <div className="tables-filters-row">
                 <div className="table-status-filters">
                     <button
                         className={`table-status-btn ${statusFilter === null ? 'active' : ''}`}
@@ -525,23 +528,44 @@ export default function Tables() {
                         />
                     </div>
                 )}
-            </div>
+            </div>}
 
-            {showMap && tables.length > 0 && loadedBranchIds.length > 1 && (
+            {showMap && !mapBranchId && (
                 <div className="table-map-branch-required">
                     <MapPinned size={24} />
                     Selecciona una sucursal para visualizar y editar su plano.
                 </div>
             )}
 
-            {showMap && tables.length > 0 && loadedBranchIds.length === 1 && floorPlan && (
+            {showMap && mapBranchId && floorPlan && (
                 <TableMap
                     plan={floorPlan}
                     statusFilter={statusFilter}
+                    onStatusFilterChange={setStatusFilter}
                     canEdit={canEditMap}
                     saving={savingLayout}
                     onSelect={handleViewOrders}
                     onSave={handleSaveLayout}
+                    onShowList={() => setShowMap(false)}
+                    onTransfer={canTransfer ? () => setOperation('TRANSFER') : undefined}
+                    onConsolidate={canConsolidate ? () => setOperation('CONSOLIDATE') : undefined}
+                    onCreateTable={canCreateTable ? () => handleOpenSidebar() : undefined}
+                    themeControl={<ThemeToggle />}
+                    branchControl={canChooseBranch && branches.length > 1 ? (
+                        <div className="table-map-branch-control">
+                            <Select
+                                placeholder="Sucursal"
+                                options={branches.map((branch) => ({ value: branch.id.toString(), label: branch.name }))}
+                                value={branchFilter ? {
+                                    value: branchFilter.toString(),
+                                    label: branches.find((branch) => branch.id === branchFilter)?.name || 'Sucursal'
+                                } : null}
+                                onChange={(option: SingleValue<{ value: string; label: string }>) =>
+                                    setBranchFilter(option ? Number(option.value) : null)}
+                                isSearchable={branches.length > 6}
+                            />
+                        </div>
+                    ) : undefined}
                 />
             )}
 

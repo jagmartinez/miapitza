@@ -43,6 +43,23 @@ describe('table operational center contract', () => {
         expect(tablesSource).toContain('tablesAPI.updateFloorPlan');
     });
 
+    it('keeps operational actions and filters inside the full-screen map toolbar', () => {
+        expect(mapSource).toContain('Todas las mesas');
+        expect(mapSource).toContain('Cambiar mesa');
+        expect(mapSource).toContain('Consolidar');
+        expect(mapSource).toContain('Nueva mesa');
+        expect(mapSource).toContain('onStatusFilterChange');
+        expect(tablesSource).toContain('!showMap && <PageHeader');
+        expect(tablesSource).toContain('branchControl=');
+    });
+
+    it('allows selecting a floor area by pointer, keyboard or the editor selector', () => {
+        expect(mapSource).toContain('Editar salón');
+        expect(mapSource).toContain('event.stopPropagation()');
+        expect(mapSource).toContain("setSelection({ kind: 'area', key })");
+        expect(mapSource).toContain("event.key !== 'Enter'");
+    });
+
     it('does not render the removed split financial summary', () => {
         expect(paymentSource).not.toContain('split-financial-summary');
         expect(paymentSource).toContain('Por unidades');

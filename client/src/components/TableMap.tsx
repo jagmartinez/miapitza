@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Armchair, CopyPlus, Lock, Maximize2, RotateCw, Save, Shapes, Trash2, Unlock, ZoomIn, ZoomOut } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Armchair, ArrowRightLeft, CopyPlus, List, Lock, Maximize2, Merge, Plus, RotateCw, Save, Shapes, Trash2, Unlock, ZoomIn, ZoomOut } from 'lucide-react';
 import type { FloorArea, FloorAreaKind, FloorAreaShape, Table, TableFloorPlan } from '../types';
 import './TableMap.css';
 
@@ -31,10 +31,17 @@ interface FloorPlanDraft {
 interface TableMapProps {
     plan: TableFloorPlan;
     statusFilter?: string | null;
+    onStatusFilterChange: (status: string | null) => void;
     canEdit: boolean;
     saving: boolean;
     onSelect: (table: Table) => void;
     onSave: (draft: FloorPlanDraft) => Promise<void>;
+    onShowList: () => void;
+    onTransfer?: () => void;
+    onConsolidate?: () => void;
+    onCreateTable?: () => void;
+    branchControl?: ReactNode;
+    themeControl?: ReactNode;
 }
 
 type Selection = { kind: 'table'; key: number } | { kind: 'area'; key: string };
@@ -108,7 +115,21 @@ function resolveOperationalState(table: PositionedTable): NonNullable<Table['ope
 
 function areaKey(area: EditableArea): string { return area.id ? `id:${area.id}` : area.clientKey; }
 
-export default function TableMap({ plan, statusFilter, canEdit, saving, onSelect, onSave }: TableMapProps) {
+export default function TableMap({
+    plan,
+    statusFilter,
+    onStatusFilterChange,
+    canEdit,
+    saving,
+    onSelect,
+    onSave,
+    onShowList,
+    onTransfer,
+    onConsolidate,
+    onCreateTable,
+    branchControl,
+    themeControl
+}: TableMapProps) {
     const createDraft = () => {
         const nextAreas = plan.areas.length ? plan.areas.map(normalizeArea) : [newArea(0)];
         return {
@@ -256,10 +277,41 @@ export default function TableMap({ plan, statusFilter, canEdit, saving, onSelect
         <section className={`table-map-shell ${editing ? 'is-editing' : ''}`} aria-label="Mapa de mesas">
             <div className="table-map-toolbar">
                 <div className="table-map-title-block">
-                    <strong>{editing ? 'Editor del plano' : 'Mapa operativo'}</strong>
+                    <strong>{editing ? 'Gestión de mesas · Editor del plano' : 'Gestión de mesas · Mapa operativo'}</strong>
                     <span>{editing ? 'Selecciona un salón o mesa para cambiar tamaño, forma y rotación' : `${layout.length} mesas · ${areas.length} salones · selecciona una mesa para operarla`}</span>
                 </div>
                 <div className="table-map-actions">
+                    {!editing && (
+                        <label className="table-map-status-filter">
+                            <span>Estado</span>
+                            <select value={statusFilter || ''} onChange={(event) => onStatusFilterChange(event.target.value || null)}>
+                                <option value="">Todas las mesas</option>
+                                <option value="AVAILABLE">Disponibles</option>
+                                <option value="OCCUPIED">Ocupadas</option>
+                                <option value="RESERVED">Reservadas</option>
+                                <option value="OUT_OF_SERVICE">Fuera de servicio</option>
+                            </select>
+                        </label>
+                    )}
+                    {!editing && branchControl}
+                    {!editing && themeControl}
+                    {!editing && <button type="button" onClick={onShowList}><List size={18} /> Lista</button>}
+                    {!editing && onTransfer && <button type="button" onClick={onTransfer}><ArrowRightLeft size={18} /> Cambiar mesa</button>}
+                    {!editing && onConsolidate && <button type="button" onClick={onConsolidate}><Merge size={18} /> Consolidar</button>}
+                    {!editing && onCreateTable && <button type="button" className="primary" onClick={onCreateTable}><Plus size={18} /> Nueva mesa</button>}
+                    {editing && (
+                        <label className="table-map-area-selector">
+                            <span>Editar salón</span>
+                            <select
+                                value={selectedArea ? areaKey(selectedArea) : ''}
+                                onChange={(event) => setSelection(event.target.value ? { kind: 'area', key: event.target.value } : null)}
+                            >
+                                <option value="">Seleccionar salón…</option>
+                                {areas.map((area) => <option key={areaKey(area)} value={areaKey(area)}>{area.name}</option>)}
+                            </select>
+                        </label>
+                    )}
+                    <span className="table-map-action-divider" aria-hidden="true" />
                     <button type="button" onClick={() => setZoom((value) => Math.max(0.45, value - 0.1))} aria-label="Alejar plano"><ZoomOut size={18} /></button>
                     <output aria-label="Nivel de zoom">{Math.round(zoom * 100)}%</output>
                     <button type="button" onClick={() => setZoom((value) => Math.min(1.8, value + 0.1))} aria-label="Acercar plano"><ZoomIn size={18} /></button>
@@ -280,7 +332,16 @@ export default function TableMap({ plan, statusFilter, canEdit, saving, onSelect
                                 return (
                                     <div key={key} className={`table-floor-area shape-${area.mapShape.toLowerCase()} ${selected ? 'selected' : ''}`}
                                         style={{ left: area.mapX, top: area.mapY, width: area.mapWidth, height: area.mapHeight, transform: `rotate(${area.mapRotation}deg)`, '--area-color': area.color || '#E4EEFF' } as React.CSSProperties}
+                                        role={editing ? 'button' : undefined}
+                                        tabIndex={editing ? 0 : -1}
+                                        aria-label={editing ? `Editar salón ${area.name}` : undefined}
                                         onPointerDown={(event) => beginInteraction(event, { kind: 'area', key }, 'MOVE')}
+                                        onClick={(event) => { event.stopPropagation(); if (editing) setSelection({ kind: 'area', key }); }}
+                                        onKeyDown={(event) => {
+                                            if (!editing || (event.key !== 'Enter' && event.key !== ' ')) return;
+                                            event.preventDefault();
+                                            setSelection({ kind: 'area', key });
+                                        }}
                                         onPointerMove={moveInteraction} onPointerUp={endInteraction} onPointerCancel={endInteraction}>
                                         <div className="table-floor-area-label"><span>{area.name}</span><small>{area.kind === 'TERRACE' ? 'Terraza' : area.kind === 'BAR' ? 'Barra' : area.kind === 'PRIVATE' ? 'Privado' : 'Salón'}</small></div>
                                         {editing && <span className="map-resize-handle" role="button" aria-label={`Redimensionar ${area.name}`} onPointerDown={(event) => beginInteraction(event, { kind: 'area', key }, 'RESIZE')} />}
@@ -289,15 +350,16 @@ export default function TableMap({ plan, statusFilter, canEdit, saving, onSelect
                             })}
                             {layout.map((table) => {
                                 const state = resolveOperationalState(table);
-                                const dimmed = Boolean(statusFilter && table.status !== statusFilter);
+                                const filteredOut = Boolean(!editing && statusFilter && table.status !== statusFilter);
                                 const selected = selection?.kind === 'table' && selection.key === table.id;
                                 return (
                                     <button key={table.id} type="button"
-                                        className={`map-table state-${state.toLowerCase()} shape-${table.mapShape.toLowerCase()} ${selected ? 'selected' : ''} ${dimmed ? 'dimmed' : ''}`}
+                                        className={`map-table state-${state.toLowerCase()} shape-${table.mapShape.toLowerCase()} ${selected ? 'selected' : ''} ${filteredOut ? 'filtered-out' : ''}`}
                                         style={{ left: table.mapX, top: table.mapY, width: table.mapWidth, height: table.mapHeight, transform: `rotate(${table.mapRotation}deg)` }}
                                         aria-label={`Mesa ${table.number}, ${operationalLabel[state]}, capacidad ${table.capacity}`}
-                                        disabled={!editing && (state === 'DISABLED' || dimmed)}
-                                        onClick={(event) => { event.stopPropagation(); if (!editing && !dimmed) onSelect(table); else if (editing) setSelection({ kind: 'table', key: table.id }); }}
+                                        aria-hidden={filteredOut}
+                                        disabled={!editing && (state === 'DISABLED' || filteredOut)}
+                                        onClick={(event) => { event.stopPropagation(); if (!editing && !filteredOut) onSelect(table); else if (editing) setSelection({ kind: 'table', key: table.id }); }}
                                         onPointerDown={(event) => beginInteraction(event, { kind: 'table', key: table.id }, 'MOVE')}
                                         onPointerMove={moveInteraction} onPointerUp={endInteraction} onPointerCancel={endInteraction}>
                                         <Armchair size={16} aria-hidden="true" />
