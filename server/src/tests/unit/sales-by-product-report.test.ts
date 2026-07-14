@@ -14,7 +14,7 @@ describe('ReportExtendedService.getSalesByProduct', () => {
         const dateFrom = new Date('2026-07-01T00:00:00.000Z');
         const dateTo = new Date('2026-07-31T23:59:59.999Z');
 
-        const result = await ReportExtendedService.getSalesByProduct(4, { branchId: 9, categoryId: 3, dateFrom, dateTo });
+        const result = await ReportExtendedService.getSalesByProduct(4, { branchId: 9, categoryIds: [3, 5], dateFrom, dateTo });
 
         expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
             where: expect.objectContaining({
@@ -25,7 +25,7 @@ describe('ReportExtendedService.getSalesByProduct', () => {
                     status: { not: 'CANCELLED' },
                     closedAt: { gte: dateFrom, lte: dateTo },
                 }),
-                menuItem: { categoryId: 3 },
+                menuItem: { categoryId: { in: [3, 5] } },
             }),
         }));
         expect(result.items[0]).toEqual(expect.objectContaining({

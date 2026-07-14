@@ -5,6 +5,12 @@ import { getErrorMessage } from '../utils/error';
 import { resolveBranchScope } from '../utils/branch-scope';
 import { parseOptionalQueryDateFrom, parseOptionalQueryDateTo } from '../utils/date-range';
 
+const parseCategoryIds = (value: unknown): number[] | undefined => {
+    if (typeof value !== 'string') return undefined;
+    const ids = [...new Set(value.split(',').map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+    return ids.length > 0 ? ids : undefined;
+};
+
 function reportPeriod(value: unknown, fallback: ReportPeriod): ReportPeriod {
     return value === 'today' || value === 'week' || value === 'month' || value === 'year' ? value : fallback;
 }
@@ -421,6 +427,7 @@ export class ReportController {
                 filters.branchId = ReportController.resolveBranchScope(req, undefined);
             }
             if (req.query.categoryId) filters.categoryId = parseInt(req.query.categoryId as string);
+            filters.categoryIds = parseCategoryIds(req.query.categoryIds);
             if (req.query.brandId) filters.brandId = parseInt(req.query.brandId as string);
             if (req.query.userId) filters.userId = parseInt(req.query.userId as string);
 
@@ -443,6 +450,7 @@ export class ReportController {
                 filters.branchId = ReportController.resolveBranchScope(req, undefined);
             }
             if (req.query.categoryId) filters.categoryId = parseInt(req.query.categoryId as string);
+            filters.categoryIds = parseCategoryIds(req.query.categoryIds);
             if (req.query.brandId) filters.brandId = parseInt(req.query.brandId as string);
 
             const data = await ReportService.getSalesReport(companyId, filters);

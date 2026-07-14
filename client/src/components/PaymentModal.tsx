@@ -111,6 +111,7 @@ export default function PaymentModal({
     initialMode = 'single',
 }: PaymentModalProps) {
     const dialogRef = useRef<HTMLDivElement>(null);
+    const scrollAreaRef = useRef<HTMLDivElement>(null);
     const [mode, setMode] = useState<PaymentMode>(initialMode);
     const [methods, setMethods] = useState<PaymentMethodRow[]>([]);
     const [methodsLoading, setMethodsLoading] = useState(false);
@@ -533,13 +534,12 @@ export default function PaymentModal({
         setMode(nextMode);
         setError('');
         setNotice('');
+        requestAnimationFrame(() => scrollAreaRef.current?.scrollTo({ top: 0 }));
     };
 
     if (!isOpen) return null;
 
     const busy = loading || previewLoading || balanceLoading;
-    const selectedModeTitle = mode === 'single' ? 'Pago único' : mode === 'mixed' ? 'Pago mixto' : 'Dividir cuenta';
-
     const renderMethodSelect = (
         inputId: string,
         value: number | null,
@@ -605,19 +605,19 @@ export default function PaymentModal({
                     </button>
                 </header>
 
-                <nav className="payment-mode-tabs" aria-label="Tipo de pago">
-                    <button type="button" className={mode === 'single' ? 'active' : ''} onClick={() => changeMode('single')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
+                <nav className="payment-mode-tabs" role="tablist" aria-label="Tipo de pago">
+                    <button type="button" role="tab" aria-selected={mode === 'single'} className={mode === 'single' ? 'active' : ''} onClick={() => changeMode('single')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
                         <CreditCard size={18} /> Pago único
                     </button>
-                    <button type="button" className={mode === 'mixed' ? 'active' : ''} onClick={() => changeMode('mixed')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
+                    <button type="button" role="tab" aria-selected={mode === 'mixed'} className={mode === 'mixed' ? 'active' : ''} onClick={() => changeMode('mixed')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
                         <Layers3 size={18} /> Pago mixto
                     </button>
-                    <button type="button" className={mode === 'split' ? 'active' : ''} onClick={() => changeMode('split')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
+                    <button type="button" role="tab" aria-selected={mode === 'split'} className={mode === 'split' ? 'active' : ''} onClick={() => changeMode('split')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
                         <Users size={18} /> Dividir cuenta
                     </button>
                 </nav>
 
-                <div className="payment-scroll-area">
+                <div ref={scrollAreaRef} className="payment-scroll-area">
                     <section className="payment-total-card" aria-label="Saldo pendiente">
                         <span>Saldo pendiente</span>
                         <strong>{displayMoney(balance)}</strong>
@@ -796,7 +796,6 @@ export default function PaymentModal({
                             {loading ? 'Procesando…' : previewLoading ? 'Calculando…' : mode === 'single' ? 'Confirmar pago' : mode === 'mixed' ? `Confirmar ${mixedLegs.length} tramos` : `Confirmar ${splitLegs.length} pagos`}
                         </button>
                     </div>
-                    <span className="payment-footer-mode">{selectedModeTitle}</span>
                 </footer>
             </section>
         </div>

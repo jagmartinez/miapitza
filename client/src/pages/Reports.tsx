@@ -4,7 +4,7 @@ import { reportsAPI, branchesAPI, categoriesAPI, suppliersAPI, warehousesAPI, me
 import Button from '../components/Button';
 import Pagination from '../components/Pagination';
 import Select from '../components/Select';
-import type { SingleValue } from 'react-select';
+import type { MultiValue, SingleValue } from 'react-select';
 import {
     Package, ShoppingCart, DollarSign, TrendingUp, BarChart3, AlertTriangle,
     ArrowLeft, Download, Search, FileSpreadsheet, Truck,
@@ -20,6 +20,7 @@ import './Reports.css';
 interface CategoryOption { id: number; name: string }
 interface WarehouseOption { id: number; name: string }
 interface BrandOption { id: number; name: string }
+interface FilterOption { value: string; label: string }
 
 const fmtNumber = (n: number) =>
     new Intl.NumberFormat('es-NI', { maximumFractionDigits: 2 }).format(n);
@@ -394,6 +395,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
         dateTo: todayStr(),
         warehouseId: '',
         categoryId: '',
+        categoryIds: '',
         supplierId: '',
         branchId: '',
         brandId: '',
@@ -522,7 +524,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
     };
 
     const clearFilters = () => {
-        setFilters({ dateFrom: monthStartStr(), dateTo: todayStr(), warehouseId: '', categoryId: '', supplierId: '', branchId: '', brandId: '', lowStockOnly: '' });
+        setFilters({ dateFrom: monthStartStr(), dateTo: todayStr(), warehouseId: '', categoryId: '', categoryIds: '', supplierId: '', branchId: '', brandId: '', lowStockOnly: '' });
     };
 
     if (!reportDef) {
@@ -629,13 +631,30 @@ function ReportDetail({ reportId }: { reportId: string }) {
 
                 {hasCategoryFilter(reportId) && (
                     <div className="filter-field">
-                        <Select
-                            label={<><Tag size={12} /> Categoría</>}
-                            options={[{ value: '', label: 'Todas las Categorías' }, ...categories.map(c => ({ value: c.id.toString(), label: c.name }))]}
-                            value={{ value: filters.categoryId, label: filters.categoryId ? categories.find(c => c.id.toString() === filters.categoryId)?.name || '' : 'Todas las Categorías' }}
-                            onChange={(opt) => opt && set('categoryId', (opt as { value: string }).value)}
-                            isSearchable={false}
-                        />
+                        {hasMultiCategoryFilter(reportId) ? (
+                            <Select<FilterOption, true>
+                                label={<><Tag size={12} /> Categorías</>}
+                                options={categories.map(c => ({ value: c.id.toString(), label: c.name }))}
+                                value={categories
+                                    .filter(c => filters.categoryIds.split(',').includes(c.id.toString()))
+                                    .map(c => ({ value: c.id.toString(), label: c.name }))}
+                                onChange={(options: MultiValue<FilterOption>) => set('categoryIds', options.map(option => option.value).join(','))}
+                                isMulti
+                                isClearable
+                                closeMenuOnSelect={false}
+                                hideSelectedOptions={false}
+                                placeholder="Todas las categorías"
+                                noOptionsMessage={() => 'No hay más categorías'}
+                            />
+                        ) : (
+                            <Select
+                                label={<><Tag size={12} /> Categoría</>}
+                                options={[{ value: '', label: 'Todas las Categorías' }, ...categories.map(c => ({ value: c.id.toString(), label: c.name }))]}
+                                value={{ value: filters.categoryId, label: filters.categoryId ? categories.find(c => c.id.toString() === filters.categoryId)?.name || '' : 'Todas las Categorías' }}
+                                onChange={(opt) => opt && set('categoryId', (opt as { value: string }).value)}
+                                isSearchable={false}
+                            />
+                        )}
                     </div>
                 )}
 
@@ -810,6 +829,9 @@ const CATEGORY_FILTER_REPORTS = new Set([
     'price-comparison', 'sales-by-category', 'sales-by-product', 'margin-by-product',
     'recipe-cost',
 ]);
+const MULTI_CATEGORY_FILTER_REPORTS = new Set([
+    'sales', 'sales-by-category', 'sales-by-product', 'margin-by-product',
+]);
 const SUPPLIER_FILTER_REPORTS = new Set([
     'purchases', 'purchases-by-day', 'purchases-by-month', 'price-comparison',
 ]);
@@ -820,6 +842,7 @@ const BRAND_FILTER_REPORTS = new Set([
 function hasDateFilter(id: string) { return DATE_FILTER_REPORTS.has(id); }
 function hasBranchFilter(id: string) { return BRANCH_FILTER_REPORTS.has(id); }
 function hasCategoryFilter(id: string) { return CATEGORY_FILTER_REPORTS.has(id); }
+function hasMultiCategoryFilter(id: string) { return MULTI_CATEGORY_FILTER_REPORTS.has(id); }
 function hasSupplierFilter(id: string) { return SUPPLIER_FILTER_REPORTS.has(id); }
 function hasBrandFilter(id: string) { return BRAND_FILTER_REPORTS.has(id); }
 

@@ -34,6 +34,12 @@ const dateFilterOptions = [
     { value: 'all', label: 'Todas' }
 ];
 
+const kitchenItemStatusLabel: Record<OrderItem['status'], string> = {
+    PENDING: 'Pendiente',
+    IN_PROGRESS: 'En preparación',
+    DONE: 'Listo',
+};
+
 export default function Kitchen({ displayMode = false }: { displayMode?: boolean }) {
     const { user } = useAuth();
     const navigate = useNavigate();
@@ -525,7 +531,15 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                     </div>
                                 )}
 
-                                {displayMode && <div className="kds-visible-items">{order.items?.map((item) => <div key={item.id} className={`kds-visible-item status-${item.status.toLowerCase()}`}><strong>{item.quantity}× {item.menuItem?.name || 'Producto'}</strong>{item.notes && <span>{item.notes}</span>}</div>)}</div>}
+                                <div className={`kds-visible-items ${displayMode ? 'is-display-mode' : 'is-pc-mode'}`}>
+                                    <div className="kds-visible-items-heading"><ListOrdered size={15} /><span>Preparación</span><b>{order.items?.length || 0}</b></div>
+                                    {order.items?.map((item) => (
+                                        <div key={item.id} className={`kds-visible-item status-${item.status.toLowerCase()}`}>
+                                            <div><strong>{item.quantity}× {item.menuItem?.name || 'Producto'}</strong>{item.notes && <span>{item.notes}</span>}</div>
+                                            <small>{kitchenItemStatusLabel[item.status]}</small>
+                                        </div>
+                                    ))}
+                                </div>
                             </button>
 
                             {/* Actions Footer */}
@@ -603,33 +617,41 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                         isOpen={true}
                         onClose={() => setDetailOrderId(null)}
                         title={`Orden #${detailOrder.id} — Mesa ${detailOrder.table?.number || 'N/A'}`}
-                        size="md"
+                        size="lg"
                         variant="sidebar"
+                        footer={!detailOrder.kitchenReleasedAt ? (
+                            <div className="kitchen-detail-footer">
+                                {canKitchenLineOps && (
+                                    <button className="btn btn-danger-ghost" onClick={() => { setDetailOrderId(null); handleReportProblem(detailOrder.id); }}>
+                                        <AlertTriangle size={16} /> Reportar problema
+                                    </button>
+                                )}
+                                <div className="kitchen-detail-footer-primary">
+                                    {canKitchenLineOps && detailOrder.status === 'IN_PREPARATION' && <button className="btn btn-primary" onClick={() => { void handleMarkReady(detailOrder.id); setDetailOrderId(null); }}><CheckCircle size={16} /> Marcar todo listo</button>}
+                                    {canKitchenLineOps && detailOrder.status === 'READY' && <button className="btn btn-primary" onClick={() => void handleReleaseOrder(detailOrder.id)}><Check size={18} /> Liberar del KDS</button>}
+                                </div>
+                            </div>
+                        ) : undefined}
                     >
                         <div className="kitchen-detail-modal">
-                            <div className="kitchen-detail-meta">
-                                {detailOrder.user && (
-                                    <span
-                                        className="kitchen-waiter-chip"
-                                        style={{
-                                            backgroundColor: `${detailWaiterAccent}25`,
-                                            color: detailWaiterAccent,
-                                            borderColor: detailWaiterAccent
-                                        }}
-                                    >
-                                        <span
-                                            className="kitchen-waiter-dot"
-                                            style={{ backgroundColor: detailWaiterAccent }}
-                                        />
-                                        {detailOrder.user.name}
-                                    </span>
-                                )}
-                                <span className={`kitchen-detail-status status-${detailOrder.status === 'READY' ? 'ready' : getTimeClass(detailWaitTime).replace('time-', '')}`}>
-                                    {detailOrder.status === 'READY' ? 'Lista' : `${detailWaitTime} min`}
-                                </span>
+                            <div className="kitchen-detail-hero">
+                                <div className="kitchen-detail-identity">
+                                    <span className="kitchen-detail-eyebrow">Comanda de cocina</span>
+                                    <div className="kitchen-detail-table-row"><div className="kitchen-detail-icon"><ChefHat size={26} /></div><div><h3>Mesa {detailOrder.table?.number || 'N/A'}</h3><p>Orden #{detailOrder.id} · {detailOrder.items?.length || 0} productos</p></div></div>
+                                    {detailOrder.user && (
+                                        <span className="kitchen-waiter-chip" style={{ backgroundColor: `${detailWaiterAccent}25`, color: detailWaiterAccent, borderColor: detailWaiterAccent }}>
+                                            <span className="kitchen-waiter-dot" style={{ backgroundColor: detailWaiterAccent }} />{detailOrder.user.name}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className={`kitchen-detail-wait status-${detailOrder.status === 'READY' ? 'ready' : getTimeClass(detailWaitTime).replace('time-', '')}`}>
+                                    <span>{detailOrder.status === 'READY' ? 'Orden lista' : 'Tiempo transcurrido'}</span>
+                                    <strong>{detailOrder.status === 'READY' ? <CheckCheck size={28} /> : `${detailWaitTime} min`}</strong>
+                                    <small>{getOrderStatusLabel(detailOrder.status)}</small>
+                                </div>
                             </div>
 
-                            <div className="kitchen-timeline-grid">
+                            <div className="kitchen-timeline-grid kitchen-detail-timeline">
                                 <div className="kitchen-timeline-cell">
                                     <div className="kitchen-timeline-label">Estado</div>
                                     <div className="kitchen-timeline-value">{getOrderStatusLabel(detailOrder.status)}</div>
@@ -663,23 +685,19 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                 </div>
                             </div>
 
-                            <h4 className="kitchen-detail-section-title">Productos de la orden</h4>
+                            <div className="kitchen-detail-section-heading"><div><span>Preparación</span><h4>Productos de la orden</h4></div><b>{detailOrder.items?.length || 0}</b></div>
                             <div className="kitchen-items-list kitchen-items-list-modal">
                                 {detailOrder.items?.map((item) => {
                                     const prepTime = getItemTimeDiff(item.startedAt);
                                     const itemStatusClass = item.status === 'DONE' ? 'item-done' : item.status === 'IN_PROGRESS' ? 'item-progress' : 'item-pending';
                                     return (
                                         <div key={item.id || item.menuItemId} className={`kitchen-item ${itemStatusClass}`}>
-                                            <span className="item-qty-kitchen">{item.quantity}x</span>
+                                            <span className="item-qty-kitchen">{item.quantity}×</span>
                                             <span className="item-name-kitchen">
-                                                {item.menuItem?.name}
+                                                <strong>{item.menuItem?.name || 'Producto'}</strong>
                                                 {item.notes && <small className="item-note-kitchen">{item.notes}</small>}
                                             </span>
-                                            {item.status === 'IN_PROGRESS' && prepTime !== null && (
-                                                <span className="item-prep-time">
-                                                    {prepTime}m
-                                                </span>
-                                            )}
+                                            <span className={`kitchen-item-state status-${item.status.toLowerCase()}`}>{kitchenItemStatusLabel[item.status]}{item.status === 'IN_PROGRESS' && prepTime !== null ? ` · ${prepTime} min` : ''}</span>
                                             {detailOrder.status !== 'READY' && (
                                                 <>
                                                     {canKitchenLineOps && item.status === 'PENDING' && (
@@ -709,39 +727,6 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                     );
                                 })}
                             </div>
-
-                            {!detailOrder.kitchenReleasedAt && (
-                                <div className="kitchen-detail-actions">
-                                    {canKitchenLineOps && (
-                                        <button
-                                            className="btn btn-danger-ghost"
-                                            onClick={() => {
-                                                setDetailOrderId(null);
-                                                handleReportProblem(detailOrder.id);
-                                            }}
-                                        >
-                                            <AlertTriangle size={16} />
-                                            Reportar problema
-                                        </button>
-                                    )}
-                                    {canKitchenLineOps && detailOrder.status === 'IN_PREPARATION' && <button
-                                        className="btn btn-primary"
-                                        onClick={() => {
-                                            handleMarkReady(detailOrder.id);
-                                            setDetailOrderId(null);
-                                        }}
-                                    >
-                                        <CheckCircle size={16} />
-                                        Marcar todo listo
-                                    </button>}
-                                    {canKitchenLineOps && detailOrder.status === 'READY' && <button
-                                        className="btn btn-primary"
-                                        onClick={() => void handleReleaseOrder(detailOrder.id)}
-                                    >
-                                        <Check size={18} /> Liberar del KDS
-                                    </button>}
-                                </div>
-                            )}
                         </div>
                     </Modal>
                 );

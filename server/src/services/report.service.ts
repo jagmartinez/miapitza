@@ -1328,6 +1328,7 @@ export class ReportService {
         dateTo?: Date;
         branchId?: number;
         categoryId?: number;
+        categoryIds?: number[];
         brandId?: number;
         userId?: number;
         paymentMethodId?: number;
@@ -1391,12 +1392,15 @@ export class ReportService {
         let grossOrderTotal = 0;
         let collected = 0;
         const matchedOrderIds = new Set<number>();
+        const selectedCategoryIds = filters?.categoryIds?.length
+            ? new Set(filters.categoryIds)
+            : filters?.categoryId ? new Set([filters.categoryId]) : null;
 
         for (const order of orders) {
             const paymentMethodName = order.payments.map(p => p.paymentMethod.name).join(', ') || 'N/A';
             const orderDiscount = Math.round(Number(order.discount) * 100) / 100;
             const matchingItems = order.items.filter((item) => {
-                if (filters?.categoryId && item.menuItem?.categoryId !== filters.categoryId) return false;
+                if (selectedCategoryIds && (!item.menuItem?.categoryId || !selectedCategoryIds.has(item.menuItem.categoryId))) return false;
                 if (filters?.brandId && item.menuItem?.brandId !== filters.brandId) return false;
                 return true;
             });

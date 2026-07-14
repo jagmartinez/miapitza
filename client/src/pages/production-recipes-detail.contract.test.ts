@@ -7,6 +7,9 @@ describe('production recipe detail contract', () => {
         const source = readFileSync(fileURLToPath(new URL('./ProductionRecipes.tsx', import.meta.url)), 'utf8');
         expect(source).toContain('productionRecipesAPI.getById(recipe.id)');
         expect(source).toContain('Detalle de la Receta');
+        expect(source).toContain('className="inventory-detail pr-recipe-detail"');
+        expect(source).toContain('inventory-detail-footer');
+        expect(source).toContain('Componentes de la preparación');
         expect(source).toContain('viewingRecipe.components.map');
         expect(source).toContain('viewingRecipe.cost.batchCost');
     });

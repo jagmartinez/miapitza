@@ -5,6 +5,12 @@ import { getErrorMessage } from '../utils/error';
 import { resolveBranchScope } from '../utils/branch-scope';
 import { parseOptionalQueryDateFrom, parseOptionalQueryDateTo } from '../utils/date-range';
 
+const parseCategoryIds = (value: unknown): number[] | undefined => {
+    if (typeof value !== 'string') return undefined;
+    const ids = [...new Set(value.split(',').map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+    return ids.length > 0 ? ids : undefined;
+};
+
 export class ReportExtendedController {
     private static parseFilters(req: Request) {
         const branchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
@@ -14,6 +20,7 @@ export class ReportExtendedController {
             branchId: resolveBranchScope(req.user!, branchId),
             supplierId: req.query.supplierId ? parseInt(req.query.supplierId as string) : undefined,
             categoryId: req.query.categoryId ? parseInt(req.query.categoryId as string) : undefined,
+            categoryIds: parseCategoryIds(req.query.categoryIds),
             productId: req.query.productId ? parseInt(req.query.productId as string) : undefined,
             userId: req.query.userId ? parseInt(req.query.userId as string) : undefined,
             salesChannel: req.query.salesChannel as string | undefined,
@@ -28,6 +35,7 @@ export class ReportExtendedController {
         if (req.query.branchId) f['Sucursal ID'] = req.query.branchId as string;
         if (req.query.supplierId) f['Proveedor ID'] = req.query.supplierId as string;
         if (req.query.categoryId) f['Categoría ID'] = req.query.categoryId as string;
+        if (req.query.categoryIds) f['Categorías ID'] = req.query.categoryIds as string;
         return f;
     }
 

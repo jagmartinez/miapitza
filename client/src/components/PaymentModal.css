@@ -12,8 +12,9 @@
 .payment-dialog {
     --payment-line: var(--color-border, #334155);
     --payment-muted: var(--color-text-secondary, #94a3b8);
-    width: min(760px, 100%);
-    max-height: min(92dvh, 940px);
+    width: min(1120px, 100%);
+    height: min(840px, calc(100dvh - 48px));
+    max-height: 940px;
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr) auto;
     overflow: hidden;
@@ -23,11 +24,6 @@
     color: var(--color-text, #f8fafc);
     box-shadow: 0 24px 80px rgb(2 6 23 / 52%);
     animation: payment-enter 180ms ease-out;
-}
-
-.payment-dialog-mixed,
-.payment-dialog-split {
-    width: min(1120px, 100%);
 }
 
 .payment-dialog button,
@@ -127,7 +123,7 @@
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 20px 24px 24px;
+    padding: 18px 24px 24px;
     scrollbar-width: thin;
     scrollbar-color: var(--color-border, #475569) transparent;
 }
@@ -155,9 +151,9 @@
 .payment-total-card {
     display: grid;
     place-items: center;
-    min-height: 138px;
+    min-height: 112px;
     margin-bottom: 18px;
-    padding: 20px;
+    padding: 16px 20px;
     border: 1px solid color-mix(in srgb, var(--color-primary, #2563eb) 70%, white 12%);
     border-radius: 16px;
     background:
@@ -175,7 +171,7 @@
 .payment-total-card strong {
     display: block;
     margin: 3px 0;
-    font-size: clamp(2.15rem, 6vw, 3.6rem);
+    font-size: clamp(2.05rem, 5vw, 3.25rem);
     line-height: 1.05;
     font-variant-numeric: tabular-nums;
     letter-spacing: -.04em;
@@ -189,7 +185,7 @@
 }
 
 .single-panel {
-    max-width: 620px;
+    max-width: 760px;
     margin-inline: auto;
 }
 
@@ -245,6 +241,23 @@
     border-radius: 10px;
     background: var(--color-surface, #172033);
     color: var(--color-text, #f8fafc);
+}
+
+/* Every payment control uses the same 46px rhythm. React Select normally
+   defaults to 38px, which made method selection feel disconnected. */
+.payment-dialog .select-group.modal .react-select__control {
+    min-height: 46px;
+    border-radius: 10px;
+    background: var(--color-surface, #172033);
+}
+
+.payment-dialog .select-group.modal .react-select__value-container {
+    min-height: 44px;
+    padding-inline: 12px;
+}
+
+.payment-dialog .select-group.modal .react-select__indicators {
+    min-height: 44px;
 }
 
 .payment-field > input {
@@ -679,14 +692,6 @@
     cursor: not-allowed;
 }
 
-.payment-footer-mode {
-    display: block;
-    margin-top: 7px;
-    color: var(--payment-muted);
-    font-size: .68rem;
-    text-align: center;
-}
-
 @keyframes payment-enter {
     from { opacity: 0; transform: translateY(12px) scale(.985); }
     to { opacity: 1; transform: translateY(0) scale(1); }
@@ -704,10 +709,9 @@
         padding: 0;
     }
 
-    .payment-dialog,
-    .payment-dialog-mixed,
-    .payment-dialog-split {
+    .payment-dialog {
         width: 100%;
+        height: 96dvh;
         max-height: 96dvh;
         border-radius: 18px 18px 0 0;
     }

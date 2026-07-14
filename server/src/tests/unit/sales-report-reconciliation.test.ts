@@ -29,7 +29,7 @@ describe('ReportService.getSalesReport reconciliation', () => {
         ] as never);
 
         const dateFrom = new Date('2026-01-01T00:00:00Z');
-        const result = await ReportService.getSalesReport(3, { categoryId: 7, dateFrom });
+        const result = await ReportService.getSalesReport(3, { categoryIds: [7], dateFrom });
 
         expect(prisma.order.findMany).toHaveBeenCalledWith(expect.objectContaining({
             where: expect.objectContaining({ closedAt: { gte: dateFrom } }),

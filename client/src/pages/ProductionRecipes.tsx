@@ -13,7 +13,7 @@ import { useCurrency } from '../hooks/useCurrency';
 import { getUserRoleNames } from '../utils/authz';
 import {
     FlaskConical, Plus, Pencil, Power, Copy, Trash2, Save, Info, Layers,
-    Search, Calculator, Eye, X
+    Search, Calculator, Eye, Package, Box, DollarSign, Activity, FileText, Scale
 } from 'lucide-react';
 import type { SingleValue } from 'react-select';
 import type { ProductionRecipe, Product, UnitOfMeasure, RecipeCost } from '../types';
@@ -683,65 +683,114 @@ export default function ProductionRecipes() {
                 onClose={() => setViewingRecipe(null)}
                 title="Detalle de la Receta"
                 width="large"
-            >
-                {viewingRecipe && (
-                    <div className="premium-modal-content pr-detail-content">
-                        <div className="pr-detail-hero">
-                            <div>
-                                <span className="pr-detail-eyebrow">Producto de salida</span>
-                                <h2>{viewingRecipe.product?.name || `Producto #${viewingRecipe.productId}`}</h2>
-                                <p>{viewingRecipe.product?.sku || 'Sin SKU'} · {viewingRecipe.name || 'Receta sin nombre'}</p>
+                footer={viewingRecipe ? (
+                    <div className="inventory-detail-footer">
+                        <Button type="button" variant="ghost" onClick={() => setViewingRecipe(null)}>
+                            Cerrar
+                        </Button>
+                        {canManage && viewingRecipe.status === 'DRAFT' && (
+                            <div className="inventory-detail-footer-actions">
+                                <Button type="button" onClick={() => { const recipe = viewingRecipe; setViewingRecipe(null); handleOpenEdit(recipe); }}>
+                                    <Pencil size={16} /> Editar receta
+                                </Button>
                             </div>
-                            {getStatusBadge(viewingRecipe.status)}
-                        </div>
-
-                        {detailLoading ? (
-                            <div className="inventory-loading">Cargando detalle...</div>
-                        ) : (
-                            <>
-                                <div className="pr-detail-stats">
-                                    <div><span>Versión</span><strong>v{viewingRecipe.version}</strong></div>
-                                    <div><span>Rendimiento</span><strong>{Number(viewingRecipe.yieldQuantity).toLocaleString()} {displayedYieldUnit(viewingRecipe)}</strong></div>
-                                    <div><span>Costo del lote</span><strong>{viewingRecipe.cost ? formatMoney(Number(viewingRecipe.cost.batchCost) || 0) : 'No disponible'}</strong></div>
-                                    <div><span>Costo unitario</span><strong>{viewingRecipe.cost ? formatMoney(Number(viewingRecipe.cost.unitCost) || 0) : 'No disponible'}</strong></div>
-                                </div>
-
-                                <section className="pr-detail-section">
-                                    <div className="modal-section-header"><Layers size={18} /><h3>Componentes</h3></div>
-                                    <div className="pr-detail-component-list">
-                                        {viewingRecipe.components.map((component) => {
-                                            const costLine = viewingRecipe.cost?.lines.find((line) => line.componentProductId === component.componentProductId);
-                                            return (
-                                                <div key={component.id ?? component.componentProductId} className="pr-detail-component">
-                                                    <div><strong>{component.componentProduct?.name || `Producto #${component.componentProductId}`}</strong><span>{component.componentProduct?.sku || 'Sin SKU'}</span></div>
-                                                    <span>{Number(component.quantity).toLocaleString(undefined, { maximumFractionDigits: 6 })} {component.unit || costLine?.unit || component.componentProduct?.unit || ''}</span>
-                                                    <strong>{costLine ? formatMoney(Number(costLine.totalCost) || 0) : '—'}</strong>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </section>
-
-                                <section className="pr-detail-section">
-                                    <div className="modal-section-header"><Info size={18} /><h3>Información de producción</h3></div>
-                                    <dl className="pr-detail-meta">
-                                        <div><dt>Notas</dt><dd>{viewingRecipe.notes || 'Sin notas de producción'}</dd></div>
-                                        <div><dt>Creada por</dt><dd>{viewingRecipe.createdBy?.name || 'No disponible'}</dd></div>
-                                        <div><dt>Fecha de creación</dt><dd>{new Date(viewingRecipe.createdAt).toLocaleString('es-NI')}</dd></div>
-                                        <div><dt>Última actualización</dt><dd>{new Date(viewingRecipe.updatedAt).toLocaleString('es-NI')}</dd></div>
-                                    </dl>
-                                </section>
-
-                                <div className="modal-footer">
-                                    <Button type="button" variant="ghost" onClick={() => setViewingRecipe(null)}><X size={16} /> Cerrar</Button>
-                                    {canManage && viewingRecipe.status === 'DRAFT' && (
-                                        <Button type="button" onClick={() => { const recipe = viewingRecipe; setViewingRecipe(null); handleOpenEdit(recipe); }}><Pencil size={16} /> Editar receta</Button>
-                                    )}
-                                </div>
-                            </>
                         )}
                     </div>
-                )}
+                ) : undefined}
+            >
+                {viewingRecipe && (() => {
+                    const outputProduct = productById.get(viewingRecipe.productId);
+                    const outputName = viewingRecipe.product?.name || outputProduct?.name || `Producto #${viewingRecipe.productId}`;
+                    const outputSku = viewingRecipe.product?.sku || outputProduct?.sku;
+                    const outputType = outputProduct?.type || viewingRecipe.product?.type;
+                    const yieldUnit = displayedYieldUnit(viewingRecipe);
+                    const statusLabel = viewingRecipe.status === 'ACTIVE' ? 'Activa' : viewingRecipe.status === 'DRAFT' ? 'Borrador' : 'Inactiva';
+                    const batchCost = viewingRecipe.cost ? Number(viewingRecipe.cost.batchCost) || 0 : null;
+                    const unitCost = viewingRecipe.cost ? Number(viewingRecipe.cost.unitCost) || 0 : null;
+
+                    if (detailLoading) return <div className="inventory-loading">Cargando detalle...</div>;
+
+                    return (
+                        <div className="inventory-detail pr-recipe-detail" data-testid="production-recipe-detail">
+                            <div className="inventory-detail-hero">
+                                <div className="inventory-detail-hero-main">
+                                    <div className="inventory-detail-icon" aria-hidden="true"><FlaskConical size={28} /></div>
+                                    <div className="inventory-detail-identity">
+                                        <span className="inventory-detail-eyebrow">Ficha de producción</span>
+                                        <h3>{outputName}</h3>
+                                        <div className="inventory-detail-meta">
+                                            {outputSku && <span className="inventory-detail-badge sku">SKU {outputSku}</span>}
+                                            <div className="inventory-detail-status-row">
+                                                <span className={`inventory-detail-badge ${viewingRecipe.status === 'ACTIVE' ? 'active' : viewingRecipe.status === 'DRAFT' ? 'warning' : 'inactive'}`}>{statusLabel}</span>
+                                                <span className="inventory-detail-badge ok">Versión {viewingRecipe.version}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="inventory-detail-stock-summary pr-recipe-yield-summary">
+                                    <span>Rendimiento del lote</span>
+                                    <strong>{Number(viewingRecipe.yieldQuantity).toLocaleString('es-NI', { maximumFractionDigits: 6 })}<small>{yieldUnit}</small></strong>
+                                    <div className="inventory-detail-stock-track" aria-hidden="true"><span style={{ width: '100%' }} /></div>
+                                    <small>{viewingRecipe.components.length} componentes definidos</small>
+                                </div>
+                            </div>
+
+                            <section className="inventory-detail-section">
+                                <div className="modal-section-header"><Box size={18} /><h3>Perfil de la receta</h3></div>
+                                <div className="inventory-detail-profile-grid">
+                                    <div className="inventory-detail-profile-item"><Package size={18} /><div><span>Producto de salida</span><strong>{outputName}</strong></div></div>
+                                    <div className="inventory-detail-profile-item"><Layers size={18} /><div><span>Tipo de producto</span><strong>{outputType ? TYPE_LABELS[outputType] : 'Sin clasificar'}</strong></div></div>
+                                    <div className="inventory-detail-profile-item"><Scale size={18} /><div><span>Rendimiento</span><strong>{Number(viewingRecipe.yieldQuantity).toLocaleString('es-NI', { maximumFractionDigits: 6 })} {yieldUnit}</strong></div></div>
+                                    <div className="inventory-detail-profile-item"><Info size={18} /><div><span>Nombre de receta</span><strong>{viewingRecipe.name || 'Sin nombre adicional'}</strong></div></div>
+                                </div>
+                            </section>
+
+                            <section className="inventory-detail-section">
+                                <div className="modal-section-header"><DollarSign size={18} /><h3>Costos de producción</h3></div>
+                                <div className="inventory-detail-finance">
+                                    <div className="inventory-detail-effective-cost">
+                                        <div><span>Costo total del lote</span><strong>{batchCost === null ? 'No disponible' : formatMoney(batchCost)}</strong></div>
+                                        <span className="inventory-detail-cost-source">Costo calculado</span>
+                                    </div>
+                                    <dl className="inventory-detail-finance-breakdown">
+                                        <div><dt>Costo unitario</dt><dd>{unitCost === null ? 'No disponible' : formatMoney(unitCost)}</dd></div>
+                                        <div><dt>Base calculada</dt><dd>{viewingRecipe.cost ? `${Number(viewingRecipe.cost.yieldBaseQuantity).toLocaleString('es-NI', { maximumFractionDigits: 6 })} ${viewingRecipe.cost.yieldBaseUnit}` : 'No disponible'}</dd></div>
+                                        <div><dt>Componentes</dt><dd>{viewingRecipe.components.length}</dd></div>
+                                    </dl>
+                                    <p className="inventory-detail-finance-note">{viewingRecipe.costError || 'El costo se calcula con las cantidades y el costo efectivo vigente de cada componente.'}</p>
+                                </div>
+                            </section>
+
+                            <section className="inventory-detail-section">
+                                <div className="modal-section-header"><Layers size={18} /><h3>Componentes de la preparación</h3></div>
+                                <div className="pr-detail-component-list">
+                                    {viewingRecipe.components.map((component, index) => {
+                                        const costLine = viewingRecipe.cost?.lines.find((line) => line.componentProductId === component.componentProductId);
+                                        const unit = component.unit || costLine?.unit || component.componentProduct?.unit || '';
+                                        return (
+                                            <article key={component.id ?? component.componentProductId} className="pr-detail-component">
+                                                <span className="pr-detail-component-index">{index + 1}</span>
+                                                <div className="pr-detail-component-identity"><strong>{component.componentProduct?.name || `Producto #${component.componentProductId}`}</strong><span>{component.componentProduct?.sku ? `SKU ${component.componentProduct.sku}` : 'Sin SKU registrado'}</span></div>
+                                                <div className="pr-detail-component-quantity"><span>Cantidad</span><strong>{Number(component.quantity).toLocaleString('es-NI', { maximumFractionDigits: 6 })} {unit}</strong></div>
+                                                <div className="pr-detail-component-cost"><span>Costo</span><strong>{costLine ? formatMoney(Number(costLine.totalCost) || 0) : '—'}</strong></div>
+                                            </article>
+                                        );
+                                    })}
+                                </div>
+                            </section>
+
+                            <section className="inventory-detail-section inventory-detail-operational-note">
+                                <Activity size={18} aria-hidden="true" />
+                                <div><strong>Trazabilidad de producción</strong><p>Creada por {viewingRecipe.createdBy?.name || 'usuario no disponible'} el {new Date(viewingRecipe.createdAt).toLocaleString('es-NI')}. Última actualización: {new Date(viewingRecipe.updatedAt).toLocaleString('es-NI')}.</p></div>
+                            </section>
+
+                            <section className="inventory-detail-section">
+                                <div className="modal-section-header"><FileText size={18} /><h3>Indicaciones y observaciones</h3></div>
+                                <p className="inventory-detail-observation">{viewingRecipe.notes || 'Esta receta no tiene indicaciones adicionales.'}</p>
+                            </section>
+                        </div>
+                    );
+                })()}
             </Sidebar>
 
             <Sidebar

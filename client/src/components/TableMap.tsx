@@ -344,7 +344,6 @@ export default function TableMap({
                     <span>{editing ? 'Selecciona un salón o mesa para cambiar tamaño, forma y rotación' : `${layout.length} mesas · ${areas.length} salones · selecciona una mesa para operarla`}</span>
                 </div>
                 <div className="table-map-actions">
-                    {!editing && onReturnToAdministration && <button type="button" onClick={onReturnToAdministration}><LayoutDashboard size={18} /> Administración</button>}
                     {!editing && <Select<SelectOption>
                         className="table-map-status-filter"
                         aria-label="Filtrar mesas por estado"
@@ -358,6 +357,7 @@ export default function TableMap({
                     {!editing && onTransfer && <button type="button" onClick={onTransfer}><ArrowRightLeft size={18} /> Cambiar mesa</button>}
                     {!editing && onConsolidate && <button type="button" onClick={onConsolidate}><Merge size={18} /> Consolidar</button>}
                     {!editing && onCreateTable && <button type="button" className="primary" onClick={onCreateTable}><Plus size={18} /> Nueva mesa</button>}
+                    {!editing && onReturnToAdministration && <button type="button" onClick={onReturnToAdministration}><LayoutDashboard size={18} /> Administración</button>}
                     {editing && (
                         <Select<SelectOption>
                             className="table-map-area-selector"

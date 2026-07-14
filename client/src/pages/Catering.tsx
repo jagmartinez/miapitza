@@ -888,9 +888,23 @@ export default function Catering() {
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
                 title={selectedEvent ? `Editar: ${selectedEvent.title}` : 'Nuevo Evento de Catering'}
-                width="large"
+                width="wide"
             >
                 <div className="premium-modal-content catering-modal-content catering-event-modal-content">
+                    <section className="catering-event-intro" aria-label="Resumen del evento">
+                        <span className="catering-event-intro-icon" aria-hidden="true"><CalendarDays size={24} /></span>
+                        <div className="catering-event-intro-copy">
+                            <span>{selectedEvent ? 'Edición del evento' : 'Planificación guiada'}</span>
+                            <h3>{formData.title.trim() || 'Configura el nuevo evento'}</h3>
+                            <p>Completa los datos principales y luego arma servicios, menú y condiciones.</p>
+                        </div>
+                        <div className="catering-event-intro-stats">
+                            <span><small>Fecha</small><strong>{formData.date || 'Por definir'}</strong></span>
+                            <span><small>Invitados</small><strong>{formData.peopleCount || 0}</strong></span>
+                            <span><small>Total</small><strong>{formatMoney(calculateTabTotals())}</strong></span>
+                        </div>
+                    </section>
+
                     <div className="modal-tabs" role="tablist" aria-label="Secciones del evento de catering">
                         <button
                             type="button"
@@ -900,7 +914,7 @@ export default function Catering() {
                             onClick={() => setActiveTab('info')}
                         >
                             <FileText size={18} />
-                            <span>Información</span>
+                            <span>Datos</span>
                         </button>
                         <button
                             type="button"
@@ -911,6 +925,7 @@ export default function Catering() {
                         >
                             <ConciergeBell size={18} />
                             <span>Servicios</span>
+                            {formData.services.length > 0 && <b>{formData.services.length}</b>}
                         </button>
                         <button
                             type="button"
@@ -921,6 +936,7 @@ export default function Catering() {
                         >
                             <Users size={18} />
                             <span>Menú</span>
+                            {formData.menuItems.length > 0 && <b>{formData.menuItems.length}</b>}
                         </button>
                         <button
                             type="button"
@@ -930,7 +946,7 @@ export default function Catering() {
                             onClick={() => setActiveTab('clauses')}
                         >
                             <FileText size={18} />
-                            <span>Cláusulas</span>
+                            <span>Contrato</span>
                         </button>
                         {selectedEvent && (
                             <button
@@ -948,9 +964,12 @@ export default function Catering() {
 
                     <div className="modal-tab-content">
                         {activeTab === 'info' && (
-                            <div className="animate-slide-in">
-                                <div className="modal-section">
-                                    <h3 className="section-title-v2">Datos del Cliente</h3>
+                            <div className="animate-slide-in catering-info-layout">
+                                <section className="modal-section catering-event-section">
+                                    <div className="catering-section-heading">
+                                        <span><Users size={18} /></span>
+                                        <div><h3>Cliente</h3><p>Persona o empresa responsable de la contratación.</p></div>
+                                    </div>
                                     <div className="modal-form-row">
                                         <div className="modal-input-group">
                                             <label htmlFor="catering-customer-name">Nombre del cliente</label>
@@ -984,10 +1003,13 @@ export default function Catering() {
                                             />
                                         </div>
                                     </div>
-                                </div>
+                                </section>
 
-                                <div className="modal-section">
-                                    <h3 className="section-title-v2">Detalles del Evento</h3>
+                                <section className="modal-section catering-event-section catering-event-section-main">
+                                    <div className="catering-section-heading">
+                                        <span><Calendar size={18} /></span>
+                                        <div><h3>Evento</h3><p>Define dónde, cuándo y para cuántas personas.</p></div>
+                                    </div>
                                     <div className="modal-form-row">
                                         <Select
                                             variant="modal"
@@ -1087,11 +1109,13 @@ export default function Catering() {
                                             />
                                         </div>
                                     </div>
-                                </div>
+                                </section>
 
-
-                                <div className="modal-section">
-                                    <h3 className="section-title-v2">Información Adicional</h3>
+                                <section className="modal-section catering-event-section catering-event-section-full">
+                                    <div className="catering-section-heading">
+                                        <span><MapPin size={18} /></span>
+                                        <div><h3>Logística y notas</h3><p>Agrega la dirección y cualquier indicación operativa.</p></div>
+                                    </div>
                                     <div className="modal-input-group">
                                         <label htmlFor="catering-location">Ubicación</label>
                                         <input
@@ -1111,7 +1135,7 @@ export default function Catering() {
                                             onChange={e => setFormData({ ...formData, notes: e.target.value })}
                                         />
                                     </div>
-                                </div>
+                                </section>
                             </div>
                         )}
 

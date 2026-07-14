@@ -11,6 +11,19 @@
     gap: var(--spacing-2xl);
 }
 
+.page-wrapper.reports-page {
+    width: 100%;
+    max-width: 1700px;
+    margin-inline: auto;
+}
+
+.reports-page > .reports-detail-page {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+}
+
 .reports-search-box {
     max-width: 420px;
     width: 100%;

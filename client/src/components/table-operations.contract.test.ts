@@ -59,6 +59,8 @@ describe('table operational center contract', () => {
         expect(mapSource).not.toContain('onShowList');
         expect(mapSource).not.toContain('<span>Estado</span>');
         expect(mapSource).toContain('canvas-resize-handle');
+        expect(mapSource.indexOf('Nueva mesa')).toBeLessThan(mapSource.indexOf('Administración'));
+        expect(tablesSource).toContain('themeControl={<KitchenNotificationBell inline />}');
     });
 
     it('allows selecting a floor area by pointer, keyboard or the editor selector', () => {
@@ -93,6 +95,8 @@ describe('table operational center contract', () => {
         expect(kitchenSource).toContain("if (!displayMode) return");
         expect(kitchenSource).toContain('displayMode && canReturnToAdministration');
         expect(kitchenSource).not.toContain('kitchen-items-summary');
+        expect(kitchenSource).toContain("displayMode ? 'is-display-mode' : 'is-pc-mode'");
+        expect(kitchenSource).toContain('Productos de la orden');
     });
 
     it('mounts the kitchen alert bell only inside Tables and announces new alerts', () => {

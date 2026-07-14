@@ -294,24 +294,57 @@
     color: var(--color-primary);
 }
 
-.pr-detail-content { padding-bottom: var(--spacing-lg); }
-.pr-detail-hero { display: flex; justify-content: space-between; gap: var(--spacing-md); align-items: flex-start; padding: var(--spacing-lg); border-bottom: 1px solid var(--color-border); }
-.pr-detail-hero h2 { margin: 4px 0; font-size: var(--font-size-xl); }
-.pr-detail-hero p, .pr-detail-eyebrow { margin: 0; color: var(--color-text-secondary); font-size: var(--font-size-sm); }
-.pr-detail-eyebrow { text-transform: uppercase; font-weight: 700; letter-spacing: .04em; }
-.pr-detail-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacing-sm); padding: var(--spacing-lg); }
-.pr-detail-stats > div { display: flex; flex-direction: column; gap: 4px; padding: var(--spacing-md); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); }
-.pr-detail-stats span, .pr-detail-component span, .pr-detail-meta dt { color: var(--color-text-secondary); font-size: var(--font-size-xs); }
-.pr-detail-section { padding: 0 var(--spacing-lg) var(--spacing-lg); }
-.pr-detail-component-list { border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; }
-.pr-detail-component { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--spacing-md); align-items: center; padding: 12px; border-bottom: 1px solid var(--color-border); }
+.pr-recipe-detail .inventory-detail-hero { align-items: stretch; }
+.pr-recipe-yield-summary { justify-content: center; }
+.pr-recipe-yield-summary > strong { color: var(--color-primary); }
+
+.pr-detail-component-list {
+    display: grid;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: var(--color-surface);
+}
+
+.pr-detail-component {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) minmax(110px, auto) minmax(100px, auto);
+    gap: var(--spacing-md);
+    align-items: center;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--color-border);
+}
+
 .pr-detail-component:last-child { border-bottom: 0; }
-.pr-detail-component > div { display: flex; flex-direction: column; gap: 2px; }
-.pr-detail-component > strong { text-align: right; }
-.pr-detail-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacing-md); margin: 0; }
-.pr-detail-meta div { padding: var(--spacing-md); border-radius: var(--radius-lg); background: var(--color-background); }
-.pr-detail-meta dt { margin-bottom: 4px; }
-.pr-detail-meta dd { margin: 0; color: var(--color-text); }
+.pr-detail-component-index {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 12%, var(--color-background));
+    font-size: var(--font-size-xs);
+    font-weight: 800;
+}
+
+.pr-detail-component-identity,
+.pr-detail-component-quantity,
+.pr-detail-component-cost { display: grid; gap: 3px; min-width: 0; }
+.pr-detail-component-identity strong { overflow-wrap: anywhere; }
+.pr-detail-component-identity span,
+.pr-detail-component-quantity span,
+.pr-detail-component-cost span {
+    color: var(--color-text-secondary);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+.pr-detail-component-quantity,
+.pr-detail-component-cost { text-align: right; }
+.pr-detail-component-cost strong { color: var(--color-primary); }
 
 /* Activate toggle */
 .pr-activate-toggle {
@@ -332,9 +365,8 @@
 }
 
 @media (max-width: 768px) {
-    .pr-detail-stats, .pr-detail-meta { grid-template-columns: 1fr; }
-    .pr-detail-component { grid-template-columns: 1fr auto; }
-    .pr-detail-component > strong { grid-column: 2; }
+    .pr-detail-component { grid-template-columns: 34px minmax(0, 1fr) auto; }
+    .pr-detail-component-cost { grid-column: 2 / -1; display: flex; align-items: center; justify-content: space-between; text-align: left; }
     .pr-filter-summary {
         width: 100%;
         margin-left: 0;

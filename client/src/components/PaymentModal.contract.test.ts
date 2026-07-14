@@ -24,4 +24,14 @@ describe('PaymentModal contract', () => {
         expect(source).toContain('&& mixedAllocation.exact');
         expect(source).toContain("{cash && <div className=\"leg-change\"");
     });
+
+    it('keeps a stable workspace across modes and omits redundant footer labels', () => {
+        const styles = readFileSync(new URL('./PaymentModal.css', import.meta.url), 'utf8');
+        expect(styles).toContain('width: min(1120px, 100%)');
+        expect(styles).toContain('height: min(840px, calc(100dvh - 48px))');
+        expect(styles).toContain('.payment-dialog .select-group.modal .react-select__control');
+        expect(styles).toContain('min-height: 46px');
+        expect(source).toContain('scrollAreaRef.current?.scrollTo({ top: 0 })');
+        expect(source).not.toContain('payment-footer-mode');
+    });
 });

@@ -556,7 +556,7 @@ export default function Tables() {
                     onConsolidate={canConsolidate ? () => { setOperationTableId(null); setOperation('CONSOLIDATE'); } : undefined}
                     onCreateTable={canCreateTable ? () => handleOpenSidebar() : undefined}
                     onReturnToAdministration={canEditMap ? () => navigate('/dashboard') : undefined}
-                    themeControl={<div className="table-map-utility-controls"><KitchenNotificationBell inline /><ThemeToggle /></div>}
+                    themeControl={<KitchenNotificationBell inline />}
                     branchControl={canChooseBranch && branches.length > 1 ? (
                         <div className="table-map-branch-control">
                             <Select

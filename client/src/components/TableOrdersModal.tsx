@@ -1,7 +1,8 @@
 import { useRef } from 'react';
 import {
     X, Clock, FileText, Printer, ShoppingCart, Receipt,
-    CreditCard, Scissors, ArrowRightLeft, Merge, ChefHat
+    CreditCard, Scissors, ArrowRightLeft, Merge, ChefHat,
+    MapPin, Users, CircleDollarSign
 } from 'lucide-react';
 import type { Order, OrderItem, Table } from '../types';
 import { escapeHtml } from '../utils/escapeHtml';
@@ -148,24 +149,29 @@ export default function TableOrdersModal({
                 tabIndex={-1}
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* Header */}
                 <div className="orders-modal-header">
-                    <div className="header-title">
-                        <h2 id={titleId}>Mesa {tableNumber}</h2>
-                        <span className="header-subtitle">
-                            {table.location || 'Salón principal'} · {table.capacity} personas
-                        </span>
+                    <div className="table-detail-title">
+                        <span className="table-detail-icon" aria-hidden="true"><MapPin size={21} /></span>
+                        <div className="header-title">
+                            <span className="table-detail-eyebrow">Centro operativo</span>
+                            <h2 id={titleId}>Mesa {tableNumber}</h2>
+                            <span className="header-subtitle">
+                                {table.location || 'Salón principal'}
+                            </span>
+                        </div>
                     </div>
                     <button type="button" className="close-btn-orders" onClick={onClose} aria-label="Cerrar">
                         <X size={24} aria-hidden="true" />
                     </button>
                 </div>
 
-                <div className="table-command-strip" aria-label="Acciones operativas de la mesa">
-                    {canOperatePOS && <button type="button" className="table-command-primary" onClick={() => onOpenPOS(table)}>
-                        <ShoppingCart size={19} />
-                        <span>{orders.length > 0 ? 'Continuar pedido' : 'Abrir pedido'}</span>
-                    </button>}
+                <section className="table-detail-summary" aria-label="Resumen de la mesa">
+                    <div><Users size={17} /><span><small>Capacidad</small><strong>{table.capacity} personas</strong></span></div>
+                    <div><FileText size={17} /><span><small>Órdenes activas</small><strong>{orders.length}</strong></span></div>
+                    <div className="summary-total"><CircleDollarSign size={17} /><span><small>Consumo activo</small><strong>{formatMoney(totalAmount)}</strong></span></div>
+                </section>
+
+                <div className="table-command-strip" aria-label="Gestionar ubicación de la mesa">
                     <button type="button" onClick={() => onTransfer(table)}>
                         <ArrowRightLeft size={18} /><span>Cambiar mesa</span>
                     </button>
@@ -175,12 +181,10 @@ export default function TableOrdersModal({
                 </div>
 
                 <div className="orders-section-heading">
-                    <FileText size={18} />
-                    <strong>Órdenes activas</strong>
-                    <span>{orders.length}</span>
+                    <div><FileText size={18} /><span><strong>Órdenes activas</strong><small>Consulta productos, cocina, factura y cobro.</small></span></div>
+                    <b>{orders.length}</b>
                 </div>
 
-                {/* Content */}
                 <div className="modal-tab-content-orders">
                     <div className="orders-list animate-slide-in">
                             {orders.length === 0 ? (
@@ -191,10 +195,10 @@ export default function TableOrdersModal({
                                 </div>
                             ) : (
                                 orders.map(order => (
-                                    <div key={order.id} className="order-card-modal">
+                                    <article key={order.id} className="order-card-modal">
                                         <div className="order-card-header">
                                             <div className="order-id-time">
-                                                <span className="order-id-badge">#{order.id}</span>
+                                                <span className="order-id-badge">Orden #{order.id}</span>
                                                 <div className="order-time">
                                                     <Clock size={14} />
                                                     <span>{formatTime(order.createdAt)}</span>
@@ -204,22 +208,11 @@ export default function TableOrdersModal({
                                                 {getStatusText(order.status)}
                                             </span>
                                         </div>
-                                        <div style={{ marginBottom: '0.75rem' }}>
-                                            <span
-                                                style={{
-                                                    display: 'inline-flex',
-                                                    alignItems: 'center',
-                                                    gap: '0.35rem',
-                                                    padding: '0.2rem 0.55rem',
-                                                    borderRadius: '999px',
-                                                    fontSize: '0.75rem',
-                                                    fontWeight: 700,
-                                                    background: `${getUserAccentColor(order.user)}18`,
-                                                    color: getUserAccentColor(order.user)
-                                                }}
-                                            >
+                                        <div className="order-waiter-row">
+                                            <span className="order-waiter" style={{ background: `${getUserAccentColor(order.user)}18`, color: getUserAccentColor(order.user) }}>
                                                 {order.user?.name || 'Sin mesero'}
                                             </span>
+                                            <small>{order.items?.length || 0} productos</small>
                                         </div>
 
                                         <div className="order-items-list">
@@ -240,7 +233,7 @@ export default function TableOrdersModal({
                                         </div>
 
                                         <div className="order-card-footer">
-                                            <span className="order-total-label">Total:</span>
+                                            <span className="order-total-label">Total de la orden</span>
                                             <span className="order-total-amount">{formatMoney(Number(order.total))}</span>
                                         </div>
                                         <div className="table-order-actions">
@@ -276,27 +269,26 @@ export default function TableOrdersModal({
                                                 </>
                                             )}
                                         </div>
-                                    </div>
+                                    </article>
                                 ))
                             )}
                     </div>
                 </div>
 
-                {/* Footer Actions */}
                 <div className="orders-modal-footer">
-                    <button className="btn-modal-secondary" onClick={onClose}>
+                    <button type="button" className="btn-modal-secondary" onClick={onClose}>
                         Cerrar
                     </button>
-                    {canOperatePOS && <button className="btn-modal-primary" onClick={() => onOpenPOS(table)}>
-                        <ShoppingCart size={18} />
-                        {orders.length > 0 ? 'Continuar pedido' : 'Crear pedido'}
-                    </button>}
                     {orders.length > 0 && (
-                        <button className="btn-modal-secondary" onClick={handlePrintBill}>
+                        <button type="button" className="btn-modal-secondary print-bill-action" onClick={handlePrintBill}>
                             <Printer size={18} />
-                            Imprimir Cuenta
+                            Imprimir cuenta
                         </button>
                     )}
+                    {canOperatePOS && <button type="button" className="btn-modal-primary" onClick={() => onOpenPOS(table)}>
+                        <ShoppingCart size={18} />
+                        {orders.length > 0 ? 'Continuar pedido' : 'Abrir pedido'}
+                    </button>}
                 </div>
             </div>
         </div>

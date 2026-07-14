@@ -292,7 +292,7 @@ export class ReportExtendedService {
 
     // ── SALES: By Category with Percentage ──
     static async getSalesByCategory(companyId: number, filters?: {
-        dateFrom?: Date; dateTo?: Date; branchId?: number;
+        dateFrom?: Date; dateTo?: Date; branchId?: number; categoryId?: number; categoryIds?: number[];
     }) {
         // Avoid an unbounded scan of all paid orders: default to the current month
         // when no date window is supplied, consistent with other report defaults.
@@ -308,7 +308,7 @@ export class ReportExtendedService {
             include: {
                 items: {
                     include: {
-                        menuItem: { select: { category: { select: { id: true, name: true } } } }
+                        menuItem: { select: { categoryId: true, category: { select: { id: true, name: true } } } }
                     }
                 }
             }
@@ -316,9 +316,13 @@ export class ReportExtendedService {
 
         const catMap: Record<string, { categoryName: string; totalSales: number; itemCount: number; unitsSold: number }> = {};
         let grandTotal = 0;
+        const selectedCategoryIds = filters?.categoryIds?.length
+            ? new Set(filters.categoryIds)
+            : filters?.categoryId ? new Set([filters.categoryId]) : null;
 
         for (const order of orders) {
             for (const item of order.items) {
+                if (selectedCategoryIds && (!item.menuItem?.categoryId || !selectedCategoryIds.has(item.menuItem.categoryId))) continue;
                 const catName = item.menuItem?.category?.name || 'Sin Categoría';
                 if (!catMap[catName]) catMap[catName] = { categoryName: catName, totalSales: 0, itemCount: 0, unitsSold: 0 };
                 catMap[catName].totalSales += Number(item.subtotal);
@@ -348,7 +352,7 @@ export class ReportExtendedService {
 
     // ── SALES: by Brand (empresa/marca) ──
     static async getSalesByProduct(companyId: number, filters?: {
-        dateFrom?: Date; dateTo?: Date; branchId?: number; categoryId?: number; productId?: number;
+        dateFrom?: Date; dateTo?: Date; branchId?: number; categoryId?: number; categoryIds?: number[]; productId?: number;
     }) {
         let effectiveFilters = filters;
         if (!filters?.dateFrom && !filters?.dateTo) {
@@ -357,10 +361,13 @@ export class ReportExtendedService {
             effectiveFilters = { ...filters, dateFrom: month.start, dateTo: month.endInclusive };
         }
         const orderWhere = this.buildOrderWhere(companyId, effectiveFilters);
+        const selectedCategoryIds = effectiveFilters?.categoryIds?.length
+            ? effectiveFilters.categoryIds
+            : effectiveFilters?.categoryId ? [effectiveFilters.categoryId] : [];
         const orderItems = await prisma.orderItem.findMany({
             where: {
                 order: orderWhere,
-                ...(effectiveFilters?.categoryId ? { menuItem: { categoryId: effectiveFilters.categoryId } } : {}),
+                ...(selectedCategoryIds.length > 0 ? { menuItem: { categoryId: { in: selectedCategoryIds } } } : {}),
                 ...(effectiveFilters?.productId ? { menuItemId: effectiveFilters.productId } : {}),
             },
             select: {
@@ -841,7 +848,7 @@ export class ReportExtendedService {
 
     // ── COSTS: Margin by Product (Most Profitable) ──
     static async getMarginByProduct(companyId: number, filters?: {
-        dateFrom?: Date; dateTo?: Date; branchId?: number; categoryId?: number;
+        dateFrom?: Date; dateTo?: Date; branchId?: number; categoryId?: number; categoryIds?: number[];
     }) {
         const orderWhere = this.buildOrderWhere(companyId, filters);
         const orders = await prisma.order.findMany({
@@ -870,11 +877,14 @@ export class ReportExtendedService {
         const prodMap: Record<number, {
             menuItemName: string; categoryName: string | null; revenue: number; cogs: number; unitsSold: number;
         }> = {};
+        const selectedCategoryIds = filters?.categoryIds?.length
+            ? new Set(filters.categoryIds)
+            : filters?.categoryId ? new Set([filters.categoryId]) : null;
 
         for (const order of orders) {
             for (const item of order.items) {
                 if (!item.menuItem) continue;
-                if (filters?.categoryId && item.menuItem.categoryId !== filters.categoryId) continue;
+                if (selectedCategoryIds && (!item.menuItem.categoryId || !selectedCategoryIds.has(item.menuItem.categoryId))) continue;
                 const id = item.menuItem.id;
                 if (!prodMap[id]) {
                     prodMap[id] = {
