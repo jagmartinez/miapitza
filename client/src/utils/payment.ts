@@ -20,6 +20,43 @@ export const formatMoneyInput = (value: string): string => {
     });
 };
 
+/** Format a monetary value for display while keeping the symbol configurable. */
+export const formatMoneyAmount = (
+    value: number,
+    currencySymbol = '$',
+    locale = 'es-NI',
+): string => `${currencySymbol}${value.toLocaleString(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    useGrouping: true,
+})}`;
+
+export interface PaymentAllocationSummary {
+    targetCents: number;
+    allocatedCents: number;
+    differenceCents: number;
+    exact: boolean;
+}
+
+/** Compare payment legs in integer cents so mixed/split totals never rely on floats. */
+export const summarizePaymentAllocation = (
+    target: number,
+    amounts: Array<number | null>,
+): PaymentAllocationSummary => {
+    const targetCents = moneyToCents(target);
+    const allocatedCents = amounts.reduce(
+        (sum: number, amount) => sum + (amount === null ? 0 : moneyToCents(amount)),
+        0,
+    );
+    const differenceCents = targetCents - allocatedCents;
+    return {
+        targetCents,
+        allocatedCents,
+        differenceCents,
+        exact: differenceCents === 0,
+    };
+};
+
 export const calculateTipAmount = (orderTotal: number, tipPercentage: number, customTip?: string) => {
     if (customTip) {
         return parseMoneyInput(customTip) ?? 0;

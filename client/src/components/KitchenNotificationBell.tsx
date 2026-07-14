@@ -4,9 +4,10 @@ import { kitchenNotificationsAPI } from '../services/api';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
 import type { KitchenNotification } from '../types';
 import { useAppToast } from '../context/ToastContext';
+import { initializeSound, playNotificationSound } from '../utils/sound';
 import './KitchenNotificationBell.css';
 
-export default function KitchenNotificationBell() {
+export default function KitchenNotificationBell({ inline = false }: { inline?: boolean }) {
     const [notifications, setNotifications] = useState<KitchenNotification[]>([]);
     const [open, setOpen] = useState(false);
     const [attendingIds, setAttendingIds] = useState<Set<number>>(new Set());
@@ -22,10 +23,15 @@ export default function KitchenNotificationBell() {
     }, []);
 
     useEffect(() => {
+        initializeSound();
         void load();
         initializeWebSocket();
         return subscribeWebSocket((message) => {
-            if (message?.type === WS_EVENTS.KITCHEN_NOTIFICATION || message?.type === WS_EVENTS.CONNECTED) {
+            if (message?.type === WS_EVENTS.KITCHEN_NOTIFICATION) {
+                playNotificationSound();
+                if ('vibrate' in navigator) navigator.vibrate([180, 80, 180]);
+                void load();
+            } else if (message?.type === WS_EVENTS.CONNECTED) {
                 void load();
             }
         });
@@ -62,7 +68,7 @@ export default function KitchenNotificationBell() {
     };
 
     return (
-        <div className="kitchen-notification-shell">
+        <div className={`kitchen-notification-shell ${inline ? 'is-inline' : ''}`}>
             <button
                 type="button"
                 className="kitchen-notification-trigger"

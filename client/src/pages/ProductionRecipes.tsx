@@ -13,7 +13,7 @@ import { useCurrency } from '../hooks/useCurrency';
 import { getUserRoleNames } from '../utils/authz';
 import {
     FlaskConical, Plus, Pencil, Power, Copy, Trash2, Save, Info, Layers,
-    Search, Calculator
+    Search, Calculator, Eye, X
 } from 'lucide-react';
 import type { SingleValue } from 'react-select';
 import type { ProductionRecipe, Product, UnitOfMeasure, RecipeCost } from '../types';
@@ -79,6 +79,8 @@ export default function ProductionRecipes() {
     const [products, setProducts] = useState<Product[]>([]);
     const [units, setUnits] = useState<UnitOfMeasure[]>([]);
     const [loading, setLoading] = useState(true);
+    const [viewingRecipe, setViewingRecipe] = useState<ProductionRecipe | null>(null);
+    const [detailLoading, setDetailLoading] = useState(false);
 
     const [statusFilter, setStatusFilter] = useState<'all' | 'ACTIVE' | 'DRAFT' | 'INACTIVE'>('all');
     const [searchQuery, setSearchQuery] = useState('');
@@ -179,6 +181,20 @@ export default function ProductionRecipes() {
             setRecipes(Array.isArray(res.data.data) ? res.data.data : []);
         } catch (error) {
             console.error('Error reloading production recipes:', error);
+        }
+    };
+
+    const handleView = async (recipe: ProductionRecipe) => {
+        setViewingRecipe(recipe);
+        setDetailLoading(true);
+        try {
+            const response = await productionRecipesAPI.getById(recipe.id);
+            setViewingRecipe(response.data.data as ProductionRecipe);
+        } catch (error: unknown) {
+            showError(errMsg(error, 'No se pudo cargar el detalle de la receta'));
+            setViewingRecipe(null);
+        } finally {
+            setDetailLoading(false);
         }
     };
 
@@ -567,6 +583,15 @@ export default function ProductionRecipes() {
                                     </td>
                                     <td data-label="Acciones" className="text-right">
                                         <div className="table-actions">
+                                            <button
+                                                type="button"
+                                                className="table-action-btn"
+                                                onClick={() => handleView(recipe)}
+                                                title="Ver detalle"
+                                                aria-label={`Ver detalle de ${recipe.product?.name || recipe.name}`}
+                                            >
+                                                <Eye size={16} />
+                                            </button>
                                             {canManage && recipe.status === 'DRAFT' && (
                                                 <button
                                                     type="button"
@@ -652,6 +677,72 @@ export default function ProductionRecipes() {
                     />
                 </div>
             </Card>
+
+            <Sidebar
+                isOpen={!!viewingRecipe}
+                onClose={() => setViewingRecipe(null)}
+                title="Detalle de la Receta"
+                width="large"
+            >
+                {viewingRecipe && (
+                    <div className="premium-modal-content pr-detail-content">
+                        <div className="pr-detail-hero">
+                            <div>
+                                <span className="pr-detail-eyebrow">Producto de salida</span>
+                                <h2>{viewingRecipe.product?.name || `Producto #${viewingRecipe.productId}`}</h2>
+                                <p>{viewingRecipe.product?.sku || 'Sin SKU'} · {viewingRecipe.name || 'Receta sin nombre'}</p>
+                            </div>
+                            {getStatusBadge(viewingRecipe.status)}
+                        </div>
+
+                        {detailLoading ? (
+                            <div className="inventory-loading">Cargando detalle...</div>
+                        ) : (
+                            <>
+                                <div className="pr-detail-stats">
+                                    <div><span>Versión</span><strong>v{viewingRecipe.version}</strong></div>
+                                    <div><span>Rendimiento</span><strong>{Number(viewingRecipe.yieldQuantity).toLocaleString()} {displayedYieldUnit(viewingRecipe)}</strong></div>
+                                    <div><span>Costo del lote</span><strong>{viewingRecipe.cost ? formatMoney(Number(viewingRecipe.cost.batchCost) || 0) : 'No disponible'}</strong></div>
+                                    <div><span>Costo unitario</span><strong>{viewingRecipe.cost ? formatMoney(Number(viewingRecipe.cost.unitCost) || 0) : 'No disponible'}</strong></div>
+                                </div>
+
+                                <section className="pr-detail-section">
+                                    <div className="modal-section-header"><Layers size={18} /><h3>Componentes</h3></div>
+                                    <div className="pr-detail-component-list">
+                                        {viewingRecipe.components.map((component) => {
+                                            const costLine = viewingRecipe.cost?.lines.find((line) => line.componentProductId === component.componentProductId);
+                                            return (
+                                                <div key={component.id ?? component.componentProductId} className="pr-detail-component">
+                                                    <div><strong>{component.componentProduct?.name || `Producto #${component.componentProductId}`}</strong><span>{component.componentProduct?.sku || 'Sin SKU'}</span></div>
+                                                    <span>{Number(component.quantity).toLocaleString(undefined, { maximumFractionDigits: 6 })} {component.unit || costLine?.unit || component.componentProduct?.unit || ''}</span>
+                                                    <strong>{costLine ? formatMoney(Number(costLine.totalCost) || 0) : '—'}</strong>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </section>
+
+                                <section className="pr-detail-section">
+                                    <div className="modal-section-header"><Info size={18} /><h3>Información de producción</h3></div>
+                                    <dl className="pr-detail-meta">
+                                        <div><dt>Notas</dt><dd>{viewingRecipe.notes || 'Sin notas de producción'}</dd></div>
+                                        <div><dt>Creada por</dt><dd>{viewingRecipe.createdBy?.name || 'No disponible'}</dd></div>
+                                        <div><dt>Fecha de creación</dt><dd>{new Date(viewingRecipe.createdAt).toLocaleString('es-NI')}</dd></div>
+                                        <div><dt>Última actualización</dt><dd>{new Date(viewingRecipe.updatedAt).toLocaleString('es-NI')}</dd></div>
+                                    </dl>
+                                </section>
+
+                                <div className="modal-footer">
+                                    <Button type="button" variant="ghost" onClick={() => setViewingRecipe(null)}><X size={16} /> Cerrar</Button>
+                                    {canManage && viewingRecipe.status === 'DRAFT' && (
+                                        <Button type="button" onClick={() => { const recipe = viewingRecipe; setViewingRecipe(null); handleOpenEdit(recipe); }}><Pencil size={16} /> Editar receta</Button>
+                                    )}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                )}
+            </Sidebar>
 
             <Sidebar
                 isOpen={isSidebarOpen}

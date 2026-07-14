@@ -5,6 +5,24 @@
     z-index: 900;
 }
 
+.kitchen-notification-shell.is-inline {
+    position: relative;
+    inset: auto;
+    z-index: 30;
+}
+
+.kitchen-notification-shell.is-inline .kitchen-notification-trigger {
+    width: 40px;
+    height: 40px;
+    box-shadow: none;
+}
+
+.kitchen-notification-shell.is-inline .kitchen-notification-panel {
+    position: absolute;
+    top: 100%;
+    right: 0;
+}
+
 .kitchen-notification-trigger {
     position: relative;
     width: 48px;
@@ -61,7 +79,16 @@
 .kitchen-notification-panel header small { color: var(--color-text-secondary); }
 .kitchen-notification-panel header button { border: 0; background: transparent; color: var(--color-text); cursor: pointer; }
 
-.kitchen-notification-list { overflow: auto; overscroll-behavior: contain; }
+.kitchen-notification-list {
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+}
+.kitchen-notification-list::-webkit-scrollbar { width: 6px; }
+.kitchen-notification-list::-webkit-scrollbar-track { background: transparent; }
+.kitchen-notification-list::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+.kitchen-notification-list::-webkit-scrollbar-thumb:hover { background: var(--color-neutral-400); }
 .kitchen-notification-empty { padding: 42px 16px; display: grid; place-items: center; gap: 8px; color: var(--color-text-secondary); }
 
 .kitchen-notification-item {
@@ -93,6 +120,7 @@
 
 @media (max-width: 768px) {
     .kitchen-notification-shell { top: 10px; right: 10px; }
+    .kitchen-notification-shell.is-inline { top: auto; right: auto; }
     .kitchen-notification-panel { max-height: calc(100vh - 82px); }
     .kitchen-notification-item { grid-template-columns: 1fr; }
     .kitchen-notification-item > button { justify-content: center; }

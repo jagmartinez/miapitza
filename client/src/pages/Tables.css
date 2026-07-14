@@ -20,6 +20,12 @@
 
 .tables-page--map .table-map-shell { flex: 1; }
 
+.table-map-utility-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
 .tables-page--list {
     height: 100dvh;
     box-sizing: border-box;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
     Calendar, Users, Plus, MapPin, FileText,
     Download,
@@ -22,6 +22,7 @@ import type { CurrencySettings } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import { newIdempotencyKey } from '../utils/idempotency';
+import { filterMenuItemsByCategory, getMenuCategoryOptions } from '../utils/cateringMenuFilter';
 import './CateringMod.css';
 
 interface CateringClausesForm {
@@ -124,6 +125,7 @@ export default function Catering() {
     // Master data
     const [allServices, setAllServices] = useState<CateringServiceCatalog[]>([]);
     const [allMenuItems, setAllMenuItems] = useState<MenuItem[]>([]);
+    const [menuCategoryFilter, setMenuCategoryFilter] = useState('all');
     const [allBranches, setAllBranches] = useState<Branch[]>([]);
     const [allWarehouses, setAllWarehouses] = useState<Warehouse[]>([]);
     const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
@@ -168,6 +170,15 @@ export default function Catering() {
     }, [selectedEvent?.id, paymentData.amount, paymentData.paymentMethodId]);
     const [reversalReason, setReversalReason] = useState('');
     const [finishWarehouseId, setFinishWarehouseId] = useState<number | null>(null);
+
+    const menuCategoryOptions = useMemo(
+        () => [{ value: 'all', label: 'Todas las categorías' }, ...getMenuCategoryOptions(allMenuItems)],
+        [allMenuItems]
+    );
+    const filteredMenuItems = useMemo(
+        () => filterMenuItemsByCategory(allMenuItems, menuCategoryFilter),
+        [allMenuItems, menuCategoryFilter]
+    );
 
     const handleDownloadContract = useCallback(async (event: CateringEvent) => {
         try {
@@ -239,6 +250,7 @@ export default function Catering() {
     const handleOpenSidebar = async (event?: CateringEvent, tab: 'info' | 'services' | 'menu' | 'financial' = 'info') => {
         setAvailabilityAlerts([]);
         setFinishWarehouseId(null);
+        setMenuCategoryFilter('all');
         if (event) {
             try {
                 const response = await cateringAPI.getEventById(event.id);
@@ -1182,6 +1194,14 @@ export default function Catering() {
                                 <div className="catering-tab-toolbar">
                                     <Select
                                         variant="modal"
+                                        label="Categoría"
+                                        value={menuCategoryOptions.find((option) => option.value === menuCategoryFilter) ?? menuCategoryOptions[0]}
+                                        onChange={(option: SingleValue<{ value: string; label: string }>) => setMenuCategoryFilter(option?.value ?? 'all')}
+                                        options={menuCategoryOptions}
+                                        placeholder="Todas las categorías"
+                                    />
+                                    <Select
+                                        variant="modal"
                                         label="Agregar Plato"
                                         value={null}
                                         onChange={(option: SingleValue<{ value: string; label: string }>) => {
@@ -1195,7 +1215,7 @@ export default function Catering() {
                                                 }
                                             }
                                         }}
-                                        options={allMenuItems.map((m) => ({ value: m.id.toString(), label: `${m.name} - ${formatMoney(Number(m.price || 0))}` }))}
+                                        options={filteredMenuItems.map((m) => ({ value: m.id.toString(), label: `${m.name} · ${m.category?.name || 'Sin categoría'} - ${formatMoney(Number(m.price || 0))}` }))}
                                         placeholder="Seleccione un plato..."
                                         isClearable
                                         isSearchable

@@ -7,7 +7,7 @@ import PageHeader from '../components/PageHeader';
 import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
-import { Users as UsersIcon, Plus, Edit2, Trash2, Shield, MapPin, Building2, Mail, User as UserIcon, Lock, Palette } from 'lucide-react';
+import { Users as UsersIcon, Plus, Edit2, UserX, UserCheck, Shield, MapPin, Building2, Mail, User as UserIcon, Lock, Palette } from 'lucide-react';
 import type { User, Branch, Company } from '../types';
 import type { SingleValue } from 'react-select';
 
@@ -39,6 +39,7 @@ export default function Users() {
     const { confirm } = useConfirmDialog();
     const { error: showError, warning: showWarning } = useAppToast();
     const isSuperAdmin = hasAnyRole(currentUser, ['SUPERADMIN']);
+    const canManageUserStatus = hasAnyRole(currentUser, ['SUPERADMIN', 'ADMIN']);
 
     const [users, setUsers] = useState<User[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
@@ -242,18 +243,23 @@ export default function Users() {
         }
     };
 
-    const handleDelete = async (id: number) => {
-        if (!isSuperAdmin) {
-            showWarning('Solo un superadministrador puede desactivar usuarios.');
+    const handleStatusChange = async (targetUser: User) => {
+        if (!canManageUserStatus) {
+            showWarning('No tienes permisos para cambiar el estado de usuarios.');
             return;
         }
-        if (!(await confirm('¿Estás seguro de desactivar este usuario?', { title: 'Confirmar acción' }))) return;
+        const activating = targetUser.status !== 'ACTIVE';
+        const verb = activating ? 'reactivar' : 'inhabilitar';
+        if (!(await confirm(`¿Deseas ${verb} a ${targetUser.name}? Su historial se conservará.`, { title: `${activating ? 'Reactivar' : 'Inhabilitar'} usuario` }))) return;
         try {
-            await usersAPI.delete(id);
+            await usersAPI.update(targetUser.id, { status: activating ? 'ACTIVE' : 'INACTIVE' });
             loadData(formData.companyId);
-        } catch (error) {
-            console.error('Error deleting user:', error);
-            showError('Error al eliminar usuario');
+        } catch (error: unknown) {
+            console.error('Error changing user status:', error);
+            const msg = typeof error === 'object' && error !== null && 'response' in error
+                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                : undefined;
+            showError(msg || `No se pudo ${verb} el usuario`);
         }
     };
 
@@ -414,9 +420,9 @@ export default function Users() {
                                     <button className="catalog-action-btn" onClick={() => handleOpenSidebar(u)} title="Editar">
                                         <Edit2 size={16} />
                                     </button>
-                                    {isSuperAdmin && u.status === 'ACTIVE' && (
-                                        <button className="catalog-action-btn danger" onClick={() => handleDelete(u.id)} title="Desactivar">
-                                            <Trash2 size={16} />
+                                    {canManageUserStatus && (
+                                        <button className={`catalog-action-btn ${u.status === 'ACTIVE' ? 'danger' : ''}`} onClick={() => handleStatusChange(u)} title={u.status === 'ACTIVE' ? 'Inhabilitar sin borrar historial' : 'Reactivar usuario'}>
+                                            {u.status === 'ACTIVE' ? <UserX size={16} /> : <UserCheck size={16} />}
                                         </button>
                                     )}
                                 </div>
@@ -487,10 +493,10 @@ export default function Users() {
                                     <Edit2 size={20} />
                                     <span>Editar</span>
                                 </button>
-                                {isSuperAdmin && user.status === 'ACTIVE' && (
-                                    <button className="action-btn-new delete" onClick={(e) => { e.stopPropagation(); handleDelete(user.id); }}>
-                                        <Trash2 size={20} />
-                                        <span>Desactivar</span>
+                                {canManageUserStatus && (
+                                    <button className={`action-btn-new ${user.status === 'ACTIVE' ? 'delete' : ''}`} onClick={(e) => { e.stopPropagation(); handleStatusChange(user); }}>
+                                        {user.status === 'ACTIVE' ? <UserX size={20} /> : <UserCheck size={20} />}
+                                        <span>{user.status === 'ACTIVE' ? 'Inhabilitar' : 'Reactivar'}</span>
                                     </button>
                                 )}
                             </div>

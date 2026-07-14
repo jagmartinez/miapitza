@@ -8,7 +8,6 @@ import ThemeToggle from './ThemeToggle';
 import LanguageSelector from './LanguageSelector';
 import NetworkStatus from './NetworkStatus';
 import SyncStatus from './SyncStatus';
-import KitchenNotificationBell from './KitchenNotificationBell';
 import '../components/SyncStatus.css';
 import {
     LayoutDashboard,
@@ -253,7 +252,6 @@ export default function Layout() {
                 }}
             >
                 <Outlet />
-                <KitchenNotificationBell />
                 <SyncStatus />
             </main>
 

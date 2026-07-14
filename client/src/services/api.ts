@@ -851,6 +851,8 @@ export const reportsAPI = {
     // Extended Sales Reports
     getSalesByCategory: (params?: Record<string, string>) => api.get('/reports/sales-by-category', { params }),
     exportSalesByCategory: (params?: Record<string, string>) => api.get('/reports/sales-by-category/export', { params, responseType: 'arraybuffer' }),
+    getSalesByProduct: (params?: Record<string, string>) => api.get('/reports/sales-by-product', { params }),
+    exportSalesByProduct: (params?: Record<string, string>) => api.get('/reports/sales-by-product/export', { params, responseType: 'arraybuffer' }),
     getSalesByBrand: (params?: Record<string, string>) => api.get('/reports/sales-by-brand', { params }),
     exportSalesByBrand: (params?: Record<string, string>) => api.get('/reports/sales-by-brand/export', { params, responseType: 'arraybuffer' }),
     getSalesDaily: (params?: Record<string, string>) => api.get('/reports/sales-daily', { params }),

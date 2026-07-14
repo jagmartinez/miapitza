@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import {
-    X, Clock, DollarSign, FileText, Printer, ShoppingCart, Receipt,
+    X, Clock, FileText, Printer, ShoppingCart, Receipt,
     CreditCard, Scissors, ArrowRightLeft, Merge, ChefHat
 } from 'lucide-react';
 import type { Order, OrderItem, Table } from '../types';
@@ -47,16 +47,11 @@ export default function TableOrdersModal({
     const { formatMoney, symbol } = useCurrency();
     const containerRef = useRef<HTMLDivElement>(null);
     const { titleId } = useDialogA11y(isOpen, onClose, containerRef);
-    // Modal Tab State
-    const [activeTab, setActiveTab] = useState<'orders' | 'bill'>('orders');
-
     if (!isOpen || !table) return null;
 
     const tableNumber = table.number;
 
     const totalAmount = orders.reduce((sum, order) => sum + Number(order.total || 0), 0);
-    const totalItems = orders.reduce((sum, order) => sum + (order.items?.reduce((s, i) => s + Number(i.quantity), 0) || 0), 0);
-
     const getStatusColor = (status: string) => {
         return getOrderStatusClassName(status as Order['status']);
     };
@@ -179,34 +174,15 @@ export default function TableOrdersModal({
                     </button>
                 </div>
 
-                {/* Tabs Navigation */}
-                <div className="modal-tabs" role="tablist">
-                    <button
-                        type="button"
-                        role="tab"
-                        aria-selected={activeTab === 'orders'}
-                        className={`modal-tab ${activeTab === 'orders' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('orders')}
-                    >
-                        <FileText size={18} />
-                        <span>Órdenes <span className="tab-badge">{orders.length}</span></span>
-                    </button>
-                    <button
-                        type="button"
-                        role="tab"
-                        aria-selected={activeTab === 'bill'}
-                        className={`modal-tab ${activeTab === 'bill' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('bill')}
-                    >
-                        <DollarSign size={18} />
-                        <span>Cuenta</span>
-                    </button>
+                <div className="orders-section-heading">
+                    <FileText size={18} />
+                    <strong>Órdenes activas</strong>
+                    <span>{orders.length}</span>
                 </div>
 
                 {/* Content */}
                 <div className="modal-tab-content-orders">
-                    {activeTab === 'orders' ? (
-                        <div className="orders-list animate-slide-in">
+                    <div className="orders-list animate-slide-in">
                             {orders.length === 0 ? (
                                 <div className="no-orders-message">
                                     <FileText size={48} />
@@ -303,47 +279,7 @@ export default function TableOrdersModal({
                                     </div>
                                 ))
                             )}
-                        </div>
-                    ) : (
-                        <div className="bill-summary-pane animate-slide-in">
-                            <div className="bill-stat-grid">
-                                <div className="bill-stat-card">
-                                    <span className="stat-label">Órdenes</span>
-                                    <span className="stat-value">{orders.length}</span>
-                                </div>
-                                <div className="bill-stat-card">
-                                    <span className="stat-label">Items Totales</span>
-                                    <span className="stat-value">{totalItems}</span>
-                                </div>
-                                <div className="bill-stat-card primary">
-                                    <span className="stat-label">Monto a Pagar</span>
-                                    <span className="stat-value">{formatMoney(totalAmount)}</span>
-                                </div>
-                            </div>
-
-                            <div className="bill-details-section">
-                                <h3>Resumen de Consumo</h3>
-                                <div className="bill-items-table">
-                                    {orders.flatMap(o => o.items || []).reduce((acc: Array<Pick<OrderItem, 'menuItemId' | 'quantity' | 'subtotal' | 'menuItem'>>, item) => {
-                                        const existing = acc.find(i => i.menuItemId === item.menuItemId);
-                                        if (existing) {
-                                            existing.quantity += Number(item.quantity);
-                                            existing.subtotal += Number(item.subtotal);
-                                        } else {
-                                            acc.push({ ...item, quantity: Number(item.quantity), subtotal: Number(item.subtotal) });
-                                        }
-                                        return acc;
-                                    }, []).map((item, idx) => (
-                                        <div key={idx} className="bill-item-row">
-                                            <span className="b-qty">{item.quantity}x</span>
-                                            <span className="b-name">{item.menuItem?.name || 'Item'}</span>
-                                            <span className="b-price">{formatMoney(Number(item.subtotal))}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                    </div>
                 </div>
 
                 {/* Footer Actions */}

@@ -1,54 +1,65 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { useDialogA11y } from '../hooks/useDialogA11y';
-import { X, DollarSign, Users, CreditCard, Banknote, Smartphone, Calculator, Plus, Trash2, type LucideIcon } from 'lucide-react';
-import { paymentsAPI, splitBillAPI } from '../services/api';
-import Select from './Select';
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type RefObject,
+} from 'react';
 import type { SingleValue } from 'react-select';
 import {
-    calculateTipAmount,
-    calculateTotalWithTip,
+    Banknote,
+    CreditCard,
+    Layers3,
+    Minus,
+    Plus,
+    Scissors,
+    Smartphone,
+    Trash2,
+    Users,
+    X,
+} from 'lucide-react';
+import { paymentsAPI, splitBillAPI } from '../services/api';
+import type { Order, PaymentMethodType } from '../types';
+import { useDialogA11y } from '../hooks/useDialogA11y';
+import { isCashPaymentMethodType } from '../utils/paymentAccess';
+import { newIdempotencyKey } from '../utils/idempotency';
+import {
+    centsToMoney,
+    formatMoneyAmount,
     formatMoneyInput,
     moneyToCents,
     parseMoneyInput,
     splitTotalEvenly,
+    summarizePaymentAllocation,
 } from '../utils/payment';
-import type { Order, PaymentMethodType } from '../types';
-import { isCashPaymentMethodType } from '../utils/paymentAccess';
-import { newIdempotencyKey } from '../utils/idempotency';
+import CustomSelect from './Select';
 import './PaymentModal.css';
 
-interface PaymentMethodOption {
+type PaymentMode = 'single' | 'mixed' | 'split';
+type SplitStrategy = 'evenly' | 'by-items' | 'by-amount';
+type MethodOption = { value: number; label: string };
+
+interface PaymentMethodRow {
     id: number;
     name: string;
     type: PaymentMethodType;
-    icon: LucideIcon;
 }
 
-const resolveMethodIcon = (type: PaymentMethodType): LucideIcon => {
-    if (type === 'CASH') return Banknote;
-    if (type === 'CARD') return CreditCard;
-    if (type === 'BANK_TRANSFER') return Smartphone;
-    return DollarSign;
-};
-
-interface SplitEntry {
+interface PaymentLeg {
     id: string;
-    payerName: string;
-    paymentMethodId: number;
+    paymentMethodId: number | null;
     amount: string;
     reference: string;
+    received: string;
 }
 
-type SplitStrategy = 'evenly' | 'by-items' | 'by-amount';
+interface SplitLeg extends PaymentLeg {
+    payerName: string;
+}
 
-type ApiEnvelope = { _offline?: boolean };
-
-function axiosErrorMessage(err: unknown, fallback: string): string {
-    if (typeof err === 'object' && err !== null && 'response' in err) {
-        const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
-        if (typeof msg === 'string' && msg) return msg;
-    }
-    return fallback;
+interface ApiEnvelope {
+    _offline?: boolean;
 }
 
 interface PaymentModalProps {
@@ -59,14 +70,36 @@ interface PaymentModalProps {
     order?: Order | null;
     onPaymentSuccess: (data?: { offlineQueued?: boolean }) => void;
     currencySymbol?: string;
-    /** Defensa adicional: si la sucursal no tiene almacén, el cobro se bloquea. */
-    /** Efectivo exige un turno abierto, vigente y de la misma sucursal que la orden. */
     hasUsableCashShift?: boolean;
-    /** Permite abrir directamente la asignación por comensal desde el mapa. */
     initialMode?: 'single' | 'split';
 }
 
-const PaymentModal = ({
+function apiErrorMessage(error: unknown, fallback: string): string {
+    if (typeof error === 'object' && error !== null && 'response' in error) {
+        const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
+        if (message) return message;
+    }
+    return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function createLeg(methodId: number | null, amount = 0): PaymentLeg {
+    const formatted = amount.toFixed(2);
+    return {
+        id: newIdempotencyKey(),
+        paymentMethodId: methodId,
+        amount: formatted,
+        reference: '',
+        received: formatted,
+    };
+}
+
+function methodIcon(type?: PaymentMethodType) {
+    if (type === 'CASH') return Banknote;
+    if (type === 'CARD') return CreditCard;
+    return Smartphone;
+}
+
+export default function PaymentModal({
     isOpen,
     onClose,
     orderTotal,
@@ -76,149 +109,143 @@ const PaymentModal = ({
     currencySymbol = '$',
     hasUsableCashShift = true,
     initialMode = 'single',
-}: PaymentModalProps) => {
-    const [mode, setMode] = useState<'single' | 'split'>('single');
-
-    // Payment methods are validated server-side against the company's DB rows;
-    // the available IDs are NOT guaranteed to be {1,2,3}, so load them at runtime.
-    const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([]);
+}: PaymentModalProps) {
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const [mode, setMode] = useState<PaymentMode>(initialMode);
+    const [methods, setMethods] = useState<PaymentMethodRow[]>([]);
     const [methodsLoading, setMethodsLoading] = useState(false);
     const [methodsError, setMethodsError] = useState('');
-    const cashMethodId = useMemo(
-        () => paymentMethods.find((m) => isCashPaymentMethodType(m.type))?.id ?? null,
-        [paymentMethods]
-    );
-    const defaultMethodId = useMemo(
-        () => (hasUsableCashShift ? cashMethodId : null)
-            ?? paymentMethods.find((method) => method.id !== cashMethodId)?.id
-            ?? null,
-        [cashMethodId, hasUsableCashShift, paymentMethods]
-    );
-
-    // Single mode state
-    const [selectedMethod, setSelectedMethod] = useState<number | null>(null);
-    const [amountTendered, setAmountTendered] = useState<string>('');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [pendingNotice, setPendingNotice] = useState('');
-    const [hasQueuedPayment, setHasQueuedPayment] = useState(false);
-    const [remainingBalance, setRemainingBalance] = useState(orderTotal);
+    const [balance, setBalance] = useState(orderTotal);
     const [balanceLoading, setBalanceLoading] = useState(false);
     const [balanceError, setBalanceError] = useState('');
-    const [tipPercentage, setTipPercentage] = useState<number>(0);
-    const [customTip, setCustomTip] = useState<string>('');
-    const [showCustomTipInput, setShowCustomTipInput] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [notice, setNotice] = useState('');
+    const [queuedPayment, setQueuedPayment] = useState(false);
 
-    // Split mode state
-    const [splits, setSplits] = useState<SplitEntry[]>([]);
+    const [singleMethodId, setSingleMethodId] = useState<number | null>(null);
+    const [singleReference, setSingleReference] = useState('');
+    const [singleReceived, setSingleReceived] = useState(orderTotal.toFixed(2));
+    const singleKeyRef = useRef(newIdempotencyKey());
+
+    const [mixedLegs, setMixedLegs] = useState<PaymentLeg[]>([]);
+    const [mixedSucceeded, setMixedSucceeded] = useState<string[]>([]);
+    const [mixedAttempted, setMixedAttempted] = useState(false);
+    const mixedKeysRef = useRef<Record<string, string>>({});
+
     const [splitStrategy, setSplitStrategy] = useState<SplitStrategy>('evenly');
+    const [splitLegs, setSplitLegs] = useState<SplitLeg[]>([]);
     const [itemQuantities, setItemQuantities] = useState<Record<number, number[]>>({});
+    const [splitSucceeded, setSplitSucceeded] = useState<string[]>([]);
+    const [splitAttempted, setSplitAttempted] = useState(false);
     const [previewLoading, setPreviewLoading] = useState(false);
-    // Indexes of splits already charged successfully, so a retry after a partial
-    // failure does NOT double-charge the diners who already paid.
-    const [paidSplitIndexes, setPaidSplitIndexes] = useState<number[]>([]);
-    // Once any split request is sent, preserve the exact bodies and keys. A lost
-    // response may still have charged the server; recalculating before replaying
-    // would change the fingerprint and defeat durable idempotency.
-    const [hasAttemptedSplitPayments, setHasAttemptedSplitPayments] = useState(false);
-    const dialogRef = useRef<HTMLDivElement>(null);
-    const singlePaymentKeyRef = useRef(newIdempotencyKey());
-    const splitPaymentKeysRef = useRef<string[]>([]);
+    const splitKeysRef = useRef<Record<string, string>>({});
+    const previewSequenceRef = useRef(0);
 
-    const handleClose = useCallback(() => {
-        if (loading) return;
-        onClose();
+    const close = useCallback(() => {
+        if (!loading) onClose();
     }, [loading, onClose]);
-
-    const { titleId } = useDialogA11y(isOpen, handleClose, dialogRef as RefObject<HTMLElement | null>, {
+    const { titleId } = useDialogA11y(isOpen, close, dialogRef as RefObject<HTMLElement | null>, {
         closeOnEscape: !loading,
     });
 
-    const isCashSelected = selectedMethod !== null && selectedMethod === cashMethodId;
+    const methodById = useMemo(
+        () => new Map(methods.map((method) => [method.id, method])),
+        [methods],
+    );
+    const methodOptions = useMemo<MethodOption[]>(
+        () => methods.map((method) => ({ value: method.id, label: method.name })),
+        [methods],
+    );
+    const usableMethodOptions = useMemo(
+        () => methodOptions.filter((option) => {
+            const method = methodById.get(option.value);
+            return hasUsableCashShift || !isCashPaymentMethodType(method?.type);
+        }),
+        [hasUsableCashShift, methodById, methodOptions],
+    );
+    const mixedMethodOptions = useMemo(
+        () => usableMethodOptions.filter((option) => {
+            const type = methodById.get(option.value)?.type;
+            return type === 'CASH' || type === 'CARD' || type === 'BANK_TRANSFER';
+        }),
+        [methodById, usableMethodOptions],
+    );
 
     const orderItems = useMemo(() => order?.items || [], [order]);
+    const totalCents = moneyToCents(balance);
 
-    // Load the company's payment methods whenever the modal opens.
+    const isCash = useCallback(
+        (methodId: number | null) => Boolean(methodId && isCashPaymentMethodType(methodById.get(methodId)?.type)),
+        [methodById],
+    );
+
+    const formatField = (value: string) => formatMoneyInput(value || '0');
+    const parseField = (value: string) => parseMoneyInput(value);
+    const displayMoney = (value: number) => formatMoneyAmount(value, currencySymbol);
+
     useEffect(() => {
         if (!isOpen) return;
         let cancelled = false;
         setMethodsLoading(true);
         setMethodsError('');
         paymentsAPI.getPaymentMethods()
-            .then((res) => {
+            .then((response) => {
                 if (cancelled) return;
-                const rows = (res.data?.data || []) as Array<{ id: number; name: string; type: PaymentMethodType; active?: boolean }>;
-                const options = rows
-                    .filter((row) => row.active !== false)
-                    .map((row) => ({ id: row.id, name: row.name, type: row.type, icon: resolveMethodIcon(row.type) }));
-                setPaymentMethods(options);
-                setSelectedMethod((prev) => (prev !== null
-                    && options.some((o) => o.id === prev)
-                    && (hasUsableCashShift || prev !== options.find((o) => isCashPaymentMethodType(o.type))?.id)
-                    ? prev
-                    : (hasUsableCashShift ? options.find((o) => isCashPaymentMethodType(o.type))?.id : null)
-                        ?? options.find((o) => !isCashPaymentMethodType(o.type))?.id
-                        ?? null));
-                if (options.length === 0) {
-                    setMethodsError('No hay métodos de pago configurados. Contacta a un administrador.');
-                }
+                const rows = (response.data?.data || []) as Array<PaymentMethodRow & { active?: boolean }>;
+                const active = rows.filter((row) => row.active !== false);
+                setMethods(active);
+                if (active.length === 0) setMethodsError('No hay métodos de pago activos configurados.');
             })
-            .catch(() => {
-                if (cancelled) return;
-                setMethodsError('No se pudieron cargar los métodos de pago. Verifica tu conexión e inténtalo de nuevo.');
+            .catch((requestError: unknown) => {
+                if (!cancelled) setMethodsError(apiErrorMessage(requestError, 'No se pudieron cargar los métodos de pago.'));
             })
             .finally(() => {
                 if (!cancelled) setMethodsLoading(false);
             });
         return () => { cancelled = true; };
-    }, [hasUsableCashShift, isOpen]);
+    }, [isOpen]);
 
     useEffect(() => {
-        if (isOpen) {
-            const total = orderTotal;
-            setAmountTendered(total.toFixed(2));
-            setError('');
-            setPendingNotice('');
-            setHasQueuedPayment(false);
-            setTipPercentage(0);
-            setCustomTip('');
-            setShowCustomTipInput(false);
-            setMode(initialMode);
-            setSplits([]);
-            setSplitStrategy('evenly');
-            setItemQuantities({});
-            setPreviewLoading(false);
-            setPaidSplitIndexes([]);
-            setHasAttemptedSplitPayments(false);
-            setBalanceLoading(false);
-            setRemainingBalance(orderTotal);
-            setBalanceError('');
-            singlePaymentKeyRef.current = newIdempotencyKey();
-            splitPaymentKeysRef.current = [];
-        }
+        if (!isOpen) return;
+        setMode(initialMode);
+        setBalance(orderTotal);
+        setBalanceError('');
+        setError('');
+        setNotice('');
+        setQueuedPayment(false);
+        setSingleReference('');
+        setSingleReceived(orderTotal.toFixed(2));
+        setMixedLegs([]);
+        setMixedSucceeded([]);
+        setMixedAttempted(false);
+        setSplitStrategy('evenly');
+        setSplitLegs([]);
+        setItemQuantities({});
+        setSplitSucceeded([]);
+        setSplitAttempted(false);
+        setPreviewLoading(false);
+        singleKeyRef.current = newIdempotencyKey();
+        mixedKeysRef.current = {};
+        splitKeysRef.current = {};
     }, [initialMode, isOpen, orderTotal]);
 
     useEffect(() => {
         if (!isOpen || !orderId) return;
         let cancelled = false;
         setBalanceLoading(true);
-        setBalanceError('');
         paymentsAPI.getSummary(orderId)
             .then((response) => {
                 if (cancelled) return;
                 const remaining = Number(response.data?.data?.remaining);
-                if (!Number.isFinite(remaining) || remaining < 0) {
-                    throw new Error('Saldo pendiente inválido');
-                }
-                const normalized = Math.round(remaining * 100) / 100;
-                setRemainingBalance(normalized);
-                setAmountTendered(normalized.toFixed(2));
+                if (!Number.isFinite(remaining) || remaining < 0) throw new Error('Saldo pendiente inválido.');
+                const normalized = centsToMoney(moneyToCents(remaining));
+                setBalance(normalized);
+                setSingleReceived(normalized.toFixed(2));
                 if (normalized <= 0) setBalanceError('La orden ya no tiene saldo pendiente.');
             })
-            .catch((err: unknown) => {
-                if (!cancelled) {
-                    setBalanceError(axiosErrorMessage(err, 'No se pudo validar el saldo pendiente de la orden.'));
-                }
+            .catch((requestError: unknown) => {
+                if (!cancelled) setBalanceError(apiErrorMessage(requestError, 'No se pudo validar el saldo pendiente.'));
             })
             .finally(() => {
                 if (!cancelled) setBalanceLoading(false);
@@ -226,873 +253,570 @@ const PaymentModal = ({
         return () => { cancelled = true; };
     }, [isOpen, orderId]);
 
-    const persistedTipAmount = Number(order?.tipAmount || 0);
-    const hasPersistedOrder = Boolean(orderId && order);
-    const allowLocalTipEditing = !hasPersistedOrder;
-    const tipAmount = allowLocalTipEditing
-        ? calculateTipAmount(orderTotal, tipPercentage, customTip)
-        : persistedTipAmount;
-    const persistedOrLocalTotal = allowLocalTipEditing
-        ? calculateTotalWithTip(orderTotal, tipAmount)
-        : Number(order?.total || orderTotal);
-    const totalWithTip = hasPersistedOrder ? remainingBalance : persistedOrLocalTotal;
+    useEffect(() => {
+        if (!isOpen || methods.length === 0) return;
+        const firstUsable = usableMethodOptions[0]?.value ?? null;
+        setSingleMethodId((current) => current && usableMethodOptions.some((option) => option.value === current)
+            ? current
+            : firstUsable);
+    }, [isOpen, methods.length, usableMethodOptions]);
 
-    const tenderedAmount = parseMoneyInput(amountTendered);
-    const tenderedCents = tenderedAmount === null ? 0 : moneyToCents(tenderedAmount);
-    const totalCents = moneyToCents(totalWithTip);
+    const buildMixedLegs = useCallback((count = 2) => {
+        const selected = mixedMethodOptions.slice(0, count);
+        const amounts = splitTotalEvenly(balance, count);
+        return selected.map((option, index) => createLeg(option.value, amounts[index]));
+    }, [balance, mixedMethodOptions]);
 
-    const calculateChange = () => Math.max(0, tenderedCents - totalCents) / 100;
-
-    const buildSplitEntries = useCallback((count: number, amounts?: number[], previous: SplitEntry[] = []) => {
-        return Array.from({ length: count }, (_, index) => ({
-            id: previous[index]?.id || newIdempotencyKey(),
-            payerName: previous[index]?.payerName || `Comensal ${index + 1}`,
-            paymentMethodId: previous[index]?.paymentMethodId || defaultMethodId || 0,
-            amount: (amounts?.[index] ?? 0).toFixed(2),
-            reference: previous[index]?.reference || ''
-        }));
-    }, [defaultMethodId]);
-
-    const handleQuickAmount = (multiplier: number) => {
-        const rounded = Math.ceil(totalWithTip / multiplier) * multiplier;
-        setAmountTendered(rounded.toFixed(2));
-    };
-
-    // Split helpers
-    const addSplit = () => {
-        const nextCount = splits.length + 1;
-        const amounts = splitTotalEvenly(totalWithTip, nextCount);
-        setSplits(buildSplitEntries(nextCount, amounts, splits));
-        setPaidSplitIndexes([]);
-    };
-
-    const removeSplit = (index: number) => {
-        const nextSplits = splits.filter((_, i) => i !== index);
-        setSplits(nextSplits);
-        setPaidSplitIndexes([]);
-        setItemQuantities((previous) => Object.fromEntries(Object.entries(previous).map(([itemId, quantities]) => {
-            const next = quantities.filter((_, payerIndex) => payerIndex !== index);
-            if (next.length > 0) next[0] += quantities[index] ?? 0;
-            return [itemId, next];
-        })));
-    };
-
-    const updateSplit = (index: number, field: keyof SplitEntry, value: string | number) => {
-        const updated = [...splits];
-        updated[index] = { ...updated[index], [field]: value };
-        setSplits(updated);
-    };
-
-    const splitEvenlyAmong = (count: number) => {
-        const amounts = splitTotalEvenly(totalWithTip, count);
-        setSplits(buildSplitEntries(count, amounts, splits));
-        setPaidSplitIndexes([]);
-        initializeItemAssignments(count);
-    };
-
-    const initializeItemAssignments = useCallback((count: number) => {
-        setItemQuantities((current) => {
-            const nextAssignments: Record<number, number[]> = {};
-            orderItems.forEach((item) => {
-                const previous = current[item.id] || [];
-                nextAssignments[item.id] = Array.from({ length: count }, (_, index) => previous[index] || 0);
-            });
-            return nextAssignments;
+    const buildSplitLegs = useCallback((count: number, previous: SplitLeg[] = []) => {
+        const amounts = splitTotalEvenly(balance, count);
+        const defaultMethodId = usableMethodOptions[0]?.value ?? null;
+        return Array.from({ length: count }, (_, index) => {
+            const existing = previous[index];
+            const amount = amounts[index] ?? 0;
+            return {
+                ...createLeg(existing?.paymentMethodId ?? defaultMethodId, amount),
+                id: existing?.id ?? newIdempotencyKey(),
+                payerName: existing?.payerName ?? `Comensal ${index + 1}`,
+                reference: existing?.reference ?? '',
+                received: existing?.received && parseMoneyInput(existing.received) !== parseMoneyInput(existing.amount)
+                    ? existing.received
+                    : amount.toFixed(2),
+            };
         });
+    }, [balance, usableMethodOptions]);
+
+    useEffect(() => {
+        if (mode === 'mixed' && mixedLegs.length === 0 && mixedMethodOptions.length >= 2) {
+            setMixedLegs(buildMixedLegs(2));
+        }
+        if (mode === 'split' && splitLegs.length === 0 && usableMethodOptions.length > 0) {
+            setSplitLegs(buildSplitLegs(2));
+        }
+    }, [buildMixedLegs, buildSplitLegs, mixedLegs.length, mixedMethodOptions.length, mode, splitLegs.length, usableMethodOptions.length]);
+
+    const singleMethod = singleMethodId ? methodById.get(singleMethodId) : undefined;
+    const singleIsCash = isCash(singleMethodId);
+    const singleTendered = parseField(singleReceived);
+    const singleChange = singleIsCash && singleTendered !== null
+        ? Math.max(0, singleTendered - balance)
+        : 0;
+
+    const mixedAmounts = mixedLegs.map((leg) => parseField(leg.amount));
+    const mixedAllocation = summarizePaymentAllocation(balance, mixedAmounts);
+    const mixedMethodIds = mixedLegs.map((leg) => leg.paymentMethodId).filter((id): id is number => id !== null);
+    const mixedMethodsUnique = new Set(mixedMethodIds).size === mixedMethodIds.length;
+    const mixedCashValid = mixedLegs.every((leg) => {
+        if (!isCash(leg.paymentMethodId)) return true;
+        const amount = parseField(leg.amount);
+        const received = parseField(leg.received);
+        return hasUsableCashShift && amount !== null && received !== null && moneyToCents(received) >= moneyToCents(amount);
+    });
+    const mixedValid = mixedLegs.length >= 2
+        && mixedLegs.length <= 3
+        && mixedLegs.every((leg) => leg.paymentMethodId !== null && (parseField(leg.amount) ?? 0) > 0)
+        && mixedMethodsUnique
+        && mixedCashValid
+        && mixedAllocation.exact;
+
+    const initializeEmptyAssignments = useCallback((payerCount: number) => {
+        setItemQuantities(Object.fromEntries(
+            orderItems.map((item) => [item.id, Array<number>(payerCount).fill(0)]),
+        ));
     }, [orderItems]);
 
-    useEffect(() => {
-        if (!isOpen || initialMode !== 'split' || defaultMethodId === null || splits.length > 0) return;
-        setSplits(buildSplitEntries(2, splitTotalEvenly(totalWithTip, 2)));
-        initializeItemAssignments(2);
-    }, [buildSplitEntries, defaultMethodId, initialMode, initializeItemAssignments, isOpen, splits.length, totalWithTip]);
+    const itemAssignmentsComplete = useMemo(() => splitStrategy !== 'by-items' || (
+        orderItems.length > 0
+        && orderItems.every((item) => (itemQuantities[item.id] || []).reduce((sum, value) => sum + value, 0) === item.quantity)
+        && splitLegs.every((_, payerIndex) => orderItems.some((item) => (itemQuantities[item.id]?.[payerIndex] ?? 0) > 0))
+    ), [itemQuantities, orderItems, splitLegs, splitStrategy]);
 
-    // Monotonic id used to ignore stale split-preview responses. Each invocation
-    // claims the latest id; if a newer call starts before this one resolves, this
-    // call's results are discarded (it neither updates state nor returns entries).
-    const previewSeqRef = useRef(0);
-    const splitPreviewSnapshotRef = useRef({
-        strategy: splitStrategy,
-        entries: splits,
-        assignments: itemQuantities,
-    });
-    splitPreviewSnapshotRef.current = {
-        strategy: splitStrategy,
-        entries: splits,
-        assignments: itemQuantities,
-    };
-
-    const recalculateSplitPreview = useCallback(async (
-        strategy: SplitStrategy,
-        entries: SplitEntry[],
-        assignments: Record<number, number[]>
-    ): Promise<SplitEntry[] | null> => {
-        if (!orderId || entries.length === 0) {
-            return entries;
-        }
-
-        const seq = ++previewSeqRef.current;
-        const isStale = () => seq !== previewSeqRef.current;
+    const rebuildSplitPreview = useCallback(async (): Promise<SplitLeg[] | null> => {
+        if (!orderId || splitLegs.length === 0) return splitLegs;
+        if (splitStrategy === 'by-items' && !itemAssignmentsComplete) return null;
+        const sequence = ++previewSequenceRef.current;
+        const stale = () => sequence !== previewSequenceRef.current;
         setPreviewLoading(true);
         setError('');
-
         try {
-            if (strategy === 'evenly') {
-                const response = await splitBillAPI.splitEvenly(orderId, entries.length);
-                if (isStale()) return null;
-                const nextAmounts = response.data.data.splits.map((split: { amount: number }) => Number(split.amount));
-                const nextEntries = buildSplitEntries(entries.length, nextAmounts, entries);
-                setSplits(nextEntries);
-                return nextEntries;
-            }
-
-            if (strategy === 'by-items') {
-                const assignmentsPayload = entries.map((entry, index) => ({
-                    personName: entry.payerName,
+            let amounts: number[];
+            if (splitStrategy === 'evenly') {
+                const response = await splitBillAPI.splitEvenly(orderId, splitLegs.length);
+                amounts = response.data.data.splits.map((split: { amount: number }) => Number(split.amount));
+            } else if (splitStrategy === 'by-items') {
+                const assignments = splitLegs.map((leg, payerIndex) => ({
+                    personName: leg.payerName,
                     items: orderItems
-                        .map((item) => ({ orderItemId: item.id, quantity: assignments[item.id]?.[index] ?? 0 }))
-                        .filter((item) => item.quantity > 0)
-                })).filter((assignment) => assignment.items.length > 0);
-
-                if (assignmentsPayload.length === 0) {
-                    const nextEntries = buildSplitEntries(entries.length, Array(entries.length).fill(0), entries);
-                    setSplits(nextEntries);
-                    return nextEntries;
-                }
-
-                const response = await splitBillAPI.splitByItems(orderId, assignmentsPayload);
-                if (isStale()) return null;
-                const amountByName = new Map<string, number>(
-                    response.data.data.splits.map((split: { personName: string; total: number }) => [split.personName, Number(split.total)])
-                );
-                const nextEntries = entries.map((entry) => ({
-                    ...entry,
-                    amount: (amountByName.get(entry.payerName) ?? 0).toFixed(2)
+                        .map((item) => ({ orderItemId: item.id, quantity: itemQuantities[item.id]?.[payerIndex] ?? 0 }))
+                        .filter((item) => item.quantity > 0),
                 }));
-                setSplits(nextEntries);
-                return nextEntries;
+                const response = await splitBillAPI.splitByItems(orderId, assignments);
+                const amountByName = new Map<string, number>(
+                    response.data.data.splits.map((split: { personName: string; total: number }) => [split.personName, Number(split.total)]),
+                );
+                amounts = splitLegs.map((leg) => amountByName.get(leg.payerName) ?? 0);
+            } else {
+                const response = await splitBillAPI.splitByAmount(orderId, splitLegs.map((leg) => ({
+                    personName: leg.payerName,
+                    amount: parseField(leg.amount) ?? 0,
+                })));
+                if (response.data.data.valid === false) throw new Error(response.data.data.error);
+                amounts = response.data.data.splits.map((split: { amount: number }) => Number(split.amount));
             }
-
-            const response = await splitBillAPI.splitByAmount(orderId, entries.map((entry) => ({
-                personName: entry.payerName,
-                amount: parseMoneyInput(entry.amount) || 0
-            })));
-            if (isStale()) return null;
-
-            if (response.data.data.valid === false) {
-                setError(response.data.data.error);
-                return null;
-            }
-
-            const nextEntries = entries.map((entry, index) => ({
-                ...entry,
-                amount: Number(response.data.data.splits[index]?.amount ?? entry.amount).toFixed(2)
-            }));
-            setSplits(nextEntries);
-            return nextEntries;
-        } catch (err: unknown) {
-            if (isStale()) return null;
-            setError(axiosErrorMessage(err, 'No se pudo recalcular la división.'));
+            if (stale()) return null;
+            const next = splitLegs.map((leg, index) => {
+                const amount = amounts[index] ?? 0;
+                const preserveTendered = isCash(leg.paymentMethodId)
+                    && parseField(leg.received) !== parseField(leg.amount);
+                return {
+                    ...leg,
+                    amount: amount.toFixed(2),
+                    received: preserveTendered ? leg.received : amount.toFixed(2),
+                };
+            });
+            setSplitLegs(next);
+            return next;
+        } catch (requestError: unknown) {
+            if (!stale()) setError(apiErrorMessage(requestError, 'No se pudo recalcular la división.'));
             return null;
         } finally {
-            if (!isStale()) setPreviewLoading(false);
+            if (!stale()) setPreviewLoading(false);
         }
-    }, [buildSplitEntries, orderId, orderItems]);
+    }, [isCash, itemAssignmentsComplete, itemQuantities, orderId, orderItems, splitLegs, splitStrategy]);
 
-    const splitPreviewFingerprint = useMemo(() => JSON.stringify({
-        strategy: splitStrategy,
-        count: splits.length,
-        payers: splits.map((split) => split.payerName),
-        amounts: splitStrategy === 'by-amount' ? splits.map((split) => split.amount) : undefined,
-        assignments: splitStrategy === 'by-items' ? itemQuantities : undefined,
-    }), [itemQuantities, splitStrategy, splits]);
+    const splitAllocation = summarizePaymentAllocation(balance, splitLegs.map((leg) => parseField(leg.amount)));
+    const splitLegsArePayable = useCallback((legs: SplitLeg[]) => {
+        const allocation = summarizePaymentAllocation(balance, legs.map((leg) => parseField(leg.amount)));
+        return legs.length >= 2
+            && legs.every((leg) => {
+                const amount = parseField(leg.amount);
+                const received = parseField(leg.received);
+                const cashValid = !isCash(leg.paymentMethodId)
+                    || (hasUsableCashShift && amount !== null && received !== null && moneyToCents(received) >= moneyToCents(amount));
+                return Boolean(leg.payerName.trim())
+                    && leg.paymentMethodId !== null
+                    && amount !== null
+                    && amount > 0
+                    && cashValid;
+            })
+            && allocation.exact;
+    }, [balance, hasUsableCashShift, isCash]);
+    const splitValid = itemAssignmentsComplete && splitLegsArePayable(splitLegs);
 
-    const itemAssignmentsComplete = useMemo(() => splitStrategy !== 'by-items' || (
-        orderItems.every((item) => (itemQuantities[item.id] ?? []).reduce((sum, quantity) => sum + quantity, 0) === item.quantity)
-        && splits.every((_, payerIndex) => orderItems.some((item) => (itemQuantities[item.id]?.[payerIndex] ?? 0) > 0))
-    ), [itemQuantities, orderItems, splitStrategy, splits]);
-
-    useEffect(() => {
-        const snapshot = splitPreviewSnapshotRef.current;
-        if (!isOpen || mode !== 'split' || snapshot.entries.length === 0) {
-            return;
-        }
-
-        if (snapshot.strategy === 'by-items' && Object.keys(snapshot.assignments).length === 0 && orderItems.length > 0) {
-            initializeItemAssignments(snapshot.entries.length);
-            return;
-        }
-
-        if (snapshot.strategy === 'by-items' && !itemAssignmentsComplete) return;
-
-        if (!orderId) {
-            return;
-        }
-
-        // Debounce: avoid firing a preview request on every keystroke/edit.
-        const handle = setTimeout(() => {
-            const latest = splitPreviewSnapshotRef.current;
-            void recalculateSplitPreview(latest.strategy, latest.entries, latest.assignments);
-        }, 350);
-        return () => clearTimeout(handle);
-        // The fingerprint intentionally excludes server-calculated amounts for
-        // even/item splits, so applying a preview cannot trigger another preview.
-    }, [initializeItemAssignments, isOpen, itemAssignmentsComplete, mode, orderId, orderItems.length, recalculateSplitPreview, splitPreviewFingerprint]);
-
-    const getSplitTotalCents = () => splits.reduce(
-        (sum, split) => sum + moneyToCents(parseMoneyInput(split.amount) || 0),
-        0
-    );
-    const getSplitTotal = () => getSplitTotalCents() / 100;
-    const getSplitRemaining = () => (totalCents - getSplitTotalCents()) / 100;
+    const submitPayment = async (
+        leg: PaymentLeg,
+        idempotencyKey: string,
+        payerName?: string,
+    ): Promise<'confirmed' | 'queued'> => {
+        if (!orderId || !leg.paymentMethodId) throw new Error('La orden o el método de pago no están disponibles.');
+        const amount = parseField(leg.amount);
+        if (amount === null || amount <= 0) throw new Error('El monto del pago es inválido.');
+        const response = await paymentsAPI.create({
+            orderId,
+            paymentMethodId: leg.paymentMethodId,
+            amount,
+            reference: leg.reference.trim() || undefined,
+            payerName,
+        }, {
+            operationType: 'CREATE_PAYMENT',
+            entityTempId: `payment-${orderId}-${leg.id}`,
+        }, idempotencyKey);
+        return (response.data as ApiEnvelope)._offline ? 'queued' : 'confirmed';
+    };
 
     const handleSinglePayment = async () => {
-        const tendered = tenderedAmount || 0;
-        const total = totalCents / 100;
-
-        if (selectedMethod === null) {
-            setError('Selecciona un método de pago');
-            return;
+        if (!singleMethodId || !orderId) return setError('Selecciona un método de pago válido.');
+        if (singleIsCash && !hasUsableCashShift) return setError('Abre un turno de caja vigente para cobrar en efectivo.');
+        if (singleIsCash && (singleTendered === null || moneyToCents(singleTendered) < totalCents)) {
+            return setError('El efectivo recibido es menor que el saldo.');
         }
-
-        if (isCashSelected && !hasUsableCashShift) {
-            setError('Para cobrar en efectivo abre un turno vigente en la misma sucursal de la orden.');
-            return;
-        }
-
-        if (isCashSelected && moneyToCents(tendered) < totalCents) {
-            setError('El monto ingresado es menor al total');
-            return;
-        }
-
         setLoading(true);
         setError('');
-        setPendingNotice('');
-
+        setNotice('');
         try {
-            if (!orderId) { setError('No se ha creado la orden'); setLoading(false); return; }
-
-            const response = await paymentsAPI.create({
-                orderId,
-                paymentMethodId: selectedMethod,
-                amount: total,
-            }, {
-                operationType: 'CREATE_PAYMENT',
-                entityTempId: `payment-${Date.now()}`
-            }, singlePaymentKeyRef.current);
-
-            // Offline: the request was only queued, NOT confirmed by the server.
-            // Do not report success or close the order — keep it open until sync.
-            if ((response.data as ApiEnvelope)._offline) {
-                setHasQueuedPayment(true);
-                setPendingNotice('Sin conexión: el pago quedó en cola de sincronización. La orden permanece ABIERTA y solo se marcará como pagada cuando se confirme al reconectar.');
-                setLoading(false);
+            const result = await submitPayment({
+                ...createLeg(singleMethodId, balance),
+                reference: singleReference,
+            }, singleKeyRef.current);
+            if (result === 'queued') {
+                setQueuedPayment(true);
+                setNotice('Sin conexión: el pago quedó en cola. La orden permanecerá abierta hasta su confirmación.');
                 return;
             }
-
             onPaymentSuccess({ offlineQueued: false });
-            handleClose();
-        } catch (err: unknown) {
-            setError(axiosErrorMessage(err, 'Error al procesar el pago'));
+            onClose();
+        } catch (requestError: unknown) {
+            setError(apiErrorMessage(requestError, 'No se pudo procesar el pago.'));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleMixedPayment = async () => {
+        if (!mixedValid) return setError('Distribuye el saldo exacto entre 2 o 3 métodos distintos.');
+        setLoading(true);
+        setError('');
+        setNotice('');
+        setMixedAttempted(true);
+        const succeeded = [...mixedSucceeded];
+        try {
+            for (const leg of mixedLegs) {
+                if (succeeded.includes(leg.id)) continue;
+                const result = await submitPayment(
+                    leg,
+                    mixedKeysRef.current[leg.id] ||= newIdempotencyKey(),
+                );
+                if (result === 'queued') {
+                    setQueuedPayment(true);
+                    setMixedSucceeded(succeeded);
+                    setNotice('Un tramo del pago mixto quedó en cola sin conexión. No se procesarán más tramos hasta confirmar la sincronización.');
+                    return;
+                }
+                succeeded.push(leg.id);
+                setMixedSucceeded([...succeeded]);
+            }
+            onPaymentSuccess({ offlineQueued: false });
+            onClose();
+        } catch (requestError: unknown) {
+            setMixedSucceeded(succeeded);
+            setError(`${apiErrorMessage(requestError, 'Falló un tramo del pago mixto.')} Los tramos confirmados no se repetirán; vuelve a confirmar para reintentar solo los pendientes.`);
         } finally {
             setLoading(false);
         }
     };
 
     const handleSplitPayment = async () => {
-        if (splits.some(s => !s.payerName.trim())) {
-            setError('Cada comensal debe tener un nombre');
-            return;
-        }
-        if (!itemAssignmentsComplete) {
-            setError('Asigna exactamente todas las unidades y al menos una a cada comensal.');
-            return;
-        }
-
+        if (!itemAssignmentsComplete) return setError('Asigna todas las unidades y al menos una a cada comensal.');
+        const effective = splitAttempted ? splitLegs : await rebuildSplitPreview();
+        if (!effective) return;
+        if (!splitLegsArePayable(effective)) return setError('Revisa métodos, importes y efectivo recibido; la suma debe coincidir exactamente con el saldo.');
         setLoading(true);
         setError('');
-        setPendingNotice('');
-
+        setNotice('');
+        setSplitAttempted(true);
+        const succeeded = [...splitSucceeded];
         try {
-            if (!orderId) { setError('No se ha creado la orden'); setLoading(false); return; }
-
-            const effectiveSplits = hasAttemptedSplitPayments
-                ? splits
-                : await recalculateSplitPreview(splitStrategy, splits, itemQuantities) || splits;
-            if (!hasUsableCashShift && effectiveSplits.some((split) => split.paymentMethodId === cashMethodId)) {
-                setError('La división contiene efectivo, pero no hay un turno vigente en la sucursal de la orden.');
-                setLoading(false);
-                return;
-            }
-            const previewTotalCents = effectiveSplits.reduce(
-                (sum, split) => sum + moneyToCents(parseMoneyInput(split.amount) || 0),
-                0
-            );
-            const remainingCents = totalCents - previewTotalCents;
-            const remaining = remainingCents / 100;
-
-            if (remainingCents !== 0) {
-                setError(`La suma de los pagos no coincide con el total. Diferencia: ${currencySymbol}${remaining.toFixed(2)}`);
-                setLoading(false);
-                return;
-            }
-
-            // There is no atomic batch/split payment endpoint, so charges are
-            // applied sequentially. We track which ones succeed and, on any
-            // failure, STOP and report the partial state explicitly instead of
-            // claiming overall success. A subsequent click retries only the
-            // remaining diners (already-paid indexes are skipped).
-            const succeeded = [...paidSplitIndexes];
-            const nameOf = (idx: number) => effectiveSplits[idx]?.payerName || `Pago ${idx + 1}`;
-
-            for (let i = 0; i < effectiveSplits.length; i++) {
-                if (succeeded.includes(i)) continue;
-                const split = effectiveSplits[i];
-                const splitAmount = (parseMoneyInput(split.amount) || 0);
-                // A by-items rebuild can legitimately return zero for a named
-                // diner whose previous payment already covered that share.
-                if (splitAmount <= 0) {
-                    succeeded.push(i);
-                    setPaidSplitIndexes([...succeeded]);
-                    continue;
-                }
-
-                let response;
-                try {
-                    setHasAttemptedSplitPayments(true);
-                    response = await paymentsAPI.create({
-                        orderId,
-                        paymentMethodId: split.paymentMethodId,
-                        amount: splitAmount,
-                        reference: split.reference || undefined,
-                        payerName: split.payerName,
-                    }, {
-                        operationType: 'CREATE_PAYMENT',
-                        entityTempId: `payment-${orderId}-${i}`
-                    }, splitPaymentKeysRef.current[i] ||= newIdempotencyKey());
-                } catch (err: unknown) {
-                    setPaidSplitIndexes(succeeded);
-                    const okNames = succeeded.map(nameOf);
-                    const pendingNames = effectiveSplits
-                        .map((_, idx) => idx)
-                        .filter((idx) => idx > i || (idx !== i && !succeeded.includes(idx)));
-                    setError(
-                        `Falló el cobro de "${nameOf(i)}": ${axiosErrorMessage(err, 'error al procesar el pago')}. ` +
-                        (okNames.length ? `Ya se cobraron: ${okNames.join(', ')}. ` : '') +
-                        (pendingNames.length ? `Pendientes: ${pendingNames.map(nameOf).join(', ')}. ` : '') +
-                        'Vuelve a presionar "Confirmar" para reintentar solo los pagos pendientes.'
-                    );
-                    setLoading(false);
+            for (const leg of effective) {
+                if (succeeded.includes(leg.id)) continue;
+                const result = await submitPayment(
+                    leg,
+                    splitKeysRef.current[leg.id] ||= newIdempotencyKey(),
+                    leg.payerName.trim(),
+                );
+                if (result === 'queued') {
+                    setQueuedPayment(true);
+                    setSplitSucceeded(succeeded);
+                    setNotice(`El pago de ${leg.payerName} quedó en cola sin conexión. La cuenta sigue abierta.`);
                     return;
                 }
-
-                // Offline-queued split payments are not confirmed; stop and keep
-                // the order open rather than reporting success.
-                if ((response.data as ApiEnvelope)._offline) {
-                    setHasQueuedPayment(true);
-                    setPaidSplitIndexes(succeeded);
-                    const okNames = succeeded.map(nameOf);
-                    setPendingNotice(
-                        `Sin conexión: el cobro de "${nameOf(i)}" quedó en cola de sincronización, por lo que la división no pudo completarse. ` +
-                        (okNames.length ? `Ya se cobraron: ${okNames.join(', ')}. ` : '') +
-                        'La orden permanece ABIERTA hasta poder cobrar el resto con conexión.'
-                    );
-                    setLoading(false);
-                    return;
-                }
-
-                succeeded.push(i);
-                setPaidSplitIndexes([...succeeded]);
+                succeeded.push(leg.id);
+                setSplitSucceeded([...succeeded]);
             }
-
             onPaymentSuccess({ offlineQueued: false });
-            handleClose();
-        } catch (err: unknown) {
-            setError(axiosErrorMessage(err, 'Error al procesar pagos'));
+            onClose();
+        } catch (requestError: unknown) {
+            setSplitSucceeded(succeeded);
+            setError(`${apiErrorMessage(requestError, 'Falló un pago de la cuenta dividida.')} Los pagos confirmados no se repetirán.`);
         } finally {
             setLoading(false);
         }
     };
 
+    const updateMixedLeg = (id: string, patch: Partial<PaymentLeg>) => {
+        setMixedLegs((current) => current.map((leg) => leg.id === id ? { ...leg, ...patch } : leg));
+    };
+    const updateSplitLeg = (id: string, patch: Partial<SplitLeg>) => {
+        setSplitLegs((current) => current.map((leg) => leg.id === id ? { ...leg, ...patch } : leg));
+    };
+
+    const changeMode = (nextMode: PaymentMode) => {
+        if (mixedAttempted || splitAttempted || queuedPayment) return;
+        setMode(nextMode);
+        setError('');
+        setNotice('');
+    };
+
     if (!isOpen) return null;
 
-    const change = calculateChange();
+    const busy = loading || previewLoading || balanceLoading;
+    const selectedModeTitle = mode === 'single' ? 'Pago único' : mode === 'mixed' ? 'Pago mixto' : 'Dividir cuenta';
+
+    const renderMethodSelect = (
+        inputId: string,
+        value: number | null,
+        options: MethodOption[],
+        onChange: (value: number | null) => void,
+        disabled = false,
+    ) => (
+        <CustomSelect<MethodOption>
+            inputId={inputId}
+            variant="modal"
+            value={options.find((option) => option.value === value) ?? null}
+            options={options}
+            onChange={(option: SingleValue<MethodOption>) => onChange(option?.value ?? null)}
+            isDisabled={disabled}
+            isSearchable={options.length > 6}
+            placeholder="Selecciona método"
+            noOptionsMessage={() => 'Sin métodos disponibles'}
+        />
+    );
+
+    const renderMoneyInput = (
+        id: string,
+        value: string,
+        onChange: (value: string) => void,
+        disabled = false,
+        label = 'Monto',
+    ) => (
+        <label className="payment-field" htmlFor={id}>
+            <span>{label}</span>
+            <div className="money-input-wrap">
+                <b>{currencySymbol}</b>
+                <input
+                    id={id}
+                    type="text"
+                    inputMode="decimal"
+                    value={value}
+                    onChange={(event) => onChange(event.target.value)}
+                    onBlur={() => onChange(formatField(value))}
+                    disabled={disabled}
+                    autoComplete="off"
+                />
+            </div>
+        </label>
+    );
 
     return (
-        <div
-            className="modal-overlay-new"
-            onClick={loading ? undefined : handleClose}
-        >
-            <div
+        <div className="payment-overlay" onClick={busy ? undefined : close}>
+            <section
                 ref={dialogRef}
-                className={`payment-modal-new ${mode === 'split' ? 'payment-modal-split' : ''}`}
+                className={`payment-dialog payment-dialog-${mode}`}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={titleId}
-                onClick={(e) => e.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
             >
-                {/* Header */}
-                <div className="payment-header">
-                    <h2 id={titleId}>Procesar Pago</h2>
-                    <div className="payment-mode-toggle">
-                        <button
-                            type="button"
-                            className={`payment-mode-btn ${mode === 'single' ? 'active' : ''}`}
-                            aria-pressed={mode === 'single'}
-                            onClick={() => setMode('single')}
-                            disabled={hasQueuedPayment || hasAttemptedSplitPayments}
-                        >
-                            Pago Único
-                        </button>
-                        <button
-                            type="button"
-                            className={`payment-mode-btn ${mode === 'split' ? 'active' : ''}`}
-                            aria-pressed={mode === 'split'}
-                            onClick={() => {
-                                setMode('split');
-                                if (splits.length === 0) {
-                                    splitEvenlyAmong(2);
-                                }
-                            }}
-                            disabled={hasQueuedPayment || hasAttemptedSplitPayments}
-                        >
-                            <Users size={14} />
-                            Dividir Cuenta
-                        </button>
-                        <button
-                            type="button"
-                            className="close-btn-new"
-                            onClick={handleClose}
-                            disabled={loading}
-                            aria-label="Cerrar modal de pago"
-                        >
-                            <X size={24} />
-                        </button>
+                <header className="payment-dialog-header">
+                    <div>
+                        <span className="payment-eyebrow">Cobro de orden</span>
+                        <h2 id={titleId}>Procesar pago</h2>
                     </div>
-                </div>
+                    <button type="button" className="payment-close" onClick={close} disabled={busy} aria-label="Cerrar pago">
+                        <X size={22} />
+                    </button>
+                </header>
 
-                {/* Body */}
-                <div className="payment-body">
-                    {mode === 'single' ? (
-                        <>
-                            {/* === SINGLE MODE === */}
-                            <div className="payment-left">
-                                <div className="total-display">
-                                    <div className="total-label">Total a Pagar</div>
-                                    <div className="total-amount-large">{currencySymbol}{totalWithTip.toFixed(2)}</div>
-                                </div>
+                <nav className="payment-mode-tabs" aria-label="Tipo de pago">
+                    <button type="button" className={mode === 'single' ? 'active' : ''} onClick={() => changeMode('single')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
+                        <CreditCard size={18} /> Pago único
+                    </button>
+                    <button type="button" className={mode === 'mixed' ? 'active' : ''} onClick={() => changeMode('mixed')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
+                        <Layers3 size={18} /> Pago mixto
+                    </button>
+                    <button type="button" className={mode === 'split' ? 'active' : ''} onClick={() => changeMode('split')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
+                        <Users size={18} /> Dividir cuenta
+                    </button>
+                </nav>
 
-                                <div className="section">
-                                    <div className="section-title">Método de Pago</div>
-                                    {methodsLoading && paymentMethods.length === 0 ? (
-                                        <div style={{ padding: '10px 12px', color: 'var(--color-neutral-600)', fontSize: '0.85rem' }}>
-                                            Cargando métodos de pago...
-                                        </div>
-                                    ) : methodsError ? (
-                                        <div className="error-message-new">{methodsError}</div>
-                                    ) : (
-                                        <div className="payment-methods-grid">
-                                            {paymentMethods.map(method => {
-                                                const Icon = method.icon;
-                                                return (
-                                                    <button key={method.id}
-                                                        className={`payment-method-card ${selectedMethod === method.id ? 'active' : ''}`}
-                                                        type="button"
-                                                        disabled={!hasUsableCashShift && method.id === cashMethodId}
-                                                        title={!hasUsableCashShift && method.id === cashMethodId
-                                                            ? 'Requiere turno vigente en la misma sucursal'
-                                                            : undefined}
-                                                        onClick={() => setSelectedMethod(method.id)}>
-                                                        <Icon size={24} /><span>{method.name}</span>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
+                <div className="payment-scroll-area">
+                    <section className="payment-total-card" aria-label="Saldo pendiente">
+                        <span>Saldo pendiente</span>
+                        <strong>{displayMoney(balance)}</strong>
+                        {order?.invoiceNumber && <small>Factura {order.invoiceNumber}</small>}
+                    </section>
 
-                                {isCashSelected && (
-                                    <div className="section">
-                                        <label className="section-title" htmlFor="payment-amount-tendered">Monto Recibido</label>
-                                        <div className="cash-input-group">
-                                            <span style={{ fontSize: '20px', fontWeight: 'bold' }}>{currencySymbol}</span>
-                                            <input
-                                                type="text"
-                                                id="payment-amount-tendered"
-                                                inputMode="decimal"
-                                                value={amountTendered}
-                                                onFocus={(event) => {
-                                                    const editable = event.currentTarget.value.replace(/,/g, '');
-                                                    if (editable !== event.currentTarget.value) setAmountTendered(editable);
-                                                }}
-                                                onBlur={() => setAmountTendered((value) => formatMoneyInput(value))}
-                                                onChange={(event) => {
-                                                    const next = event.target.value.replace(/,/g, '');
-                                                    if (/^\d*(?:\.\d{0,2})?$/.test(next)) setAmountTendered(next);
-                                                }}
-                                                className="cash-input"
-                                                autoFocus
-                                                placeholder="0.00"
-                                                aria-invalid={amountTendered.length > 0 && tenderedAmount === null}
-                                            />
-                                        </div>
-                                        <div className="quick-amounts">
-                                            {[5, 10, 20].map(m => (
-                                                <button type="button" key={m} onClick={() => handleQuickAmount(m)} className="quick-btn">
-                                                    Redondear {currencySymbol}{m}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
+                    {methodsLoading && <div className="payment-state">Cargando métodos de pago…</div>}
+                    {methodsError && <div className="payment-alert error" role="alert">{methodsError}</div>}
+
+                    {!methodsLoading && !methodsError && mode === 'single' && (
+                        <div className="payment-panel single-panel">
+                            <div className="payment-section-heading">
+                                <div><h3>Un método</h3><p>Registra el saldo completo en una sola forma de pago.</p></div>
+                                {singleMethod && (() => { const Icon = methodIcon(singleMethod.type); return <Icon size={26} />; })()}
                             </div>
+                            <label className="payment-field">
+                                <span>Método de pago</span>
+                                {renderMethodSelect('single-payment-method', singleMethodId, usableMethodOptions, setSingleMethodId, busy)}
+                            </label>
+                            {!singleIsCash && (
+                                <label className="payment-field" htmlFor="single-reference">
+                                    <span>Referencia del método <em>opcional</em></span>
+                                    <input id="single-reference" value={singleReference} onChange={(event) => setSingleReference(event.target.value)} maxLength={191} placeholder="Autorización, voucher o transferencia" />
+                                </label>
+                            )}
+                            {singleIsCash && (
+                                <>
+                                    {renderMoneyInput('single-received', singleReceived, setSingleReceived, busy, 'Efectivo recibido')}
+                                    <div className={`payment-change ${singleTendered !== null && singleTendered >= balance ? 'positive' : ''}`}>
+                                        <span>Cambio</span><strong>{displayMoney(singleChange)}</strong>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
 
-                            <div className="payment-right">
-                                <div className="section">
-                                    <div className="section-title"><DollarSign size={16} /> Propina</div>
-                                    {!allowLocalTipEditing && (
-                                        <div style={{
-                                            padding: '10px 12px',
-                                            borderRadius: '10px',
-                                            background: 'var(--color-neutral-50)',
-                                            border: '1px solid var(--color-neutral-200)',
-                                            color: 'var(--color-neutral-600)',
-                                            fontSize: '0.82rem',
-                                            marginBottom: '12px'
-                                        }}>
-                                            La propina y descuentos se toman de la orden registrada para mantener el cobro sincronizado con caja.
-                                        </div>
-                                    )}
-                                    <div className="tip-grid">
-                                        {[10, 15, 20].map(pct => (
-                                            <button key={pct}
-                                                className={`tip-card ${tipPercentage === pct ? 'active' : ''}`}
-                                                disabled={!allowLocalTipEditing}
-                                                onClick={() => { setTipPercentage(pct); setCustomTip(''); setShowCustomTipInput(false); }}
-                                                style={!allowLocalTipEditing ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}>
-                                                <div className="tip-percent">{allowLocalTipEditing ? `${pct}%` : 'Aplicada'}</div>
-                                                <div className="tip-amount">{currencySymbol}{(allowLocalTipEditing ? calculateTipAmount(orderTotal, pct) : tipAmount).toFixed(2)}</div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                    <div className="tip-options">
-                                        <button className={`tip-option-btn ${showCustomTipInput ? 'active' : ''}`}
-                                            type="button"
-                                            disabled={!allowLocalTipEditing}
-                                            onClick={() => { setShowCustomTipInput(!showCustomTipInput); setTipPercentage(0); }}
-                                            style={!allowLocalTipEditing ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}>
-                                            <Calculator size={16} /> Personalizada
-                                        </button>
-                                        <button className="tip-option-btn"
-                                            type="button"
-                                            disabled={!allowLocalTipEditing}
-                                            onClick={() => { setTipPercentage(0); setCustomTip(''); setShowCustomTipInput(false); }}
-                                            style={!allowLocalTipEditing ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}>
-                                            Sin propina
-                                        </button>
-                                    </div>
-                                    {showCustomTipInput && allowLocalTipEditing && (
-                                        <input type="number" step="0.01" value={customTip}
-                                            onChange={(e) => setCustomTip(e.target.value)}
-                                            className="custom-tip-input" placeholder="Ingrese monto" autoFocus />
-                                    )}
-                                </div>
-
-                                {isCashSelected && tenderedCents >= totalCents && (
-                                    <div className="section change-section">
-                                        <div className="section-title">Cambio</div>
-                                        <div className="change-display-reorganized">
-                                            <span className="change-amount-large">{currencySymbol}{change.toFixed(2)}</span>
-                                        </div>
-                                    </div>
-                                )}
+                    {!methodsLoading && !methodsError && mode === 'mixed' && (
+                        <div className="payment-panel">
+                            <div className="payment-section-heading">
+                                <div><h3>Pago mixto</h3><p>Una deuda, distribuida entre 2 o 3 métodos distintos.</p></div>
+                                <Layers3 size={26} />
                             </div>
-                        </>
-                    ) : (
-                        /* === SPLIT MODE === */
-                        <div className="split-mode-content">
-                            <div className="total-display" style={{ textAlign: 'center' }}>
-                                <div className="total-label">Saldo a dividir</div>
-                                <div className="total-amount-large">{currencySymbol}{totalWithTip.toFixed(2)}</div>
-                            </div>
+                            {mixedMethodOptions.length < 2 ? (
+                                <div className="payment-alert error">Configura al menos dos métodos entre efectivo, tarjeta y transferencia.</div>
+                            ) : (
+                                <>
+                                    <div className="payment-leg-list">
+                                        {mixedLegs.map((leg, index) => {
+                                            const cash = isCash(leg.paymentMethodId);
+                                            const amount = parseField(leg.amount) ?? 0;
+                                            const received = parseField(leg.received) ?? 0;
+                                            const options = mixedMethodOptions.filter((option) => option.value === leg.paymentMethodId || !mixedMethodIds.includes(option.value));
+                                            return (
+                                                <article className={`payment-leg ${mixedSucceeded.includes(leg.id) ? 'completed' : ''}`} key={leg.id}>
+                                                    <div className="payment-leg-title"><span>Tramo {index + 1}</span>{mixedSucceeded.includes(leg.id) && <b>Confirmado</b>}</div>
+                                                    <div className="payment-leg-grid">
+                                                        <label className="payment-field"><span>Método</span>{renderMethodSelect(`mixed-method-${leg.id}`, leg.paymentMethodId, options, (value) => updateMixedLeg(leg.id, { paymentMethodId: value, reference: '', received: leg.amount }), mixedAttempted)}</label>
+                                                        {renderMoneyInput(`mixed-amount-${leg.id}`, leg.amount, (value) => updateMixedLeg(leg.id, { amount: value, received: cash && parseField(leg.received) === parseField(leg.amount) ? value : leg.received }), mixedAttempted)}
+                                                        {cash ? renderMoneyInput(`mixed-received-${leg.id}`, leg.received, (value) => updateMixedLeg(leg.id, { received: value }), mixedAttempted, 'Efectivo recibido') : (
+                                                            <label className="payment-field" htmlFor={`mixed-reference-${leg.id}`}><span>Referencia <em>opcional</em></span><input id={`mixed-reference-${leg.id}`} value={leg.reference} onChange={(event) => updateMixedLeg(leg.id, { reference: event.target.value })} disabled={mixedAttempted} maxLength={191} placeholder="Voucher o transferencia" /></label>
+                                                        )}
+                                                    </div>
+                                                    {cash && <div className="leg-change">Cambio de este tramo: <b>{displayMoney(Math.max(0, received - amount))}</b></div>}
+                                                    {mixedLegs.length > 2 && !mixedAttempted && <button type="button" className="leg-remove" onClick={() => setMixedLegs((current) => current.filter((item) => item.id !== leg.id))}><Trash2 size={16} /> Eliminar tramo</button>}
+                                                </article>
+                                            );
+                                        })}
+                                    </div>
+                                    {!mixedAttempted && mixedLegs.length < 3 && mixedMethodOptions.length > mixedLegs.length && <button type="button" className="payment-add-leg" onClick={() => {
+                                        const nextMethod = mixedMethodOptions.find((option) => !mixedMethodIds.includes(option.value));
+                                        if (nextMethod) setMixedLegs((current) => [...current, createLeg(nextMethod.value, 0)]);
+                                    }}><Plus size={17} /> Agregar tercer método</button>}
+                                    <AllocationStatus summary={mixedAllocation} currencySymbol={currencySymbol} valid={mixedValid} />
+                                    {!mixedMethodsUnique && <div className="payment-alert error">Cada tramo debe usar un método distinto.</div>}
+                                </>
+                            )}
+                        </div>
+                    )}
 
-                            <div className="split-toolbar">
-                                {[
-                                    { value: 'evenly', label: 'Equitativa' },
-                                    { value: 'by-items', label: 'Por unidades' },
-                                    { value: 'by-amount', label: 'Por monto' }
-                                ].map((option) => (
-                                    <button
-                                        type="button"
-                                        key={option.value}
-                                        onClick={() => {
-                                            const nextStrategy = option.value as SplitStrategy;
-                                            setSplitStrategy(nextStrategy);
-                                            if (splits.length === 0) {
-                                                splitEvenlyAmong(2);
-                                            }
-                                            if (nextStrategy === 'by-items' && Object.keys(itemQuantities).length === 0) {
-                                                initializeItemAssignments(Math.max(splits.length, 2));
-                                            }
-                                        }}
-                                        disabled={hasAttemptedSplitPayments}
-                                        style={{
-                                            padding: '6px 14px',
-                                            borderRadius: '999px',
-                                            border: `1px solid ${splitStrategy === option.value ? 'var(--color-primary, #2563eb)' : 'var(--color-neutral-200)'}`,
-                                            background: splitStrategy === option.value ? 'var(--color-primary, #2563eb)' : 'var(--color-neutral-50)',
-                                            color: splitStrategy === option.value ? '#fff' : 'var(--color-neutral-700)',
-                                            cursor: 'pointer',
-                                            fontWeight: 700,
-                                            fontSize: '0.82rem'
-                                        }}
-                                    >
-                                        {option.label}
-                                    </button>
+                    {!methodsLoading && !methodsError && mode === 'split' && (
+                        <div className="payment-panel split-panel">
+                            <div className="payment-section-heading">
+                                <div><h3>Dividir cuenta</h3><p>Cobra a cada comensal por partes iguales, unidades consumidas o monto.</p></div>
+                                <Scissors size={26} />
+                            </div>
+                            <div className="split-strategies" role="group" aria-label="Forma de dividir">
+                                {([
+                                    ['evenly', 'Equitativa'],
+                                    ['by-items', 'Por unidades'],
+                                    ['by-amount', 'Por monto'],
+                                ] as Array<[SplitStrategy, string]>).map(([value, label]) => (
+                                    <button type="button" key={value} className={splitStrategy === value ? 'active' : ''} disabled={splitAttempted} onClick={() => {
+                                        setSplitStrategy(value);
+                                        if (value === 'by-items') initializeEmptyAssignments(splitLegs.length || 2);
+                                    }}>{label}</button>
                                 ))}
                             </div>
-
-                            {/* Quick split buttons */}
-                            <div className="split-toolbar">
-                                {[2, 3, 4].map(n => (
-                                    <button type="button" key={n} onClick={() => {
-                                        splitEvenlyAmong(n);
-                                        if (splitStrategy === 'by-items') {
-                                            initializeItemAssignments(n);
-                                        }
-                                    }} disabled={hasAttemptedSplitPayments}
-                                        style={{
-                                            padding: '6px 16px', borderRadius: '8px', border: '1px solid var(--color-neutral-200)',
-                                            background: splits.length === n ? 'var(--color-primary, #2563eb)' : 'var(--color-neutral-50)',
-                                            color: splits.length === n ? '#fff' : 'var(--color-neutral-700)',
-                                            cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem'
-                                        }}>
-                                        Dividir en {n}
-                                    </button>
-                                ))}
-                                <button type="button" disabled={hasAttemptedSplitPayments} onClick={() => {
-                                    addSplit();
-                                    if (splitStrategy === 'by-items') {
-                                        initializeItemAssignments(splits.length + 1);
-                                    }
-                                }}
-                                    style={{
-                                        padding: '6px 16px', borderRadius: '8px', border: '1px dashed var(--color-neutral-300)',
-                                        background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                                        fontSize: '0.85rem', color: 'var(--color-neutral-600)'
-                                }}>
-                                    <Plus size={14} /> Agregar
-                                </button>
-                                {orderId && (
-                                    <button type="button" disabled={hasAttemptedSplitPayments || !itemAssignmentsComplete} onClick={() => void recalculateSplitPreview(splitStrategy, splits, itemQuantities)}
-                                        style={{
-                                            padding: '6px 16px', borderRadius: '8px', border: '1px solid var(--color-neutral-200)',
-                                            background: 'var(--color-neutral-50)', cursor: 'pointer',
-                                            fontWeight: 600, fontSize: '0.85rem'
-                                        }}>
-                                        {previewLoading ? 'Calculando...' : 'Recalcular'}
-                                    </button>
-                                )}
+                            <div className="split-count-row">
+                                <span>Comensales</span>
+                                {[2, 3, 4].map((count) => <button type="button" key={count} className={splitLegs.length === count ? 'active' : ''} disabled={splitAttempted} onClick={() => {
+                                    setSplitLegs(buildSplitLegs(count, splitLegs));
+                                    if (splitStrategy === 'by-items') initializeEmptyAssignments(count);
+                                }}>{count}</button>)}
+                                <button type="button" className="icon" disabled={splitAttempted} onClick={() => {
+                                    const count = splitLegs.length + 1;
+                                    setSplitLegs(buildSplitLegs(count, splitLegs));
+                                    if (splitStrategy === 'by-items') initializeEmptyAssignments(count);
+                                }} aria-label="Agregar comensal"><Plus size={17} /></button>
+                            </div>
+                            <div className="payment-leg-list">
+                                {splitLegs.map((leg, index) => {
+                                    const cash = isCash(leg.paymentMethodId);
+                                    const amount = parseField(leg.amount) ?? 0;
+                                    const received = parseField(leg.received) ?? 0;
+                                    return (
+                                        <article className={`payment-leg ${splitSucceeded.includes(leg.id) ? 'completed' : ''}`} key={leg.id}>
+                                            <div className="payment-leg-title"><span>{leg.payerName || `Comensal ${index + 1}`}</span>{splitSucceeded.includes(leg.id) && <b>Confirmado</b>}</div>
+                                            <div className="payment-leg-grid split-leg-grid">
+                                                <label className="payment-field" htmlFor={`payer-${leg.id}`}><span>Comensal</span><input id={`payer-${leg.id}`} value={leg.payerName} onChange={(event) => updateSplitLeg(leg.id, { payerName: event.target.value })} disabled={splitAttempted} maxLength={191} /></label>
+                                                <label className="payment-field"><span>Método</span>{renderMethodSelect(`split-method-${leg.id}`, leg.paymentMethodId, usableMethodOptions, (value) => updateSplitLeg(leg.id, { paymentMethodId: value, reference: '', received: leg.amount }), splitAttempted)}</label>
+                                                {renderMoneyInput(`split-amount-${leg.id}`, leg.amount, (value) => updateSplitLeg(leg.id, { amount: value, received: cash && parseField(leg.received) === parseField(leg.amount) ? value : leg.received }), splitAttempted || splitStrategy !== 'by-amount')}
+                                                {cash ? renderMoneyInput(`split-received-${leg.id}`, leg.received, (value) => updateSplitLeg(leg.id, { received: value }), splitAttempted, 'Efectivo recibido') : <label className="payment-field" htmlFor={`split-reference-${leg.id}`}><span>Referencia <em>opcional</em></span><input id={`split-reference-${leg.id}`} value={leg.reference} onChange={(event) => updateSplitLeg(leg.id, { reference: event.target.value })} disabled={splitAttempted} maxLength={191} /></label>}
+                                            </div>
+                                            {cash && <div className="leg-change">Cambio: <b>{displayMoney(Math.max(0, received - amount))}</b></div>}
+                                            {splitLegs.length > 2 && !splitAttempted && <button type="button" className="leg-remove" onClick={() => {
+                                                const next = splitLegs.filter((item) => item.id !== leg.id);
+                                                setSplitLegs(buildSplitLegs(next.length, next));
+                                                if (splitStrategy === 'by-items') initializeEmptyAssignments(next.length);
+                                            }}><Trash2 size={16} /> Eliminar</button>}
+                                        </article>
+                                    );
+                                })}
                             </div>
 
-                            {/* Split entries */}
-                            <div className="split-entry-list">
-                                {splits.map((split, idx) => (
-                                    <div className="split-entry" key={split.id} style={{
-                                        display: 'flex', gap: '8px', alignItems: 'center',
-                                        padding: '10px 12px', borderRadius: '10px',
-                                        background: 'var(--color-neutral-50)', border: '1px solid var(--color-neutral-200)'
-                                    }}>
-                                        <input
-                                            type="text" value={split.payerName}
-                                            aria-label={`Nombre del comensal ${idx + 1}`}
-                                            onChange={(e) => updateSplit(idx, 'payerName', e.target.value)}
-                                            disabled={hasAttemptedSplitPayments}
-                                            className="split-text-input" placeholder="Nombre" style={{
-                                                flex: 1, padding: '6px 10px', borderRadius: '6px',
-                                                border: '1px solid var(--color-neutral-200)', fontSize: '0.85rem',
-                                                background: 'var(--bg-primary, #fff)'
-                                            }} />
-
-                                        <Select
-                                            className="payment-split-select"
-                                            inputId={`split-payment-method-${split.id}`}
-                                            aria-label={`Método de pago de ${split.payerName}`}
-                                            variant="modal"
-                                            value={
-                                                paymentMethods.find((m) => m.id === split.paymentMethodId)
-                                                    ? { value: split.paymentMethodId, label: paymentMethods.find((m) => m.id === split.paymentMethodId)!.name }
-                                                    : null
-                                            }
-                                            onChange={(option: SingleValue<{ value: number; label: string }>) =>
-                                                option && updateSplit(idx, 'paymentMethodId', option.value)}
-                                            isDisabled={hasAttemptedSplitPayments}
-                                            options={paymentMethods
-                                                .filter((m) => hasUsableCashShift || m.id !== cashMethodId)
-                                                .map((m) => ({ value: m.id, label: m.name }))}
-                                            isSearchable={false}
-                                        />
-
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                            <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{currencySymbol}</span>
-                                            <input className="split-amount-input" type="number" step="0.01" value={split.amount}
-                                                aria-label={`Monto de ${split.payerName}`}
-                                                onChange={(e) => updateSplit(idx, 'amount', e.target.value)}
-                                                disabled={splitStrategy === 'by-items' || hasAttemptedSplitPayments}
-                                                style={{
-                                                    width: '80px', padding: '6px 8px', borderRadius: '6px',
-                                                    border: '1px solid var(--color-neutral-200)', fontSize: '0.85rem',
-                                                    textAlign: 'right', background: splitStrategy === 'by-items' ? 'var(--color-neutral-100)' : 'var(--bg-primary, #fff)'
-                                                }} />
-                                        </div>
-
-                                        <input className="split-text-input" type="text" value={split.reference}
-                                            aria-label={`Referencia opcional de ${split.payerName}`}
-                                            onChange={(e) => updateSplit(idx, 'reference', e.target.value)}
-                                            disabled={hasAttemptedSplitPayments}
-                                            placeholder="Ref. (opc.)" style={{
-                                                width: '90px', padding: '6px 8px', borderRadius: '6px',
-                                                border: '1px solid var(--color-neutral-200)', fontSize: '0.8rem',
-                                                background: 'var(--bg-primary, #fff)'
-                                            }} />
-
-                                        <button type="button" onClick={() => removeSplit(idx)} disabled={hasAttemptedSplitPayments}
-                                            aria-label={`Eliminar pago de ${split.payerName}`}
-                                            style={{
-                                                background: 'none', border: 'none', cursor: 'pointer',
-                                                color: 'var(--color-error, #ef4444)', padding: '4px'
-                                            }}>
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {splitStrategy === 'by-items' && orderItems.length > 0 && (
-                                <div className="split-items-panel split-allocation-panel">
-                                    <div className="split-allocation-intro">
-                                        <strong>¿Quién consumió cada unidad?</strong>
-                                        <span>Usa − y + para repartir las unidades reales. No podrás confirmar hasta asignarlas todas.</span>
-                                    </div>
-                                    {orderItems.map((item) => {
-                                        const quantities = itemQuantities[item.id] ?? Array<number>(splits.length).fill(0);
-                                        const assigned = quantities.reduce((sum, quantity) => sum + quantity, 0);
+                            {splitStrategy === 'by-items' && (
+                                <section className="unit-allocation">
+                                    <div className="unit-allocation-header"><div><h4>Asignación por unidades</h4><p>Usa − y + hasta distribuir exactamente cada producto.</p></div></div>
+                                    {orderItems.length === 0 ? <div className="payment-alert error">La orden no tiene unidades disponibles para dividir.</div> : orderItems.map((item) => {
+                                        const quantities = itemQuantities[item.id] ?? Array<number>(splitLegs.length).fill(0);
+                                        const assigned = quantities.reduce((sum, value) => sum + value, 0);
                                         const pending = item.quantity - assigned;
                                         return (
-                                            <div key={item.id} className="split-item-allocation">
-                                                <div className="split-item-heading">
-                                                    <div>
-                                                        <strong>{item.menuItem?.name} · {item.quantity} {item.quantity === 1 ? 'unidad' : 'unidades'}</strong>
-                                                        <small>{currencySymbol}{Number(item.subtotal).toFixed(2)}</small>
-                                                    </div>
-                                                    <span className={pending === 0 ? 'complete' : 'pending'}>
-                                                        {assigned} de {item.quantity} asignadas
-                                                    </span>
-                                                </div>
-                                                <div className="split-quantity-grid">
-                                                    {splits.map((split, payerIndex) => {
-                                                        const others = assigned - (quantities[payerIndex] ?? 0);
-                                                        const max = Math.max(0, item.quantity - others);
-                                                        const currentQuantity = quantities[payerIndex] ?? 0;
-                                                        const applyQuantity = (nextQuantity: number) => {
-                                                            const bounded = Math.max(0, Math.min(max, nextQuantity));
-                                                            setItemQuantities((current) => {
-                                                                const next = [...(current[item.id] ?? Array<number>(splits.length).fill(0))];
-                                                                next[payerIndex] = bounded;
-                                                                return { ...current, [item.id]: next };
-                                                            });
-                                                        };
-                                                        return (
-                                                            <label key={split.id}>
-                                                                <span>{split.payerName}</span>
-                                                                <div className="split-quantity-stepper">
-                                                                    <button type="button" disabled={hasAttemptedSplitPayments || currentQuantity === 0} onClick={() => applyQuantity(currentQuantity - 1)} aria-label={`Quitar una unidad a ${split.payerName}`}>−</button>
-                                                                    <input type="number" inputMode="numeric" min={0} max={max} step={1} value={currentQuantity} disabled={hasAttemptedSplitPayments}
-                                                                        aria-label={`Unidades de ${item.menuItem?.name || `producto ${item.id}`} para ${split.payerName}`}
-                                                                        onChange={(event) => applyQuantity(Number.isInteger(Number(event.target.value)) ? Number(event.target.value) : 0)} />
-                                                                    <button type="button" disabled={hasAttemptedSplitPayments || currentQuantity >= max} onClick={() => applyQuantity(currentQuantity + 1)} aria-label={`Asignar una unidad a ${split.payerName}`}>+</button>
-                                                                </div>
-                                                            </label>
-                                                        );
+                                            <article className="unit-row" key={item.id}>
+                                                <header><div><strong>{item.menuItem?.name || 'Producto'}</strong><span>{item.quantity} unidades · {displayMoney(Number(item.subtotal))}</span></div><b className={pending === 0 ? 'complete' : 'pending'}>{assigned} de {item.quantity} asignadas</b></header>
+                                                <div className="unit-payers">
+                                                    {splitLegs.map((leg, payerIndex) => {
+                                                        const current = quantities[payerIndex] ?? 0;
+                                                        const max = item.quantity - (assigned - current);
+                                                        const setQuantity = (nextValue: number) => setItemQuantities((currentAssignments) => {
+                                                            const next = [...(currentAssignments[item.id] ?? Array<number>(splitLegs.length).fill(0))];
+                                                            next[payerIndex] = Math.max(0, Math.min(max, nextValue));
+                                                            return { ...currentAssignments, [item.id]: next };
+                                                        });
+                                                        return <div className="unit-payer" key={leg.id}><span>{leg.payerName}</span><div className="unit-stepper"><button type="button" onClick={() => setQuantity(current - 1)} disabled={splitAttempted || current <= 0} aria-label={`Quitar una unidad de ${item.menuItem?.name} a ${leg.payerName}`}><Minus size={15} /></button><output>{current}</output><button type="button" onClick={() => setQuantity(current + 1)} disabled={splitAttempted || current >= max} aria-label={`Asignar una unidad de ${item.menuItem?.name} a ${leg.payerName}`}><Plus size={15} /></button></div></div>;
                                                     })}
                                                 </div>
-                                            </div>
+                                            </article>
                                         );
                                     })}
-                                    {!itemAssignmentsComplete && (
-                                        <div className="split-allocation-warning" role="status">
-                                            Distribuye todas las unidades y asigna al menos una a cada comensal.
-                                        </div>
-                                    )}
-                                </div>
+                                    {!itemAssignmentsComplete && <div className="payment-alert warning">Faltan unidades por asignar o algún comensal no tiene consumo.</div>}
+                                </section>
                             )}
-
-                            {/* Split summary */}
-                            {splits.length > 0 && (
-                                <div style={{
-                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                    padding: '10px 16px', borderRadius: '10px',
-                                    background: getSplitRemaining() === 0 ? 'color-mix(in srgb, var(--color-success) 10%, transparent)' : 'color-mix(in srgb, var(--color-warning) 10%, transparent)',
-                                    border: `1px solid ${getSplitRemaining() === 0 ? 'var(--color-success)' : 'var(--color-warning)'}`,
-                                    fontWeight: 600, fontSize: '0.9rem'
-                                }}>
-                                    <span>Suma pagos: {currencySymbol}{getSplitTotal().toFixed(2)}</span>
-                                    <span style={{ color: getSplitRemaining() === 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
-                                        {getSplitRemaining() === 0 ? 'Cuadrado' : `Restante: ${currencySymbol}${getSplitRemaining().toFixed(2)}`}
-                                    </span>
-                                </div>
-                            )}
+                            <button type="button" className="payment-recalculate" disabled={splitAttempted || previewLoading || !itemAssignmentsComplete} onClick={() => void rebuildSplitPreview()}>{previewLoading ? 'Calculando…' : 'Recalcular importes'}</button>
+                            <AllocationStatus summary={splitAllocation} currencySymbol={currencySymbol} valid={splitValid} />
                         </div>
                     )}
                 </div>
 
-                {/* Footer */}
-                <div className="payment-footer">
-                    {!hasUsableCashShift && cashMethodId !== null && (
-                        <div className="error-message-new">
-                            Efectivo no está disponible: abre un turno vigente en la misma sucursal. Los otros métodos sí pueden procesarse.
-                        </div>
-                    )}
-                    {error && <div className="error-message-new" role="alert">{error}</div>}
-                    {balanceError && <div className="error-message-new" role="alert">{balanceError}</div>}
-                    {pendingNotice && (
-                        <div style={{
-                            padding: '10px 12px',
-                            borderRadius: '10px',
-                            background: 'var(--color-warning, #f59e0b)18',
-                            border: '1px solid var(--color-warning, #f59e0b)',
-                            color: 'var(--color-warning, #b45309)',
-                            fontSize: '0.85rem',
-                            fontWeight: 600,
-                            marginBottom: '8px'
-                        }}>
-                            {pendingNotice}
-                        </div>
-                    )}
-                    <div className="footer-actions">
-                        <button type="button" className="btn-cancel" onClick={handleClose} disabled={loading}>Cancelar</button>
-                        <button type="button" className="btn-confirm"
-                            onClick={mode === 'single' ? handleSinglePayment : handleSplitPayment}
-                            disabled={
-                                loading || previewLoading || balanceLoading || Boolean(balanceError) || hasQueuedPayment || totalWithTip <= 0 ||
-                                (mode === 'single' && (selectedMethod === null || (isCashSelected && (!hasUsableCashShift || tenderedAmount === null || tenderedCents < totalCents)))) ||
-                                (mode === 'split' && (getSplitRemaining() !== 0 || !itemAssignmentsComplete))
-                            }>
-                            {loading
-                                ? 'Procesando...'
-                                : previewLoading
-                                    ? 'Calculando...'
-                                    : mode === 'split'
-                                        ? (paidSplitIndexes.length > 0
-                                            ? `Reintentar ${Math.max(splits.length - paidSplitIndexes.length, 0)} Pagos`
-                                            : `Confirmar ${splits.length} Pagos`)
-                                        : 'Confirmar Pago'}
+                <footer className="payment-dialog-footer">
+                    {(error || balanceError) && <div className="payment-alert error" role="alert">{error || balanceError}</div>}
+                    {notice && <div className="payment-alert warning" role="status">{notice}</div>}
+                    {!hasUsableCashShift && methods.some((method) => isCashPaymentMethodType(method.type)) && <div className="payment-cash-note"><Banknote size={16} /> Efectivo oculto: no hay turno vigente en la sucursal.</div>}
+                    <div className="payment-footer-actions">
+                        <button type="button" className="secondary" onClick={close} disabled={busy}>Cancelar</button>
+                        <button type="button" className="primary" onClick={() => void (mode === 'single' ? handleSinglePayment() : mode === 'mixed' ? handleMixedPayment() : handleSplitPayment())} disabled={busy || queuedPayment || Boolean(balanceError) || balance <= 0 || (mode === 'single' && (!singleMethodId || (singleIsCash && (singleTendered === null || moneyToCents(singleTendered) < totalCents)))) || (mode === 'mixed' && !mixedValid) || (mode === 'split' && !splitValid)}>
+                            {loading ? 'Procesando…' : previewLoading ? 'Calculando…' : mode === 'single' ? 'Confirmar pago' : mode === 'mixed' ? `Confirmar ${mixedLegs.length} tramos` : `Confirmar ${splitLegs.length} pagos`}
                         </button>
                     </div>
-                </div>
-            </div>
+                    <span className="payment-footer-mode">{selectedModeTitle}</span>
+                </footer>
+            </section>
         </div>
     );
-};
+}
 
-export default PaymentModal;
+function AllocationStatus({
+    summary,
+    currencySymbol,
+    valid,
+}: {
+    summary: ReturnType<typeof summarizePaymentAllocation>;
+    currencySymbol: string;
+    valid: boolean;
+}) {
+    const difference = centsToMoney(Math.abs(summary.differenceCents));
+    return (
+        <div className={`allocation-status ${valid ? 'valid' : 'invalid'}`} role="status">
+            <div><span>Total asignado</span><strong>{formatMoneyAmount(centsToMoney(summary.allocatedCents), currencySymbol)}</strong></div>
+            <b>{summary.exact ? 'Suma exacta' : summary.differenceCents > 0 ? `Falta ${formatMoneyAmount(difference, currencySymbol)}` : `Excede ${formatMoneyAmount(difference, currencySymbol)}`}</b>
+        </div>
+    );
+}

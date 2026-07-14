@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Armchair, ArrowRightLeft, CopyPlus, List, Lock, Maximize2, Merge, Plus, RotateCw, Save, Shapes, Trash2, Unlock, ZoomIn, ZoomOut } from 'lucide-react';
+import { Armchair, ArrowRightLeft, CopyPlus, LayoutDashboard, Lock, Maximize2, Merge, Plus, RotateCw, Save, Shapes, Trash2, Unlock, ZoomIn, ZoomOut } from 'lucide-react';
+import type { SingleValue } from 'react-select';
 import type { FloorArea, FloorAreaKind, FloorAreaShape, Table, TableFloorPlan } from '../types';
+import Select from './Select';
 import './TableMap.css';
 
 interface PositionedTable extends Table {
@@ -36,10 +38,10 @@ interface TableMapProps {
     saving: boolean;
     onSelect: (table: Table) => void;
     onSave: (draft: FloorPlanDraft) => Promise<void>;
-    onShowList: () => void;
     onTransfer?: () => void;
     onConsolidate?: () => void;
     onCreateTable?: () => void;
+    onReturnToAdministration?: () => void;
     branchControl?: ReactNode;
     themeControl?: ReactNode;
 }
@@ -57,10 +59,41 @@ type Interaction = {
     startHeight: number;
 };
 
+type CanvasResize = {
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    startWidth: number;
+    startHeight: number;
+};
+
+type SelectOption<T extends string = string> = { value: T; label: string };
+
 const FALLBACK_COLUMNS = 5;
 const FALLBACK_X_GAP = 165;
 const FALLBACK_Y_GAP = 125;
 const AREA_COLORS = ['#DFF4E8', '#E4EEFF', '#F8E8FF', '#FFF1D6', '#E4F5F7', '#FBE5E7'];
+const STATUS_OPTIONS: SelectOption[] = [
+    { value: '', label: 'Todas las mesas' },
+    { value: 'AVAILABLE', label: 'Disponibles' },
+    { value: 'OCCUPIED', label: 'Ocupadas' },
+    { value: 'RESERVED', label: 'Reservadas' },
+    { value: 'OUT_OF_SERVICE', label: 'Fuera de servicio' }
+];
+const AREA_KIND_OPTIONS: SelectOption<FloorAreaKind>[] = [
+    { value: 'DINING', label: 'Salón' },
+    { value: 'TERRACE', label: 'Terraza' },
+    { value: 'BAR', label: 'Barra' },
+    { value: 'PRIVATE', label: 'Privado' },
+    { value: 'TAKEAWAY', label: 'Retiro' },
+    { value: 'OTHER', label: 'Otro' }
+];
+const AREA_SHAPE_OPTIONS: SelectOption<FloorAreaShape>[] = [
+    { value: 'RECTANGLE', label: 'Rectangular' },
+    { value: 'ROUNDED', label: 'Esquinas suaves' },
+    { value: 'OVAL', label: 'Ovalada' },
+    { value: 'L_SHAPE', label: 'Forma L' }
+];
 
 function newArea(index: number): EditableArea {
     return {
@@ -123,10 +156,10 @@ export default function TableMap({
     saving,
     onSelect,
     onSave,
-    onShowList,
     onTransfer,
     onConsolidate,
     onCreateTable,
+    onReturnToAdministration,
     branchControl,
     themeControl
 }: TableMapProps) {
@@ -148,6 +181,7 @@ export default function TableMap({
     const [selection, setSelection] = useState<Selection | null>(null);
     const [deletedAreaIds, setDeletedAreaIds] = useState<number[]>([]);
     const interactionRef = useRef<Interaction | null>(null);
+    const canvasResizeRef = useRef<CanvasResize | null>(null);
     const dirtyRef = useRef(dirty);
     const editingRef = useRef(editing);
     dirtyRef.current = dirty;
@@ -216,6 +250,35 @@ export default function TableMap({
         if (interactionRef.current?.pointerId === event.pointerId) interactionRef.current = null;
     };
 
+    const beginCanvasResize = (event: React.PointerEvent<HTMLSpanElement>) => {
+        if (!editing) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        canvasResizeRef.current = {
+            pointerId: event.pointerId,
+            startClientX: event.clientX,
+            startClientY: event.clientY,
+            startWidth: canvasWidth,
+            startHeight: canvasHeight
+        };
+        setSelection(null);
+    };
+
+    const resizeCanvas = (event: React.PointerEvent<HTMLSpanElement>) => {
+        const resize = canvasResizeRef.current;
+        if (!editing || !resize || resize.pointerId !== event.pointerId) return;
+        const dx = Math.round((event.clientX - resize.startClientX) / zoom);
+        const dy = Math.round((event.clientY - resize.startClientY) / zoom);
+        setCanvasWidth(Math.min(10000, Math.max(640, resize.startWidth + dx)));
+        setCanvasHeight(Math.min(10000, Math.max(480, resize.startHeight + dy)));
+        setDirty(true);
+    };
+
+    const endCanvasResize = (event: React.PointerEvent<HTMLSpanElement>) => {
+        if (canvasResizeRef.current?.pointerId === event.pointerId) canvasResizeRef.current = null;
+    };
+
     const patchTable = (patch: Partial<PositionedTable>) => {
         if (!selectedTable) return;
         setLayout((current) => current.map((table) => table.id === selectedTable.id ? { ...table, ...patch } : table));
@@ -281,35 +344,31 @@ export default function TableMap({
                     <span>{editing ? 'Selecciona un salón o mesa para cambiar tamaño, forma y rotación' : `${layout.length} mesas · ${areas.length} salones · selecciona una mesa para operarla`}</span>
                 </div>
                 <div className="table-map-actions">
-                    {!editing && (
-                        <label className="table-map-status-filter">
-                            <span>Estado</span>
-                            <select value={statusFilter || ''} onChange={(event) => onStatusFilterChange(event.target.value || null)}>
-                                <option value="">Todas las mesas</option>
-                                <option value="AVAILABLE">Disponibles</option>
-                                <option value="OCCUPIED">Ocupadas</option>
-                                <option value="RESERVED">Reservadas</option>
-                                <option value="OUT_OF_SERVICE">Fuera de servicio</option>
-                            </select>
-                        </label>
-                    )}
+                    {!editing && onReturnToAdministration && <button type="button" onClick={onReturnToAdministration}><LayoutDashboard size={18} /> Administración</button>}
+                    {!editing && <Select<SelectOption>
+                        className="table-map-status-filter"
+                        aria-label="Filtrar mesas por estado"
+                        options={STATUS_OPTIONS}
+                        value={STATUS_OPTIONS.find((option) => option.value === (statusFilter || '')) || STATUS_OPTIONS[0]}
+                        onChange={(option: SingleValue<SelectOption>) => onStatusFilterChange(option?.value || null)}
+                        isSearchable={false}
+                    />}
                     {!editing && branchControl}
                     {!editing && themeControl}
-                    {!editing && <button type="button" onClick={onShowList}><List size={18} /> Lista</button>}
                     {!editing && onTransfer && <button type="button" onClick={onTransfer}><ArrowRightLeft size={18} /> Cambiar mesa</button>}
                     {!editing && onConsolidate && <button type="button" onClick={onConsolidate}><Merge size={18} /> Consolidar</button>}
                     {!editing && onCreateTable && <button type="button" className="primary" onClick={onCreateTable}><Plus size={18} /> Nueva mesa</button>}
                     {editing && (
-                        <label className="table-map-area-selector">
-                            <span>Editar salón</span>
-                            <select
-                                value={selectedArea ? areaKey(selectedArea) : ''}
-                                onChange={(event) => setSelection(event.target.value ? { kind: 'area', key: event.target.value } : null)}
-                            >
-                                <option value="">Seleccionar salón…</option>
-                                {areas.map((area) => <option key={areaKey(area)} value={areaKey(area)}>{area.name}</option>)}
-                            </select>
-                        </label>
+                        <Select<SelectOption>
+                            className="table-map-area-selector"
+                            label="Editar salón"
+                            options={areas.map((area) => ({ value: areaKey(area), label: area.name }))}
+                            value={selectedArea ? { value: areaKey(selectedArea), label: selectedArea.name } : null}
+                            onChange={(option: SingleValue<SelectOption>) => setSelection(option ? { kind: 'area', key: option.value } : null)}
+                            isClearable
+                            isSearchable={areas.length > 6}
+                            placeholder="Seleccionar salón…"
+                        />
                     )}
                     <span className="table-map-action-divider" aria-hidden="true" />
                     <button type="button" onClick={() => setZoom((value) => Math.max(0.45, value - 0.1))} aria-label="Alejar plano"><ZoomOut size={18} /></button>
@@ -370,6 +429,17 @@ export default function TableMap({
                                     </button>
                                 );
                             })}
+                            {editing && <span
+                                className="canvas-resize-handle"
+                                role="button"
+                                tabIndex={0}
+                                aria-label="Redimensionar el lienzo del plano"
+                                title="Arrastra para cambiar el tamaño del plano"
+                                onPointerDown={beginCanvasResize}
+                                onPointerMove={resizeCanvas}
+                                onPointerUp={endCanvasResize}
+                                onPointerCancel={endCanvasResize}
+                            />}
                         </div>
                     </div>
                 </div>
@@ -379,11 +449,18 @@ export default function TableMap({
                         {selectedTable ? (
                             <>
                                 <div className="inspector-heading"><Armchair size={20} /><div><strong>Mesa {selectedTable.number}</strong><span>Forma y ubicación</span></div></div>
-                                <label>Salón<select value={selectedTable.floorAreaId ? `id:${selectedTable.floorAreaId}` : selectedTable.floorAreaClientKey || ''} onChange={(event) => {
-                                    const value = event.target.value;
+                                <Select<SelectOption>
+                                    label="Salón"
+                                    options={[{ value: '', label: 'Sin asignar' }, ...areas.map((area) => ({ value: areaKey(area), label: area.name }))]}
+                                    value={(() => {
+                                        const value = selectedTable.floorAreaId ? `id:${selectedTable.floorAreaId}` : selectedTable.floorAreaClientKey || '';
+                                        return { value, label: areas.find((area) => areaKey(area) === value)?.name || 'Sin asignar' };
+                                    })()}
+                                    onChange={(option: SingleValue<SelectOption>) => {
+                                    const value = option?.value || '';
                                     const area = areas.find((item) => areaKey(item) === value);
                                     patchTable({ floorAreaId: area?.id ?? null, floorAreaClientKey: area?.id ? null : area?.clientKey ?? null });
-                                }}><option value="">Sin asignar</option>{areas.map((area) => <option key={areaKey(area)} value={areaKey(area)}>{area.name}</option>)}</select></label>
+                                }} isSearchable={areas.length > 6} />
                                 <div className="inspector-shapes"><button type="button" className={selectedTable.mapShape === 'RECTANGLE' ? 'active' : ''} onClick={() => patchTable({ mapShape: 'RECTANGLE' })}>Rectangular</button><button type="button" className={selectedTable.mapShape === 'SQUARE' ? 'active' : ''} onClick={() => { const size = Math.max(selectedTable.mapWidth, selectedTable.mapHeight); patchTable({ mapShape: 'SQUARE', mapWidth: size, mapHeight: size }); }}>Cuadrada</button><button type="button" className={selectedTable.mapShape === 'ROUND' ? 'active' : ''} onClick={() => { const size = Math.max(selectedTable.mapWidth, selectedTable.mapHeight); patchTable({ mapShape: 'ROUND', mapWidth: size, mapHeight: size }); }}>Redonda</button></div>
                                 <div className="inspector-grid"><label>Ancho<input type="number" min="56" max="400" value={selectedTable.mapWidth} onChange={(event) => patchTable({ mapWidth: Number(event.target.value) })} /></label><label>Alto<input type="number" min="56" max="400" value={selectedTable.mapHeight} onChange={(event) => patchTable({ mapHeight: Number(event.target.value) })} /></label></div>
                                 <label><span className="label-with-icon"><RotateCw size={15} /> Rotación</span><input type="range" min="0" max="359" value={selectedTable.mapRotation} onChange={(event) => patchTable({ mapRotation: Number(event.target.value) })} /><output>{selectedTable.mapRotation}°</output></label>
@@ -392,8 +469,8 @@ export default function TableMap({
                             <>
                                 <div className="inspector-heading"><Shapes size={20} /><div><strong>{selectedArea.name}</strong><span>Diseño del salón</span></div></div>
                                 <label>Nombre<input value={selectedArea.name} maxLength={100} onChange={(event) => patchArea({ name: event.target.value })} /></label>
-                                <label>Tipo<select value={selectedArea.kind} onChange={(event) => patchArea({ kind: event.target.value as FloorAreaKind })}><option value="DINING">Salón</option><option value="TERRACE">Terraza</option><option value="BAR">Barra</option><option value="PRIVATE">Privado</option><option value="TAKEAWAY">Retiro</option><option value="OTHER">Otro</option></select></label>
-                                <label>Forma<select value={selectedArea.mapShape} onChange={(event) => patchArea({ mapShape: event.target.value as FloorAreaShape })}><option value="RECTANGLE">Rectangular</option><option value="ROUNDED">Esquinas suaves</option><option value="OVAL">Ovalada</option><option value="L_SHAPE">Forma L</option></select></label>
+                                <Select<SelectOption<FloorAreaKind>> label="Tipo" options={AREA_KIND_OPTIONS} value={AREA_KIND_OPTIONS.find((option) => option.value === selectedArea.kind)} onChange={(option: SingleValue<SelectOption<FloorAreaKind>>) => option && patchArea({ kind: option.value })} isSearchable={false} />
+                                <Select<SelectOption<FloorAreaShape>> label="Forma" options={AREA_SHAPE_OPTIONS} value={AREA_SHAPE_OPTIONS.find((option) => option.value === selectedArea.mapShape)} onChange={(option: SingleValue<SelectOption<FloorAreaShape>>) => option && patchArea({ mapShape: option.value })} isSearchable={false} />
                                 <label>Color<input type="color" value={selectedArea.color || '#E4EEFF'} onChange={(event) => patchArea({ color: event.target.value })} /></label>
                                 <div className="inspector-grid"><label>Ancho<input type="number" min="160" max="10000" value={selectedArea.mapWidth} onChange={(event) => patchArea({ mapWidth: Number(event.target.value) })} /></label><label>Alto<input type="number" min="140" max="10000" value={selectedArea.mapHeight} onChange={(event) => patchArea({ mapHeight: Number(event.target.value) })} /></label></div>
                                 <label><span className="label-with-icon"><RotateCw size={15} /> Rotación</span><input type="range" min="0" max="359" value={selectedArea.mapRotation} onChange={(event) => patchArea({ mapRotation: Number(event.target.value) })} /><output>{selectedArea.mapRotation}°</output></label>

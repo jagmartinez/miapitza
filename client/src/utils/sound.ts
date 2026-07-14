@@ -3,6 +3,7 @@ let audioContext: AudioContext | null = null;
 
 export const initializeSound = () => {
     try {
+        if (audioContext) return;
         const AudioCtx = window.AudioContext
             ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
         if (AudioCtx) {
@@ -15,7 +16,9 @@ export const initializeSound = () => {
 
 export const playNotificationSound = () => {
     try {
-        if (audioContext) {
+        if (!audioContext) initializeSound();
+        const play = () => {
+            if (!audioContext) return;
             const oscillator = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
 
@@ -30,6 +33,12 @@ export const playNotificationSound = () => {
 
             oscillator.start(audioContext.currentTime);
             oscillator.stop(audioContext.currentTime + 0.5);
+        };
+
+        if (audioContext?.state === 'suspended') {
+            void audioContext.resume().then(play).catch(() => undefined);
+        } else {
+            play();
         }
     } catch {
         // Silently fail — sound is non-critical

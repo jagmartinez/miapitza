@@ -54,23 +54,14 @@
     color: var(--color-text-secondary);
     font-size: 10px;
     font-weight: 750;
-    text-transform: uppercase;
     letter-spacing: .04em;
 }
-.table-map-status-filter select,
-.table-map-area-selector select {
-    min-height: 40px;
-    padding: 0 34px 0 10px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-background);
-    color: var(--color-text);
-    font: inherit;
-    font-size: var(--font-size-sm);
-    font-weight: 650;
-    text-transform: none;
-    cursor: pointer;
-}
+.table-map-status-filter .react-select__control,
+.table-map-area-selector .react-select__control { min-height: 40px; background: var(--color-background); }
+.table-map-status-filter .react-select__value-container,
+.table-map-area-selector .react-select__value-container { padding: 0 8px; }
+.table-map-status-filter .react-select__single-value,
+.table-map-area-selector .react-select__single-value { font-size: var(--font-size-sm); font-weight: 650; }
 .table-map-branch-control { width: 178px; min-width: 150px; }
 .table-map-branch-control .select-group.standard .react-select__control { min-height: 40px; background: var(--color-background); }
 .table-map-branch-control .react-select__value-container { padding: 0 8px; }
@@ -94,6 +85,24 @@
     background-size: 24px 24px;
 }
 .is-editing .table-map-scale { touch-action: none; }
+.canvas-resize-handle {
+    position: absolute;
+    right: -10px;
+    bottom: -10px;
+    z-index: 12;
+    width: 30px;
+    height: 30px;
+    border: 4px solid var(--color-surface);
+    border-radius: 8px;
+    background:
+        linear-gradient(135deg, transparent 42%, var(--color-primary) 43% 54%, transparent 55%),
+        linear-gradient(135deg, transparent 62%, var(--color-primary) 63% 74%, transparent 75%),
+        var(--color-background);
+    box-shadow: var(--shadow-md);
+    cursor: nwse-resize;
+    touch-action: none;
+}
+.canvas-resize-handle:focus-visible { outline: 3px solid var(--color-primary); outline-offset: 3px; }
 .table-map-floor-outline {
     position: absolute;
     inset: 16px;
@@ -209,8 +218,7 @@
 .inspector-heading strong { font-size: var(--font-size-base); }
 .inspector-heading span { color: var(--color-text-secondary); font-size: var(--font-size-xs); }
 .table-map-inspector label { display: grid; gap: 6px; color: var(--color-text-secondary); font-size: var(--font-size-xs); font-weight: 700; }
-.table-map-inspector input:not([type='range']):not([type='color']),
-.table-map-inspector select {
+.table-map-inspector input:not([type='range']):not([type='color']) {
     width: 100%;
     min-height: 42px;
     padding: 8px 10px;
@@ -219,6 +227,8 @@
     background: var(--color-background);
     color: var(--color-text);
 }
+.table-map-inspector .select-group .react-select__control { min-height: 42px; background: var(--color-background); }
+.table-map-inspector .select-group .react-select__value-container { padding: 0 10px; }
 .table-map-inspector input[type='color'] { width: 100%; height: 42px; padding: 3px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); }
 .table-map-inspector input[type='range'] { width: 100%; accent-color: var(--color-primary); }
 .table-map-inspector output { color: var(--color-text); font-weight: 800; }
@@ -230,6 +240,20 @@
 .inspector-danger { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid color-mix(in srgb, var(--color-danger) 45%, var(--color-border)); border-radius: var(--radius-md); color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface)); cursor: pointer; }
 .inspector-danger:disabled { opacity: .45; cursor: not-allowed; }
 .inspector-help { padding: 12px; border-radius: var(--radius-md); color: var(--color-text-secondary); background: var(--color-background); border: 1px solid var(--color-border); font-size: var(--font-size-xs); line-height: 1.5; }
+
+.table-map-viewport,
+.table-map-inspector {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+}
+.table-map-viewport::-webkit-scrollbar,
+.table-map-inspector::-webkit-scrollbar { width: 6px; height: 6px; }
+.table-map-viewport::-webkit-scrollbar-track,
+.table-map-inspector::-webkit-scrollbar-track { background: transparent; }
+.table-map-viewport::-webkit-scrollbar-thumb,
+.table-map-inspector::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+.table-map-viewport::-webkit-scrollbar-thumb:hover,
+.table-map-inspector::-webkit-scrollbar-thumb:hover { background: var(--color-neutral-400); }
 
 .table-map-legend { flex: 0 0 auto; display: flex; gap: 14px; flex-wrap: wrap; padding: 9px 16px; border-top: 1px solid var(--color-border); color: var(--color-text-secondary); background: var(--color-surface); font-size: var(--font-size-xs); }
 .table-map-legend span { display: inline-flex; align-items: center; gap: 6px; }

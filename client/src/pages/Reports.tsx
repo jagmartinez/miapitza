@@ -64,6 +64,7 @@ const REPORT_CATALOG: ReportDef[] = [
     { id: 'sales-daily', name: 'Ventas Diarias', description: 'Resumen de ventas día a día con ticket promedio.', icon: Calendar, category: 'Ventas', hiddenInHub: true },
     { id: 'sales-monthly', name: 'Ventas Mensuales', description: 'Ventas por mes con variación mes a mes.', icon: BarChart3, category: 'Ventas', hiddenInHub: true },
     { id: 'sales-by-category', name: 'Ventas por Categoría', description: 'Distribución de ventas por categoría con porcentaje del total.', icon: PieChart, category: 'Ventas', hiddenInHub: true },
+    { id: 'sales-by-product', name: 'Ventas por Producto', description: 'Unidades, órdenes e ingresos por producto dentro de un rango de fechas, categoría y sucursal.', icon: Package, category: 'Ventas', hiddenInHub: true },
     { id: 'sales-by-brand', name: 'Ventas por Empresa', description: 'Distribución de ventas por empresa/marca con porcentaje del total. El arqueo de caja sigue siendo único.', icon: Building2, category: 'Ventas', hiddenInHub: true },
     { id: 'sales-by-payment-method', name: 'Ventas por Método de Pago', description: 'Desglose de pagos: efectivo, tarjeta, transferencia, etc.', icon: CreditCard, category: 'Ventas', hiddenInHub: true },
     { id: 'sales-by-waiter', name: 'Ventas por Mesero', description: 'Rendimiento de ventas por usuario/mesero.', icon: Users, category: 'Ventas', hiddenInHub: true },
@@ -96,7 +97,7 @@ const CATEGORIES_ORDER = ['Inventario', 'Compras', 'Ventas', 'Costos', 'Producci
 const REPORT_GROUPS: Array<{ key: string; reports: string[] }> = [
     { key: 'inventory', reports: ['inventory', 'low-stock'] },
     { key: 'purchases', reports: ['purchases', 'purchases-by-day', 'purchases-by-month', 'purchases-by-supplier', 'price-comparison', 'most-purchased'] },
-    { key: 'sales', reports: ['sales', 'sales-daily', 'sales-monthly', 'sales-by-category', 'sales-by-brand', 'sales-by-payment-method', 'sales-by-waiter', 'sales-by-channel', 'sales-by-hour'] },
+    { key: 'sales', reports: ['sales', 'sales-by-product', 'sales-daily', 'sales-monthly', 'sales-by-category', 'sales-by-brand', 'sales-by-payment-method', 'sales-by-waiter', 'sales-by-channel', 'sales-by-hour'] },
     { key: 'costs-analytics', reports: ['profitability', 'food-cost-by-category', 'margin-by-product'] },
     { key: 'production', reports: ['recipe-cost', 'production-yield', 'menu-engineering', 'purchase-projection'] },
     { key: 'production-orders', reports: ['prod-orders', 'prod-plan-vs-real', 'prod-input-consumption', 'prod-profitability', 'prod-kardex'] },
@@ -446,6 +447,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
                 case 'most-purchased': res = await reportsAPI.getMostPurchased(params); break;
                 case 'purchases-by-supplier': res = await reportsAPI.getPurchasesBySupplier(params); break;
                 case 'sales-by-category': res = await reportsAPI.getSalesByCategory(params); break;
+                case 'sales-by-product': res = await reportsAPI.getSalesByProduct(params); break;
                 case 'sales-by-brand': res = await reportsAPI.getSalesByBrand(params); break;
                 case 'sales-daily': res = await reportsAPI.getSalesDaily(params); break;
                 case 'sales-monthly': res = await reportsAPI.getSalesMonthly(params); break;
@@ -492,6 +494,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
                 case 'most-purchased': res = await reportsAPI.exportMostPurchased(params); break;
                 case 'purchases-by-supplier': res = await reportsAPI.exportPurchasesBySupplier(params); break;
                 case 'sales-by-category': res = await reportsAPI.exportSalesByCategory(params); break;
+                case 'sales-by-product': res = await reportsAPI.exportSalesByProduct(params); break;
                 case 'sales-by-brand': res = await reportsAPI.exportSalesByBrand(params); break;
                 case 'sales-daily': res = await reportsAPI.exportSalesDaily(params); break;
                 case 'sales-monthly': res = await reportsAPI.exportSalesMonthly(params); break;
@@ -788,7 +791,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
 // ── Filter visibility helpers ──
 const DATE_FILTER_REPORTS = new Set([
     'purchases', 'sales', 'purchases-by-day', 'purchases-by-month', 'price-comparison',
-    'most-purchased', 'purchases-by-supplier', 'sales-by-category', 'sales-by-brand', 'sales-daily',
+    'most-purchased', 'purchases-by-supplier', 'sales-by-category', 'sales-by-product', 'sales-by-brand', 'sales-daily',
     'sales-monthly', 'sales-by-payment-method', 'sales-by-waiter', 'sales-by-channel',
     'sales-by-hour', 'food-cost-by-category', 'margin-by-product', 'audit', 'day-analysis',
     'menu-engineering', 'purchase-projection',
@@ -796,7 +799,7 @@ const DATE_FILTER_REPORTS = new Set([
 ]);
 const BRANCH_FILTER_REPORTS = new Set([
     'purchases', 'sales', 'purchases-by-day', 'purchases-by-month', 'most-purchased',
-    'purchases-by-supplier', 'sales-by-category', 'sales-by-brand', 'sales-daily', 'sales-monthly',
+    'purchases-by-supplier', 'sales-by-category', 'sales-by-product', 'sales-by-brand', 'sales-daily', 'sales-monthly',
     'sales-by-payment-method', 'sales-by-waiter', 'sales-by-channel', 'sales-by-hour',
     'food-cost-by-category', 'margin-by-product', 'day-analysis', 'month-comparison',
     'recipe-cost', 'production-yield', 'menu-engineering', 'purchase-projection',
@@ -804,7 +807,7 @@ const BRANCH_FILTER_REPORTS = new Set([
 ]);
 const CATEGORY_FILTER_REPORTS = new Set([
     'inventory', 'purchases', 'sales', 'profitability', 'low-stock',
-    'price-comparison', 'sales-by-category', 'margin-by-product',
+    'price-comparison', 'sales-by-category', 'sales-by-product', 'margin-by-product',
     'recipe-cost',
 ]);
 const SUPPLIER_FILTER_REPORTS = new Set([
@@ -948,6 +951,15 @@ function getColumns(reportId: string): ColDef[] {
             { key: 'percentOfTotal', header: '% del Total', align: 'right', format: 'number' },
             { key: 'itemCount', header: '# Items', align: 'right', format: 'number' },
             { key: 'unitsSold', header: 'Unidades', align: 'right', format: 'number' },
+        ];
+        case 'sales-by-product': return [
+            { key: 'productName', header: 'Producto' },
+            { key: 'categoryName', header: 'Categoría' },
+            { key: 'unitsSold', header: 'Unidades', align: 'right', format: 'number' },
+            { key: 'orderCount', header: '# Órdenes', align: 'right', format: 'number' },
+            { key: 'lineCount', header: '# Líneas', align: 'right', format: 'number' },
+            { key: 'averageUnitPrice', header: 'Precio Prom.', align: 'right', format: 'currency' },
+            { key: 'totalSales', header: 'Ventas Totales', align: 'right', format: 'currency' },
         ];
         case 'sales-by-brand': return [
             { key: 'brandName', header: 'Empresa / Marca' },

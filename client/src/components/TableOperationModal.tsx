@@ -1,17 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import Modal from './Modal';
 import Button from './Button';
+import Select from './Select';
 import { ordersAPI } from '../services/api';
 import { ACTIVE_ORDER_STATUSES } from '../utils/orderStatus';
 import type { Order, Table } from '../types';
+import type { SingleValue } from 'react-select';
 import './TableOperationModal.css';
 
 type Operation = 'TRANSFER' | 'CONSOLIDATE';
+type OperationOption = { value: string; label: string };
 
 interface Props {
     isOpen: boolean;
     operation: Operation;
     tables: Table[];
+    initialTableId?: number | null;
     submitting: boolean;
     onClose: () => void;
     onTransfer: (data: {
@@ -25,7 +29,7 @@ interface Props {
 }
 
 export default function TableOperationModal({
-    isOpen, operation, tables, submitting, onClose, onTransfer, onConsolidate
+    isOpen, operation, tables, initialTableId, submitting, onClose, onTransfer, onConsolidate
 }: Props) {
     const [sourceTableId, setSourceTableId] = useState('');
     const [destinationTableId, setDestinationTableId] = useState('');
@@ -40,8 +44,9 @@ export default function TableOperationModal({
 
     useEffect(() => {
         if (!isOpen) return;
-        setSourceTableId('');
-        setDestinationTableId('');
+        const initialTable = initialTableId ? tables.find((table) => table.id === initialTableId) : undefined;
+        setSourceTableId(operation === 'TRANSFER' && initialTable?.status === 'OCCUPIED' ? String(initialTable.id) : '');
+        setDestinationTableId(operation === 'CONSOLIDATE' && initialTable && ['AVAILABLE', 'OCCUPIED'].includes(initialTable.status) ? String(initialTable.id) : '');
         setSourceTableIds([]);
         setOrderId('');
         setTransferMode('FULL');
@@ -49,7 +54,7 @@ export default function TableOperationModal({
         setOrders([]);
         setOrdersError('');
         setReason('');
-    }, [isOpen, operation]);
+    }, [initialTableId, isOpen, operation, tables]);
 
     useEffect(() => {
         if (operation !== 'TRANSFER' || !sourceTableId) {
@@ -90,6 +95,20 @@ export default function TableOperationModal({
     const transferSlices = useMemo(() => Object.entries(transferQuantities)
         .filter(([, quantity]) => quantity > 0)
         .map(([itemId, quantity]) => ({ orderItemId: Number(itemId), quantity })), [transferQuantities]);
+    const sourceOptions = useMemo<OperationOption[]>(() => eligibleSources.map((table) => ({
+        value: String(table.id),
+        label: `Mesa ${table.number}${table.location ? ` · ${table.location}` : ''}`
+    })), [eligibleSources]);
+    const destinationOptions = useMemo<OperationOption[]>(() => eligibleDestinations
+        .filter((table) => String(table.id) !== sourceTableId)
+        .map((table) => ({
+            value: String(table.id),
+            label: `Mesa ${table.number} · ${table.status === 'AVAILABLE' ? 'Disponible' : 'Ocupada'}${table.location ? ` · ${table.location}` : ''}`
+        })), [eligibleDestinations, sourceTableId]);
+    const orderOptions = useMemo<OperationOption[]>(() => orders.map((order) => ({
+        value: String(order.id),
+        label: `Orden #${order.id} · ${order.items?.length || 0} productos`
+    })), [orders]);
 
     const submit = async () => {
         if (operation === 'TRANSFER') {
@@ -132,42 +151,55 @@ export default function TableOperationModal({
             )}
         >
             <div className="table-operation-form">
+                <div className="table-operation-guide">
+                    <span className="active">1</span>
+                    <div><strong>{operation === 'TRANSFER' ? 'Define el traslado' : 'Elige la cuenta principal'}</strong><small>{operation === 'TRANSFER' ? 'Selecciona origen, destino y alcance.' : 'Después marca las mesas que se unirán.'}</small></div>
+                </div>
                 {operation === 'TRANSFER' && (
-                    <label>
-                        Mesa origen
-                        <select value={sourceTableId} onChange={(event) => setSourceTableId(event.target.value)}>
-                            <option value="">Selecciona una mesa ocupada</option>
-                            {eligibleSources.map((table) => <option key={table.id} value={table.id}>Mesa {table.number}</option>)}
-                        </select>
-                    </label>
+                    <Select<OperationOption>
+                        variant="modal"
+                        label="Mesa origen"
+                        placeholder="Selecciona una mesa ocupada"
+                        options={sourceOptions}
+                        value={sourceOptions.find((option) => option.value === sourceTableId) || null}
+                        onChange={(option: SingleValue<OperationOption>) => {
+                            const nextId = option?.value || '';
+                            setSourceTableId(nextId);
+                            if (nextId === destinationTableId) setDestinationTableId('');
+                        }}
+                        isSearchable={sourceOptions.length > 6}
+                    />
                 )}
 
-                <label>
-                    Mesa destino
-                    <select value={destinationTableId} onChange={(event) => {
-                        const nextId = event.target.value;
+                <Select<OperationOption>
+                    variant="modal"
+                    label={operation === 'TRANSFER' ? 'Mesa destino' : 'Cuenta principal / mesa destino'}
+                    placeholder={operation === 'TRANSFER' ? 'Selecciona la mesa destino' : 'Selecciona dónde quedará la cuenta'}
+                    options={destinationOptions}
+                    value={destinationOptions.find((option) => option.value === destinationTableId) || null}
+                    onChange={(option: SingleValue<OperationOption>) => {
+                        const nextId = option?.value || '';
                         setDestinationTableId(nextId);
                         setSourceTableIds((current) => current.filter((id) => id !== Number(nextId)));
-                    }}>
-                        <option value="">Selecciona la mesa principal</option>
-                        {eligibleDestinations
-                            .filter((table) => String(table.id) !== sourceTableId)
-                            .map((table) => <option key={table.id} value={table.id}>Mesa {table.number} · {table.status === 'AVAILABLE' ? 'Disponible' : 'Ocupada'}</option>)}
-                    </select>
-                </label>
+                    }}
+                    isSearchable={destinationOptions.length > 6}
+                />
 
                 {operation === 'TRANSFER' && (
-                    <label>
-                        Orden a trasladar
-                        <select value={orderId} disabled={!sourceTableId || loadingOrders} onChange={(event) => {
-                            setOrderId(event.target.value);
+                    <div>
+                        <Select<OperationOption>
+                            variant="modal"
+                            label="Orden a trasladar"
+                            placeholder={loadingOrders ? 'Cargando órdenes…' : 'Selecciona una orden'}
+                            options={orderOptions}
+                            value={orderOptions.find((option) => option.value === orderId) || null}
+                            isDisabled={!sourceTableId || loadingOrders}
+                            onChange={(option: SingleValue<OperationOption>) => {
+                            setOrderId(option?.value || '');
                             setTransferQuantities({});
-                        }}>
-                            <option value="">{loadingOrders ? 'Cargando órdenes…' : 'Selecciona una orden'}</option>
-                            {orders.map((order) => <option key={order.id} value={order.id}>Orden #{order.id}</option>)}
-                        </select>
+                        }} isSearchable={orderOptions.length > 6} />
                         {ordersError && <span className="table-operation-error" role="alert">{ordersError}</span>}
-                    </label>
+                    </div>
                 )}
 
                 {operation === 'TRANSFER' && selectedOrder && (
@@ -218,7 +250,7 @@ export default function TableOperationModal({
                             {eligibleSources
                                 .filter((table) => table.id !== Number(destinationTableId))
                                 .map((table) => (
-                                    <label key={table.id}>
+                                    <label key={table.id} className={sourceTableIds.includes(table.id) ? 'selected' : ''}>
                                         <input
                                             type="checkbox"
                                             checked={sourceTableIds.includes(table.id)}
@@ -226,7 +258,7 @@ export default function TableOperationModal({
                                                 ? [...current, table.id]
                                                 : current.filter((id) => id !== table.id))}
                                         />
-                                        Mesa {table.number}
+                                        <span><strong>Mesa {table.number}</strong><small>{table.location || 'Salón principal'}</small></span>
                                     </label>
                                 ))}
                         </div>

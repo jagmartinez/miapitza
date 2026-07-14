@@ -297,6 +297,47 @@ export class ReportExtendedController {
         }
     }
 
+    static async getSalesByProduct(req: Request, res: Response, next: NextFunction) {
+        try {
+            const data = await ReportExtendedService.getSalesByProduct(req.user!.companyId, ReportExtendedController.parseFilters(req));
+            res.json({ success: true, data });
+        } catch (error: unknown) {
+            next({ statusCode: 500, message: getErrorMessage(error) });
+        }
+    }
+
+    static async exportSalesByProduct(req: Request, res: Response, next: NextFunction) {
+        try {
+            const data = await ReportExtendedService.getSalesByProduct(req.user!.companyId, ReportExtendedController.parseFilters(req));
+            const buffer = await ExcelExporter.generateReport({
+                title: 'Ventas por Producto',
+                sheetName: 'Ventas por Producto',
+                columns: [
+                    { header: 'Producto', key: 'productName', width: 28 },
+                    { header: 'Categoría', key: 'categoryName', width: 20 },
+                    { header: 'Unidades', key: 'unitsSold', width: 12, style: 'number' },
+                    { header: '# Órdenes', key: 'orderCount', width: 12, style: 'number' },
+                    { header: '# Líneas', key: 'lineCount', width: 12, style: 'number' },
+                    { header: 'Precio Prom.', key: 'averageUnitPrice', width: 16, style: 'currency' },
+                    { header: 'Ventas Totales', key: 'totalSales', width: 16, style: 'currency' },
+                ],
+                data: data.items,
+                filters: ReportExtendedController.buildAppliedFilters(req),
+                summary: {
+                    'Total Productos': data.summary.totalProducts,
+                    'Unidades Vendidas': data.summary.totalUnits,
+                    'Total Órdenes': data.summary.totalOrders,
+                    'Ventas Totales': data.summary.totalSales,
+                    'Producto Líder': data.summary.topProduct,
+                },
+                userName: ReportExtendedController.userName(req),
+            });
+            sendExcelResponse(res, buffer, `ventas_por_producto_${ReportExtendedController.dateStamp()}.xlsx`);
+        } catch (error: unknown) {
+            next({ statusCode: 500, message: getErrorMessage(error) });
+        }
+    }
+
     static async getSalesByBrand(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;

@@ -55,6 +55,8 @@ router.get('/purchases-by-supplier/export', requireRole('SUPERADMIN', 'ADMIN'), 
 // ── Extended Sales Reports ──
 router.get('/sales-by-category', requireRole('SUPERADMIN', 'ADMIN'), ReportExtendedController.getSalesByCategory);
 router.get('/sales-by-category/export', requireRole('SUPERADMIN', 'ADMIN'), ReportExtendedController.exportSalesByCategory);
+router.get('/sales-by-product', requireRole('SUPERADMIN', 'ADMIN'), ReportExtendedController.getSalesByProduct);
+router.get('/sales-by-product/export', requireRole('SUPERADMIN', 'ADMIN'), ReportExtendedController.exportSalesByProduct);
 router.get('/sales-by-brand', requireRole('SUPERADMIN', 'ADMIN'), ReportExtendedController.getSalesByBrand);
 router.get('/sales-by-brand/export', requireRole('SUPERADMIN', 'ADMIN'), ReportExtendedController.exportSalesByBrand);
 router.get('/sales-daily', requireRole('SUPERADMIN', 'ADMIN'), ReportExtendedController.getSalesDaily);

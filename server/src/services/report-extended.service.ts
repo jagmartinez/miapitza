@@ -347,6 +347,63 @@ export class ReportExtendedService {
     }
 
     // ── SALES: by Brand (empresa/marca) ──
+    static async getSalesByProduct(companyId: number, filters?: {
+        dateFrom?: Date; dateTo?: Date; branchId?: number; categoryId?: number; productId?: number;
+    }) {
+        let effectiveFilters = filters;
+        if (!filters?.dateFrom && !filters?.dateTo) {
+            const timeZone = await SettingService.getTimezone(companyId);
+            const month = getZonedMonthBounds(timeZone);
+            effectiveFilters = { ...filters, dateFrom: month.start, dateTo: month.endInclusive };
+        }
+        const orderWhere = this.buildOrderWhere(companyId, effectiveFilters);
+        const orderItems = await prisma.orderItem.findMany({
+            where: {
+                order: orderWhere,
+                ...(effectiveFilters?.categoryId ? { menuItem: { categoryId: effectiveFilters.categoryId } } : {}),
+                ...(effectiveFilters?.productId ? { menuItemId: effectiveFilters.productId } : {}),
+            },
+            select: {
+                orderId: true, menuItemId: true, quantity: true, subtotal: true,
+                menuItem: { select: { name: true, category: { select: { name: true } } } },
+            },
+        });
+        const products = new Map<number, { productId: number; productName: string; categoryName: string; unitsSold: number; lineCount: number; totalSales: number; orderIds: Set<number> }>();
+        const allOrderIds = new Set<number>();
+        for (const item of orderItems) {
+            if (!item.menuItemId || !item.menuItem) continue;
+            allOrderIds.add(item.orderId);
+            const current = products.get(item.menuItemId) || {
+                productId: item.menuItemId,
+                productName: item.menuItem.name,
+                categoryName: item.menuItem.category?.name || 'Sin categoría',
+                unitsSold: 0, lineCount: 0, totalSales: 0, orderIds: new Set<number>(),
+            };
+            current.unitsSold += Number(item.quantity) || 0;
+            current.lineCount += 1;
+            current.totalSales += Number(item.subtotal) || 0;
+            current.orderIds.add(item.orderId);
+            products.set(item.menuItemId, current);
+        }
+        const items = [...products.values()].map(({ orderIds, ...item }) => ({
+            ...item,
+            orderCount: orderIds.size,
+            averageUnitPrice: item.unitsSold > 0 ? Math.round(item.totalSales / item.unitsSold * 100) / 100 : 0,
+            totalSales: Math.round(item.totalSales * 100) / 100,
+        })).sort((a, b) => b.totalSales - a.totalSales);
+        const totalSales = items.reduce((sum, item) => sum + item.totalSales, 0);
+        return {
+            items,
+            summary: {
+                totalProducts: items.length,
+                totalUnits: items.reduce((sum, item) => sum + item.unitsSold, 0),
+                totalOrders: allOrderIds.size,
+                totalSales: Math.round(totalSales * 100) / 100,
+                topProduct: items[0]?.productName || 'N/A',
+            },
+        };
+    }
+
     static async getSalesByBrand(companyId: number, filters?: {
         dateFrom?: Date; dateTo?: Date; branchId?: number;
     }) {

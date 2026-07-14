@@ -7,7 +7,7 @@ import { initializeSound, playNotificationSound } from '../utils/sound';
 import { escapeHtml } from '../utils/escapeHtml';
 import { useDebounce } from '../utils/useDebounce';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
-import { getUserAccentColor, canOperateKitchenLineItems } from '../utils/authz';
+import { getUserAccentColor, canOperateKitchenLineItems, getUserRoleNames } from '../utils/authz';
 import { useAppToast } from '../context/ToastContext';
 import './Kitchen.css';
 import { getOrderStatusLabel, getOrderTimeline } from '../utils/orderStatus';
@@ -34,26 +34,14 @@ const dateFilterOptions = [
     { value: 'all', label: 'Todas' }
 ];
 
-function formatKitchenItemPreview(items: OrderItem[] | undefined, maxNames = 3): string {
-    if (!items?.length) return 'Sin productos';
-    const names = items
-        .map((item) => {
-            const qty = item.quantity > 1 ? `${item.quantity}x ` : '';
-            return `${qty}${item.menuItem?.name || 'Producto'}`;
-        })
-        .slice(0, maxNames);
-    const preview = names.join(', ');
-    const extra = items.length > maxNames ? ` +${items.length - maxNames}` : '';
-    const truncated = preview.length > 72 ? `${preview.slice(0, 69)}…` : preview;
-    return truncated + extra;
-}
-
 export default function Kitchen({ displayMode = false }: { displayMode?: boolean }) {
     const { user } = useAuth();
     const navigate = useNavigate();
     const { error: showError, warning: showWarning, success } = useAppToast();
     const { confirm } = useConfirmDialog();
     const canKitchenLineOps = canOperateKitchenLineItems(user);
+    const canReturnToAdministration = getUserRoleNames(user).some((role) => ['SUPERADMIN', 'ADMIN', 'CHEF'].includes(role));
+    const pageRef = useRef<HTMLDivElement>(null);
 
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
@@ -81,9 +69,10 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
     }, []);
 
     const toggleFullscreen = async () => {
+        if (!displayMode) return;
         try {
             if (document.fullscreenElement) await document.exitFullscreen();
-            else await document.documentElement.requestFullscreen();
+            else await pageRef.current?.requestFullscreen();
         } catch {
             showWarning('El navegador no permitió activar pantalla completa.');
         }
@@ -348,7 +337,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
         );
 
     return (
-        <div className={`kitchen-page-new ${displayMode ? 'kitchen-display-mode' : 'kitchen-admin-mode'}`}>
+        <div ref={pageRef} className={`kitchen-page-new ${displayMode ? 'kitchen-display-mode' : 'kitchen-admin-mode'}`}>
             <div className="kitchen-header-new">
                 <div className="header-left-kitchen">
                     <h1><ChefHat size={28} /> {displayMode ? 'Pantalla de Cocina' : 'Cocina (supervisión)'}</h1>
@@ -369,14 +358,18 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                         {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
                         <span>{soundEnabled ? 'Sonido ON' : 'Sonido OFF'}</span>
                     </button>
-                    <button className="sound-toggle-new" onClick={() => void toggleFullscreen()}>
+                    {displayMode && <button className="sound-toggle-new" onClick={() => void toggleFullscreen()}>
                         {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
                         <span>{isFullscreen ? 'Salir de pantalla' : 'Pantalla completa'}</span>
-                    </button>
-                    <button className="sound-toggle-new" onClick={() => navigate(displayMode ? '/kitchen' : '/kds')}>
-                        {displayMode ? <ArrowLeft size={18} /> : <MonitorUp size={18} />}
-                        <span>{displayMode ? 'Supervisión PC' : 'Abrir KDS táctil'}</span>
-                    </button>
+                    </button>}
+                    {!displayMode && <button className="sound-toggle-new" onClick={() => navigate('/kds')}>
+                        <MonitorUp size={18} />
+                        <span>Abrir KDS táctil</span>
+                    </button>}
+                    {displayMode && canReturnToAdministration && <button className="sound-toggle-new" onClick={() => navigate('/kitchen')}>
+                        <ArrowLeft size={18} />
+                        <span>Volver a administración</span>
+                    </button>}
                 </div>
             </div>
 
@@ -532,16 +525,6 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                     </div>
                                 )}
 
-                                {/* Items summary (click card to see detail) */}
-                                <div className="kitchen-items-summary">
-                                    <span className="kitchen-items-summary-icon">
-                                        <ListOrdered size={14} />
-                                    </span>
-                                    <span className="kitchen-items-summary-text" title={formatKitchenItemPreview(order.items, 10)}>
-                                        {formatKitchenItemPreview(order.items)}
-                                    </span>
-                                    <span className="kitchen-items-summary-hint">Ver detalle</span>
-                                </div>
                                 {displayMode && <div className="kds-visible-items">{order.items?.map((item) => <div key={item.id} className={`kds-visible-item status-${item.status.toLowerCase()}`}><strong>{item.quantity}× {item.menuItem?.name || 'Producto'}</strong>{item.notes && <span>{item.notes}</span>}</div>)}</div>}
                             </button>
 

@@ -522,39 +522,6 @@
     color: rgba(255, 255, 255, 0.6);
 }
 
-/* Items summary chip shown on the card (replaces full items list) */
-.kitchen-items-summary {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    padding: var(--spacing-xs) var(--spacing-sm);
-    background: var(--color-background);
-    border: 1px dashed var(--color-border);
-    border-radius: var(--radius-md);
-    color: var(--color-text-secondary);
-    font-size: 0.78rem;
-    margin-top: auto;
-}
-
-.kitchen-items-summary-icon {
-    display: inline-flex;
-    color: var(--color-primary);
-}
-
-.kitchen-items-summary-text {
-    font-weight: 600;
-    color: var(--color-text);
-}
-
-.kitchen-items-summary-hint {
-    margin-left: auto;
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: var(--color-primary);
-    font-weight: 600;
-}
-
 /* Order detail modal styles */
 .kitchen-detail-modal {
     display: flex;
@@ -837,18 +804,15 @@
 }
 
 /* Scrollbar */
-.kitchen-items-list::-webkit-scrollbar {
-    width: 4px;
-}
+.kitchen-items-list { scrollbar-width: thin; scrollbar-color: var(--color-border) transparent; }
+.kitchen-items-list::-webkit-scrollbar { width: 6px; }
 
 .kitchen-items-list::-webkit-scrollbar-track {
     background: transparent;
 }
 
-.kitchen-items-list::-webkit-scrollbar-thumb {
-    background: var(--color-text-tertiary);
-    border-radius: 10px;
-}
+.kitchen-items-list::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+.kitchen-items-list::-webkit-scrollbar-thumb:hover { background: var(--color-neutral-400); }
 
 /* Responsive */
 @media (max-width: 1024px) {
@@ -891,13 +855,13 @@
         font-size: var(--font-size-xs);
     }
 
-    /* Filters scroll horizontally, no wrap, hidden ugly scrollbar */
+    /* Filters scroll horizontally using the same subtle scrollbar as navigation. */
     .kitchen-filters-new {
         overflow-x: auto;
         overflow-y: hidden;
         flex-wrap: nowrap;
-        scrollbar-width: none;
-        -ms-overflow-style: none;
+        scrollbar-width: thin;
+        scrollbar-color: var(--color-border) transparent;
         -webkit-overflow-scrolling: touch;
         padding: var(--spacing-xs) var(--spacing-sm);
         gap: var(--spacing-xs);
@@ -905,9 +869,11 @@
     }
 
     .kitchen-filters-new::-webkit-scrollbar,
-    .status-filters-new::-webkit-scrollbar {
-        display: none;
-    }
+    .status-filters-new::-webkit-scrollbar { height: 6px; }
+    .kitchen-filters-new::-webkit-scrollbar-track,
+    .status-filters-new::-webkit-scrollbar-track { background: transparent; }
+    .kitchen-filters-new::-webkit-scrollbar-thumb,
+    .status-filters-new::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
 
     .kitchen-filters-new > *,
     .status-filters-new > * {
@@ -927,7 +893,8 @@
         gap: var(--spacing-xs);
         overflow-x: auto;
         flex-wrap: nowrap;
-        scrollbar-width: none;
+        scrollbar-width: thin;
+        scrollbar-color: var(--color-border) transparent;
         -webkit-overflow-scrolling: touch;
     }
 
@@ -1215,11 +1182,6 @@ button.kitchen-card-body-new:focus-visible {
 .action-btn-new.release {
     color: var(--color-success);
     background: color-mix(in srgb, var(--color-success) 10%, transparent);
-}
-
-.kitchen-items-summary {
-    min-height: 48px;
-    padding: 10px 12px;
 }
 
 @media (hover: none) {

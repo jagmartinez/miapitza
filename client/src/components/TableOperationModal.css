@@ -1,6 +1,5 @@
 .table-operation-form { display: grid; gap: var(--spacing-lg); }
 .table-operation-form > label { display: grid; gap: 7px; color: var(--color-text); font-weight: 600; }
-.table-operation-form select,
 .table-operation-form textarea {
     width: 100%;
     padding: 11px 12px;
@@ -11,13 +10,20 @@
     font: inherit;
     box-sizing: border-box;
 }
-.table-operation-form select { min-height: 44px; }
-.table-operation-form select:focus,
 .table-operation-form textarea:focus { outline: 2px solid var(--color-primary); outline-offset: 1px; }
-.table-operation-form fieldset { margin: 0; padding: var(--spacing-md); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.table-operation-form .select-group.modal .react-select__control { min-height: 46px; }
+.table-operation-guide { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface)); }
+.table-operation-guide > span { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: var(--color-primary); color: white; font-weight: 800; }
+.table-operation-guide > div { display: grid; gap: 2px; }
+.table-operation-guide strong { color: var(--color-text); }
+.table-operation-guide small { color: var(--color-text-secondary); }
+.table-operation-form fieldset { margin: 0; padding: var(--spacing-md); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--color-background) 70%, transparent); }
 .table-operation-form legend { padding: 0 6px; color: var(--color-text); font-weight: 700; }
-.table-operation-checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--spacing-sm); }
-.table-operation-checks label { display: flex; align-items: center; gap: 7px; min-height: 40px; color: var(--color-text); }
+.table-operation-checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: var(--spacing-sm); max-height: 230px; overflow: auto; padding: 2px; }
+.table-operation-checks label { display: flex; align-items: center; gap: 9px; min-height: 54px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text); cursor: pointer; }
+.table-operation-checks label.selected { border-color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 9%, var(--color-surface)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 15%, transparent); }
+.table-operation-checks label > span { display: grid; gap: 2px; }
+.table-operation-checks label small { color: var(--color-text-secondary); font-weight: 500; }
 .table-operation-checks input { width: 20px; height: 20px; }
 .table-operation-error { color: var(--color-danger); font-size: var(--font-size-xs); font-weight: 600; }
 .table-operation-mode { display: flex; flex-wrap: wrap; gap: var(--spacing-md); }
@@ -27,3 +33,22 @@
 .table-operation-items label { display: grid; grid-template-columns: minmax(0, 1fr) 82px; align-items: center; gap: var(--spacing-sm); color: var(--color-text); }
 .table-operation-items small { color: var(--color-text-secondary); }
 .table-operation-items input { width: 100%; min-height: 44px; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-text); box-sizing: border-box; }
+
+.table-operation-items,
+.table-operation-checks {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+}
+.table-operation-items::-webkit-scrollbar,
+.table-operation-checks::-webkit-scrollbar { width: 6px; height: 6px; }
+.table-operation-items::-webkit-scrollbar-track,
+.table-operation-checks::-webkit-scrollbar-track { background: transparent; }
+.table-operation-items::-webkit-scrollbar-thumb,
+.table-operation-checks::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+.table-operation-items::-webkit-scrollbar-thumb:hover,
+.table-operation-checks::-webkit-scrollbar-thumb:hover { background: var(--color-neutral-400); }
+
+@media (max-width: 560px) {
+    .table-operation-checks { grid-template-columns: 1fr; }
+    .table-operation-mode { display: grid; gap: 4px; }
+}

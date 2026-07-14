@@ -27,6 +27,8 @@ import { hasUsableCashShift, type CashShiftScope } from '../utils/paymentAccess'
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
 import { useCurrency } from '../hooks/useCurrency';
 import ThemeToggle from '../components/ThemeToggle';
+import KitchenNotificationBell from '../components/KitchenNotificationBell';
+import { useNavigate } from 'react-router-dom';
 
 interface ApiValidationError { field?: string; message?: string }
 function extractApiError(error: unknown, fallback: string): string {
@@ -46,6 +48,7 @@ function extractApiError(error: unknown, fallback: string): string {
 
 export default function Tables() {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const { symbol: currencySymbol } = useCurrency();
     const { confirm } = useConfirmDialog();
     const { error: showError, warning: showWarning, success: showSuccess } = useAppToast();
@@ -87,6 +90,7 @@ export default function Tables() {
     const [showMap, setShowMap] = useState(true);
     const [savingLayout, setSavingLayout] = useState(false);
     const [operation, setOperation] = useState<'TRANSFER' | 'CONSOLIDATE' | null>(null);
+    const [operationTableId, setOperationTableId] = useState<number | null>(null);
     const [submittingOperation, setSubmittingOperation] = useState(false);
     const [busyOrderId, setBusyOrderId] = useState<number | null>(null);
     const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
@@ -399,6 +403,7 @@ export default function Tables() {
         try {
             await tablesAPI.transfer(data, newIdempotencyKey());
             setOperation(null);
+            setOperationTableId(null);
             await loadTables();
             await loadFloorPlan();
             showSuccess('El consumo fue trasladado a la mesa destino.');
@@ -414,6 +419,7 @@ export default function Tables() {
         try {
             await tablesAPI.consolidate(data, newIdempotencyKey());
             setOperation(null);
+            setOperationTableId(null);
             await loadTables();
             await loadFloorPlan();
             showSuccess('Las cuentas fueron consolidadas en la mesa principal.');
@@ -461,12 +467,12 @@ export default function Tables() {
                         </button>
                         <ViewToggle value={viewMode} onChange={setViewMode} />
                         {canTransfer && (
-                            <button type="button" className="tables-map-toggle" onClick={() => setOperation('TRANSFER')}>
+                            <button type="button" className="tables-map-toggle" onClick={() => { setOperationTableId(null); setOperation('TRANSFER'); }}>
                                 <ArrowRightLeft size={18} /> Cambiar mesa
                             </button>
                         )}
                         {canConsolidate && (
-                            <button type="button" className="tables-map-toggle" onClick={() => setOperation('CONSOLIDATE')}>
+                            <button type="button" className="tables-map-toggle" onClick={() => { setOperationTableId(null); setOperation('CONSOLIDATE'); }}>
                                 <Merge size={18} /> Consolidar
                             </button>
                         )}
@@ -546,11 +552,11 @@ export default function Tables() {
                     saving={savingLayout}
                     onSelect={handleViewOrders}
                     onSave={handleSaveLayout}
-                    onShowList={() => setShowMap(false)}
-                    onTransfer={canTransfer ? () => setOperation('TRANSFER') : undefined}
-                    onConsolidate={canConsolidate ? () => setOperation('CONSOLIDATE') : undefined}
+                    onTransfer={canTransfer ? () => { setOperationTableId(null); setOperation('TRANSFER'); } : undefined}
+                    onConsolidate={canConsolidate ? () => { setOperationTableId(null); setOperation('CONSOLIDATE'); } : undefined}
                     onCreateTable={canCreateTable ? () => handleOpenSidebar() : undefined}
-                    themeControl={<ThemeToggle />}
+                    onReturnToAdministration={canEditMap ? () => navigate('/dashboard') : undefined}
+                    themeControl={<div className="table-map-utility-controls"><KitchenNotificationBell inline /><ThemeToggle /></div>}
                     branchControl={canChooseBranch && branches.length > 1 ? (
                         <div className="table-map-branch-control">
                             <Select
@@ -902,12 +908,14 @@ export default function Tables() {
                 onIssueInvoice={(order) => void handleIssueInvoice(order)}
                 onPay={(order) => void openPayment(order, 'single')}
                 onSplit={(order) => void openPayment(order, 'split')}
-                onTransfer={() => {
+                onTransfer={(table) => {
                     setIsOrdersModalOpen(false);
+                    setOperationTableId(table.id);
                     setOperation('TRANSFER');
                 }}
-                onConsolidate={() => {
+                onConsolidate={(table) => {
                     setIsOrdersModalOpen(false);
+                    setOperationTableId(table.id);
                     setOperation('CONSOLIDATE');
                 }}
             />
@@ -931,8 +939,9 @@ export default function Tables() {
                 isOpen={operation !== null}
                 operation={operation ?? 'TRANSFER'}
                 tables={mapBranchId ? tables.filter((table) => table.branchId === mapBranchId) : tables}
+                initialTableId={operationTableId}
                 submitting={submittingOperation}
-                onClose={() => setOperation(null)}
+                onClose={() => { setOperation(null); setOperationTableId(null); }}
                 onTransfer={handleTransfer}
                 onConsolidate={handleConsolidate}
             />

@@ -7,6 +7,7 @@ import { rolesAPI, permissionsAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import { Plus, Edit, Trash2, Shield } from 'lucide-react';
+import { describePermission } from '../utils/permissionCatalog';
 import './RolesPermissions.css';
 
 interface PermissionRow {
@@ -155,7 +156,7 @@ export default function RolesPermissions() {
 
                             <div className="role-permissions">
                                 {role.permissions?.slice(0, 3).map((perm) => (
-                                    <span key={perm.id} className="perm-badge">{perm.name}</span>
+                                    <span key={perm.id} className="perm-badge" title={perm.name}>{describePermission(perm.name, perm.description).label}</span>
                                 ))}
                                 {(role.permissions?.length || 0) > 3 && (
                                     <span className="perm-badge more">+{(role.permissions?.length || 0) - 3} más</span>
@@ -216,7 +217,9 @@ export default function RolesPermissions() {
                         <div className="rp-perms-list">
                             {permissions.length === 0 ? (
                                 <div className="rp-empty-perms">No hay permisos registrados en el sistema</div>
-                            ) : permissions.map(perm => (
+                            ) : permissions.map(perm => {
+                                const presentation = describePermission(perm.name, perm.description);
+                                return (
                                 <label key={perm.id} className="rp-perm-item">
                                     <input
                                         type="checkbox"
@@ -224,11 +227,13 @@ export default function RolesPermissions() {
                                         onChange={() => togglePermission(perm.id)}
                                     />
                                     <div>
-                                        <div className="rp-perm-name">{perm.name}</div>
-                                        {perm.description && <div className="rp-perm-desc">{perm.description}</div>}
+                                        <div className="rp-perm-name">{presentation.label}</div>
+                                        <div className="rp-perm-desc">{presentation.description}</div>
+                                        <div className="rp-perm-desc" title="Código técnico del permiso">Código: {perm.name}</div>
                                     </div>
                                 </label>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
 

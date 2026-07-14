@@ -3,8 +3,10 @@ import {
     calculateTipAmount,
     calculateTotalWithTip,
     formatMoneyInput,
+    formatMoneyAmount,
     parseMoneyInput,
     splitTotalEvenly,
+    summarizePaymentAllocation,
 } from './payment';
 
 describe('payment utils', () => {
@@ -34,5 +36,23 @@ describe('payment utils', () => {
         expect(parseMoneyInput('12.345')).toBeNull();
         expect(parseMoneyInput('')).toBeNull();
         expect(formatMoneyInput('2199.5')).toBe('2,199.50');
+    });
+
+    it('formats monetary display with grouping and the configured symbol', () => {
+        expect(formatMoneyAmount(2199, 'C$', 'en-US')).toBe('C$2,199.00');
+        expect(formatMoneyAmount(1234567.8, '$', 'en-US')).toBe('$1,234,567.80');
+    });
+
+    it('validates mixed allocations in integer cents', () => {
+        expect(summarizePaymentAllocation(100, [25, 25, 50])).toEqual({
+            targetCents: 10000,
+            allocatedCents: 10000,
+            differenceCents: 0,
+            exact: true,
+        });
+        expect(summarizePaymentAllocation(10.05, [5.02, 5.02])).toMatchObject({
+            differenceCents: 1,
+            exact: false,
+        });
     });
 });
