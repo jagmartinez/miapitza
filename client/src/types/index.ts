@@ -1,3 +1,4 @@
+
 export interface User {
   id: number;
   name: string;
@@ -18,6 +19,8 @@ export interface User {
     };
   }[];
   companyId: number;
+  /** Effective company timezone supplied by the authenticated session. */
+  timezone?: string;
   company?: Company;
   branchId: number | null;
   branch?: {
@@ -53,6 +56,16 @@ export interface Table {
   capacity: number;
   status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'OUT_OF_SERVICE';
   location?: string;
+  mapX?: number;
+  mapY?: number;
+  mapWidth?: number;
+  mapHeight?: number;
+  mapRotation?: number;
+  mapVersion?: number;
+  mapShape?: 'RECTANGLE' | 'SQUARE' | 'ROUND';
+  layoutUpdatedAt?: string;
+  operationalState?: 'AVAILABLE' | 'RESERVED' | 'DISABLED' | 'OPEN_ORDER' | 'WAITING_KITCHEN'
+    | 'PREPARING' | 'PARTIALLY_READY' | 'READY' | 'INVOICED' | 'PARTIAL_PAYMENT' | 'PAID' | 'ATTENTION';
   branchId: number;
   branch?: {
     id: number;
@@ -163,10 +176,19 @@ export interface Order {
   tax?: number;
   discount?: number;
   tipAmount?: number;
-  status: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'PAID' | 'CANCELLED';
+  status: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'CANCELLED';
+  financialStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
   customerName?: string;
   invoiceNumber?: string;
+  invoicedAt?: string;
   closedAt?: string;
+  deliveredAt?: string;
+  kitchenStartedAt?: string | null;
+  kitchenReleasedAt?: string | null;
+  kitchenStartedById?: number | null;
+  kitchenReleasedById?: number | null;
+  kitchenStartedBy?: { id: number; name: string } | null;
+  kitchenReleasedBy?: { id: number; name: string } | null;
   cancelledById?: number;
   cancelledBy?: { id: number; name: string };
   cancelReason?: string;
@@ -201,11 +223,18 @@ export interface Payment {
   paymentMethod: {
     id: number;
     name: string;
+    type: PaymentMethodType;
   };
   amount: number;
   reference?: string;
   payerName?: string;
   registeredById?: number;
+  createdAt?: string;
+  status?: 'ACTIVE' | 'REVERSED';
+  reversedAt?: string | null;
+  reversedById?: number | null;
+  reversedBy?: { id: number; name: string } | null;
+  reversalReason?: string | null;
 }
 
 export interface UnitOfMeasure {
@@ -292,21 +321,41 @@ export interface ProductionRecipe {
   yieldQuantity: number;
   yieldUnitId?: number | null;
   yieldUnit?: { id: number; name: string; abbreviation: string } | null;
+  yieldUnitAbbreviation: string;
+  yieldUnitSource: 'RECIPE' | 'PRODUCT_BASE' | 'PRODUCT_LEGACY';
   notes?: string | null;
   createdBy?: { id: number; name: string } | null;
   createdAt: string;
   updatedAt: string;
-    components: ProductionRecipeComponent[];
-    cost?: RecipeCost | null;
-    costError?: string | null;
-  }
+  components: ProductionRecipeComponent[];
+  cost?: RecipeCost | null;
+  costError?: string | null;
+}
+
+export interface KitchenNotification {
+  id: number;
+  orderId: number;
+  eventType: 'ORDER_ITEM_READY' | 'ORDER_READY' | 'ORDER_RELEASED';
+  status: 'UNREAD' | 'SEEN' | 'ATTENDED';
+  tableNumber?: string | null;
+  message: string;
+  payload?: {
+    complete?: boolean;
+    released?: boolean;
+    orderNumber?: number;
+    readyProducts?: Array<{ id: number; name: string; quantity: number }>;
+  } | null;
+  seenAt?: string | null;
+  attendedAt?: string | null;
+  createdAt: string;
+}
 
 export type ProductionOrderStatus = 'DRAFT' | 'PENDING' | 'IN_PROGRESS' | 'FINISHED' | 'CANCELLED';
 
 export interface ProductionOrderItem {
   id: number;
   componentProductId: number;
-  componentProduct?: Pick<Product, 'id' | 'name' | 'sku' | 'type' | 'unit'>;
+  componentProduct?: Pick<Product, 'id' | 'name' | 'sku' | 'type' | 'unit' | 'baseUnit'>;
   requiredQuantity: number;
   consumedQuantity: number;
   unitId?: number | null;
@@ -321,7 +370,7 @@ export interface ProductionOrder {
   branchId: number;
   code: string;
   productId: number;
-  product?: Pick<Product, 'id' | 'name' | 'sku' | 'type' | 'unit'>;
+  product?: Pick<Product, 'id' | 'name' | 'sku' | 'type' | 'unit' | 'baseUnit'>;
   recipeId?: number | null;
   recipe?: { id: number; name: string; version: number; yieldQuantity: number } | null;
   warehouseId: number;
@@ -442,6 +491,11 @@ export interface PurchaseOrderPayment {
   referenceNumber?: string;
   observations?: string;
   createdAt: string;
+  status: 'ACTIVE' | 'REVERSED';
+  reversedAt?: string | null;
+  reversedById?: number | null;
+  reversedBy?: { id: number; name: string } | null;
+  reversalReason?: string | null;
 }
 
 export interface PurchaseOrderItem {
@@ -565,9 +619,12 @@ export interface AutoPurchaseSuggestion {
   priority: 'LOW' | 'URGENT' | 'NORMAL';
 }
 
+export type PaymentMethodType = 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'OTHER';
+
 export interface PaymentMethod {
   id: number;
   name: string;
+  type: PaymentMethodType;
   active: boolean;
 }
 

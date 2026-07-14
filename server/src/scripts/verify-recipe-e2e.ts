@@ -353,19 +353,24 @@ async function verifySales(
     const orders = await prisma.order.findMany({
         where: {
             companyId,
-            status: { in: ['PAID', 'DELIVERED', 'CANCELLED'] },
+            OR: [
+                { financialStatus: 'PAID', status: { not: 'CANCELLED' } },
+                { status: 'CANCELLED' }
+            ],
             ...(since ? { createdAt: { gte: since } } : {})
         },
         select: {
             id: true,
             status: true,
+            financialStatus: true,
             total: true,
             createdAt: true,
             payments: {
+                where: { status: 'ACTIVE' },
                 select: {
                     id: true,
                     amount: true,
-                    paymentMethod: { select: { name: true } }
+                    paymentMethod: { select: { type: true } }
                 }
             },
             items: {
@@ -396,7 +401,7 @@ async function verifySales(
             'ERROR',
             'NO_SALE_EVIDENCE',
             'sales',
-            'No hay ventas pagadas/entregadas/anuladas en el periodo para certificar el descargue y la reversa.',
+            'No hay ventas financieramente pagadas o anuladas en el periodo para certificar el descargue y la reversa.',
             { since: since?.toISOString() || null }
         );
         return { audited: 0, paidOrDelivered: 0, cancelled: 0 };
@@ -454,13 +459,12 @@ async function verifySales(
                 'ERROR',
                 'TERMINAL_SALE_PAYMENT_MISMATCH',
                 `order:${order.id}`,
-                `La orden ${order.status} no esta completamente respaldada por pagos.`,
+                `La orden con estado financiero ${order.financialStatus} no esta completamente respaldada por pagos activos.`,
                 { total: numeric(order.total), paidAmount }
             );
         }
         for (const payment of order.payments) {
-            const method = payment.paymentMethod.name.toUpperCase();
-            if (method !== 'EFECTIVO' && method !== 'CASH') continue;
+            if (payment.paymentMethod.type !== 'CASH') continue;
             const cashRows = await prisma.cashMovement.count({ where: { reference: `PAY-${payment.id}`, type: 'IN' } });
             if (cashRows !== 1) {
                 finding(

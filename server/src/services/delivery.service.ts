@@ -79,7 +79,7 @@ export class DeliveryService {
         }
 
         // Check for duplicate order by matching external ID embedded in customerName
-        const externalIdTag = `ID:${externalId}`;
+        const externalIdTag = `ID:${externalId} |`;
         const platformTag = `[${deliveryOrder.platform}]`;
         const existing = await prisma.order.findFirst({
             where: {

@@ -5,7 +5,7 @@ import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { encrypt, decrypt, isEncrypted } from '../utils/encryption';
-import { BCRYPT_ROUNDS } from './auth.service';
+import { BCRYPT_ROUNDS } from '../utils/password-policy';
 
 const RECOVERY_CODE_COUNT = 10;
 
@@ -45,7 +45,7 @@ export class TwoFactorService {
         });
         if (!user) throw new Error('User not found');
         if (user.twoFactorEnabled) {
-            throw new Error('2FA ya estÃ¡ habilitado; desactÃ­velo con un cÃ³digo vÃ¡lido antes de reconfigurarlo');
+            throw new Error('2FA ya está habilitado; desactívelo con un código válido antes de reconfigurarlo');
         }
 
         const secret = generateSecret();

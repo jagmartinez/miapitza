@@ -22,6 +22,7 @@ export interface CateringMenuLineDto {
 /** Request body shape for create/update catering events (from HTTP JSON) */
 export interface CateringEventWriteBody {
     branchId?: unknown;
+    warehouseId?: unknown;
     services?: CateringServiceLineDto[];
     menuItems?: CateringMenuLineDto[];
     customerName?: string;
@@ -141,12 +142,20 @@ export class CateringService {
         }
         const serviceIds = [...new Set((refs.serviceIds || []).filter((n) => Number.isFinite(n)))];
         if (serviceIds.length) {
-            const found = await prisma.cateringService.findMany({ where: { id: { in: serviceIds }, companyId }, select: { id: true } });
+            const found = await prisma.cateringService.findMany({ where: { id: { in: serviceIds }, companyId, active: true }, select: { id: true } });
             if (found.length !== serviceIds.length) throw new Error('Uno o más servicios no pertenecen a esta empresa');
         }
         const menuIds = [...new Set((refs.menuItemIds || []).filter((n) => Number.isFinite(n)))];
         if (menuIds.length) {
-            const found = await prisma.menuItem.findMany({ where: { id: { in: menuIds }, companyId }, select: { id: true } });
+            const found = await prisma.menuItem.findMany({
+                where: {
+                    id: { in: menuIds },
+                    companyId,
+                    active: true,
+                    ...(refs.branchId !== undefined ? { OR: [{ branchId: null }, { branchId: refs.branchId }] } : {})
+                },
+                select: { id: true }
+            });
             if (found.length !== menuIds.length) throw new Error('Uno o más ítems de menú no pertenecen a esta empresa');
         }
     }
@@ -166,7 +175,7 @@ export class CateringService {
         const branch = await prisma.branch.findFirst({
             where: { id: branchId, companyId }
         });
-        if (!branch) throw new Error('Sucursal no encontrada para esta empresa');
+        if (!branch || branch.status !== 'ACTIVE') throw new Error('Sucursal no encontrada o inactiva para esta empresa');
 
         let customerId = cid != null && cid !== '' ? parseInt(String(cid), 10) : undefined;
         let createCustomer = false;
@@ -208,7 +217,7 @@ export class CateringService {
         const menuItemsToCreate = menuItems?.map((m) => {
             const quantity = Number(m.quantity);
             if (!Number.isInteger(quantity) || quantity <= 0) {
-                throw new Error('La cantidad de platos del menÃº debe ser un entero mayor a 0');
+                throw new Error('La cantidad de platos del menú debe ser un entero mayor a 0');
             }
             if (!Number.isFinite(Number(m.unitPrice)) || Number(m.unitPrice) < 0) {
                 throw new Error('El precio del plato no puede ser negativo');
@@ -225,6 +234,7 @@ export class CateringService {
 
         // Ensure customer / services / menu items all belong to this company.
         await this.assertEventRefs(companyId, {
+            branchId,
             customerId,
             serviceIds: servicesToCreate.map((s) => s.cateringServiceId),
             menuItemIds: menuItemsToCreate.map((m) => m.menuItemId),
@@ -271,11 +281,6 @@ export class CateringService {
                     }
                 });
 
-                // Trigger inventory deduction if status is FINISHED upon creation
-                if (created.status === 'FINISHED') {
-                    await this.deductInventoryTx(tx, created.id, companyId, userId);
-                }
-
                 return created;
             });
 
@@ -287,21 +292,31 @@ export class CateringService {
     }
 
     static async updateEvent(id: number, companyId: number, userId: number, data: CateringEventWriteBody) {
-        const { services, menuItems, customerName, customerPhone, customerTaxId, customerId: cid, ...eventData } = data;
+        const { services, menuItems, customerName, customerPhone, customerTaxId, customerId: cid, warehouseId: warehouseIdInput, ...eventData } = data;
 
         // Tenant-scoped load: never operate on another company's event.
         const oldEvent = await prisma.cateringEvent.findFirst({
             where: { id, companyId },
             select: {
                 status: true,
+                branchId: true,
                 customerId: true,
                 services: { select: { subtotal: true } },
-                menuItems: { select: { subtotal: true } },
+                menuItems: { select: { subtotal: true, menuItemId: true } },
                 payments: { select: { status: true } }
             }
         });
 
         if (!oldEvent) throw new Error('Catering event not found');
+        if (oldEvent.status === 'FINISHED' || oldEvent.status === 'CANCELLED') {
+            throw new Error('Los eventos finalizados o cancelados son inmutables');
+        }
+        if (oldEvent.status === 'PAID') {
+            const keys = Object.keys(data).filter((key) => data[key as keyof CateringEventWriteBody] !== undefined);
+            if (data.status !== 'FINISHED' || keys.some((key) => key !== 'status' && key !== 'warehouseId')) {
+                throw new Error('Un evento pagado solo puede marcarse como finalizado');
+            }
+        }
 
         // Validate status transition if status is changing
         if (data.status && oldEvent && data.status !== oldEvent.status) {
@@ -319,6 +334,13 @@ export class CateringService {
             eventData.branchId != null && eventData.branchId !== ''
                 ? parseInt(String(eventData.branchId), 10)
                 : undefined;
+        const effectiveBranchId = branchId ?? oldEvent.branchId;
+        const warehouseId = warehouseIdInput != null && warehouseIdInput !== ''
+            ? Number(warehouseIdInput)
+            : undefined;
+        if (data.status === 'FINISHED' && (!Number.isInteger(warehouseId) || Number(warehouseId) <= 0)) {
+            throw new Error('Seleccione una bodega de la sucursal para finalizar el evento');
+        }
         let customerId = cid != null && cid !== '' ? parseInt(String(cid), 10) : undefined;
         let createCustomer = false;
 
@@ -363,7 +385,7 @@ export class CateringService {
         const menuItemsToUpdate = menuItems?.map((m) => {
             const quantity = Number(m.quantity);
             if (!Number.isInteger(quantity) || quantity <= 0) {
-                throw new Error('La cantidad de platos del menÃº debe ser un entero mayor a 0');
+                throw new Error('La cantidad de platos del menú debe ser un entero mayor a 0');
             }
             if (!Number.isFinite(Number(m.unitPrice)) || Number(m.unitPrice) < 0) throw new Error('El precio del plato no puede ser negativo');
             const subtotal = new Decimal(m.quantity).mul(new Decimal(m.unitPrice));
@@ -378,10 +400,12 @@ export class CateringService {
 
         // Ensure branch / customer / services / menu items belong to this company.
         await this.assertEventRefs(companyId, {
-            branchId,
+            branchId: effectiveBranchId,
             customerId,
             serviceIds: servicesToUpdate.map((s) => s.cateringServiceId),
-            menuItemIds: menuItemsToUpdate.map((m) => m.menuItemId),
+            menuItemIds: menuItems === undefined
+                ? oldEvent.menuItems.map((m) => m.menuItemId)
+                : menuItemsToUpdate.map((m) => m.menuItemId),
         });
 
         const { date } = eventData;
@@ -444,7 +468,7 @@ export class CateringService {
 
                 // Trigger inventory deduction inside transaction if status changed to FINISHED
                 if (oldEvent?.status !== 'FINISHED' && data.status === 'FINISHED') {
-                    await this.deductInventoryTx(tx, id, companyId, userId);
+                    await this.deductInventoryTx(tx, id, companyId, userId, warehouseId!);
                 }
 
                 return finalEvent;
@@ -457,7 +481,13 @@ export class CateringService {
         }
     }
 
-    private static async deductInventoryTx(tx: Prisma.TransactionClient, eventId: number, companyId: number, userId: number) {
+    private static async deductInventoryTx(
+        tx: Prisma.TransactionClient,
+        eventId: number,
+        companyId: number,
+        userId: number,
+        warehouseId: number
+    ) {
         const event = await tx.cateringEvent.findUnique({
             where: { id: eventId },
             include: {
@@ -483,18 +513,19 @@ export class CateringService {
         const reference = `EVT-${event.id}`;
         const priorMovements = await tx.inventoryMovement.findMany({
             where: { companyId, reference, type: { in: ['OUT', 'IN'] } },
-            select: { type: true, quantity: true }
+            select: { warehouseId: true, productId: true, type: true, quantity: true }
         });
-        const netConsumed = priorMovements.reduce((net, m) => {
-            const qty = Number(m.quantity);
-            return m.type === 'OUT' ? net + qty : net - qty;
-        }, 0);
-        if (netConsumed > 1e-9) return;
+        const netByStock = new Map<string, number>();
+        for (const movement of priorMovements) {
+            const key = `${movement.warehouseId}|${movement.productId}`;
+            const quantity = Number(movement.quantity);
+            netByStock.set(key, (netByStock.get(key) ?? 0) + (movement.type === 'OUT' ? quantity : -quantity));
+        }
+        if ([...netByStock.values()].some((quantity) => quantity > 1e-9)) return;
 
+        await tx.$queryRaw`SELECT id FROM \`Warehouse\` WHERE id = ${warehouseId} AND companyId = ${companyId} FOR UPDATE`;
         const warehouse = await tx.warehouse.findFirst({
-            where: { branchId: event.branchId, companyId }
-        }) || await tx.warehouse.findFirst({
-            where: { companyId }
+            where: { id: warehouseId, branchId: event.branchId, companyId, type: 'BRANCH' }
         });
 
         if (!warehouse) throw new Error('No se encontró almacén para la deducción de inventario');
@@ -509,7 +540,7 @@ export class CateringService {
                 await InventoryEngineService.applyMovement(tx, {
                     type: 'OUT',
                     companyId,
-                    warehouseId: warehouse.id,
+                    warehouseId,
                     productId: recipe.productId,
                     userId,
                     quantity: totalNeeded,
@@ -547,20 +578,33 @@ export class CateringService {
     static async addPayment(
         eventId: number,
         companyId: number,
+        userId: number,
         paymentData: {
             amount: number | string | Decimal;
             paymentMethodId: number;
             type?: CateringPaymentType;
             reference?: string | null;
+            idempotencyKey?: string | null;
         }
     ) {
         const rawAmount = Number(paymentData.amount);
         if (!Number.isFinite(rawAmount)) {
             throw new Error('El monto debe ser un numero finito');
         }
-        const amount = Math.round(rawAmount * 100) / 100;
-        if (amount <= 0) {
+        const amountCents = Math.round(rawAmount * 100);
+        if (Math.abs(rawAmount - amountCents / 100) > 1e-9) {
+            throw new Error('El monto debe tener como máximo dos decimales');
+        }
+        const amount = amountCents / 100;
+        if (amountCents <= 0) {
             throw new Error('El monto debe ser mayor a 0');
+        }
+        if (!Number.isInteger(paymentData.paymentMethodId) || paymentData.paymentMethodId <= 0) {
+            throw new Error('Método de pago inválido');
+        }
+        const idempotencyKey = paymentData.idempotencyKey?.trim() || null;
+        if (idempotencyKey && idempotencyKey.length > 191) {
+            throw new Error('Clave de idempotencia demasiado larga');
         }
 
         return await prisma.$transaction(async (tx) => {
@@ -570,11 +614,44 @@ export class CateringService {
 
             const event = await tx.cateringEvent.findFirst({
                 where: { id: eventId, companyId },
-                include: { payments: true }
+                include: {
+                    payments: {
+                        include: { paymentMethod: { select: { type: true } } }
+                    }
+                }
             });
 
             if (!event) {
                 throw new Error('Catering event not found');
+            }
+            const actor = await tx.user.findFirst({
+                where: { id: userId, companyId, status: 'ACTIVE' },
+                select: { id: true }
+            });
+            if (!actor) throw new Error('Usuario no válido para esta empresa');
+
+            if (idempotencyKey) {
+                const existingPayment = event.payments.find((payment) => payment.idempotencyKey === idempotencyKey);
+                if (existingPayment) {
+                    if (existingPayment.status === 'REVERSED') {
+                        throw new Error('La clave de idempotencia pertenece a un pago revertido y no puede reutilizarse');
+                    }
+                    const sameRequest = Math.round(Number(existingPayment.amount) * 100) === amountCents
+                        && existingPayment.paymentMethodId === paymentData.paymentMethodId
+                        && existingPayment.type === (paymentData.type || 'ADVANCE')
+                        && (existingPayment.reference || null) === (paymentData.reference?.trim() || null);
+                    if (!sameRequest) throw new Error('Clave de idempotencia reutilizada con datos de pago diferentes');
+                    if (existingPayment.methodType === 'CASH') {
+                        await this.assertCashPaymentLedger(tx, {
+                            paymentId: existingPayment.id,
+                            amount: existingPayment.amount,
+                            companyId,
+                            branchId: event.branchId,
+                            expectCompensation: false
+                        });
+                    }
+                    return existingPayment;
+                }
             }
 
             const reference = paymentData.reference?.trim();
@@ -588,6 +665,15 @@ export class CateringService {
                         && existingPayment.paymentMethodId === paymentData.paymentMethodId
                         && existingPayment.type === (paymentData.type || 'ADVANCE');
                     if (!sameRequest) throw new Error('La referencia de pago ya fue usada con datos diferentes');
+                    if (existingPayment.methodType === 'CASH') {
+                        await this.assertCashPaymentLedger(tx, {
+                            paymentId: existingPayment.id,
+                            amount: existingPayment.amount,
+                            companyId,
+                            branchId: event.branchId,
+                            expectCompensation: false
+                        });
+                    }
                     return existingPayment;
                 }
             }
@@ -600,11 +686,16 @@ export class CateringService {
             }
 
             // Payment method must be global (companyId null) or belong to this company.
+            await tx.$queryRaw`SELECT id FROM \`PaymentMethod\` WHERE id = ${paymentData.paymentMethodId} FOR UPDATE`;
             const method = await tx.paymentMethod.findFirst({
-                where: { id: paymentData.paymentMethodId, OR: [{ companyId }, { companyId: null }] },
-                select: { id: true }
+                where: {
+                    id: paymentData.paymentMethodId,
+                    active: true,
+                    OR: [{ companyId }, { companyId: null }]
+                },
+                select: { id: true, type: true }
             });
-            if (!method) throw new Error('Método de pago no válido para esta empresa');
+            if (!method) throw new Error('Método de pago inactivo o no válido para esta empresa');
 
             // Recompute balance from the authoritative total minus paid amounts
             // INSIDE the locked transaction (do not trust the stored balance).
@@ -612,20 +703,46 @@ export class CateringService {
                 .filter((payment) => payment.status === 'ACTIVE')
                 .reduce((sum, payment) => sum.add(new Decimal(payment.amount)), new Decimal(0));
             const currentBalance = new Decimal(event.totalAmount).sub(paid);
+            const currentBalanceCents = Math.round(Number(currentBalance) * 100);
 
-            if (amount > Number(currentBalance) + 0.01) {
+            if (amountCents > currentBalanceCents) {
                 throw new Error(`El monto excede el saldo pendiente de ${Number(currentBalance).toFixed(2)}`);
+            }
+
+            let cashShiftId: number | null = null;
+            if (method.type === 'CASH') {
+                cashShiftId = await this.lockActorCashShift(tx, {
+                    companyId,
+                    branchId: event.branchId,
+                    userId,
+                    action: 'cobro'
+                });
             }
 
             const payment = await tx.cateringPayment.create({
                 data: {
                     amount,
                     paymentMethodId: paymentData.paymentMethodId,
+                    methodType: method.type,
                     type: paymentData.type || 'ADVANCE',
                     reference: reference || null,
+                    idempotencyKey,
+                    registeredById: userId,
                     cateringEventId: eventId
                 }
             });
+
+            if (cashShiftId !== null) {
+                await tx.cashMovement.create({
+                    data: {
+                        shiftId: cashShiftId,
+                        type: 'IN',
+                        amount,
+                        description: `Pago Catering #${eventId}`,
+                        reference: `CAT-PAY-${payment.id}`
+                    }
+                });
+            }
 
             const newBalance = currentBalance.sub(new Decimal(amount));
             await tx.cateringEvent.update({
@@ -633,6 +750,17 @@ export class CateringService {
                 data: {
                     balance: newBalance,
                     status: newBalance.lte(0) ? 'PAID' : event.status
+                }
+            });
+
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    userId,
+                    entityType: 'CateringPayment',
+                    entityId: payment.id,
+                    action: 'CREATE',
+                    details: { eventId, amount, paymentMethodId: method.id, paymentMethodType: method.type }
                 }
             });
 
@@ -656,16 +784,54 @@ export class CateringService {
             await tx.$queryRaw`SELECT id FROM \`CateringEvent\` WHERE id = ${eventId} AND companyId = ${companyId} FOR UPDATE`;
             const event = await tx.cateringEvent.findFirst({
                 where: { id: eventId, companyId },
-                include: { payments: true }
+                include: {
+                    payments: {
+                        include: { paymentMethod: { select: { type: true } } }
+                    }
+                }
             });
+
             if (!event) throw new Error('Catering event not found');
+            const actor = await tx.user.findFirst({
+                where: { id: userId, companyId, status: 'ACTIVE' },
+                select: { id: true }
+            });
+            if (!actor) throw new Error('Usuario no válido para esta empresa');
             if (event.status === 'FINISHED') {
                 throw new Error('No se puede revertir un pago de un evento finalizado');
             }
 
             const payment = event.payments.find((candidate) => candidate.id === paymentId);
             if (!payment) throw new Error('Pago de catering no encontrado');
+
+            if (payment.methodType === 'CASH') {
+                await this.assertCashPaymentLedger(tx, {
+                    paymentId: payment.id,
+                    amount: payment.amount,
+                    companyId,
+                    branchId: event.branchId,
+                    expectCompensation: payment.status === 'REVERSED'
+                });
+            }
             if (payment.status === 'REVERSED') return payment;
+
+            if (payment.methodType === 'CASH') {
+                const refundShiftId = await this.lockActorCashShift(tx, {
+                    companyId,
+                    branchId: event.branchId,
+                    userId,
+                    action: 'reverso'
+                });
+                await tx.cashMovement.create({
+                    data: {
+                        shiftId: refundShiftId,
+                        type: 'OUT',
+                        amount: payment.amount,
+                        description: `Reverso Pago Catering #${payment.id} Evento #${eventId}`,
+                        reference: `REV-CAT-PAY-${payment.id}`
+                    }
+                });
+            }
 
             const reversed = await tx.cateringPayment.update({
                 where: { id: payment.id },
@@ -702,6 +868,96 @@ export class CateringService {
 
             return reversed;
         });
+    }
+
+    private static async assertCashPaymentLedger(
+        tx: Prisma.TransactionClient,
+        params: {
+            paymentId: number;
+            amount: unknown;
+            companyId: number;
+            branchId: number;
+            expectCompensation: boolean;
+        }
+    ): Promise<void> {
+        const movements = await tx.cashMovement.findMany({
+            where: {
+                reference: { in: [`CAT-PAY-${params.paymentId}`, `REV-CAT-PAY-${params.paymentId}`] }
+            },
+            select: {
+                type: true,
+                amount: true,
+                reference: true,
+                shift: {
+                    select: {
+                        companyId: true,
+                        cashRegister: { select: { branchId: true } }
+                    }
+                }
+            }
+        });
+        const expectedCents = Math.round(Number(params.amount) * 100);
+        const inboundReference = movements.filter((movement) =>
+            movement.reference === `CAT-PAY-${params.paymentId}`
+        );
+        const inbound = inboundReference.filter((movement) =>
+            movement.type === 'IN'
+            && Math.round(Number(movement.amount) * 100) === expectedCents
+            && movement.shift.companyId === params.companyId
+            && movement.shift.cashRegister.branchId === params.branchId
+        );
+        if (inboundReference.length !== 1 || inbound.length !== 1) {
+            throw new Error('El pago en efectivo no tiene exactamente un asiento CAT-PAY íntegro; requiere remediación manual');
+        }
+        const outboundReference = movements.filter((movement) =>
+            movement.reference === `REV-CAT-PAY-${params.paymentId}`
+        );
+        const outbound = outboundReference.filter((movement) =>
+            movement.type === 'OUT'
+            && Math.round(Number(movement.amount) * 100) === expectedCents
+            && movement.shift.companyId === params.companyId
+            && movement.shift.cashRegister.branchId === params.branchId
+        );
+        if (params.expectCompensation && (outboundReference.length !== 1 || outbound.length !== 1)) {
+            throw new Error('El pago revertido no tiene exactamente un asiento REV-CAT-PAY íntegro; requiere remediación manual');
+        }
+        if (!params.expectCompensation && outboundReference.length !== 0) {
+            throw new Error('El pago activo ya tiene un contramovimiento de caja; requiere remediación manual');
+        }
+    }
+
+    private static async lockActorCashShift(
+        tx: Prisma.TransactionClient,
+        params: { companyId: number; branchId: number; userId: number; action: 'cobro' | 'reverso' }
+    ): Promise<number> {
+        const shift = await tx.cashShift.findFirst({
+            where: {
+                companyId: params.companyId,
+                userId: params.userId,
+                endDate: null,
+                cashRegister: { branchId: params.branchId }
+            },
+            select: { id: true }
+        });
+        if (!shift) {
+            throw new Error(`Debe abrir un turno de caja en la sucursal del evento para registrar el ${params.action} en efectivo`);
+        }
+
+        await tx.$queryRaw`SELECT id FROM \`CashShift\` WHERE id = ${shift.id} AND companyId = ${params.companyId} FOR UPDATE`;
+        const locked = await tx.cashShift.findFirst({
+            where: {
+                id: shift.id,
+                companyId: params.companyId,
+                userId: params.userId,
+                endDate: null,
+                cashRegister: { branchId: params.branchId }
+            },
+            select: { id: true }
+        });
+        if (!locked) {
+            throw new Error(`El turno de caja fue cerrado durante el ${params.action}; vuelva a intentarlo`);
+        }
+        return locked.id;
     }
 
     // Services Catalog
@@ -749,7 +1005,8 @@ export class CateringService {
     }
 
     // Inventory check (Opportunity Cost)
-    static async checkResourceAvailability(date: Date, companyId: number) {
+    static async checkResourceAvailability(date: Date, companyId: number, branchId?: number) {
+        if (Number.isNaN(date.getTime())) throw new Error('Fecha inválida');
         const startOfDay = new Date(date);
         startOfDay.setHours(0, 0, 0, 0);
         const endOfDay = new Date(date);
@@ -758,6 +1015,7 @@ export class CateringService {
         const eventsOnDate = await prisma.cateringEvent.findMany({
             where: {
                 companyId,
+                ...(branchId ? { branchId } : {}),
                 date: { gte: startOfDay, lte: endOfDay },
                 status: { not: 'CANCELLED' }
             },
@@ -802,7 +1060,11 @@ export class CateringService {
             const req = requirements[productId];
 
             const stocks = await prisma.stock.findMany({
-                where: { productId, companyId }
+                where: {
+                    productId,
+                    companyId,
+                    ...(branchId ? { warehouse: { branchId, companyId } } : {})
+                }
             });
             const totalStock = stocks.reduce((acc, s) => acc.add(new Decimal(s.quantity)), new Decimal(0));
 

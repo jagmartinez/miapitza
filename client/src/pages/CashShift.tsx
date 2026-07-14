@@ -86,7 +86,7 @@ const formatDuration = (startDate: string, endDate?: string): string => {
 };
 
 export default function CashShiftPage() {
-    const { formatMoney } = useCurrency();
+    const { formatMoney, symbol } = useCurrency();
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -167,7 +167,7 @@ export default function CashShiftPage() {
     }, [summary?.expectedAmount, totalCounted]);
 
     const effectiveDifference = closePreview?.difference ?? closeDifference;
-    const closeTolerance = Number(closePreview?.tolerance || 1);
+    const closeTolerance = Number(closePreview?.tolerance ?? 1);
     const showLegacyExactMatchWarning = false;
 
     const buildClosePayload = () => ({
@@ -331,7 +331,7 @@ export default function CashShiftPage() {
             }
 
             if (preview.exceedsTolerance && !canForceClose) {
-                showWarning(`La diferencia excede la tolerancia de C$ ${formatCurrency(closeTolerance)}.`);
+                showWarning(`La diferencia excede la tolerancia de ${formatMoney(closeTolerance)}.`);
                 return;
             }
 
@@ -361,6 +361,7 @@ export default function CashShiftPage() {
             const amounts = data.amounts;
             const movements = data.movements;
             const counts = data.counts;
+            const safeCurrencySymbol = escapeHtml(symbol);
 
             const printWindow = window.open('', '_blank');
             if (printWindow) {
@@ -418,17 +419,17 @@ export default function CashShiftPage() {
                             <div class="summary-grid">
                                 <div>
                                     <div class="section-title">Resumen de Totales</div>
-                                    <div class="amount-item"><span>Monto Inicial:</span> <span>C$ ${formatCurrency(amounts.startAmount)}</span></div>
-                                    <div class="amount-item"><span>Ventas (Efectivo):</span> <span style="color: #28a745;">+ C$ ${formatCurrency(Number(summary?.totalSalesCash || 0))}</span></div>
-                                    <div class="amount-item"><span>Otros Ingresos:</span> <span style="color: #28a745;">+ C$ ${formatCurrency(amounts.totalIn)}</span></div>
-                                    <div class="amount-item"><span>Gastos / Retiros:</span> <span style="color: #dc3545;">- C$ ${formatCurrency(amounts.totalOut)}</span></div>
-                                    <div class="amount-item grand-total"><span>Monto Esperado:</span> <span>C$ ${formatCurrency(amounts.expectedEndAmount)}</span></div>
+                                     <div class="amount-item"><span>Monto Inicial:</span> <span>${safeCurrencySymbol} ${formatCurrency(amounts.startAmount)}</span></div>
+                                     <div class="amount-item"><span>Ventas (Efectivo):</span> <span style="color: #28a745;">+ ${safeCurrencySymbol} ${formatCurrency(Number(summary?.totalSalesCash || 0))}</span></div>
+                                     <div class="amount-item"><span>Otros Ingresos:</span> <span style="color: #28a745;">+ ${safeCurrencySymbol} ${formatCurrency(amounts.totalIn)}</span></div>
+                                     <div class="amount-item"><span>Gastos / Retiros:</span> <span style="color: #dc3545;">- ${safeCurrencySymbol} ${formatCurrency(amounts.totalOut)}</span></div>
+                                     <div class="amount-item grand-total"><span>Monto Esperado:</span> <span>${safeCurrencySymbol} ${formatCurrency(amounts.expectedEndAmount)}</span></div>
                                     
                                     <div class="section-title">Resultados del Arqueo</div>
-                                    <div class="amount-item"><span>Monto Contado:</span> <span>C$ ${formatCurrency(amounts.actualEndAmount || 0)}</span></div>
+                                     <div class="amount-item"><span>Monto Contado:</span> <span>${safeCurrencySymbol} ${formatCurrency(amounts.actualEndAmount || 0)}</span></div>
                                     <div class="amount-item" style="font-weight: 700; color: ${amounts.difference >= 0 ? '#28a745' : '#dc3545'};">
                                         <span>Diferencia:</span> 
-                                        <span>C$ ${formatCurrency(amounts.difference || 0)}</span>
+                                         <span>${safeCurrencySymbol} ${formatCurrency(amounts.difference || 0)}</span>
                                     </div>
                                 </div>
 
@@ -445,23 +446,23 @@ export default function CashShiftPage() {
                                         <tbody>
                                             ${counts.bills.map((b: DenomCountRow) => `
                                                 <tr>
-                                                    <td>Billete C$ ${b.denomination}</td>
+                                                     <td>Billete ${safeCurrencySymbol} ${b.denomination}</td>
                                                     <td class="text-right">${b.count}</td>
-                                                    <td class="text-right">C$ ${formatCurrency(b.denomination * b.count)}</td>
+                                                     <td class="text-right">${safeCurrencySymbol} ${formatCurrency(b.denomination * b.count)}</td>
                                                 </tr>
                                             `).join('')}
                                             ${counts.coins.map((c: DenomCountRow) => `
                                                 <tr>
-                                                    <td>Moneda C$ ${c.denomination.toFixed(2)}</td>
+                                                     <td>Moneda ${safeCurrencySymbol} ${c.denomination.toFixed(2)}</td>
                                                     <td class="text-right">${c.count}</td>
-                                                    <td class="text-right">C$ ${formatCurrency(c.denomination * c.count)}</td>
+                                                     <td class="text-right">${safeCurrencySymbol} ${formatCurrency(c.denomination * c.count)}</td>
                                                 </tr>
                                             `).join('')}
                                         </tbody>
                                         <tfoot>
                                             <tr class="total-row">
                                                 <td colspan="2">TOTAL EFECTIVO</td>
-                                                <td class="text-right">C$ ${formatCurrency(amounts.actualEndAmount || 0)}</td>
+                                                 <td class="text-right">${safeCurrencySymbol} ${formatCurrency(amounts.actualEndAmount || 0)}</td>
                                             </tr>
                                         </tfoot>
                                     </table>
@@ -487,7 +488,7 @@ export default function CashShiftPage() {
                                             <td>${escapeHtml(m.documentNumber || m.reference || '-')}</td>
                                             <td>${escapeHtml(m.description)} ${m.supplier ? `(${escapeHtml(m.supplier.name)})` : ''}</td>
                                             <td class="text-right" style="color: ${m.type === 'IN' ? '#28a745' : '#dc3545'};">
-                                                ${m.type === 'IN' ? '+' : '-'}C$ ${formatCurrency(Number(m.amount))}
+                                                 ${m.type === 'IN' ? '+' : '-'}${safeCurrencySymbol} ${formatCurrency(Number(m.amount))}
                                             </td>
                                         </tr>
                                     `).join('')}
@@ -590,28 +591,28 @@ export default function CashShiftPage() {
                             <div className="card-icon"><Wallet size={24} /></div>
                             <div className="card-data">
                                 <span className="label">Saldo Inicial</span>
-                                <span className="amount">C$ {formatCurrency(Number(shift.startAmount))}</span>
+                                <span className="amount">{formatMoney(Number(shift.startAmount))}</span>
                             </div>
                         </div>
                         <div className="summary-card-v2 success">
                             <div className="card-icon"><TrendingUp size={24} /></div>
                             <div className="card-data">
                                 <span className="label">Ventas Cash</span>
-                                <span className="amount">+ C$ {formatCurrency(Number(summary?.totalSalesCash || 0))}</span>
+                                <span className="amount">+ {formatMoney(Number(summary?.totalSalesCash || 0))}</span>
                             </div>
                         </div>
                         <div className="summary-card-v2 blue">
                             <div className="card-icon"><Plus size={24} /></div>
                             <div className="card-data">
                                 <span className="label">Otros Ingresos</span>
-                                <span className="amount">+ C$ {formatCurrency(Number(summary?.totalIn || 0))}</span>
+                                <span className="amount">+ {formatMoney(Number(summary?.totalIn || 0))}</span>
                             </div>
                         </div>
                         <div className="summary-card-v2 danger">
                             <div className="card-icon"><Minus size={24} /></div>
                             <div className="card-data">
                                 <span className="label">Gastos / Retiros</span>
-                                <span className="amount">- C$ {formatCurrency(Number(summary?.totalOut || 0))}</span>
+                                <span className="amount">- {formatMoney(Number(summary?.totalOut || 0))}</span>
                             </div>
                         </div>
                     </div>
@@ -802,14 +803,14 @@ export default function CashShiftPage() {
                                     <div className="arqueo-breakdown-list">
                                         {arqueoBills.map((b) => (
                                             <div key={`view-bill-${b.denomination}`} className="info-row">
-                                                <span>C$ {b.denomination} × {b.count}</span>
-                                                <span>C$ {formatCurrency(b.denomination * b.count)}</span>
+                                                <span>{symbol} {b.denomination} × {b.count}</span>
+                                                <span>{formatMoney(b.denomination * b.count)}</span>
                                             </div>
                                         ))}
                                         {arqueoCoins.map((c) => (
                                             <div key={`view-coin-${c.denomination}`} className="info-row">
-                                                <span>C$ {c.denomination.toFixed(2)} × {c.count}</span>
-                                                <span>C$ {formatCurrency(c.denomination * c.count)}</span>
+                                                <span>{symbol} {c.denomination.toFixed(2)} × {c.count}</span>
+                                                <span>{formatMoney(c.denomination * c.count)}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -976,7 +977,7 @@ export default function CashShiftPage() {
                             <div>
                                 <span className="label">Esperado</span>
                                 <span className="value">
-                                    {isBlindCashier && !closePreview ? 'Oculto' : `C$ ${formatCurrency(Number(closePreview?.expectedAmount ?? (summary?.expectedAmount || 0)))}`}
+                                    {isBlindCashier && !closePreview ? 'Oculto' : formatMoney(Number(closePreview?.expectedAmount ?? (summary?.expectedAmount || 0)))}
                                 </span>
                             </div>
                         </div>
@@ -984,7 +985,7 @@ export default function CashShiftPage() {
                             <Banknote size={18} />
                             <div>
                                 <span className="label">Contado</span>
-                                <span className="value">C$ {formatCurrency(totalCounted)}</span>
+                                <span className="value">{formatMoney(totalCounted)}</span>
                             </div>
                         </div>
                         <div className={`arqueo-summary-card ${effectiveDifference >= 0 ? 'positive' : 'negative'}`}>
@@ -992,7 +993,7 @@ export default function CashShiftPage() {
                             <div>
                                 <span className="label">Diferencia</span>
                                 <span className="value">
-                                    {closePreview ? `${effectiveDifference >= 0 ? '+' : ''}C$ ${formatCurrency(effectiveDifference)}` : 'Pendiente validar'}
+                                    {closePreview ? `${effectiveDifference >= 0 ? '+' : ''}${formatMoney(effectiveDifference)}` : 'Pendiente validar'}
                                 </span>
                             </div>
                         </div>
@@ -1027,12 +1028,12 @@ export default function CashShiftPage() {
                                     <div className="denomination-header">
                                         <Banknote size={16} />
                                         <span>Billetes</span>
-                                        <span className="denomination-total">C$ {formatCurrency(Object.entries(billsCount).reduce((sum, [den, count]) => sum + (Number(den) * (count || 0)), 0))}</span>
+                                        <span className="denomination-total">{formatMoney(Object.entries(billsCount).reduce((sum, [den, count]) => sum + (Number(den) * (count || 0)), 0))}</span>
                                     </div>
                                     <div className="denomination-list">
                                         {BILL_DENOMINATIONS.map(den => (
                                             <div key={`bill-${den}`} className="denomination-item">
-                                                <span className="den-value">C$ {den}</span>
+                                                <span className="den-value">{symbol} {den}</span>
                                                 <span className="den-times">×</span>
                                                 <input
                                                     type="number"
@@ -1046,7 +1047,7 @@ export default function CashShiftPage() {
                                                     placeholder="0"
                                                 />
                                                 <span className={`den-subtotal ${billsCount[den] > 0 ? 'has-value' : ''}`}>
-                                                    = C$ {formatCurrency(den * (billsCount[den] || 0))}
+                                                    = {formatMoney(den * (billsCount[den] || 0))}
                                                 </span>
                                             </div>
                                         ))}
@@ -1058,12 +1059,12 @@ export default function CashShiftPage() {
                                     <div className="denomination-header">
                                         <Coins size={16} />
                                         <span>Monedas</span>
-                                        <span className="denomination-total">C$ {formatCurrency(Object.entries(coinsCount).reduce((sum, [den, count]) => sum + (Number(den) * (count || 0)), 0))}</span>
+                                        <span className="denomination-total">{formatMoney(Object.entries(coinsCount).reduce((sum, [den, count]) => sum + (Number(den) * (count || 0)), 0))}</span>
                                     </div>
                                     <div className="denomination-list">
                                         {COIN_DENOMINATIONS.map(den => (
                                             <div key={`coin-${den}`} className="denomination-item">
-                                                <span className="den-value">C$ {den}</span>
+                                                <span className="den-value">{symbol} {den}</span>
                                                 <span className="den-times">×</span>
                                                 <input
                                                     type="number"
@@ -1077,7 +1078,7 @@ export default function CashShiftPage() {
                                                     placeholder="0"
                                                 />
                                                 <span className={`den-subtotal ${coinsCount[den] > 0 ? 'has-value' : ''}`}>
-                                                    = C$ {formatCurrency(den * (coinsCount[den] || 0))}
+                                                    = {formatMoney(den * (coinsCount[den] || 0))}
                                                 </span>
                                             </div>
                                         ))}
@@ -1145,8 +1146,8 @@ export default function CashShiftPage() {
                                             <strong>$ {formatCurrency(totalUSD)}</strong>
                                         </div>
                                         <div className="conversion-row highlight">
-                                            <span>Equivalente en C$:</span>
-                                            <strong>C$ {formatCurrency(totalUSDinCordobas)}</strong>
+                                            <span>Equivalente en {symbol}:</span>
+                                            <strong>{formatMoney(totalUSDinCordobas)}</strong>
                                         </div>
                                     </div>
                                 )}
@@ -1182,7 +1183,7 @@ export default function CashShiftPage() {
                             )}
                             {closePreview?.exceedsTolerance && !canForceClose && (
                                 <p className="arqueo-error-message">
-                                    La diferencia excede la tolerancia oficial de C$ {formatCurrency(closeTolerance)}.
+                                    La diferencia excede la tolerancia oficial de {formatMoney(closeTolerance)}.
                                 </p>
                             )}
                             {closePreview?.exceedsTolerance && canForceClose && (
@@ -1195,10 +1196,10 @@ export default function CashShiftPage() {
                                     ⚠️ No puede cerrar el turno con diferencia. El arqueo debe cuadrar exactamente.
                                 </p>
                             )}
-                            <Button type="button" variant="secondary" onClick={() => setIsCloseModalOpen(false)} fullWidth>
+                            <Button type="button" variant="ghost" onClick={() => setIsCloseModalOpen(false)} fullWidth>
                                 Cancelar
                             </Button>
-                            <Button type="button" variant="secondary" onClick={handlePreviewClose} disabled={previewLoading} fullWidth>
+                            <Button type="button" variant="ghost" onClick={handlePreviewClose} disabled={previewLoading} fullWidth>
                                 {previewLoading ? 'Validando...' : 'Validar Arqueo'}
                             </Button>
                             <Button

@@ -195,14 +195,15 @@ export class ReportProductionService {
     static async getMenuEngineering(companyId: number, filters?: { dateFrom?: Date; dateTo?: Date; branchId?: number }) {
         const orderWhere: Record<string, unknown> = {
             companyId,
-            status: { in: ['PAID', 'DELIVERED'] },
+            financialStatus: 'PAID',
+            status: { not: 'CANCELLED' },
             closedAt: { not: null }
         };
         if (filters?.branchId) orderWhere.branchId = filters.branchId;
         if (filters?.dateFrom || filters?.dateTo) {
-            orderWhere.createdAt = {};
-            if (filters?.dateFrom) (orderWhere.createdAt as Record<string, unknown>).gte = filters.dateFrom;
-            if (filters?.dateTo) (orderWhere.createdAt as Record<string, unknown>).lte = filters.dateTo;
+            orderWhere.closedAt = {};
+            if (filters?.dateFrom) (orderWhere.closedAt as Record<string, unknown>).gte = filters.dateFrom;
+            if (filters?.dateTo) (orderWhere.closedAt as Record<string, unknown>).lte = filters.dateTo;
         }
 
         const orderItems = await prisma.orderItem.findMany({
@@ -319,9 +320,9 @@ export class ReportProductionService {
 
         const orderWhere: Record<string, unknown> = {
             companyId,
-            status: { in: ['PAID', 'DELIVERED'] },
-            closedAt: { not: null },
-            createdAt: { gte: since }
+            financialStatus: 'PAID',
+            status: { not: 'CANCELLED' },
+            closedAt: { gte: since }
         };
         if (filters?.branchId) orderWhere.branchId = filters.branchId;
 

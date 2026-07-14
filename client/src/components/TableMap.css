@@ -1,0 +1,124 @@
+.table-map-shell {
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    background: var(--color-surface);
+}
+
+.table-map-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.table-map-toolbar > div:first-child { display: grid; gap: 2px; }
+.table-map-toolbar strong { color: var(--color-text); }
+.table-map-toolbar span { color: var(--color-text-secondary); font-size: var(--font-size-xs); }
+
+.table-map-actions { display: flex; align-items: center; gap: var(--spacing-xs); flex-wrap: wrap; }
+.table-map-actions button {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-background);
+    color: var(--color-text);
+    cursor: pointer;
+}
+.table-map-actions button:hover, .table-map-actions button.active { border-color: var(--color-primary); color: var(--color-primary); }
+.table-map-actions button.primary { background: var(--color-primary); border-color: var(--color-primary); color: white; }
+.table-map-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.table-map-actions output { min-width: 48px; text-align: center; color: var(--color-text-secondary); font-size: var(--font-size-xs); }
+
+.table-map-warning {
+    padding: 10px var(--spacing-md);
+    color: var(--color-danger);
+    background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface));
+    border-bottom: 1px solid color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+}
+
+.table-map-viewport {
+    width: 100%;
+    min-height: 540px;
+    max-height: 68vh;
+    overflow: auto;
+    overscroll-behavior: contain;
+    background-color: var(--color-background);
+    background-image: radial-gradient(var(--color-border) 1px, transparent 1px);
+    background-size: 20px 20px;
+    touch-action: pan-x pan-y;
+}
+
+.table-map-canvas { position: relative; }
+.table-map-canvas.editing { touch-action: none; }
+
+.map-table {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 8px;
+    border: 3px solid;
+    border-radius: 16px;
+    background: var(--color-surface);
+    color: var(--color-text);
+    box-shadow: var(--shadow-md);
+    cursor: pointer;
+    user-select: none;
+    touch-action: pan-x pan-y;
+}
+.editing .map-table { cursor: grab; touch-action: none; }
+.editing .map-table:active { cursor: grabbing; box-shadow: var(--shadow-lg); }
+.map-table.shape-round { border-radius: 50%; }
+.map-table.shape-square { border-radius: 8px; }
+.map-table.state-available { border-color: var(--color-success); }
+.map-table.state-reserved { border-color: var(--color-primary); }
+.map-table.state-disabled { border-color: var(--color-neutral-500); opacity: .68; border-style: dashed; }
+.map-table.state-open_order { border-color: var(--color-warning); }
+.map-table.state-waiting_kitchen { border-color: var(--color-warning); border-style: dashed; }
+.map-table.state-preparing { border-color: var(--color-warning); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-warning) 18%, transparent); }
+.map-table.state-partially_ready { border-color: var(--color-primary); border-style: double; }
+.map-table.state-ready { border-color: var(--color-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 22%, transparent); }
+.map-table.state-invoiced { border-color: var(--color-primary); }
+.map-table.state-partial_payment { border-color: var(--color-warning); border-style: double; }
+.map-table.state-paid { border-color: var(--color-success); }
+.map-table.state-attention { border-color: var(--color-danger); border-style: dashed; }
+.map-table.collision { outline: 3px solid var(--color-danger); outline-offset: 3px; }
+.map-table-number { font-size: var(--font-size-xl); font-weight: 800; line-height: 1; }
+.map-table-status { font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.map-table-capacity { font-size: 10px; color: var(--color-text-secondary); }
+
+.table-map-legend {
+    display: flex;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+    padding: 12px var(--spacing-md);
+    border-top: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+}
+.table-map-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.table-map-legend i { width: 11px; height: 11px; border-radius: 50%; background: var(--color-neutral-500); }
+.table-map-legend i.state-available, .table-map-legend i.state-ready, .table-map-legend i.state-paid { background: var(--color-success); }
+.table-map-legend i.state-open_order, .table-map-legend i.state-waiting_kitchen,
+.table-map-legend i.state-preparing, .table-map-legend i.state-partial_payment { background: var(--color-warning); }
+.table-map-legend i.state-reserved, .table-map-legend i.state-partially_ready,
+.table-map-legend i.state-invoiced { background: var(--color-primary); }
+.table-map-legend i.state-attention { background: var(--color-danger); }
+
+@media (max-width: 720px) {
+    .table-map-toolbar { align-items: flex-start; flex-direction: column; }
+    .table-map-actions { width: 100%; }
+    .table-map-viewport { min-height: 460px; }
+}

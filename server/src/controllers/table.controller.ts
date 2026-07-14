@@ -3,8 +3,80 @@ import { TableService } from '../services/table.service';
 import { WebSocketService } from '../services/websocket.service';
 import { getErrorMessage } from '../utils/error';
 import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
+import { TableAccountService } from '../services/table-account.service';
 
 export class TableController {
+    static async updateLayout(req: Request, res: Response, next: NextFunction) {
+        try {
+            const requestedBranchId = Number(req.body.branchId ?? req.user?.branchId);
+            const branchId = resolveBranchScope(req.user!, requestedBranchId);
+            if (!branchId) return next({ statusCode: 400, message: 'ID de sucursal requerido' });
+            const tables = await TableAccountService.updateLayout(
+                req.user!.companyId,
+                branchId,
+                req.user!.userId,
+                req.body.tables
+            );
+            for (const table of tables) {
+                WebSocketService.broadcastTableUpdate(table.id, 'LAYOUT_UPDATED', table, {
+                    companyId: req.user!.companyId,
+                    branchId
+                });
+            }
+            res.json({ success: true, message: 'Plano de mesas actualizado', data: tables });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 409, message: getErrorMessage(error) });
+        }
+    }
+
+    static async consolidate(req: Request, res: Response, next: NextFunction) {
+        try {
+            const destination = await TableService.getById(Number(req.body.destinationTableId), req.user!.companyId);
+            assertBranchAccess(req.user!, destination.branchId);
+            const sourceIds = Array.isArray(req.body.sourceTableIds) ? req.body.sourceTableIds.map(Number) : [];
+            for (const sourceId of sourceIds) {
+                const source = await TableService.getById(sourceId, req.user!.companyId);
+                assertBranchAccess(req.user!, source.branchId);
+            }
+            const order = await TableAccountService.consolidate(
+                req.user!.companyId,
+                req.user!.userId,
+                { ...req.body, sourceTableIds: sourceIds }
+            );
+            WebSocketService.broadcastOrderUpdate(order.id, 'TABLES_CONSOLIDATED', order, {
+                companyId: req.user!.companyId,
+                branchId: order.branchId
+            });
+            res.json({ success: true, message: 'Cuentas de mesas consolidadas', data: order });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
+    static async transfer(req: Request, res: Response, next: NextFunction) {
+        try {
+            const source = await TableService.getById(Number(req.body.sourceTableId), req.user!.companyId);
+            const destination = await TableService.getById(Number(req.body.destinationTableId), req.user!.companyId);
+            assertBranchAccess(req.user!, source.branchId);
+            assertBranchAccess(req.user!, destination.branchId);
+            const result = await TableAccountService.transfer(
+                req.user!.companyId,
+                req.user!.userId,
+                req.body
+            );
+            WebSocketService.broadcastOrderUpdate(result.destinationOrder.id, 'TABLE_TRANSFERRED', result.destinationOrder, {
+                companyId: req.user!.companyId,
+                branchId: result.destinationOrder.branchId
+            });
+            res.json({ success: true, message: 'Consumo trasladado correctamente', data: result });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
     static async getAll(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
@@ -141,6 +213,7 @@ export class TableController {
                 data: table
             });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }

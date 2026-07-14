@@ -37,6 +37,8 @@ export class MenuItemController {
                 }
             }
 
+            filters.resolveBranchPrice = req.query.effectivePricing === 'true';
+
             const menuItems = await MenuItemService.getAll(companyId, filters);
             res.json({
                 success: true,
@@ -96,6 +98,7 @@ export class MenuItemController {
             if (req.body.branchId !== undefined) {
                 updateData.branchId = resolveBranchScope(req.user!, Number(req.body.branchId));
             }
+
             const menuItem = await MenuItemService.update(id, companyId, updateData);
             res.json({
                 success: true,

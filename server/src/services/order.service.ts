@@ -3,22 +3,33 @@ import { Prisma } from '@prisma/client';
 import { PedidosYaService } from './pedidosya.service';
 import { InventoryConsumptionService } from './inventory-consumption.service';
 import { DynamicPricingService } from './dynamic-pricing.service';
+import { calculatePromotionDiscount } from './promotion.service';
 
 /** Valid state transitions for orders */
 const VALID_TRANSITIONS: Record<string, string[]> = {
-    'OPEN': ['SENT_TO_KITCHEN'],
-    'SENT_TO_KITCHEN': ['IN_PREPARATION', 'READY'],
+    // Sending and starting preparation have dedicated operations because they
+    // also stamp item-level kitchen state. A generic status write must not skip it.
+    'OPEN': [],
+    'SENT_TO_KITCHEN': ['READY'],
     'IN_PREPARATION': ['READY'],
-    // PAID is intentionally NOT reachable via manual updateStatus: it must only
-    // be set by PaymentService once the order is fully paid (which also triggers
-    // inventory consumption). Allowing 'PAID' here would skip cobro y descargue.
-    'READY': ['DELIVERED'],
+    // Delivery has a dedicated operation because it atomically consumes stock
+    // from an explicit warehouse and releases the table.
+    'READY': [],
     'DELIVERED': [],
-    'PAID': [],      // terminal
     'CANCELLED': [], // terminal
 };
 
 export class OrderService {
+    private static syncPedidosYaStatus(companyId: number, order: { id: number; salesChannel?: string; status: string }) {
+        if (order.salesChannel !== 'PEDIDOSYA') return;
+        PedidosYaService.syncOrderStatus(companyId, order.id, order.status).catch((error) => {
+            // PedidosYaService persists PENDING/FAILED metadata before surfacing
+            // the error, so this is observable even though local kitchen work
+            // must not be rolled back by a remote outage.
+            console.error(`[OrderService] Failed to sync PedidosYa status for order ${order.id}:`, error);
+        });
+    }
+
     private static calculateFinalTotal(subtotal: number, discount: number, tax: number, tipAmount: number): number {
         const safeSubtotal = Math.max(0, Number(subtotal) || 0);
         const safeDiscount = Math.max(0, Number(discount) || 0);
@@ -37,6 +48,33 @@ export class OrderService {
             select: { subtotal: true }
         });
         return items.reduce((sum, item) => sum + Number(item.subtotal), 0);
+    }
+
+    private static async calculatePromotionDiscount(
+        tx: Prisma.TransactionClient,
+        companyId: number,
+        code: string,
+        subtotal: number
+    ): Promise<number> {
+        const normalizedCode = code.trim().toUpperCase();
+        const promotion = await tx.promotion.findFirst({
+            where: { companyId, code: normalizedCode }
+        });
+        if (!promotion) throw new Error('Promotion is not active');
+        return calculatePromotionDiscount(promotion, subtotal);
+    }
+
+    private static async repriceStoredDiscount(
+        tx: Prisma.TransactionClient,
+        companyId: number,
+        subtotal: number,
+        discount: Prisma.Decimal | number,
+        discountCode: string | null
+    ): Promise<number> {
+        if (discountCode) {
+            return this.calculatePromotionDiscount(tx, companyId, discountCode, subtotal);
+        }
+        return Math.round(Math.min(Math.max(0, Number(discount)), Math.max(0, subtotal)) * 100) / 100;
     }
 
     private static withTimeline<T extends { items?: Array<{ startedAt?: Date | string | null; finishedAt?: Date | string | null }> }>(order: T): T & {
@@ -78,9 +116,15 @@ export class OrderService {
     static async getAll(companyId: number, filters?: {
         branchId?: number;
         tableId?: number;
-        status?: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'PAID' | 'CANCELLED';
+        status?: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'CANCELLED';
+        financialStatus?: 'UNPAID' | 'PARTIAL' | 'PAID';
         startDate?: Date;
         endDate?: Date;
+        settledStartDate?: Date;
+        settledEndDate?: Date;
+        invoicedStartDate?: Date;
+        invoicedEndDate?: Date;
+        invoicedOnly?: boolean;
         page?: number;
         limit?: number;
     }) {
@@ -97,6 +141,9 @@ export class OrderService {
         if (filters?.status) {
             where.status = filters.status;
         }
+        if (filters?.financialStatus) {
+            where.financialStatus = filters.financialStatus;
+        }
 
         if (filters?.startDate || filters?.endDate) {
             where.createdAt = {};
@@ -106,6 +153,20 @@ export class OrderService {
             if (filters.endDate) {
                 where.createdAt.lte = filters.endDate;
             }
+        }
+
+        if (filters?.settledStartDate || filters?.settledEndDate) {
+            where.closedAt = {};
+            if (filters.settledStartDate) where.closedAt.gte = filters.settledStartDate;
+            if (filters.settledEndDate) where.closedAt.lte = filters.settledEndDate;
+        }
+        if (filters?.invoicedOnly) {
+            where.invoiceNumber = { not: null };
+        }
+        if (filters?.invoicedStartDate || filters?.invoicedEndDate) {
+            where.invoicedAt = {};
+            if (filters.invoicedStartDate) where.invoicedAt.gte = filters.invoicedStartDate;
+            if (filters.invoicedEndDate) where.invoicedAt.lte = filters.invoicedEndDate;
         }
 
         // Pagination defaults
@@ -249,6 +310,7 @@ export class OrderService {
      */
     private static async resolveItemModifiers(
         tx: Prisma.TransactionClient,
+        companyId: number,
         menuItem: { modifierGroups: { minSelect: number; maxSelect: number | null; modifiers: { id: number }[] }[] },
         modifierIds?: number[]
     ): Promise<{ create: { modifierId: number; name: string; price: Prisma.Decimal | number }[]; total: number }> {
@@ -269,11 +331,14 @@ export class OrderService {
             if (count < minimum) throw new Error(`Debe seleccionar al menos ${minimum} modificador(es)`);
             if (group.maxSelect !== null && count > group.maxSelect) throw new Error(`Solo puede seleccionar ${group.maxSelect} modificador(es)`);
         }
-
         if (selectedIds.length === 0) return { create: [], total: 0 };
 
         const modifiers = await tx.modifier.findMany({
-            where: { id: { in: selectedIds }, active: true }
+            where: {
+                id: { in: selectedIds },
+                active: true,
+                modifierGroup: { companyId }
+            }
         });
         if (modifiers.length !== selectedIds.length) throw new Error('Uno o más modificadores están inactivos');
         const total = modifiers.reduce((sum, mod) => sum + Number(mod.price), 0);
@@ -311,7 +376,7 @@ export class OrderService {
                 await tx.$queryRaw`SELECT id FROM \`Table\` WHERE id = ${data.tableId} AND companyId = ${companyId} FOR UPDATE`;
                 const table = await tx.table.findFirst({
                     where: { id: data.tableId, companyId },
-                    select: { id: true, branchId: true }
+                    select: { id: true, branchId: true, status: true }
                 });
                 if (!table) {
                     throw new Error('Mesa no encontrada para esta empresa');
@@ -321,13 +386,14 @@ export class OrderService {
                 }
             }
 
-            // Check for existing OPEN order for this table
+            // Reuse the table's active operational order. A stale/offline create
+            // must never open a second check for the same occupied table.
             if (data.tableId) {
                 const existingOrder = await tx.order.findFirst({
                     where: {
                         companyId,
                         tableId: data.tableId,
-                        status: 'OPEN',
+                        status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] },
                         branchId: data.branchId
                     },
                     include: {
@@ -339,6 +405,9 @@ export class OrderService {
                 if (existingOrder) {
                     // Merge items into existing order
                     if (data.items && data.items.length > 0) {
+                        if (existingOrder.invoiceNumber) {
+                            throw new Error('No se puede modificar una orden facturada');
+                        }
                         if (existingOrder.payments.length > 0) {
                             throw new Error('No se puede modificar una orden con pagos activos; revierta los pagos primero');
                         }
@@ -347,7 +416,8 @@ export class OrderService {
                                 where: { id: item.menuItemId, companyId, active: true, OR: [{ branchId: null }, { branchId: data.branchId }] },
                                 include: {
                                     modifierGroups: {
-                                        include: { modifiers: { select: { id: true } } }
+                                        where: { active: true },
+                                        include: { modifiers: { where: { active: true }, select: { id: true } } }
                                     }
                                 }
                             });
@@ -356,13 +426,13 @@ export class OrderService {
                             }
 
                             // Validate + price the selected modifiers (same rule as addItem).
-                            const modifiers = await this.resolveItemModifiers(tx, menuItem, item.modifierIds);
+                            const modifiers = await this.resolveItemModifiers(tx, companyId, menuItem, item.modifierIds);
 
                             // Resolve the branch-effective price (falls back to the
                             // base MenuItem price when no branch price is configured),
                             // then fold in the selected modifiers' extra price.
                             const basePrice = data.branchId
-                                ? await DynamicPricingService.getPrice(item.menuItemId, data.branchId, companyId)
+                                ? await DynamicPricingService.getPrice(item.menuItemId, data.branchId, companyId, tx)
                                 : Number(menuItem.price);
                             const unitPrice = basePrice + modifiers.total;
                             const subtotal = unitPrice * item.quantity;
@@ -381,15 +451,28 @@ export class OrderService {
 
                         // Recompute final total from authoritative item subtotals + stored adjustments.
                         const newSubtotal = await this.getOrderItemsSubtotal(tx, existingOrder.id);
+                        const repricedDiscount = await this.repriceStoredDiscount(
+                            tx, companyId, newSubtotal, existingOrder.discount, existingOrder.discountCode
+                        );
                         const newTotal = this.calculateFinalTotal(
                             newSubtotal,
-                            Number(existingOrder.discount || 0),
+                            repricedDiscount,
                             Number(existingOrder.tax || 0),
                             Number(existingOrder.tipAmount || 0)
                         );
                         await tx.order.update({
                             where: { id: existingOrder.id },
-                            data: { total: newTotal }
+                            data: {
+                                total: newTotal,
+                                discount: repricedDiscount,
+                                ...(existingOrder.status === 'READY' ? {
+                                    status: 'SENT_TO_KITCHEN' as const,
+                                    kitchenReleasedAt: null,
+                                    kitchenReleasedById: null,
+                                    kitchenStartedAt: null,
+                                    kitchenStartedById: null
+                                } : {})
+                            }
                         });
 
                         // Return the updated existing order
@@ -409,6 +492,32 @@ export class OrderService {
                         // If no items provided, just return existing order to open it
                         return existingOrder;
                     }
+                }
+
+                const table = await tx.table.findFirst({
+                    where: { id: data.tableId, companyId },
+                    select: { status: true }
+                });
+                if (!table || table.status !== 'AVAILABLE') {
+                    throw new Error('La mesa no está disponible para abrir una nueva orden');
+                }
+
+                const now = new Date();
+                const reservationConflicts = await tx.reservation.findMany({
+                    where: {
+                        companyId,
+                        branchId: data.branchId,
+                        tableId: data.tableId,
+                        status: { in: ['PENDING', 'CONFIRMED'] },
+                        date: {
+                            gt: new Date(now.getTime() - 2 * 60 * 60 * 1000),
+                            lt: new Date(now.getTime() + 2 * 60 * 60 * 1000)
+                        }
+                    },
+                    select: { id: true, status: true }
+                });
+                if (reservationConflicts.length > 0) {
+                    throw new Error('La mesa tiene una reservación vigente; complete el check-in o cancele la reservación antes de abrir la orden');
                 }
             }
 
@@ -439,7 +548,8 @@ export class OrderService {
                         where: { id: item.menuItemId, companyId, active: true, OR: [{ branchId: null }, { branchId: data.branchId }] },
                         include: {
                             modifierGroups: {
-                                include: { modifiers: { select: { id: true } } }
+                                where: { active: true },
+                                include: { modifiers: { where: { active: true }, select: { id: true } } }
                             }
                         }
                     });
@@ -448,13 +558,13 @@ export class OrderService {
                     }
 
                     // Validate + price the selected modifiers (same rule as addItem).
-                    const modifiers = await this.resolveItemModifiers(tx, menuItem, item.modifierIds);
+                    const modifiers = await this.resolveItemModifiers(tx, companyId, menuItem, item.modifierIds);
 
                     // Resolve the branch-effective price (falls back to the base
                     // MenuItem price when no branch price is configured), then fold
                     // in the selected modifiers' extra price.
                     const basePrice = data.branchId
-                        ? await DynamicPricingService.getPrice(item.menuItemId, data.branchId, companyId)
+                        ? await DynamicPricingService.getPrice(item.menuItemId, data.branchId, companyId, tx)
                         : Number(menuItem.price);
                     const unitPrice = basePrice + modifiers.total;
                     const subtotal = unitPrice * item.quantity;
@@ -519,64 +629,10 @@ export class OrderService {
         modifierIds?: number[];
     }) {
         // Validate quantity
-        if (!data.quantity || data.quantity <= 0) {
-            throw new Error('Quantity must be a positive number');
+        if (!Number.isInteger(data.quantity) || data.quantity <= 0) {
+            throw new Error('Quantity must be a positive integer');
         }
 
-        const menuItem = await prisma.menuItem.findFirst({
-            where: { id: data.menuItemId, companyId },
-            include: {
-                modifierGroups: {
-                    include: { modifiers: { select: { id: true } } }
-                }
-            }
-        });
-
-        if (!menuItem) {
-            throw new Error('Elemento de menú no encontrado');
-        }
-
-        if (!menuItem.active) {
-            throw new Error('El elemento de menú no está activo');
-        }
-
-        // Fetch modifiers and calculate their total
-        let modifiersData: { id: number; name: string; price: Prisma.Decimal | number }[] = [];
-        let modifiersTotal = 0;
-
-        if (data.modifierIds && data.modifierIds.length > 0) {
-            if (new Set(data.modifierIds).size !== data.modifierIds.length) {
-                throw new Error('No se puede seleccionar el mismo modificador más de una vez');
-            }
-            // Validate modifiers belong to this menu item's modifier groups
-            const validModifierIds = new Set(
-                menuItem.modifierGroups.flatMap((g: { modifiers: { id: number }[] }) => g.modifiers.map(m => m.id))
-            );
-            const invalidIds = data.modifierIds.filter(id => !validModifierIds.has(id));
-            if (invalidIds.length > 0) {
-                throw new Error('Modificadores inválidos para este producto');
-            }
-
-            modifiersData = await prisma.modifier.findMany({
-                where: {
-                    id: { in: data.modifierIds },
-                    active: true
-                }
-            });
-            if (modifiersData.length !== data.modifierIds.length) {
-                throw new Error('Uno o más modificadores están inactivos');
-            }
-            modifiersTotal = modifiersData.reduce((sum, mod) => sum + Number(mod.price), 0);
-        }
-
-        for (const group of menuItem.modifierGroups) {
-            const count = group.modifiers.filter((modifier) => data.modifierIds?.includes(modifier.id)).length;
-            const minimum = group.minSelect;
-            if (count < minimum) throw new Error(`Debe seleccionar al menos ${minimum} modificador(es)`);
-            if (group.maxSelect !== null && count > group.maxSelect) throw new Error(`Solo puede seleccionar ${group.maxSelect} modificador(es)`);
-        }
-
-        // Move order status check INSIDE transaction to prevent TOCTOU race
         return await prisma.$transaction(async (tx) => {
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
             const order = await tx.order.findFirst({
@@ -588,22 +644,41 @@ export class OrderService {
                 throw new Error('Order not found');
             }
 
-            if (order.status === 'PAID' || order.status === 'CANCELLED' || order.status === 'DELIVERED') {
+            if (order.status === 'CANCELLED' || order.status === 'DELIVERED') {
                 throw new Error('Cannot add items to paid, delivered or cancelled orders');
+            }
+            if (order.invoiceNumber) {
+                throw new Error('No se puede modificar una orden facturada');
             }
             if (order.payments.length > 0) {
                 throw new Error('No se puede modificar una orden con pagos activos; revierta los pagos primero');
             }
-            if (menuItem.branchId !== null && menuItem.branchId !== order.branchId) {
-                throw new Error('El elemento de menú no está disponible en la sucursal de la orden');
+
+            const menuItem = await tx.menuItem.findFirst({
+                where: {
+                    id: data.menuItemId,
+                    companyId,
+                    active: true,
+                    OR: [{ branchId: null }, { branchId: order.branchId }]
+                },
+                include: {
+                    modifierGroups: {
+                        where: { active: true },
+                        include: { modifiers: { where: { active: true }, select: { id: true } } }
+                    }
+                }
+            });
+            if (!menuItem) {
+                throw new Error('Elemento de menú no encontrado, inactivo o no disponible en la sucursal');
             }
+            const modifiers = await this.resolveItemModifiers(tx, companyId, menuItem, data.modifierIds);
 
             // Resolve the branch-effective price for the order's branch (falls
             // back to the base MenuItem price when no branch price is configured).
             const basePrice = order.branchId
-                ? await DynamicPricingService.getPrice(data.menuItemId, order.branchId, companyId)
+                ? await DynamicPricingService.getPrice(data.menuItemId, order.branchId, companyId, tx)
                 : Number(menuItem.price);
-            const unitPrice = basePrice + modifiersTotal;
+            const unitPrice = basePrice + modifiers.total;
             const subtotal = unitPrice * data.quantity;
 
             const item = await tx.orderItem.create({
@@ -615,11 +690,7 @@ export class OrderService {
                     subtotal: subtotal,
                     notes: data.notes,
                     modifiers: {
-                        create: modifiersData.map(mod => ({
-                            modifierId: mod.id,
-                            name: mod.name,
-                            price: mod.price
-                        }))
+                        create: modifiers.create
                     }
                 },
                 include: {
@@ -629,9 +700,12 @@ export class OrderService {
             });
 
             const newSubtotal = await this.getOrderItemsSubtotal(tx, orderId);
+            const repricedDiscount = await this.repriceStoredDiscount(
+                tx, companyId, newSubtotal, order.discount, order.discountCode
+            );
             const newTotal = this.calculateFinalTotal(
                 newSubtotal,
-                Number(order.discount || 0),
+                repricedDiscount,
                 Number(order.tax || 0),
                 Number(order.tipAmount || 0)
             );
@@ -640,8 +714,15 @@ export class OrderService {
                 where: { id: orderId },
                 data: {
                     total: newTotal,
+                    discount: repricedDiscount,
                     // READY is no longer truthful after appending an unsent line.
-                    ...(order.status === 'READY' ? { status: 'SENT_TO_KITCHEN' as const } : {})
+                    ...(order.status === 'READY' ? {
+                        status: 'SENT_TO_KITCHEN' as const,
+                        kitchenReleasedAt: null,
+                        kitchenReleasedById: null,
+                        kitchenStartedAt: null,
+                        kitchenStartedById: null
+                    } : {})
                 }
             });
 
@@ -675,8 +756,11 @@ export class OrderService {
                 throw new Error('Item not found');
             }
 
-            if (item.order.status === 'PAID' || item.order.status === 'CANCELLED') {
-                throw new Error('Cannot remove items from paid or cancelled orders');
+            if (item.order.status === 'CANCELLED' || item.order.status === 'DELIVERED') {
+                throw new Error('Cannot remove items from paid, delivered or cancelled orders');
+            }
+            if (item.order.invoiceNumber) {
+                throw new Error('No se puede modificar una orden facturada');
             }
             if (item.sentAt !== null) {
                 throw new Error('No se puede eliminar un articulo ya enviado a cocina; use un flujo de anulacion/merma');
@@ -690,16 +774,19 @@ export class OrderService {
             });
 
             const newSubtotal = await this.getOrderItemsSubtotal(tx, item.orderId);
+            const repricedDiscount = await this.repriceStoredDiscount(
+                tx, companyId, newSubtotal, item.order.discount, item.order.discountCode
+            );
             const newTotal = this.calculateFinalTotal(
                 newSubtotal,
-                Number(item.order.discount || 0),
+                repricedDiscount,
                 Number(item.order.tax || 0),
                 Number(item.order.tipAmount || 0)
             );
 
             await tx.order.update({
                 where: { id: item.orderId },
-                data: { total: newTotal }
+                data: { total: newTotal, discount: repricedDiscount }
             });
 
             return { success: true };
@@ -709,14 +796,15 @@ export class OrderService {
     static async updateStatus(
         id: number,
         companyId: number,
-        status: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'PAID' | 'CANCELLED'
+        status: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'CANCELLED'
     ) {
         const updatedOrder = await prisma.$transaction(async (tx) => {
             // Lock order row to keep transition validation and update atomic.
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
 
             const existing = await tx.order.findFirst({
-                where: { id, companyId }
+                where: { id, companyId },
+                include: { items: { select: { id: true, sentAt: true, status: true } } }
             });
 
             if (!existing) {
@@ -727,6 +815,9 @@ export class OrderService {
             // never be represented as a generic status write.
             if (status === 'CANCELLED') {
                 throw new Error('Use el flujo dedicado de cancelacion de orden');
+            }
+            if (status === 'DELIVERED') {
+                throw new Error('Use el flujo dedicado de entrega con una bodega explícita');
             }
 
             const allowedTransitions = VALID_TRANSITIONS[existing.status] || [];
@@ -741,6 +832,12 @@ export class OrderService {
             // force every still-open item to DONE so the kitchen timeline (firstStartedAt / readyAt)
             // reflects the actual completion time instead of staying blank.
             if (status === 'READY') {
+                if (existing.items.length === 0) {
+                    throw new Error('Cannot mark an empty order as ready');
+                }
+                if (existing.items.some((item) => item.sentAt === null)) {
+                    throw new Error('No se puede marcar lista una orden con productos sin enviar a cocina');
+                }
                 const now = new Date();
                 await tx.orderItem.updateMany({
                     where: { orderId: id, status: { not: 'DONE' } },
@@ -752,9 +849,11 @@ export class OrderService {
                 });
             }
 
-            return await tx.order.update({
+            const updated = await tx.order.update({
                 where: { id },
-                data: { status },
+                data: {
+                    status
+                },
                 include: {
                     table: true,
                     user: {
@@ -772,13 +871,11 @@ export class OrderService {
                     }
                 }
             });
+
+            return updated;
         });
 
-        if (updatedOrder.salesChannel === 'PEDIDOSYA') {
-            PedidosYaService.syncOrderStatus(companyId, id, status).catch((err) => {
-                console.error(`[OrderService] Failed to sync PedidosYa status for order ${id}:`, err);
-            });
-        }
+        this.syncPedidosYaStatus(companyId, updatedOrder);
 
         return this.withTimeline(updatedOrder);
     }
@@ -786,7 +883,7 @@ export class OrderService {
     static async sendToKitchen(id: number, companyId: number) {
         const now = new Date();
 
-        return await prisma.$transaction(async (tx) => {
+        const updatedOrder = await prisma.$transaction(async (tx) => {
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
             // Re-check status INSIDE the transaction to prevent a TOCTOU race.
             const order = await tx.order.findFirst({
@@ -798,7 +895,7 @@ export class OrderService {
                 throw new Error('Order not found');
             }
 
-            if (order.status === 'PAID' || order.status === 'CANCELLED') {
+            if (!['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION'].includes(order.status)) {
                 throw new Error(`Cannot send order to kitchen when status is ${order.status}`);
             }
 
@@ -812,18 +909,13 @@ export class OrderService {
                 throw new Error('No hay productos nuevos pendientes por enviar a cocina');
             }
 
-            await tx.order.update({
-                where: { id },
-                data: { status: 'SENT_TO_KITCHEN' }
-            });
-
             // Mark only new items as sent to preserve kitchen history for previous sends.
             await tx.orderItem.updateMany({
                 where: { orderId: id, sentAt: null },
                 data: { sentAt: now }
             });
 
-            return await tx.order.findUnique({
+            const refreshed = await tx.order.findUnique({
                 where: { id },
                 include: {
                     items: {
@@ -834,15 +926,31 @@ export class OrderService {
                     }
                 }
             });
+
+            if (!refreshed) throw new Error('Order not found');
+            const nextStatus = this.deriveStatusFromItems(refreshed);
+            return nextStatus === refreshed.status
+                ? refreshed
+                : tx.order.update({
+                    where: { id },
+                    data: { status: nextStatus },
+                    include: {
+                        items: {
+                            include: { menuItem: true, modifiers: true }
+                        }
+                    }
+                });
         });
+        this.syncPedidosYaStatus(companyId, updatedOrder);
+        return updatedOrder;
     }
 
     static async startItem(orderId: number, itemId: number, companyId: number) {
-        return await prisma.$transaction(async (tx) => {
+        const result = await prisma.$transaction(async (tx) => {
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
             const order = await tx.order.findFirst({ where: { id: orderId, companyId }, select: { status: true } });
             if (!order) throw new Error('Orden no encontrada');
-            if (order.status === 'CANCELLED' || order.status === 'PAID' || order.status === 'DELIVERED') {
+            if (order.status === 'CANCELLED' || order.status === 'DELIVERED') {
                 throw new Error(`No se puede actualizar items de una orden ${order.status}`);
             }
             const claimed = await tx.orderItem.updateMany({
@@ -850,13 +958,11 @@ export class OrderService {
                 data: { status: 'IN_PROGRESS', startedAt: new Date() }
             });
             if (claimed.count !== 1) throw new Error('El item debe estar enviado y PENDIENTE para iniciar');
-            const now = new Date();
-
-            const updatedItem = await tx.orderItem.update({
+            const updatedItem = await tx.orderItem.findUnique({
                 where: { id: itemId },
-                data: { startedAt: now },
                 include: { menuItem: true }
             });
+            if (!updatedItem) throw new Error('Item no encontrado');
 
             const currentOrder = await tx.order.findUnique({
                 where: { id: orderId },
@@ -911,14 +1017,16 @@ export class OrderService {
                 order: this.withTimeline(updatedOrder)
             };
         });
+        this.syncPedidosYaStatus(companyId, result.order);
+        return result;
     }
 
     static async finishItem(orderId: number, itemId: number, companyId: number) {
-        return await prisma.$transaction(async (tx) => {
+        const result = await prisma.$transaction(async (tx) => {
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
             const order = await tx.order.findFirst({ where: { id: orderId, companyId }, select: { status: true } });
             if (!order) throw new Error('Orden no encontrada');
-            if (order.status === 'CANCELLED' || order.status === 'PAID' || order.status === 'DELIVERED') {
+            if (order.status === 'CANCELLED' || order.status === 'DELIVERED') {
                 throw new Error(`No se puede actualizar items de una orden ${order.status}`);
             }
             const finishedAt = new Date();
@@ -927,11 +1035,11 @@ export class OrderService {
                 data: { status: 'DONE', finishedAt }
             });
             if (claimed.count !== 1) throw new Error('El item debe estar EN PROGRESO para finalizar');
-            const updated = await tx.orderItem.update({
+            const updated = await tx.orderItem.findUnique({
                 where: { id: itemId },
-                data: { finishedAt },
                 include: { menuItem: true }
             });
+            if (!updated) throw new Error('Item no encontrado');
 
             // Check if all items in the order are DONE
             const pendingItems = await tx.orderItem.count({
@@ -970,10 +1078,25 @@ export class OrderService {
 
             return { item: updated, allDone: pendingItems === 0, order: this.withTimeline(updatedOrder!) };
         });
+        this.syncPedidosYaStatus(companyId, result.order);
+        return result;
     }
 
-    static async complete(id: number, companyId: number, warehouseId: number) {
-        return await prisma.$transaction(async (tx) => {
+    static async complete(
+        id: number,
+        companyId: number,
+        warehouseId: number,
+        deliveredById: number,
+        options?: { syncExternal?: boolean }
+    ) {
+        if (!Number.isInteger(warehouseId) || warehouseId <= 0) {
+            throw new Error('warehouseId válido es requerido para entregar la orden');
+        }
+        if (!Number.isInteger(deliveredById) || deliveredById <= 0) {
+            throw new Error('Usuario de entrega inválido');
+        }
+
+        const updatedOrder = await prisma.$transaction(async (tx) => {
             // Reversal/payment/cancellation all lock the order. Completion must use
             // the same lock and re-read its consumable graph inside the transaction.
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
@@ -986,7 +1109,7 @@ export class OrderService {
                                 include: {
                                     recipes: {
                                         include: {
-                                            product: true,
+                                            product: { include: { baseUnit: { select: { abbreviation: true } } } },
                                             unitOfMeasure: { select: { abbreviation: true } }
                                         }
                                     }
@@ -998,12 +1121,61 @@ export class OrderService {
                 }
             });
             if (!order) throw new Error('Order not found');
-            if (order.status !== 'PAID') throw new Error('Order must be paid before completing');
+            if (order.status !== 'READY') throw new Error('Order must be ready before completing');
+
+            const isZeroTotal = Math.round(Number(order.total) * 100) === 0;
+            if (order.financialStatus !== 'PAID' && !isZeroTotal) {
+                throw new Error('Order must be paid before completing');
+            }
+
+            const actor = await tx.user.findFirst({
+                where: { id: deliveredById, companyId, status: 'ACTIVE' },
+                select: { id: true }
+            });
+            if (!actor) throw new Error('Usuario de entrega no válido para esta empresa');
+
+            // A valid 100% promotion can reduce the amount due to exactly zero,
+            // so no Payment row exists to drive settlement. Claim promotion use
+            // and close the financial side here, under the same order lock, once.
+            if (order.financialStatus !== 'PAID' && isZeroTotal) {
+                if (order.discountCode) {
+                    const promotion = await tx.promotion.findFirst({
+                        where: { companyId, code: order.discountCode.toUpperCase() },
+                        select: { id: true, usageLimit: true }
+                    });
+                    if (!promotion) throw new Error('Promotion is not active');
+                    const claimed = await tx.promotion.updateMany({
+                        where: {
+                            id: promotion.id,
+                            ...(promotion.usageLimit === null
+                                ? {}
+                                : { usageCount: { lt: promotion.usageLimit } })
+                        },
+                        data: { usageCount: { increment: 1 } }
+                    });
+                    if (claimed.count !== 1) throw new Error('Promotion usage limit reached');
+                }
+                await tx.order.update({
+                    where: { id },
+                    data: { financialStatus: 'PAID', closedAt: new Date() }
+                });
+                await tx.auditLog.create({
+                    data: {
+                        companyId,
+                        entityType: 'Order',
+                        entityId: id,
+                        action: 'ZERO_TOTAL_SETTLED',
+                        userId: deliveredById,
+                        details: { discountCode: order.discountCode, total: Number(order.total) }
+                    }
+                });
+            }
 
             // Validate the target warehouse belongs to this tenant and branch
             // before touching stock (warehouseId comes from the request body).
+            await tx.$queryRaw`SELECT id FROM \`Warehouse\` WHERE id = ${warehouseId} AND companyId = ${companyId} FOR UPDATE`;
             const warehouse = await tx.warehouse.findFirst({
-                where: { id: warehouseId, companyId, branchId: order.branchId }
+                where: { id: warehouseId, companyId, branchId: order.branchId, type: 'BRANCH' }
             });
 
             if (!warehouse) {
@@ -1011,18 +1183,33 @@ export class OrderService {
             }
 
             // Deduct inventory through the shared, idempotent consumption service.
-            // Skips automatically if the order was already consumed when it became PAID.
+            // Skips automatically if inventory was already consumed at settlement.
             await InventoryConsumptionService.consumeForOrder(tx, {
                 order,
                 warehouseId,
-                userId: order.userId,
+                userId: deliveredById,
                 companyId
             });
 
             // Update order status
             const updatedOrder = await tx.order.update({
                 where: { id },
-                data: { status: 'DELIVERED' }
+                data: {
+                    status: 'DELIVERED',
+                    deliveredAt: new Date(),
+                    ...(isZeroTotal ? { financialStatus: 'PAID' as const, closedAt: order.closedAt ?? new Date() } : {})
+                }
+            });
+
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    entityType: 'Order',
+                    entityId: id,
+                    action: 'DELIVER',
+                    userId: deliveredById,
+                    details: { warehouseId, previousStatus: order.status }
+                }
             });
 
             // Free table if assigned
@@ -1032,7 +1219,7 @@ export class OrderService {
                         companyId,
                         tableId: order.tableId,
                         id: { not: order.id },
-                        status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED'] }
+                        status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] }
                     }
                 });
                 if (otherActiveOnTable === 0) {
@@ -1042,6 +1229,11 @@ export class OrderService {
 
             return updatedOrder;
         });
+
+        if (options?.syncExternal !== false) {
+            this.syncPedidosYaStatus(companyId, updatedOrder);
+        }
+        return updatedOrder;
     }
 
     static async cancel(
@@ -1049,17 +1241,34 @@ export class OrderService {
         companyId: number,
         cancelledById?: number,
         cancelReason?: string,
-        // `allowPaidReversal` is reserved for channel integrations (e.g. PedidosYa)
-        // that must honor an external cancellation even after the order was PAID.
-        // It reverses any consumed inventory instead of rejecting the cancel.
-        options?: { allowPaidReversal?: boolean }
+        // `allowPaidReversal` is reserved for authoritative channel cancellations.
+        // Prepared local cancellations additionally require an explicit warehouse
+        // so their physical consumption is recorded as waste, not silently lost.
+        options?: { allowPaidReversal?: boolean; wasteWarehouseId?: number }
     ) {
         return await prisma.$transaction(async (tx) => {
             // Serialize cancel with payment, delivery and another cancellation.
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
             const order = await tx.order.findFirst({
                 where: { id, companyId },
-                include: { table: true, payments: { where: { status: 'ACTIVE' } } }
+                include: {
+                    table: true,
+                    payments: { where: { status: 'ACTIVE' } },
+                    items: {
+                        include: {
+                            menuItem: {
+                                include: {
+                                    recipes: {
+                                        include: {
+                                            product: { include: { baseUnit: { select: { abbreviation: true } } } },
+                                            unitOfMeasure: { select: { abbreviation: true } }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             });
 
             if (!order) throw new Error('Order not found');
@@ -1069,10 +1278,10 @@ export class OrderService {
             }
 
             const totalPaid = order.payments.reduce((sum, p) => sum + Number(p.amount), 0);
-            const fullyPaid = order.payments.length > 0 && totalPaid + 0.01 >= Number(order.total);
+            const fullyPaid = order.financialStatus === 'PAID';
 
             // Payment state is authoritative. A paid order may currently display
-            // PAID or DELIVERED; both require an explicit financial reversal.
+            // Operational status never substitutes for the payment ledger.
             if (fullyPaid && !options?.allowPaidReversal) {
                 throw new Error('Cannot cancel paid orders');
             }
@@ -1082,13 +1291,59 @@ export class OrderService {
 
             const reversalUserId = cancelledById ?? order.userId;
 
-            // Restore outstanding recipe consumption before changing the terminal
-            // state. The operation is idempotent by ORD-{id} net movements.
-            await InventoryConsumptionService.reverseForOrder(tx, {
-                orderId: id,
-                userId: reversalUserId,
-                companyId
-            });
+            const explicitlySentItems = order.items.filter((item) => item.sentAt !== null);
+            const legacyPreparedStatus = ['SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'].includes(order.status);
+            // `sentAt` is authoritative for normal/partially-sent orders. Older
+            // records may already be in a prepared status without item timestamps;
+            // fail closed by treating every line as prepared instead of cancelling
+            // physical food without a matching waste movement.
+            const preparedItems = explicitlySentItems.length === 0 && legacyPreparedStatus
+                ? order.items
+                : explicitlySentItems;
+            const requiresWaste = preparedItems.length > 0 && order.status !== 'DELIVERED';
+            if (requiresWaste) {
+                const wasteWarehouseId = Number(options?.wasteWarehouseId);
+                if (!Number.isInteger(wasteWarehouseId) || wasteWarehouseId <= 0) {
+                    throw new Error('La orden ya fue enviada a cocina; seleccione una bodega para registrar la merma antes de cancelar');
+                }
+                await tx.$queryRaw`SELECT id FROM \`Warehouse\` WHERE id = ${wasteWarehouseId} AND companyId = ${companyId} FOR UPDATE`;
+                const wasteWarehouse = await tx.warehouse.findFirst({
+                    where: {
+                        id: wasteWarehouseId,
+                        companyId,
+                        branchId: order.branchId,
+                        type: 'BRANCH'
+                    },
+                    select: { id: true }
+                });
+                if (!wasteWarehouse) {
+                    throw new Error('Bodega de merma no encontrada para la empresa/sucursal de la orden');
+                }
+                await InventoryConsumptionService.consumeForOrder(tx, {
+                    order: { ...order, items: preparedItems },
+                    orderItemIds: preparedItems.map((item) => item.id),
+                    warehouseId: wasteWarehouse.id,
+                    userId: reversalUserId,
+                    companyId,
+                    reference: `WASTE-ORD-${id}`,
+                    reason: `WASTE: Merma por cancelación de orden #${id}`,
+                    modifierReason: `WASTE: Merma de modificador por cancelación de orden #${id}`
+                });
+            }
+
+            // Only an unsent OPEN order can safely restore a legacy accidental
+            // consumption. Prepared/delivered food never returns to stock:
+            // prepared cancellation is WASTE-ORD-{id}; delivered keeps ORD-{id}.
+            if (preparedItems.length === 0 && order.status === 'OPEN') {
+                await InventoryConsumptionService.reverseForOrder(tx, {
+                    orderId: id,
+                    userId: reversalUserId,
+                    companyId,
+                    reason: 'Reversa de consumo legado de orden abierta cancelada',
+                    sourceType: 'ADJUSTMENT',
+                    reversalOrigin: 'ORDER_CANCEL_UNSENT'
+                });
+            }
 
             // Authoritative channel cancellations also reverse the local payment
             // ledger. This prevents cancelled delivery orders from remaining as
@@ -1096,12 +1351,38 @@ export class OrderService {
             if (fullyPaid && options?.allowPaidReversal) {
                 const paymentIds = order.payments.map((payment) => payment.id);
                 if (paymentIds.length > 0) {
-                    const cashIns = await tx.cashMovement.findMany({
-                        where: { reference: { in: paymentIds.map((paymentId) => `PAY-${paymentId}`) }, type: 'IN' }
-                    });
-                    for (const cashIn of cashIns) {
-                        const paymentId = Number(cashIn.reference?.replace('PAY-', ''));
-                        let refundShift = await tx.cashShift.findFirst({
+                    const cashPayments = order.payments.filter((payment) => payment.methodType === 'CASH');
+                    for (const payment of cashPayments) {
+                        const cashEntries = await tx.cashMovement.findMany({
+                            where: { reference: { in: [`PAY-${payment.id}`, `REV-PAY-${payment.id}`] } },
+                            select: {
+                                type: true,
+                                amount: true,
+                                reference: true,
+                                shift: {
+                                    select: {
+                                        companyId: true,
+                                        cashRegister: { select: { branchId: true } }
+                                    }
+                                }
+                            }
+                        });
+                        const paymentCents = Math.round(Number(payment.amount) * 100);
+                        const inboundReference = cashEntries.filter((entry) => entry.reference === `PAY-${payment.id}`);
+                        const validInbound = inboundReference.filter((entry) =>
+                            entry.type === 'IN'
+                            && Math.round(Number(entry.amount) * 100) === paymentCents
+                            && entry.shift.companyId === companyId
+                            && entry.shift.cashRegister.branchId === order.branchId
+                        );
+                        if (inboundReference.length !== 1 || validInbound.length !== 1) {
+                            throw new Error(`El pago en efectivo #${payment.id} no tiene un asiento PAY íntegro; requiere remediación manual`);
+                        }
+                        if (cashEntries.some((entry) => entry.reference === `REV-PAY-${payment.id}`)) {
+                            throw new Error(`El pago activo #${payment.id} ya tiene un contramovimiento de caja; requiere remediación manual`);
+                        }
+
+                        const refundShift = await tx.cashShift.findFirst({
                             where: {
                                 userId: reversalUserId,
                                 companyId,
@@ -1111,30 +1392,25 @@ export class OrderService {
                             select: { id: true }
                         });
                         if (!refundShift) {
-                            refundShift = await tx.cashShift.findFirst({
-                                where: {
-                                    id: cashIn.shiftId,
-                                    companyId,
-                                    endDate: null,
-                                    cashRegister: { branchId: order.branchId }
-                                },
-                                select: { id: true }
-                            });
-                        }
-                        if (!refundShift) {
                             throw new Error('Debe existir un turno de caja abierto en la sucursal para registrar el reembolso en efectivo');
                         }
                         await tx.$queryRaw`SELECT id FROM \`CashShift\` WHERE id = ${refundShift.id} AND companyId = ${companyId} FOR UPDATE`;
                         const lockedRefundShift = await tx.cashShift.findFirst({
-                            where: { id: refundShift.id, companyId, endDate: null },
+                            where: {
+                                id: refundShift.id,
+                                userId: reversalUserId,
+                                companyId,
+                                endDate: null,
+                                cashRegister: { branchId: order.branchId }
+                            },
                             select: { id: true }
                         });
                         if (!lockedRefundShift) throw new Error('El turno de caja para el reembolso ya fue cerrado');
                         await tx.cashMovement.create({
                             data: {
-                                shiftId: lockedRefundShift.id, type: 'OUT', amount: cashIn.amount,
-                                description: `Reverso Pago #${paymentId} Orden #${id}`,
-                                reference: `REV-PAY-${paymentId}`
+                                shiftId: lockedRefundShift.id, type: 'OUT', amount: payment.amount,
+                                description: `Reverso Pago #${payment.id} Orden #${id}`,
+                                reference: `REV-PAY-${payment.id}`
                             }
                         });
                     }
@@ -1162,10 +1438,11 @@ export class OrderService {
                 where: { id },
                 data: {
                     status: 'CANCELLED',
+                    ...(fullyPaid && options?.allowPaidReversal ? { financialStatus: 'UNPAID' as const } : {}),
                     cancelledById: cancelledById || null,
                     cancelReason: cancelReason || null,
                     cancelledAt: new Date(),
-                    closedAt: fullyPaid ? new Date() : order.closedAt
+                    closedAt: fullyPaid && options?.allowPaidReversal ? null : order.closedAt
                 }
             });
 
@@ -1175,7 +1452,7 @@ export class OrderService {
                         companyId,
                         tableId: order.tableId,
                         id: { not: order.id },
-                        status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED'] }
+                        status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] }
                     }
                 });
                 if (otherActiveOnTable === 0) {
@@ -1196,6 +1473,8 @@ export class OrderService {
                             previousStatus: order.status,
                             orderedBy: order.userId,
                             tableId: order.tableId,
+                            wasteWarehouseId: requiresWaste ? options?.wasteWarehouseId : null,
+                            wastedItemIds: requiresWaste ? preparedItems.map((item) => item.id) : [],
                             reversedPayments: fullyPaid ? order.payments.length : 0,
                             reversedAmount: fullyPaid ? totalPaid : 0
                         }
@@ -1234,8 +1513,10 @@ export class OrderService {
                     id: true,
                     status: true,
                     discount: true,
+                    discountCode: true,
                     tax: true,
                     tipAmount: true,
+                    invoiceNumber: true,
                     payments: { where: { status: 'ACTIVE' }, select: { id: true } }
                 }
             });
@@ -1244,8 +1525,11 @@ export class OrderService {
                 throw new Error('Order not found');
             }
 
-            if (order.status === 'PAID' || order.status === 'CANCELLED') {
+            if (order.status === 'CANCELLED') {
                 throw new Error('Cannot modify pricing for paid or cancelled orders');
+            }
+            if (order.invoiceNumber) {
+                throw new Error('No se puede modificar el total de una orden facturada');
             }
             if (order.payments.length > 0) {
                 throw new Error('No se puede modificar el total de una orden con pagos activos; revierta los pagos primero');
@@ -1255,28 +1539,11 @@ export class OrderService {
             const requestedCode = data.discountCode === undefined
                 ? undefined
                 : String(data.discountCode || '').trim().toUpperCase();
-            let authoritativeDiscount = data.discount ?? Number(order.discount || 0);
-            if (requestedCode) {
-                const now = new Date();
-                const promotion = await tx.promotion.findFirst({
-                    where: { companyId, code: requestedCode }
-                });
-                if (!promotion || !promotion.active) throw new Error('Promotion is not active');
-                if (promotion.validFrom && promotion.validFrom > now) throw new Error('Promotion is not active yet');
-                if (promotion.validTo && promotion.validTo < now) throw new Error('Promotion has expired');
-                if (promotion.usageLimit !== null && promotion.usageCount >= promotion.usageLimit) {
-                    throw new Error('Promotion usage limit reached');
-                }
-                if (promotion.minOrderAmount !== null && subtotal < Number(promotion.minOrderAmount)) {
-                    throw new Error('Order does not meet promotion minimum');
-                }
-                authoritativeDiscount = promotion.type === 'PERCENTAGE'
-                    ? subtotal * (Number(promotion.value) / 100)
-                    : Number(promotion.value);
-                if (promotion.maxDiscount !== null) {
-                    authoritativeDiscount = Math.min(authoritativeDiscount, Number(promotion.maxDiscount));
-                }
-                authoritativeDiscount = Math.round(authoritativeDiscount * 100) / 100;
+            const nextCode = requestedCode === undefined ? order.discountCode : (requestedCode || null);
+            let authoritativeDiscount = data.discount
+                ?? (requestedCode === '' ? 0 : Number(order.discount || 0));
+            if (nextCode) {
+                authoritativeDiscount = await this.calculatePromotionDiscount(tx, companyId, nextCode, subtotal);
             }
             const nextDiscount = Math.round(Math.min(
                 Math.max(0, Number(authoritativeDiscount)),
@@ -1294,7 +1561,7 @@ export class OrderService {
                 where: { id },
                 data: {
                     discount: nextDiscount,
-                    discountCode: requestedCode === undefined ? undefined : (requestedCode || null),
+                    discountCode: nextCode,
                     tax: nextTax,
                     tipAmount: nextTip,
                     total: nextTotal
@@ -1328,7 +1595,7 @@ export class OrderService {
         const where: Prisma.OrderWhereInput = {
             companyId,
             status: {
-                in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED']
+                in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY']
             }
         };
 
@@ -1359,6 +1626,135 @@ export class OrderService {
             }
         });
 
+        return orders.map((order) => this.withTimeline(order));
+    }
+
+    static async getKitchenQueue(companyId: number, branchId?: number) {
+        const orders = await prisma.order.findMany({
+            where: {
+                companyId,
+                ...(branchId ? { branchId } : {}),
+                kitchenReleasedAt: null,
+                OR: [
+                    { status: 'READY' },
+                    {
+                        status: { in: ['SENT_TO_KITCHEN', 'IN_PREPARATION'] },
+                        items: { some: { sentAt: { not: null }, status: { not: 'DONE' } } }
+                    }
+                ]
+            },
+            include: {
+                table: true,
+                user: { select: { id: true, name: true, color: true } },
+                items: { include: { menuItem: true, modifiers: true } }
+            },
+            orderBy: { createdAt: 'asc' }
+        });
+        return orders.map((order) => this.withTimeline(order));
+    }
+
+    static async startKitchenPreparation(orderId: number, companyId: number, actorUserId: number) {
+        const result = await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
+            const order = await tx.order.findFirst({
+                where: { id: orderId, companyId },
+                include: { items: true }
+            });
+            if (!order) throw new Error('Orden no encontrada');
+            if (order.kitchenReleasedAt) throw new Error('La orden ya fue liberada del KDS');
+            if (order.status === 'IN_PREPARATION' && order.kitchenStartedAt) {
+                return { changed: false, branchId: order.branchId };
+            }
+            if (order.status !== 'SENT_TO_KITCHEN') {
+                throw new Error('Solo una orden pendiente en cocina puede iniciar preparación');
+            }
+
+            const now = new Date();
+            const started = await tx.orderItem.updateMany({
+                where: { orderId, sentAt: { not: null }, status: 'PENDING' },
+                data: { status: 'IN_PROGRESS', startedAt: now }
+            });
+            if (started.count === 0) throw new Error('La orden no tiene productos pendientes para iniciar');
+
+            await tx.order.update({
+                where: { id: orderId },
+                data: {
+                    status: 'IN_PREPARATION',
+                    kitchenStartedAt: now,
+                    kitchenStartedById: actorUserId
+                }
+            });
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    entityType: 'Order',
+                    entityId: orderId,
+                    action: 'KITCHEN_PREPARATION_STARTED',
+                    userId: actorUserId,
+                    details: { from: order.status, to: 'IN_PREPARATION', startedItems: started.count }
+                }
+            });
+            return { changed: true, branchId: order.branchId };
+        });
+
+        const order = await this.getById(orderId, companyId);
+        this.syncPedidosYaStatus(companyId, order);
+        return { ...result, order };
+    }
+
+    static async releaseFromKitchen(orderId: number, companyId: number, actorUserId: number) {
+        const result = await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
+            const order = await tx.order.findFirst({
+                where: { id: orderId, companyId },
+                select: { id: true, branchId: true, status: true, kitchenReleasedAt: true }
+            });
+            if (!order) throw new Error('Orden no encontrada');
+            if (order.kitchenReleasedAt) return { changed: false, branchId: order.branchId };
+            if (order.status !== 'READY') throw new Error('La orden debe estar lista antes de liberarla');
+
+            const releasedAt = new Date();
+            await tx.order.update({
+                where: { id: orderId },
+                data: { kitchenReleasedAt: releasedAt, kitchenReleasedById: actorUserId }
+            });
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    entityType: 'Order',
+                    entityId: orderId,
+                    action: 'KITCHEN_RELEASED',
+                    userId: actorUserId,
+                    details: { status: order.status, releasedAt: releasedAt.toISOString() }
+                }
+            });
+            return { changed: true, branchId: order.branchId };
+        });
+        return { ...result, order: await this.getById(orderId, companyId) };
+    }
+
+    static async getKitchenHistory(companyId: number, branchId?: number, limit = 100) {
+        const safeLimit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : 100;
+        const orders = await prisma.order.findMany({
+            where: {
+                companyId,
+                ...(branchId ? { branchId } : {}),
+                OR: [
+                    { kitchenStartedAt: { not: null } },
+                    { kitchenReleasedAt: { not: null } },
+                    { status: { in: ['SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED', 'CANCELLED'] } }
+                ]
+            },
+            include: {
+                table: true,
+                user: { select: { id: true, name: true, color: true } },
+                kitchenStartedBy: { select: { id: true, name: true } },
+                kitchenReleasedBy: { select: { id: true, name: true } },
+                items: { include: { menuItem: true, modifiers: true } }
+            },
+            orderBy: { updatedAt: 'desc' },
+            take: safeLimit
+        });
         return orders.map((order) => this.withTimeline(order));
     }
 

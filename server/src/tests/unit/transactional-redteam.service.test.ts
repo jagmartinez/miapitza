@@ -8,6 +8,7 @@ import { OrderService } from '../../services/order.service';
 import { PaymentService } from '../../services/payment.service';
 import { ReportService } from '../../services/report.service';
 import { ReservationService } from '../../services/reservation.service';
+import { UnitConversionService } from '../../services/unit-conversion.service';
 
 afterEach(() => {
     jest.restoreAllMocks();
@@ -56,9 +57,6 @@ describe('transactional red-team regressions', () => {
     });
 
     it('does not post cash into a shift closed concurrently', async () => {
-        jest.spyOn(prisma.paymentMethod, 'findFirst').mockResolvedValue({
-            id: 2, name: 'EFECTIVO', active: true
-        } as never);
         const shiftLookup = jest.fn(async (): Promise<{ id: number; cashRegisterId: number } | null> => null);
         shiftLookup
             .mockResolvedValueOnce({ id: 5, cashRegisterId: 3 })
@@ -68,10 +66,13 @@ describe('transactional red-team regressions', () => {
             order: {
                 findFirst: jest.fn(async () => ({
                     id: 9, companyId: 1, branchId: 2, total: 100,
-                    status: 'OPEN', cashRegisterId: null, payments: [], items: []
+                    financialStatus: 'UNPAID', status: 'OPEN', cashRegisterId: null,
+                    invoiceNumber: 'FAC-2-000009', payments: [], items: []
                 })),
                 update: jest.fn()
             },
+            user: { findFirst: jest.fn(async () => ({ id: 7 })) },
+            paymentMethod: { findFirst: jest.fn(async () => ({ id: 2, name: 'Etiqueta personalizada', type: 'CASH' })) },
             payment: { create: jest.fn(async () => ({ id: 44, amount: 10 })) },
             cashShift: {
                 findFirst: shiftLookup
@@ -88,6 +89,124 @@ describe('transactional red-team regressions', () => {
         expect(tx.cashMovement.create).not.toHaveBeenCalled();
     });
 
+    it('does not infer cash behavior from a misleading display name', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 9, companyId: 1, branchId: 2, total: 100,
+                    financialStatus: 'UNPAID', status: 'OPEN', cashRegisterId: null,
+                    invoiceNumber: 'FAC-2-000009', payments: [], items: []
+                })),
+                update: jest.fn()
+            },
+            paymentMethod: { findFirst: jest.fn(async () => ({ id: 2, name: 'Efectivo', type: 'CARD' })) },
+            user: { findFirst: jest.fn(async () => ({ id: 7 })) },
+            payment: { create: jest.fn(async () => ({ id: 44, amount: 10 })) },
+            cashMovement: { create: jest.fn() }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+
+        await PaymentService.create(1, { orderId: 9, paymentMethodId: 2, amount: 10 }, 7);
+
+        expect(tx.cashMovement.create).not.toHaveBeenCalled();
+        expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ financialStatus: 'PARTIAL' })
+        }));
+    });
+
+    it('revalidates an active tenant payment method under the order transaction lock', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 9, companyId: 1, branchId: 2, total: 100,
+                    financialStatus: 'UNPAID', status: 'OPEN', cashRegisterId: null,
+                    invoiceNumber: 'FAC-2-000009', payments: [], items: []
+                }))
+            },
+            paymentMethod: { findFirst: jest.fn(async (_args?: unknown) => null) },
+            user: { findFirst: jest.fn(async () => ({ id: 7 })) },
+            payment: { create: jest.fn() },
+            cashMovement: { create: jest.fn() }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+
+        await expect(PaymentService.create(1, {
+            orderId: 9, paymentMethodId: 77, amount: 10
+        }, 7)).rejects.toThrow(/invalid or inactive/i);
+
+        expect(tx.paymentMethod.findFirst).toHaveBeenCalledWith({
+            where: { id: 77, active: true, OR: [{ companyId: 1 }, { companyId: null }] },
+            select: { id: true, type: true }
+        });
+        expect(tx.payment.create).not.toHaveBeenCalled();
+        expect(tx.cashMovement.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a foreign or inactive catering payment method before any cash mutation', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            cateringEvent: {
+                findFirst: jest.fn(async () => ({
+                    id: 3, companyId: 1, branchId: 2, status: 'RESERVED', totalAmount: 40, payments: []
+                }))
+            },
+            user: { findFirst: jest.fn(async () => ({ id: 7 })) },
+            paymentMethod: { findFirst: jest.fn(async (_args?: unknown) => null) },
+            cateringPayment: { create: jest.fn() },
+            cashMovement: { create: jest.fn() }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+
+        await expect(CateringService.addPayment(3, 1, 7, {
+            amount: 40, paymentMethodId: 99
+        })).rejects.toThrow(/inactivo|no válido/i);
+
+        expect(tx.paymentMethod.findFirst).toHaveBeenCalledWith({
+            where: { id: 99, active: true, OR: [{ companyId: 1 }, { companyId: null }] },
+            select: { id: true, type: true }
+        });
+        expect(tx.cateringPayment.create).not.toHaveBeenCalled();
+        expect(tx.cashMovement.create).not.toHaveBeenCalled();
+    });
+
+    it('rolls back a catering cash charge when its branch shift closes concurrently', async () => {
+        const shiftLookup = jest.fn(async (_args?: unknown): Promise<{ id: number } | null> => null);
+        shiftLookup.mockResolvedValueOnce({ id: 5 }).mockResolvedValueOnce(null);
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            cateringEvent: {
+                findFirst: jest.fn(async () => ({
+                    id: 3, companyId: 1, branchId: 2, status: 'RESERVED', totalAmount: 40, payments: []
+                }))
+            },
+            user: { findFirst: jest.fn(async () => ({ id: 7 })) },
+            paymentMethod: { findFirst: jest.fn(async () => ({ id: 8, type: 'CASH' })) },
+            cashShift: { findFirst: shiftLookup },
+            cateringPayment: { create: jest.fn() },
+            cashMovement: { create: jest.fn() }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+
+        await expect(CateringService.addPayment(3, 1, 7, {
+            amount: 40, paymentMethodId: 8
+        })).rejects.toThrow(/cerrado durante el cobro/i);
+
+        expect(shiftLookup).toHaveBeenNthCalledWith(1, expect.objectContaining({
+            where: expect.objectContaining({ companyId: 1, userId: 7, cashRegister: { branchId: 2 } })
+        }));
+        expect(tx.cateringPayment.create).not.toHaveBeenCalled();
+    });
+
     it('reverses multiple consumptions at their weighted outstanding value', async () => {
         const tx = {
             inventoryMovement: {
@@ -101,7 +220,12 @@ describe('transactional red-team regressions', () => {
             .mockResolvedValue({} as never);
 
         await InventoryConsumptionService.reverseForOrder(tx as never, {
-            orderId: 9, companyId: 1, userId: 7
+            orderId: 9,
+            companyId: 1,
+            userId: 7,
+            reason: 'Reversa de prueba',
+            sourceType: 'ADJUSTMENT',
+            reversalOrigin: 'UNIT_TEST'
         });
 
         expect(apply).toHaveBeenCalledWith(tx as never, expect.objectContaining({
@@ -109,6 +233,87 @@ describe('transactional red-team regressions', () => {
             unitCost: 50 / 3,
             reference: 'ORD-9'
         }));
+    });
+
+    it('does not let another product IN cancel the idempotency guard', async () => {
+        const tx = {
+            inventoryMovement: {
+                findMany: jest.fn(async () => [
+                    { warehouseId: 2, productId: 8, type: 'OUT', quantity: 1 },
+                    { warehouseId: 2, productId: 9, type: 'IN', quantity: 1 }
+                ])
+            },
+            orderItemModifier: { findMany: jest.fn() }
+        };
+
+        const result = await InventoryConsumptionService.consumeForOrder(tx as never, {
+            order: { id: 9, userId: 7, items: [] },
+            warehouseId: 2,
+            companyId: 1,
+            userId: 7
+        });
+
+        expect(result).toEqual({ consumed: false });
+        expect(tx.orderItemModifier.findMany).not.toHaveBeenCalled();
+    });
+
+    it('keeps idempotency after a partial reversal of one product bucket', async () => {
+        const tx = {
+            inventoryMovement: {
+                findMany: jest.fn(async () => [
+                    { warehouseId: 2, productId: 8, type: 'OUT', quantity: 3 },
+                    { warehouseId: 2, productId: 8, type: 'IN', quantity: 2 }
+                ])
+            },
+            orderItemModifier: { findMany: jest.fn() }
+        };
+
+        const result = await InventoryConsumptionService.consumeForOrder(tx as never, {
+            order: { id: 10, userId: 7, items: [] },
+            warehouseId: 2,
+            companyId: 1,
+            userId: 7
+        });
+
+        expect(result).toEqual({ consumed: false });
+        expect(tx.orderItemModifier.findMany).not.toHaveBeenCalled();
+    });
+
+    it('uses the product base unit when a recipe has no explicit unit', async () => {
+        const tx = {
+            inventoryMovement: { findMany: jest.fn(async () => []) },
+            orderItemModifier: { findMany: jest.fn(async () => []) }
+        };
+        const convert = jest.spyOn(UnitConversionService, 'convert').mockResolvedValue({
+            baseQuantity: 0.25,
+            baseUnit: 'kg',
+            originalQuantity: 0.25,
+            originalUnit: 'kg',
+            conversionFactor: 1
+        });
+        jest.spyOn(InventoryEngineService, 'applyMovement').mockResolvedValue({} as never);
+
+        await InventoryConsumptionService.consumeForOrder(tx as never, {
+            order: {
+                id: 11,
+                userId: 7,
+                items: [{
+                    quantity: 2,
+                    menuItem: {
+                        recipes: [{
+                            productId: 8,
+                            quantity: 0.25,
+                            product: { name: 'Harina', unit: 'lb', baseUnit: { abbreviation: 'kg' } }
+                        }]
+                    }
+                }]
+            },
+            warehouseId: 2,
+            companyId: 1,
+            userId: 7
+        });
+
+        expect(convert).toHaveBeenCalledWith(8, 1, 0.25, 'kg', tx as never);
     });
 
     it('freezes catering financial lines once an active payment exists', async () => {
@@ -165,16 +370,14 @@ describe('transactional red-team regressions', () => {
         expect(result.todaySales).toBe(125);
         expect(orderLookup).toHaveBeenCalledWith(expect.objectContaining({
             where: expect.objectContaining({
-                status: { in: ['PAID', 'DELIVERED'] },
+                financialStatus: 'PAID',
+                status: { not: 'CANCELLED' },
                 closedAt: { gte: expect.any(Date) }
             })
         }));
         expect(orderCount).toHaveBeenCalledWith(expect.objectContaining({
             where: expect.objectContaining({
-                OR: [
-                    { status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] } },
-                    { status: 'DELIVERED', closedAt: null }
-                ]
+                status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] }
             })
         }));
     });

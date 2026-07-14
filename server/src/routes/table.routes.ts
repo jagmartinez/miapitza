@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { TableController } from '../controllers/table.controller';
-import { authMiddleware, requireRole } from '../middlewares/auth';
+import { authMiddleware, requirePermission } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
 
@@ -8,12 +8,15 @@ const router = Router();
 
 router.use(authMiddleware);
 
-router.get('/', TableController.getAll);
-router.get('/branch/:branchId', TableController.getByBranch);
-router.get('/:id', validate(s.idParam), TableController.getById);
-router.post('/', requireRole('SUPERADMIN', 'ADMIN'), validate(s.createTable), TableController.create);
-router.put('/:id', requireRole('SUPERADMIN', 'ADMIN', 'HOST'), validate(s.idParam), TableController.update);
-router.patch('/:id/status', requireRole('SUPERADMIN', 'ADMIN', 'HOST', 'MESERO'), validate(s.updateTableStatus), TableController.updateStatus);
-router.delete('/:id', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), TableController.delete);
+router.get('/', requirePermission('tables.map.view', 'SUPERADMIN', 'ADMIN', 'HOST', 'MESERO', 'CAJERO'), TableController.getAll);
+router.get('/branch/:branchId', requirePermission('tables.map.view', 'SUPERADMIN', 'ADMIN', 'HOST', 'MESERO', 'CAJERO'), TableController.getByBranch);
+router.put('/layout', requirePermission('tables.map.edit', 'SUPERADMIN', 'ADMIN'), validate(s.updateTableLayout), TableController.updateLayout);
+router.post('/consolidate', requirePermission('tables.consolidate', 'SUPERADMIN', 'ADMIN', 'CAJERO'), validate(s.consolidateTables), TableController.consolidate);
+router.post('/transfer', requirePermission('tables.transfer', 'SUPERADMIN', 'ADMIN', 'MESERO'), validate(s.transferTableConsumption), TableController.transfer);
+router.get('/:id', requirePermission('tables.map.view', 'SUPERADMIN', 'ADMIN', 'HOST', 'MESERO', 'CAJERO'), validate(s.idParam), TableController.getById);
+router.post('/', requirePermission('tables.create', 'SUPERADMIN', 'ADMIN'), validate(s.createTable), TableController.create);
+router.put('/:id', requirePermission('tables.edit', 'SUPERADMIN', 'ADMIN', 'HOST'), validate(s.idParam), TableController.update);
+router.patch('/:id/status', requirePermission('tables.status.manage', 'SUPERADMIN', 'ADMIN', 'HOST', 'MESERO'), validate(s.updateTableStatus), TableController.updateStatus);
+router.delete('/:id', requirePermission('tables.delete', 'SUPERADMIN', 'ADMIN'), validate(s.idParam), TableController.delete);
 
 export default router;

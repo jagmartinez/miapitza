@@ -79,7 +79,7 @@ export class UploadController {
                 && header.subarray(8, 12).toString('ascii') === 'WEBP';
             if (!isJpeg && !isPng && !isWebp) {
                 fs.unlinkSync(req.file.path);
-                return res.status(400).json({ success: false, message: 'El contenido del archivo no es una imagen vÃ¡lida' });
+                return res.status(400).json({ success: false, message: 'El contenido del archivo no es una imagen válida' });
             }
 
             const fileUrl = `/uploads/${req.file.filename}`;

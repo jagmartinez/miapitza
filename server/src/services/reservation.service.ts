@@ -269,7 +269,9 @@ export class ReservationService {
 
     private static readonly VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
         'PENDING': ['CONFIRMED', 'CANCELLED'],
-        'CONFIRMED': ['COMPLETED', 'CANCELLED', 'NO_SHOW'],
+        // COMPLETED is reserved for checkIn(), which atomically creates the POS
+        // order and occupies the assigned table.
+        'CONFIRMED': ['CANCELLED', 'NO_SHOW'],
         'COMPLETED': [],
         'CANCELLED': [],
         'NO_SHOW': []
@@ -304,6 +306,96 @@ export class ReservationService {
                 }
             }
         });
+        });
+    }
+
+    static async checkIn(id: number, companyId: number, userId: number) {
+        return prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`Reservation\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const reservation = await tx.reservation.findFirst({
+                where: { id, companyId },
+                include: { table: true }
+            });
+            if (!reservation) throw new Error('Reservation not found');
+
+            const existingOrder = await tx.order.findUnique({
+                where: { reservationId: reservation.id },
+                include: { table: true, branch: true, items: { include: { menuItem: true } } }
+            });
+            if (existingOrder) {
+                if (reservation.status !== 'COMPLETED') {
+                    throw new Error('La reservación ya tiene una orden pero su estado es inconsistente');
+                }
+                return { reservation, order: existingOrder };
+            }
+
+            if (reservation.status !== 'CONFIRMED') {
+                throw new Error('Solo una reservación confirmada puede registrarse como llegada');
+            }
+            if (!reservation.tableId || !reservation.table) {
+                throw new Error('La reservación no tiene una mesa asignada');
+            }
+
+            const now = new Date();
+            const toleranceMs = 2 * 60 * 60 * 1000;
+            if (now.getTime() < reservation.date.getTime() - toleranceMs || now.getTime() > reservation.date.getTime() + toleranceMs) {
+                throw new Error('El check-in solo puede realizarse dentro de las 2 horas alrededor de la reservación');
+            }
+
+            await tx.$queryRaw`SELECT id FROM \`Table\` WHERE id = ${reservation.tableId} AND companyId = ${companyId} FOR UPDATE`;
+            const table = await tx.table.findFirst({
+                where: {
+                    id: reservation.tableId,
+                    companyId,
+                    branchId: reservation.branchId,
+                    status: { in: ['AVAILABLE', 'RESERVED'] }
+                }
+            });
+            if (!table) throw new Error('La mesa asignada ya no está disponible');
+
+            const activeOrder = await tx.order.findFirst({
+                where: {
+                    companyId,
+                    branchId: reservation.branchId,
+                    tableId: reservation.tableId,
+                    status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] }
+                },
+                select: { id: true }
+            });
+            if (activeOrder) throw new Error('La mesa asignada ya tiene una orden activa');
+
+            const branch = await tx.branch.findFirst({
+                where: { id: reservation.branchId, companyId, status: 'ACTIVE' },
+                select: { id: true }
+            });
+            if (!branch) throw new Error('La sucursal de la reservación está inactiva');
+
+            const order = await tx.order.create({
+                data: {
+                    companyId,
+                    branchId: reservation.branchId,
+                    tableId: reservation.tableId,
+                    reservationId: reservation.id,
+                    userId,
+                    customerName: reservation.customerName,
+                    orderType: 'DINE_IN',
+                    status: 'OPEN',
+                    total: 0
+                },
+                include: { table: true, branch: true, items: { include: { menuItem: true } } }
+            });
+
+            const checkedInReservation = await tx.reservation.update({
+                where: { id: reservation.id },
+                data: { status: 'COMPLETED' },
+                include: {
+                    branch: { select: { id: true, name: true, code: true } },
+                    table: { select: { id: true, number: true, capacity: true, location: true } }
+                }
+            });
+            await tx.table.update({ where: { id: reservation.tableId }, data: { status: 'OCCUPIED' } });
+
+            return { reservation: checkedInReservation, order };
         });
     }
 

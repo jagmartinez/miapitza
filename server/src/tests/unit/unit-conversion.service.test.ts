@@ -1,7 +1,12 @@
-import { describe, expect, it, jest } from '@jest/globals';
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import type { Prisma } from '@prisma/client';
 
+import prisma from '../../utils/prisma';
 import { UnitConversionService } from '../../services/unit-conversion.service';
+
+afterEach(() => {
+    jest.restoreAllMocks();
+});
 
 type Tx = Prisma.TransactionClient;
 
@@ -20,6 +25,25 @@ function makeDb(product: unknown): Tx {
         }
     } as unknown as Tx;
 }
+
+describe('UnitConversionService package selectors', () => {
+    it('does not advertise unconfigured dynamic package conversions', async () => {
+        jest.spyOn(prisma.product, 'findFirst').mockResolvedValue({
+            id: 1,
+            companyId: 1,
+            unit: 'paquete',
+            baseUnitId: 10,
+            baseUnit: { id: 10, name: 'Paquete', abbreviation: 'paquete', measurementType: 'PACKAGE' },
+            allowedUnits: []
+        } as never);
+        const catalog = jest.spyOn(prisma.unitOfMeasure, 'findMany');
+
+        const units = await UnitConversionService.getAllowedUnits(1, 1);
+
+        expect(units).toEqual([expect.objectContaining({ abbreviation: 'paquete', isBase: true })]);
+        expect(catalog).not.toHaveBeenCalled();
+    });
+});
 
 const flourBaseGrams = {
     id: 1,
@@ -77,6 +101,38 @@ describe('UnitConversionService.convert — base-unit math', () => {
 });
 
 describe('UnitConversionService.convert — fail-fast (no silent 1:1)', () => {
+    it('rejects an inactive configured base unit', async () => {
+        const db = makeDb({
+            id: 1,
+            companyId: 1,
+            name: 'Base inactiva',
+            unit: 'g',
+            baseUnit: { companyId: 1, active: false, abbreviation: 'g', measurementType: 'MASS', systemFactor: 1 },
+            allowedUnits: []
+        });
+        await expect(UnitConversionService.convert(1, 1, 2, 'g', db)).rejects.toThrow(/no está activa/i);
+    });
+
+    it('rejects a configured base unit from another tenant', async () => {
+        const db = makeDb({
+            id: 1,
+            companyId: 1,
+            name: 'Base ajena',
+            unit: 'g',
+            baseUnit: { companyId: 2, active: true, abbreviation: 'g', measurementType: 'MASS', systemFactor: 1 },
+            allowedUnits: []
+        });
+        await expect(UnitConversionService.convert(1, 1, 2, 'g', db)).rejects.toThrow(/otra empresa/i);
+    });
+
+    it('rejects a corrupt configured factor even without cost conversion', async () => {
+        const db = makeDb({
+            ...flourBaseGrams,
+            allowedUnits: [{ conversionFactor: 0, unit: { abbreviation: 'kg' } }]
+        });
+        await expect(UnitConversionService.convert(1, 1, 1, 'kg', db)).rejects.toThrow(/Factor de conversión inválido/i);
+    });
+
     it('throws when no units are configured and the requested unit differs from the product unit', async () => {
         const db = makeDb({
             id: 1,

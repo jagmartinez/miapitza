@@ -297,6 +297,15 @@ export const tablesAPI = {
 
     delete: (id: number) =>
         api.delete(`/tables/${id}`),
+
+    updateLayout: (branchId: number, tables: Array<Record<string, unknown>>, idempotencyKey: string) =>
+        api.put('/tables/layout', { branchId, tables }, { headers: { 'X-Idempotency-Key': idempotencyKey } }),
+
+    consolidate: (data: Record<string, unknown>, idempotencyKey: string) =>
+        api.post('/tables/consolidate', data, { headers: { 'X-Idempotency-Key': idempotencyKey } }),
+
+    transfer: (data: Record<string, unknown>, idempotencyKey: string) =>
+        api.post('/tables/transfer', data, { headers: { 'X-Idempotency-Key': idempotencyKey } }),
 };
 
 // Menu API
@@ -376,14 +385,31 @@ export const ordersAPI = {
     getActive: (branchId?: number) =>
         api.get('/orders/active', { params: { branchId } }),
 
+    getKitchenConfig: () => api.get('/orders/kitchen/config'),
+
+    getKitchenQueue: (branchId?: number) =>
+        api.get('/orders/kitchen/queue', { params: { branchId } }),
+
+    getKitchenHistory: (params?: { branchId?: number; limit?: number }) =>
+        api.get('/orders/kitchen/history', { params }),
+
+    startKitchenPreparation: (orderId: number) =>
+        api.post(`/orders/${orderId}/kitchen/start`),
+
+    markKitchenReady: (orderId: number) =>
+        api.post(`/orders/${orderId}/kitchen/ready`),
+
+    releaseKitchenOrder: (orderId: number) =>
+        api.post(`/orders/${orderId}/kitchen/release`),
+
     updateStatus: (id: number, status: string) =>
         api.patch(`/orders/${id}/status`, { status }),
 
     updatePricing: (id: number, data: Record<string, unknown>) =>
         api.patch(`/orders/${id}/pricing`, data),
 
-    cancel: (id: number, cancelReason?: string) =>
-        api.post(`/orders/${id}/cancel`, { cancelReason }),
+    cancel: (id: number, cancelReason?: string, warehouseId?: number) =>
+        api.post(`/orders/${id}/cancel`, { cancelReason, ...(warehouseId ? { warehouseId } : {}) }),
 
     startItem: (orderId: number, itemId: number) =>
         api.patch(`/orders/${orderId}/items/${itemId}/start`),
@@ -475,7 +501,7 @@ export const productionOrdersAPI = {
         api.patch(`/production-orders/${id}/status`, { status }),
     finish: (id: number, data: Record<string, unknown>) =>
         api.post(`/production-orders/${id}/finish`, data),
-    cancel: (id: number, reason?: string) =>
+    cancel: (id: number, reason: string) =>
         api.post(`/production-orders/${id}/cancel`, { reason }),
 };
 
@@ -656,6 +682,9 @@ export const purchaseOrdersAPI = {
     receive: (id: number, warehouseId: number) =>
         api.post(`/purchase-orders/${id}/receive`, { warehouseId }),
 
+    reverseReceipt: (id: number, reason: string) =>
+        api.post(`/purchase-orders/${id}/reverse-receipt`, { reason }),
+
     getImportTemplate: () => api.get('/purchase-orders/import/template', { responseType: 'blob' }),
 
     validateImport: (file: File) => {
@@ -673,6 +702,16 @@ export const purchaseOrdersAPI = {
 
     addPayment: (orderId: number, data: { amount: number; date?: string; bank?: string; referenceNumber?: string; observations?: string }) =>
         api.post(`/purchase-orders/${orderId}/payments`, data),
+
+    reversePayment: (orderId: number, paymentId: number, reason: string) =>
+        api.post(`/purchase-orders/${orderId}/payments/${paymentId}/reverse`, { reason }),
+};
+
+export const kitchenNotificationsAPI = {
+    getAll: (params?: { includeAttended?: boolean; limit?: number }) =>
+        api.get('/kitchen-notifications', { params }),
+    markSeen: (id: number) => api.patch(`/kitchen-notifications/${id}/seen`),
+    markAttended: (id: number) => api.patch(`/kitchen-notifications/${id}/attended`)
 };
 
 // Cash Registers API
@@ -718,13 +757,21 @@ export const cashShiftsAPI = {
 export const paymentsAPI = {
     create: (
         data: { orderId: number; paymentMethodId: number; amount: number; reference?: string; payerName?: string },
-        offlineMeta?: Pick<SyncItem, 'operationType' | 'dependencyKey' | 'entityTempId'>
+        offlineMeta?: Pick<SyncItem, 'operationType' | 'dependencyKey' | 'entityTempId'>,
+        idempotencyKey?: string,
     ) =>
-        api.post('/payments', data, { offlineMeta }),
+        api.post('/payments', data, {
+            offlineMeta,
+            ...(idempotencyKey ? { headers: { 'X-Idempotency-Key': idempotencyKey } } : {}),
+        }),
     getByOrderId: (orderId: number) =>
         api.get(`/payments/order/${orderId}`),
+    getSummary: (orderId: number) =>
+        api.get(`/payments/order/${orderId}/summary`),
     getPaymentMethods: () =>
         api.get('/payments/methods'),
+    reverse: (id: number, reason: string) =>
+        api.delete(`/payments/${id}`, { data: { reason } }),
 };
 
 // Reports API
@@ -850,6 +897,7 @@ export const usersAPI = {
     delete: (id: number) => api.delete(`/users/${id}`)
 };
 
+
 export const inventoryMovementsAPI = {
     getAll: (params?: Record<string, unknown>) =>
         api.get('/inventory-movements', { params }),
@@ -865,11 +913,15 @@ export const inventoryMovementsAPI = {
         reason?: string;
         reference?: string;
         unit?: string;
-    }) =>
-        api.post('/inventory-movements', data),
+    }, idempotencyKey?: string) =>
+        api.post('/inventory-movements', data, {
+            ...(idempotencyKey ? { headers: { 'X-Idempotency-Key': idempotencyKey } } : {})
+        }),
 
-    transfer: (data: Record<string, unknown>) =>
-        api.post('/inventory-movements/transfer', data),
+    transfer: (data: Record<string, unknown>, idempotencyKey?: string) =>
+        api.post('/inventory-movements/transfer', data, {
+            ...(idempotencyKey ? { headers: { 'X-Idempotency-Key': idempotencyKey } } : {})
+        }),
 };
 
 // Units of Measure API
@@ -966,10 +1018,19 @@ export const cashArqueoAPI = {
 };
 
 // Split Bill API
+export interface SplitBillItemQuantity {
+    orderItemId: number;
+    quantity: number;
+}
+
+export type SplitBillItemAssignment =
+    | { personName: string; itemIds: number[]; items?: never }
+    | { personName: string; items: SplitBillItemQuantity[]; itemIds?: never };
+
 export const splitBillAPI = {
     splitEvenly: (orderId: number, numberOfPeople: number) =>
         api.post(`/split-bill/${orderId}/evenly`, { numberOfPeople }),
-    splitByItems: (orderId: number, itemAssignments: Record<string, unknown>[]) =>
+    splitByItems: (orderId: number, itemAssignments: SplitBillItemAssignment[]) =>
         api.post(`/split-bill/${orderId}/by-items`, { itemAssignments }),
     splitByAmount: (orderId: number, customSplits: Record<string, unknown>[]) =>
         api.post(`/split-bill/${orderId}/by-amount`, { customSplits }),
@@ -1051,6 +1112,9 @@ export const reservationsAPI = {
     updateStatus: (id: number, status: string) =>
         api.patch(`/reservations/${id}/status`, { status }),
 
+    checkIn: (id: number) =>
+        api.post(`/reservations/${id}/check-in`),
+
     delete: (id: number) =>
         api.delete(`/reservations/${id}`),
 };
@@ -1069,8 +1133,10 @@ export const cateringAPI = {
     updateEvent: (id: number, data: Record<string, unknown>) =>
         api.put(`/catering/${id}`, data),
 
-    addPayment: (eventId: number, data: Record<string, unknown>) =>
-        api.post(`/catering/${eventId}/payments`, data),
+    addPayment: (eventId: number, data: Record<string, unknown>, idempotencyKey: string) =>
+        api.post(`/catering/${eventId}/payments`, data, {
+            headers: { 'X-Idempotency-Key': idempotencyKey }
+        }),
 
     reversePayment: (eventId: number, paymentId: number, reason: string) =>
         api.post(`/catering/${eventId}/payments/${paymentId}/reverse`, { reason }),
@@ -1087,8 +1153,8 @@ export const cateringAPI = {
     deleteService: (id: number) =>
         api.delete(`/catering/services/${id}`),
 
-    checkAvailability: (date: string) =>
-        api.get('/catering/availability', { params: { date } }),
+    checkAvailability: (date: string, branchId?: number) =>
+        api.get('/catering/availability', { params: { date, branchId } }),
 
     deleteEvent: (id: number) =>
         api.delete(`/catering/${id}`),

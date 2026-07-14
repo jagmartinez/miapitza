@@ -156,7 +156,12 @@ export default function Reservations() {
             }
         }
         try {
-            await reservationsAPI.updateStatus(id, status);
+            if (status === 'COMPLETED') {
+                await reservationsAPI.checkIn(id);
+                success('Llegada registrada y orden POS creada');
+            } else {
+                await reservationsAPI.updateStatus(id, status);
+            }
             loadReservations();
         } catch (error: unknown) {
             console.error('Error updating status:', error);
@@ -1036,7 +1041,11 @@ export default function Reservations() {
                                                         }
                                                     }
                                                     try {
-                                                        await reservationsAPI.updateStatus(editingReservation.id, option.value);
+                                                        if (option.value === 'COMPLETED') {
+                                                            await reservationsAPI.checkIn(editingReservation.id);
+                                                        } else {
+                                                            await reservationsAPI.updateStatus(editingReservation.id, option.value);
+                                                        }
                                                         loadReservations();
                                                         setIsSidebarOpen(false);
                                                     } catch (err) {

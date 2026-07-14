@@ -382,6 +382,94 @@ export class CostingService {
     }
 
     /**
+     * Remove the cost-history entries created by a reversed purchase receipt and
+     * replay every affected product from its historical baseline. FIFO valuation
+     * is derived from the already-reversed InventoryBatch ledger.
+     */
+    static async reversePurchaseCost(
+        db: Db,
+        purchaseOrderItemIds: number[],
+        companyId: number
+    ): Promise<void> {
+        if (purchaseOrderItemIds.length === 0) return;
+        const targetIds = new Set(purchaseOrderItemIds);
+        const entries = await db.productCostHistory.findMany({
+            where: { companyId, purchaseOrderItemId: { in: purchaseOrderItemIds } },
+            select: { productId: true }
+        });
+        if (entries.length === 0) return;
+
+        const productIds = [...new Set(entries.map((entry) => entry.productId))];
+        const histories = new Map<number, Awaited<ReturnType<typeof db.productCostHistory.findMany>>>();
+        for (const productId of productIds) {
+            histories.set(productId, await db.productCostHistory.findMany({
+                where: { productId, companyId },
+                orderBy: { createdAt: 'asc' }
+            }));
+        }
+
+        await db.productCostHistory.deleteMany({
+            where: { companyId, purchaseOrderItemId: { in: purchaseOrderItemIds } }
+        });
+        const company = await db.company.findUnique({
+            where: { id: companyId },
+            select: { costingMethod: true }
+        });
+
+        for (const productId of productIds) {
+            const completeHistory = histories.get(productId) || [];
+            const baseline = completeHistory[0];
+            let newAvgCost: number;
+
+            if ((company?.costingMethod || 'WEIGHTED_AVERAGE') === 'FIFO') {
+                const batches = await this.getFifoBatches(productId, companyId, db);
+                newAvgCost = this.calculateBatchWeightedAverage(batches);
+            } else {
+                let runningStock = baseline ? Number(baseline.previousStock) : 0;
+                let runningAvgCost = baseline ? Number(baseline.previousAvgCost) : 0;
+                let removedStockBefore = 0;
+
+                for (const entry of completeHistory) {
+                    const purchaseItemId = entry.purchaseOrderItemId == null
+                        ? null
+                        : Number(entry.purchaseOrderItemId);
+                    const qty = Number(entry.quantity);
+                    if (purchaseItemId != null && targetIds.has(purchaseItemId)) {
+                        removedStockBefore += qty;
+                        continue;
+                    }
+                    const observedPreviousStock = Number(entry.previousStock) - removedStockBefore;
+                    if (Number.isFinite(observedPreviousStock)) runningStock = observedPreviousStock;
+                    runningAvgCost = await this.calculateWeightedAverageCost(
+                        productId,
+                        runningStock,
+                        runningAvgCost,
+                        qty,
+                        Number(entry.unitCost)
+                    );
+                    runningStock += qty;
+                }
+                newAvgCost = runningAvgCost;
+            }
+
+            const lastPurchase = [...completeHistory].reverse().find((entry) => {
+                const purchaseItemId = entry.purchaseOrderItemId == null
+                    ? null
+                    : Number(entry.purchaseOrderItemId);
+                return purchaseItemId != null && !targetIds.has(purchaseItemId);
+            });
+            await db.product.update({
+                where: { id: productId },
+                data: {
+                    currentAverageCost: newAvgCost,
+                    lastPurchaseCost: lastPurchase ? Number(lastPurchase.unitCost) : 0,
+                    updatedAt: new Date()
+                }
+            });
+        }
+    }
+
+    /**
      * Get cost history for a product
      */
     static async getCostHistory(productId: number, companyId: number, limit: number = 50) {

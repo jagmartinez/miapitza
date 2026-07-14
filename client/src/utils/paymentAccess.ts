@@ -8,10 +8,9 @@ export interface CashShiftScope {
     } | null;
 }
 
-/** Mirrors PaymentService's exact cash-method contract. */
-export function isCashPaymentMethodName(name: string): boolean {
-    const normalized = name.trim().toUpperCase();
-    return normalized === 'EFECTIVO' || normalized === 'CASH';
+/** Mirrors PaymentService's persisted semantic method contract. */
+export function isCashPaymentMethodType(type: string | null | undefined): boolean {
+    return type === 'CASH';
 }
 
 /** Cash must post into an open, current shift belonging to the order branch. */

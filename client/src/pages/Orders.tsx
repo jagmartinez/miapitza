@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { ordersAPI, invoicesAPI, cashShiftsAPI } from '../services/api';
+import { ordersAPI, invoicesAPI, cashShiftsAPI, warehousesAPI } from '../services/api';
 import { canSendOrderToKitchen, canCancelOrder, canCreatePayment } from '../utils/authz';
 import { useDebounce } from '../utils/useDebounce';
 import Button from '../components/Button';
@@ -14,7 +14,7 @@ import {
     Send, CheckCircle, XCircle, CreditCard,
     Clock, User, Printer, Package, Info, ClipboardList
 } from 'lucide-react';
-import type { Order } from '../types';
+import type { Order, Warehouse } from '../types';
 import { useCurrency } from '../hooks/useCurrency';
 import { hasUsableCashShift } from '../utils/paymentAccess';
 import type { SingleValue } from 'react-select';
@@ -58,8 +58,16 @@ export default function Orders() {
 
     // Cancel modal state
     const [showCancelModal, setShowCancelModal] = useState(false);
-    const [cancelOrderId, setCancelOrderId] = useState<number | null>(null);
+    const [cancelOrder, setCancelOrder] = useState<Order | null>(null);
     const [cancelReason, setCancelReason] = useState('');
+    const [cancelWarehouseId, setCancelWarehouseId] = useState<number | null>(null);
+    const [cancelWarehouses, setCancelWarehouses] = useState<Warehouse[]>([]);
+
+    const [showDeliveryModal, setShowDeliveryModal] = useState(false);
+    const [deliveryOrder, setDeliveryOrder] = useState<Order | null>(null);
+    const [deliveryWarehouseId, setDeliveryWarehouseId] = useState<number | null>(null);
+    const [deliveryWarehouses, setDeliveryWarehouses] = useState<Warehouse[]>([]);
+    const [loadingWarehouses, setLoadingWarehouses] = useState(false);
 
     const loadOrders = useCallback(async () => {
         try {
@@ -182,29 +190,55 @@ export default function Orders() {
         }
     };
 
-    const openCancelModal = (orderId: number) => {
+    const loadBranchWarehouses = async (branchId: number) => {
+        const response = await warehousesAPI.getAll({ branchId });
+        return (response.data.data as Warehouse[]).filter(
+            (warehouse) => warehouse.type === 'BRANCH' && warehouse.branchId === branchId
+        );
+    };
+
+    const openCancelModal = async (order: Order) => {
         if (!canCancel) {
             showWarning('Tu rol no puede cancelar órdenes. Pide apoyo a un mesero o administrador.');
             return;
         }
-        setCancelOrderId(orderId);
+        setCancelOrder(order);
         setCancelReason('');
+        setCancelWarehouseId(null);
+        setCancelWarehouses([]);
         setShowCancelModal(true);
+        if (order.status !== 'OPEN') {
+            setLoadingWarehouses(true);
+            try {
+                const warehouses = await loadBranchWarehouses(order.branchId);
+                setCancelWarehouses(warehouses);
+                if (warehouses.length === 1) setCancelWarehouseId(warehouses[0].id);
+            } catch {
+                showError('No se pudieron cargar las bodegas de la sucursal.');
+            } finally {
+                setLoadingWarehouses(false);
+            }
+        }
     };
 
     const handleCancelOrder = async () => {
-        if (!cancelOrderId) return;
+        if (!cancelOrder) return;
         if (!canCancel) {
             showWarning('Tu rol no puede cancelar órdenes. Pide apoyo a un mesero o administrador.');
             return;
         }
+        if (cancelOrder.status !== 'OPEN' && !cancelWarehouseId) {
+            showWarning('Selecciona la bodega que registrará el desperdicio de los productos ya enviados.');
+            return;
+        }
         try {
-            await ordersAPI.cancel(cancelOrderId, cancelReason);
+            await ordersAPI.cancel(cancelOrder.id, cancelReason, cancelWarehouseId ?? undefined);
             loadOrders();
             setIsSidebarOpen(false);
             setShowCancelModal(false);
-            setCancelOrderId(null);
+            setCancelOrder(null);
             setCancelReason('');
+            setCancelWarehouseId(null);
         } catch (error) {
             console.error('Error cancelling order:', error);
             showError('Error al cancelar la orden');
@@ -227,6 +261,41 @@ export default function Orders() {
                 ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
                 : undefined;
             showError(message || 'No se pudo generar la factura oficial.');
+        }
+    };
+
+    const openDeliveryModal = async (order: Order) => {
+        setDeliveryOrder(order);
+        setDeliveryWarehouseId(null);
+        setDeliveryWarehouses([]);
+        setShowDeliveryModal(true);
+        setLoadingWarehouses(true);
+        try {
+            const warehouses = await loadBranchWarehouses(order.branchId);
+            setDeliveryWarehouses(warehouses);
+            if (warehouses.length === 1) setDeliveryWarehouseId(warehouses[0].id);
+        } catch {
+            showError('No se pudieron cargar las bodegas de la sucursal.');
+        } finally {
+            setLoadingWarehouses(false);
+        }
+    };
+
+    const handleCompleteDelivery = async () => {
+        if (!deliveryOrder || !deliveryWarehouseId) {
+            showWarning('Selecciona la bodega de la que se descontará el inventario.');
+            return;
+        }
+        try {
+            await ordersAPI.complete(deliveryOrder.id, deliveryWarehouseId);
+            await loadOrders();
+            setIsSidebarOpen(false);
+            setShowDeliveryModal(false);
+            setDeliveryOrder(null);
+            setDeliveryWarehouseId(null);
+        } catch (error) {
+            console.error('Error completing delivery:', error);
+            showError('No se pudo entregar la orden ni descontar el inventario.');
         }
     };
 
@@ -261,15 +330,15 @@ export default function Orders() {
             );
         }
 
-        if (order.status === 'READY') {
+        if (order.status === 'READY' && (order.financialStatus === 'PAID' || Math.round(Number(order.total) * 100) === 0)) {
             buttons.push(
-                <Button key="delivered" variant="primary" onClick={() => handleUpdateStatus(order.id, 'DELIVERED')}>
+                <Button key="delivered" variant="primary" onClick={() => void openDeliveryModal(order)}>
                     <Package size={16} /> Entregar
                 </Button>
             );
         }
 
-        if (order.status === 'DELIVERED' && canPayOrder) {
+        if (order.status !== 'CANCELLED' && order.financialStatus !== 'PAID' && canPayOrder) {
             buttons.push(
                 <Button key="pay" variant="primary" onClick={() => handlePaymentClick(order)}>
                     <CreditCard size={16} /> Cobrar
@@ -277,16 +346,16 @@ export default function Orders() {
             );
         }
 
-        if (order.status !== 'PAID' && order.status !== 'CANCELLED' && canCancel) {
+        if (order.financialStatus === 'UNPAID' && order.status !== 'CANCELLED' && canCancel) {
             buttons.push(
-                <Button key="cancel" variant="ghost" className="text-danger" onClick={() => openCancelModal(order.id)}>
+                <Button key="cancel" variant="ghost" className="text-danger" onClick={() => void openCancelModal(order)}>
                     <XCircle size={16} /> Cancelar
                 </Button>
             );
         }
 
         // Add reprint invoice button for paid orders
-        if (order.status === 'PAID') {
+        if (order.financialStatus === 'PAID') {
             buttons.push(
                 <Button key="reprint" variant="secondary" onClick={() => void handleReprintInvoice(order)}>
                     <Printer size={16} /> Descargar Factura
@@ -298,7 +367,8 @@ export default function Orders() {
     };
 
     const filteredOrders = orders.filter(o => {
-        const matchStatus = statusFilter === 'all' || o.status === statusFilter;
+        const matchStatus = statusFilter === 'all'
+            || (statusFilter === 'PAID' ? o.financialStatus === 'PAID' : o.status === statusFilter);
         const searchLower = debouncedSearch.toLowerCase();
         const matchSearch = !debouncedSearch || String(o.id).includes(searchLower) ||
             o.customerName?.toLowerCase().includes(searchLower) ||
@@ -443,6 +513,9 @@ export default function Orders() {
                                     <span className={`status-badge ${getStatusColor(order.status)}`}>
                                         {getStatusText(order.status)}
                                     </span>
+                                    <span className={`status-badge ${order.financialStatus === 'PAID' ? 'status-badge-paid' : ''}`}>
+                                        {order.financialStatus === 'PAID' ? 'Pagada' : order.financialStatus === 'PARTIAL' ? 'Pago parcial' : 'Pendiente de pago'}
+                                    </span>
                                 </div>
                                 <div className="order-time">
                                     <Clock size={14} />
@@ -528,6 +601,12 @@ export default function Orders() {
                                         <div className={`detail-info-item status-info-item ${getStatusColor(selectedOrder.status)}`}>
                                             <span className="detail-label">Estado</span>
                                             <span className="detail-value">{getStatusText(selectedOrder.status)}</span>
+                                        </div>
+                                        <div className="detail-info-item">
+                                            <span className="detail-label">Estado financiero</span>
+                                            <span className="detail-value">
+                                                {selectedOrder.financialStatus === 'PAID' ? 'Pagada' : selectedOrder.financialStatus === 'PARTIAL' ? 'Pago parcial' : 'Pendiente de pago'}
+                                            </span>
                                         </div>
                                         <div className="detail-info-item">
                                             <span className="detail-label">Fecha y Hora</span>
@@ -643,9 +722,42 @@ export default function Orders() {
             }
 
             <Modal
+                isOpen={showDeliveryModal}
+                onClose={() => { setShowDeliveryModal(false); setDeliveryOrder(null); setDeliveryWarehouseId(null); }}
+                title={`Entregar Orden #${deliveryOrder?.id ?? ''}`}
+                size="sm"
+            >
+                <p>Selecciona la bodega de la sucursal de la que se descontará el inventario.</p>
+                <Select
+                    variant="modal"
+                    isLoading={loadingWarehouses}
+                    options={deliveryWarehouses.map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))}
+                    value={deliveryWarehouses
+                        .map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))
+                        .find((option) => option.value === deliveryWarehouseId) ?? null}
+                    onChange={(option: SingleValue<{ value: number; label: string }>) => setDeliveryWarehouseId(option?.value ?? null)}
+                    placeholder={deliveryWarehouses.length === 0 ? 'No hay bodegas de sucursal disponibles' : 'Seleccionar bodega...'}
+                    noOptionsMessage={() => 'No hay bodegas de sucursal disponibles'}
+                />
+                <div className="problem-modal-actions">
+                    <button type="button" className="btn-cancel-problem" onClick={() => setShowDeliveryModal(false)}>
+                        Volver
+                    </button>
+                    <button
+                        type="button"
+                        className="btn-submit-problem"
+                        onClick={() => void handleCompleteDelivery()}
+                        disabled={!deliveryWarehouseId || loadingWarehouses}
+                    >
+                        Confirmar Entrega
+                    </button>
+                </div>
+            </Modal>
+
+            <Modal
                 isOpen={showCancelModal}
-                onClose={() => { setShowCancelModal(false); setCancelReason(''); }}
-                title={`Cancelar Orden #${cancelOrderId}`}
+                onClose={() => { setShowCancelModal(false); setCancelOrder(null); setCancelReason(''); setCancelWarehouseId(null); }}
+                title={`Cancelar Orden #${cancelOrder?.id ?? ''}`}
                 size="sm"
             >
                 <p style={{ fontSize: '0.9rem', color: 'var(--color-neutral-500)', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -660,6 +772,19 @@ export default function Orders() {
                     autoFocus
                     style={{ minHeight: '80px' }}
                 />
+                {cancelOrder?.status !== 'OPEN' && (
+                    <Select
+                        variant="modal"
+                        isLoading={loadingWarehouses}
+                        options={cancelWarehouses.map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))}
+                        value={cancelWarehouses
+                            .map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))
+                            .find((option) => option.value === cancelWarehouseId) ?? null}
+                        onChange={(option: SingleValue<{ value: number; label: string }>) => setCancelWarehouseId(option?.value ?? null)}
+                        placeholder={cancelWarehouses.length === 0 ? 'No hay bodegas de sucursal disponibles' : 'Bodega para registrar la merma...'}
+                        noOptionsMessage={() => 'No hay bodegas de sucursal disponibles'}
+                    />
+                )}
                 <div className="problem-modal-actions">
                     <button type="button" className="btn-cancel-problem" onClick={() => { setShowCancelModal(false); setCancelReason(''); }}>
                         Volver
@@ -668,8 +793,8 @@ export default function Orders() {
                         type="button"
                         className="btn-submit-problem"
                         onClick={handleCancelOrder}
-                        disabled={!cancelReason.trim()}
-                        style={{ background: 'var(--color-error)', opacity: cancelReason.trim() ? 1 : 0.5 }}
+                        disabled={!cancelReason.trim() || (cancelOrder?.status !== 'OPEN' && !cancelWarehouseId)}
+                        style={{ background: 'var(--color-error)' }}
                     >
                         Confirmar Cancelación
                     </button>

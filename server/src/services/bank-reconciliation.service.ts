@@ -15,21 +15,42 @@ export class BankReconciliationService {
         const tolerance = await SettingService.getCashReconciliationTolerance(companyId);
         const payments = await prisma.payment.findMany({
             where: {
-                status: 'ACTIVE',
-                createdAt: {
-                    gte: startDate,
-                    lte: endDate
-                },
+                OR: [
+                    { createdAt: { gte: startDate, lte: endDate } },
+                    { status: 'REVERSED', reversedAt: { gte: startDate, lte: endDate } }
+                ],
                 order: {
                     companyId,
-                    status: { not: 'CANCELLED' },
                     ...(branchId ? { branchId } : {})
                 }
             },
-            include: {
-                paymentMethod: {
-                    select: { name: true }
+            select: {
+                id: true,
+                amount: true,
+                status: true,
+                createdAt: true,
+                reversedAt: true,
+                methodType: true
+            }
+        });
+        const cateringPayments = await prisma.cateringPayment.findMany({
+            where: {
+                OR: [
+                    { date: { gte: startDate, lte: endDate } },
+                    { status: 'REVERSED', reversedAt: { gte: startDate, lte: endDate } }
+                ],
+                event: {
+                    companyId,
+                    ...(branchId ? { branchId } : {})
                 }
+            },
+            select: {
+                id: true,
+                amount: true,
+                status: true,
+                date: true,
+                reversedAt: true,
+                methodType: true
             }
         });
 
@@ -49,6 +70,18 @@ export class BankReconciliationService {
                 movements: true
             }
         });
+
+        const refundLedgerCents = new Map<string, number>();
+        for (const payment of payments) {
+            if (payment.status === 'REVERSED' && payment.methodType === 'CASH') {
+                refundLedgerCents.set(`REV-PAY-${payment.id}`, Math.round(Number(payment.amount) * 100));
+            }
+        }
+        for (const payment of cateringPayments) {
+            if (payment.status === 'REVERSED' && payment.methodType === 'CASH') {
+                refundLedgerCents.set(`REV-CAT-PAY-${payment.id}`, Math.round(Number(payment.amount) * 100));
+            }
+        }
 
         // Calculate totals
         const totalsByMethod: Record<string, number> = {
@@ -84,8 +117,15 @@ export class BankReconciliationService {
                 if (movement.type === 'IN') {
                     shiftSalesIn += amount;
                 } else if (movement.type === 'OUT') {
-                    totalExpenses += amount;
                     shiftCashOut += amount;
+                    // Refunds are already represented by the immutable payment
+                    // reversal ledger. Excluding their compensating cash OUT here
+                    // prevents subtracting the same reversal twice from netSales.
+                    const movementCents = Math.round(amount * 100);
+                    const isPaymentRefund = movement.reference !== null
+                        && movement.reference !== undefined
+                        && refundLedgerCents.get(movement.reference) === movementCents;
+                    if (!isPaymentRefund) totalExpenses += amount;
                 }
             }
 
@@ -110,24 +150,50 @@ export class BankReconciliationService {
         }
 
         // Use registered payments as the source of truth for sales by method.
-        const grossCollected = payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
-        const refunded = payments
-            .filter((payment) => payment.status === 'REVERSED')
-            .reduce((sum, payment) => sum + Number(payment.amount), 0);
-        totalSales = grossCollected - refunded;
-        for (const payment of payments) {
-            if (payment.status === 'REVERSED') continue;
-            const methodName = (payment.paymentMethod?.name || '').toLowerCase();
-            const amount = Number(payment.amount);
-            if (methodName.includes('tarjeta') || methodName.includes('card') || methodName.includes('pos')) {
-                totalsByMethod.card += amount;
-            } else if (methodName.includes('transfer') || methodName.includes('transferencia')) {
-                totalsByMethod.transfer += amount;
-            } else if (methodName.includes('efectivo') || methodName.includes('cash')) {
-                totalsByMethod.cash += amount;
-            } else {
-                totalsByMethod.other += amount;
-            }
+        const inPeriod = (value: Date | null | undefined) => Boolean(
+            value && value >= startDate && value <= endDate
+        );
+        const ledger = [
+            ...payments.map((payment) => ({
+                source: 'pos' as const,
+                amount: payment.amount,
+                status: payment.status,
+                collectedAt: payment.createdAt,
+                reversedAt: payment.reversedAt,
+                methodType: payment.methodType
+            })),
+            ...cateringPayments.map((payment) => ({
+                source: 'catering' as const,
+                amount: payment.amount,
+                status: payment.status,
+                collectedAt: payment.date,
+                reversedAt: payment.reversedAt,
+                methodType: payment.methodType
+            }))
+        ];
+        const centsFor = (rows: typeof ledger, mode: 'gross' | 'refund') => rows
+            .filter((payment) => mode === 'gross'
+                ? inPeriod(payment.collectedAt)
+                : payment.status === 'REVERSED' && inPeriod(payment.reversedAt))
+            .reduce((sum, payment) => sum + Math.round(Number(payment.amount) * 100), 0);
+        const grossCollectedCents = centsFor(ledger, 'gross');
+        const refundedCents = centsFor(ledger, 'refund');
+        const grossCollected = grossCollectedCents / 100;
+        const refunded = refundedCents / 100;
+        totalSales = (grossCollectedCents - refundedCents) / 100;
+        for (const payment of ledger) {
+            const grossAmount = inPeriod(payment.collectedAt) ? Number(payment.amount) : 0;
+            const refundAmount = payment.status === 'REVERSED' && inPeriod(payment.reversedAt)
+                ? Number(payment.amount)
+                : 0;
+            const amount = grossAmount - refundAmount;
+            if (payment.methodType === 'CARD') totalsByMethod.card += amount;
+            else if (payment.methodType === 'BANK_TRANSFER') totalsByMethod.transfer += amount;
+            else if (payment.methodType === 'CASH') totalsByMethod.cash += amount;
+            else totalsByMethod.other += amount;
+        }
+        for (const method of Object.keys(totalsByMethod)) {
+            totalsByMethod[method] = Math.round(totalsByMethod[method] * 100) / 100;
         }
 
         // Reconcile like-for-like: expected cash (start + cash IN - cash OUT, per shift)
@@ -138,6 +204,16 @@ export class BankReconciliationService {
         const countedCash = Math.round(totalCash * 100) / 100;
         const cashDifference = countedCash - expectedCash;
         const overallStatus = this.calculateReconciliationStatus(cashDifference, tolerance);
+        const sourceTotals = Object.fromEntries((['pos', 'catering'] as const).map((source) => {
+            const rows = ledger.filter((payment) => payment.source === source);
+            const grossCents = centsFor(rows, 'gross');
+            const refundCents = centsFor(rows, 'refund');
+            return [source, {
+                grossCollected: grossCents / 100,
+                refunded: refundCents / 100,
+                netCollected: (grossCents - refundCents) / 100
+            }];
+        }));
 
         return {
             period: {
@@ -151,6 +227,7 @@ export class BankReconciliationService {
                 grossCollected,
                 refunded,
                 netCollected: totalSales,
+                bySource: sourceTotals,
                 totalExpenses,
                 netSales: totalSales - totalExpenses,
                 byMethod: totalsByMethod,
@@ -176,7 +253,13 @@ export class BankReconciliationService {
         notes?: string;
         shiftIds?: number[];
     }, branchId?: number) {
-        const amount = Math.round(Number(data.amount) * 100) / 100;
+        const rawAmount = Number(data.amount);
+        const amountCents = Math.round(rawAmount * 100);
+        if (!Number.isFinite(rawAmount) || rawAmount <= 0) throw new Error('El monto del depósito debe ser mayor a cero');
+        if (Math.abs(rawAmount - amountCents / 100) > 1e-9) {
+            throw new Error('El monto del depósito debe tener como máximo dos decimales');
+        }
+        const amount = amountCents / 100;
         const date = new Date(data.date);
         const reference = data.reference?.trim();
         const bankAccount = data.bankAccount?.trim();
@@ -186,10 +269,10 @@ export class BankReconciliationService {
         }
         const shiftIds = Array.from(new Set(requestedShiftIds));
 
-        if (!Number.isFinite(amount) || amount <= 0) throw new Error('El monto del depósito debe ser mayor a cero');
         if (Number.isNaN(date.getTime())) throw new Error('La fecha del depósito no es válida');
         if (!reference) throw new Error('La referencia del depósito es obligatoria');
         if (!bankAccount) throw new Error('La cuenta bancaria es obligatoria');
+        const tolerance = await SettingService.getCashReconciliationTolerance(companyId);
 
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const actor = await tx.user.findFirst({ where: { id: userId, companyId, status: 'ACTIVE' }, select: { id: true } });
@@ -203,10 +286,25 @@ export class BankReconciliationService {
                         id: { in: shiftIds }, companyId, endDate: { not: null },
                         ...(branchId ? { cashRegister: { branchId } } : {})
                     },
-                    select: { id: true, depositLinks: { where: { deposit: { status: 'ACTIVE' } }, select: { id: true } } }
+                    select: {
+                        id: true,
+                        endAmount: true,
+                        depositLinks: { where: { deposit: { status: 'ACTIVE' } }, select: { id: true } }
+                    }
                 });
                 if (shifts.length !== shiftIds.length) throw new Error('Uno o más turnos no existen, pertenecen a otra empresa o continúan abiertos');
                 if (shifts.some((shift) => shift.depositLinks.length > 0)) throw new Error('Uno o más turnos ya están conciliados con un depósito activo');
+                const linkedAmountCents = shifts.reduce(
+                    (sum, shift) => sum + Math.round(Number(shift.endAmount) * 100),
+                    0
+                );
+                const toleranceCents = Math.round(tolerance * 100);
+                const linkedAmount = linkedAmountCents / 100;
+                if (Math.abs(linkedAmountCents - amountCents) > toleranceCents) {
+                    throw new Error(
+                        `El depósito (${amount.toFixed(2)}) no coincide con el efectivo contado de los turnos (${linkedAmount.toFixed(2)})`
+                    );
+                }
             }
 
             return tx.bankDeposit.create({
@@ -223,6 +321,7 @@ export class BankReconciliationService {
                 include: { shifts: { select: { shiftId: true } } }
             });
         });
+
     }
 
     /**
@@ -293,10 +392,18 @@ export class BankReconciliationService {
         const reference = depositReference.trim();
         if (uniqueShiftIds.length === 0) throw new Error('Debe seleccionar al menos un turno');
         if (!reference) throw new Error('La referencia del depósito es obligatoria');
+        const tolerance = await SettingService.getCashReconciliationTolerance(companyId);
 
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             await tx.$queryRaw`SELECT id FROM \`BankDeposit\` WHERE companyId = ${companyId} AND reference = ${reference} FOR UPDATE`;
-            const deposit = await tx.bankDeposit.findFirst({ where: { companyId, reference, status: 'ACTIVE' }, select: { id: true } });
+            const deposit = await tx.bankDeposit.findFirst({
+                where: { companyId, reference, status: 'ACTIVE' },
+                select: {
+                    id: true,
+                    amount: true,
+                    shifts: { select: { shiftId: true, shift: { select: { endAmount: true } } } }
+                }
+            });
             if (!deposit) throw new Error('Depósito activo no encontrado para esta empresa');
             for (const shiftId of [...uniqueShiftIds].sort((a, b) => a - b)) {
                 await tx.$queryRaw`SELECT id FROM \`CashShift\` WHERE id = ${shiftId} AND companyId = ${companyId} FOR UPDATE`;
@@ -306,10 +413,31 @@ export class BankReconciliationService {
                     id: { in: uniqueShiftIds }, companyId, endDate: { not: null },
                     ...(branchId ? { cashRegister: { branchId } } : {})
                 },
-                select: { id: true, depositLinks: { where: { deposit: { status: 'ACTIVE' } }, select: { id: true } } }
+                select: {
+                    id: true,
+                    endAmount: true,
+                    depositLinks: { where: { deposit: { status: 'ACTIVE' } }, select: { id: true } }
+                }
             });
             if (shifts.length !== uniqueShiftIds.length) throw new Error('Uno o más turnos no existen, pertenecen a otra empresa o continúan abiertos');
             if (shifts.some((shift) => shift.depositLinks.length > 0)) throw new Error('Uno o más turnos ya están conciliados');
+            const existingShiftIds = new Set(deposit.shifts.map((link) => link.shiftId));
+            const existingAmountCents = deposit.shifts.reduce(
+                (sum, link) => sum + Math.round(Number(link.shift.endAmount) * 100),
+                0
+            );
+            const selectedAmountCents = shifts
+                .filter((shift) => !existingShiftIds.has(shift.id))
+                .reduce((sum, shift) => sum + Math.round(Number(shift.endAmount) * 100), 0);
+            const linkedAmountCents = existingAmountCents + selectedAmountCents;
+            const linkedAmount = linkedAmountCents / 100;
+            const depositAmountCents = Math.round(Number(deposit.amount) * 100);
+            const toleranceCents = Math.round(tolerance * 100);
+            if (Math.abs(linkedAmountCents - depositAmountCents) > toleranceCents) {
+                throw new Error(
+                    `El depósito (${Number(deposit.amount).toFixed(2)}) no coincide con el efectivo contado de los turnos (${linkedAmount.toFixed(2)})`
+                );
+            }
             await tx.bankDepositShift.createMany({ data: uniqueShiftIds.map((shiftId) => ({ depositId: deposit.id, shiftId })) });
             return { reconciled: uniqueShiftIds.length, shiftIds: uniqueShiftIds, depositReference: reference };
         });

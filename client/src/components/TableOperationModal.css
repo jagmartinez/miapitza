@@ -1,0 +1,29 @@
+.table-operation-form { display: grid; gap: var(--spacing-lg); }
+.table-operation-form > label { display: grid; gap: 7px; color: var(--color-text); font-weight: 600; }
+.table-operation-form select,
+.table-operation-form textarea {
+    width: 100%;
+    padding: 11px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-background);
+    color: var(--color-text);
+    font: inherit;
+    box-sizing: border-box;
+}
+.table-operation-form select { min-height: 44px; }
+.table-operation-form select:focus,
+.table-operation-form textarea:focus { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.table-operation-form fieldset { margin: 0; padding: var(--spacing-md); border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.table-operation-form legend { padding: 0 6px; color: var(--color-text); font-weight: 700; }
+.table-operation-checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--spacing-sm); }
+.table-operation-checks label { display: flex; align-items: center; gap: 7px; min-height: 40px; color: var(--color-text); }
+.table-operation-checks input { width: 20px; height: 20px; }
+.table-operation-error { color: var(--color-danger); font-size: var(--font-size-xs); font-weight: 600; }
+.table-operation-mode { display: flex; flex-wrap: wrap; gap: var(--spacing-md); }
+.table-operation-mode label { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--color-text); }
+.table-operation-mode input { width: 20px; height: 20px; }
+.table-operation-items { display: grid; gap: var(--spacing-sm); margin-top: var(--spacing-sm); max-height: 240px; overflow: auto; }
+.table-operation-items label { display: grid; grid-template-columns: minmax(0, 1fr) 82px; align-items: center; gap: var(--spacing-sm); color: var(--color-text); }
+.table-operation-items small { color: var(--color-text-secondary); }
+.table-operation-items input { width: 100%; min-height: 44px; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-background); color: var(--color-text); box-sizing: border-box; }

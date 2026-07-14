@@ -1,7 +1,7 @@
 import prisma from '../utils/prisma';
 import type { Prisma } from '@prisma/client';
 
-export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'CANCEL' | 'TRANSFER' | 'LOGIN' | 'LOGOUT' | 'PASSWORD_CHANGE' | 'PERMISSION_CHANGE';
+export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'CANCEL' | 'TRANSFER' | 'REVERSE' | 'REVERSE_RECEIPT' | 'LOGIN' | 'LOGOUT' | 'PASSWORD_CHANGE' | 'PERMISSION_CHANGE';
 
 export interface AuditLogEntry {
     companyId: number;
@@ -12,13 +12,15 @@ export interface AuditLogEntry {
     details?: Record<string, unknown>;
 }
 
+type AuditLogClient = Pick<Prisma.TransactionClient, 'auditLog'>;
+
 export class AuditLogService {
     private static asJson(details?: Record<string, unknown>): Prisma.InputJsonValue | undefined {
         return details as Prisma.InputJsonValue | undefined;
     }
 
-    static async log(entry: AuditLogEntry) {
-        return prisma.auditLog.create({
+    static async log(entry: AuditLogEntry, db: AuditLogClient = prisma) {
+        return db.auditLog.create({
             data: {
                 companyId: entry.companyId,
                 userId: entry.userId,
@@ -30,9 +32,9 @@ export class AuditLogService {
         });
     }
 
-    static async logBatch(entries: AuditLogEntry[]) {
+    static async logBatch(entries: AuditLogEntry[], db: AuditLogClient = prisma) {
         if (entries.length === 0) return;
-        return prisma.auditLog.createMany({
+        return db.auditLog.createMany({
             data: entries.map(e => ({
                 companyId: e.companyId,
                 userId: e.userId,

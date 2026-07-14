@@ -26,19 +26,30 @@ export const auth = async (
     res: Response,
     next: NextFunction
 ) => {
+    let token: string | null;
     try {
-        const token = extractAuthToken(req);
+        token = extractAuthToken(req);
+    } catch {
+        return res.status(401).json({ success: false, message: 'Token inválido o expirado' });
+    }
 
-        if (!token) {
+    if (!token) {
             return res.status(401).json({ success: false, message: 'Token no proporcionado' });
-        }
+    }
 
-        const JWT_SECRET = process.env.JWT_SECRET;
-        if (!JWT_SECRET) {
+    const JWT_SECRET = process.env.JWT_SECRET;
+    if (!JWT_SECRET) {
             return res.status(500).json({ success: false, message: 'Error de configuración del servidor' });
-        }
-        const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as { userId: number; role: string; branchId?: number; companyId?: number };
+    }
 
+    let decoded: { userId: number; role: string; branchId?: number; companyId?: number };
+    try {
+        decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as typeof decoded;
+    } catch {
+        return res.status(401).json({ success: false, message: 'Token inválido o expirado' });
+    }
+
+    try {
         const sessionIsValid = await SessionService.isValid(token);
         if (!sessionIsValid) {
             return res.status(401).json({ success: false, message: 'Sesión revocada o expirada' });
@@ -95,7 +106,7 @@ export const auth = async (
             !isSuperAdmin && user.branchId && user.allowedBranches.length > 0 &&
             !user.allowedBranches.some((entry) => entry.branchId === user.branchId)
         ) {
-            return res.status(403).json({ success: false, message: 'La sucursal activa no estÃ¡ permitida para este usuario' });
+            return res.status(403).json({ success: false, message: 'La sucursal activa no está permitida para este usuario' });
         }
 
         const configuredTimezone = user.company?.settings?.[0]?.value?.trim();
@@ -110,7 +121,7 @@ export const auth = async (
             roleObj: user.role,
             branchId: user.branchId || undefined,
             companyId: user.companyId,
-            timezone
+            timezone,
         };
 
         // Password-policy flags are security controls, not UI hints. Keep only
@@ -140,13 +151,14 @@ export const auth = async (
             return res.status(403).json({
                 success: false,
                 code: 'PASSWORD_CHANGE_REQUIRED',
-                message: 'Debe cambiar su contraseÃ±a antes de continuar'
+                message: 'Debe cambiar su contraseña antes de continuar'
             });
         }
 
-        next();
-    } catch {
-        return res.status(401).json({ success: false, message: 'Token inválido o expirado' });
+        return next();
+    } catch (error) {
+        // Database/session/settings failures must not masquerade as invalid JWTs.
+        return next(error);
     }
 };
 

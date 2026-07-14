@@ -1,6 +1,45 @@
 import type { Prisma, Promotion } from '@prisma/client';
 import prisma from '../utils/prisma';
 
+export type PromotionValidationCode =
+    | 'INVALID_TOTAL'
+    | 'INACTIVE'
+    | 'NOT_STARTED'
+    | 'EXPIRED'
+    | 'USAGE_LIMIT'
+    | 'MINIMUM_NOT_MET';
+
+export class PromotionValidationError extends Error {
+    constructor(public readonly code: PromotionValidationCode) {
+        super(code);
+        this.name = 'PromotionValidationError';
+    }
+}
+
+/** Single authoritative promotion calculation used by preview and order writes. */
+export function calculatePromotionDiscount(
+    promotion: Pick<Promotion, 'active' | 'validFrom' | 'validTo' | 'usageLimit' | 'usageCount' | 'minOrderAmount' | 'type' | 'value' | 'maxDiscount'>,
+    orderTotal: number,
+    now = new Date()
+): number {
+    if (!Number.isFinite(orderTotal) || orderTotal < 0) throw new PromotionValidationError('INVALID_TOTAL');
+    if (!promotion.active) throw new PromotionValidationError('INACTIVE');
+    if (promotion.validFrom > now) throw new PromotionValidationError('NOT_STARTED');
+    if (promotion.validTo && promotion.validTo < now) throw new PromotionValidationError('EXPIRED');
+    if (promotion.usageLimit !== null && promotion.usageCount >= promotion.usageLimit) {
+        throw new PromotionValidationError('USAGE_LIMIT');
+    }
+    if (promotion.minOrderAmount !== null && orderTotal < Number(promotion.minOrderAmount)) {
+        throw new PromotionValidationError('MINIMUM_NOT_MET');
+    }
+
+    let discount = promotion.type === 'PERCENTAGE'
+        ? orderTotal * (Number(promotion.value) / 100)
+        : Number(promotion.value);
+    if (promotion.maxDiscount !== null) discount = Math.min(discount, Number(promotion.maxDiscount));
+    return Math.round(Math.min(Math.max(0, discount), orderTotal) * 100) / 100;
+}
+
 /**
  * Promotion Service
  * Handles discounts and promotional codes
@@ -158,56 +197,29 @@ export class PromotionService {
             return { valid: false, discount: 0, message: 'Código de promoción no encontrado' };
         }
 
-        if (!promotion.active) {
-            return { valid: false, discount: 0, message: 'Esta promoción ya no está activa' };
-        }
-
-        const now = new Date();
-        if (promotion.validFrom && new Date(promotion.validFrom) > now) {
-            return { valid: false, discount: 0, message: 'Esta promoción aún no está vigente' };
-        }
-
-        if (promotion.validTo && new Date(promotion.validTo) < now) {
-            return { valid: false, discount: 0, message: 'Esta promoción ha expirado' };
-        }
-
-        if (promotion.usageLimit && promotion.usageCount >= promotion.usageLimit) {
-            return { valid: false, discount: 0, message: 'Esta promoción ha alcanzado su límite de uso' };
-        }
-
-        if (promotion.minOrderAmount && orderTotal < Number(promotion.minOrderAmount)) {
-            return {
-                valid: false,
-                discount: 0,
-                message: `El monto mínimo de compra es C$${promotion.minOrderAmount}`
+        let discount: number;
+        try {
+            discount = calculatePromotionDiscount(promotion, orderTotal);
+        } catch (error) {
+            if (!(error instanceof PromotionValidationError)) throw error;
+            const messages: Record<PromotionValidationCode, string> = {
+                INVALID_TOTAL: 'El total de la orden no es válido',
+                INACTIVE: 'Esta promoción ya no está activa',
+                NOT_STARTED: 'Esta promoción aún no está vigente',
+                EXPIRED: 'Esta promoción ha expirado',
+                USAGE_LIMIT: 'Esta promoción ha alcanzado su límite de uso',
+                MINIMUM_NOT_MET: `El monto mínimo de compra es ${promotion.minOrderAmount}`
             };
+            return { valid: false, discount: 0, message: messages[error.code] };
         }
-
-        // Calculate discount
-        let discount = 0;
-        if (promotion.type === 'PERCENTAGE') {
-            discount = orderTotal * (Number(promotion.value) / 100);
-        } else {
-            discount = Number(promotion.value);
-        }
-
-        // Apply max discount cap if exists
-        if (promotion.maxDiscount && discount > Number(promotion.maxDiscount)) {
-            discount = Number(promotion.maxDiscount);
-        }
-
-        // Cap discount to order total — never give more discount than the order value
-        discount = Math.min(discount, orderTotal);
 
         const settings = await prisma.setting.findMany({ where: { companyId: promotion.companyId } });
         const currencySymbol = settings.find((s) => s.name === `${promotion.companyId}_currency_symbol`)?.value || 'C$';
 
-        const roundedDiscount = Math.round(discount * 100) / 100;
-
         return {
             valid: true,
-            discount: roundedDiscount,
-            message: `Descuento de ${currencySymbol}${roundedDiscount.toFixed(2)} aplicado`,
+            discount,
+            message: `Descuento de ${currencySymbol}${discount.toFixed(2)} aplicado`,
             promotion
         };
     }

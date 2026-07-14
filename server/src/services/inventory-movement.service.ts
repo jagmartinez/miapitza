@@ -1,8 +1,10 @@
 import type { Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
 import { AuditLogService } from './audit-log.service';
 import { InventoryEngineService } from './inventory-engine.service';
+import { CostingService } from './costing.service';
 
 export class InventoryMovementService {
     static async getAll(companyId: number, filters?: {
@@ -157,7 +159,8 @@ export class InventoryMovementService {
 
         // Verify product belongs to company
         const product = await prisma.product.findFirst({
-            where: { id: data.productId, companyId }
+            where: { id: data.productId, companyId },
+            include: { baseUnit: { select: { abbreviation: true } } }
         });
 
         if (!product) {
@@ -172,25 +175,25 @@ export class InventoryMovementService {
         }
 
         // Validate quantity
-        if (data.quantity <= 0) {
+        if (!Number.isFinite(data.quantity) || data.quantity <= 0) {
             throw new Error('Quantity must be greater than 0');
         }
-
-        // Convert unit if specified
-        let baseQuantity = data.quantity;
-        let originalQuantity: number | null = null;
-        let originalUnit: string | null = null;
-        let conversionFactor: number | null = null;
-
-        if (data.unit) {
-            const conv = await UnitConversionService.convert(
-                data.productId, companyId, data.quantity, data.unit
-            );
-            baseQuantity = conv.baseQuantity;
-            originalQuantity = conv.originalQuantity;
-            originalUnit = conv.originalUnit;
-            conversionFactor = conv.conversionFactor;
+        const reason = data.reason?.trim();
+        if (!reason) throw new Error('El motivo del movimiento es requerido');
+        if (data.type === 'OUT' && data.unitCost != null) {
+            throw new Error('El costo de una salida lo determina el método de costeo; no puede enviarse manualmente');
         }
+
+        // Omission means the explicit product base/legacy unit, not an untracked
+        // raw quantity. Every movement therefore persists originalUnit + factor.
+        const effectiveUnit = data.unit || product.baseUnit?.abbreviation || product.unit;
+        const conv = await UnitConversionService.convert(
+            data.productId, companyId, data.quantity, effectiveUnit
+        );
+        const baseQuantity = conv.baseQuantity;
+        const originalQuantity = conv.originalQuantity;
+        const originalUnit = conv.originalUnit;
+        const conversionFactor = conv.conversionFactor;
 
         // D11: convert a caller-supplied IN/ADJUSTMENT entry cost (per original
         // unit) to base unit before handing it to the engine.
@@ -202,6 +205,15 @@ export class InventoryMovementService {
         // single inventory engine, preserving the WEIGHTED_AVERAGE valuation while
         // adding real FIFO layers.
         return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            let previousGlobalStock: number | null = null;
+            if ((data.type === 'IN' || data.type === 'ADJUSTMENT') && baseUnitCost != null) {
+                await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${data.productId} AND companyId = ${companyId} FOR UPDATE`;
+                const global = await tx.stock.aggregate({
+                    where: { productId: data.productId, companyId },
+                    _sum: { quantity: true }
+                });
+                previousGlobalStock = Number(global._sum.quantity ?? 0);
+            }
             const result = await InventoryEngineService.applyMovement(tx, {
                 type: data.type,
                 companyId,
@@ -210,7 +222,7 @@ export class InventoryMovementService {
                 userId: data.userId,
                 quantity: baseQuantity,
                 unitCost: baseUnitCost,
-                reason: data.reason,
+                reason,
                 reference: data.reference,
                 originalQuantity,
                 originalUnit,
@@ -219,11 +231,26 @@ export class InventoryMovementService {
                 sourceType: 'ADJUSTMENT'
             });
 
+            // A valued manual inbound changes the company-wide moving average just
+            // like any other inventory entry. Without this, the movement/batch was
+            // valued at the caller's cost but every later WA outflow used the stale
+            // Product.currentAverageCost.
+            if (previousGlobalStock != null && baseUnitCost != null) {
+                await CostingService.applyProductionCost(
+                    tx,
+                    data.productId,
+                    companyId,
+                    baseQuantity,
+                    baseUnitCost,
+                    previousGlobalStock
+                );
+            }
+
             AuditLogService.log({
                 companyId, userId: data.userId,
                 entityType: 'InventoryMovement', entityId: result.movementId,
                 action: 'CREATE',
-                details: { type: data.type, productId: data.productId, warehouseId: data.warehouseId, quantity: baseQuantity, reason: data.reason }
+                details: { type: data.type, productId: data.productId, warehouseId: data.warehouseId, quantity: baseQuantity, reason }
             }).catch((err) => console.error('[InventoryMovementService] Failed to write audit log:', err));
 
             // Re-read with the same includes callers expect.
@@ -293,7 +320,7 @@ export class InventoryMovementService {
             throw new Error('Cannot transfer to the same warehouse');
         }
 
-        if (data.quantity <= 0) {
+        if (!Number.isFinite(data.quantity) || data.quantity <= 0) {
             throw new Error('Transfer quantity must be positive');
         }
 
@@ -307,24 +334,26 @@ export class InventoryMovementService {
             throw new Error('Warehouse not found or unauthorized');
         }
 
-        // Convert unit before transaction
-        let baseQuantity = data.quantity;
-        let originalQuantity: number | null = null;
-        let originalUnit: string | null = null;
-        let convFactor: number | null = null;
-
-        if (data.unit) {
-            const conv = await UnitConversionService.convert(
-                data.productId, companyId, data.quantity, data.unit
-            );
-            baseQuantity = conv.baseQuantity;
-            originalQuantity = conv.originalQuantity;
-            originalUnit = conv.originalUnit;
-            convFactor = conv.conversionFactor;
-        }
+        const transferProduct = await prisma.product.findFirst({
+            where: { id: data.productId, companyId },
+            select: { unit: true, baseUnit: { select: { abbreviation: true } } }
+        });
+        if (!transferProduct) throw new Error('Product not found or unauthorized');
+        const effectiveUnit = data.unit || transferProduct.baseUnit?.abbreviation || transferProduct.unit;
+        const conversion = await UnitConversionService.convert(
+            data.productId, companyId, data.quantity, effectiveUnit
+        );
+        const baseQuantity = conversion.baseQuantity;
+        const originalQuantity = conversion.originalQuantity;
+        const originalUnit = conversion.originalUnit;
+        const convFactor = conversion.conversionFactor;
 
         return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-            const transferGroupId = `TRF-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+            const transferGroupId = `TRF-${randomUUID()}`;
+
+            const firstWarehouseId = Math.min(data.fromWarehouseId, data.toWarehouseId);
+            const secondWarehouseId = Math.max(data.fromWarehouseId, data.toWarehouseId);
+            await tx.$queryRaw`SELECT id FROM \`Warehouse\` WHERE companyId = ${companyId} AND id IN (${firstWarehouseId}, ${secondWarehouseId}) ORDER BY id FOR UPDATE`;
 
             const product = await tx.product.findFirst({
                 where: { id: data.productId, companyId }
@@ -341,8 +370,6 @@ export class InventoryMovementService {
                     update: {}
                 });
             }
-            const firstWarehouseId = Math.min(data.fromWarehouseId, data.toWarehouseId);
-            const secondWarehouseId = Math.max(data.fromWarehouseId, data.toWarehouseId);
             await tx.$queryRaw`SELECT id FROM \`Stock\` WHERE companyId = ${companyId} AND productId = ${data.productId} AND warehouseId IN (${firstWarehouseId}, ${secondWarehouseId}) ORDER BY warehouseId FOR UPDATE`;
 
             // --- OUT from source warehouse (TRANSFER, outbound leg) ---

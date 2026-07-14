@@ -53,6 +53,14 @@ function makeRowKey(): string {
     return Math.random().toString(36).slice(2, 11);
 }
 
+function displayedYieldUnit(recipe: ProductionRecipe): string {
+    return recipe.yieldUnitAbbreviation?.trim()
+        || recipe.yieldUnit?.abbreviation?.trim()
+        || recipe.product?.baseUnit?.abbreviation?.trim()
+        || recipe.product?.unit?.trim()
+        || 'sin unidad';
+}
+
 function emptyRow(): ComponentRow {
     return { key: makeRowKey(), componentProductId: '', quantity: '', unitId: '' };
 }
@@ -545,7 +553,7 @@ export default function ProductionRecipes() {
                                     </td>
                                     <td data-label="Rendimiento" className="text-right">
                                         {Number(recipe.yieldQuantity).toLocaleString(undefined, { maximumFractionDigits: 6 })}{' '}
-                                        {recipe.yieldUnit?.abbreviation || recipe.product?.baseUnit?.abbreviation || recipe.product?.unit || 'unidad'}
+                                        {displayedYieldUnit(recipe)}
                                     </td>
                                     <td data-label="Costo unitario estimado" className="text-right">
                                         {recipe.cost

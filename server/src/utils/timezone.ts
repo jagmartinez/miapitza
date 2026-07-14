@@ -54,7 +54,18 @@ export function getZonedParts(date: Date, timeZone: string): ZonedParts {
     };
 }
 
-function zonedDateTimeToUtc(parts: ZonedParts, timeZone: string): Date {
+export type TimeZoneDisambiguation = 'earlier' | 'later';
+
+function sameZonedParts(left: ZonedParts, right: ZonedParts): boolean {
+    return left.year === right.year && left.month === right.month && left.day === right.day &&
+        left.hour === right.hour && left.minute === right.minute && left.second === right.second;
+}
+
+export function zonedDateTimeToUtc(
+    parts: ZonedParts,
+    timeZone: string,
+    disambiguation: TimeZoneDisambiguation = 'earlier',
+): Date {
     const targetAsUtc = Date.UTC(
         parts.year, parts.month - 1, parts.day,
         parts.hour, parts.minute, parts.second
@@ -73,7 +84,31 @@ function zonedDateTimeToUtc(parts: ZonedParts, timeZone: string): Date {
         guess += correction;
         if (correction === 0) break;
     }
-    return new Date(guess);
+    const result = new Date(guess);
+    if (!sameZonedParts(getZonedParts(result, timeZone), parts)) {
+        // Spring-forward gaps contain wall-clock values that never occur. Fail
+        // closed instead of silently moving the shift to a different hour.
+        throw new RangeError('La hora local no existe en la zona horaria indicada por un cambio de horario');
+    }
+    // Discover both offsets around a fall-back transition and apply a documented,
+    // deterministic policy. Weekly schedules use `earlier` unless a caller opts in
+    // to `later`; the resulting UTC instant and timezone snapshot are persisted.
+    const candidates = new Map<number, Date>();
+    for (let hours = -48; hours <= 48; hours += 6) {
+        const sampleMs = targetAsUtc + hours * 60 * 60 * 1000;
+        const sampleParts = getZonedParts(new Date(sampleMs), timeZone);
+        const sampleAsUtc = Date.UTC(
+            sampleParts.year, sampleParts.month - 1, sampleParts.day,
+            sampleParts.hour, sampleParts.minute, sampleParts.second,
+        );
+        const candidate = new Date(targetAsUtc - (sampleAsUtc - sampleMs));
+        if (sameZonedParts(getZonedParts(candidate, timeZone), parts)) {
+            candidates.set(candidate.getTime(), candidate);
+        }
+    }
+    candidates.set(result.getTime(), result);
+    const ordered = Array.from(candidates.values()).sort((left, right) => left.getTime() - right.getTime());
+    return disambiguation === 'later' ? ordered[ordered.length - 1] : ordered[0];
 }
 
 function addCalendarDays(parts: Pick<ZonedParts, 'year' | 'month' | 'day'>, days: number) {

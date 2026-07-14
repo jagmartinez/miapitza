@@ -17,6 +17,14 @@ export interface CostConversionResult extends ConversionResult {
 }
 
 export class UnitConversionService {
+    private static positiveFactor(value: unknown, context: string): number {
+        const factor = Number(value);
+        if (!Number.isFinite(factor) || factor <= 0) {
+            throw new Error(`Factor de conversión inválido (${String(value)}) para ${context}. Revise la configuración de unidades.`);
+        }
+        return factor;
+    }
+
     private static sanitizeLegacyUnit(raw: string): string {
         return String(raw || '').trim().toLowerCase().replace(/[.\s_-]+/g, '');
     }
@@ -114,10 +122,7 @@ export class UnitConversionService {
                 where: {
                     companyId,
                     active: true,
-                    OR: [
-                        { abbreviation: { startsWith: abbreviation } },
-                        { name: abbreviation }
-                    ]
+                    name: abbreviation
                 }
             });
             if (unit) return unit;
@@ -140,7 +145,7 @@ export class UnitConversionService {
         const db = tx || prisma;
 
         if (!Number.isFinite(quantity) || quantity <= 0) {
-            throw new Error('La cantidad a convertir debe ser un nÃºmero finito mayor a 0');
+            throw new Error('La cantidad a convertir debe ser un número finito mayor a 0');
         }
 
         const product = await db.product.findFirst({
@@ -148,7 +153,11 @@ export class UnitConversionService {
             include: {
                 baseUnit: true,
                 allowedUnits: {
-                    where: { active: true },
+                    where: {
+                        companyId,
+                        active: true,
+                        unit: { companyId, active: true }
+                    },
                     include: { unit: true }
                 }
             }
@@ -159,6 +168,12 @@ export class UnitConversionService {
         }
 
         const baseUnit = product.baseUnit;
+        if (baseUnit && (
+            (baseUnit.companyId != null && baseUnit.companyId !== companyId) ||
+            baseUnit.active === false
+        )) {
+            throw new Error(`La unidad base configurada para "${product.name}" no está activa o pertenece a otra empresa.`);
+        }
         if (!baseUnit) {
             const inferredBase = await this.resolveBaseUnitFromLegacy(companyId, product.unit, db);
             if (!inferredBase) {
@@ -222,7 +237,15 @@ export class UnitConversionService {
                 );
             }
 
-            const dynamicFactor = Number(dynamicUnit.systemFactor) / Number(inferredBase.systemFactor);
+            const dynamicSystemFactor = this.positiveFactor(
+                dynamicUnit.systemFactor,
+                `la unidad "${dynamicUnit.abbreviation}"`
+            );
+            const inferredSystemFactor = this.positiveFactor(
+                inferredBase.systemFactor,
+                `la unidad base "${inferredBase.abbreviation}"`
+            );
+            const dynamicFactor = dynamicSystemFactor / inferredSystemFactor;
             const dynamicBaseQuantity = quantity * dynamicFactor;
             return {
                 baseQuantity: dynamicBaseQuantity,
@@ -286,7 +309,15 @@ export class UnitConversionService {
                 );
             }
 
-            const dynamicFactor = Number(dynamicUnit.systemFactor) / Number(baseUnit.systemFactor);
+            const dynamicSystemFactor = this.positiveFactor(
+                dynamicUnit.systemFactor,
+                `la unidad "${dynamicUnit.abbreviation}"`
+            );
+            const baseSystemFactor = this.positiveFactor(
+                baseUnit.systemFactor,
+                `la unidad base "${baseUnit.abbreviation}"`
+            );
+            const dynamicFactor = dynamicSystemFactor / baseSystemFactor;
             const dynamicBaseQuantity = quantity * dynamicFactor;
 
             return {
@@ -298,7 +329,10 @@ export class UnitConversionService {
             };
         }
 
-        const factor = Number(productUnit.conversionFactor);
+        const factor = this.positiveFactor(
+            productUnit.conversionFactor,
+            `"${productUnit.unit.abbreviation}" en el producto "${product.name}"`
+        );
         const baseQuantity = quantity * factor;
 
         return {
@@ -322,7 +356,7 @@ export class UnitConversionService {
         tx?: Tx
     ): Promise<CostConversionResult> {
         if (!Number.isFinite(costPerUnit) || costPerUnit < 0) {
-            throw new Error('El costo por unidad debe ser un nÃºmero finito mayor o igual a 0');
+            throw new Error('El costo por unidad debe ser un número finito mayor o igual a 0');
         }
         const result = await this.convert(productId, companyId, quantity, unitAbbreviation, tx);
 
@@ -354,7 +388,11 @@ export class UnitConversionService {
             include: {
                 baseUnit: true,
                 allowedUnits: {
-                    where: { active: true },
+                    where: {
+                        companyId,
+                        active: true,
+                        unit: { companyId, active: true }
+                    },
                     include: { unit: true },
                     orderBy: { isDefault: 'desc' }
                 }
@@ -366,6 +404,12 @@ export class UnitConversionService {
         }
 
         let baseUnit = product.baseUnit;
+        if (baseUnit && (
+            (baseUnit.companyId != null && baseUnit.companyId !== companyId) ||
+            baseUnit.active === false
+        )) {
+            throw new Error(`La unidad base configurada para "${product.name}" no está activa o pertenece a otra empresa.`);
+        }
         if (!baseUnit && product.baseUnitId) {
             baseUnit = await prisma.unitOfMeasure.findFirst({
                 where: { id: product.baseUnitId, companyId, active: true }
@@ -373,30 +417,28 @@ export class UnitConversionService {
         }
 
         if (!baseUnit) {
-            let inferredBase = await this.resolveBaseUnitFromLegacy(companyId, product.unit, prisma);
-
-            if (!inferredBase) {
-                const fuzzyCandidates = this.buildLegacyUnitCandidates(product.unit);
-                if (fuzzyCandidates.length > 0) {
-                    inferredBase = await prisma.unitOfMeasure.findFirst({
-                        where: {
-                            companyId,
-                            active: true,
-                            OR: fuzzyCandidates.flatMap((abbr) => ([
-                                { abbreviation: { contains: abbr } },
-                                { name: { contains: abbr } }
-                            ]))
-                        },
-                        orderBy: { name: 'asc' }
-                    });
-                }
-            }
+            const inferredBase = await this.resolveBaseUnitFromLegacy(companyId, product.unit, prisma);
 
             if (!inferredBase) {
                 return [{
                     unitId: 0,
                     abbreviation: product.unit,
                     name: product.unit,
+                    conversionFactor: 1,
+                    isBase: true,
+                    isDefault: true
+                }];
+            }
+
+            // Package conversions (caja, saco, paquete, ...) are product-specific.
+            // Exposing every PACKAGE catalog row here would advertise bogus dynamic
+            // 1:1 choices that convert() correctly refuses.  Until the product is
+            // explicitly configured, only its inferred base package is usable.
+            if (inferredBase.measurementType === 'PACKAGE') {
+                return [{
+                    unitId: inferredBase.id,
+                    abbreviation: inferredBase.abbreviation,
+                    name: inferredBase.name,
                     conversionFactor: 1,
                     isBase: true,
                     isDefault: true
@@ -426,7 +468,10 @@ export class UnitConversionService {
             unitId: pu.unitId,
             abbreviation: pu.unit.abbreviation,
             name: pu.unit.name,
-            conversionFactor: Number(pu.conversionFactor),
+                conversionFactor: this.positiveFactor(
+                    pu.conversionFactor,
+                    `"${pu.unit.abbreviation}" en el producto "${product.name}"`
+                ),
             isBase: pu.unitId === product.baseUnitId,
             isDefault: pu.isDefault
         }));
@@ -446,19 +491,22 @@ export class UnitConversionService {
 
         // Also expose all active units compatible with base measurement type,
         // so recipe/inventory selectors are not limited to manually configured rows.
-        const compatibleUnits = await prisma.unitOfMeasure.findMany({
-            where: {
-                companyId,
-                active: true,
-                measurementType: baseUnit.measurementType
-            },
-            orderBy: { name: 'asc' }
-        });
+        const compatibleUnits = baseUnit.measurementType === 'PACKAGE'
+            ? []
+            : await prisma.unitOfMeasure.findMany({
+                where: {
+                    companyId,
+                    active: true,
+                    measurementType: baseUnit.measurementType
+                },
+                orderBy: { name: 'asc' }
+            });
 
         const existingAbbr = new Set(units.map(u => u.abbreviation.toLowerCase()));
         for (const u of compatibleUnits) {
             if (existingAbbr.has(u.abbreviation.toLowerCase())) continue;
-            const factor = Number(u.systemFactor) / Number(baseUnit.systemFactor);
+            const factor = this.positiveFactor(u.systemFactor, `la unidad "${u.abbreviation}"`) /
+                this.positiveFactor(baseUnit.systemFactor, `la unidad base "${baseUnit.abbreviation}"`);
             units.push({
                 unitId: u.id,
                 abbreviation: u.abbreviation,
@@ -531,6 +579,14 @@ export class UnitConversionService {
     ) {
         const db = tx || prisma;
 
+        const product = await db.product.findFirst({
+            where: { id: productId, companyId },
+            select: { id: true }
+        });
+        if (!product) {
+            throw new Error('Producto no encontrado para la empresa');
+        }
+
         const unitMap: Record<string, { baseAbbr: string; relatedAbbrs: string[] }> = {
             'kg': { baseAbbr: 'kg', relatedAbbrs: ['g', 'lb', 'qq', 'oz'] },
             'g': { baseAbbr: 'g', relatedAbbrs: ['kg', 'lb', 'qq', 'oz'] },
@@ -554,7 +610,7 @@ export class UnitConversionService {
         const baseUom = await db.unitOfMeasure.findUnique({
             where: { companyId_abbreviation: { companyId, abbreviation: config.baseAbbr } }
         });
-        if (!baseUom) return null;
+        if (!baseUom?.active) return null;
 
         // Pin baseUnitId and align the legacy `unit` string to the resolved base
         // abbreviation so listings/kardex (which still display `product.unit`)
@@ -583,18 +639,19 @@ export class UnitConversionService {
             const relatedUom = await db.unitOfMeasure.findUnique({
                 where: { companyId_abbreviation: { companyId, abbreviation: abbr } }
             });
-            if (!relatedUom) continue;
+            if (!relatedUom?.active) continue;
 
             // Skip PACKAGE-type related units (caja, saco, paquete, ...). Their
             // systemFactor is 1, so an auto-derived factor would be a bogus 1:1
             // conversion (e.g. 1 caja = 1 base). Packaging factors are product
             // specific and must be configured manually in "Conversiones".
-            if (relatedUom.measurementType === 'PACKAGE') continue;
+            if (relatedUom.measurementType === 'PACKAGE' && !(baseUom.measurementType === 'UNIT' && relatedUom.abbreviation === 'docena')) continue;
 
             // conversionFactor = how many base units per 1 of this unit
             // systemFactor is in reference units (g for MASS, ml for VOLUME)
             // factor = relatedUom.systemFactor / baseUom.systemFactor
-            const factor = Number(relatedUom.systemFactor) / Number(baseUom.systemFactor);
+            const factor = this.positiveFactor(relatedUom.systemFactor, `la unidad "${relatedUom.abbreviation}"`) /
+                this.positiveFactor(baseUom.systemFactor, `la unidad base "${baseUom.abbreviation}"`);
 
             await db.productUnit.upsert({
                 where: { productId_unitId: { productId, unitId: relatedUom.id } },

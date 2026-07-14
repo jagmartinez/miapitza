@@ -114,8 +114,13 @@ export class PedidosYaController {
                 return;
             }
 
-            const config = await PedidosYaService.getConfig(companyId);
-            if (!config || !config.active || !config.webhookSecret) {
+            let config;
+            try {
+                config = await PedidosYaService.resolveWebhookConfig(companyId, req.body);
+            } catch {
+                config = null;
+            }
+            if (!config?.webhookSecret) {
                 // Do not reveal whether a tenant/configuration exists.
                 res.status(401).json({ error: 'Invalid signature' });
                 return;

@@ -13,7 +13,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
-import { Plus, Eye, Zap, X, ShoppingCart, FileDown, FileText, CreditCard, DollarSign, Info, Save, AlertTriangle, History } from 'lucide-react';
+import { Plus, Eye, Zap, X, ShoppingCart, FileDown, FileText, CreditCard, DollarSign, Info, Save, AlertTriangle, History, Undo2 } from 'lucide-react';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import { BANK_OPTIONS, type StrOption } from '../constants/purchaseOrderOptions';
@@ -73,6 +73,9 @@ export default function PurchaseOrders() {
     const [suggestionSearch, setSuggestionSearch] = useState('');
     const [savingPayment, setSavingPayment] = useState(false);
     const [paymentTab, setPaymentTab] = useState<'register' | 'history'>('register');
+    const [reversalPaymentId, setReversalPaymentId] = useState<number | null>(null);
+    const [reversalReason, setReversalReason] = useState('');
+    const [reversingPayment, setReversingPayment] = useState(false);
     // Pagination and Filters state
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
@@ -305,6 +308,8 @@ export default function PurchaseOrders() {
     const handleOpenPayment = async (order: PurchaseOrder) => {
         setPaymentModalOrder(order);
         setPaymentTab('register');
+        setReversalPaymentId(null);
+        setReversalReason('');
         const balance = Number(order.total) - Number(order.paidAmount || 0);
         setPaymentForm({
             amount: balance > 0 ? balance.toFixed(2) : '',
@@ -319,8 +324,27 @@ export default function PurchaseOrders() {
             setPaymentHistory(Array.isArray(res.data.data) ? res.data.data : []);
         } catch {
             setPaymentHistory(order.payments || []);
+            showWarning('No se pudo actualizar el historial de pagos; se muestra la última información disponible.');
         } finally {
             setLoadingPaymentHistory(false);
+        }
+    };
+
+    const handleReverseReceipt = async (order: PurchaseOrder) => {
+        if (!canDeletePurchaseOrders || order.status !== 'RECEIVED') return;
+        const reason = window.prompt('Motivo obligatorio del reverso de recepción:')?.trim();
+        if (!reason) return;
+        const accepted = await confirm(
+            `¿Revertir la recepción de la orden #${order.id}? La operación fallará si el inventario recibido ya fue consumido.`,
+            { title: 'Confirmar reverso de recepción' }
+        );
+        if (!accepted) return;
+        try {
+            await purchaseOrdersAPI.reverseReceipt(order.id, reason);
+            showSuccess('Recepción revertida correctamente');
+            loadOrders();
+        } catch (error: unknown) {
+            showError(errMsg(error, 'No se pudo revertir la recepción'));
         }
     };
 
@@ -377,6 +401,39 @@ export default function PurchaseOrders() {
         }
     };
 
+    const handleReversePayment = async (payment: PurchaseOrderPayment) => {
+        if (!paymentModalOrder || !canDeletePurchaseOrders || payment.status === 'REVERSED') return;
+        const reason = reversalReason.trim();
+        if (!reason) {
+            showWarning('Indica el motivo del reverso');
+            return;
+        }
+        const accepted = await confirm(
+            `¿Revertir el abono de ${formatCurrency(Number(payment.amount), settings)}?`,
+            { title: 'Confirmar reverso de pago' }
+        );
+        if (!accepted) return;
+
+        setReversingPayment(true);
+        try {
+            await purchaseOrdersAPI.reversePayment(paymentModalOrder.id, payment.id, reason);
+            const [paymentsRes, orderRes] = await Promise.all([
+                purchaseOrdersAPI.getPayments(paymentModalOrder.id),
+                purchaseOrdersAPI.getById(paymentModalOrder.id),
+            ]);
+            setPaymentModalOrder(orderRes.data.data as PurchaseOrder);
+            setPaymentHistory(Array.isArray(paymentsRes.data.data) ? paymentsRes.data.data : []);
+            setReversalPaymentId(null);
+            setReversalReason('');
+            showSuccess('Pago revertido correctamente');
+            loadOrders();
+        } catch (error: unknown) {
+            showError(errMsg(error, 'No se pudo revertir el pago'));
+        } finally {
+            setReversingPayment(false);
+        }
+    };
+
     const getDaysRemaining = (dueDate?: string) => {
         if (!dueDate) return null;
         const due = new Date(dueDate);
@@ -388,7 +445,9 @@ export default function PurchaseOrders() {
     const draftCount = orders.filter(o => o.status === 'DRAFT').length;
     const issuedCount = orders.filter(o => o.status === 'ISSUED').length;
     const receivedCount = orders.filter(o => o.status === 'RECEIVED').length;
-    const pendingPaymentOrders = orders.filter(o => o.invoiceType === 'CREDIT' && o.paymentStatus !== 'PAID');
+    const pendingPaymentOrders = orders.filter(o =>
+        o.status === 'RECEIVED' && o.invoiceType === 'CREDIT' && o.paymentStatus !== 'PAID'
+    );
     const overduePayments = pendingPaymentOrders.filter(o => {
         const days = getDaysRemaining(o.paymentDueDate);
         return days !== null && days < 0;
@@ -660,6 +719,16 @@ export default function PurchaseOrders() {
                                                     title="Eliminar borrador"
                                                 >
                                                     <X size={16} />
+                                                </button>
+                                            )}
+                                            {canDeletePurchaseOrders && order.status === 'RECEIVED' && (
+                                                <button
+                                                    type="button"
+                                                    className="table-action-btn danger"
+                                                    onClick={() => handleReverseReceipt(order)}
+                                                    title="Revertir recepción"
+                                                >
+                                                    <Undo2 size={16} />
                                                 </button>
                                             )}
                                         </div>
@@ -1029,16 +1098,54 @@ export default function PurchaseOrders() {
                                     ) : (
                                         <div className="payment-history-list">
                                             {paymentHistory.map((payment) => (
-                                                <div key={payment.id} className="payment-history-item">
+                                                <div key={payment.id} className={`payment-history-item${payment.status === 'REVERSED' ? ' is-reversed' : ''}`}>
                                                     <div className="payment-history-main">
                                                         <strong>{formatCurrency(Number(payment.amount), settings)}</strong>
-                                                        <span>{new Date(payment.date).toLocaleDateString('es-ES')}</span>
+                                                        <span>
+                                                            {payment.status === 'REVERSED' && <em className="payment-reversed-badge">Revertido</em>}
+                                                            {new Date(payment.date).toLocaleDateString('es-ES')}
+                                                        </span>
                                                     </div>
                                                     <div className="payment-history-meta">
                                                         {payment.bank && <span>{payment.bank}</span>}
                                                         {payment.referenceNumber && <span>Ref: {payment.referenceNumber}</span>}
                                                         {payment.observations && <span>{payment.observations}</span>}
+                                                        {payment.status === 'REVERSED' && payment.reversalReason && (
+                                                            <span>Motivo: {payment.reversalReason}</span>
+                                                        )}
                                                     </div>
+                                                    {canDeletePurchaseOrders && payment.status !== 'REVERSED' && reversalPaymentId !== payment.id && (
+                                                        <button
+                                                            type="button"
+                                                            className="payment-reverse-btn"
+                                                            onClick={() => {
+                                                                setReversalPaymentId(payment.id);
+                                                                setReversalReason('');
+                                                            }}
+                                                        >
+                                                            <Undo2 size={13} /> Revertir abono
+                                                        </button>
+                                                    )}
+                                                    {reversalPaymentId === payment.id && (
+                                                        <div className="payment-reversal-form">
+                                                            <textarea
+                                                                className="modal-textarea"
+                                                                rows={2}
+                                                                value={reversalReason}
+                                                                onChange={(event) => setReversalReason(event.target.value)}
+                                                                placeholder="Motivo obligatorio del reverso"
+                                                                disabled={reversingPayment}
+                                                            />
+                                                            <div className="payment-reversal-actions">
+                                                                <Button type="button" variant="ghost" onClick={() => setReversalPaymentId(null)} disabled={reversingPayment}>
+                                                                    Cancelar
+                                                                </Button>
+                                                                <Button type="button" variant="danger" onClick={() => handleReversePayment(payment)} disabled={reversingPayment || !reversalReason.trim()}>
+                                                                    {reversingPayment ? 'Revirtiendo...' : 'Confirmar reverso'}
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>

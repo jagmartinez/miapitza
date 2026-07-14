@@ -49,9 +49,12 @@ export class SupplierService {
         address?: string;
         taxId?: string;
     }) {
+        const name = data.name.trim();
+        if (!name) throw new Error('Supplier name is required');
+
         return await prisma.supplier.create({
             data: {
-                name: data.name,
+                name,
                 contact: data.contact,
                 phone: data.phone,
                 email: data.email,
@@ -72,10 +75,13 @@ export class SupplierService {
         taxId?: string;
         active?: boolean;
     }) {
+        const name = data.name?.trim();
+        if (data.name !== undefined && !name) throw new Error('Supplier name is required');
+
         return await prisma.supplier.update({
             where: { id, companyId },
             data: {
-                ...(data.name !== undefined ? { name: data.name } : {}),
+                ...(name !== undefined ? { name } : {}),
                 ...(data.contact !== undefined ? { contact: data.contact } : {}),
                 ...(data.phone !== undefined ? { phone: data.phone } : {}),
                 ...(data.email !== undefined ? { email: data.email } : {}),
@@ -112,7 +118,12 @@ export class SupplierService {
         const items = await prisma.purchaseOrderItem.findMany({
             where,
             include: {
-                product: { select: { id: true, name: true, sku: true, unit: true } },
+                product: {
+                    select: {
+                        id: true, name: true, sku: true, unit: true,
+                        baseUnit: { select: { abbreviation: true } }
+                    }
+                },
                 purchaseOrder: {
                     select: { id: true, date: true, branchId: true, branch: { select: { name: true } } }
                 }
@@ -124,9 +135,12 @@ export class SupplierService {
             productId: item.product.id,
             productName: item.product.name,
             productSku: item.product.sku,
-            unit: item.product.unit,
-            unitCost: Number(item.cost),
-            quantity: Number(item.quantity),
+            unit: item.product.baseUnit?.abbreviation || item.product.unit,
+            unitCost: Number(item.baseCost ?? item.cost),
+            quantity: Number(item.baseQuantity ?? item.quantity),
+            originalUnit: item.purchaseUnit || item.product.unit,
+            originalUnitCost: Number(item.cost),
+            originalQuantity: Number(item.quantity),
             subtotal: Number(item.subtotal),
             date: item.purchaseOrder.date,
             purchaseOrderId: item.purchaseOrder.id,

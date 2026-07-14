@@ -309,4 +309,43 @@ export class PurchaseOrderController {
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
+
+    static async reverseReceipt(req: Request, res: Response, next: NextFunction) {
+        try {
+            const id = parseInt(req.params.id);
+            const companyId = req.user!.companyId;
+            await PurchaseOrderController.assertOrderBranch(req, id);
+            const order = await PurchaseOrderService.reverseReceipt(
+                id,
+                companyId,
+                req.user!.userId,
+                String(req.body.reason || '')
+            );
+            res.json({ success: true, message: 'Recepción revertida correctamente', data: order });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
+    static async reversePayment(req: Request, res: Response, next: NextFunction) {
+        try {
+            const purchaseOrderId = parseInt(req.params.id);
+            const paymentId = parseInt(req.params.paymentId);
+            const companyId = req.user!.companyId;
+            await PurchaseOrderController.assertOrderBranch(req, purchaseOrderId);
+
+            const result = await PurchaseOrderService.reversePayment(
+                purchaseOrderId,
+                paymentId,
+                companyId,
+                req.user!.userId,
+                String(req.body.reason || '')
+            );
+            res.json({ success: true, message: 'Pago revertido correctamente', data: result });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
 }

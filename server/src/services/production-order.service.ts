@@ -36,7 +36,16 @@ export interface ProductionPreview {
 export class ProductionOrderService {
     static orderInclude() {
         return {
-            product: { select: { id: true, name: true, sku: true, type: true, unit: true } },
+            product: {
+                select: {
+                    id: true,
+                    name: true,
+                    sku: true,
+                    type: true,
+                    unit: true,
+                    baseUnit: { select: { id: true, name: true, abbreviation: true } }
+                }
+            },
             recipe: { select: { id: true, name: true, version: true, yieldQuantity: true } },
             warehouse: { select: { id: true, name: true, code: true } },
             branch: { select: { id: true, name: true } },
@@ -44,7 +53,16 @@ export class ProductionOrderService {
             cancelledBy: { select: { id: true, name: true } },
             items: {
                 include: {
-                    componentProduct: { select: { id: true, name: true, sku: true, type: true, unit: true } },
+                    componentProduct: {
+                        select: {
+                            id: true,
+                            name: true,
+                            sku: true,
+                            type: true,
+                            unit: true,
+                            baseUnit: { select: { id: true, name: true, abbreviation: true } }
+                        }
+                    },
                     unitOfMeasure: { select: { id: true, abbreviation: true } }
                 }
             }
@@ -217,35 +235,36 @@ export class ProductionOrderService {
         },
         userId: number
     ) {
-        const branch = await prisma.branch.findFirst({
-            where: { id: data.branchId, companyId },
-            select: { id: true }
-        });
-        if (!branch) throw new Error('Sucursal no encontrada para la empresa.');
-
-        // Validate warehouse belongs to company (and branch if scoped)
-        const warehouse = await prisma.warehouse.findFirst({
-            where: { id: data.warehouseId, companyId },
-            select: { id: true, branchId: true }
-        });
-        if (!warehouse) throw new Error('Almacén no encontrado.');
-        // El almacén debe pertenecer a la sucursal de la orden; los almacenes centrales
-        // (branchId null) son compartidos. Misma regla que la recepción de compras.
-        if (data.branchId && warehouse.branchId && warehouse.branchId !== data.branchId) {
-            throw new Error('El almacén no pertenece a la sucursal de la orden de producción.');
-        }
-
-        const preview = await this.computeRequirements(companyId, {
-            productId: data.productId,
-            recipeId: data.recipeId,
-            plannedQuantity: data.plannedQuantity,
-            warehouseId: data.warehouseId
-        });
+        const orderDate = data.date ? new Date(data.date) : new Date();
+        if (Number.isNaN(orderDate.getTime())) throw new Error('La fecha de producción no es válida.');
 
         const order = await prisma.$transaction(async (tx) => {
-            // Serialize code allocation per tenant. The unique constraint remains
-            // the backstop, while the Company row lock prevents PRD-number races.
+            // Serialize code allocation and revalidate the complete recipe/scope
+            // snapshot in the same transaction that creates the order. Otherwise
+            // an active recipe or an empty warehouse could change after preview.
             await tx.$queryRaw`SELECT id FROM \`Company\` WHERE id = ${companyId} FOR UPDATE`;
+            const branch = await tx.branch.findFirst({
+                where: { id: data.branchId, companyId },
+                select: { id: true }
+            });
+            if (!branch) throw new Error('Sucursal no encontrada para la empresa.');
+
+            await tx.$queryRaw`SELECT id FROM \`Warehouse\` WHERE id = ${data.warehouseId} AND companyId = ${companyId} FOR UPDATE`;
+            const warehouse = await tx.warehouse.findFirst({
+                where: { id: data.warehouseId, companyId },
+                select: { id: true, branchId: true }
+            });
+            if (!warehouse) throw new Error('Almacén no encontrado.');
+            if (warehouse.branchId && warehouse.branchId !== data.branchId) {
+                throw new Error('El almacén no pertenece a la sucursal de la orden de producción.');
+            }
+
+            const preview = await this.computeRequirements(companyId, {
+                productId: data.productId,
+                recipeId: data.recipeId,
+                plannedQuantity: data.plannedQuantity,
+                warehouseId: data.warehouseId
+            }, tx);
             const code = await this.generateCode(companyId, tx);
             return tx.productionOrder.create({
                 data: {
@@ -261,7 +280,7 @@ export class ProductionOrderService {
                     estimatedUnitCost: preview.estimatedUnitCost,
                     userId,
                     notes: data.notes ?? null,
-                    date: data.date ? new Date(data.date) : new Date(),
+                    date: orderDate,
                     items: {
                         create: preview.requirements.map((r) => ({
                             componentProductId: r.componentProductId,
@@ -418,6 +437,7 @@ export class ProductionOrderService {
         if (!order) throw new Error('Orden de producción no encontrada');
         if (order.status === 'FINISHED') throw new Error('La orden ya está finalizada.');
         if (order.status === 'CANCELLED') throw new Error('No se puede finalizar una orden anulada.');
+        if (order.status !== 'IN_PROGRESS') throw new Error('La orden debe estar En Proceso antes de finalizarse.');
         if (order.items.length === 0) throw new Error('La orden no tiene insumos definidos.');
 
         // Re-validate the recipe still exists / active for traceability
@@ -455,6 +475,7 @@ export class ProductionOrderService {
             if (!lockedOrder) throw new Error('Orden de producción no encontrada');
             if (lockedOrder.status === 'FINISHED') throw new Error('La orden ya está finalizada.');
             if (lockedOrder.status === 'CANCELLED') throw new Error('No se puede finalizar una orden anulada.');
+            if (lockedOrder.status !== 'IN_PROGRESS') throw new Error('La orden debe estar En Proceso antes de finalizarse.');
             if (lockedOrder.items.length === 0) throw new Error('La orden no tiene insumos definidos.');
 
             const componentIds = new Set(lockedOrder.items.map((item) => item.componentProductId));
@@ -471,7 +492,7 @@ export class ProductionOrderService {
 
             const producedQuantity = payload.producedQuantity ?? Number(lockedOrder.plannedQuantity);
             if (!Number.isFinite(producedQuantity) || !(producedQuantity > 0)) {
-                throw new Error('La cantidad producida debe ser un nÃºmero finito mayor a 0.');
+                throw new Error('La cantidad producida debe ser un número finito mayor a 0.');
             }
 
             let realCost = 0;
@@ -612,6 +633,8 @@ export class ProductionOrderService {
     // Cancel (with inventory reversal if finished)
     // ==========================================
     static async cancel(id: number, companyId: number, userId: number, reason?: string) {
+        const cancelReason = reason?.trim();
+        if (!cancelReason) throw new Error('El motivo de anulación es requerido.');
         const order = await prisma.productionOrder.findFirst({
             where: { id, companyId },
             include: { items: true }
@@ -724,7 +747,7 @@ export class ProductionOrderService {
                     status: 'CANCELLED',
                     cancelledAt: new Date(),
                     cancelledById: userId,
-                    cancelReason: reason ?? null
+                    cancelReason
                 }
             });
             return { wasFinished };
@@ -732,7 +755,7 @@ export class ProductionOrderService {
 
         AuditLogService.log({
             companyId, userId, entityType: 'ProductionOrder', entityId: id,
-            action: 'CANCEL', details: { reason, wasFinished: cancelResult.wasFinished }
+            action: 'CANCEL', details: { reason: cancelReason, wasFinished: cancelResult.wasFinished }
         }).catch((err) => console.error('[ProductionOrderService] audit log failed:', err));
 
         return this.getById(id, companyId);

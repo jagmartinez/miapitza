@@ -20,41 +20,87 @@ function dateWhere(filters: BaseFilters): Prisma.DateTimeFilter | undefined {
     return f;
 }
 
+type QuantityByUnit = { unit: string; quantity: number };
+
+function addQuantity(target: Map<string, number>, unit: string, quantity: number): void {
+    target.set(unit, (target.get(unit) || 0) + quantity);
+}
+
+function quantityRows(target: Map<string, number>): QuantityByUnit[] {
+    return Array.from(target, ([unit, quantity]) => ({ unit, quantity: Math.round(quantity * 1_000_000) / 1_000_000 }))
+        .sort((a, b) => a.unit.localeCompare(b.unit));
+}
+
+function homogeneousTotal(rows: QuantityByUnit[]): number | null {
+    return rows.length <= 1 ? (rows[0]?.quantity ?? 0) : null;
+}
+
 export class ProductionReportService {
     /** Producciones realizadas: listado + resumen por periodo. */
     static async getProductions(companyId: number, filters: BaseFilters) {
         const where: Prisma.ProductionOrderWhereInput = { companyId };
         if (filters.branchId) where.branchId = filters.branchId;
         if (filters.productId) where.productId = filters.productId;
-        if (filters.status) where.status = filters.status as Prisma.EnumProductionOrderStatusFilter['equals'];
+        if (filters.status) {
+            const allowed = new Set(['DRAFT', 'PENDING', 'IN_PROGRESS', 'FINISHED', 'CANCELLED']);
+            if (!allowed.has(filters.status)) throw new Error('Estado de producción no válido');
+            where.status = filters.status as Prisma.EnumProductionOrderStatusFilter['equals'];
+        }
         const dw = dateWhere(filters);
         if (dw) where.date = dw;
 
         const orders = await prisma.productionOrder.findMany({
             where,
             include: {
-                product: { select: { id: true, name: true, sku: true, type: true } },
+                product: {
+                    select: {
+                        id: true, name: true, sku: true, type: true, unit: true,
+                        baseUnit: { select: { abbreviation: true } }
+                    }
+                },
                 warehouse: { select: { id: true, name: true } },
                 user: { select: { id: true, name: true } }
             },
             orderBy: { date: 'desc' }
         });
 
+        const plannedByUnit = new Map<string, number>();
+        const producedByUnit = new Map<string, number>();
         const summary = orders.reduce(
             (acc, o) => {
                 acc.count += 1;
-                acc.totalPlanned += Number(o.plannedQuantity);
-                acc.totalProduced += Number(o.producedQuantity);
-                acc.totalEstimatedCost += Number(o.estimatedCost);
-                acc.totalRealCost += Number(o.realCost);
                 if (o.status === 'FINISHED') acc.finished += 1;
                 if (o.status === 'CANCELLED') acc.cancelled += 1;
+                // Cancelled orders have already been physically reversed. They
+                // remain in the count/audit trail but cannot inflate quantities or
+                // costs. Realized values only come from FINISHED orders.
+                if (o.status !== 'CANCELLED') {
+                    addQuantity(plannedByUnit, o.product.baseUnit?.abbreviation || o.product.unit, Number(o.plannedQuantity));
+                    acc.totalEstimatedCost += Number(o.estimatedCost);
+                }
+                if (o.status === 'FINISHED') {
+                    addQuantity(producedByUnit, o.product.baseUnit?.abbreviation || o.product.unit, Number(o.producedQuantity));
+                    acc.totalRealCost += Number(o.realCost);
+                }
                 return acc;
             },
-            { count: 0, finished: 0, cancelled: 0, totalPlanned: 0, totalProduced: 0, totalEstimatedCost: 0, totalRealCost: 0 }
+            { count: 0, finished: 0, cancelled: 0, totalEstimatedCost: 0, totalRealCost: 0 }
         );
 
-        return { summary, items: orders };
+        const plannedQuantities = quantityRows(plannedByUnit);
+        const producedQuantities = quantityRows(producedByUnit);
+
+        return {
+            summary: {
+                ...summary,
+                totalPlanned: homogeneousTotal(plannedQuantities),
+                totalProduced: homogeneousTotal(producedQuantities),
+                plannedQuantities,
+                producedQuantities,
+                mixedOutputUnits: plannedQuantities.length > 1 || producedQuantities.length > 1
+            },
+            items: orders
+        };
     }
 
     /** Consumo de insumos por producción (agregado por insumo, sobre órdenes finalizadas). */
@@ -68,7 +114,16 @@ export class ProductionReportService {
         const orders = await prisma.productionOrder.findMany({
             where,
             include: {
-                items: { include: { componentProduct: { select: { id: true, name: true, sku: true, type: true, unit: true } } } }
+                items: {
+                    include: {
+                        componentProduct: {
+                            select: {
+                                id: true, name: true, sku: true, type: true, unit: true,
+                                baseUnit: { select: { abbreviation: true } }
+                            }
+                        }
+                    }
+                }
             }
         });
 
@@ -82,7 +137,7 @@ export class ProductionReportService {
                     componentProductId: key,
                     name: it.componentProduct.name,
                     sku: it.componentProduct.sku,
-                    unit: it.componentProduct.unit,
+                    unit: it.unit || it.componentProduct.baseUnit?.abbreviation || it.componentProduct.unit,
                     consumedQuantity: 0,
                     totalCost: 0,
                     orders: 0
@@ -109,7 +164,14 @@ export class ProductionReportService {
 
         const orders = await prisma.productionOrder.findMany({
             where,
-            include: { product: { select: { id: true, name: true, sku: true } } },
+            include: {
+                product: {
+                    select: {
+                        id: true, name: true, sku: true, unit: true,
+                        baseUnit: { select: { abbreviation: true } }
+                    }
+                }
+            },
             orderBy: { finishedAt: 'desc' }
         });
 
@@ -124,6 +186,7 @@ export class ProductionReportService {
                 id: o.id,
                 code: o.code,
                 product: o.product,
+                unit: o.product.baseUnit?.abbreviation || o.product.unit,
                 finishedAt: o.finishedAt,
                 plannedQuantity: planned,
                 producedQuantity: produced,
@@ -137,19 +200,36 @@ export class ProductionReportService {
             };
         });
 
+        const plannedByUnit = new Map<string, number>();
+        const producedByUnit = new Map<string, number>();
         const summary = items.reduce(
             (acc, i) => {
                 acc.count += 1;
-                acc.totalPlanned += i.plannedQuantity;
-                acc.totalProduced += i.producedQuantity;
+                addQuantity(plannedByUnit, i.unit, i.plannedQuantity);
+                addQuantity(producedByUnit, i.unit, i.producedQuantity);
                 acc.totalCostVariance += i.costVariance;
+                acc.yieldPctSum += i.yieldPct;
                 return acc;
             },
-            { count: 0, totalPlanned: 0, totalProduced: 0, totalCostVariance: 0, avgYieldPct: 0 }
+            { count: 0, totalCostVariance: 0, avgYieldPct: 0, yieldPctSum: 0 }
         );
-        summary.avgYieldPct = summary.totalPlanned > 0 ? Math.round((summary.totalProduced / summary.totalPlanned) * 10000) / 100 : 0;
+        summary.avgYieldPct = summary.count > 0 ? Math.round((summary.yieldPctSum / summary.count) * 100) / 100 : 0;
+        const plannedQuantities = quantityRows(plannedByUnit);
+        const producedQuantities = quantityRows(producedByUnit);
 
-        return { summary, items };
+        return {
+            summary: {
+                count: summary.count,
+                totalCostVariance: summary.totalCostVariance,
+                avgYieldPct: summary.avgYieldPct,
+                totalPlanned: homogeneousTotal(plannedQuantities),
+                totalProduced: homogeneousTotal(producedQuantities),
+                plannedQuantities,
+                producedQuantities,
+                mixedOutputUnits: plannedQuantities.length > 1 || producedQuantities.length > 1
+            },
+            items
+        };
     }
 
     /** Kardex de productos producidos: movimientos con referencia PROD-*. */
@@ -160,6 +240,7 @@ export class ProductionReportService {
         };
         if (filters.productId) where.productId = filters.productId;
         if (filters.warehouseId) where.warehouseId = filters.warehouseId;
+        if (filters.branchId) where.warehouse = { OR: [{ branchId: filters.branchId }, { branchId: null }] };
         const dw = dateWhere(filters);
         if (dw) where.createdAt = dw;
 
@@ -171,7 +252,26 @@ export class ProductionReportService {
             },
             orderBy: { createdAt: 'desc' }
         });
-        return { items: movements };
+        const productionOrderIds = [...new Set(movements.flatMap((movement) => {
+            const match = movement.reference?.match(/^PROD-(\d+)$/);
+            return match ? [Number(match[1])] : [];
+        }))];
+        const sourceOrders = productionOrderIds.length > 0
+            ? await prisma.productionOrder.findMany({
+                where: { companyId, id: { in: productionOrderIds } },
+                select: { id: true, productId: true }
+            })
+            : [];
+        const outputByOrder = new Map(sourceOrders.map((order) => [order.id, order.productId]));
+
+        // References PROD-N are shared by input consumption, output creation and
+        // cancellation. This endpoint is specifically the produced-product
+        // kardex, so retain only movements whose product is that order's output.
+        const items = movements.filter((movement) => {
+            const match = movement.reference?.match(/^PROD-(\d+)$/);
+            return !!match && outputByOrder.get(Number(match[1])) === movement.productId;
+        });
+        return { items };
     }
 
     /**
@@ -191,15 +291,35 @@ export class ProductionReportService {
         });
         if (!order) throw new Error('Orden de producción no encontrada');
 
-        const inputs = await Promise.all(
-            order.items.map(async (it) => {
-                // sub-productions that generated this input (intermediates)
-                const subOrders = await prisma.productionOrder.findMany({
-                    where: { companyId, productId: it.componentProductId, status: 'FINISHED' },
-                    select: { id: true, code: true, producedQuantity: true, realUnitCost: true, finishedAt: true },
-                    orderBy: { finishedAt: 'desc' },
-                    take: 5
-                });
+        const sourceOrderIds = [...new Set(order.items.flatMap((item) => {
+            if (!Array.isArray(item.consumedLayers)) return [];
+            return item.consumedLayers.flatMap((raw) => {
+                const sourceRef = (raw as Record<string, unknown>).sourceRef;
+                const match = typeof sourceRef === 'string' ? sourceRef.match(/^PROD-(\d+)$/) : null;
+                return match ? [Number(match[1])] : [];
+            });
+        }))];
+        const sourceProductions = sourceOrderIds.length > 0
+            ? await prisma.productionOrder.findMany({
+                where: { companyId, id: { in: sourceOrderIds } },
+                select: { id: true, code: true, productId: true, producedQuantity: true, realUnitCost: true, finishedAt: true }
+            })
+            : [];
+        const sourceById = new Map(sourceProductions.map((source) => [source.id, source]));
+
+        const inputs = order.items.map((it) => {
+                const itemSourceIds = Array.isArray(it.consumedLayers)
+                    ? it.consumedLayers.flatMap((raw) => {
+                        const sourceRef = (raw as Record<string, unknown>).sourceRef;
+                        const match = typeof sourceRef === 'string' ? sourceRef.match(/^PROD-(\d+)$/) : null;
+                        return match ? [Number(match[1])] : [];
+                    })
+                    : [];
+                const subOrders = [...new Set(itemSourceIds)]
+                    .map((sourceId) => sourceById.get(sourceId))
+                    .filter((source): source is NonNullable<typeof source> =>
+                        !!source && source.productId === it.componentProductId
+                    );
                 return {
                     componentProductId: it.componentProductId,
                     componentProduct: it.componentProduct,
@@ -210,8 +330,7 @@ export class ProductionReportService {
                     isProducedInternally: it.componentProduct.type === 'INTERMEDIATE' && subOrders.length > 0,
                     sourceProductions: subOrders
                 };
-            })
-        );
+            });
 
         return { order, inputs };
     }
@@ -327,6 +446,8 @@ export class ProductionReportService {
         const inputMap = new Map<number, { componentProductId: number; name: string; sku: string | null; unit: string; consumedQuantity: number; totalCost: number }>();
         const branchMap = new Map<number, { branchId: number; name: string; orders: number; realCost: number }>();
         const operatorMap = new Map<number, { userId: number; name: string; orders: number; realCost: number }>();
+        const plannedByUnit = new Map<string, number>();
+        const producedByUnit = new Map<string, number>();
 
         let yieldPctSum = 0;
         let yieldOrderCount = 0;
@@ -345,8 +466,9 @@ export class ProductionReportService {
         }
 
         for (const o of finishedOrders) {
-                kpis.totalPlanned += Number(o.plannedQuantity);
-                kpis.totalProduced += Number(o.producedQuantity);
+                const outputUnit = o.product.baseUnit?.abbreviation || o.product.unit;
+                addQuantity(plannedByUnit, outputUnit, Number(o.plannedQuantity));
+                addQuantity(producedByUnit, outputUnit, Number(o.producedQuantity));
                 kpis.totalEstimatedCost += Number(o.estimatedCost);
                 kpis.totalRealCost += Number(o.realCost);
                 const plannedQuantity = Number(o.plannedQuantity);
@@ -429,8 +551,15 @@ export class ProductionReportService {
         const avgRealOrderCost = finishedOrders.length > 0 ? Math.round((kpis.totalRealCost / finishedOrders.length) * 100) / 100 : 0;
         const costVariancePct = kpis.totalEstimatedCost > 0 ? Math.round((kpis.costVariance / kpis.totalEstimatedCost) * 10000) / 100 : 0;
 
+        const plannedQuantities = quantityRows(plannedByUnit);
+        const producedQuantities = quantityRows(producedByUnit);
         const kpisExtended = {
             ...kpis,
+            totalPlanned: homogeneousTotal(plannedQuantities),
+            totalProduced: homogeneousTotal(producedQuantities),
+            plannedQuantities,
+            producedQuantities,
+            mixedOutputUnits: plannedQuantities.length > 1 || producedQuantities.length > 1,
             activeOrders,
             completionRate,
             cancelRate,
@@ -480,7 +609,8 @@ export class ProductionReportService {
         let previous: {
             total: number;
             finished: number;
-            totalProduced: number;
+            totalProduced: number | null;
+            producedQuantities: QuantityByUnit[];
             totalRealCost: number;
             costVariance: number;
             avgYieldPct: number;
@@ -502,7 +632,13 @@ export class ProductionReportService {
                 select: { status: true }
             }), prisma.productionOrder.findMany({
                 where: { companyId, ...(filters.branchId ? { branchId: filters.branchId } : {}), status: 'FINISHED', finishedAt: { gte: prevFrom, lte: prevTo } },
-                select: { plannedQuantity: true, producedQuantity: true, estimatedCost: true, realCost: true }
+                select: {
+                    plannedQuantity: true,
+                    producedQuantity: true,
+                    estimatedCost: true,
+                    realCost: true,
+                    product: { select: { unit: true, baseUnit: { select: { abbreviation: true } } } }
+                }
             })]);
 
             const prevAgg = prevOrders.reduce(
@@ -517,8 +653,13 @@ export class ProductionReportService {
             );
             let previousYieldPctSum = 0;
             let previousYieldOrderCount = 0;
+            const previousProducedByUnit = new Map<string, number>();
             for (const o of prevFinishedOrders) {
-                prevAgg.totalProduced += Number(o.producedQuantity);
+                addQuantity(
+                    previousProducedByUnit,
+                    o.product.baseUnit?.abbreviation || o.product.unit,
+                    Number(o.producedQuantity)
+                );
                 prevAgg.totalEstimatedCost += Number(o.estimatedCost);
                 prevAgg.totalRealCost += Number(o.realCost);
                 const plannedQuantity = Number(o.plannedQuantity);
@@ -527,11 +668,13 @@ export class ProductionReportService {
                     previousYieldOrderCount += 1;
                 }
             }
+            const previousProducedQuantities = quantityRows(previousProducedByUnit);
 
             previous = {
                 total: prevAgg.total,
                 finished: prevAgg.finished,
-                totalProduced: prevAgg.totalProduced,
+                totalProduced: homogeneousTotal(previousProducedQuantities),
+                producedQuantities: previousProducedQuantities,
                 totalRealCost: prevAgg.totalRealCost,
                 costVariance: Math.round((prevAgg.totalRealCost - prevAgg.totalEstimatedCost) * 100) / 100,
                 avgYieldPct: previousYieldOrderCount > 0 ? Math.round((previousYieldPctSum / previousYieldOrderCount) * 100) / 100 : 0

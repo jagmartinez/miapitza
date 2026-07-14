@@ -26,45 +26,46 @@ model Company {
   updatedAt     DateTime      @updatedAt
 
   // Relations
-  branches             Branch[]
-  settings             Setting[]
-  users                User[]
-  auditLogs            AuditLog[]
-  tables               Table[]
-  reservations         Reservation[]
-  categories           Category[]
-  menuBrands           MenuBrand[]
-  menuItems            MenuItem[]
-  products             Product[]
-  warehouses           Warehouse[]
-  suppliers            Supplier[]
-  purchaseOrders       PurchaseOrder[]
-  orders               Order[]
-  paymentMethods       PaymentMethod[]
-  cashRegisters        CashRegister[]
-  cashShifts           CashShift[]
-  modifierGroups       ModifierGroup[]
-  roles                Role[]
-  stocks               Stock[]
-  inventoryMovements   InventoryMovement[]
-  cateringEvents       CateringEvent[]
-  cateringServices     CateringService[]
-  customers            Customer[]
-  promotions           Promotion[]
-  productCostHistories ProductCostHistory[]
-  invoiceSequences     InvoiceSequence[]
-  apiKeys              ApiKey[]
-  unitsOfMeasure       UnitOfMeasure[]
-  productUnits         ProductUnit[]
-  salesChannelConfigs  SalesChannelConfig[]
-  pedidosYaConfigs     PedidosYaConfig[]
-  pedidosYaMappings    PedidosYaProductMapping[]
-  pedidosYaWebhookLogs PedidosYaWebhookLog[]
-  pedidosYaOrderSyncs  PedidosYaOrderSync[]
-  productionRecipes    ProductionRecipe[]
-  productionOrders     ProductionOrder[]
-  inventoryBatches     InventoryBatch[]
-  bankDeposits         BankDeposit[]
+  branches                 Branch[]
+  settings                 Setting[]
+  users                    User[]
+  auditLogs                AuditLog[]
+  tables                   Table[]
+  reservations             Reservation[]
+  categories               Category[]
+  menuBrands               MenuBrand[]
+  menuItems                MenuItem[]
+  products                 Product[]
+  warehouses               Warehouse[]
+  suppliers                Supplier[]
+  purchaseOrders           PurchaseOrder[]
+  orders                   Order[]
+  paymentMethods           PaymentMethod[]
+  cashRegisters            CashRegister[]
+  cashShifts               CashShift[]
+  modifierGroups           ModifierGroup[]
+  roles                    Role[]
+  stocks                   Stock[]
+  inventoryMovements       InventoryMovement[]
+  cateringEvents           CateringEvent[]
+  cateringServices         CateringService[]
+  customers                Customer[]
+  promotions               Promotion[]
+  productCostHistories     ProductCostHistory[]
+  invoiceSequences         InvoiceSequence[]
+  apiKeys                  ApiKey[]
+  unitsOfMeasure           UnitOfMeasure[]
+  productUnits             ProductUnit[]
+  salesChannelConfigs      SalesChannelConfig[]
+  pedidosYaConfigs         PedidosYaConfig[]
+  pedidosYaMappings        PedidosYaProductMapping[]
+  pedidosYaWebhookLogs     PedidosYaWebhookLog[]
+  pedidosYaOrderSyncs      PedidosYaOrderSync[]
+  productionRecipes        ProductionRecipe[]
+  productionOrders         ProductionOrder[]
+  inventoryBatches         InventoryBatch[]
+  bankDeposits             BankDeposit[]
+  kitchenNotifications     KitchenNotification[]
 }
 
 enum CostingMethod {
@@ -77,32 +78,34 @@ enum CostingMethod {
 // ==========================================
 
 model Branch {
-  id        Int          @id @default(autoincrement())
-  companyId Int
-  name      String
-  code      String
-  address   String?
-  phone     String?
-  status    BranchStatus @default(ACTIVE)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id                   Int          @id @default(autoincrement())
+  companyId            Int
+  name                 String
+  code                 String
+  address              String?
+  phone                String?
+  timezone             String       @default("America/Managua") @db.VarChar(64)
+  status               BranchStatus @default(ACTIVE)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
 
   // Relations
-  company          Company               @relation(fields: [companyId], references: [id])
-  users            User[]
-  allowedUsers     UserBranch[]
-  tables           Table[]
-  reservations     Reservation[]
-  warehouses       Warehouse[]
-  purchaseOrders   PurchaseOrder[]
-  orders           Order[]
-  cashRegisters    CashRegister[]
-  menuItems        MenuItem[] // Optional: if menu varies by branch
-  menuItemPrices   MenuItemBranchPrice[]
-  cateringEvents   CateringEvent[]
-  invoiceSequences InvoiceSequence[]
-  pedidosYaConfigs PedidosYaConfig[]
-  productionOrders ProductionOrder[]
+  company                        Company                    @relation(fields: [companyId], references: [id])
+  users                          User[]
+  allowedUsers                   UserBranch[]
+  tables                         Table[]
+  reservations                   Reservation[]
+  warehouses                     Warehouse[]
+  purchaseOrders                 PurchaseOrder[]
+  orders                         Order[]
+  cashRegisters                  CashRegister[]
+  menuItems                      MenuItem[] // Optional: if menu varies by branch
+  menuItemPrices                 MenuItemBranchPrice[]
+  cateringEvents                 CateringEvent[]
+  invoiceSequences               InvoiceSequence[]
+  pedidosYaConfigs               PedidosYaConfig[]
+  productionOrders               ProductionOrder[]
+  kitchenNotifications           KitchenNotification[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -128,27 +131,27 @@ enum BranchStatus {
 }
 
 model User {
-  id                     Int        @id @default(autoincrement())
+  id                     Int             @id @default(autoincrement())
   companyId              Int? // Null for simple setups, non-null for enterprise
   name                   String
-  email                  String     @unique
-  username               String     @unique
+  email                  String          @unique
+  username               String          @unique
   password               String // Hashed
-  mustChangePassword     Boolean    @default(true)
+  mustChangePassword     Boolean         @default(true)
   passwordChangedAt      DateTime?
   twoFactorSecret        String?
-  twoFactorEnabled       Boolean    @default(false)
+  twoFactorEnabled       Boolean         @default(false)
   twoFactorRecoveryCodes Json?
   twoFactorEnabledAt     DateTime?
   roleId                 Int
   branchId               Int? // Primary branch
-  status                 UserStatus @default(ACTIVE)
+  status                 UserStatus      @default(ACTIVE)
   color                  String? // Hex color for visual identification (e.g. waiters)
   nif                    String?
   address                String?
   phone                  String?
-  createdAt              DateTime   @default(now())
-  updatedAt              DateTime   @updatedAt
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
 
   // Relations
   company         Company?      @relation(fields: [companyId], references: [id])
@@ -159,18 +162,25 @@ model User {
   allowedBranches UserBranch[] // Branches a SUPERADMIN permits this user to be assigned to
 
   // Operational relations
-  orders                    Order[]             @relation("OrderCreator")
-  cancelledOrders           Order[]             @relation("OrderCancelledBy")
-  cashShifts                CashShift[]
-  movements                 InventoryMovement[]
-  auditLogs                 AuditLog[]
-  apiKeys                   ApiKey[]            @relation("ApiKeyCreator")
-  productionRecipesCreated  ProductionRecipe[]  @relation("ProductionRecipeCreatedBy")
-  productionOrders          ProductionOrder[]   @relation("ProductionOrderUser")
-  cancelledProductionOrders ProductionOrder[]   @relation("ProductionOrderCancelledBy")
-  bankDepositsCreated        BankDeposit[]       @relation("BankDepositCreatedBy")
-  bankDepositsReversed       BankDeposit[]       @relation("BankDepositReversedBy")
-  cateringPaymentsReversed   CateringPayment[]   @relation("CateringPaymentReversedBy")
+  orders                         Order[]                   @relation("OrderCreator")
+  cancelledOrders                Order[]                   @relation("OrderCancelledBy")
+  kitchenStarts                  Order[]                   @relation("OrderKitchenStartedBy")
+  kitchenReleases                Order[]                   @relation("OrderKitchenReleasedBy")
+  kitchenNotifications           KitchenNotification[]     @relation("KitchenNotificationRecipient")
+  cashShifts                     CashShift[]
+  movements                      InventoryMovement[]
+  auditLogs                      AuditLog[]
+  apiKeys                        ApiKey[]                  @relation("ApiKeyCreator")
+  productionRecipesCreated       ProductionRecipe[]        @relation("ProductionRecipeCreatedBy")
+  productionOrders               ProductionOrder[]         @relation("ProductionOrderUser")
+  cancelledProductionOrders      ProductionOrder[]         @relation("ProductionOrderCancelledBy")
+  bankDepositsCreated            BankDeposit[]             @relation("BankDepositCreatedBy")
+  bankDepositsReversed           BankDeposit[]             @relation("BankDepositReversedBy")
+  paymentsRegistered             Payment[]                 @relation("PaymentRegisteredBy")
+  paymentsReversed               Payment[]                 @relation("PaymentReversedBy")
+  cateringPaymentsRegistered     CateringPayment[]         @relation("CateringPaymentRegisteredBy")
+  cateringPaymentsReversed       CateringPayment[]         @relation("CateringPaymentReversedBy")
+  purchasePaymentsReversed       PurchaseOrderPayment[]    @relation("PurchaseOrderPaymentReversedBy")
 
   // DEFERRED (require data migration / backfill - NOT done in this additive pass):
   //  - email/username are globally @unique; making them tenant-scoped composite
@@ -256,21 +266,26 @@ model Permission {
 }
 
 // ==========================================
-// 2. CONTROL DE MESAS
-// ==========================================
-
 model Table {
-  id        Int         @id @default(autoincrement())
-  companyId Int
-  branchId  Int
-  number    String
-  capacity  Int
-  status    TableStatus @default(AVAILABLE)
-  location  String? // Salon, Terraza, VIP
+  id              Int         @id @default(autoincrement())
+  companyId       Int
+  branchId        Int
+  number          String
+  capacity        Int
+  status          TableStatus @default(AVAILABLE)
+  location        String? // Salon, Terraza, VIP
+  mapX            Int         @default(0)
+  mapY            Int         @default(0)
+  mapWidth        Int         @default(120)
+  mapHeight       Int         @default(80)
+  mapShape        TableShape  @default(RECTANGLE)
+  mapRotation     Int         @default(0)
+  mapVersion      Int         @default(0)
+  layoutUpdatedAt DateTime    @default(now()) @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id])
-  branch  Branch  @relation(fields: [branchId], references: [id])
-  orders  Order[]
+  company      Company       @relation(fields: [companyId], references: [id])
+  branch       Branch        @relation(fields: [branchId], references: [id])
+  orders       Order[]
   reservations Reservation[]
 
   @@unique([branchId, number])
@@ -283,6 +298,12 @@ enum TableStatus {
   OCCUPIED
   RESERVED
   OUT_OF_SERVICE
+}
+
+enum TableShape {
+  RECTANGLE
+  SQUARE
+  ROUND
 }
 
 // ==========================================
@@ -307,6 +328,7 @@ model Reservation {
   company Company @relation(fields: [companyId], references: [id])
   branch  Branch  @relation(fields: [branchId], references: [id])
   table   Table?  @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  order   Order?
 
   @@index([companyId])
   @@index([branchId])
@@ -750,18 +772,25 @@ enum PurchaseOrderStatus {
 }
 
 model PurchaseOrderPayment {
-  id              Int      @id @default(autoincrement())
+  id              Int                @id @default(autoincrement())
   purchaseOrderId Int
-  amount          Decimal  @db.Decimal(10, 2)
-  date            DateTime @default(now())
+  amount          Decimal            @db.Decimal(10, 2)
+  date            DateTime           @default(now())
   bank            String?
   referenceNumber String?
-  observations    String?  @db.Text
-  createdAt       DateTime @default(now())
+  observations    String?            @db.Text
+  createdAt       DateTime           @default(now())
+  status          SalesPaymentStatus @default(ACTIVE)
+  reversedAt      DateTime?
+  reversedById    Int?
+  reversalReason  String?
 
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  reversedBy    User?         @relation("PurchaseOrderPaymentReversedBy", fields: [reversedById], references: [id])
 
   @@index([purchaseOrderId])
+  @@index([status])
+  @@index([reversedById])
 }
 
 model PurchaseOrderItem {
@@ -815,47 +844,68 @@ model ProductCostHistory {
 // ==========================================
 
 model Order {
-  id                Int           @id @default(autoincrement())
-  companyId         Int
-  branchId          Int
-  tableId           Int?
-  userId            Int // Waiter/Cashier who created the order
-  cashRegisterId    Int? // Linked when paid/processed
-  cashRegister      CashRegister? @relation("OrderCashRegister", fields: [cashRegisterId], references: [id])
-  customerName      String?
-  orderType         OrderType     @default(DINE_IN)
-  salesChannel      SalesChannel  @default(RESTAURANT)
-  status            OrderStatus   @default(OPEN)
-  total             Decimal       @default(0) @db.Decimal(10, 2)
-  discount          Decimal       @default(0) @db.Decimal(10, 2)
-  discountCode      String? // Applied promotion/discount code
-  tipAmount         Decimal       @default(0) @db.Decimal(10, 2)
-  tax               Decimal       @default(0) @db.Decimal(10, 2)
-  channelCommission Decimal       @default(0) @db.Decimal(10, 2) // e.g. 24% PedidosYa commission
-  channelMarkup     Decimal       @default(0) @db.Decimal(10, 2) // price markup applied for channel
-  invoiceNumber     String?       @unique
-  cancelledById     Int? // User who cancelled the order
-  cancelReason      String? // Reason for cancellation
-  cancelledAt       DateTime? // Timestamp of cancellation
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  closedAt          DateTime?
+  id                      Int                  @id @default(autoincrement())
+  companyId               Int
+  branchId                Int
+  tableId                 Int?
+  reservationId           Int?                 @unique
+  userId                  Int // Waiter/Cashier who created the order
+  cashRegisterId          Int? // Linked when paid/processed
+  cashRegister            CashRegister?        @relation("OrderCashRegister", fields: [cashRegisterId], references: [id])
+  customerName            String?
+  orderType               OrderType            @default(DINE_IN)
+  salesChannel            SalesChannel         @default(RESTAURANT)
+  status                  OrderStatus          @default(OPEN)
+  financialStatus         OrderFinancialStatus @default(UNPAID)
+  total                   Decimal              @default(0) @db.Decimal(10, 2)
+  discount                Decimal              @default(0) @db.Decimal(10, 2)
+  discountCode            String? // Applied promotion/discount code
+  tipAmount               Decimal              @default(0) @db.Decimal(10, 2)
+  tax                     Decimal              @default(0) @db.Decimal(10, 2)
+  channelCommission       Decimal              @default(0) @db.Decimal(10, 2) // e.g. 24% PedidosYa commission
+  channelMarkup           Decimal              @default(0) @db.Decimal(10, 2) // price markup applied for channel
+  invoiceNumber           String?              @unique
+  invoicedAt              DateTime?
+  cancelledById           Int? // User who cancelled the order
+  cancelReason            String? // Reason for cancellation
+  cancelledAt             DateTime? // Timestamp of cancellation
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  closedAt                DateTime?
+  deliveredAt             DateTime?
+  kitchenStartedAt        DateTime?
+  kitchenStartedById      Int?
+  kitchenReleasedAt       DateTime?
+  kitchenReleasedById     Int?
+  // Set when an unpaid order is absorbed into another order during an atomic
+  // table-account consolidation. Kept scalar intentionally: cancelled source
+  // orders remain immutable audit records without a cascading self relation.
+  consolidatedIntoOrderId Int?
 
-  company     Company @relation(fields: [companyId], references: [id])
-  branch      Branch  @relation(fields: [branchId], references: [id])
-  table       Table?  @relation(fields: [tableId], references: [id])
-  user        User    @relation("OrderCreator", fields: [userId], references: [id])
-  cancelledBy User?   @relation("OrderCancelledBy", fields: [cancelledById], references: [id])
+  company           Company      @relation(fields: [companyId], references: [id])
+  branch            Branch       @relation(fields: [branchId], references: [id])
+  table             Table?       @relation(fields: [tableId], references: [id])
+  reservation       Reservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+  user              User         @relation("OrderCreator", fields: [userId], references: [id])
+  cancelledBy       User?        @relation("OrderCancelledBy", fields: [cancelledById], references: [id])
+  kitchenStartedBy  User?        @relation("OrderKitchenStartedBy", fields: [kitchenStartedById], references: [id], onDelete: SetNull)
+  kitchenReleasedBy User?        @relation("OrderKitchenReleasedBy", fields: [kitchenReleasedById], references: [id], onDelete: SetNull)
 
-  items          OrderItem[]
-  payments       Payment[]
-  pedidosYaSyncs PedidosYaOrderSync[]
+  items                OrderItem[]
+  payments             Payment[]
+  pedidosYaSyncs       PedidosYaOrderSync[]
+  kitchenNotifications KitchenNotification[]
 
   @@index([companyId, branchId])
   @@index([companyId, status])
+  @@index([companyId, financialStatus, closedAt])
+  @@index([companyId, invoicedAt])
   @@index([companyId, createdAt])
   @@index([userId])
   @@index([tableId])
+  @@index([companyId, kitchenReleasedAt, status])
+  @@index([kitchenStartedById])
+  @@index([kitchenReleasedById])
 }
 
 enum OrderType {
@@ -875,23 +925,32 @@ enum OrderStatus {
   SENT_TO_KITCHEN
   IN_PREPARATION
   READY
-  PAID
   CANCELLED
   DELIVERED
 }
 
+enum OrderFinancialStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
 model OrderItem {
-  id         Int             @id @default(autoincrement())
-  orderId    Int
-  menuItemId Int
-  quantity   Int
-  price      Decimal         @db.Decimal(10, 2)
-  subtotal   Decimal         @db.Decimal(10, 2)
-  notes      String?
-  status     OrderItemStatus @default(PENDING)
-  sentAt     DateTime? // When sent to kitchen
-  startedAt  DateTime? // When kitchen started preparing
-  finishedAt DateTime? // When kitchen finished preparing
+  id            Int             @id @default(autoincrement())
+  orderId       Int
+  menuItemId    Int
+  quantity      Int
+  price         Decimal         @db.Decimal(10, 2)
+  subtotal      Decimal         @db.Decimal(10, 2)
+  notes         String?
+  status        OrderItemStatus @default(PENDING)
+  sentAt        DateTime? // When sent to kitchen
+  startedAt     DateTime? // When kitchen started preparing
+  finishedAt    DateTime? // When kitchen finished preparing
+  // Durable provenance for table transfers/consolidations. The first origin is
+  // retained even if an item is moved more than once.
+  originOrderId Int?
+  originTableId Int?
 
   order     Order               @relation(fields: [orderId], references: [id], onDelete: Restrict)
   menuItem  MenuItem            @relation(fields: [menuItemId], references: [id])
@@ -899,6 +958,8 @@ model OrderItem {
 
   @@index([orderId])
   @@index([menuItemId])
+  @@index([originOrderId])
+  @@index([originTableId])
 }
 
 enum OrderItemStatus {
@@ -907,26 +968,78 @@ enum OrderItemStatus {
   DONE
 }
 
+enum KitchenNotificationEventType {
+  ORDER_ITEM_READY
+  ORDER_READY
+  ORDER_RELEASED
+}
+
+enum KitchenNotificationStatus {
+  UNREAD
+  SEEN
+  ATTENDED
+}
+
+model KitchenNotification {
+  id          Int                          @id @default(autoincrement())
+  companyId   Int
+  branchId    Int
+  orderId     Int
+  userId      Int
+  eventType   KitchenNotificationEventType
+  dedupKey    String                       @db.VarChar(191)
+  status      KitchenNotificationStatus    @default(UNREAD)
+  tableNumber String?                      @db.VarChar(20)
+  message     String                       @db.VarChar(500)
+  payload     Json?
+  seenAt      DateTime?
+  attendedAt  DateTime?
+  createdAt   DateTime                     @default(now())
+  updatedAt   DateTime                     @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  user    User    @relation("KitchenNotificationRecipient", fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, dedupKey])
+  @@index([companyId, branchId, createdAt])
+  @@index([userId, status, createdAt])
+  @@index([orderId, eventType])
+}
+
+enum PaymentMethodType {
+  CASH
+  CARD
+  BANK_TRANSFER
+  OTHER
+}
+
 model PaymentMethod {
-  id        Int     @id @default(autoincrement())
+  id        Int               @id @default(autoincrement())
   companyId Int? // Optional: null means system-wide
-  name      String // Cash, Card, Transfer
-  active    Boolean @default(true)
+  name      String // Display label only; business behavior is driven by `type`.
+  type      PaymentMethodType @default(OTHER)
+  active    Boolean           @default(true)
 
   company          Company?          @relation(fields: [companyId], references: [id])
   payments         Payment[]
   cateringPayments CateringPayment[]
+
+  @@index([companyId, type])
 }
 
 model Payment {
-  id              Int      @id @default(autoincrement())
+  id              Int                @id @default(autoincrement())
   orderId         Int
   paymentMethodId Int
-  amount          Decimal  @db.Decimal(10, 2)
+  methodType      PaymentMethodType
+  amount          Decimal            @db.Decimal(10, 2)
   reference       String?
   payerName       String? // Name of the person paying (for split bills)
+  idempotencyKey  String?            @db.VarChar(191)
   registeredById  Int? // User (cashier) who registered the payment
-  createdAt       DateTime @default(now())
+  createdAt       DateTime           @default(now())
   status          SalesPaymentStatus @default(ACTIVE)
   reversedAt      DateTime?
   reversedById    Int?
@@ -934,9 +1047,15 @@ model Payment {
 
   order         Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
   paymentMethod PaymentMethod @relation(fields: [paymentMethodId], references: [id])
+  registeredBy  User?         @relation("PaymentRegisteredBy", fields: [registeredById], references: [id], onDelete: Restrict)
+  reversedBy    User?         @relation("PaymentReversedBy", fields: [reversedById], references: [id], onDelete: Restrict)
 
+  @@unique([orderId, idempotencyKey])
   @@index([orderId])
   @@index([paymentMethodId])
+  @@index([methodType, createdAt])
+  @@index([registeredById])
+  @@index([reversedById])
   @@index([status, createdAt])
 }
 
@@ -982,9 +1101,9 @@ model CashShift {
   difference     Decimal?  @db.Decimal(10, 2) // Surplus/Deficit
   notes          String?
 
-  company      Company        @relation(fields: [companyId], references: [id])
-  cashRegister CashRegister   @relation(fields: [cashRegisterId], references: [id])
-  user         User           @relation(fields: [userId], references: [id])
+  company      Company            @relation(fields: [companyId], references: [id])
+  cashRegister CashRegister       @relation(fields: [cashRegisterId], references: [id])
+  user         User               @relation(fields: [userId], references: [id])
   movements    CashMovement[]
   counts       CashCount[]
   depositLinks BankDepositShift[]
@@ -1303,21 +1422,28 @@ model CateringPayment {
   id              Int                 @id @default(autoincrement())
   cateringEventId Int
   paymentMethodId Int
+  methodType      PaymentMethodType
   amount          Decimal             @db.Decimal(10, 2)
   reference       String?
+  idempotencyKey  String?             @db.VarChar(191)
   type            CateringPaymentType @default(ADVANCE)
   date            DateTime            @default(now())
   status          SalesPaymentStatus  @default(ACTIVE)
+  registeredById  Int?
   reversedAt      DateTime?
   reversedById    Int?
   reversalReason  String?
 
   event         CateringEvent @relation(fields: [cateringEventId], references: [id], onDelete: Restrict)
   paymentMethod PaymentMethod @relation(fields: [paymentMethodId], references: [id])
-  reversedBy    User?         @relation("CateringPaymentReversedBy", fields: [reversedById], references: [id])
+  registeredBy  User?         @relation("CateringPaymentRegisteredBy", fields: [registeredById], references: [id], onDelete: Restrict)
+  reversedBy    User?         @relation("CateringPaymentReversedBy", fields: [reversedById], references: [id], onDelete: Restrict)
 
+  @@unique([cateringEventId, idempotencyKey])
   @@index([cateringEventId])
+  @@index([methodType, date])
   @@index([status])
+  @@index([registeredById])
   @@index([reversedById])
 }
 

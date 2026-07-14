@@ -4,6 +4,7 @@ import { ReportService } from '../services/report.service';
 import { OrderService } from '../services/order.service';
 import { InventoryMovementService } from '../services/inventory-movement.service';
 import { getErrorMessage } from '../utils/error';
+import { parseOptionalQueryDateFrom, parseOptionalQueryDateTo } from '../utils/date-range';
 
 type OrderListRow = Awaited<ReturnType<typeof OrderService.getAll>>['data'][number];
 type InventoryMovementRow = Awaited<ReturnType<typeof InventoryMovementService.getAll>>[number];
@@ -19,8 +20,8 @@ export class ExportController {
             const { startDate, endDate, branchId } = req.query;
 
             const filters: NonNullable<Parameters<typeof OrderService.getAll>[1]> = {};
-            if (startDate) filters.startDate = new Date(startDate as string);
-            if (endDate) filters.endDate = new Date(endDate as string);
+            if (startDate) filters.startDate = parseOptionalQueryDateFrom(startDate as string, req.user!.timezone);
+            if (endDate) filters.endDate = parseOptionalQueryDateTo(endDate as string, req.user!.timezone);
             if (branchId) filters.branchId = parseInt(branchId as string);
 
             const result = await OrderService.getAll(companyId, { ...filters, limit: 10000 });
@@ -64,8 +65,8 @@ export class ExportController {
             const { startDate, endDate, warehouseId } = req.query;
 
             const filters: NonNullable<Parameters<typeof InventoryMovementService.getAll>[1]> = {};
-            if (startDate) filters.startDate = new Date(startDate as string);
-            if (endDate) filters.endDate = new Date(endDate as string);
+            if (startDate) filters.startDate = parseOptionalQueryDateFrom(startDate as string, req.user!.timezone);
+            if (endDate) filters.endDate = parseOptionalQueryDateTo(endDate as string, req.user!.timezone);
             if (warehouseId) filters.warehouseId = parseInt(warehouseId as string);
 
             const movements = await InventoryMovementService.getAll(companyId, filters);
@@ -132,8 +133,8 @@ export class ExportController {
             const salesByUser = await ReportService.getSalesByUser(
                 companyId,
                 branchId ? parseInt(branchId as string) : undefined,
-                startDate ? new Date(startDate as string) : undefined,
-                endDate ? new Date(endDate as string) : undefined
+                parseOptionalQueryDateFrom(startDate as string | undefined, req.user!.timezone),
+                parseOptionalQueryDateTo(endDate as string | undefined, req.user!.timezone)
             );
 
             const data = salesByUser.map((user: SalesByUserRow, index: number) => ({

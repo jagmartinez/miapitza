@@ -67,8 +67,8 @@ export class ReportController {
         try {
             const requestedBranchId = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
             const branchId = ReportController.resolveBranchScope(req, requestedBranchId);
-            const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
-            const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+            const startDate = parseOptionalQueryDateFrom(req.query.startDate as string | undefined, req.user!.timezone);
+            const endDate = parseOptionalQueryDateTo(req.query.endDate as string | undefined, req.user!.timezone);
             const companyId = req.user!.companyId;
             const salesByUser = await ReportService.getSalesByUser(companyId, branchId, startDate, endDate);
             res.json({

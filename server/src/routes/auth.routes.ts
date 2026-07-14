@@ -3,7 +3,7 @@ import { AuthController } from '../controllers/auth.controller';
 import { authMiddleware, requireRole } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import { ADMINS } from '../constants/roles';
-import { PASSWORD_REGEX } from '../services/auth.service';
+import { PASSWORD_REGEX } from '../utils/password-policy';
 
 const router = Router();
 

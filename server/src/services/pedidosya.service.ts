@@ -4,18 +4,40 @@ import type { Prisma } from '@prisma/client';
 import { AuditLogService } from './audit-log.service';
 import { OrderService } from './order.service';
 import { encrypt, decrypt, isEncrypted } from '../utils/encryption';
+import { DynamicPricingService } from './dynamic-pricing.service';
 
 const SECRET_FIELDS = ['clientSecret', 'webhookSecret', 'accessToken', 'refreshToken'] as const;
 
 export class PedidosYaService {
+    static async resolveWebhookConfig(companyId: number, payload?: Record<string, unknown>) {
+        const configs = await prisma.pedidosYaConfig.findMany({ where: { companyId, active: true } });
+        const nestedRestaurant = payload?.restaurant && typeof payload.restaurant === 'object'
+            ? payload.restaurant as Record<string, unknown>
+            : undefined;
+        const externalRestaurantId = [
+            payload?.restaurantId, payload?.restaurant_id, payload?.storeId,
+            payload?.store_id, nestedRestaurant?.id
+        ].map((value) => value == null ? '' : String(value).trim()).find(Boolean);
+
+        if (externalRestaurantId) {
+            const matched = configs.filter((config) => config.restaurantId === externalRestaurantId);
+            if (matched.length === 1) return matched[0];
+            if (matched.length > 1) throw new Error('Configuración PedidosYa ambigua para el restaurante externo');
+        }
+        if (configs.length === 1) return configs[0];
+        if (configs.length === 0) throw new Error('PedidosYa config not found');
+        throw new Error('El webhook no identifica la sucursal/restaurante y existen varias configuraciones activas');
+    }
     // ── Secret handling (encrypt at rest, never expose in client responses) ──
     /** Decrypts a stored secret, tolerating legacy plaintext values. */
     static decryptSecret(value: string | null | undefined): string | null {
         if (!value) return null;
+        if (!isEncrypted(value)) return value;
         try {
-            return isEncrypted(value) ? decrypt(value) : value;
-        } catch {
-            return value;
+            return decrypt(value);
+        } catch (error) {
+            console.error('[PedidosYa] No se pudo descifrar una credencial almacenada:', error);
+            return null;
         }
     }
 
@@ -35,7 +57,9 @@ export class PedidosYaService {
     // ── Configuration ──
     static async getConfig(companyId: number, branchId?: number) {
         return prisma.pedidosYaConfig.findFirst({
-            where: { companyId, ...(branchId ? { branchId } : {}) },
+            // Undefined means the company-wide configuration, never an
+            // arbitrary branch row. Branch callers always pass their scope.
+            where: { companyId, branchId: branchId ?? null },
             include: {
                 branch: { select: { id: true, name: true, code: true } },
                 warehouse: { select: { id: true, name: true } },
@@ -123,16 +147,16 @@ export class PedidosYaService {
                 companyId, userId, entityType: 'PedidosYaConfig', entityId: config.id,
                 action: existing ? 'UPDATE' : 'CREATE',
                 details: { active: data.active, environment: data.environment },
-            }).catch(() => {});
+            }).catch((error) => console.error('[PedidosYa] No se pudo persistir auditoría de configuración:', error));
         }
 
         return config;
     }
 
     // ── OAuth2 Token Management ──
-    static async refreshAccessToken(companyId: number) {
+    static async refreshAccessToken(companyId: number, branchId?: number | null) {
         const config = await prisma.pedidosYaConfig.findFirst({
-            where: { companyId, active: true },
+            where: { companyId, active: true, branchId: branchId ?? null },
         });
 
         if (!config || !config.clientId || !config.clientSecret) {
@@ -143,13 +167,16 @@ export class PedidosYaService {
             ? 'https://api.pedidosya.com'
             : 'https://api-sandbox.pedidosya.com';
 
+        const clientSecret = this.decryptSecret(config.clientSecret);
+        if (!clientSecret) throw new Error('No se pudo leer la credencial PedidosYa');
+
         const response = await fetch(`${baseUrl}/oauth/token`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 grant_type: 'client_credentials',
                 client_id: config.clientId,
-                client_secret: this.decryptSecret(config.clientSecret),
+                client_secret: clientSecret,
             }),
         });
 
@@ -172,18 +199,20 @@ export class PedidosYaService {
         return tokenData.access_token;
     }
 
-    static async getValidToken(companyId: number): Promise<string> {
+    static async getValidToken(companyId: number, branchId?: number | null): Promise<string> {
         const config = await prisma.pedidosYaConfig.findFirst({
-            where: { companyId, active: true },
+            where: { companyId, active: true, branchId: branchId ?? null },
         });
 
         if (!config) throw new Error('PedidosYa no configurado');
 
         if (config.accessToken && config.tokenExpiresAt && config.tokenExpiresAt > new Date()) {
-            return this.decryptSecret(config.accessToken) || '';
+            const token = this.decryptSecret(config.accessToken);
+            if (!token) throw new Error('No se pudo leer el token PedidosYa');
+            return token;
         }
 
-        return this.refreshAccessToken(companyId);
+        return this.refreshAccessToken(companyId, branchId);
     }
 
     // ── Webhook Processing ──
@@ -249,12 +278,14 @@ export class PedidosYaService {
         });
         if (existingSync) return;
 
-        const config = await prisma.pedidosYaConfig.findFirst({
-            where: { companyId, active: true },
-        });
-        if (!config) throw new Error('PedidosYa config not found');
+        const config = await this.resolveWebhookConfig(companyId, payload);
         const branchId = config.branchId || (await prisma.branch.findFirst({ where: { companyId, status: 'ACTIVE' }, orderBy: { id: 'asc' } }))?.id;
         if (!branchId) throw new Error('No active branch configured');
+        const activeBranch = await prisma.branch.findFirst({
+            where: { id: branchId, companyId, status: 'ACTIVE' },
+            select: { id: true }
+        });
+        if (!activeBranch) throw new Error('La sucursal configurada para PedidosYa no está activa');
 
         const items = (payload.items || payload.products || []) as Array<{
             id?: string; name: string; quantity: number; price?: number; notes?: string;
@@ -269,7 +300,12 @@ export class PedidosYaService {
             }
         }
 
-        const { mapped: mappedItems, unmapped } = await this.mapOrderItems(companyId, branchId, items);
+        const channelConfig = await prisma.salesChannelConfig.findUnique({
+            where: { companyId_channel: { companyId, channel: 'PEDIDOSYA' } }
+        });
+        if (channelConfig && !channelConfig.active) throw new Error('El canal PedidosYa está desactivado');
+        const markupPct = Number(channelConfig?.priceMarkupPct ?? 0);
+        const { mapped: mappedItems, unmapped } = await this.mapOrderItems(companyId, branchId, items, markupPct);
 
         // Never create a partial order: if any incoming item has no menu mapping,
         // reject the whole sync so it is not silently dropped. The thrown error is
@@ -283,58 +319,87 @@ export class PedidosYaService {
         }
 
         const systemUser = await prisma.user.findFirst({
-            where: { companyId, status: 'ACTIVE' },
-            orderBy: [{ username: 'asc' }, { id: 'asc' }],
+            where: { companyId, username: 'system', status: 'ACTIVE' },
             select: { id: true },
         });
-        if (!systemUser) throw new Error('No active user found to assign PedidosYa order');
+        if (!systemUser) throw new Error('Debe existir el usuario de servicio activo "system" para recibir pedidos PedidosYa');
         const userId = systemUser.id;
 
         const customerName = `[PEDIDOSYA] ${payload.customerName || 'Cliente'} | ID:${externalId}`;
         const total = mappedItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+        const channelCommission = Math.round(total * Number(channelConfig?.commissionPct ?? 0)) / 100;
+        const acceptedAt = config.autoAcceptOrders ? new Date() : null;
 
-        const order = await prisma.$transaction(async (tx) => {
-        const created = await tx.order.create({
-            data: {
-                companyId,
-                branchId,
-                userId,
-                customerName,
-                orderType: 'DELIVERY',
-                salesChannel: 'PEDIDOSYA',
-                status: config.autoAcceptOrders ? 'OPEN' : 'OPEN',
-                total,
-                items: {
-                    create: mappedItems.map(item => ({
-                        menuItemId: item.menuItemId,
-                        quantity: item.quantity,
-                        price: item.price,
-                        subtotal: item.price * item.quantity,
-                        notes: item.notes || undefined,
-                        status: 'PENDING',
-                    })),
-                },
-            },
-        });
+        let order;
+        try {
+            order = await prisma.$transaction(async (tx) => {
+                const replay = await tx.pedidosYaOrderSync.findUnique({
+                    where: { companyId_externalId: { companyId, externalId } },
+                    select: { id: true },
+                });
+                if (replay) return null;
 
-        await tx.pedidosYaOrderSync.create({
-            data: {
-                companyId,
-                orderId: created.id,
-                externalId,
-                externalStatus: payload.status as string || 'NEW',
-                internalStatus: 'OPEN',
-                syncDirection: 'INBOUND',
-                metadata: payload as Prisma.InputJsonValue,
-            },
-        });
-        return created;
-        });
+                const created = await tx.order.create({
+                    data: {
+                        companyId,
+                        branchId,
+                        userId,
+                        customerName,
+                        orderType: 'DELIVERY',
+                        salesChannel: 'PEDIDOSYA',
+                        status: config.autoAcceptOrders ? 'SENT_TO_KITCHEN' : 'OPEN',
+                        total,
+                        channelCommission,
+                        channelMarkup: markupPct,
+                        items: {
+                            create: mappedItems.map(item => ({
+                                menuItemId: item.menuItemId,
+                                quantity: item.quantity,
+                                price: item.price,
+                                subtotal: item.price * item.quantity,
+                                notes: item.notes || undefined,
+                                status: 'PENDING',
+                                sentAt: acceptedAt,
+                            })),
+                        },
+                    },
+                });
+
+                await tx.pedidosYaOrderSync.create({
+                    data: {
+                        companyId,
+                        orderId: created.id,
+                        externalId,
+                        externalStatus: payload.status as string || 'NEW',
+                        internalStatus: config.autoAcceptOrders ? 'SENT_TO_KITCHEN' : 'OPEN',
+                        syncDirection: 'INBOUND',
+                        metadata: payload as Prisma.InputJsonValue,
+                    },
+                });
+
+                return created;
+            });
+        } catch (error: unknown) {
+            // A concurrent replay can win the unique (companyId, externalId)
+            // constraint after our initial read. The transaction is rolled back,
+            // including its Order, so acknowledging the already committed sync is
+            // safe and cannot leave an orphan/duplicate local order.
+            if ((error as { code?: string }).code === 'P2002') {
+                const replay = await prisma.pedidosYaOrderSync.findUnique({
+                    where: { companyId_externalId: { companyId, externalId } },
+                    select: { id: true },
+                });
+                if (replay) return;
+            }
+            throw error;
+        }
+
+        if (!order) return;
 
         AuditLogService.log({
             companyId, userId, entityType: 'Order', entityId: order.id,
             action: 'CREATE', details: { source: 'PEDIDOSYA', externalId },
-        }).catch(() => {});
+        }).catch((error) => console.error('[PedidosYa] No se pudo persistir auditoría de la orden:', error));
     }
 
     private static async handleOrderCancelled(companyId: number, payload: Record<string, unknown>) {
@@ -343,23 +408,28 @@ export class PedidosYaService {
             where: { companyId, externalId },
         });
         if (!sync) return;
+        const config = await this.resolveWebhookConfig(companyId, payload);
 
         // Route through OrderService.cancel so the cancellation validates the
         // state transition, reverses any consumed inventory (reverseForOrder) and
         // frees the table — instead of a raw status write that skips all of that.
         const systemUser = await prisma.user.findFirst({
-            where: { companyId, username: 'system' },
+            where: { companyId, username: 'system', status: 'ACTIVE' },
             select: { id: true },
         });
+        if (!systemUser) throw new Error('Usuario de servicio "system" no disponible para cancelar la orden PedidosYa');
 
         try {
             await OrderService.cancel(
                 sync.orderId,
                 companyId,
-                systemUser?.id,
+                systemUser.id,
                 'Cancelado por PedidosYa',
                 // Channel cancellations are authoritative even for PAID orders.
-                { allowPaidReversal: true }
+                {
+                    allowPaidReversal: true,
+                    wasteWarehouseId: config.defaultWarehouseId ?? undefined
+                }
             );
         } catch (err) {
             if ((err as Error).message === 'Order is already cancelled') {
@@ -381,23 +451,60 @@ export class PedidosYaService {
 
     private static async handleStatusChange(companyId: number, payload: Record<string, unknown>) {
         const externalId = payload.id as string || payload.orderId as string;
-        const newStatus = payload.status as string;
+        const newStatus = String(payload.status || '').trim().toUpperCase();
+        if (!externalId || !newStatus) throw new Error('PedidosYa order ID and status are required');
 
         const sync = await prisma.pedidosYaOrderSync.findFirst({
             where: { companyId, externalId },
+            include: { order: { select: { id: true, branchId: true, status: true } } }
         });
         if (!sync) return;
 
+        if (newStatus === 'DELIVERED' && sync.order.status !== 'DELIVERED') {
+            const config = await prisma.pedidosYaConfig.findFirst({
+                where: {
+                    companyId,
+                    active: true,
+                    OR: [{ branchId: sync.order.branchId }, { branchId: null }]
+                },
+                orderBy: { branchId: 'desc' },
+                select: { defaultWarehouseId: true }
+            });
+            if (!config?.defaultWarehouseId) {
+                throw new Error('PedidosYa no tiene una bodega predeterminada configurada para completar la entrega');
+            }
+            const systemUser = await prisma.user.findFirst({
+                where: { companyId, username: 'system', status: 'ACTIVE' },
+                select: { id: true }
+            });
+            if (!systemUser) throw new Error('Usuario de servicio "system" no disponible para completar la entrega PedidosYa');
+
+            // External delivery is authoritative, but it must use the exact same
+            // atomic stock+status operation as local delivery. Disable the
+            // outbound echo to avoid sending the webhook state back recursively.
+            await OrderService.complete(
+                sync.order.id,
+                companyId,
+                config.defaultWarehouseId,
+                systemUser.id,
+                { syncExternal: false }
+            );
+        }
+
         await prisma.pedidosYaOrderSync.update({
             where: { id: sync.id },
-            data: { externalStatus: newStatus, lastSyncAt: new Date() },
+            data: {
+                externalStatus: newStatus,
+                ...(newStatus === 'DELIVERED' ? { internalStatus: 'DELIVERED' } : {}),
+                lastSyncAt: new Date()
+            },
         });
     }
 
     // ── Product Mapping ──
     private static async mapOrderItems(companyId: number, branchId: number, items: Array<{
         id?: string; name: string; quantity: number; price?: number; notes?: string;
-    }>) {
+    }>, markupPct: number) {
         const result: Array<{ menuItemId: number; quantity: number; price: number; notes?: string }> = [];
         // Track items we could not resolve to a MenuItem so the caller can reject
         // the sync instead of silently dropping them.
@@ -405,7 +512,7 @@ export class PedidosYaService {
 
         for (const item of items) {
             let menuItemId: number | null = null;
-            let price = item.price || 0;
+            let price = item.price === undefined ? null : Number(item.price);
 
             if (item.id) {
                 const mapping = await prisma.pedidosYaProductMapping.findFirst({
@@ -414,22 +521,28 @@ export class PedidosYaService {
                 });
                 if (mapping?.menuItem?.active && (mapping.menuItem.branchId === null || mapping.menuItem.branchId === branchId)) {
                     menuItemId = mapping.menuItem.id;
-                    price = price || Number(mapping.menuItem.price);
+                    const basePrice = await DynamicPricingService.getPrice(menuItemId, branchId, companyId);
+                    price = price ?? Math.round(basePrice * (1 + markupPct / 100) * 100) / 100;
                 }
             }
 
             if (!menuItemId) {
-                const menuItem = await prisma.menuItem.findFirst({
-                    where: { companyId, name: { contains: item.name }, active: true, OR: [{ branchId: null }, { branchId }] },
-                    select: { id: true, price: true },
+                const candidates = await prisma.menuItem.findMany({
+                    where: { companyId, name: { contains: item.name.trim() }, active: true, OR: [{ branchId: null }, { branchId }] },
+                    select: { id: true, name: true, price: true },
                 });
+                const exact = candidates.filter((candidate) =>
+                    candidate.name.trim().toLocaleLowerCase() === item.name.trim().toLocaleLowerCase()
+                );
+                const menuItem = exact.length === 1 ? exact[0] : null;
                 if (menuItem) {
                     menuItemId = menuItem.id;
-                    price = price || Number(menuItem.price);
+                    const basePrice = await DynamicPricingService.getPrice(menuItemId, branchId, companyId);
+                    price = price ?? Math.round(basePrice * (1 + markupPct / 100) * 100) / 100;
                 }
             }
 
-            if (menuItemId) {
+            if (menuItemId && price !== null) {
                 result.push({ menuItemId, quantity: item.quantity, price, notes: item.notes });
             } else {
                 unmapped.push(item.name || item.id || 'desconocido');
@@ -443,18 +556,41 @@ export class PedidosYaService {
     static async syncOrderStatus(companyId: number, orderId: number, newStatus: string) {
         const sync = await prisma.pedidosYaOrderSync.findFirst({
             where: { companyId, orderId },
+            include: { order: { select: { branchId: true } } },
         });
         if (!sync) return;
 
         const config = await prisma.pedidosYaConfig.findFirst({
-            where: { companyId, active: true },
+            where: {
+                companyId,
+                active: true,
+                OR: [{ branchId: sync.order.branchId }, { branchId: null }],
+            },
+            orderBy: { branchId: 'desc' },
         });
         if (!config || !config.autoSyncStatus) return;
 
         const platformStatus = this.mapInternalToPlatformStatus(newStatus);
         if (!platformStatus) return;
 
-        const token = await this.getValidToken(companyId);
+        const previousMetadata = sync.metadata && typeof sync.metadata === 'object' && !Array.isArray(sync.metadata)
+            ? sync.metadata as Record<string, unknown>
+            : {};
+        const attemptedAt = new Date();
+        await prisma.pedidosYaOrderSync.update({
+            where: { id: sync.id },
+            data: {
+                internalStatus: newStatus,
+                syncDirection: 'OUTBOUND',
+                metadata: {
+                    ...previousMetadata,
+                    outboundSync: { status: 'PENDING', targetStatus: platformStatus, attemptedAt: attemptedAt.toISOString() },
+                } as Prisma.InputJsonValue,
+            },
+        });
+
+        try {
+            const token = await this.getValidToken(companyId, config.branchId);
             const baseUrl = config.environment === 'production'
                 ? 'https://api.pedidosya.com'
                 : 'https://api-sandbox.pedidosya.com';
@@ -469,15 +605,35 @@ export class PedidosYaService {
             });
             if (!response.ok) throw new Error(`PedidosYa status sync failed: HTTP ${response.status}`);
 
-        await prisma.pedidosYaOrderSync.update({
+            await prisma.pedidosYaOrderSync.update({
                 where: { id: sync.id },
                 data: {
-                    internalStatus: newStatus,
                     externalStatus: platformStatus,
                     lastSyncAt: new Date(),
-                    syncDirection: 'OUTBOUND',
+                    metadata: {
+                        ...previousMetadata,
+                        outboundSync: { status: 'SYNCED', targetStatus: platformStatus, attemptedAt: attemptedAt.toISOString() },
+                    } as Prisma.InputJsonValue,
                 },
-        });
+            });
+        } catch (error: unknown) {
+            const message = (error as Error).message;
+            await prisma.pedidosYaOrderSync.update({
+                where: { id: sync.id },
+                data: {
+                    metadata: {
+                        ...previousMetadata,
+                        outboundSync: {
+                            status: 'FAILED',
+                            targetStatus: platformStatus,
+                            attemptedAt: attemptedAt.toISOString(),
+                            error: message,
+                        },
+                    } as Prisma.InputJsonValue,
+                },
+            });
+            throw error;
+        }
     }
 
     private static mapInternalToPlatformStatus(status: string): string | null {
@@ -567,30 +723,23 @@ export class PedidosYaService {
         });
         if (!config) throw new Error('PedidosYa no configurado');
 
-        const menuItems = await prisma.menuItem.findMany({
-            where: { companyId, active: true },
-            include: { category: { select: { name: true } } },
-        });
-
-        await prisma.pedidosYaConfig.update({
-            where: { id: config.id },
-            data: { lastSyncAt: new Date() },
-        });
-
-        return { synced: menuItems.length, lastSyncAt: new Date() };
+        // The previous implementation only counted local items and stamped
+        // lastSyncAt, but never called PedidosYa. Failing closed prevents a
+        // misleading production success until the outbound menu contract exists.
+        throw new Error('La sincronización outbound del menú con PedidosYa aún no está implementada');
     }
 
     // ── Test Connection ──
     static async testConnection(companyId: number) {
         const config = await prisma.pedidosYaConfig.findFirst({
-            where: { companyId },
+            where: { companyId, branchId: null },
         });
         if (!config || !config.clientId) {
             return { success: false, message: 'Configuración incompleta - faltan credenciales' };
         }
 
         try {
-            await this.refreshAccessToken(companyId);
+            await this.refreshAccessToken(companyId, null);
             return { success: true, message: 'Conexión exitosa con PedidosYa' };
         } catch (error: unknown) {
             return { success: false, message: `Error: ${(error as Error).message}` };

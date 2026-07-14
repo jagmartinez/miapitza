@@ -323,9 +323,14 @@ export default function ProductionOrders() {
     // ----- Cancel -----
     const handleCancel = async () => {
         if (!cancelOrder) return;
+        const reason = cancelReason.trim();
+        if (!reason) {
+            showWarning('Indica el motivo de anulación');
+            return;
+        }
         setCancelling(true);
         try {
-            await productionOrdersAPI.cancel(cancelOrder.id, cancelReason.trim() || undefined);
+            await productionOrdersAPI.cancel(cancelOrder.id, reason);
             showSuccess('Orden anulada');
             setCancelOrder(null);
             setCancelReason('');
@@ -342,7 +347,7 @@ export default function ProductionOrders() {
         return <span className={`po-status-badge ${meta.className}`}>{meta.label}</span>;
     };
 
-    const canFinish = (status: ProductionOrderStatus) => ['DRAFT', 'PENDING', 'IN_PROGRESS'].includes(status);
+    const canFinish = (status: ProductionOrderStatus) => status === 'IN_PROGRESS';
     const canCancel = (status: ProductionOrderStatus) => status !== 'CANCELLED';
 
     const productOptions: SelectOption[] = products.map((p) => ({
@@ -899,13 +904,13 @@ export default function ProductionOrders() {
                                 rows={3}
                                 value={cancelReason}
                                 onChange={(e) => setCancelReason(e.target.value)}
-                                placeholder="Indique el motivo (opcional)..."
+                                placeholder="Indique el motivo..."
                             />
                         </div>
                         <div className="modal-footer">
                             <div className="action-buttons po-modal-actions">
                                 <Button variant="secondary" type="button" onClick={() => setCancelOrder(null)}>Cancelar</Button>
-                                <Button variant="danger" type="button" disabled={cancelling} onClick={handleCancel}>
+                                <Button variant="danger" type="button" disabled={cancelling || !cancelReason.trim()} onClick={handleCancel}>
                                     <Ban size={20} />
                                     <span>{cancelling ? 'Anulando...' : 'Anular orden'}</span>
                                 </Button>

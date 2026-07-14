@@ -11,7 +11,7 @@ router.use(authMiddleware);
 router.get('/', InventoryMovementController.getAll);
 router.get('/product/:productId/kardex', InventoryMovementController.getKardex);
 router.get('/:id', validate(s.idParam), InventoryMovementController.getById);
-router.post('/', requireRole('SUPERADMIN', 'ADMIN', 'CAJERO', 'BODEGA'), validate(s.createInventoryMovement), InventoryMovementController.create);
+router.post('/', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.createInventoryMovement), InventoryMovementController.create);
 router.post('/transfer', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.transferInventory), InventoryMovementController.transfer);
 
 export default router;

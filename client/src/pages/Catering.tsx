@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
     Calendar, Users, Plus, MapPin, FileText,
     Download,
@@ -11,16 +11,17 @@ import type { SingleValue } from 'react-select';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { cateringAPI, menuAPI, paymentsAPI, branchesAPI, settingsAPI } from '../services/api';
+import { cateringAPI, menuAPI, paymentsAPI, branchesAPI, settingsAPI, warehousesAPI } from '../services/api';
 import { getCateringStatusOptions, isCateringStatusTerminal } from '../utils/cateringStatus';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
-import type { Branch, MenuItem, PaymentMethod } from '../types';
+import type { Branch, MenuItem, PaymentMethod, Warehouse } from '../types';
 import type { CurrencySettings } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
 import { formatLocalDateInput } from '../utils/dateInput';
+import { newIdempotencyKey } from '../utils/idempotency';
 import './CateringMod.css';
 
 interface CateringClausesForm {
@@ -124,6 +125,7 @@ export default function Catering() {
     const [allServices, setAllServices] = useState<CateringServiceCatalog[]>([]);
     const [allMenuItems, setAllMenuItems] = useState<MenuItem[]>([]);
     const [allBranches, setAllBranches] = useState<Branch[]>([]);
+    const [allWarehouses, setAllWarehouses] = useState<Warehouse[]>([]);
     const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
     const [availabilityAlerts, setAvailabilityAlerts] = useState<string[]>([]);
     const [settings, setSettings] = useState<CateringCompanySettings>({});
@@ -158,7 +160,14 @@ export default function Catering() {
         amount: 0,
         paymentMethodId: ''
     });
+    const [addingPayment, setAddingPayment] = useState(false);
+    const paymentIdempotencyKeyRef = useRef(newIdempotencyKey());
+
+    useEffect(() => {
+        paymentIdempotencyKeyRef.current = newIdempotencyKey();
+    }, [selectedEvent?.id, paymentData.amount, paymentData.paymentMethodId]);
     const [reversalReason, setReversalReason] = useState('');
+    const [finishWarehouseId, setFinishWarehouseId] = useState<number | null>(null);
 
     const handleDownloadContract = useCallback(async (event: CateringEvent) => {
         try {
@@ -201,16 +210,18 @@ export default function Catering() {
 
     const loadMasterData = useCallback(async () => {
         try {
-            const [servicesRes, menuRes, paymentsRes, branchesRes] = await Promise.all([
+            const [servicesRes, menuRes, paymentsRes, branchesRes, warehousesRes] = await Promise.all([
                 cateringAPI.getAllServices(),
                 menuAPI.getAll(),
                 paymentsAPI.getPaymentMethods(),
-                branchesAPI.getAll()
+                branchesAPI.getAll(),
+                warehousesAPI.getAll()
             ]);
             setAllServices(servicesRes.data.data);
             setAllMenuItems(menuRes.data.data);
             setPaymentMethods((paymentsRes.data.data as PaymentMethod[]).filter((method) => method.active !== false));
             setAllBranches(branchesRes.data.data);
+            setAllWarehouses(warehousesRes.data.data);
 
             const settingsRes = await settingsAPI.getAll();
             setSettings(settingsRes.data.data);
@@ -227,6 +238,7 @@ export default function Catering() {
 
     const handleOpenSidebar = async (event?: CateringEvent, tab: 'info' | 'services' | 'menu' | 'financial' = 'info') => {
         setAvailabilityAlerts([]);
+        setFinishWarehouseId(null);
         if (event) {
             try {
                 const response = await cateringAPI.getEventById(event.id);
@@ -315,6 +327,10 @@ export default function Catering() {
         }
         try {
             setSavingEvent(true);
+            if (selectedEvent?.status === 'PAID' && formData.status === 'FINISHED' && !finishWarehouseId) {
+                showError('Selecciona la bodega de la sucursal para descontar el inventario.');
+                return;
+            }
             const dataToSave = {
                 ...formData,
                 date: new Date(`${formData.date}T${formData.time}`).toISOString(),
@@ -331,7 +347,11 @@ export default function Catering() {
             };
 
             if (selectedEvent) {
-                await cateringAPI.updateEvent(selectedEvent.id, dataToSave);
+                if (selectedEvent.status === 'PAID' && formData.status === 'FINISHED') {
+                    await cateringAPI.updateEvent(selectedEvent.id, { status: 'FINISHED', warehouseId: finishWarehouseId });
+                } else {
+                    await cateringAPI.updateEvent(selectedEvent.id, dataToSave);
+                }
             } else {
                 await cateringAPI.createEvent(dataToSave);
             }
@@ -351,8 +371,11 @@ export default function Catering() {
     const checkAvailability = async () => {
         try {
             const date = new Date(`${formData.date}T${formData.time}`).toISOString();
-            const response = await cateringAPI.checkAvailability(date);
-            setAvailabilityAlerts(response.data.alerts || []);
+            const response = await cateringAPI.checkAvailability(
+                date,
+                formData.branchId ? Number(formData.branchId) : undefined
+            );
+            setAvailabilityAlerts(response.data.data?.alerts || []);
         } catch (error) {
             console.error('Error checking availability:', error);
         }
@@ -368,22 +391,32 @@ export default function Catering() {
             showWarning('El pago debe ser mayor a cero y no puede exceder el saldo pendiente.');
             return;
         }
+        setAddingPayment(true);
+        let paymentCommitted = false;
         try {
             await cateringAPI.addPayment(selectedEvent.id, {
                 amount: Number(paymentData.amount),
-                paymentMethodId: Number(paymentData.paymentMethodId),
-                date: new Date().toISOString()
-            });
+                paymentMethodId: Number(paymentData.paymentMethodId)
+            }, paymentIdempotencyKeyRef.current);
+            paymentCommitted = true;
+            paymentIdempotencyKeyRef.current = newIdempotencyKey();
+            setPaymentData({ amount: 0, paymentMethodId: '' });
             const response = await cateringAPI.getEventById(selectedEvent.id);
             setSelectedEvent(response.data.data);
-            setPaymentData({ amount: 0, paymentMethodId: '' });
             loadEvents();
         } catch (error) {
             console.error('Error adding payment:', error);
+            if (paymentCommitted) {
+                showWarning('El pago fue registrado, pero no se pudo refrescar el evento. Vuelve a abrirlo para consultar el saldo actualizado.');
+                loadEvents();
+                return;
+            }
             const message = typeof error === 'object' && error !== null && 'response' in error
                 ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
                 : undefined;
             showError(message || 'No se pudo registrar el pago de catering.');
+        } finally {
+            setAddingPayment(false);
         }
     };
 
@@ -1000,8 +1033,11 @@ export default function Catering() {
                                             variant="modal"
                                             label="Estado"
                                             value={{ value: formData.status, label: getStatusText(formData.status) }}
-                                            onChange={(option: SingleValue<{ value: CateringEvent['status']; label: string }>) =>
-                                                option && setFormData({ ...formData, status: option.value })}
+                                            onChange={(option: SingleValue<{ value: CateringEvent['status']; label: string }>) => {
+                                                if (!option) return;
+                                                setFormData({ ...formData, status: option.value });
+                                                if (option.value !== 'FINISHED') setFinishWarehouseId(null);
+                                            }}
                                             options={getCateringStatusOptions(selectedEvent?.status).map((value) => ({
                                                 value,
                                                 label: getStatusText(value),
@@ -1010,7 +1046,22 @@ export default function Catering() {
                                             isSearchable={false}
                                         />
                                         {selectedEvent?.status === 'RESERVED' && (
-                                            <small>El estado Pagado se asigna automÃ¡ticamente al completar el saldo.</small>
+                                            <small>El estado Pagado se asigna automáticamente al completar el saldo.</small>
+                                        )}
+                                        {selectedEvent?.status === 'PAID' && formData.status === 'FINISHED' && (
+                                            <Select
+                                                variant="modal"
+                                                label="Bodega para consumo"
+                                                options={allWarehouses
+                                                    .filter((warehouse) => warehouse.type === 'BRANCH' && warehouse.branchId === Number(formData.branchId))
+                                                    .map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))}
+                                                value={allWarehouses
+                                                    .filter((warehouse) => warehouse.id === finishWarehouseId)
+                                                    .map((warehouse) => ({ value: warehouse.id, label: `${warehouse.name} (${warehouse.code})` }))[0] ?? null}
+                                                onChange={(option: SingleValue<{ value: number; label: string }>) => setFinishWarehouseId(option?.value ?? null)}
+                                                placeholder="Seleccionar bodega de la sucursal..."
+                                                noOptionsMessage={() => 'No hay bodegas de sucursal disponibles'}
+                                            />
                                         )}
                                         <div className="modal-input-group">
                                             <label htmlFor="catering-people-count">Invitados</label>
@@ -1054,7 +1105,7 @@ export default function Catering() {
 
                         {activeTab === 'services' && (
                             <div className="animate-slide-in">
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '20px' }}>
+                                <div className="catering-tab-toolbar single-control">
                                     <Select
                                         variant="modal"
                                         label="Agregar Servicio"
@@ -1078,13 +1129,22 @@ export default function Catering() {
                                 </div>
 
                                 <div className="items-table">
-                                    <div className="items-table-header">
-                                        <span>Servicio</span>
-                                        <span>Precio</span>
-                                        <span>Cant.</span>
-                                        <span>Subtotal</span>
-                                        <span></span>
-                                    </div>
+                                    {formData.services.length > 0 && (
+                                        <div className="items-table-header">
+                                            <span>Servicio</span>
+                                            <span>Precio</span>
+                                            <span>Cant.</span>
+                                            <span>Subtotal</span>
+                                            <span></span>
+                                        </div>
+                                    )}
+                                    {formData.services.length === 0 && (
+                                        <div className="catering-empty-items">
+                                            <ConciergeBell size={24} aria-hidden="true" />
+                                            <strong>Sin servicios agregados</strong>
+                                            <span>Selecciona un servicio para incorporarlo al evento.</span>
+                                        </div>
+                                    )}
                                     {formData.services.map((item, index) => (
                                         <div key={index} className="items-table-row">
                                             <span>{item.service?.name || 'Servicio'}</span>
@@ -1119,7 +1179,7 @@ export default function Catering() {
 
                         {activeTab === 'menu' && (
                             <div className="animate-slide-in">
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '20px' }}>
+                                <div className="catering-tab-toolbar">
                                     <Select
                                         variant="modal"
                                         label="Agregar Plato"
@@ -1140,8 +1200,9 @@ export default function Catering() {
                                         isClearable
                                         isSearchable
                                     />
-                                    <Button variant="secondary" onClick={checkAvailability}>
-                                        <AlertCircle size={18} /> Verificar Stock
+                                    <Button type="button" variant="ghost" className="catering-stock-check" onClick={checkAvailability}>
+                                        <AlertCircle size={18} />
+                                        <span>Verificar inventario</span>
                                     </Button>
                                 </div>
 
@@ -1158,13 +1219,22 @@ export default function Catering() {
                                 )}
 
                                 <div className="items-table">
-                                    <div className="items-table-header">
-                                        <span>Plato</span>
-                                        <span>Precio</span>
-                                        <span>Cant.</span>
-                                        <span>Subtotal</span>
-                                        <span></span>
-                                    </div>
+                                    {formData.menuItems.length > 0 && (
+                                        <div className="items-table-header">
+                                            <span>Plato</span>
+                                            <span>Precio</span>
+                                            <span>Cant.</span>
+                                            <span>Subtotal</span>
+                                            <span></span>
+                                        </div>
+                                    )}
+                                    {formData.menuItems.length === 0 && (
+                                        <div className="catering-empty-items">
+                                            <Users size={24} aria-hidden="true" />
+                                            <strong>Menú pendiente</strong>
+                                            <span>Selecciona los platos que formarán parte del evento.</span>
+                                        </div>
+                                    )}
                                     {formData.menuItems.map((item, index) => (
                                         <div key={index} className="items-table-row">
                                             <span>{item.menuItem?.name || 'Plato'}</span>
@@ -1350,7 +1420,7 @@ export default function Catering() {
                                             isSearchable={false}
                                         />
                                         <div className="modal-input-group" style={{ marginBottom: 0 }}>
-                                            <Button onClick={handleAddPayment} disabled={!canManageCatering} style={{ height: '40px', padding: '0 20px', whiteSpace: 'nowrap' }}>
+                                            <Button onClick={handleAddPayment} disabled={!canManageCatering || addingPayment} style={{ height: '40px', padding: '0 20px', whiteSpace: 'nowrap' }}>
                                                 Agregar Pago
                                             </Button>
                                         </div>
@@ -1406,8 +1476,8 @@ export default function Catering() {
                         </div>
                         <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>Cancelar</Button>
                         {canManageCatering && (
-                            <Button onClick={handleSave} disabled={savingEvent}>
-                                {savingEvent ? 'Guardando...' : 'Guardar Cambios'}
+                            <Button type="button" onClick={handleSave} disabled={savingEvent}>
+                                {savingEvent ? 'Guardando...' : selectedEvent ? 'Guardar Cambios' : 'Crear Evento'}
                             </Button>
                         )}
                     </div>

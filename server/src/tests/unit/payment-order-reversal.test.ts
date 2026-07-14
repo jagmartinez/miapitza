@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 describe('PaymentService.delete financial-state reversal', () => {
-    it('reverses a fully paid order even after it moved to DELIVERED', async () => {
+    it('reverses the financial ledger without restocking a delivered order', async () => {
         jest.spyOn(prisma.payment, 'findFirst').mockResolvedValue({ orderId: 7 } as never);
         const reverse = jest.spyOn(InventoryConsumptionService, 'reverseForOrder')
             .mockResolvedValue({ reversed: true });
@@ -22,6 +22,7 @@ describe('PaymentService.delete financial-state reversal', () => {
                     id: 11,
                     orderId: 7,
                     amount: 100,
+                    methodType: 'CASH',
                     order: {
                         id: 7,
                         branchId: 2,
@@ -37,16 +38,21 @@ describe('PaymentService.delete financial-state reversal', () => {
                 update: jest.fn(async (_args: unknown) => ({}))
             },
             cashMovement: {
-                findFirst: jest.fn(async () => ({ shiftId: 2, type: 'IN', amount: 100 })),
+                findMany: jest.fn(async () => [{
+                    type: 'IN', amount: 100, reference: 'PAY-11',
+                    shift: { companyId: 1, cashRegister: { branchId: 2 } }
+                }]),
                 create: jest.fn(async (_args: unknown) => ({}))
             },
             cashShift: { findFirst: jest.fn(async () => ({ id: 8 })) },
+            user: { findFirst: jest.fn(async () => ({ id: 9 })) },
             order: { update: jest.fn(async (_args: unknown) => ({})) },
             table: { update: jest.fn(async (_args: unknown) => ({})) },
             promotion: {
                 findFirst: jest.fn(async () => ({ id: 4, usageCount: 1 })),
                 update: jest.fn(async (_args: unknown) => ({}))
-            }
+            },
+            auditLog: { create: jest.fn(async (_args: unknown) => ({})) }
         };
         jest.spyOn(prisma, '$transaction').mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
 
@@ -54,10 +60,11 @@ describe('PaymentService.delete financial-state reversal', () => {
 
         expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
             where: { id: 7 },
-            data: expect.objectContaining({ status: 'DELIVERED', closedAt: null })
+            data: expect.objectContaining({ financialStatus: 'UNPAID', closedAt: null })
         }));
-        expect(reverse).toHaveBeenCalledWith(tx as never, { orderId: 7, userId: 9, companyId: 1 });
-        expect(tx.table.update).toHaveBeenCalledWith({ where: { id: 3 }, data: { status: 'OCCUPIED' } });
+        expect(tx.order.update).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: expect.anything() }) }));
+        expect(reverse).not.toHaveBeenCalled();
+        expect(tx.table.update).not.toHaveBeenCalled();
         expect(tx.promotion.update).toHaveBeenCalledWith({ where: { id: 4 }, data: { usageCount: { decrement: 1 } } });
         expect(tx.cashMovement.create).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({ shiftId: 8, type: 'OUT', reference: 'REV-PAY-11' })
@@ -70,19 +77,23 @@ describe('PaymentService.delete financial-state reversal', () => {
             $queryRaw: jest.fn(async () => []),
             payment: {
                 findFirst: jest.fn(async () => ({
-                    id: 11, orderId: 7, amount: 100,
+                    id: 11, orderId: 7, amount: 100, methodType: 'CASH',
                     order: {
-                        id: 7, branchId: 2, invoiceNumber: null, status: 'PAID', total: 100,
+                        id: 7, branchId: 2, invoiceNumber: null, status: 'DELIVERED', total: 100,
                         tableId: null, discountCode: null, payments: [{ id: 11, amount: 100 }], items: []
                     }
                 })),
                 update: jest.fn()
             },
             cashMovement: {
-                findFirst: jest.fn(async () => ({ shiftId: 2, type: 'IN', amount: 100 })),
+                findMany: jest.fn(async () => [{
+                    type: 'IN', amount: 100, reference: 'PAY-11',
+                    shift: { companyId: 1, cashRegister: { branchId: 2 } }
+                }]),
                 create: jest.fn()
             },
-            cashShift: { findFirst: jest.fn(async () => null) }
+            cashShift: { findFirst: jest.fn(async () => null) },
+            user: { findFirst: jest.fn(async () => ({ id: 9 })) }
         };
         jest.spyOn(prisma, '$transaction').mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
 
@@ -91,25 +102,46 @@ describe('PaymentService.delete financial-state reversal', () => {
         expect(tx.payment.update).not.toHaveBeenCalled();
     });
 
-    it('blocks payment reversal after an invoice number was assigned', async () => {
+    it('allows invoice-before-payment tender reversal and keeps the emitted invoice', async () => {
         jest.spyOn(prisma.payment, 'findFirst').mockResolvedValue({ orderId: 7 } as never);
         const tx = {
             $queryRaw: jest.fn(async () => []),
             payment: {
                 findFirst: jest.fn(async () => ({
-                    id: 11, orderId: 7, amount: 100,
+                    id: 11, orderId: 7, amount: 100, methodType: 'OTHER',
                     order: {
-                        id: 7, branchId: 2, invoiceNumber: 'FAC-2-000001', status: 'PAID', total: 100,
+                        id: 7, branchId: 2, invoiceNumber: 'FAC-2-000001', status: 'DELIVERED', total: 100,
                         tableId: null, discountCode: null, payments: [{ id: 11, amount: 100 }], items: []
                     }
-                }))
+                })),
+                update: jest.fn(async (_args: unknown) => ({}))
             },
-            cashMovement: { findFirst: jest.fn(), create: jest.fn() }
+            cashMovement: { findMany: jest.fn(), create: jest.fn() },
+            user: { findFirst: jest.fn(async () => ({ id: 9 })) },
+            order: { update: jest.fn(async (_args: unknown) => ({})) },
+            auditLog: { create: jest.fn(async (_args: unknown) => ({})) }
         };
         jest.spyOn(prisma, '$transaction').mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
 
-        await expect(PaymentService.delete(11, 1, 9, 'Customer refund')).rejects.toThrow(/nota de crédito/i);
-        expect(tx.cashMovement.findFirst).not.toHaveBeenCalled();
+        await expect(PaymentService.delete(11, 1, 9, 'Customer refund')).resolves.toEqual({ success: true });
+        expect(tx.payment.update).toHaveBeenCalledWith(expect.objectContaining({
+            where: { id: 11 },
+            data: expect.objectContaining({ status: 'REVERSED', reversalReason: 'Customer refund' })
+        }));
+        expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
+            where: { id: 7 },
+            data: expect.objectContaining({ financialStatus: 'UNPAID', closedAt: null })
+        }));
+        expect(tx.order.update).not.toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ invoiceNumber: expect.anything() })
+        }));
+        expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                action: 'PAYMENT_REVERSED',
+                userId: 9,
+                details: expect.objectContaining({ invoiceNumber: 'FAC-2-000001' })
+            })
+        }));
     });
 });
 
@@ -126,17 +158,22 @@ describe('OrderService.cancel paid-like states', () => {
                     userId: 9,
                     tableId: 3,
                     status: 'DELIVERED',
+                    financialStatus: 'PAID',
                     total: 100,
                     closedAt: new Date(),
                     discountCode: 'PROMO',
-                    payments: [{ id: 11, amount: 100 }],
+                    payments: [{ id: 11, amount: 100, methodType: 'CASH' }],
+                    items: [],
                     table: { id: 3 }
                 })),
                 update: jest.fn(async (args: { data: { status: string } }) => ({ id: 7, status: args.data.status })),
                 count: jest.fn(async () => 0)
             },
             cashMovement: {
-                findMany: jest.fn(async () => [{ shiftId: 2, reference: 'PAY-11', amount: 100 }]),
+                findMany: jest.fn(async () => [{
+                    type: 'IN', reference: 'PAY-11', amount: 100,
+                    shift: { companyId: 1, cashRegister: { branchId: 2 } }
+                }]),
                 create: jest.fn(async (_args: unknown) => ({}))
             },
             cashShift: { findFirst: jest.fn(async () => ({ id: 8 })) },
@@ -150,7 +187,7 @@ describe('OrderService.cancel paid-like states', () => {
         };
     }
 
-    it('atomically reverses payments, promotion and inventory for an authoritative channel cancellation', async () => {
+    it('atomically reverses payments and promotion without restocking delivered food', async () => {
         const tx = makeTx();
         jest.spyOn(prisma, '$transaction').mockImplementation((async (callback: (db: ReturnType<typeof makeTx>) => unknown) => callback(tx)) as never);
         const reverse = jest.spyOn(InventoryConsumptionService, 'reverseForOrder')
@@ -158,7 +195,7 @@ describe('OrderService.cancel paid-like states', () => {
 
         await OrderService.cancel(7, 1, 9, 'Canal', { allowPaidReversal: true });
 
-        expect(reverse).toHaveBeenCalledWith(tx as never, { orderId: 7, userId: 9, companyId: 1 });
+        expect(reverse).not.toHaveBeenCalled();
         expect(tx.payment.updateMany).toHaveBeenCalledWith(expect.objectContaining({
             where: { id: { in: [11] }, orderId: 7, status: 'ACTIVE' },
             data: expect.objectContaining({ status: 'REVERSED', reversedById: 9 })
@@ -192,10 +229,12 @@ describe('OrderService.cancel paid-like states', () => {
             userId: 9,
             tableId: null,
             status: 'OPEN',
+            financialStatus: 'UNPAID',
             total: 0,
             closedAt: null,
             discountCode: null,
             payments: [],
+            items: [],
             table: null
         } as never);
         jest.spyOn(prisma, '$transaction').mockImplementation((async (callback: (db: ReturnType<typeof makeTx>) => unknown) => callback(tx)) as never);

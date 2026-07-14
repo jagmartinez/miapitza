@@ -81,7 +81,7 @@ describe('Inventory engine numeric invariants', () => {
         (tx.warehouse.findFirst as ReturnType<typeof jest.fn>).mockResolvedValueOnce(null);
         await expect(InventoryEngineService.applyMovement(tx, {
             type: 'IN', companyId: 99, warehouseId: 1, productId: 1, userId: 1, quantity: 1
-        })).rejects.toThrow(/AlmacÃ©n no encontrado/i);
+        })).rejects.toThrow(/Almacén no encontrado/i);
         expect(tx.stock.findUnique).not.toHaveBeenCalled();
         expect(stockUpdates).toHaveLength(0);
     });

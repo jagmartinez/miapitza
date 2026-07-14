@@ -17,7 +17,7 @@ interface CustomerTicketData {
     currency_symbol?: string;
   };
   order: {
-    status: string;
+    financialStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
     number: string;
     date: string;
     table: string;
@@ -181,7 +181,7 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
       <div class="separator"></div>
 
       <div style="position: relative;">
-        ${ticketDataCustomer.order.status === 'PAID' ?
+        ${ticketDataCustomer.order.financialStatus === 'PAID' ?
         `<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-15deg); font-size: 40px; font-weight: 900; color: rgba(0,0,0,0.05); border: 4px solid rgba(0,0,0,0.05); padding: 5px 15px; border-radius: 10px; pointer-events: none; text-transform: uppercase;">PAGADA</div>`
         : ''
       }

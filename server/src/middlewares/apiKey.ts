@@ -76,15 +76,12 @@ export const apiKeyAuth = async (
                 where: { id: record.id },
                 data: { lastUsedAt: new Date() },
             })
-            .catch(() => {
-                // Silently ignore tracking errors to avoid blocking the request
-            });
+            .catch((error) => console.error(`[ApiKey] Failed to update lastUsedAt for key ${record.id}:`, error));
 
         next();
-    } catch {
-        return res
-            .status(500)
-            .json({ success: false, message: 'Error al validar API key' });
+    } catch (error) {
+        console.error('[ApiKey] Authentication failed due to an operational error:', error);
+        return next(error);
     }
 };
 

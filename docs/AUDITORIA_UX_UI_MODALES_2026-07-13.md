@@ -354,7 +354,65 @@ Ninguno de los siguientes puntos bloquea esta entrega, pero deben permanecer vis
 
 Esta guía constituye la base de aceptación para futuras revisiones UX/UI de diálogos del proyecto.
 
-## 11. Análisis del chunk `react-pdf`
+## 11. Segunda pasada correctiva — 2026-07-14
+
+Una verificación posterior con evidencia visual detectó que tres casos todavía se apartaban del contrato documentado, aunque la primera auditoría los había clasificado como conformes o corregidos.
+
+### Nuevo Evento de Catering
+
+- El selector de platos y `Verificar Stock` no compartían una retícula estable; el botón podía partir su texto en dos líneas.
+- `Verificar Stock` utilizaba la variante secundaria verde, compitiendo visualmente con la acción principal.
+- Las tablas vacías mostraban solamente su encabezado, sin explicar el siguiente paso.
+- El footer no protegía sus etiquetas contra saltos de línea.
+- La acción principal decía `Guardar Cambios` incluso al crear un evento nuevo.
+- Las tablas de servicios y menú conservaban superficies oscuras hardcodeadas y no respetaban completamente el tema claro.
+
+Corrección aplicada:
+
+- Toolbar responsive de dos columnas: selector flexible y acción auxiliar de ancho estable.
+- Acción `Verificar inventario` en variante `ghost`, `type="button"` y texto no divisible.
+- Estados vacíos descriptivos para servicios y menú.
+- Superficies, bordes, encabezados e inputs migrados a tokens del tema.
+- Footer con botones no divisibles y etiqueta contextual `Crear Evento` / `Guardar Cambios`.
+
+### Nueva Caja Registradora
+
+- Las pestañas `General` y `Configuración` eran `div` clicables.
+- No exponían `role="tab"`, `aria-selected` ni comportamiento nativo de teclado.
+
+Corrección aplicada:
+
+- Navegación migrada a botones semánticos dentro de `role="tablist"`.
+- Estado seleccionado expuesto mediante `aria-selected`.
+- Acciones del footer declaradas explícitamente como `type="button"`.
+
+### Cierre de Turno
+
+- `Cancelar` y `Validar Arqueo` usaban el mismo tratamiento verde de acción secundaria.
+- Las tres acciones se apilaban verticalmente también en escritorio, aumentando innecesariamente la altura del flujo.
+
+Corrección aplicada:
+
+- `Cancelar` y `Validar Arqueo` migrados a variante `ghost`.
+- Acciones distribuidas en tres columnas en escritorio y una columna en móvil.
+- Mensajes de validación ocupan la fila completa sin alterar la jerarquía de botones.
+
+### Validación de esta segunda pasada
+
+| Control | Resultado |
+|---|---:|
+| TypeScript | PASS |
+| ESLint | PASS |
+| Pruebas unitarias | PASS — 25 archivos, 82 pruebas |
+| Build de producción | PASS — 2,609 módulos |
+| E2E específico de modales | PASS — 2/2 en Chromium |
+| Suite E2E completa | PASS — 16/16 en Chromium |
+| Contrato de Catering a 795×862 | PASS — botón no divisible, vacío y footer visibles |
+| Contrato de Caja Registradora | PASS — tabs semánticos y estado accesible |
+
+La lección para futuras auditorías es que una estructura con clases canónicas no basta para declarar un modal conforme: también deben verificarse estados vacíos, etiquetas contextuales, jerarquía real de botones, tema claro y anchos intermedios cercanos a 800 px.
+
+## 12. Análisis del chunk `react-pdf`
 
 ### Composición
 

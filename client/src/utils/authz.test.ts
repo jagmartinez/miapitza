@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { User } from '../types';
-import { canOperateKitchenLineItems, canUpdateWholeOrderStatus, getPrimaryRoleName, getRoleColor, getUserAccentColor, getUserRoleNames, hasAnyRole } from './authz';
+import { canOperateKitchenLineItems, canReversePayment, canUpdateWholeOrderStatus, getPrimaryRoleName, getRoleColor, getUserAccentColor, getUserRoleNames, hasAnyRole } from './authz';
 
 const buildUser = (overrides: Partial<User> = {}): User => ({
     id: 1,
@@ -51,5 +51,12 @@ describe('authz utils', () => {
         expect(canOperateKitchenLineItems(kitchen)).toBe(true);
         expect(canUpdateWholeOrderStatus(kitchen)).toBe(false);
         expect(canUpdateWholeOrderStatus(buildUser())).toBe(true);
+    });
+
+    it('only exposes payment reversal to administrators', () => {
+        expect(canReversePayment(buildUser({ role: { id: 1, name: 'SUPERADMIN' } }))).toBe(true);
+        expect(canReversePayment(buildUser({ role: { id: 2, name: 'ADMIN' } }))).toBe(true);
+        expect(canReversePayment(buildUser({ role: { id: 3, name: 'CAJERO' } }))).toBe(false);
+        expect(canReversePayment(buildUser({ role: { id: 4, name: 'MESERO' } }))).toBe(false);
     });
 });

@@ -78,12 +78,30 @@ export class ProductionRecipeService {
             components: {
                 include: {
                     componentProduct: {
-                        select: { id: true, name: true, sku: true, type: true, unit: true, currentAverageCost: true, cost: true }
+                        select: {
+                            id: true, name: true, sku: true, type: true, unit: true,
+                            currentAverageCost: true, cost: true,
+                            baseUnit: { select: { abbreviation: true } }
+                        }
                     },
                     unitOfMeasure: { select: { id: true, name: true, abbreviation: true } }
                 }
             }
         } satisfies Prisma.ProductionRecipeInclude;
+    }
+
+    /** Authoritative unit contract for `yieldQuantity`. */
+    private static effectiveYieldUnit(recipe: {
+        yieldUnit?: { abbreviation: string } | null;
+        product: { unit: string; baseUnit?: { abbreviation: string } | null };
+    }): { abbreviation: string; source: 'RECIPE' | 'PRODUCT_BASE' | 'PRODUCT_LEGACY' } {
+        if (recipe.yieldUnit?.abbreviation) {
+            return { abbreviation: recipe.yieldUnit.abbreviation, source: 'RECIPE' };
+        }
+        if (recipe.product.baseUnit?.abbreviation) {
+            return { abbreviation: recipe.product.baseUnit.abbreviation, source: 'PRODUCT_BASE' };
+        }
+        return { abbreviation: recipe.product.unit, source: 'PRODUCT_LEGACY' };
     }
 
     static async list(
@@ -108,17 +126,20 @@ export class ProductionRecipeService {
         });
 
         // attach estimated cost to each
-        return Promise.all(
-            recipes.map(async (r) => ({
-                ...r,
-                ...(await this.computeRecipeCost(r.id, companyId)
+        return Promise.all(recipes.map(async (recipe) => {
+            const effectiveYieldUnit = this.effectiveYieldUnit(recipe);
+            return {
+                ...recipe,
+                yieldUnitAbbreviation: effectiveYieldUnit.abbreviation,
+                yieldUnitSource: effectiveYieldUnit.source,
+                ...(await this.computeRecipeCost(recipe.id, companyId)
                     .then((cost) => ({ cost, costError: null }))
                     .catch((error: unknown) => ({
                         cost: null,
                         costError: error instanceof Error ? error.message : String(error)
                     })))
-            }))
-        );
+            };
+        }));
     }
 
     static async getById(id: number, companyId: number) {
@@ -127,11 +148,24 @@ export class ProductionRecipeService {
             include: this.recipeInclude()
         });
         if (!recipe) throw new Error('Receta de producción no encontrada');
+        const effectiveYieldUnit = this.effectiveYieldUnit(recipe);
         try {
             const cost = await this.computeRecipeCost(id, companyId);
-            return { ...recipe, cost, costError: null };
+            return {
+                ...recipe,
+                yieldUnitAbbreviation: effectiveYieldUnit.abbreviation,
+                yieldUnitSource: effectiveYieldUnit.source,
+                cost,
+                costError: null
+            };
         } catch (error: unknown) {
-            return { ...recipe, cost: null, costError: error instanceof Error ? error.message : String(error) };
+            return {
+                ...recipe,
+                yieldUnitAbbreviation: effectiveYieldUnit.abbreviation,
+                yieldUnitSource: effectiveYieldUnit.source,
+                cost: null,
+                costError: error instanceof Error ? error.message : String(error)
+            };
         }
     }
 
@@ -162,11 +196,23 @@ export class ProductionRecipeService {
         const recipe = await db.productionRecipe.findFirst({
             where: { id: recipeId, companyId },
             include: {
-                product: { select: { id: true, unit: true } },
+                product: {
+                    select: {
+                        id: true,
+                        unit: true,
+                        baseUnit: { select: { abbreviation: true } }
+                    }
+                },
                 yieldUnit: { select: { abbreviation: true } },
                 components: {
                     include: {
-                        componentProduct: { select: { id: true, name: true, type: true, unit: true, currentAverageCost: true, cost: true } },
+                        componentProduct: {
+                            select: {
+                                id: true, name: true, type: true, unit: true,
+                                currentAverageCost: true, cost: true,
+                                baseUnit: { select: { abbreviation: true } }
+                            }
+                        },
                         unitOfMeasure: { select: { abbreviation: true } }
                     }
                 }
@@ -178,7 +224,8 @@ export class ProductionRecipeService {
         let batchCost = 0;
 
         for (const c of recipe.components) {
-            const unitAbbr = c.unitOfMeasure?.abbreviation || c.unit || c.componentProduct.unit;
+            const unitAbbr = c.unitOfMeasure?.abbreviation || c.unit ||
+                c.componentProduct.baseUnit?.abbreviation || c.componentProduct.unit;
             const conv = await UnitConversionService.convert(
                 c.componentProductId,
                 companyId,
@@ -206,7 +253,7 @@ export class ProductionRecipeService {
         }
 
         // Convert recipe yield into the OUTPUT product's base unit.
-        const yieldUnitAbbr = recipe.yieldUnit?.abbreviation || recipe.product.unit;
+        const yieldUnitAbbr = this.effectiveYieldUnit(recipe).abbreviation;
         const yieldConv = await UnitConversionService.convert(
             recipe.productId,
             companyId,
@@ -240,7 +287,11 @@ export class ProductionRecipeService {
 
         const componentProducts = await prisma.product.findMany({
             where: { companyId, id: { in: data.components.map(component => component.componentProductId) } },
-            select: { id: true, name: true, type: true, unit: true, currentAverageCost: true, cost: true }
+            select: {
+                id: true, name: true, type: true, unit: true,
+                currentAverageCost: true, cost: true,
+                baseUnit: { select: { abbreviation: true } }
+            }
         });
         const unitIds = [
             ...data.components.flatMap(component => component.unitId ? [component.unitId] : []),
@@ -263,7 +314,7 @@ export class ProductionRecipeService {
             const product = componentProducts.find(candidate => candidate.id === component.componentProductId)!;
             const unit = component.unitId
                 ? unitById.get(component.unitId)!
-                : component.unit || product.unit;
+                : component.unit || product.baseUnit?.abbreviation || product.unit;
             const conversion = await UnitConversionService.convert(
                 product.id,
                 companyId,
@@ -288,7 +339,7 @@ export class ProductionRecipeService {
 
         const yieldUnit = data.yieldUnitId
             ? unitById.get(data.yieldUnitId)!
-            : output.unit;
+            : output.baseUnit?.abbreviation || output.unit;
         const yieldConversion = await UnitConversionService.convert(
             output.id,
             companyId,
@@ -369,7 +420,10 @@ export class ProductionRecipeService {
         companyId: number,
         db: Tx | typeof prisma = prisma
     ) {
-        const product = await db.product.findFirst({ where: { id: productId, companyId, active: true } });
+        const product = await db.product.findFirst({
+            where: { id: productId, companyId, active: true },
+            include: { baseUnit: { select: { abbreviation: true } } }
+        });
         if (!product) throw new Error('Producto de salida no encontrado.');
         if (!PRODUCIBLE_TYPES.includes(product.type as typeof PRODUCIBLE_TYPES[number])) {
             throw new Error(
@@ -394,7 +448,12 @@ export class ProductionRecipeService {
         }
         const products = await db.product.findMany({
             where: { id: { in: ids }, companyId, active: true },
-            select: { id: true, name: true, unit: true }
+            select: {
+                id: true,
+                name: true,
+                unit: true,
+                baseUnit: { select: { abbreviation: true } }
+            }
         });
         const found = new Set(products.map((p) => p.id));
         for (const c of components) {
@@ -419,7 +478,9 @@ export class ProductionRecipeService {
         // Validate unit compatibility for every component (throws if incompatible).
         for (const c of components) {
             const prod = products.find((p) => p.id === c.componentProductId)!;
-            const unitAbbr = c.unitId ? unitById.get(c.unitId)! : c.unit || prod.unit;
+            const unitAbbr = c.unitId
+                ? unitById.get(c.unitId)!
+                : c.unit || prod.baseUnit?.abbreviation || prod.unit;
             await UnitConversionService.convert(c.componentProductId, companyId, Number(c.quantity), unitAbbr, db as Tx);
         }
     }

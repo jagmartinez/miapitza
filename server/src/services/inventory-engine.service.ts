@@ -71,6 +71,8 @@ export interface ApplyMovementParams {
         sourceType?: BatchSourceType;
         createdAt?: Date;
     }>;
+    /** Value an exact OUT reversal from the consumed source layers on every costing method. */
+    valueFromConsumedLayers?: boolean;
 }
 
 export interface ApplyMovementResult {
@@ -126,6 +128,11 @@ export class InventoryEngineService {
         // The engine is a shared write boundary used by purchases, production,
         // transfers and waste. Validate both foreign resources here so a caller
         // cannot create or mutate a Stock row that mixes tenants.
+        // Serialize movements with warehouse scope changes/deletion. Transfers
+        // acquire both warehouse rows in deterministic order before entering the
+        // engine, so re-locking one row here is safe and prevents TOCTOU scope
+        // changes for every other inventory writer.
+        await tx.$queryRaw`SELECT id FROM \`Warehouse\` WHERE id = ${warehouseId} AND companyId = ${companyId} FOR UPDATE`;
         const [warehouse, product] = await Promise.all([
             tx.warehouse.findFirst({ where: { id: warehouseId, companyId }, select: { id: true } }),
             tx.product.findFirst({
@@ -133,7 +140,7 @@ export class InventoryEngineService {
                 select: { currentAverageCost: true, cost: true }
             })
         ]);
-        if (!warehouse) throw new Error('AlmacÃ©n no encontrado para la empresa');
+        if (!warehouse) throw new Error('Almacén no encontrado para la empresa');
         if (!product) throw new Error('Producto no encontrado para la empresa');
 
         // 1. Locate (or create) the Stock row, lock it FOR UPDATE and re-read the
@@ -298,7 +305,7 @@ export class InventoryEngineService {
                 // Bespoke valuation supplied by the caller (e.g. a reversal).
                 unitCost = Number(params.unitCost);
                 totalCost = quantity * unitCost;
-            } else if (isFifo) {
+            } else if (isFifo || params.valueFromConsumedLayers) {
                 totalCost = fifoCogs;
                 unitCost = quantity > 0 ? totalCost / quantity : 0;
             } else {

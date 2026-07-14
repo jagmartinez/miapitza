@@ -31,14 +31,14 @@ export const addOrderItem: ValidationSchema = {
     params: { id: { type: 'number', required: true, min: 1 } },
     body: {
         menuItemId: { type: 'number', required: true, min: 1 },
-        quantity: { type: 'number', required: true, min: 1 },
+        quantity: { type: 'number', required: true, min: 1, integer: true },
     },
 };
 
 export const updateOrderStatus: ValidationSchema = {
     params: { id: { type: 'number', required: true, min: 1 } },
     body: {
-        status: { type: 'string', required: true, enum: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED', 'PAID', 'CANCELLED'] },
+        status: { type: 'string', required: true, enum: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED', 'CANCELLED'] },
     },
 };
 
@@ -153,10 +153,56 @@ export const createSupplier: ValidationSchema = {
 // ── Payments ──
 export const createPayment: ValidationSchema = {
     body: {
-        orderId: { type: 'number', required: true, min: 1 },
-        amount: { type: 'number', required: true, min: 0 },
-        paymentMethodId: { type: 'number', required: true, min: 1 },
+        orderId: { type: 'number', required: true, min: 1, integer: true },
+        amount: { type: 'number', required: true, min: 0.01 },
+        paymentMethodId: { type: 'number', required: true, min: 1, integer: true },
+        reference: { type: 'string', max: 191 },
+        payerName: { type: 'string', max: 191 },
     },
+};
+
+export const updateTableLayout: ValidationSchema = {
+    body: {
+        branchId: { type: 'number', required: true, min: 1, integer: true },
+        tables: { type: 'array', required: true, min: 1, max: 250 }
+    }
+};
+
+export const consolidateTables: ValidationSchema = {
+    body: {
+        destinationTableId: { type: 'number', required: true, min: 1, integer: true },
+        sourceTableIds: { type: 'array', required: true, min: 1, max: 50 },
+        primaryOrderId: { type: 'number', min: 1, integer: true },
+        reason: { type: 'string', max: 500 }
+    }
+};
+
+export const transferTableConsumption: ValidationSchema = {
+    body: {
+        sourceTableId: { type: 'number', required: true, min: 1, integer: true },
+        destinationTableId: { type: 'number', required: true, min: 1, integer: true },
+        orderId: { type: 'number', required: true, min: 1, integer: true },
+        items: { type: 'array', max: 250 },
+        reason: { type: 'string', max: 500 }
+    }
+};
+
+export const addCateringPayment: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1, integer: true } },
+    body: {
+        amount: { type: 'number', required: true, min: 0.01 },
+        paymentMethodId: { type: 'number', required: true, min: 1, integer: true },
+        type: { type: 'string', enum: ['ADVANCE', 'FINAL_SETTLEMENT'] },
+        reference: { type: 'string', max: 191 },
+    },
+};
+
+export const reverseCateringPayment: ValidationSchema = {
+    params: {
+        id: { type: 'number', required: true, min: 1, integer: true },
+        paymentId: { type: 'number', required: true, min: 1, integer: true },
+    },
+    body: { reason: { type: 'string', required: true, min: 3, max: 500 } },
 };
 
 // ── Cash ──
@@ -200,8 +246,8 @@ export const createInventoryMovement: ValidationSchema = {
     body: {
         productId: { type: 'number', required: true, min: 1 },
         warehouseId: { type: 'number', required: true, min: 1 },
-        quantity: { type: 'number', required: true },
-        type: { type: 'string', required: true },
+        quantity: { type: 'number', required: true, min: 0.000001 },
+        type: { type: 'string', required: true, enum: ['IN', 'OUT', 'ADJUSTMENT'] },
     },
 };
 
@@ -210,7 +256,7 @@ export const transferInventory: ValidationSchema = {
         productId: { type: 'number', required: true, min: 1 },
         fromWarehouseId: { type: 'number', required: true, min: 1 },
         toWarehouseId: { type: 'number', required: true, min: 1 },
-        quantity: { type: 'number', required: true, min: 1 },
+        quantity: { type: 'number', required: true, min: 0.000001 },
     },
 };
 
@@ -218,6 +264,18 @@ export const transferInventory: ValidationSchema = {
 export const createCompany: ValidationSchema = {
     body: {
         name: { type: 'string', required: true, min: 1, max: 200 },
+        ruc: { type: 'string', max: 50 },
+        logo: { type: 'string', max: 500 },
+    },
+};
+
+export const updateCompany: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1, integer: true } },
+    body: {
+        name: { type: 'string', min: 1, max: 200 },
+        ruc: { type: 'string', max: 50 },
+        logo: { type: 'string', max: 500 },
+        active: { type: 'boolean' },
     },
 };
 
@@ -225,6 +283,10 @@ export const createBranch: ValidationSchema = {
     body: {
         name: { type: 'string', required: true, min: 1, max: 200 },
         code: { type: 'string', required: true, min: 1, max: 20 },
+        companyId: { type: 'number', min: 1, integer: true },
+        address: { type: 'string', max: 500 },
+        phone: { type: 'string', max: 50 },
+        status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'] },
     },
 };
 
@@ -303,9 +365,35 @@ export const splitEvenly: ValidationSchema = {
 };
 
 export const splitByItems: ValidationSchema = {
-    params: { orderId: { type: 'number', required: true, min: 1 } },
+    params: { orderId: { type: 'number', required: true, min: 1, integer: true } },
     body: {
-        itemAssignments: { type: 'array', required: true, min: 1 },
+        itemAssignments: {
+            type: 'array',
+            required: true,
+            min: 1,
+            items: {
+                type: 'object',
+                properties: {
+                    personName: { type: 'string', required: true, min: 1, max: 200 },
+                    itemIds: {
+                        type: 'array',
+                        min: 1,
+                        items: { type: 'number', min: 1, integer: true }
+                    },
+                    items: {
+                        type: 'array',
+                        min: 1,
+                        items: {
+                            type: 'object',
+                            properties: {
+                                orderItemId: { type: 'number', required: true, min: 1, integer: true },
+                                quantity: { type: 'number', required: true, min: 1, integer: true }
+                            }
+                        }
+                    }
+                }
+            }
+        },
     },
 };
 
@@ -322,6 +410,30 @@ export const createPromotion: ValidationSchema = {
         validTo: { type: 'date' },
         usageLimit: { type: 'number', min: 1 },
     },
+};
+
+export const addPurchasePayment: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1 } },
+    body: {
+        amount: { type: 'number', required: true, min: 0.01 },
+        date: { type: 'date', required: false },
+        bank: { type: 'string', required: false, max: 100 },
+        referenceNumber: { type: 'string', required: false, max: 191 },
+        observations: { type: 'string', required: false, max: 1000 }
+    }
+};
+
+export const reversePurchasePayment: ValidationSchema = {
+    params: {
+        id: { type: 'number', required: true, min: 1 },
+        paymentId: { type: 'number', required: true, min: 1 }
+    },
+    body: { reason: { type: 'string', required: true, min: 1, max: 500 } }
+};
+
+export const reversePurchaseReceipt: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1 } },
+    body: { reason: { type: 'string', required: true, min: 1, max: 500 } }
 };
 
 export const updatePromotion: ValidationSchema = {
@@ -351,7 +463,7 @@ export const validatePromotion: ValidationSchema = {
 export const recordWaste: ValidationSchema = {
     body: {
         productId: { type: 'number', required: true, min: 1 },
-        quantity: { type: 'number', required: true, min: 0 },
+        quantity: { type: 'number', required: true, min: 0.000001 },
         reason: { type: 'string', required: true, min: 1 },
         warehouseId: { type: 'number', required: true, min: 1 },
         // Optional unit of the entered quantity; converted to base before costing.

@@ -12,11 +12,13 @@
 
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { BCRYPT_ROUNDS } from '../src/utils/password-policy';
+import { resolveDemoSeedConfig } from '../src/utils/demo-seed-security';
 
 const prisma = new PrismaClient();
 
-const CID = 1; // companyId
-const BID = 1; // branchId
+let CID: number;
+let BID: number;
 
 // ============================================================
 // HELPERS
@@ -183,6 +185,16 @@ const RESERVATIONS = [
 // MAIN
 // ============================================================
 async function main() {
+  const demoConfig = resolveDemoSeedConfig(process.env, 'operational');
+  CID = demoConfig.companyId;
+  BID = demoConfig.branchId!;
+  const [companyFixture, branchFixture] = await Promise.all([
+    prisma.company.findUnique({ where: { id: CID }, select: { id: true, active: true } }),
+    prisma.branch.findFirst({ where: { id: BID, companyId: CID, status: 'ACTIVE' }, select: { id: true } })
+  ]);
+  if (!companyFixture?.active || !branchFixture) {
+    throw new Error('DEMO_SEED_COMPANY_ID/DEMO_SEED_BRANCH_ID no identifican una empresa y sucursal activa compatibles');
+  }
   console.log('=== Operational Seed Start ===\n');
 
   // ─────────────────────────────────────────────────────────
@@ -196,12 +208,22 @@ async function main() {
     include: { recipes: true, category: true },
   });
   const allTables    = await prisma.table.findMany({ where: { companyId: CID } });
-  const allPM        = await prisma.paymentMethod.findMany();
+  const allPM        = await prisma.paymentMethod.findMany({
+    where: { active: true, OR: [{ companyId: CID }, { companyId: null }] }
+  });
   const allCatSvc    = await prisma.cateringService.findMany({ where: { companyId: CID } });
 
   const prodBySku    = new Map(allProducts.filter(p => p.sku).map(p => [p.sku!, p]));
   const tableByNum   = new Map(allTables.map(t => [t.number, t]));
-  const pmByName     = new Map(allPM.map(pm => [pm.name, pm]));
+  const paymentMethod = (type: 'CASH' | 'CARD' | 'BANK_TRANSFER') => {
+    const method = allPM.find((candidate) => candidate.type === type && candidate.companyId === CID)
+      ?? allPM.find((candidate) => candidate.type === type && candidate.companyId === null);
+    if (!method) throw new Error(`Falta método de pago activo/configurado de tipo ${type} para el fixture`);
+    return method;
+  };
+  const cashPaymentMethod = paymentMethod('CASH');
+  const cardPaymentMethod = paymentMethod('CARD');
+  const transferPaymentMethod = paymentMethod('BANK_TRANSFER');
   const catSvcByName = new Map(allCatSvc.map(s => [s.name, s]));
 
   /** Lookup menu item by category name + item name */
@@ -214,7 +236,7 @@ async function main() {
   // Phase 1 · Roles + Users
   // ─────────────────────────────────────────────────────────
   console.log('Phase 1 · Roles & Users…');
-  const hpwd = await bcrypt.hash('password123', 10);
+  const hpwd = await bcrypt.hash(demoConfig.password, BCRYPT_ROUNDS);
 
   // Ensure custom roles exist (compound unique: companyId + name)
   let bodegaRole = await prisma.role.findFirst({ where: { companyId: CID, name: 'BODEGA' } });
@@ -232,40 +254,62 @@ async function main() {
     }});
     console.log('  + role CHEF');
   }
+  const baseRoles = await prisma.role.findMany({
+    where: { companyId: CID, name: { in: ['MESERO', 'CAJERO', 'COCINA'] } }
+  });
+  const roleByName = new Map(baseRoles.map((role) => [role.name, role]));
+  const waiterRole = roleByName.get('MESERO');
+  const cashierRole = roleByName.get('CAJERO');
+  const kitchenRole = roleByName.get('COCINA');
+  if (!waiterRole || !cashierRole || !kitchenRole) {
+    throw new Error('Faltan roles MESERO/CAJERO/COCINA en la empresa seleccionada');
+  }
 
   const pwdNow = new Date(); // password already set, no forced change for seed users
 
   let mesero = await prisma.user.findFirst({ where: { username: 'mesero1' } });
+  if (mesero && (mesero.companyId !== CID || mesero.branchId !== BID)) {
+    throw new Error('mesero1 ya pertenece a otra empresa o sucursal');
+  }
   if (!mesero) {
     mesero = await prisma.user.create({ data: {
       companyId: CID, branchId: BID, name: 'Juan Pérez', email: 'juan@restaurant.com',
-      username: 'mesero1', password: hpwd, roleId: 3, status: 'ACTIVE',
+      username: 'mesero1', password: hpwd, roleId: waiterRole.id, status: 'ACTIVE',
       mustChangePassword: false, passwordChangedAt: pwdNow,
     }});
     console.log('  + mesero1');
   }
 
   let cajero = await prisma.user.findFirst({ where: { username: 'cajero1' } });
+  if (cajero && (cajero.companyId !== CID || cajero.branchId !== BID)) {
+    throw new Error('cajero1 ya pertenece a otra empresa o sucursal');
+  }
   if (!cajero) {
     cajero = await prisma.user.create({ data: {
       companyId: CID, branchId: BID, name: 'María García', email: 'maria@restaurant.com',
-      username: 'cajero1', password: hpwd, roleId: 6, status: 'ACTIVE',
+      username: 'cajero1', password: hpwd, roleId: cashierRole.id, status: 'ACTIVE',
       mustChangePassword: false, passwordChangedAt: pwdNow,
     }});
     console.log('  + cajero1');
   }
 
   let cocina = await prisma.user.findFirst({ where: { username: 'cocina1' } });
+  if (cocina && (cocina.companyId !== CID || cocina.branchId !== BID)) {
+    throw new Error('cocina1 ya pertenece a otra empresa o sucursal');
+  }
   if (!cocina) {
     cocina = await prisma.user.create({ data: {
       companyId: CID, branchId: BID, name: 'Carlos Martínez', email: 'carlos@restaurant.com',
-      username: 'cocina1', password: hpwd, roleId: 5, status: 'ACTIVE',
+      username: 'cocina1', password: hpwd, roleId: kitchenRole.id, status: 'ACTIVE',
       mustChangePassword: false, passwordChangedAt: pwdNow,
     }});
     console.log('  + cocina1');
   }
 
   let bodega = await prisma.user.findFirst({ where: { username: 'bodega1' } });
+  if (bodega && (bodega.companyId !== CID || bodega.branchId !== BID)) {
+    throw new Error('bodega1 ya pertenece a otra empresa o sucursal');
+  }
   if (!bodega) {
     bodega = await prisma.user.create({ data: {
       companyId: CID, branchId: BID, name: 'Luis Ramírez', email: 'luis@restaurant.com',
@@ -276,6 +320,9 @@ async function main() {
   }
 
   let chef = await prisma.user.findFirst({ where: { username: 'chef1' } });
+  if (chef && (chef.companyId !== CID || chef.branchId !== BID)) {
+    throw new Error('chef1 ya pertenece a otra empresa o sucursal');
+  }
   if (!chef) {
     chef = await prisma.user.create({ data: {
       companyId: CID, branchId: BID, name: 'Roberto Silva', email: 'roberto@restaurant.com',
@@ -284,6 +331,11 @@ async function main() {
     }});
     console.log('  + chef1');
   }
+
+  await prisma.user.updateMany({
+    where: { id: { in: [mesero.id, cajero.id, cocina.id, bodega.id, chef.id] }, companyId: CID, branchId: BID },
+    data: { password: hpwd, mustChangePassword: false, passwordChangedAt: pwdNow }
+  });
 
   // ─────────────────────────────────────────────────────────
   // Phase 2 · Warehouse
@@ -486,7 +538,7 @@ async function main() {
       totalAmount: tot, balance: r2(tot - adv),
       location: 'Hotel Grand Plaza – Salón Diamante', notes: 'Incluye equipo audiovisual',
       services: { create: svcItems },
-      payments: { create: [{ paymentMethodId: pmByName.get('Transferencia')!.id, amount: adv, type: 'ADVANCE', date: dt(10) }] },
+      payments: { create: [{ paymentMethodId: transferPaymentMethod.id, amount: adv, type: 'ADVANCE', date: dt(10) }] },
     }});
     inc('cateringEvents');
   }
@@ -639,9 +691,8 @@ async function main() {
     });
 
     if (existing) {
-      const cashPM = pmByName.get('Efectivo')!;
       const cashAmt = existing.payments
-        .filter((p: any) => p.paymentMethodId === cashPM.id)
+        .filter((p: any) => p.paymentMethodId === cashPaymentMethod.id)
         .reduce((s: number, p: any) => s + Number(p.amount), 0);
       if (!cashByDay.has(od.day)) cashByDay.set(od.day, []);
       cashByDay.get(od.day)!.push({ orderId: existing.id, cashAmt, at: orderAt });
@@ -667,10 +718,11 @@ async function main() {
       tableId, userId: mesero!.id, cashRegisterId: register!.id,
       customerName: od.customer,
       orderType: od.table ? 'DINE_IN' : 'TAKEOUT',
-      status: 'PAID', total, discount: od.discount, tipAmount: od.tip, tax: 0,
-      createdAt: orderAt, updatedAt: closeAt, closedAt: closeAt,
+      status: 'DELIVERED', financialStatus: 'PAID', total, discount: od.discount, tipAmount: od.tip, tax: 0,
+      createdAt: orderAt, updatedAt: closeAt, closedAt: closeAt, deliveredAt: closeAt,
       items: { create: resolved.map(ri => ({
         menuItemId: ri.menuItemId, quantity: ri.qty, price: ri.price, subtotal: ri.subtotal,
+        status: 'DONE', sentAt: orderAt, startedAt: orderAt, finishedAt: closeAt,
       })) },
     }});
     inc('orders');
@@ -679,16 +731,16 @@ async function main() {
     // Payments
     let cashAmt = 0;
     if (od.pay === 'Efectivo') {
-      await prisma.payment.create({ data: { orderId: order.id, paymentMethodId: pmByName.get('Efectivo')!.id, amount: payTotal, createdAt: closeAt } });
+      await prisma.payment.create({ data: { orderId: order.id, paymentMethodId: cashPaymentMethod.id, methodType: 'CASH', amount: payTotal, createdAt: closeAt } });
       cashAmt = payTotal;
       inc('payments');
     } else if (od.pay === 'Tarjeta') {
-      await prisma.payment.create({ data: { orderId: order.id, paymentMethodId: pmByName.get('Tarjeta')!.id, amount: payTotal, createdAt: closeAt } });
+      await prisma.payment.create({ data: { orderId: order.id, paymentMethodId: cardPaymentMethod.id, methodType: 'CARD', amount: payTotal, createdAt: closeAt } });
       inc('payments');
     } else { // Mixto
       const half = r2(payTotal / 2);
-      await prisma.payment.create({ data: { orderId: order.id, paymentMethodId: pmByName.get('Efectivo')!.id, amount: half, createdAt: closeAt } });
-      await prisma.payment.create({ data: { orderId: order.id, paymentMethodId: pmByName.get('Tarjeta')!.id, amount: r2(payTotal - half), createdAt: closeAt } });
+      await prisma.payment.create({ data: { orderId: order.id, paymentMethodId: cashPaymentMethod.id, methodType: 'CASH', amount: half, createdAt: closeAt } });
+      await prisma.payment.create({ data: { orderId: order.id, paymentMethodId: cardPaymentMethod.id, methodType: 'CARD', amount: r2(payTotal - half), createdAt: closeAt } });
       cashAmt = half;
       inc('payments', 2);
     }
@@ -704,7 +756,7 @@ async function main() {
   console.log('Phase 10 · Inventory OUT…');
 
   const paidOrders = await prisma.order.findMany({
-    where: { companyId: CID, status: 'PAID', createdAt: { gte: dt(6, 0), lte: dt(-1, 23, 59) } },
+    where: { companyId: CID, financialStatus: 'PAID', status: { not: 'CANCELLED' }, createdAt: { gte: dt(6, 0), lte: dt(-1, 23, 59) } },
     include: { items: { include: { menuItem: { include: { recipes: true } } } } },
     orderBy: { createdAt: 'asc' },
   });

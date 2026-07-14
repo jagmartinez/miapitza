@@ -67,6 +67,7 @@ export class WarehouseController {
                     return next({ statusCode: 400, message: 'Su usuario no tiene una sucursal activa asignada.' });
                 }
                 req.body.branchId = req.user!.branchId;
+                req.body.type = 'BRANCH';
             }
             const warehouse = await WarehouseService.create(companyId, req.body);
             res.status(201).json({
@@ -86,6 +87,10 @@ export class WarehouseController {
             const companyId = req.user!.companyId;
             const existing = await WarehouseService.getById(id, companyId);
             assertBranchAccess(req.user!, (existing as { branchId: number | null }).branchId);
+            if (!isCompanyWide(req.user!)) {
+                req.body.branchId = req.user!.branchId;
+                req.body.type = 'BRANCH';
+            }
             const warehouse = await WarehouseService.update(id, companyId, req.body);
             res.json({
                 success: true,

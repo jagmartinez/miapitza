@@ -220,6 +220,23 @@ export class ReservationController {
         }
     }
 
+    static async checkIn(req: Request, res: Response, next: NextFunction) {
+        try {
+            const id = parseInt(req.params.id);
+            const companyId = req.user!.companyId;
+            await ReservationController.assertReservationBranch(req, id);
+            const result = await ReservationService.checkIn(id, companyId, req.user!.userId);
+            res.json({
+                success: true,
+                message: 'Check-in realizado y orden POS creada exitosamente',
+                data: result
+            });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
     static async getAvailableTables(req: Request, res: Response, next: NextFunction) {
         try {
             const requestedBranchId = parseInt(req.params.branchId);

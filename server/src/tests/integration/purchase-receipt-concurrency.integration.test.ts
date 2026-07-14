@@ -209,10 +209,10 @@ describe('Purchase receipt concurrency and base-unit costing (integration)', () 
         expect(Number(movement?.totalCost)).toBeCloseTo(1000, 6);
         const report = await WasteReportService.getWasteReport(companyId, { productId, warehouseId });
         expect(report.summary.totalEntries).toBe(1);
-        expect(report.summary.totalUnits).toBe(500);
+        expect(report.summary.quantities).toEqual([{ unit: 'g', quantity: 500 }]);
         expect(report.summary.totalCost).toBe(1000);
         expect(report.byReason).toEqual(expect.arrayContaining([
-            expect.objectContaining({ reason: 'Derrame', quantity: 500, cost: 1000 })
+            expect.objectContaining({ reason: 'Derrame', unit: 'g', quantity: 500, cost: 1000 })
         ]));
         expect(Number((await prisma.stock.findUniqueOrThrow({
             where: { warehouseId_productId: { warehouseId, productId } }

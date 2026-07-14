@@ -1,197 +1,74 @@
-# Restaurant Management System - Server
+# Mia Pitza API
 
-Backend API para el Sistema de Gestión de Restaurante Multisucursal.
+API TypeScript/Express con Prisma y MySQL para el sistema multiempresa Mia
+Pitza. Incluye autenticación y RBAC, empresas y sucursales, menú y marcas,
+compras, inventario, unidades de medida, producción, promociones, órdenes,
+cocina, POS y pagos, caja, facturación, reservaciones, delivery, catering y
+reportes.
 
-## 🚀 Stack Tecnológico
+## Requisitos y configuración
 
-- **Node.js** + **TypeScript**
-- **Express.js** - Framework web
-- **Prisma** - ORM para MySQL
-- **JWT** - Autenticación
-- **bcryptjs** - Hash de contraseñas
+- Node.js 20 o superior.
+- MySQL accesible mediante `DATABASE_URL`.
+- `JWT_SECRET` propio y no predecible.
+- En producción: `TWO_FA_ENCRYPTION_KEY` hexadecimal de 64 caracteres y
+  `CLIENT_URL` con los orígenes autorizados.
 
-## 📦 Instalación
+Copie `.env.example` a `.env` y complete los valores. El proceso valida la
+configuración y se niega a iniciar si falta un secreto requerido o se conserva
+un valor débil conocido.
 
 ```bash
-# Instalar dependencias
 npm install
-
-# Configurar variables de entorno
-cp .env.example .env
-# Editar .env con tus credenciales de MySQL
-```
-
-## ⚙️ Configuración
-
-Archivo `.env`:
-
-```env
-DATABASE_URL="mysql://root:@localhost:3306/restaurante"
-PORT=3001
-JWT_SECRET="super_secret_jwt_key_change_"
-```
-
-## 🗄️ Base de Datos
-
-```bash
-# Generar Prisma Client
-npx prisma generate
-
-# Aplicar migraciones (crear tablas)
-# Ya se aplicaron manualmente
-
-# Poblar datos iniciales (roles, admin, etc.)
-npx tsx prisma/seed.ts
-
-# Crear mesas de ejemplo
-npx tsx prisma/create-tables.ts
-```
-
-## 🏃 Ejecución
-
-```bash
-# Desarrollo (con auto-reload)
 npm run dev
+```
 
-# Producción
+La API escucha en el puerto definido por `PORT` (3000 por defecto). La ruta
+`/health` es liveness sin base de datos; `/api/v1/health` comprueba readiness de
+la base. La documentación OpenAPI está en `/api/docs` y en producción permanece
+deshabilitada si no se configura `DOCS_PASSWORD`.
+
+## Base de datos
+
+En producción aplique únicamente migraciones versionadas:
+
+```bash
+npx prisma migrate deploy
+npm run seed:base
+```
+
+El seed no contiene una contraseña predeterminada. Si se necesita crear el
+superadministrador inicial, use una contraseña fuerte mediante la variable
+documentada por el propio script y custódiela fuera de logs y repositorios.
+
+Hay comandos explícitos para backup, restauración, ensayo de migraciones y
+verificación del baseline en `package.json`. No use `prisma db push` para
+desplegar producción.
+
+## Verificación obligatoria
+
+```bash
+npm run lint
+npm run typecheck
+npm run test:unit -- --runInBand
+npm run test:integration
 npm run build
-npm start
+npm audit --omit=dev
 ```
 
-El servidor correrá en `http://localhost:3001`
+Las pruebas de integración necesitan una base cuyo nombre termine en `_test`;
+la protección del arnés rechaza por diseño cualquier destino que no sea de
+pruebas.
 
-## 📚 API Endpoints
+## Seguridad operativa
 
-### Auth `/api/auth`
+- No hay usuarios ni contraseñas de demostración válidos para producción.
+- Todas las operaciones de negocio deben conservar `companyId` y, cuando
+  corresponde, `branchId` en su ámbito transaccional.
+- Use `X-Idempotency-Key` para reintentos mutables desde clientes e
+  integraciones.
+- Los uploads, backups e integraciones contienen datos privados; configure
+  almacenamiento persistente, cifrado, retención y permisos antes del go-live.
 
-| Método | Endpoint | Descripción | Auth |
-|--------|----------|-------------|------|
-| POST | `/register` | Registrar usuario | No |
-| POST | `/login` | Login | No |
-
-### Users `/api/users`
-
-| Método | Endpoint | Descripción | Roles |
-|--------|----------|-------------|-------|
-| GET | `/` | Listar usuarios | Todos |
-| GET | `/:id` | Ver usuario | Todos |
-| PUT | `/:id` | Actualizar usuario | ADMIN, SUPERADMIN |
-| DELETE | `/:id` | Eliminar usuario | SUPERADMIN |
-
-### Branches `/api/branches`
-
-| Método | Endpoint | Descripción | Roles |
-|--------|----------|-------------|-------|
-| GET | `/` | Listar sucursales | Todos |
-| GET | `/:id` | Ver sucursal | Todos |
-| POST | `/` | Crear sucursal | SUPERADMIN |
-| PUT | `/:id` | Actualizar sucursal | ADMIN, SUPERADMIN |
-| DELETE | `/:id` | Eliminar sucursal | SUPERADMIN |
-
-### Tables `/api/tables`
-
-| Método | Endpoint | Descripción | Roles |
-|--------|----------|-------------|-------|
-| GET | `/` | Listar mesas | Todos |
-| GET | `/branch/:branchId` | Mesas por sucursal | Todos |
-| GET | `/:id` | Ver mesa | Todos |
-| POST | `/` | Crear mesa | ADMIN, SUPERADMIN |
-| PUT | `/:id` | Actualizar mesa | ADMIN, SUPERADMIN, HOST |
-| PATCH | `/:id/status` | Cambiar estado | ADMIN, SUPERADMIN, HOST, MESERO |
-| DELETE | `/:id` | Eliminar mesa | ADMIN, SUPERADMIN |
-
-## 🔐 Autenticación
-
-Todas las rutas (excepto `/auth/login` y `/auth/register`) requieren un token JWT.
-
-### Login
-
-```bash
-curl -X POST http://localhost:3001/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "admin123"}'
-```
-
-Respuesta:
-```json
-{
-  "success": true,
-  "data": {
-    "token": "eyJhbGciOiJIUzI1...",
-    "user": { ... }
-  }
-}
-```
-
-### Usar el Token
-
-```bash
-curl http://localhost:3001/api/tables \
-  -H "Authorization: Bearer TU_TOKEN_AQUI"
-```
-
-## 👥 Usuarios de Prueba
-
-| Username | Password | Role |
-|----------|----------|------|
-| admin | admin123 | SUPERADMIN |
-
-## 🏗️ Estructura del Proyecto
-
-```
-server/
-├── src/
-│   ├── app.ts                 # Express app
-│   ├── controllers/           # Request handlers
-│   ├── services/              # Business logic
-│   ├── routes/                # API routes
-│   ├── middlewares/           # Express middleware
-│   └── utils/                 # Utilities
-├── prisma/
-│   ├── schema.prisma          # Database schema
-│   ├── seed.ts                # Initial data
-│   └── create-tables.ts       # Sample tables
-├── .env                       # Environment variables
-├── tsconfig.json              # TypeScript config
-└── package.json
-```
-
-## 📋 Módulos Implementados
-
-✅ Auth & JWT
-✅ Users & Roles
-✅ Branches
-✅ Tables
-
-## 🔜 Próximos Módulos
-
-- [ ] Reservaciones
-- [ ] Menú & Categorías
-- [ ] Productos & Recetas
-- [ ] Inventario
-- [ ] Órdenes (POS)
-- [ ] Caja
-
-## 🐛 Troubleshooting
-
-### Error de conexión a MySQL
-
-Verifica que MySQL esté corriendo:
-```bash
-# Windows
-net start MySQL80
-
-# Verificar puerto
-netstat -an | findstr 3306
-```
-
-### Error en migraciones
-
-Si ya aplicaste las migraciones manualmente:
-```bash
-npx prisma generate
-```
-
-## 📄 Licencia
-
-MIT
+El alcance certificado, las invariantes, contraflujos, limitaciones y gates de
+salida se mantienen en `../docs/CERTIFICACION_TRANSACCIONAL_E2E_2026-07-13.md`.

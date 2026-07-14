@@ -72,6 +72,11 @@ router.post('/webhook/:platform', async (req: Request, res: Response, next: Next
         };
 
         const platformEnum: DeliveryPlatform = platformMap[platform] ?? 'OTHER';
+        if (platformEnum === 'PEDIDOSYA') {
+            return res.status(410).json({
+                error: 'Use el webhook dedicado /api/v1/pedidosya/webhook/:companyId para PedidosYa.'
+            });
+        }
 
         const deliveryOrder = {
             externalId: req.body.id || req.body.order_id || 'unknown',

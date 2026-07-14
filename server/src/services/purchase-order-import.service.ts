@@ -75,9 +75,6 @@ export class PurchaseOrderImportService {
         productsSheet.addRows(products);
         productsSheet.getRow(1).font = { bold: true };
 
-        // Protection - make products sheet read-only (optional)
-        // productsSheet.protect('admin123', {});
-
         const buf = await workbook.xlsx.writeBuffer();
         return Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
     }

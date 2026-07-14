@@ -21,6 +21,13 @@ export class WasteReportService {
         /** Unit of the entered quantity. When omitted, quantity is taken as base. */
         unit?: string;
     }) {
+        if (!Number.isFinite(data.quantity) || data.quantity <= 0) {
+            throw new Error('La cantidad de merma debe ser un número finito mayor a 0');
+        }
+        if (!data.reason?.trim()) {
+            throw new Error('El motivo de la merma es requerido');
+        }
+
         // Wrap in transaction for atomicity
         return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             // Ensure both warehouse and product belong to the caller's company
@@ -33,30 +40,30 @@ export class WasteReportService {
 
             const product = await tx.product.findFirst({
                 where: { id: data.productId, companyId },
-                select: { id: true, name: true }
+                select: {
+                    id: true,
+                    name: true,
+                    unit: true,
+                    baseUnit: { select: { abbreviation: true } }
+                }
             });
             if (!product) throw new Error('Producto no encontrado para esta empresa');
 
             // Stock and costing live in the base unit. If the caller sent a unit,
             // convert the quantity to base BEFORE costing; otherwise keep the legacy
             // assumption that the quantity is already in the base unit.
-            let baseQuantity = data.quantity;
-            let originalQuantity: number | null = null;
-            let originalUnit: string | null = null;
-            let conversionFactor: number | null = null;
-            if (data.unit) {
-                const conversion = await UnitConversionService.convert(
-                    data.productId,
-                    companyId,
-                    data.quantity,
-                    data.unit,
-                    tx
-                );
-                baseQuantity = conversion.baseQuantity;
-                originalQuantity = conversion.originalQuantity;
-                originalUnit = conversion.originalUnit;
-                conversionFactor = conversion.conversionFactor;
-            }
+            const effectiveUnit = data.unit || product.baseUnit?.abbreviation || product.unit;
+            const conversion = await UnitConversionService.convert(
+                data.productId,
+                companyId,
+                data.quantity,
+                effectiveUnit,
+                tx
+            );
+            const baseQuantity = conversion.baseQuantity;
+            const originalQuantity = conversion.originalQuantity;
+            const originalUnit = conversion.originalUnit;
+            const conversionFactor = conversion.conversionFactor;
 
             // Stock lock, availability check, costing, FIFO-layer consumption and
             // the OUT movement are handled by the single inventory engine.
@@ -67,7 +74,7 @@ export class WasteReportService {
                 productId: data.productId,
                 userId: data.userId,
                 quantity: baseQuantity,
-                reason: `WASTE: ${data.reason}`,
+                reason: `WASTE: ${data.reason.trim()}`,
                 reference: data.notes,
                 originalQuantity,
                 originalUnit,
@@ -113,7 +120,15 @@ export class WasteReportService {
         const movements = await prisma.inventoryMovement.findMany({
             where,
             include: {
-                product: { select: { name: true, unit: true, cost: true, currentAverageCost: true } },
+                product: {
+                    select: {
+                        name: true,
+                        unit: true,
+                        cost: true,
+                        currentAverageCost: true,
+                        baseUnit: { select: { abbreviation: true } }
+                    }
+                },
                 warehouse: { select: { name: true } },
                 user: { select: { name: true } }
             },
@@ -129,31 +144,44 @@ export class WasteReportService {
             return Number(m.quantity) * unitCost;
         };
 
-        // Calculate totals
-        const totalUnits = movements.reduce((sum, m) => sum + Number(m.quantity), 0);
+        const movementUnit = (m: (typeof movements)[number]): string =>
+            m.product?.baseUnit?.abbreviation || m.product?.unit || '';
+        const movementReason = (m: (typeof movements)[number]): string =>
+            (m.reason ?? '').replace(/^WASTE:\s*/, '');
+
+        // Quantities of different dimensions are never added together.  A report
+        // containing 2 kg and 3 L must expose two physical totals, not "5 units".
+        const quantityByUnitMap = new Map<string, number>();
+        for (const movement of movements) {
+            const unit = movementUnit(movement);
+            quantityByUnitMap.set(unit, (quantityByUnitMap.get(unit) || 0) + Number(movement.quantity));
+        }
+        const quantities = Array.from(quantityByUnitMap, ([unit, quantity]) => ({ unit, quantity }));
         const totalCost = movements.reduce((sum, m) => sum + lineCost(m), 0);
 
-        type ReasonAgg = { count: number; quantity: number; cost: number };
-        // Group by reason
-        const byReason = movements.reduce<Record<string, ReasonAgg>>((acc, m) => {
-            const reason = (m.reason ?? '').replace('WASTE: ', '');
-            if (!acc[reason]) {
-                acc[reason] = { count: 0, quantity: 0, cost: 0 };
+        type ReasonAgg = { reason: string; unit: string; count: number; quantity: number; cost: number };
+        // Group by reason AND physical unit. This keeps every subtotal meaningful.
+        const byReasonMap = movements.reduce<Map<string, ReasonAgg>>((acc, m) => {
+            const reason = movementReason(m);
+            const unit = movementUnit(m);
+            const key = `${reason}\u0000${unit}`;
+            if (!acc.has(key)) {
+                acc.set(key, { reason, unit, count: 0, quantity: 0, cost: 0 });
             }
-            acc[reason].count++;
-            acc[reason].quantity += Number(m.quantity);
-            acc[reason].cost += lineCost(m);
+            const row = acc.get(key)!;
+            row.count++;
+            row.quantity += Number(m.quantity);
+            row.cost += lineCost(m);
             return acc;
-        }, {});
+        }, new Map<string, ReasonAgg>());
 
         return {
             summary: {
                 totalEntries: movements.length,
-                totalUnits,
+                quantities,
                 totalCost: Math.round(totalCost * 100) / 100
             },
-            byReason: Object.entries(byReason).map(([reason, data]) => ({
-                reason,
+            byReason: Array.from(byReasonMap.values()).map((data) => ({
                 ...data,
                 cost: Math.round(data.cost * 100) / 100
             })),
@@ -162,9 +190,10 @@ export class WasteReportService {
                 date: m.createdAt,
                 product: m.product?.name,
                 quantity: Number(m.quantity),
-                unit: m.product?.unit,
+                unit: movementUnit(m),
                 cost: Math.round(lineCost(m) * 100) / 100,
-                reason: (m.reason ?? '').replace('WASTE: ', ''),
+                reason: movementReason(m),
+                reference: m.reference,
                 warehouse: m.warehouse?.name,
                 user: m.user?.name
             }))

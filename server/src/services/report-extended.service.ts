@@ -195,6 +195,7 @@ export class ReportExtendedService {
                     include: {
                         product: {
                             select: { id: true, name: true, sku: true, unit: true,
+                                baseUnit: { select: { abbreviation: true } },
                                 category: { select: { name: true } } }
                         }
                     }
@@ -213,7 +214,7 @@ export class ReportExtendedService {
                     productMap[item.productId] = {
                         productName: item.product.name,
                         sku: item.product.sku,
-                        unit: item.product.unit,
+                        unit: item.product.baseUnit?.abbreviation || item.product.unit,
                         categoryName: item.product.category?.name || null,
                         totalQuantity: 0, totalCost: 0, orderCount: 0
                     };
@@ -978,7 +979,8 @@ export class ReportExtendedService {
             const to = new Date(parseZonedDateStart(`${nextMonthKey}-01`, timeZone).getTime() - 1);
             return {
                 companyId,
-                status: { in: ['PAID', 'DELIVERED'] },
+                financialStatus: 'PAID',
+                status: { not: 'CANCELLED' },
                 ...(filters?.branchId ? { branchId: filters.branchId } : {}),
                 closedAt: { gte: from, lte: to }
             };
@@ -1032,7 +1034,8 @@ export class ReportExtendedService {
     }): Prisma.OrderWhereInput {
         return {
             companyId,
-            status: { in: ['PAID', 'DELIVERED'] },
+            financialStatus: 'PAID',
+            status: { not: 'CANCELLED' },
             closedAt: { not: null },
             ...(filters?.branchId ? { branchId: filters.branchId } : {}),
             ...(filters?.salesChannel ? { salesChannel: filters.salesChannel as Prisma.OrderWhereInput['salesChannel'] } : {}),

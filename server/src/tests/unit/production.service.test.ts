@@ -1,9 +1,13 @@
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 import prisma from '../../utils/prisma';
 import { CostingService } from '../../services/costing.service';
 import { ProductionRecipeService } from '../../services/production-recipe.service';
 import { ProductionOrderService } from '../../services/production-order.service';
+
+afterEach(() => {
+    jest.restoreAllMocks();
+});
 
 describe('CostingService.calculateWeightedAverageCost', () => {
     it('returns the new cost when there is no current stock', async () => {
@@ -133,6 +137,47 @@ describe('CostingService.reverseProductionCost', () => {
     });
 });
 
+describe('CostingService.reversePurchaseCost', () => {
+    it('removes the target receipt and replays later purchases from the original baseline', async () => {
+        const updates: Array<Record<string, unknown>> = [];
+        const history = [
+            {
+                id: 1, productId: 42, companyId: 1, purchaseOrderItemId: 31,
+                quantity: 10, unitCost: 8, previousStock: 10, previousAvgCost: 4,
+                newStock: 20, newAvgCost: 6, createdAt: new Date('2026-01-01')
+            },
+            {
+                id: 2, productId: 42, companyId: 1, purchaseOrderItemId: 32,
+                quantity: 10, unitCost: 10, previousStock: 20, previousAvgCost: 6,
+                newStock: 30, newAvgCost: 7.333333, createdAt: new Date('2026-01-02')
+            }
+        ];
+        const db = {
+            productCostHistory: {
+                findMany: jest.fn(async (args: { where: { purchaseOrderItemId?: { in: number[] } } }) => (
+                    args.where.purchaseOrderItemId ? [{ productId: 42 }] : history
+                )),
+                deleteMany: jest.fn(async () => ({ count: 1 }))
+            },
+            company: { findUnique: jest.fn(async () => ({ costingMethod: 'WEIGHTED_AVERAGE' })) },
+            product: {
+                update: jest.fn(async (args: { data: Record<string, unknown> }) => {
+                    updates.push(args.data);
+                    return {};
+                })
+            }
+        } as unknown as Parameters<typeof CostingService.reversePurchaseCost>[0];
+
+        await CostingService.reversePurchaseCost(db, [31], 1);
+
+        // Baseline 10 @ 4 plus remaining purchase 10 @ 10 = 7.
+        expect(updates[0]).toEqual(expect.objectContaining({
+            currentAverageCost: 7,
+            lastPurchaseCost: 10
+        }));
+    });
+});
+
 describe('ProductionRecipeService.assertNoCircularDependency', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -179,6 +224,29 @@ describe('ProductionOrderService numeric invariants', () => {
     });
 });
 
+describe('Production order lifecycle invariants', () => {
+    it('does not allow a draft order to bypass start and finish directly', async () => {
+        jest.spyOn(prisma.productionOrder, 'findFirst').mockResolvedValue({
+            id: 8,
+            companyId: 1,
+            status: 'DRAFT',
+            recipeId: 3,
+            items: [{ id: 1 }]
+        } as never);
+
+        await expect(ProductionOrderService.finish(8, 1, 9, {}))
+            .rejects.toThrow(/debe estar En Proceso/i);
+    });
+
+    it('requires an auditable cancellation reason before reading or mutating the order', async () => {
+        const findFirst = jest.spyOn(prisma.productionOrder, 'findFirst');
+
+        await expect(ProductionOrderService.cancel(8, 1, 9, '   '))
+            .rejects.toThrow(/motivo de anulación es requerido/i);
+        expect(findFirst).not.toHaveBeenCalled();
+    });
+});
+
 describe('Production recipe lifecycle invariants', () => {
     it('does not allow an active version to return to draft/editable state', async () => {
         const tx = {
@@ -198,5 +266,61 @@ describe('Production recipe lifecycle invariants', () => {
         await expect(ProductionRecipeService.setStatus(4, 1, 'DRAFT'))
             .rejects.toThrow(/ACTIVE -> DRAFT/);
         expect(tx.productionRecipe.update).not.toHaveBeenCalled();
+    });
+});
+
+describe('Production recipe yield-unit contract', () => {
+    it('publishes the configured output base unit when the recipe has no explicit yield unit', async () => {
+        jest.spyOn(prisma.productionRecipe, 'findMany').mockResolvedValue([{
+            id: 11,
+            productId: 7,
+            yieldUnit: null,
+            product: { unit: 'kg', baseUnit: { abbreviation: 'g' } }
+        }] as never);
+        jest.spyOn(ProductionRecipeService, 'computeRecipeCost').mockResolvedValue({
+            batchCost: 1,
+            yieldBaseQuantity: 1,
+            yieldBaseUnit: 'g',
+            unitCost: 1,
+            lines: []
+        });
+
+        const [recipe] = await ProductionRecipeService.list(1);
+
+        expect(recipe.yieldUnitAbbreviation).toBe('g');
+        expect(recipe.yieldUnitSource).toBe('PRODUCT_BASE');
+    });
+
+    it('costs an implicit yield in the same configured base unit exposed to the UI', async () => {
+        const product = {
+            id: 7,
+            companyId: 1,
+            name: 'Masa',
+            unit: 'kg',
+            baseUnit: { abbreviation: 'g', measurementType: 'MASS', systemFactor: 1 },
+            allowedUnits: [{
+                conversionFactor: 1000,
+                unit: { abbreviation: 'kg', measurementType: 'MASS', systemFactor: 1000 }
+            }]
+        };
+        const db = {
+            productionRecipe: {
+                findFirst: jest.fn(async () => ({
+                    id: 11,
+                    companyId: 1,
+                    productId: 7,
+                    yieldQuantity: 1,
+                    yieldUnit: null,
+                    product,
+                    components: []
+                }))
+            },
+            product: { findFirst: jest.fn(async () => product) }
+        } as unknown as Parameters<typeof ProductionRecipeService.computeRecipeCost>[2];
+
+        const cost = await ProductionRecipeService.computeRecipeCost(11, 1, db);
+
+        expect(cost.yieldBaseQuantity).toBe(1);
+        expect(cost.yieldBaseUnit).toBe('g');
     });
 });

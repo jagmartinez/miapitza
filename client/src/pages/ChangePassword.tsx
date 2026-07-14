@@ -6,6 +6,7 @@ import './ChangePassword.css';
 
 const RULES = [
     { id: 'length', label: 'Mínimo 8 caracteres', test: (p: string) => p.length >= 8 },
+    { id: 'max', label: 'Máximo seguro de 72 bytes', test: (p: string) => new TextEncoder().encode(p).length <= 72 },
     { id: 'upper', label: 'Una letra mayúscula', test: (p: string) => /[A-Z]/.test(p) },
     { id: 'lower', label: 'Una letra minúscula', test: (p: string) => /[a-z]/.test(p) },
     { id: 'number', label: 'Un número', test: (p: string) => /\d/.test(p) },
@@ -98,6 +99,7 @@ export default function ChangePassword() {
                                 type={showNew ? 'text' : 'password'}
                                 value={newPassword}
                                 onChange={(e) => setNewPassword(e.target.value)}
+                                maxLength={72}
                                 placeholder="Ingresa tu nueva contraseña"
                             />
                             <button type="button" className="pwd-toggle" onClick={() => setShowNew(!showNew)}>

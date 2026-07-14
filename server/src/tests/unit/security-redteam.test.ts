@@ -86,6 +86,30 @@ describe('red-team 2FA state transitions', () => {
 });
 
 describe('red-team session enforcement', () => {
+    it('does not turn an infrastructure outage into a false invalid-token response', async () => {
+        jest.spyOn(jwt, 'verify').mockReturnValue({ userId: 5 } as never);
+        jest.spyOn(SessionService, 'isValid').mockRejectedValue(new Error('database unavailable'));
+        const status = jest.fn().mockReturnThis();
+        const json = jest.fn();
+        const next = jest.fn() as unknown as jest.MockedFunction<NextFunction>;
+        const req = {
+            headers: { authorization: 'Bearer valid-tracked-token' },
+            originalUrl: '/api/orders'
+        } as unknown as Request;
+        const oldSecret = process.env.JWT_SECRET;
+        process.env.JWT_SECRET = 'red-team-test-secret';
+        try {
+            await auth(req, { status, json } as unknown as Response, next);
+        } finally {
+            if (oldSecret === undefined) delete process.env.JWT_SECRET;
+            else process.env.JWT_SECRET = oldSecret;
+        }
+
+        expect(next).toHaveBeenCalledWith(expect.objectContaining({ message: 'database unavailable' }));
+        expect(status).not.toHaveBeenCalledWith(401);
+        expect(json).not.toHaveBeenCalled();
+    });
+
     it('enforces mustChangePassword on the server instead of trusting the SPA flag', async () => {
         jest.spyOn(jwt, 'verify').mockReturnValue({ userId: 5 } as never);
         jest.spyOn(SessionService, 'isValid').mockResolvedValue(true);

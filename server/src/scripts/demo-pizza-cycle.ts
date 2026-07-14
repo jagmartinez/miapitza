@@ -213,22 +213,14 @@ async function ensureDemoCashShift(companyId: number, branchId: number, userId: 
 }
 
 async function findCashPaymentMethod(companyId: number) {
-    const method =
-        (await prisma.paymentMethod.findFirst({
-            where: {
-                OR: [{ companyId }, { companyId: null }],
-                active: true,
-                name: { contains: 'Efectivo' },
-            },
-        })) ||
-        (await prisma.paymentMethod.findFirst({
-            where: {
-                OR: [{ companyId }, { companyId: null }],
-                active: true,
-                name: { in: ['CASH', 'Cash', 'cash'] },
-            },
-        }));
-    if (!method) throw new Error('No hay método de pago Efectivo/CASH');
+    const method = await prisma.paymentMethod.findFirst({
+        where: {
+            OR: [{ companyId }, { companyId: null }],
+            active: true,
+            type: 'CASH'
+        }
+    });
+    if (!method) throw new Error('No hay un método de pago activo con tipo CASH');
     return method;
 }
 

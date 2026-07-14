@@ -1,13 +1,13 @@
 import type { Prisma } from '@prisma/client';
 import { UnitConversionService } from './unit-conversion.service';
-import { InventoryEngineService } from './inventory-engine.service';
+import { InventoryEngineService, type BatchSourceType } from './inventory-engine.service';
 
 /**
  * Centralizes recipe -> base-unit conversion, stock decrement and the matching
  * `OUT` inventoryMovement creation for order consumption.
  *
- * Previously this logic was duplicated in PaymentService (PAID auto-deduct) and
- * OrderService.complete (PAID -> DELIVERED), which caused inventory to be
+ * Previously this logic was duplicated in PaymentService (financial settlement)
+ * and OrderService.complete (operational delivery), which caused inventory to be
  * deducted twice for the same order. Both paths now route through
  * `consumeForOrder`, which is idempotent: it skips deduction when the order has
  * already been consumed (an outstanding `OUT` movement exists for the order that
@@ -17,6 +17,7 @@ import { InventoryEngineService } from './inventory-engine.service';
 type RecipeProductLike = {
     name: string;
     unit: string;
+    baseUnit?: { abbreviation: string } | null;
     currentAverageCost?: Prisma.Decimal | number | null;
     cost?: Prisma.Decimal | number | null;
 };
@@ -33,6 +34,7 @@ type RecipeLike = {
 };
 
 type OrderItemLike = {
+    id?: number;
     quantity: number;
     menuItem: { recipes: RecipeLike[] };
 };
@@ -48,12 +50,21 @@ export interface ConsumeForOrderParams {
     warehouseId: number;
     userId: number;
     companyId: number;
+    /** Override for non-sale physical consumption, e.g. prepared-order waste. */
+    reference?: string;
+    reason?: string;
+    modifierReason?: string;
+    /** Restrict linked-modifier consumption to the same selected order lines. */
+    orderItemIds?: number[];
 }
 
 export interface ReverseForOrderParams {
     orderId: number;
     userId: number;
     companyId: number;
+    reason: string;
+    sourceType: BatchSourceType;
+    reversalOrigin: string;
 }
 
 export class InventoryConsumptionService {
@@ -65,20 +76,27 @@ export class InventoryConsumptionService {
      * Net base-unit quantity already consumed (OUT minus reversal IN) for an
      * order's reference. A value > 0 means stock is currently deducted.
      */
-    private static async netConsumed(
+    private static async hasOutstandingConsumption(
         tx: Prisma.TransactionClient,
         companyId: number,
         reference: string
-    ): Promise<number> {
+    ): Promise<boolean> {
         const movements = await tx.inventoryMovement.findMany({
             where: { companyId, reference, type: { in: ['OUT', 'IN'] } },
-            select: { type: true, quantity: true }
+            select: { warehouseId: true, productId: true, type: true, quantity: true }
         });
 
-        return movements.reduce((net, m) => {
-            const qty = Number(m.quantity);
-            return m.type === 'OUT' ? net + qty : net - qty;
-        }, 0);
+        const netByStock = new Map<string, number>();
+        for (const movement of movements) {
+            const key = `${movement.warehouseId}|${movement.productId}`;
+            const current = netByStock.get(key) ?? 0;
+            const qty = Number(movement.quantity);
+            netByStock.set(key, current + (movement.type === 'OUT' ? qty : -qty));
+        }
+
+        // Quantities from different products/warehouses are never comparable.
+        // One product's compensating IN must not hide another product's open OUT.
+        return [...netByStock.values()].some((quantity) => quantity > 1e-9);
     }
 
     /**
@@ -89,19 +107,28 @@ export class InventoryConsumptionService {
      */
     static async consumeForOrder(
         tx: Prisma.TransactionClient,
-        { order, warehouseId, userId, companyId }: ConsumeForOrderParams
+        {
+            order, warehouseId, userId, companyId,
+            reference: requestedReference,
+            reason = 'Consumo por orden',
+            modifierReason = 'Consumo por modificador',
+            orderItemIds
+        }: ConsumeForOrderParams
     ): Promise<{ consumed: boolean }> {
-        const reference = this.orderReference(order.id);
+        const reference = requestedReference || this.orderReference(order.id);
 
         // IDEMPOTENCY GUARD: skip when stock is already deducted for this order.
-        if ((await this.netConsumed(tx, companyId, reference)) > 1e-9) {
+        if (await this.hasOutstandingConsumption(tx, companyId, reference)) {
             return { consumed: false };
         }
 
         for (const item of order.items) {
             for (const recipe of item.menuItem.recipes) {
                 // Unit priority: recipe.unit -> recipe.unitId abbreviation -> product.unit.
-                const recipeUnit = recipe.unit || recipe.unitOfMeasure?.abbreviation || recipe.product.unit;
+                const recipeUnit = recipe.unit
+                    || recipe.unitOfMeasure?.abbreviation
+                    || recipe.product.baseUnit?.abbreviation
+                    || recipe.product.unit;
                 let recipeQtyBase: number;
                 let originalQuantity: number | null = null;
                 let originalUnit: string | null = null;
@@ -149,7 +176,7 @@ export class InventoryConsumptionService {
                     originalQuantity: originalQuantity != null ? originalQuantity * item.quantity : null,
                     originalUnit,
                     conversionFactor,
-                    reason: 'Consumo por orden',
+                    reason,
                     reference,
                     productName: recipe.product.name
                 });
@@ -161,7 +188,14 @@ export class InventoryConsumptionService {
         // on the passed `order` carrying them) and post one OUT per modifier whose
         // product link + consumeQuantity are configured, under the SAME ORD-{id}
         // reference so idempotency and reversal treat them like recipe consumption.
-        await this.consumeModifiersForOrder(tx, order.id, { warehouseId, userId, companyId, reference });
+        await this.consumeModifiersForOrder(tx, order.id, {
+            warehouseId,
+            userId,
+            companyId,
+            reference,
+            reason: modifierReason,
+            orderItemIds
+        });
 
         return { consumed: true };
     }
@@ -175,10 +209,23 @@ export class InventoryConsumptionService {
     private static async consumeModifiersForOrder(
         tx: Prisma.TransactionClient,
         orderId: number,
-        ctx: { warehouseId: number; userId: number; companyId: number; reference: string }
+        ctx: {
+            warehouseId: number;
+            userId: number;
+            companyId: number;
+            reference: string;
+            reason: string;
+            orderItemIds?: number[];
+        }
     ): Promise<void> {
+        if (ctx.orderItemIds && ctx.orderItemIds.length === 0) return;
         const orderItemModifiers = await tx.orderItemModifier.findMany({
-            where: { orderItem: { orderId } },
+            where: {
+                orderItem: {
+                    orderId,
+                    ...(ctx.orderItemIds ? { id: { in: ctx.orderItemIds } } : {})
+                }
+            },
             select: {
                 modifier: {
                     select: {
@@ -239,7 +286,7 @@ export class InventoryConsumptionService {
                 originalQuantity: originalQuantity != null ? originalQuantity * oim.orderItem.quantity : null,
                 originalUnit,
                 conversionFactor,
-                reason: 'Consumo por modificador',
+                reason: ctx.reason,
                 reference: ctx.reference,
                 productName: modifier.product.name
             });
@@ -254,8 +301,10 @@ export class InventoryConsumptionService {
      */
     static async reverseForOrder(
         tx: Prisma.TransactionClient,
-        { orderId, userId, companyId }: ReverseForOrderParams
+        { orderId, userId, companyId, reason, sourceType, reversalOrigin }: ReverseForOrderParams
     ): Promise<{ reversed: boolean }> {
+        if (!reason?.trim()) throw new Error('El motivo de reversa de inventario es requerido');
+        if (!reversalOrigin?.trim()) throw new Error('El origen de reversa de inventario es requerido');
         const reference = this.orderReference(orderId);
 
         const movements = await tx.inventoryMovement.findMany({
@@ -305,9 +354,9 @@ export class InventoryConsumptionService {
                 userId,
                 quantity: entry.quantity,
                 unitCost,
-                reason: 'Reversa de consumo por orden (pago eliminado)',
+                reason: `${reason.trim()} [${reversalOrigin.trim()}]`,
                 reference,
-                sourceType: 'ADJUSTMENT'
+                sourceType
             });
             reversed = true;
         }

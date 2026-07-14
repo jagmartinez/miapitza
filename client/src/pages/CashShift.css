@@ -1615,11 +1615,21 @@
 
 /* Actions Sidebar */
 .arqueo-actions-sidebar {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--spacing-md);
     padding-top: var(--spacing-md);
     border-top: 2px solid var(--color-border);
+}
+
+.arqueo-actions-sidebar .arqueo-error-message {
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 560px) {
+    .arqueo-actions-sidebar {
+        grid-template-columns: 1fr;
+    }
 }
 
 .arqueo-error-message {

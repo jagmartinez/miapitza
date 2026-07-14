@@ -195,7 +195,6 @@ export class AuthController {
             const userId = req.user!.userId;
             const token = AuthController.extractToken(req);
             await SessionService.revokeAllExcept(userId, token);
-            res.clearCookie('auth_token', { path: '/' });
             res.json({ success: true, message: 'Otras sesiones cerradas' });
         } catch (error) {
             next({ statusCode: 500, message: error instanceof Error ? error.message : 'Error desconocido' });

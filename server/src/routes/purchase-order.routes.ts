@@ -59,8 +59,10 @@ router.post('/:id/items', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate
 router.delete('/items/:itemId', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), PurchaseOrderController.removeItem);
 
 router.post('/:id/receive', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.idParam), PurchaseOrderController.receive);
+router.post('/:id/reverse-receipt', requireRole('SUPERADMIN', 'ADMIN'), validate(s.reversePurchaseReceipt), PurchaseOrderController.reverseReceipt);
 
 router.get('/:id/payments', validate(s.idParam), PurchaseOrderController.getPayments);
-router.post('/:id/payments', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.idParam), PurchaseOrderController.addPayment);
+router.post('/:id/payments', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.addPurchasePayment), PurchaseOrderController.addPayment);
+router.post('/:id/payments/:paymentId/reverse', requireRole('SUPERADMIN', 'ADMIN'), validate(s.reversePurchasePayment), PurchaseOrderController.reversePayment);
 
 export default router;

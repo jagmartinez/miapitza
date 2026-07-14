@@ -110,7 +110,14 @@ export class CateringController {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
             await CateringController.assertEventBranch(req, id);
-            const payment = await CateringService.addPayment(id, companyId, req.body);
+            const rawIdempotencyKey = req.headers['x-idempotency-key'];
+            const idempotencyKey = typeof rawIdempotencyKey === 'string' ? rawIdempotencyKey : undefined;
+            const payment = await CateringService.addPayment(
+                id,
+                companyId,
+                req.user!.userId,
+                { ...req.body, idempotencyKey }
+            );
             res.status(201).json({ success: true, data: payment });
         } catch (error: unknown) {
             if (error instanceof BranchScopeError) return next(error);
@@ -184,9 +191,12 @@ export class CateringController {
         try {
             const companyId = req.user!.companyId;
             const date = new Date(req.query.date as string);
-            const result = await CateringService.checkResourceAvailability(date, companyId);
+            const requested = req.query.branchId ? Number(req.query.branchId) : undefined;
+            const branchId = resolveBranchScope(req.user!, requested);
+            const result = await CateringService.checkResourceAvailability(date, companyId, branchId);
             res.json({ success: true, data: result });
         } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }

@@ -1116,3 +1116,77 @@
 .btn-submit-problem:hover {
     background: #DC2626;
 }
+
+button.kitchen-card-body-new {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+button.kitchen-card-body-new:focus-visible {
+    outline: 3px solid var(--color-primary);
+    outline-offset: -3px;
+}
+
+/* Touch-first KDS interaction layer. State is also written in badge text, so
+   these surfaces do not rely on color alone. */
+.kitchen-grid-new {
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    align-items: stretch;
+}
+
+.kitchen-card-new {
+    min-height: 330px !important;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.kitchen-card-new.time-warning { border-color: var(--color-warning); }
+.kitchen-card-new.time-urgent { border-color: var(--color-danger); }
+.kitchen-card-new.order-ready { border-color: var(--color-primary); }
+.kitchen-card-new.order-released { opacity: 0.82; border-style: dashed; }
+
+.status-badge-new {
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.72rem;
+}
+
+.kitchen-card-actions-new {
+    min-height: 68px;
+}
+
+.action-btn-new {
+    min-height: 68px;
+    flex-direction: row;
+    gap: 8px;
+    padding: 12px;
+    font-size: 0.78rem;
+}
+
+.action-btn-new.start { color: var(--color-warning); }
+.action-btn-new.release {
+    color: var(--color-success);
+    background: color-mix(in srgb, var(--color-success) 10%, transparent);
+}
+
+.kitchen-items-summary {
+    min-height: 48px;
+    padding: 10px 12px;
+}
+
+@media (hover: none) {
+    .kitchen-card-new:hover { transform: none; }
+    .action-btn-new:active { background: var(--color-surface-hover); }
+}
+
+@media (max-width: 768px) {
+    .kitchen-grid-new { grid-template-columns: 1fr; }
+    .kitchen-controls { display: flex !important; }
+    .kitchen-card-new { min-height: 300px !important; }
+}

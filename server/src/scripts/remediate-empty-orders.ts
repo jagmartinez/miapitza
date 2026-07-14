@@ -3,7 +3,7 @@
  *
  * Safety contract:
  *   - dry-run is the default and always writes a new JSON backup;
- *   - only PAID/DELIVERED orders without items can enter the plan;
+ *   - only DELIVERED orders without items can enter the plan;
  *   - only orders with total <= 0 and no ambiguous dependencies are eligible;
  *   - --apply requires two independent ALLOW_* environment guards, an active
  *     same-company actor and an exact company-name confirmation;
@@ -29,7 +29,7 @@ import path from 'path';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import prisma from '../utils/prisma';
 
-const TERMINAL_STATUSES = ['PAID', 'DELIVERED'] as const;
+const TERMINAL_STATUSES = ['DELIVERED'] as const;
 const REMEDIATION_REASON = 'DATA_REMEDIATION_EMPTY_NON_POSITIVE_ORDER';
 
 export type RemediationOptions = {
@@ -120,7 +120,7 @@ export function classifyOrder(snapshot: OrderSnapshot): ClassifiedOrder {
     const blockers: string[] = [];
 
     if (!TERMINAL_STATUSES.includes(snapshot.status as (typeof TERMINAL_STATUSES)[number])) {
-        blockers.push(`estado ${snapshot.status} no es PAID/DELIVERED`);
+        blockers.push(`estado ${snapshot.status} no es DELIVERED`);
     }
     if (snapshot.itemCount !== 0) blockers.push(`tiene ${snapshot.itemCount} item(s)`);
     if (snapshot.total > 0) blockers.push(`total positivo ${snapshot.total.toFixed(2)}`);
@@ -364,6 +364,9 @@ export async function runEmptyOrderRemediation(options: RemediationOptions) {
                 },
                 data: {
                     status: 'CANCELLED',
+                    financialStatus: 'UNPAID',
+                    closedAt: null,
+                    deliveredAt: null,
                     cancelledById: actorUserId,
                     cancelReason: REMEDIATION_REASON,
                     cancelledAt: new Date()

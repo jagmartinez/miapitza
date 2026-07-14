@@ -3,10 +3,12 @@ import { ReportController } from '../controllers/report.controller';
 import { ReportExtendedController } from '../controllers/report-extended.controller';
 import { ReportProductionController } from '../controllers/report-production.controller';
 import { authMiddleware, requireRole } from '../middlewares/auth';
+import { validateQueryDates } from '../middlewares/validate-query-dates';
 
 const router = Router();
 
 router.use(authMiddleware);
+router.use(validateQueryDates('dateFrom', 'dateTo', 'startDate', 'endDate'));
 
 router.get('/dashboard-stats', requireRole('SUPERADMIN', 'ADMIN'), ReportController.getDashboardStats);
 router.get('/sales-chart', requireRole('SUPERADMIN', 'ADMIN'), ReportController.getSalesChart);

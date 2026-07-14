@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { SupplierService } from '../services/supplier.service';
 import { getErrorMessage } from '../utils/error';
+import { parseOptionalQueryDateFrom, parseOptionalQueryDateTo } from '../utils/date-range';
 
 export class SupplierController {
 
@@ -67,8 +68,8 @@ export class SupplierController {
             const companyId = req.user!.companyId;
             const filters: NonNullable<Parameters<typeof SupplierService.getPriceHistory>[2]> = {};
             if (req.query.productId) filters.productId = parseInt(req.query.productId as string);
-            if (req.query.dateFrom) filters.dateFrom = new Date(req.query.dateFrom as string);
-            if (req.query.dateTo) filters.dateTo = new Date(req.query.dateTo as string);
+            filters.dateFrom = parseOptionalQueryDateFrom(req.query.dateFrom as string | undefined, req.user!.timezone);
+            filters.dateTo = parseOptionalQueryDateTo(req.query.dateTo as string | undefined, req.user!.timezone);
 
             const history = await SupplierService.getPriceHistory(id, companyId, filters);
             res.json({ success: true, data: history });

@@ -79,3 +79,20 @@ test('new catering service follows the canonical tabbed modal contract', async (
   await expect(dialog.getByRole('heading', { name: 'Análisis de costos y precios' })).toBeVisible();
   await expect(dialog.locator('.modal-footer')).toBeVisible();
 });
+
+test('cashier navigation exposes invoice history allowed by the route and API', async ({ page }) => {
+  await mockAuthenticatedAdmin(page, { companyId: 7, branchId: 10, role: 'CAJERO' });
+  await page.route('**/api/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    let data: unknown = [];
+    if (path.endsWith('/auth/me')) {
+      data = { id: 902, companyId: 7, branchId: 10, role: 'CAJERO', roles: ['CAJERO'] };
+    }
+    if (path.endsWith('/settings')) data = { currency_symbol: 'C$' };
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data }) });
+  });
+
+  await page.goto('/invoices');
+  await expect(page.getByRole('link', { name: 'Facturas' })).toBeVisible();
+  await expect(page).toHaveURL(/\/invoices$/);
+});

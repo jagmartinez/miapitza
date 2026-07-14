@@ -67,7 +67,7 @@ export class RoleService {
             AuditLogService.log({
                 companyId, userId, entityType: 'Role', entityId: role.id,
                 action: 'CREATE', details: { name: role.name, permissionIds }
-            }).catch(() => {});
+            }).catch((error) => console.error('[RoleService] Failed to write CREATE audit log:', error));
         }
 
         return role;
@@ -121,7 +121,7 @@ export class RoleService {
                 companyId, userId, entityType: 'Role', entityId: id,
                 action: permissionIds ? 'PERMISSION_CHANGE' : 'UPDATE',
                 details: { name: data.name, permissionIds }
-            }).catch(() => {});
+            }).catch((error) => console.error('[RoleService] Failed to write UPDATE audit log:', error));
         }
 
         return role;

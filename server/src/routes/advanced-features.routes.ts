@@ -12,12 +12,14 @@ import * as s from '../middlewares/validate-schemas';
 import { getErrorMessage } from '../utils/error';
 import { parseOptionalQueryDateFrom, parseOptionalQueryDateTo } from '../utils/date-range';
 import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
+import { validateQueryDates } from '../middlewares/validate-query-dates';
 import { MenuItemService } from '../services/menu-item.service';
 import { WarehouseService } from '../services/warehouse.service';
 
 const router = Router();
 
 router.use(authMiddleware);
+router.use(validateQueryDates('startDate', 'endDate'));
 
 // ==================== WASTE REPORTS ====================
 
@@ -36,7 +38,7 @@ router.post('/waste', requireRole(...INVENTORY), validate(s.recordWaste), async 
         res.json({ success: true, data: result });
     } catch (error: unknown) {
         if (error instanceof BranchScopeError) return next(error);
-        next({ statusCode: 500, message: getErrorMessage(error) });
+        next({ statusCode: 400, message: getErrorMessage(error) });
     }
 });
 
@@ -228,11 +230,16 @@ router.get('/reconciliation', requireRole(...CASHIERS), async (req: Request, res
         const companyId = req.user!.companyId;
         const { startDate, endDate } = req.query;
         const branchId = resolveBranchScope(req.user!, req.query.branchId ? parseInt(req.query.branchId as string, 10) : undefined);
+        const parsedStartDate = parseOptionalQueryDateFrom(startDate as string | undefined, req.user!.timezone);
+        const parsedEndDate = parseOptionalQueryDateTo(endDate as string | undefined, req.user!.timezone);
+        if (!parsedStartDate || !parsedEndDate) {
+            return next({ statusCode: 400, message: 'startDate y endDate son obligatorios' });
+        }
 
         const status = await BankReconciliationService.getReconciliationStatus(
             companyId,
-            new Date(startDate as string),
-            new Date(endDate as string),
+            parsedStartDate,
+            parsedEndDate,
             branchId
         );
         res.json({ success: true, data: status });

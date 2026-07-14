@@ -16,10 +16,10 @@ export class CashArqueoService {
     }) {
         const rows = [...(breakdown.bills || []), ...(breakdown.coins || []), ...(breakdown.usdBills || [])];
         if (rows.some((row) => !Number.isFinite(row.denomination) || row.denomination <= 0 || !Number.isInteger(row.count) || row.count < 0)) {
-            throw new Error('El desglose contiene denominaciones o cantidades invÃ¡lidas');
+            throw new Error('El desglose contiene denominaciones o cantidades inválidas');
         }
         if (breakdown.exchangeRate !== undefined && (!Number.isFinite(breakdown.exchangeRate) || breakdown.exchangeRate < 0)) {
-            throw new Error('La tasa de cambio no es vÃ¡lida');
+            throw new Error('La tasa de cambio no es válida');
         }
         const billsTotal = (breakdown.bills || []).reduce((sum, b) => sum + (b.denomination * b.count), 0);
         const coinsTotal = (breakdown.coins || []).reduce((sum, c) => sum + (c.denomination * c.count), 0);
@@ -233,8 +233,8 @@ export class CashArqueoService {
         actorRoles: string[],
         notes?: string,
         breakdown?: {
-            bills: { denomination: number; count: number }[];
-            coins: { denomination: number; count: number }[];
+            bills?: { denomination: number; count: number }[];
+            coins?: { denomination: number; count: number }[];
             usdBills?: { denomination: number; count: number }[];
             exchangeRate?: number;
         },
@@ -245,8 +245,9 @@ export class CashArqueoService {
         if (!Number.isFinite(endAmount) || endAmount < 0) {
             throw new Error('El monto de cierre debe ser un número finito mayor o igual a cero');
         }
+        const normalizedEndAmount = Math.round(endAmount * 100) / 100;
         const preview = await this.previewClose(shiftId, companyId, {
-            endAmount,
+            endAmount: normalizedEndAmount,
             notes,
             bills: breakdown?.bills,
             coins: breakdown?.coins,
@@ -255,6 +256,7 @@ export class CashArqueoService {
         });
         const difference = preview.difference;
         const isAdminOverride = actorRoles.some((role) => role === 'ADMIN' || role === 'SUPERADMIN');
+        const currencySymbol = await SettingService.getCurrencySymbol(companyId);
 
         if (preview.requiresNote && !notes?.trim()) {
             throw new Error('Debe agregar una observación cuando exista diferencia dentro de tolerancia.');
@@ -265,8 +267,8 @@ export class CashArqueoService {
                 const diffType = difference > 0 ? 'sobrante' : 'faltante';
                 const diffAmount = Math.abs(difference).toFixed(2);
                 throw new Error(
-                    `No se puede cerrar el turno con ${diffType} de C$ ${diffAmount}. ` +
-                    `La diferencia excede la tolerancia de C$ ${preview.tolerance.toFixed(2)}.`
+                    `No se puede cerrar el turno con ${diffType} de ${currencySymbol} ${diffAmount}. ` +
+                    `La diferencia excede la tolerancia de ${currencySymbol} ${preview.tolerance.toFixed(2)}.`
                 );
             }
 
@@ -288,10 +290,14 @@ export class CashArqueoService {
                 (sum, movement) => sum + (movement.type === 'IN' ? Number(movement.amount) : -Number(movement.amount)),
                 0
             );
-            const currentSummary = this.classifyDifference(endAmount - expectedNow, preview.tolerance);
+            const expectedNowCents = Math.round(expectedNow * 100);
+            const currentSummary = this.classifyDifference(
+                (Math.round(normalizedEndAmount * 100) - expectedNowCents) / 100,
+                preview.tolerance
+            );
             if (currentSummary.requiresNote && !notes?.trim()) throw new Error('Debe agregar una observación cuando exista diferencia dentro de tolerancia.');
             if (currentSummary.exceedsTolerance && !(options?.forceClose && isAdminOverride)) {
-                throw new Error(`No se puede cerrar el turno: la diferencia de C$ ${Math.abs(currentSummary.difference).toFixed(2)} excede la tolerancia.`);
+                throw new Error(`No se puede cerrar el turno: la diferencia de ${currencySymbol} ${Math.abs(currentSummary.difference).toFixed(2)} excede la tolerancia.`);
             }
             if (currentSummary.exceedsTolerance && !notes?.trim()) throw new Error('El cierre forzado requiere una observación obligatoria.');
 
@@ -299,7 +305,7 @@ export class CashArqueoService {
                 where: { id: shiftId },
                 data: {
                     endDate: new Date(),
-                    endAmount,
+                    endAmount: normalizedEndAmount,
                     difference: currentSummary.difference,
                     notes: notes || 'Cuadrado'
                 }
@@ -311,8 +317,8 @@ export class CashArqueoService {
 
                 // Create new counts
                 const countData = [
-                    ...breakdown.bills.map(b => ({ ...b, type: 'BILL', shiftId })),
-                    ...breakdown.coins.map(c => ({ ...c, type: 'COIN', shiftId })),
+                    ...(breakdown.bills || []).map(b => ({ ...b, type: 'BILL', shiftId })),
+                    ...(breakdown.coins || []).map(c => ({ ...c, type: 'COIN', shiftId })),
                     ...(breakdown.usdBills || []).map(c => ({ ...c, type: 'USD_BILL', shiftId }))
                 ].filter(c => c.count > 0);
 
@@ -332,6 +338,7 @@ export class CashArqueoService {
      */
     static async generateShiftReport(shiftId: number, companyId: number) {
         const details = await this.getShiftDetails(shiftId, companyId);
+        const currencySymbol = await SettingService.getCurrencySymbol(companyId);
 
         return {
             ...details,
@@ -345,12 +352,12 @@ export class CashArqueoService {
                     Cierre: ${details.shift.endDate || 'Pendiente'}
                     
                     RESUMEN:
-                    Monto Inicial: C$ ${details.amounts.startAmount.toFixed(2)}
-                    Total Entradas: C$ ${details.amounts.totalIn.toFixed(2)}
-                    Total Salidas: C$ ${details.amounts.totalOut.toFixed(2)}
-                    Esperado: C$ ${details.amounts.expectedEndAmount.toFixed(2)}
-                    Contado: C$ ${details.amounts.actualEndAmount?.toFixed(2) || 'N/A'}
-                    Diferencia: C$ ${details.amounts.difference?.toFixed(2) || 'N/A'}
+                    Monto Inicial: ${currencySymbol} ${details.amounts.startAmount.toFixed(2)}
+                    Total Entradas: ${currencySymbol} ${details.amounts.totalIn.toFixed(2)}
+                    Total Salidas: ${currencySymbol} ${details.amounts.totalOut.toFixed(2)}
+                    Esperado: ${currencySymbol} ${details.amounts.expectedEndAmount.toFixed(2)}
+                    Contado: ${currencySymbol} ${details.amounts.actualEndAmount?.toFixed(2) || 'N/A'}
+                    Diferencia: ${currencySymbol} ${details.amounts.difference?.toFixed(2) || 'N/A'}
                 `.trim()
             }
         };

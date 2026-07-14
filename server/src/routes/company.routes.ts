@@ -12,6 +12,6 @@ router.use(requireRole('SUPERADMIN'));
 router.get('/', CompanyController.getAll);
 router.get('/:id', validate(s.idParam), CompanyController.getById);
 router.post('/', validate(s.createCompany), CompanyController.create);
-router.put('/:id', validate(s.idParam), CompanyController.update);
+router.put('/:id', validate(s.updateCompany), CompanyController.update);
 
 export default router;

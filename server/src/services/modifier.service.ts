@@ -35,11 +35,14 @@ export class ModifierService {
     }) {
         const { isRequired } = data;
         const minSelect = data.minSelect ?? (isRequired === true ? 1 : 0);
-        if (minSelect !== undefined && minSelect < 0) throw new Error('La selección mínima no puede ser negativa');
+        const name = data.name?.trim();
+        if (!name) throw new Error('El nombre del grupo es requerido');
+        if (!Number.isInteger(minSelect) || minSelect < 0) throw new Error('La selección mínima debe ser un entero no negativo');
+        if (data.maxSelect !== undefined && !Number.isInteger(data.maxSelect)) throw new Error('La selección máxima debe ser un entero');
         if (data.maxSelect !== undefined && data.maxSelect < minSelect) throw new Error('La selección máxima no puede ser menor que la mínima');
         return await prisma.modifierGroup.create({
             data: {
-                name: data.name,
+                name,
                 description: data.description,
                 maxSelect: data.maxSelect,
                 minSelect,
@@ -63,12 +66,14 @@ export class ModifierService {
         const { isRequired } = data;
         const minSelect = data.minSelect ?? (isRequired === true ? Math.max(1, group.minSelect) : isRequired === false ? 0 : undefined);
         const maxSelect = data.maxSelect ?? group.maxSelect;
-        if (minSelect !== undefined && minSelect < 0) throw new Error('La selección mínima no puede ser negativa');
+        if (data.name !== undefined && !data.name.trim()) throw new Error('El nombre del grupo es requerido');
+        if (minSelect !== undefined && (!Number.isInteger(minSelect) || minSelect < 0)) throw new Error('La selección mínima debe ser un entero no negativo');
+        if (maxSelect !== null && !Number.isInteger(maxSelect)) throw new Error('La selección máxima debe ser un entero');
         if (maxSelect !== null && minSelect !== undefined && maxSelect < minSelect) throw new Error('La selección máxima no puede ser menor que la mínima');
         return await prisma.modifierGroup.update({
             where: { id },
             data: {
-                ...(data.name !== undefined ? { name: data.name } : {}),
+                ...(data.name !== undefined ? { name: data.name.trim() } : {}),
                 ...(data.description !== undefined ? { description: data.description } : {}),
                 ...(data.maxSelect !== undefined ? { maxSelect: data.maxSelect } : {}),
                 ...(data.active !== undefined ? { active: data.active } : {}),
@@ -181,6 +186,8 @@ export class ModifierService {
         if (price < 0 || !Number.isFinite(price)) {
             throw new Error('El precio extra debe ser mayor o igual a 0');
         }
+        const name = data.name?.trim();
+        if (!name) throw new Error('El nombre del modificador es requerido');
 
         const link = await this.resolveInventoryLink(companyId, data);
         await this.assertCompleteInventoryLink(companyId, {
@@ -192,7 +199,7 @@ export class ModifierService {
         // API contract keeps `extraPrice`; the Prisma model field is `price`.
         return await prisma.modifier.create({
             data: {
-                name: data.name,
+                name,
                 price,
                 modifierGroupId: groupId,
                 ...link
@@ -211,11 +218,12 @@ export class ModifierService {
         if (data.extraPrice !== undefined && (Number(data.extraPrice) < 0 || !Number.isFinite(Number(data.extraPrice)))) {
             throw new Error('El precio extra debe ser mayor o igual a 0');
         }
+        if (data.name !== undefined && !data.name.trim()) throw new Error('El nombre del modificador es requerido');
 
         // API contract keeps `extraPrice`; map it to the Prisma model field `price`.
         const { extraPrice, productId, consumeQuantity, unitId } = data;
         const updateData: Prisma.ModifierUncheckedUpdateInput = {
-            ...(data.name !== undefined ? { name: data.name } : {}),
+            ...(data.name !== undefined ? { name: data.name.trim() } : {}),
             ...(data.active !== undefined ? { active: data.active } : {})
         };
         if (extraPrice !== undefined) {
@@ -295,6 +303,8 @@ export class ModifierService {
             where: { id: menuItemId, companyId }
         });
         if (!menuItem) throw new Error("Not found or unauthorized");
+        const group = await prisma.modifierGroup.findFirst({ where: { id: groupId, companyId }, select: { id: true } });
+        if (!group) throw new Error("Not found or unauthorized");
 
         return await prisma.menuItem.update({
             where: { id: menuItemId },

@@ -1,6 +1,7 @@
 import prisma from '../utils/prisma';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { DEFAULT_COMPANY_SETTINGS, SettingService } from './setting.service';
 
 export interface InvoiceData {
     orderId: number;
@@ -20,20 +21,18 @@ export interface InvoiceData {
     date: Date;
     invoiceNumber: string;
     taxRatePercent: number;
+    currencySymbol: string;
 }
 
 export class InvoiceService {
-    private static DEFAULT_IVA_RATE = 0.15;
-
     private static async getIvaRate(companyId: number): Promise<number> {
-        const { SettingService } = await import('./setting.service');
         const settings = await SettingService.getAll(companyId);
         const taxRate = parseFloat(settings['tax_rate'] || settings['taxRate'] || '');
-        return Number.isFinite(taxRate) && taxRate >= 0 ? taxRate / 100 : this.DEFAULT_IVA_RATE;
+        const defaultTaxRate = Number(DEFAULT_COMPANY_SETTINGS.tax_rate) / 100;
+        return Number.isFinite(taxRate) && taxRate >= 0 ? taxRate / 100 : defaultTaxRate;
     }
 
     private static async getTipSettings(companyId: number): Promise<{ tipEnabled: boolean; tipRate: number }> {
-        const { SettingService } = await import('./setting.service');
         const settings = await SettingService.getAll(companyId);
         const tipEnabled = settings['tipEnabled'] === 'true';
         const tipRate = parseFloat(settings['tipRate'] || '0');
@@ -47,11 +46,13 @@ export class InvoiceService {
             const locked = await tx.$queryRaw<Array<{
                 id: number;
                 invoiceNumber: string | null;
+                invoicedAt: Date | null;
                 status: string;
+                financialStatus: string;
                 total: unknown;
                 branchId: number;
             }>>`
-                SELECT \`id\`, \`invoiceNumber\`, \`status\`, \`total\`, \`branchId\` FROM \`Order\`
+                SELECT \`id\`, \`invoiceNumber\`, \`invoicedAt\`, \`status\`, \`financialStatus\`, \`total\`, \`branchId\` FROM \`Order\`
                 WHERE \`id\` = ${orderId} AND \`companyId\` = ${companyId}
                 FOR UPDATE`;
 
@@ -59,22 +60,20 @@ export class InvoiceService {
                 throw new Error('Order not found or unauthorized');
             }
             if (locked[0].invoiceNumber) {
+                if (!locked[0].invoicedAt) {
+                    await tx.order.update({
+                        where: { id: orderId },
+                        data: { invoicedAt: new Date() }
+                    });
+                }
                 return locked[0].invoiceNumber;
             }
             if (locked[0].branchId !== branchId) {
                 throw new Error('La sucursal de la orden cambió durante la facturación');
             }
-            const activePayments = await tx.payment.findMany({
-                where: { orderId, status: 'ACTIVE' },
-                select: { amount: true }
-            });
-            const collectedCents = activePayments.reduce(
-                (sum, payment) => sum + Math.round(Number(payment.amount) * 100),
-                0
-            );
             const totalCents = Math.round(Number(locked[0].total) * 100);
-            if (locked[0].status === 'CANCELLED' || collectedCents < totalCents) {
-                throw new Error('La orden dejó de estar completamente pagada durante la facturación');
+            if (locked[0].status === 'CANCELLED' || totalCents <= 0) {
+                throw new Error('Solo se puede emitir una factura para una orden activa con total mayor a cero');
             }
 
             await tx.invoiceSequence.upsert({
@@ -110,7 +109,7 @@ export class InvoiceService {
 
             await tx.order.update({
                 where: { id: orderId },
-                data: { invoiceNumber }
+                data: { invoiceNumber, invoicedAt: new Date() }
             });
 
             return invoiceNumber;
@@ -118,16 +117,16 @@ export class InvoiceService {
     }
 
     static async generateInvoice(orderId: number, companyId: number) {
-        // Check order status before consuming an invoice number
+        // Billing precedes collection. PaymentService independently rejects any
+        // collection whose order still has no assigned invoice number.
         const orderCheck = await prisma.order.findFirst({
             where: { id: orderId, companyId },
-            select: { status: true, total: true, payments: { where: { status: 'ACTIVE' }, select: { amount: true } } }
+            select: { status: true, total: true, items: { select: { id: true } } }
         });
         if (!orderCheck) throw new Error('Order not found');
-        const collectedCents = orderCheck.payments.reduce((sum, payment) => sum + Math.round(Number(payment.amount) * 100), 0);
         const totalCents = Math.round(Number(orderCheck.total) * 100);
-        if (orderCheck.status === 'CANCELLED' || collectedCents < totalCents) {
-            throw new Error(`Only fully paid, non-cancelled orders can be invoiced. Current status: ${orderCheck.status}`);
+        if (orderCheck.status === 'CANCELLED' || totalCents <= 0 || orderCheck.items.length === 0) {
+            throw new Error('Solo se puede emitir una factura para una orden activa, con productos y total mayor a cero');
         }
 
         let order = await prisma.order.findFirst({
@@ -179,6 +178,7 @@ export class InvoiceService {
 
         const ivaRate = await this.getIvaRate(companyId);
         const tipSettings = await this.getTipSettings(companyId);
+        const currencySymbol = await SettingService.getCurrencySymbol(companyId);
         const itemSubtotal = order.items.reduce((sum, item) => sum + Number(item.subtotal), 0);
         const discount = Number(order.discount || 0);
         const subtotal = Math.max(0, itemSubtotal - discount);
@@ -213,9 +213,10 @@ export class InvoiceService {
             branchPhone: order.branch.phone ?? undefined,
             companyName: order.branch.company.name,
             companyRuc: order.branch.company.ruc ?? undefined,
-            date: order.createdAt,
+            date: order.invoicedAt || order.createdAt,
             invoiceNumber,
-            taxRatePercent
+            taxRatePercent,
+            currencySymbol
         };
 
         return invoiceData;
@@ -287,7 +288,7 @@ export class InvoiceService {
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
         doc.text(`TOTAL:`, 140, finalY + 16 + tipOffset);
-        doc.text(`C$ ${data.total.toFixed(2)}`, 195, finalY + 16 + tipOffset, { align: 'right' });
+        doc.text(`${data.currencySymbol} ${data.total.toFixed(2)}`, 195, finalY + 16 + tipOffset, { align: 'right' });
 
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');

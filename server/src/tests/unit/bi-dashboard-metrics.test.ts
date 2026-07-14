@@ -20,7 +20,8 @@ describe('Business Intelligence metric contracts', () => {
             where: expect.objectContaining({
                 companyId: 1,
                 branchId: 2,
-                status: { in: ['PAID', 'DELIVERED'] },
+                financialStatus: 'PAID',
+                status: { not: 'CANCELLED' },
                 closedAt: { gte: expect.any(Date) }
             })
         }));
@@ -30,8 +31,8 @@ describe('Business Intelligence metric contracts', () => {
         jest.spyOn(prisma.setting, 'findUnique').mockResolvedValue({ value: 'America/Managua' } as never);
         const now = Date.now();
         jest.spyOn(prisma.order, 'findMany').mockResolvedValue([
-            { createdAt: new Date(now - 60 * 60 * 1000), closedAt: new Date(now), tipAmount: 5, total: 25 },
-            { createdAt: new Date(now - 10 * 24 * 60 * 60 * 1000), closedAt: new Date(now - 10 * 24 * 60 * 60 * 1000 + 30 * 60 * 1000), tipAmount: 3, total: 20 }
+            { createdAt: new Date(now - 60 * 60 * 1000), closedAt: new Date(now), deliveredAt: new Date(now), tipAmount: 5, total: 25 },
+            { createdAt: new Date(now - 10 * 24 * 60 * 60 * 1000), closedAt: new Date(now - 10 * 24 * 60 * 60 * 1000 + 30 * 60 * 1000), deliveredAt: new Date(now - 10 * 24 * 60 * 60 * 1000 + 30 * 60 * 1000), tipAmount: 3, total: 20 }
         ] as never);
 
         const result = await ReportService.getServiceTrends(1, undefined, 'week', 'month');

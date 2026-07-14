@@ -16,7 +16,8 @@ describe('Order to Invoice Flow & Multi-tenancy Isolation', () => {
     let adminRoleId: number;
     let user1Id: number;
     let user2Id: number;
-    let paymentMethodId: number;
+    let categoryId: number;
+    let menuItemId: number;
 
     beforeAll(async () => {
         const existingAdminRole = await prisma.role.findFirst({
@@ -112,27 +113,41 @@ describe('Order to Invoice Flow & Multi-tenancy Isolation', () => {
         });
         user2Id = user2.id;
 
-        const paymentMethod = await prisma.paymentMethod.create({
-            data: { companyId: company1.id, name: 'Invoice test card', active: true }
+        const category = await prisma.category.upsert({
+            where: { companyId_name: { companyId: company1.id, name: 'Invoice Integration' } },
+            update: {},
+            create: { companyId: company1.id, name: 'Invoice Integration' }
         });
-        paymentMethodId = paymentMethod.id;
+        categoryId = category.id;
+        const menuItem = await prisma.menuItem.create({
+            data: {
+                companyId: company1.id,
+                branchId: branch1.id,
+                categoryId,
+                name: `Invoice integration item ${Date.now()}`,
+                price: 100,
+                type: 'DIRECT'
+            }
+        });
+        menuItemId = menuItem.id;
 
         order1 = await prisma.order.create({
             data: {
                 companyId: company1.id,
                 branchId: branch1.id,
                 userId: user1.id,
-                status: 'PAID',
+                status: 'OPEN',
+                financialStatus: 'UNPAID',
                 total: 100,
-                customerName: 'Test customer'
-            }
-        });
-        await prisma.payment.create({
-            data: {
-                orderId: order1.id,
-                paymentMethodId,
-                amount: 100,
-                registeredById: user1.id
+                customerName: 'Test customer',
+                items: {
+                    create: {
+                        menuItemId,
+                        quantity: 1,
+                        price: 100,
+                        subtotal: 100
+                    }
+                }
             }
         });
 
@@ -150,8 +165,10 @@ describe('Order to Invoice Flow & Multi-tenancy Isolation', () => {
 
     afterAll(async () => {
         await prisma.payment.deleteMany({ where: { order: { companyId: { in: [998, 999] } } } });
+        await prisma.orderItem.deleteMany({ where: { order: { companyId: { in: [998, 999] } } } });
         await prisma.order.deleteMany({ where: { companyId: { in: [998, 999] } } });
-        await prisma.paymentMethod.deleteMany({ where: { id: paymentMethodId } });
+        await prisma.menuItem.deleteMany({ where: { id: menuItemId } });
+        await prisma.category.deleteMany({ where: { id: categoryId } });
         await prisma.invoiceSequence.deleteMany({ where: { companyId: { in: [998, 999] } } });
         await prisma.user.deleteMany({ where: { id: { in: [user1Id, user2Id] } } });
         await prisma.branch.deleteMany({ where: { id: { in: [998, 999] } } });

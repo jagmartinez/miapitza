@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { tablesAPI, menuAPI, ordersAPI, settingsAPI, cashShiftsAPI, promotionsAPI, categoriesAPI, menuBrandsAPI, warehousesAPI } from '../services/api';
+import { tablesAPI, menuAPI, ordersAPI, settingsAPI, cashShiftsAPI, promotionsAPI, categoriesAPI, menuBrandsAPI, warehousesAPI, invoicesAPI } from '../services/api';
 import { offlineManager } from '../services/offlineManager';
 import { useDebounce } from '../utils/useDebounce';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
@@ -135,8 +135,8 @@ export default function POS() {
     // Scope the local menu cache by company + branch so different tenants/branches
     // don't read each other's cached menu from a shared localStorage key.
     const menuCacheKey = useMemo(
-        () => `pos_menu_cache_${user?.companyId ?? 'anon'}_${user?.branchId ?? 'all'}`,
-        [user?.companyId, user?.branchId]
+        () => `pos_menu_cache_v2_${user?.companyId ?? 'anon'}_${selectedTable?.branchId ?? user?.branchId ?? 'none'}`,
+        [selectedTable?.branchId, user?.companyId, user?.branchId]
     );
 
     // Keep the latest selected table in a ref so the websocket subscription effect
@@ -164,6 +164,7 @@ export default function POS() {
     const loadData = useCallback(async () => {
         setLoadError(null);
         try {
+            const effectiveBranchId = selectedTable?.branchId ?? user?.branchId;
             const cached = localStorage.getItem(menuCacheKey);
             if (cached) {
                 const { data, timestamp } = JSON.parse(cached);
@@ -174,7 +175,9 @@ export default function POS() {
 
             const [tablesRes, menuRes, settingsRes, categoriesRes, brandsRes] = await Promise.all([
                 tablesAPI.getAll(),
-                menuAPI.getAll({ active: true }),
+                effectiveBranchId
+                    ? menuAPI.getAll({ active: true, effectivePricing: true, branchId: effectiveBranchId })
+                    : Promise.resolve({ data: { data: [] } }),
                 settingsAPI.getAll(),
                 categoriesAPI.getAll(),
                 menuBrandsAPI.getAll()
@@ -197,7 +200,7 @@ export default function POS() {
         } finally {
             setLoading(false);
         }
-    }, [menuCacheKey, showError]);
+    }, [menuCacheKey, selectedTable?.branchId, showError, user?.branchId]);
 
     // Check if user has an active shift
     const checkShiftStatus = useCallback(async () => {
@@ -219,7 +222,7 @@ export default function POS() {
     // Mirrors the backend payment guard so the cashier is warned BEFORE trying to
     // charge instead of only seeing the abort error at checkout.
     const checkBranchWarehouse = useCallback(async () => {
-        const branchId = user?.branchId;
+        const branchId = selectedTable?.branchId ?? user?.branchId;
         if (!branchId) {
             // Sin sucursal asignada (p. ej. SUPERADMIN global): no bloqueamos aquí;
             // el guard del backend sigue protegiendo el descargue de inventario.
@@ -235,7 +238,7 @@ export default function POS() {
             // seguirá validando el backend.
             setHasWarehouse(true);
         }
-    }, [user?.branchId]);
+    }, [selectedTable?.branchId, user?.branchId]);
 
     useEffect(() => {
         checkBranchWarehouse();
@@ -478,6 +481,7 @@ export default function POS() {
 
     const buildOrderPayload = useCallback(() => ({
         tableId: selectedTable?.id,
+        branchId: selectedTable?.branchId,
         customerName: customerName || undefined,
         items: cart.map(item => ({
             menuItemId: item.menuItemId,
@@ -621,11 +625,6 @@ export default function POS() {
             return;
         }
 
-        if (hasWarehouse === false) {
-            warning('No se puede cobrar: esta sucursal no tiene un almacén configurado. Configura un almacén en Bodegas para habilitar el cobro.');
-            return;
-        }
-
         if (cart.length === 0 && !currentOrderId) {
             warning('El carrito está vacío');
             return;
@@ -674,10 +673,20 @@ export default function POS() {
                 setActiveTableOrder(pricingResponse.data.data as Order);
             }
 
+            // Emit the fiscal document before opening collection. The backend
+            // enforces the same invariant, so bypassing this UI cannot pay an
+            // unbilled order.
+            const invoiceResponse = await invoicesAPI.getData(orderId);
+            const invoiceNumber = invoiceResponse.data?.data?.invoiceNumber;
+            if (!invoiceNumber) {
+                throw new Error('La factura no pudo emitirse antes del cobro');
+            }
+            await syncOrderContext(orderId);
             setCurrentOrderId(orderId);
             setShowPaymentModal(true);
-        } catch {
-            showError('No se pudo preparar la orden para cobrarla.');
+        } catch (error: unknown) {
+            const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
+            showError(message || (error instanceof Error ? error.message : 'No se pudo preparar la orden para cobrarla.'));
             return;
         } finally {
             setProcessingPayment(false);
@@ -828,7 +837,7 @@ export default function POS() {
     const activeOrderTotal = Number(activeTableOrder?.total || 0);
     const displayTotal = cart.length > 0 ? total : activeOrderTotal;
     const branchHasNoWarehouse = hasWarehouse === false;
-    const canProcessPayment = canPay && !branchHasNoWarehouse && (cart.length > 0 || Boolean(currentOrderId));
+    const canProcessPayment = canPay && (cart.length > 0 || Boolean(currentOrderId));
 
     return (
         <div className="pos-container-new">
@@ -874,11 +883,7 @@ export default function POS() {
                         className="header-action-btn primary"
                         onClick={handlePayment}
                         disabled={!canProcessPayment || processingPayment}
-                        title={!canPay
-                            ? 'Tu rol no puede registrar pagos'
-                            : branchHasNoWarehouse
-                                ? 'Sin almacén configurado en la sucursal: no se puede cobrar'
-                                : 'Pagar (Ctrl+P)'}
+                        title={!canPay ? 'Tu rol no puede registrar pagos' : 'Pagar (Ctrl+P)'}
                     >
                         <CreditCard size={18} />
                         <span>{processingPayment ? 'Preparando...' : 'Pagar'}</span>
@@ -902,17 +907,16 @@ export default function POS() {
                 </div>
             </div>
 
-            {/* Aviso proactivo: la sucursal activa no tiene almacén, por lo que no se
-                puede cobrar (el descargue de inventario fallaría en el backend). */}
+            {/* El cobro es financiero y no descarga inventario. La advertencia se
+                limita al flujo operativo de entrega, que sí exige una bodega. */}
             {branchHasNoWarehouse && (
                 <div className="pos-warehouse-banner" role="alert">
                     <AlertTriangle size={22} className="pos-warehouse-banner-icon" />
                     <div className="pos-warehouse-banner-text">
-                        <strong>No se puede cobrar en esta sucursal</strong>
+                        <strong>Entrega de inventario no disponible</strong>
                         <span>
-                            La sucursal activa no tiene un almacén configurado, por lo que las ventas no
-                            pueden descargar inventario y el cobro está bloqueado. Configura un almacén para
-                            esta sucursal en Bodegas/Configuración para habilitarlo.
+                            Puedes emitir la factura y cobrar, pero no completar la entrega con descarga de
+                            inventario hasta configurar un almacén para esta sucursal.
                         </span>
                     </div>
                     {canManageWarehouse && (
@@ -1063,7 +1067,7 @@ export default function POS() {
                                                 Entregar
                                             </button>
                                         )}
-                                        {canCancelActive && !activeTableOrder.payments?.length && activeTableOrder.status !== 'PAID' && activeTableOrder.status !== 'CANCELLED' && (
+                                        {canCancelActive && activeTableOrder.financialStatus === 'UNPAID' && !activeTableOrder.payments?.length && activeTableOrder.status !== 'CANCELLED' && (
                                             <button
                                                 className="header-action-btn secondary"
                                                 onClick={handleCancelActiveOrder}
@@ -1175,7 +1179,6 @@ export default function POS() {
                     order={activeTableOrder}
                     onPaymentSuccess={handlePaymentComplete}
                     currencySymbol={currencySymbol}
-                    branchHasWarehouse={hasWarehouse !== false}
                     hasUsableCashShift={hasUsableCashShift(shiftStatus, selectedTable?.branchId)}
                 />
             )}

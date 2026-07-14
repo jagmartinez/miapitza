@@ -1,6 +1,10 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { SplitBillService } from '../services/split-bill.service';
-import { authMiddleware, requireRole } from '../middlewares/auth';
+import {
+    SplitBillService,
+    SplitBillValidationError,
+    type SplitBillItemAssignment
+} from '../services/split-bill.service';
+import { authMiddleware, requirePermission } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
 import { getErrorMessage } from '../utils/error';
@@ -8,7 +12,7 @@ import { getErrorMessage } from '../utils/error';
 const router = Router();
 
 router.use(authMiddleware);
-router.use(requireRole('SUPERADMIN', 'ADMIN', 'CAJERO', 'MESERO'));
+router.use(requirePermission('bills.split', 'SUPERADMIN', 'ADMIN', 'CAJERO', 'MESERO'));
 
 /**
  * @swagger
@@ -48,7 +52,11 @@ router.post('/:orderId/evenly', validate(s.splitEvenly), async (req: Request, re
  *     summary: Split order by items (each person selects their items)
  *     tags: [POS]
  */
-router.post('/:orderId/by-items', validate(s.splitByItems), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:orderId/by-items', validate(s.splitByItems), async (
+    req: Request<{ orderId: string }, unknown, { itemAssignments: SplitBillItemAssignment[] }>,
+    res: Response,
+    next: NextFunction
+) => {
     try {
         const companyId = req.user!.companyId;
         const orderId = parseInt(req.params.orderId);
@@ -61,7 +69,9 @@ router.post('/:orderId/by-items', validate(s.splitByItems), async (req: Request,
             data: result
         });
     } catch (error: unknown) {
-        next({ statusCode: 500, message: getErrorMessage(error) });
+        next(error instanceof SplitBillValidationError
+            ? error
+            : { statusCode: 500, message: getErrorMessage(error) });
     }
 });
 

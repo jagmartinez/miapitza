@@ -1,18 +1,56 @@
 import prisma from '../utils/prisma';
-import { OrderStatus } from '@prisma/client';
-import { InventoryConsumptionService } from './inventory-consumption.service';
+import type { PaymentMethodType, Prisma } from '@prisma/client';
 
 export class PaymentService {
-    private static deriveOrderStatus(order: { items?: Array<{ sentAt?: Date | null; status?: string }> }): OrderStatus {
-        const items = order.items || [];
-        const hasSentItems = items.some((item) => item.sentAt != null);
-        const hasInProgressItems = items.some((item) => item.status === 'IN_PROGRESS');
-        const allDone = items.length > 0 && items.every((item) => item.status === 'DONE');
+    private static normalizeMoney(value: unknown): { amount: number; cents: number } {
+        const raw = Number(value);
+        if (!Number.isFinite(raw) || raw <= 0) {
+            throw new Error('Amount must be a positive number');
+        }
+        const cents = Math.round(raw * 100);
+        if (Math.abs(raw - cents / 100) > 1e-9) {
+            throw new Error('Amount must have at most two decimal places');
+        }
+        return { amount: cents / 100, cents };
+    }
 
-        if (allDone) return 'READY';
-        if (hasInProgressItems) return 'IN_PREPARATION';
-        if (hasSentItems) return 'SENT_TO_KITCHEN';
-        return 'OPEN';
+    private static normalizeOptionalText(value: unknown, field: string): string | null {
+        if (value === undefined || value === null) return null;
+        const normalized = String(value).trim();
+        if (!normalized) return null;
+        if (normalized.length > 191) throw new Error(`${field} is too long`);
+        return normalized;
+    }
+
+    private static async assertActiveCashLedger(
+        tx: Prisma.TransactionClient,
+        payment: { id: number; amount: unknown },
+        companyId: number,
+        branchId: number
+    ): Promise<void> {
+        const movements = await tx.cashMovement.findMany({
+            where: { reference: { in: [`PAY-${payment.id}`, `REV-PAY-${payment.id}`] } },
+            select: {
+                type: true,
+                amount: true,
+                reference: true,
+                shift: { select: { companyId: true, cashRegister: { select: { branchId: true } } } }
+            }
+        });
+        const amountCents = Math.round(Number(payment.amount) * 100);
+        const inboundReference = movements.filter((movement) => movement.reference === `PAY-${payment.id}`);
+        const validInbound = inboundReference.filter((movement) =>
+            movement.type === 'IN'
+            && Math.round(Number(movement.amount) * 100) === amountCents
+            && movement.shift.companyId === companyId
+            && movement.shift.cashRegister.branchId === branchId
+        );
+        if (inboundReference.length !== 1 || validInbound.length !== 1) {
+            throw new Error('El pago en efectivo no tiene exactamente un asiento PAY íntegro; requiere remediación manual');
+        }
+        if (movements.some((movement) => movement.reference === `REV-PAY-${payment.id}`)) {
+            throw new Error('El pago activo ya tiene un contramovimiento de caja; requiere remediación manual');
+        }
     }
 
     static async getByOrderId(orderId: number, companyId: number) {
@@ -22,7 +60,8 @@ export class PaymentService {
                 paymentMethod: {
                     select: {
                         id: true,
-                        name: true
+                        name: true,
+                        type: true
                     }
                 }
             },
@@ -38,26 +77,14 @@ export class PaymentService {
         amount: number;
         reference?: string;
         payerName?: string;
+        idempotencyKey?: string;
     }, userId: number) {
-        const amount = Math.round(Number(data.amount) * 100) / 100;
-        if (!Number.isFinite(amount) || amount <= 0) {
-            throw new Error('Amount must be a positive number');
-        }
-
-        // Validate payment method before entering transaction (tenant-scoped:
-        // company-owned methods or system-wide methods with companyId = null)
-        const paymentMethod = await prisma.paymentMethod.findFirst({
-            where: {
-                id: data.paymentMethodId,
-                OR: [{ companyId }, { companyId: null }]
-            }
-        });
-
-        if (!paymentMethod || !paymentMethod.active) {
-            throw new Error('Invalid or inactive payment method');
-        }
-
-        const isCash = paymentMethod.name.toUpperCase() === 'EFECTIVO' || paymentMethod.name.toUpperCase() === 'CASH';
+        const { amount, cents: amountCents } = this.normalizeMoney(data.amount);
+        if (!Number.isInteger(data.orderId) || data.orderId <= 0) throw new Error('Invalid order id');
+        if (!Number.isInteger(data.paymentMethodId) || data.paymentMethodId <= 0) throw new Error('Invalid payment method id');
+        const reference = this.normalizeOptionalText(data.reference, 'Reference');
+        const payerName = this.normalizeOptionalText(data.payerName, 'Payer name');
+        const idempotencyKey = this.normalizeOptionalText(data.idempotencyKey, 'Idempotency key');
 
         // ALL validation and writes inside a single transaction to prevent race conditions
         return await prisma.$transaction(async (tx) => {
@@ -66,14 +93,61 @@ export class PaymentService {
 
             const order = await tx.order.findFirst({
                 where: { id: data.orderId, companyId },
-                include: { payments: { where: { status: 'ACTIVE' } }, items: { include: { menuItem: { include: { recipes: { include: { product: true, unitOfMeasure: { select: { abbreviation: true } } } } } } } } }
+                include: { payments: { where: { status: 'ACTIVE' } } }
             });
 
             if (!order) {
                 throw new Error('Order not found');
             }
 
-            if (order.status === 'PAID') {
+            const actor = await tx.user.findFirst({
+                where: { id: userId, companyId, status: 'ACTIVE' },
+                select: { id: true }
+            });
+            if (!actor) throw new Error('Invalid user for this company');
+
+            if (idempotencyKey) {
+                const existing = await tx.payment.findUnique({
+                    where: { orderId_idempotencyKey: { orderId: order.id, idempotencyKey } },
+                    include: { paymentMethod: true }
+                });
+                if (existing) {
+                    if (existing.status === 'REVERSED') {
+                        throw new Error('Idempotency key belongs to a reversed payment and cannot be reused');
+                    }
+                    const sameRequest = Math.round(Number(existing.amount) * 100) === amountCents
+                        && existing.paymentMethodId === data.paymentMethodId
+                        && (existing.reference || null) === reference
+                        && (existing.payerName || null) === payerName;
+                    if (!sameRequest) throw new Error('Idempotency key reused with different payment data');
+                    if (existing.methodType === 'CASH') {
+                        await this.assertActiveCashLedger(tx, existing, companyId, order.branchId);
+                    }
+                    return existing;
+                }
+            }
+
+            if (!order.invoiceNumber?.trim()) {
+                throw new Error('Debe emitir la factura de la orden antes de procesar cualquier pago');
+            }
+
+            // Lock and re-read the semantic method inside the same transaction.
+            // An administrator cannot deactivate or re-type it between validation
+            // and the corresponding cash ledger decision.
+            await tx.$queryRaw`SELECT id FROM \`PaymentMethod\` WHERE id = ${data.paymentMethodId} FOR UPDATE`;
+            const paymentMethod = await tx.paymentMethod.findFirst({
+                where: {
+                    id: data.paymentMethodId,
+                    active: true,
+                    OR: [{ companyId }, { companyId: null }]
+                },
+                select: { id: true, type: true }
+            });
+            if (!paymentMethod) throw new Error('Invalid or inactive payment method');
+            const methodType: PaymentMethodType = paymentMethod.type;
+            const isCash = methodType === 'CASH';
+
+            if (order.financialStatus === 'PAID') {
                 throw new Error('Order already paid');
             }
 
@@ -84,7 +158,6 @@ export class PaymentService {
             // Calculate total paid INSIDE the transaction
             const totalCents = Math.round(Number(order.total) * 100);
             const totalPaidCents = order.payments.reduce((sum: number, p: { amount: unknown }) => sum + Math.round(Number(p.amount) * 100), 0);
-            const amountCents = Math.round(amount * 100);
             const remainingCents = totalCents - totalPaidCents;
 
             if (amountCents > remainingCents) {
@@ -95,9 +168,11 @@ export class PaymentService {
                 data: {
                     orderId: data.orderId,
                     paymentMethodId: data.paymentMethodId,
+                    methodType,
                     amount,
-                    reference: data.reference || null,
-                    payerName: data.payerName || null,
+                    reference,
+                    payerName,
+                    idempotencyKey,
                     registeredById: userId
                 },
                 include: {
@@ -161,7 +236,7 @@ export class PaymentService {
             if (newTotalPaidCents >= totalCents) {
                 await tx.order.update({
                     where: { id: data.orderId },
-                    data: { status: 'PAID', closedAt: new Date() }
+                    data: { financialStatus: 'PAID', closedAt: new Date() }
                 });
 
                 if (order.discountCode) {
@@ -185,50 +260,13 @@ export class PaymentService {
                     }
                 }
 
-                // Free the associated table once the order is PAID, but only if
-                // no other active order still occupies it (shared-table safety).
-                // Idempotent: setting AVAILABLE on an already-free table is a no-op.
-                if (order.tableId) {
-                    const otherActiveOnTable = await tx.order.count({
-                        where: {
-                            companyId,
-                            tableId: order.tableId,
-                            id: { not: order.id },
-                            status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED'] }
-                        }
-                    });
-                    if (otherActiveOnTable === 0) {
-                        await tx.table.update({
-                            where: { id: order.tableId },
-                            data: { status: 'AVAILABLE' }
-                        });
-                    }
-                }
-
-                // Auto-deduct inventory through the shared, idempotent consumption
-                // service. Skips automatically if the order was already consumed
-                // (e.g. OrderService.complete already ran).
-                //
-                // A PAID sale MUST descargar inventario: if the branch has no
-                // warehouse we abort the whole payment transaction instead of
-                // silently confirming a sale that would lose the descargue.
-                const branchId = order.branchId;
-                const warehouse = branchId
-                    ? await tx.warehouse.findFirst({ where: { branchId, companyId } })
-                    : null;
-
-                if (!warehouse) {
-                    throw new Error(
-                        `No hay almacén configurado para la sucursal ${branchId ?? '(sin sucursal)'}; ` +
-                        `no se puede descargar inventario para la orden ${order.id}.`
-                    );
-                }
-
-                await InventoryConsumptionService.consumeForOrder(tx, {
-                    order,
-                    warehouseId: warehouse.id,
-                    userId,
-                    companyId
+                // Payment is a financial fact only. Physical stock is consumed
+                // exactly once by the operational DELIVERED/complete workflow,
+                // which receives an explicit warehouse instead of guessing one.
+            } else {
+                await tx.order.update({
+                    where: { id: data.orderId },
+                    data: { financialStatus: 'PARTIAL', closedAt: null }
                 });
             }
 
@@ -257,22 +295,23 @@ export class PaymentService {
                 where: { id, orderId: target.orderId, status: 'ACTIVE', order: { companyId } },
                 include: {
                     order: {
-                        include: { payments: { where: { status: 'ACTIVE' } }, items: true }
+                        include: { payments: { where: { status: 'ACTIVE' } } }
                     }
                 }
             });
             if (!payment) throw new Error('Payment not found');
-            if (payment.order.invoiceNumber) {
-                throw new Error('No se puede revertir un pago de una orden facturada; emita una nota de crédito');
-            }
-
+            const actor = await tx.user.findFirst({
+                where: { id: userId, companyId, status: 'ACTIVE' },
+                select: { id: true }
+            });
+            if (!actor) throw new Error('Invalid user for this company');
             // Preserve the original payment and cash IN as immutable ledger rows.
             // A cash refund is represented by a compensating OUT movement in an
             // OPEN shift. Never mutate a closed shift: doing so would rewrite its
             // historical arqueo after it was signed off.
-            const originalCashMovement = await tx.cashMovement.findFirst({ where: { reference: `PAY-${id}`, type: 'IN' } });
-            if (originalCashMovement) {
-                let refundShift = await tx.cashShift.findFirst({
+            if (payment.methodType === 'CASH') {
+                await this.assertActiveCashLedger(tx, payment, companyId, payment.order.branchId);
+                const refundShift = await tx.cashShift.findFirst({
                     where: {
                         userId,
                         companyId,
@@ -282,23 +321,17 @@ export class PaymentService {
                     select: { id: true }
                 });
                 if (!refundShift) {
-                    const originalShift = await tx.cashShift.findFirst({
-                        where: {
-                            id: originalCashMovement.shiftId,
-                            companyId,
-                            endDate: null,
-                            cashRegister: { branchId: payment.order.branchId }
-                        },
-                        select: { id: true }
-                    });
-                    refundShift = originalShift;
-                }
-                if (!refundShift) {
                     throw new Error('Debe abrir un turno de caja en la sucursal de la orden para registrar el reembolso en efectivo');
                 }
                 await tx.$queryRaw`SELECT id FROM \`CashShift\` WHERE id = ${refundShift.id} AND companyId = ${companyId} FOR UPDATE`;
                 const lockedRefundShift = await tx.cashShift.findFirst({
-                    where: { id: refundShift.id, companyId, endDate: null },
+                    where: {
+                        id: refundShift.id,
+                        userId,
+                        companyId,
+                        endDate: null,
+                        cashRegister: { branchId: payment.order.branchId }
+                    },
                     select: { id: true }
                 });
                 if (!lockedRefundShift) throw new Error('El turno de caja para el reembolso ya fue cerrado');
@@ -319,70 +352,53 @@ export class PaymentService {
                 data: { status: 'REVERSED', reversedAt: new Date(), reversedById: userId, reversalReason: reversalReason.trim() }
             });
 
-            const totalBefore = payment.order.payments.reduce((sum, p) => sum + Number(p.amount), 0);
-            const remainingPaid = payment.order.payments
+            const totalBeforeCents = payment.order.payments.reduce(
+                (sum, current) => sum + Math.round(Number(current.amount) * 100),
+                0
+            );
+            const remainingPaidCents = payment.order.payments
                 .filter((p) => p.id !== id)
-                .reduce((sum, p) => sum + Number(p.amount), 0);
-            const orderTotal = Number(payment.order.total);
-            const wasFullyPaid = totalBefore + 0.01 >= orderTotal;
-            const becomesUnderpaid = remainingPaid + 0.01 < orderTotal;
+                .reduce((sum, current) => sum + Math.round(Number(current.amount) * 100), 0);
+            const orderTotalCents = Math.round(Number(payment.order.total) * 100);
+            const wasFullyPaid = totalBeforeCents >= orderTotalCents;
+            const becomesUnderpaid = remainingPaidCents < orderTotalCents;
+            const financialStatus = remainingPaidCents === 0
+                ? 'UNPAID'
+                : (remainingPaidCents >= orderTotalCents ? 'PAID' : 'PARTIAL');
 
-            if (becomesUnderpaid && payment.order.status !== 'CANCELLED') {
-                // Financial reversal must preserve the operational fact that the
-                // order was already delivered.
-                const newStatus = payment.order.status === 'DELIVERED'
-                    ? 'DELIVERED'
-                    : this.deriveOrderStatus(payment.order);
-
-                await tx.order.update({
-                    where: { id: payment.orderId },
-                    data: { status: newStatus, closedAt: null }
-                });
-
-                // Reverse based on the outstanding ORD-{id} movements, not on a
-                // display status. This also covers PAID -> DELIVERED orders.
-                await InventoryConsumptionService.reverseForOrder(tx, {
-                    orderId: payment.orderId,
-                    userId,
-                    companyId
-                });
-
-                // The order is open again. Keep its table occupied unless another
-                // active order already does so (setting OCCUPIED is idempotent).
-                if (payment.order.tableId) {
-                    await tx.table.update({
-                        where: { id: payment.order.tableId },
-                        data: { status: 'OCCUPIED' }
-                    });
+            await tx.order.update({
+                where: { id: payment.orderId },
+                data: {
+                    financialStatus,
+                    ...(becomesUnderpaid ? { closedAt: null } : {})
                 }
+            });
 
-                // Promotion usage is financial-state based as well: it was counted
-                // when the order first became fully paid, regardless of later
-                // operational status changes.
-                if (wasFullyPaid && payment.order.discountCode) {
-                    const promo = await tx.promotion.findFirst({
-                        where: { companyId, code: payment.order.discountCode.toUpperCase() },
-                        select: { id: true, usageCount: true }
-                    });
-                    if (promo && promo.usageCount > 0) {
-                        await tx.promotion.update({
-                            where: { id: promo.id },
-                            data: { usageCount: { decrement: 1 } }
-                        });
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    entityType: 'Payment',
+                    entityId: id,
+                    action: 'PAYMENT_REVERSED',
+                    userId,
+                    details: {
+                        orderId: payment.orderId,
+                        invoiceNumber: payment.order.invoiceNumber,
+                        amount: Number(payment.amount),
+                        methodType: payment.methodType,
+                        reason: reversalReason.trim(),
+                        resultingFinancialStatus: financialStatus
                     }
                 }
-            }
+            });
 
-            // Existing cancelled records remain terminal. Their inventory was
-            // already reversed by OrderService.cancel; payment cleanup must not
-            // reopen them.
-            if (payment.order.status === 'CANCELLED' && wasFullyPaid) {
-                const outstanding = await InventoryConsumptionService.reverseForOrder(tx, {
-                    orderId: payment.orderId,
-                    userId,
-                    companyId
-                });
-                if (outstanding.reversed && payment.order.discountCode) {
+            if (wasFullyPaid && becomesUnderpaid) {
+                // Financial reversal changes only the financial lifecycle. The
+                // kitchen/delivery status and physical stock are independent facts.
+                // Promotion usage is financial-state based: it was counted
+                // when the order first became fully paid, regardless of later
+                // operational status changes.
+                if (payment.order.discountCode) {
                     const promo = await tx.promotion.findFirst({
                         where: { companyId, code: payment.order.discountCode.toUpperCase() },
                         select: { id: true, usageCount: true }
@@ -418,15 +434,19 @@ export class PaymentService {
             throw new Error('Order not found');
         }
 
-        const totalPaid = order.payments.reduce((sum, p) => sum + Number(p.amount), 0);
-        const remaining = Number(order.total) - totalPaid;
+        const totalCents = Math.round(Number(order.total) * 100);
+        const totalPaidCents = order.payments.reduce(
+            (sum, payment) => sum + Math.round(Number(payment.amount) * 100),
+            0
+        );
 
         return {
             orderId,
-            total: Number(order.total),
-            totalPaid,
-            remaining,
-            status: order.status,
+            total: totalCents / 100,
+            totalPaid: totalPaidCents / 100,
+            remaining: Math.max(0, totalCents - totalPaidCents) / 100,
+            status: order.financialStatus,
+            operationalStatus: order.status,
             payments: order.payments
         };
     }

@@ -8,6 +8,7 @@ import ThemeToggle from './ThemeToggle';
 import LanguageSelector from './LanguageSelector';
 import NetworkStatus from './NetworkStatus';
 import SyncStatus from './SyncStatus';
+import KitchenNotificationBell from './KitchenNotificationBell';
 import '../components/SyncStatus.css';
 import {
     LayoutDashboard,
@@ -113,7 +114,7 @@ const NAV_SECTIONS: NavSection[] = [
             { to: '/kardex', icon: ArrowUpDown, label: 'Kardex', roles: WAREHOUSE },
             { to: '/waste-report', icon: TrendingDown, label: 'Reporte Mermas', roles: ADMIN },
             { to: '/bank-reconciliation', icon: Wallet, label: 'Conciliación Bancaria', roles: ADMIN },
-            { to: '/invoices', icon: FileText, label: 'Facturas', roles: ADMIN },
+            { to: '/invoices', icon: FileText, label: 'Facturas', roles: CASHIER },
             { to: '/reporteria', icon: ClipboardList, label: 'Reportería', roles: ADMIN },
             { to: '/users', icon: Users, label: 'Usuarios', roles: ADMIN },
         ],
@@ -252,6 +253,7 @@ export default function Layout() {
                 }}
             >
                 <Outlet />
+                <KitchenNotificationBell />
                 <SyncStatus />
             </main>
 

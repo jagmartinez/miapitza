@@ -17,6 +17,7 @@ router.get('/:id', validate(s.idParam), ReservationController.getById);
 router.post('/', requireRole('SUPERADMIN', 'ADMIN', 'HOST'), validate(s.createReservation), ReservationController.create);
 router.put('/:id', requireRole('SUPERADMIN', 'ADMIN', 'HOST'), validate(s.idParam), ReservationController.update);
 router.patch('/:id/status', requireRole('SUPERADMIN', 'ADMIN', 'HOST'), validate(s.idParam), ReservationController.updateStatus);
+router.post('/:id/check-in', requireRole('SUPERADMIN', 'ADMIN', 'HOST'), validate(s.idParam), ReservationController.checkIn);
 router.delete('/:id', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), ReservationController.delete);
 
 export default router;

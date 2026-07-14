@@ -4,37 +4,35 @@ import { X, DollarSign, Users, CreditCard, Banknote, Smartphone, Calculator, Plu
 import { paymentsAPI, splitBillAPI } from '../services/api';
 import Select from './Select';
 import type { SingleValue } from 'react-select';
-import { calculateTipAmount, calculateTotalWithTip, splitTotalEvenly } from '../utils/payment';
-import type { Order } from '../types';
-import { isCashPaymentMethodName } from '../utils/paymentAccess';
+import {
+    calculateTipAmount,
+    calculateTotalWithTip,
+    formatMoneyInput,
+    moneyToCents,
+    parseMoneyInput,
+    splitTotalEvenly,
+} from '../utils/payment';
+import type { Order, PaymentMethodType } from '../types';
+import { isCashPaymentMethodType } from '../utils/paymentAccess';
+import { newIdempotencyKey } from '../utils/idempotency';
 import './PaymentModal.css';
 
 interface PaymentMethodOption {
     id: number;
     name: string;
+    type: PaymentMethodType;
     icon: LucideIcon;
 }
 
-/** Resolve a display icon from the (company-defined) payment method name. */
-const resolveMethodIcon = (name: string): LucideIcon => {
-    const normalized = name.toLowerCase();
-    if (normalized.includes('efectivo') || normalized.includes('cash')) return Banknote;
-    if (
-        normalized.includes('tarjeta') || normalized.includes('card') ||
-        normalized.includes('crédito') || normalized.includes('credito') ||
-        normalized.includes('débito') || normalized.includes('debito')
-    ) return CreditCard;
-    if (
-        normalized.includes('transfer') || normalized.includes('móvil') ||
-        normalized.includes('movil') || normalized.includes('qr') || normalized.includes('billetera')
-    ) return Smartphone;
+const resolveMethodIcon = (type: PaymentMethodType): LucideIcon => {
+    if (type === 'CASH') return Banknote;
+    if (type === 'CARD') return CreditCard;
+    if (type === 'BANK_TRANSFER') return Smartphone;
     return DollarSign;
 };
 
-/** A cash-like method requires the "amount tendered" / change workflow. */
-const isCashMethodName = isCashPaymentMethodName;
-
 interface SplitEntry {
+    id: string;
     payerName: string;
     paymentMethodId: number;
     amount: string;
@@ -62,7 +60,6 @@ interface PaymentModalProps {
     onPaymentSuccess: (data?: { offlineQueued?: boolean }) => void;
     currencySymbol?: string;
     /** Defensa adicional: si la sucursal no tiene almacén, el cobro se bloquea. */
-    branchHasWarehouse?: boolean;
     /** Efectivo exige un turno abierto, vigente y de la misma sucursal que la orden. */
     hasUsableCashShift?: boolean;
 }
@@ -75,7 +72,6 @@ const PaymentModal = ({
     order,
     onPaymentSuccess,
     currencySymbol = '$',
-    branchHasWarehouse = true,
     hasUsableCashShift = true,
 }: PaymentModalProps) => {
     const [mode, setMode] = useState<'single' | 'split'>('single');
@@ -86,7 +82,7 @@ const PaymentModal = ({
     const [methodsLoading, setMethodsLoading] = useState(false);
     const [methodsError, setMethodsError] = useState('');
     const cashMethodId = useMemo(
-        () => paymentMethods.find((m) => isCashMethodName(m.name))?.id ?? null,
+        () => paymentMethods.find((m) => isCashPaymentMethodType(m.type))?.id ?? null,
         [paymentMethods]
     );
     const defaultMethodId = useMemo(
@@ -103,6 +99,9 @@ const PaymentModal = ({
     const [error, setError] = useState('');
     const [pendingNotice, setPendingNotice] = useState('');
     const [hasQueuedPayment, setHasQueuedPayment] = useState(false);
+    const [remainingBalance, setRemainingBalance] = useState(orderTotal);
+    const [balanceLoading, setBalanceLoading] = useState(false);
+    const [balanceError, setBalanceError] = useState('');
     const [tipPercentage, setTipPercentage] = useState<number>(0);
     const [customTip, setCustomTip] = useState<string>('');
     const [showCustomTipInput, setShowCustomTipInput] = useState(false);
@@ -110,12 +109,18 @@ const PaymentModal = ({
     // Split mode state
     const [splits, setSplits] = useState<SplitEntry[]>([]);
     const [splitStrategy, setSplitStrategy] = useState<SplitStrategy>('evenly');
-    const [itemAssignments, setItemAssignments] = useState<Record<number, number>>({});
+    const [itemQuantities, setItemQuantities] = useState<Record<number, number[]>>({});
     const [previewLoading, setPreviewLoading] = useState(false);
     // Indexes of splits already charged successfully, so a retry after a partial
     // failure does NOT double-charge the diners who already paid.
     const [paidSplitIndexes, setPaidSplitIndexes] = useState<number[]>([]);
+    // Once any split request is sent, preserve the exact bodies and keys. A lost
+    // response may still have charged the server; recalculating before replaying
+    // would change the fingerprint and defeat durable idempotency.
+    const [hasAttemptedSplitPayments, setHasAttemptedSplitPayments] = useState(false);
     const dialogRef = useRef<HTMLDivElement>(null);
+    const singlePaymentKeyRef = useRef(newIdempotencyKey());
+    const splitPaymentKeysRef = useRef<string[]>([]);
 
     const handleClose = useCallback(() => {
         if (loading) return;
@@ -139,17 +144,17 @@ const PaymentModal = ({
         paymentsAPI.getPaymentMethods()
             .then((res) => {
                 if (cancelled) return;
-                const rows = (res.data?.data || []) as Array<{ id: number; name: string; active?: boolean }>;
+                const rows = (res.data?.data || []) as Array<{ id: number; name: string; type: PaymentMethodType; active?: boolean }>;
                 const options = rows
                     .filter((row) => row.active !== false)
-                    .map((row) => ({ id: row.id, name: row.name, icon: resolveMethodIcon(row.name) }));
+                    .map((row) => ({ id: row.id, name: row.name, type: row.type, icon: resolveMethodIcon(row.type) }));
                 setPaymentMethods(options);
                 setSelectedMethod((prev) => (prev !== null
                     && options.some((o) => o.id === prev)
-                    && (hasUsableCashShift || prev !== options.find((o) => isCashMethodName(o.name))?.id)
+                    && (hasUsableCashShift || prev !== options.find((o) => isCashPaymentMethodType(o.type))?.id)
                     ? prev
-                    : (hasUsableCashShift ? options.find((o) => isCashMethodName(o.name))?.id : null)
-                        ?? options.find((o) => !isCashMethodName(o.name))?.id
+                    : (hasUsableCashShift ? options.find((o) => isCashPaymentMethodType(o.type))?.id : null)
+                        ?? options.find((o) => !isCashPaymentMethodType(o.type))?.id
                         ?? null));
                 if (options.length === 0) {
                     setMethodsError('No hay métodos de pago configurados. Contacta a un administrador.');
@@ -178,11 +183,45 @@ const PaymentModal = ({
             setMode('single');
             setSplits([]);
             setSplitStrategy('evenly');
-            setItemAssignments({});
+            setItemQuantities({});
             setPreviewLoading(false);
             setPaidSplitIndexes([]);
+            setHasAttemptedSplitPayments(false);
+            setBalanceLoading(false);
+            setRemainingBalance(orderTotal);
+            setBalanceError('');
+            singlePaymentKeyRef.current = newIdempotencyKey();
+            splitPaymentKeysRef.current = [];
         }
     }, [isOpen, orderTotal]);
+
+    useEffect(() => {
+        if (!isOpen || !orderId) return;
+        let cancelled = false;
+        setBalanceLoading(true);
+        setBalanceError('');
+        paymentsAPI.getSummary(orderId)
+            .then((response) => {
+                if (cancelled) return;
+                const remaining = Number(response.data?.data?.remaining);
+                if (!Number.isFinite(remaining) || remaining < 0) {
+                    throw new Error('Saldo pendiente inválido');
+                }
+                const normalized = Math.round(remaining * 100) / 100;
+                setRemainingBalance(normalized);
+                setAmountTendered(normalized.toFixed(2));
+                if (normalized <= 0) setBalanceError('La orden ya no tiene saldo pendiente.');
+            })
+            .catch((err: unknown) => {
+                if (!cancelled) {
+                    setBalanceError(axiosErrorMessage(err, 'No se pudo validar el saldo pendiente de la orden.'));
+                }
+            })
+            .finally(() => {
+                if (!cancelled) setBalanceLoading(false);
+            });
+        return () => { cancelled = true; };
+    }, [isOpen, orderId]);
 
     const persistedTipAmount = Number(order?.tipAmount || 0);
     const hasPersistedOrder = Boolean(orderId && order);
@@ -190,23 +229,28 @@ const PaymentModal = ({
     const tipAmount = allowLocalTipEditing
         ? calculateTipAmount(orderTotal, tipPercentage, customTip)
         : persistedTipAmount;
-    const totalWithTip = allowLocalTipEditing
+    const persistedOrLocalTotal = allowLocalTipEditing
         ? calculateTotalWithTip(orderTotal, tipAmount)
         : Number(order?.total || orderTotal);
+    const totalWithTip = hasPersistedOrder ? remainingBalance : persistedOrLocalTotal;
 
-    const calculateChange = () => {
-        const tendered = parseFloat(amountTendered) || 0;
-        return Math.max(0, tendered - totalWithTip);
-    };
+    const tenderedAmount = parseMoneyInput(amountTendered);
+    const tenderedCents = tenderedAmount === null ? 0 : moneyToCents(tenderedAmount);
+    const totalCents = moneyToCents(totalWithTip);
+    const originalOrderCents = moneyToCents(Number(order?.total ?? orderTotal));
+    const alreadyPaidCents = Math.max(0, originalOrderCents - totalCents);
 
-    const buildSplitEntries = useCallback((count: number, amounts?: number[]) => {
+    const calculateChange = () => Math.max(0, tenderedCents - totalCents) / 100;
+
+    const buildSplitEntries = useCallback((count: number, amounts?: number[], previous: SplitEntry[] = []) => {
         return Array.from({ length: count }, (_, index) => ({
-            payerName: splits[index]?.payerName || `Comensal ${index + 1}`,
-            paymentMethodId: splits[index]?.paymentMethodId || defaultMethodId || 0,
+            id: previous[index]?.id || newIdempotencyKey(),
+            payerName: previous[index]?.payerName || `Comensal ${index + 1}`,
+            paymentMethodId: previous[index]?.paymentMethodId || defaultMethodId || 0,
             amount: (amounts?.[index] ?? 0).toFixed(2),
-            reference: splits[index]?.reference || ''
+            reference: previous[index]?.reference || ''
         }));
-    }, [defaultMethodId, splits]);
+    }, [defaultMethodId]);
 
     const handleQuickAmount = (multiplier: number) => {
         const rounded = Math.ceil(totalWithTip / multiplier) * multiplier;
@@ -217,7 +261,7 @@ const PaymentModal = ({
     const addSplit = () => {
         const nextCount = splits.length + 1;
         const amounts = splitTotalEvenly(totalWithTip, nextCount);
-        setSplits(buildSplitEntries(nextCount, amounts));
+        setSplits(buildSplitEntries(nextCount, amounts, splits));
         setPaidSplitIndexes([]);
     };
 
@@ -225,18 +269,11 @@ const PaymentModal = ({
         const nextSplits = splits.filter((_, i) => i !== index);
         setSplits(nextSplits);
         setPaidSplitIndexes([]);
-        setItemAssignments((prev) => Object.fromEntries(
-            Object.entries(prev).map(([itemId, payerIndex]) => {
-                const numericIndex = Number(payerIndex);
-                if (numericIndex === index) {
-                    return [itemId, 0];
-                }
-                if (numericIndex > index) {
-                    return [itemId, numericIndex - 1];
-                }
-                return [itemId, numericIndex];
-            })
-        ));
+        setItemQuantities((previous) => Object.fromEntries(Object.entries(previous).map(([itemId, quantities]) => {
+            const next = quantities.filter((_, payerIndex) => payerIndex !== index);
+            if (next.length > 0) next[0] += quantities[index] ?? 0;
+            return [itemId, next];
+        })));
     };
 
     const updateSplit = (index: number, field: keyof SplitEntry, value: string | number) => {
@@ -247,34 +284,40 @@ const PaymentModal = ({
 
     const splitEvenlyAmong = (count: number) => {
         const amounts = splitTotalEvenly(totalWithTip, count);
-        setSplits(buildSplitEntries(count, amounts));
+        setSplits(buildSplitEntries(count, amounts, splits));
         setPaidSplitIndexes([]);
-        setItemAssignments((prev) => {
-            const nextAssignments: Record<number, number> = {};
-            Object.entries(prev).forEach(([itemId, payerIndex]) => {
-                nextAssignments[Number(itemId)] = Math.min(Number(payerIndex), count - 1);
-            });
-            return nextAssignments;
-        });
+        initializeItemAssignments(count);
     };
 
     const initializeItemAssignments = useCallback((count: number) => {
-        const nextAssignments: Record<number, number> = {};
+        const nextAssignments: Record<number, number[]> = {};
         orderItems.forEach((item, index) => {
-            nextAssignments[item.id] = index % count;
+            const quantities = Array<number>(count).fill(0);
+            quantities[index % count] = item.quantity;
+            nextAssignments[item.id] = quantities;
         });
-        setItemAssignments(nextAssignments);
+        setItemQuantities(nextAssignments);
     }, [orderItems]);
 
     // Monotonic id used to ignore stale split-preview responses. Each invocation
     // claims the latest id; if a newer call starts before this one resolves, this
     // call's results are discarded (it neither updates state nor returns entries).
     const previewSeqRef = useRef(0);
+    const splitPreviewSnapshotRef = useRef({
+        strategy: splitStrategy,
+        entries: splits,
+        assignments: itemQuantities,
+    });
+    splitPreviewSnapshotRef.current = {
+        strategy: splitStrategy,
+        entries: splits,
+        assignments: itemQuantities,
+    };
 
     const recalculateSplitPreview = useCallback(async (
         strategy: SplitStrategy,
-        entries: SplitEntry[] = splits,
-        assignments: Record<number, number> = itemAssignments
+        entries: SplitEntry[],
+        assignments: Record<number, number[]>
     ): Promise<SplitEntry[] | null> => {
         if (!orderId || entries.length === 0) {
             return entries;
@@ -290,7 +333,7 @@ const PaymentModal = ({
                 const response = await splitBillAPI.splitEvenly(orderId, entries.length);
                 if (isStale()) return null;
                 const nextAmounts = response.data.data.splits.map((split: { amount: number }) => Number(split.amount));
-                const nextEntries = buildSplitEntries(entries.length, nextAmounts);
+                const nextEntries = buildSplitEntries(entries.length, nextAmounts, entries);
                 setSplits(nextEntries);
                 return nextEntries;
             }
@@ -298,13 +341,13 @@ const PaymentModal = ({
             if (strategy === 'by-items') {
                 const assignmentsPayload = entries.map((entry, index) => ({
                     personName: entry.payerName,
-                    itemIds: orderItems
-                        .filter((item) => assignments[item.id] === index)
-                        .map((item) => item.id)
-                })).filter((assignment) => assignment.itemIds.length > 0);
+                    items: orderItems
+                        .map((item) => ({ orderItemId: item.id, quantity: assignments[item.id]?.[index] ?? 0 }))
+                        .filter((item) => item.quantity > 0)
+                })).filter((assignment) => assignment.items.length > 0);
 
                 if (assignmentsPayload.length === 0) {
-                    const nextEntries = buildSplitEntries(entries.length, Array(entries.length).fill(0));
+                    const nextEntries = buildSplitEntries(entries.length, Array(entries.length).fill(0), entries);
                     setSplits(nextEntries);
                     return nextEntries;
                 }
@@ -324,7 +367,7 @@ const PaymentModal = ({
 
             const response = await splitBillAPI.splitByAmount(orderId, entries.map((entry) => ({
                 personName: entry.payerName,
-                amount: parseFloat(entry.amount) || 0
+                amount: parseMoneyInput(entry.amount) || 0
             })));
             if (isStale()) return null;
 
@@ -346,17 +389,33 @@ const PaymentModal = ({
         } finally {
             if (!isStale()) setPreviewLoading(false);
         }
-    }, [buildSplitEntries, itemAssignments, orderId, orderItems, splits]);
+    }, [buildSplitEntries, orderId, orderItems]);
+
+    const splitPreviewFingerprint = useMemo(() => JSON.stringify({
+        strategy: splitStrategy,
+        count: splits.length,
+        payers: splits.map((split) => split.payerName),
+        amounts: splitStrategy === 'by-amount' ? splits.map((split) => split.amount) : undefined,
+        assignments: splitStrategy === 'by-items' ? itemQuantities : undefined,
+    }), [itemQuantities, splitStrategy, splits]);
+
+    const itemAssignmentsComplete = useMemo(() => splitStrategy !== 'by-items' || (
+        orderItems.every((item) => (itemQuantities[item.id] ?? []).reduce((sum, quantity) => sum + quantity, 0) === item.quantity)
+        && splits.every((_, payerIndex) => orderItems.some((item) => (itemQuantities[item.id]?.[payerIndex] ?? 0) > 0))
+    ), [itemQuantities, orderItems, splitStrategy, splits]);
 
     useEffect(() => {
-        if (!isOpen || mode !== 'split' || splits.length === 0) {
+        const snapshot = splitPreviewSnapshotRef.current;
+        if (!isOpen || mode !== 'split' || snapshot.entries.length === 0) {
             return;
         }
 
-        if (splitStrategy === 'by-items' && Object.keys(itemAssignments).length === 0 && orderItems.length > 0) {
-            initializeItemAssignments(splits.length);
+        if (snapshot.strategy === 'by-items' && Object.keys(snapshot.assignments).length === 0 && orderItems.length > 0) {
+            initializeItemAssignments(snapshot.entries.length);
             return;
         }
+
+        if (snapshot.strategy === 'by-items' && !itemAssignmentsComplete) return;
 
         if (!orderId) {
             return;
@@ -364,17 +423,30 @@ const PaymentModal = ({
 
         // Debounce: avoid firing a preview request on every keystroke/edit.
         const handle = setTimeout(() => {
-            void recalculateSplitPreview(splitStrategy);
+            const latest = splitPreviewSnapshotRef.current;
+            void recalculateSplitPreview(latest.strategy, latest.entries, latest.assignments);
         }, 350);
         return () => clearTimeout(handle);
-    }, [initializeItemAssignments, isOpen, itemAssignments, mode, orderId, orderItems.length, recalculateSplitPreview, splitStrategy, splits.length]);
+        // The fingerprint intentionally excludes server-calculated amounts for
+        // even/item splits, so applying a preview cannot trigger another preview.
+    }, [initializeItemAssignments, isOpen, itemAssignmentsComplete, mode, orderId, orderItems.length, recalculateSplitPreview, splitPreviewFingerprint]);
 
-    const getSplitTotal = () => splits.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
-    const getSplitRemaining = () => Math.round((totalWithTip - getSplitTotal()) * 100) / 100;
+    const getSplitTotalCents = () => splits.reduce(
+        (sum, split) => sum + moneyToCents(parseMoneyInput(split.amount) || 0),
+        0
+    );
+    const getSplitTotal = () => getSplitTotalCents() / 100;
+    const getSplitRemaining = () => (totalCents - getSplitTotalCents()) / 100;
+    const paidInSessionCents = paidSplitIndexes.reduce(
+        (sum, index) => sum + moneyToCents(parseMoneyInput(splits[index]?.amount ?? '') || 0),
+        0
+    );
+    const totalPaidCents = Math.min(originalOrderCents, alreadyPaidCents + paidInSessionCents);
+    const pendingAfterPaymentsCents = Math.max(0, originalOrderCents - totalPaidCents);
 
     const handleSinglePayment = async () => {
-        const tendered = parseFloat(amountTendered) || 0;
-        const total = totalWithTip;
+        const tendered = tenderedAmount || 0;
+        const total = totalCents / 100;
 
         if (selectedMethod === null) {
             setError('Selecciona un método de pago');
@@ -386,7 +458,7 @@ const PaymentModal = ({
             return;
         }
 
-        if (isCashSelected && tendered < total) {
+        if (isCashSelected && moneyToCents(tendered) < totalCents) {
             setError('El monto ingresado es menor al total');
             return;
         }
@@ -405,7 +477,7 @@ const PaymentModal = ({
             }, {
                 operationType: 'CREATE_PAYMENT',
                 entityTempId: `payment-${Date.now()}`
-            });
+            }, singlePaymentKeyRef.current);
 
             // Offline: the request was only queued, NOT confirmed by the server.
             // Do not report success or close the order — keep it open until sync.
@@ -430,6 +502,10 @@ const PaymentModal = ({
             setError('Cada comensal debe tener un nombre');
             return;
         }
+        if (!itemAssignmentsComplete) {
+            setError('Asigna exactamente todas las unidades y al menos una a cada comensal.');
+            return;
+        }
 
         setLoading(true);
         setError('');
@@ -438,16 +514,22 @@ const PaymentModal = ({
         try {
             if (!orderId) { setError('No se ha creado la orden'); setLoading(false); return; }
 
-            const effectiveSplits = await recalculateSplitPreview(splitStrategy, splits, itemAssignments) || splits;
+            const effectiveSplits = hasAttemptedSplitPayments
+                ? splits
+                : await recalculateSplitPreview(splitStrategy, splits, itemQuantities) || splits;
             if (!hasUsableCashShift && effectiveSplits.some((split) => split.paymentMethodId === cashMethodId)) {
                 setError('La división contiene efectivo, pero no hay un turno vigente en la sucursal de la orden.');
                 setLoading(false);
                 return;
             }
-            const previewTotal = effectiveSplits.reduce((sum, split) => sum + (parseFloat(split.amount) || 0), 0);
-            const remaining = Math.round((totalWithTip - previewTotal) * 100) / 100;
+            const previewTotalCents = effectiveSplits.reduce(
+                (sum, split) => sum + moneyToCents(parseMoneyInput(split.amount) || 0),
+                0
+            );
+            const remainingCents = totalCents - previewTotalCents;
+            const remaining = remainingCents / 100;
 
-            if (Math.abs(remaining) > 0.02) {
+            if (remainingCents !== 0) {
                 setError(`La suma de los pagos no coincide con el total. Diferencia: ${currencySymbol}${remaining.toFixed(2)}`);
                 setLoading(false);
                 return;
@@ -464,19 +546,28 @@ const PaymentModal = ({
             for (let i = 0; i < effectiveSplits.length; i++) {
                 if (succeeded.includes(i)) continue;
                 const split = effectiveSplits[i];
+                const splitAmount = (parseMoneyInput(split.amount) || 0);
+                // A by-items rebuild can legitimately return zero for a named
+                // diner whose previous payment already covered that share.
+                if (splitAmount <= 0) {
+                    succeeded.push(i);
+                    setPaidSplitIndexes([...succeeded]);
+                    continue;
+                }
 
                 let response;
                 try {
+                    setHasAttemptedSplitPayments(true);
                     response = await paymentsAPI.create({
                         orderId,
                         paymentMethodId: split.paymentMethodId,
-                        amount: parseFloat(split.amount) || 0,
+                        amount: splitAmount,
                         reference: split.reference || undefined,
                         payerName: split.payerName,
                     }, {
                         operationType: 'CREATE_PAYMENT',
                         entityTempId: `payment-${orderId}-${i}`
-                    });
+                    }, splitPaymentKeysRef.current[i] ||= newIdempotencyKey());
                 } catch (err: unknown) {
                     setPaidSplitIndexes(succeeded);
                     const okNames = succeeded.map(nameOf);
@@ -545,22 +636,23 @@ const PaymentModal = ({
                         <button
                             type="button"
                             className={`payment-mode-btn ${mode === 'single' ? 'active' : ''}`}
+                            aria-pressed={mode === 'single'}
                             onClick={() => setMode('single')}
-                            disabled={hasQueuedPayment || paidSplitIndexes.length > 0}
+                            disabled={hasQueuedPayment || hasAttemptedSplitPayments}
                         >
                             Pago Único
                         </button>
                         <button
                             type="button"
                             className={`payment-mode-btn ${mode === 'split' ? 'active' : ''}`}
+                            aria-pressed={mode === 'split'}
                             onClick={() => {
                                 setMode('split');
-                                setSplitStrategy('evenly');
                                 if (splits.length === 0) {
                                     splitEvenlyAmong(2);
                                 }
                             }}
-                            disabled={hasQueuedPayment || paidSplitIndexes.length > 0}
+                            disabled={hasQueuedPayment || hasAttemptedSplitPayments}
                         >
                             <Users size={14} />
                             Dividir Cuenta
@@ -619,16 +711,32 @@ const PaymentModal = ({
 
                                 {isCashSelected && (
                                     <div className="section">
-                                        <div className="section-title">Monto Recibido</div>
+                                        <label className="section-title" htmlFor="payment-amount-tendered">Monto Recibido</label>
                                         <div className="cash-input-group">
                                             <span style={{ fontSize: '20px', fontWeight: 'bold' }}>{currencySymbol}</span>
-                                            <input type="number" step="0.01" value={amountTendered}
-                                                onChange={(e) => setAmountTendered(e.target.value)}
-                                                className="cash-input" autoFocus placeholder="0.00" />
+                                            <input
+                                                type="text"
+                                                id="payment-amount-tendered"
+                                                inputMode="decimal"
+                                                value={amountTendered}
+                                                onFocus={(event) => {
+                                                    const editable = event.currentTarget.value.replace(/,/g, '');
+                                                    if (editable !== event.currentTarget.value) setAmountTendered(editable);
+                                                }}
+                                                onBlur={() => setAmountTendered((value) => formatMoneyInput(value))}
+                                                onChange={(event) => {
+                                                    const next = event.target.value.replace(/,/g, '');
+                                                    if (/^\d*(?:\.\d{0,2})?$/.test(next)) setAmountTendered(next);
+                                                }}
+                                                className="cash-input"
+                                                autoFocus
+                                                placeholder="0.00"
+                                                aria-invalid={amountTendered.length > 0 && tenderedAmount === null}
+                                            />
                                         </div>
                                         <div className="quick-amounts">
                                             {[5, 10, 20].map(m => (
-                                                <button key={m} onClick={() => handleQuickAmount(m)} className="quick-btn">
+                                                <button type="button" key={m} onClick={() => handleQuickAmount(m)} className="quick-btn">
                                                     Redondear {currencySymbol}{m}
                                                 </button>
                                             ))}
@@ -688,7 +796,7 @@ const PaymentModal = ({
                                     )}
                                 </div>
 
-                                {isCashSelected && parseFloat(amountTendered) >= totalWithTip && (
+                                {isCashSelected && tenderedCents >= totalCents && (
                                     <div className="section change-section">
                                         <div className="section-title">Cambio</div>
                                         <div className="change-display-reorganized">
@@ -700,19 +808,28 @@ const PaymentModal = ({
                         </>
                     ) : (
                         /* === SPLIT MODE === */
-                        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <div className="split-mode-content">
                             <div className="total-display" style={{ textAlign: 'center' }}>
-                                <div className="total-label">Total de la Orden</div>
+                                <div className="total-label">Saldo a dividir</div>
                                 <div className="total-amount-large">{currencySymbol}{totalWithTip.toFixed(2)}</div>
                             </div>
 
-                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                            <div className="split-financial-summary" aria-label="Resumen de división de cuenta">
+                                <div><span>Total factura</span><strong>{currencySymbol}{(originalOrderCents / 100).toFixed(2)}</strong></div>
+                                <div><span>Total pagado</span><strong>{currencySymbol}{(totalPaidCents / 100).toFixed(2)}</strong></div>
+                                <div><span>Saldo de la orden</span><strong>{currencySymbol}{(pendingAfterPaymentsCents / 100).toFixed(2)}</strong></div>
+                                <div><span>Total asignado</span><strong>{currencySymbol}{getSplitTotal().toFixed(2)}</strong></div>
+                                <div><span>Por asignar</span><strong>{currencySymbol}{getSplitRemaining().toFixed(2)}</strong></div>
+                            </div>
+
+                            <div className="split-toolbar">
                                 {[
                                     { value: 'evenly', label: 'Equitativa' },
                                     { value: 'by-items', label: 'Por platos' },
                                     { value: 'by-amount', label: 'Por monto' }
                                 ].map((option) => (
                                     <button
+                                        type="button"
                                         key={option.value}
                                         onClick={() => {
                                             const nextStrategy = option.value as SplitStrategy;
@@ -720,11 +837,11 @@ const PaymentModal = ({
                                             if (splits.length === 0) {
                                                 splitEvenlyAmong(2);
                                             }
-                                            if (nextStrategy === 'by-items' && Object.keys(itemAssignments).length === 0) {
+                                            if (nextStrategy === 'by-items' && Object.keys(itemQuantities).length === 0) {
                                                 initializeItemAssignments(Math.max(splits.length, 2));
                                             }
                                         }}
-                                        disabled={paidSplitIndexes.length > 0}
+                                        disabled={hasAttemptedSplitPayments}
                                         style={{
                                             padding: '6px 14px',
                                             borderRadius: '999px',
@@ -742,14 +859,14 @@ const PaymentModal = ({
                             </div>
 
                             {/* Quick split buttons */}
-                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                            <div className="split-toolbar">
                                 {[2, 3, 4].map(n => (
-                                    <button key={n} onClick={() => {
+                                    <button type="button" key={n} onClick={() => {
                                         splitEvenlyAmong(n);
                                         if (splitStrategy === 'by-items') {
                                             initializeItemAssignments(n);
                                         }
-                                    }} disabled={paidSplitIndexes.length > 0}
+                                    }} disabled={hasAttemptedSplitPayments}
                                         style={{
                                             padding: '6px 16px', borderRadius: '8px', border: '1px solid var(--color-neutral-200)',
                                             background: splits.length === n ? 'var(--color-primary, #2563eb)' : 'var(--color-neutral-50)',
@@ -759,7 +876,7 @@ const PaymentModal = ({
                                         Dividir en {n}
                                     </button>
                                 ))}
-                                <button disabled={paidSplitIndexes.length > 0} onClick={() => {
+                                <button type="button" disabled={hasAttemptedSplitPayments} onClick={() => {
                                     addSplit();
                                     if (splitStrategy === 'by-items') {
                                         initializeItemAssignments(splits.length + 1);
@@ -773,7 +890,7 @@ const PaymentModal = ({
                                     <Plus size={14} /> Agregar
                                 </button>
                                 {orderId && (
-                                    <button disabled={paidSplitIndexes.length > 0} onClick={() => void recalculateSplitPreview(splitStrategy)}
+                                    <button type="button" disabled={hasAttemptedSplitPayments || !itemAssignmentsComplete} onClick={() => void recalculateSplitPreview(splitStrategy, splits, itemQuantities)}
                                         style={{
                                             padding: '6px 16px', borderRadius: '8px', border: '1px solid var(--color-neutral-200)',
                                             background: 'var(--color-neutral-50)', cursor: 'pointer',
@@ -785,18 +902,19 @@ const PaymentModal = ({
                             </div>
 
                             {/* Split entries */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '340px', overflowY: 'auto', padding: '4px' }}>
+                            <div className="split-entry-list">
                                 {splits.map((split, idx) => (
-                                    <div key={idx} style={{
+                                    <div className="split-entry" key={split.id} style={{
                                         display: 'flex', gap: '8px', alignItems: 'center',
                                         padding: '10px 12px', borderRadius: '10px',
                                         background: 'var(--color-neutral-50)', border: '1px solid var(--color-neutral-200)'
                                     }}>
                                         <input
                                             type="text" value={split.payerName}
+                                            aria-label={`Nombre del comensal ${idx + 1}`}
                                             onChange={(e) => updateSplit(idx, 'payerName', e.target.value)}
-                                            disabled={paidSplitIndexes.includes(idx)}
-                                            placeholder="Nombre" style={{
+                                            disabled={hasAttemptedSplitPayments}
+                                            className="split-text-input" placeholder="Nombre" style={{
                                                 flex: 1, padding: '6px 10px', borderRadius: '6px',
                                                 border: '1px solid var(--color-neutral-200)', fontSize: '0.85rem',
                                                 background: 'var(--bg-primary, #fff)'
@@ -804,6 +922,9 @@ const PaymentModal = ({
 
                                         <Select
                                             className="payment-split-select"
+                                            inputId={`split-payment-method-${split.id}`}
+                                            aria-label={`Método de pago de ${split.payerName}`}
+                                            variant="modal"
                                             value={
                                                 paymentMethods.find((m) => m.id === split.paymentMethodId)
                                                     ? { value: split.paymentMethodId, label: paymentMethods.find((m) => m.id === split.paymentMethodId)!.name }
@@ -811,7 +932,7 @@ const PaymentModal = ({
                                             }
                                             onChange={(option: SingleValue<{ value: number; label: string }>) =>
                                                 option && updateSplit(idx, 'paymentMethodId', option.value)}
-                                            isDisabled={paidSplitIndexes.includes(idx)}
+                                            isDisabled={hasAttemptedSplitPayments}
                                             options={paymentMethods
                                                 .filter((m) => hasUsableCashShift || m.id !== cashMethodId)
                                                 .map((m) => ({ value: m.id, label: m.name }))}
@@ -820,9 +941,10 @@ const PaymentModal = ({
 
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
                                             <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{currencySymbol}</span>
-                                            <input type="number" step="0.01" value={split.amount}
+                                            <input className="split-amount-input" type="number" step="0.01" value={split.amount}
+                                                aria-label={`Monto de ${split.payerName}`}
                                                 onChange={(e) => updateSplit(idx, 'amount', e.target.value)}
-                                                disabled={splitStrategy === 'by-items' || paidSplitIndexes.includes(idx)}
+                                                disabled={splitStrategy === 'by-items' || hasAttemptedSplitPayments}
                                                 style={{
                                                     width: '80px', padding: '6px 8px', borderRadius: '6px',
                                                     border: '1px solid var(--color-neutral-200)', fontSize: '0.85rem',
@@ -830,16 +952,18 @@ const PaymentModal = ({
                                                 }} />
                                         </div>
 
-                                        <input type="text" value={split.reference}
+                                        <input className="split-text-input" type="text" value={split.reference}
+                                            aria-label={`Referencia opcional de ${split.payerName}`}
                                             onChange={(e) => updateSplit(idx, 'reference', e.target.value)}
-                                            disabled={paidSplitIndexes.includes(idx)}
+                                            disabled={hasAttemptedSplitPayments}
                                             placeholder="Ref. (opc.)" style={{
                                                 width: '90px', padding: '6px 8px', borderRadius: '6px',
                                                 border: '1px solid var(--color-neutral-200)', fontSize: '0.8rem',
                                                 background: 'var(--bg-primary, #fff)'
                                             }} />
 
-                                        <button onClick={() => removeSplit(idx)} disabled={paidSplitIndexes.length > 0}
+                                        <button type="button" onClick={() => removeSplit(idx)} disabled={hasAttemptedSplitPayments}
+                                            aria-label={`Eliminar pago de ${split.payerName}`}
                                             style={{
                                                 background: 'none', border: 'none', cursor: 'pointer',
                                                 color: 'var(--color-error, #ef4444)', padding: '4px'
@@ -851,7 +975,7 @@ const PaymentModal = ({
                             </div>
 
                             {splitStrategy === 'by-items' && orderItems.length > 0 && (
-                                <div style={{
+                                <div className="split-items-panel" style={{
                                     display: 'flex',
                                     flexDirection: 'column',
                                     gap: '8px',
@@ -860,39 +984,60 @@ const PaymentModal = ({
                                     border: '1px solid var(--color-neutral-200)',
                                     background: 'var(--color-neutral-50)'
                                 }}>
-                                    <div style={{ fontWeight: 700 }}>Asignación por plato</div>
-                                    {orderItems.map((item) => (
-                                        <div key={item.id} style={{
-                                            display: 'grid',
-                                            gridTemplateColumns: '1fr auto',
-                                            gap: '10px',
-                                            alignItems: 'center'
-                                        }}>
-                                            <div>
-                                                <div style={{ fontWeight: 600 }}>{item.quantity}x {item.menuItem?.name}</div>
-                                                <div style={{ fontSize: '0.78rem', color: 'var(--color-text-secondary)' }}>
-                                                    {currencySymbol}{Number(item.subtotal).toFixed(2)}
+                                    <div style={{ fontWeight: 700 }}>Asignación por unidades</div>
+                                    {orderItems.map((item) => {
+                                        const quantities = itemQuantities[item.id] ?? Array<number>(splits.length).fill(0);
+                                        const assigned = quantities.reduce((sum, quantity) => sum + quantity, 0);
+                                        const pending = item.quantity - assigned;
+                                        return (
+                                            <div key={item.id} className="split-item-allocation">
+                                                <div className="split-item-heading">
+                                                    <div>
+                                                        <strong>{item.quantity}x {item.menuItem?.name}</strong>
+                                                        <small>{currencySymbol}{Number(item.subtotal).toFixed(2)}</small>
+                                                    </div>
+                                                    <span className={pending === 0 ? 'complete' : 'pending'}>
+                                                        {pending === 0 ? 'Completo' : `${pending} sin asignar`}
+                                                    </span>
+                                                </div>
+                                                <div className="split-quantity-grid">
+                                                    {splits.map((split, payerIndex) => {
+                                                        const others = assigned - (quantities[payerIndex] ?? 0);
+                                                        const max = Math.max(0, item.quantity - others);
+                                                        return (
+                                                            <label key={split.id}>
+                                                                <span>{split.payerName}</span>
+                                                                <input
+                                                                    type="number"
+                                                                    inputMode="numeric"
+                                                                    min={0}
+                                                                    max={max}
+                                                                    step={1}
+                                                                    value={quantities[payerIndex] ?? 0}
+                                                                    disabled={hasAttemptedSplitPayments}
+                                                                    aria-label={`Unidades de ${item.menuItem?.name || `producto ${item.id}`} para ${split.payerName}`}
+                                                                    onChange={(event) => {
+                                                                        const raw = Number(event.target.value);
+                                                                        const nextQuantity = Number.isInteger(raw) ? Math.max(0, Math.min(max, raw)) : 0;
+                                                                        setItemQuantities((current) => {
+                                                                            const next = [...(current[item.id] ?? Array<number>(splits.length).fill(0))];
+                                                                            next[payerIndex] = nextQuantity;
+                                                                            return { ...current, [item.id]: next };
+                                                                        });
+                                                                    }}
+                                                                />
+                                                            </label>
+                                                        );
+                                                    })}
                                                 </div>
                                             </div>
-                                            <Select
-                                                className="payment-split-assign-select"
-                                                value={{
-                                                    value: itemAssignments[item.id] ?? 0,
-                                                    label: splits[itemAssignments[item.id] ?? 0]?.payerName || splits[0]?.payerName || ''
-                                                }}
-                                                onChange={(option: SingleValue<{ value: number; label: string }>) =>
-                                                    option && setItemAssignments((prev) => ({
-                                                        ...prev,
-                                                        [item.id]: option.value
-                                                    }))}
-                                                options={splits.map((split, index) => ({
-                                                    value: index,
-                                                    label: split.payerName
-                                                }))}
-                                                isSearchable={false}
-                                            />
+                                        );
+                                    })}
+                                    {!itemAssignmentsComplete && (
+                                        <div className="split-allocation-warning" role="status">
+                                            Distribuye todas las unidades y asigna al menos una a cada comensal.
                                         </div>
-                                    ))}
+                                    )}
                                 </div>
                             )}
 
@@ -901,13 +1046,13 @@ const PaymentModal = ({
                                 <div style={{
                                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                                     padding: '10px 16px', borderRadius: '10px',
-                                    background: Math.abs(getSplitRemaining()) < 0.02 ? 'var(--color-success, #22c55e)10' : 'var(--color-warning, #f59e0b)10',
-                                    border: `1px solid ${Math.abs(getSplitRemaining()) < 0.02 ? 'var(--color-success, #22c55e)' : 'var(--color-warning, #f59e0b)'}`,
+                                    background: getSplitRemaining() === 0 ? 'color-mix(in srgb, var(--color-success) 10%, transparent)' : 'color-mix(in srgb, var(--color-warning) 10%, transparent)',
+                                    border: `1px solid ${getSplitRemaining() === 0 ? 'var(--color-success)' : 'var(--color-warning)'}`,
                                     fontWeight: 600, fontSize: '0.9rem'
                                 }}>
                                     <span>Suma pagos: {currencySymbol}{getSplitTotal().toFixed(2)}</span>
-                                    <span style={{ color: Math.abs(getSplitRemaining()) < 0.02 ? 'var(--color-success, #22c55e)' : 'var(--color-error, #ef4444)' }}>
-                                        {Math.abs(getSplitRemaining()) < 0.02 ? 'Cuadrado' : `Restante: ${currencySymbol}${getSplitRemaining().toFixed(2)}`}
+                                    <span style={{ color: getSplitRemaining() === 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                                        {getSplitRemaining() === 0 ? 'Cuadrado' : `Restante: ${currencySymbol}${getSplitRemaining().toFixed(2)}`}
                                     </span>
                                 </div>
                             )}
@@ -917,18 +1062,13 @@ const PaymentModal = ({
 
                 {/* Footer */}
                 <div className="payment-footer">
-                    {!branchHasWarehouse && (
-                        <div className="error-message-new">
-                            No se puede cobrar: esta sucursal no tiene un almacén configurado.
-                            Configura un almacén en Bodegas para habilitar el cobro.
-                        </div>
-                    )}
                     {!hasUsableCashShift && cashMethodId !== null && (
                         <div className="error-message-new">
                             Efectivo no está disponible: abre un turno vigente en la misma sucursal. Los otros métodos sí pueden procesarse.
                         </div>
                     )}
-                    {error && <div className="error-message-new">{error}</div>}
+                    {error && <div className="error-message-new" role="alert">{error}</div>}
+                    {balanceError && <div className="error-message-new" role="alert">{balanceError}</div>}
                     {pendingNotice && (
                         <div style={{
                             padding: '10px 12px',
@@ -944,13 +1084,13 @@ const PaymentModal = ({
                         </div>
                     )}
                     <div className="footer-actions">
-                        <button className="btn-cancel" onClick={handleClose} disabled={loading}>Cancelar</button>
-                        <button className="btn-confirm"
+                        <button type="button" className="btn-cancel" onClick={handleClose} disabled={loading}>Cancelar</button>
+                        <button type="button" className="btn-confirm"
                             onClick={mode === 'single' ? handleSinglePayment : handleSplitPayment}
                             disabled={
-                                loading || previewLoading || hasQueuedPayment || !branchHasWarehouse ||
-                                (mode === 'single' && (selectedMethod === null || (isCashSelected && (!hasUsableCashShift || parseFloat(amountTendered) < totalWithTip)))) ||
-                                (mode === 'split' && Math.abs(getSplitRemaining()) > 0.02)
+                                loading || previewLoading || balanceLoading || Boolean(balanceError) || hasQueuedPayment || totalWithTip <= 0 ||
+                                (mode === 'single' && (selectedMethod === null || (isCashSelected && (!hasUsableCashShift || tenderedAmount === null || tenderedCents < totalCents)))) ||
+                                (mode === 'split' && (getSplitRemaining() !== 0 || !itemAssignmentsComplete))
                             }>
                             {loading
                                 ? 'Procesando...'

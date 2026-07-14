@@ -28,18 +28,27 @@ export class AutoPurchaseOrderService {
                         unit: true,
                         cost: true,
                         currentAverageCost: true,
-                        minStock: true
+                        minStock: true,
+                        baseUnit: { select: { abbreviation: true, measurementType: true } }
                     }
                 });
+                if (!productDetails) {
+                    throw new Error(`Producto ${product.productId} ya no existe en la empresa`);
+                }
 
                 // Calculate suggested order quantity (order up to 2x minimum)
                 const targetStock = Number(product.minStock) * 2;
-                const suggestedQuantity = Math.ceil(targetStock - product.currentStock);
+                const deficitToTarget = Math.max(0, targetStock - product.currentStock);
+                const discrete = productDetails.baseUnit?.measurementType === 'UNIT' ||
+                    productDetails.baseUnit?.measurementType === 'PACKAGE';
+                const suggestedQuantity = discrete
+                    ? Math.ceil(deficitToTarget)
+                    : Math.round(deficitToTarget * 1_000_000) / 1_000_000;
 
                 return {
                     productId: product.productId,
                     productName: product.productName,
-                    unit: product.unit,
+                    unit: productDetails.baseUnit?.abbreviation || product.unit,
                     currentStock: product.currentStock,
                     minStock: product.minStock,
                     suggestedQuantity,

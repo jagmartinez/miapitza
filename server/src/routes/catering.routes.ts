@@ -21,7 +21,7 @@ router.post('/', requireRole('SUPERADMIN', 'ADMIN'), validate(s.createCateringEv
 router.put('/:id', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), CateringController.updateEvent);
 router.delete('/:id', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), CateringController.deleteEvent);
 
-router.post('/:id/payments', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), CateringController.addPayment);
-router.post('/:id/payments/:paymentId/reverse', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), CateringController.reversePayment);
+router.post('/:id/payments', requireRole('SUPERADMIN', 'ADMIN'), validate(s.addCateringPayment), CateringController.addPayment);
+router.post('/:id/payments/:paymentId/reverse', requireRole('SUPERADMIN', 'ADMIN'), validate(s.reverseCateringPayment), CateringController.reversePayment);
 
 export default router;

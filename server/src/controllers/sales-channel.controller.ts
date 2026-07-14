@@ -30,7 +30,7 @@ export class SalesChannelController {
 
             res.json({ success: true, data: result });
         } catch (error: unknown) {
-            next({ statusCode: 500, message: getErrorMessage(error) });
+            next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
 
@@ -48,14 +48,17 @@ export class SalesChannelController {
     static async calculatePricing(req: Request, res: Response, next: NextFunction) {
         try {
             const { regularPrice, markupPct, commissionPct } = req.query;
+            const parsedRegularPrice = Number(regularPrice);
+            const parsedMarkup = markupPct === undefined ? 18 : Number(markupPct);
+            const parsedCommission = commissionPct === undefined ? 24 : Number(commissionPct);
             const pricing = SalesChannelService.calculatePedidosYaPricing(
-                parseFloat(regularPrice as string) || 0,
-                parseFloat(markupPct as string) || 18,
-                parseFloat(commissionPct as string) || 24
+                parsedRegularPrice,
+                parsedMarkup,
+                parsedCommission
             );
             res.json({ success: true, data: pricing });
         } catch (error: unknown) {
-            next({ statusCode: 500, message: getErrorMessage(error) });
+            next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
 }

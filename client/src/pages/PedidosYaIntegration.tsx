@@ -20,8 +20,10 @@ interface PYConfig {
     id?: number;
     clientId?: string;
     clientSecret?: string;
+    clientSecretSet?: boolean;
     restaurantId?: string;
     webhookSecret?: string;
+    webhookSecretSet?: boolean;
     environment: string;
     autoAcceptOrders: boolean;
     autoSyncStatus: boolean;
@@ -93,7 +95,9 @@ export default function PedidosYaIntegration() {
                 pedidosYaAPI.getConfig(),
                 menuAPI.getAll(),
             ]);
-            if (configRes.data.data) setConfig(configRes.data.data);
+            if (configRes.data.data) {
+                setConfig({ ...configRes.data.data, clientSecret: '', webhookSecret: '' });
+            }
             setMenuItems((menuRes.data.data || []).map((mi: { id: number; name: string; price: number }) => ({
                 id: mi.id, name: mi.name, price: mi.price,
             })));
@@ -138,7 +142,12 @@ export default function PedidosYaIntegration() {
     const handleSaveConfig = async () => {
         setSaving(true);
         try {
-            await pedidosYaAPI.upsertConfig(config as unknown as Record<string, unknown>);
+            const payload = { ...config } as Record<string, unknown>;
+            delete payload.clientSecretSet;
+            delete payload.webhookSecretSet;
+            if (!config.clientSecret?.trim()) delete payload.clientSecret;
+            if (!config.webhookSecret?.trim()) delete payload.webhookSecret;
+            await pedidosYaAPI.upsertConfig(payload);
             success('Configuración guardada');
         } catch {
             showError('Error al guardar');
@@ -249,7 +258,7 @@ export default function PedidosYaIntegration() {
                                     type="password"
                                     value={config.clientSecret || ''}
                                     onChange={e => setConfig({ ...config, clientSecret: e.target.value })}
-                                    placeholder="••••••••"
+                                    placeholder={config.clientSecretSet ? 'Configurado; escribe para reemplazar' : '••••••••'}
                                 />
                             </div>
                             <div className="form-row">
@@ -326,7 +335,7 @@ export default function PedidosYaIntegration() {
                                 label="Webhook Secret"
                                 value={config.webhookSecret || ''}
                                 onChange={e => setConfig({ ...config, webhookSecret: e.target.value })}
-                                placeholder="Secret para validar firmas HMAC"
+                                placeholder={config.webhookSecretSet ? 'Configurado; escribe para reemplazar' : 'Secret para validar firmas HMAC'}
                             />
                             <div className="webhook-url-display">
                                 <label className="input-label">URL del Webhook (configura en PedidosYa)</label>

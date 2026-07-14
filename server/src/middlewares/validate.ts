@@ -11,6 +11,9 @@ export interface FieldRule {
     max?: number;   // max length for string/array, max value for number
     enum?: string[];
     pattern?: RegExp;
+    integer?: boolean;
+    items?: FieldRule;
+    properties?: Record<string, FieldRule>;
 }
 
 export interface ValidationSchema {
@@ -75,6 +78,9 @@ function validateField(
             if (typeof value !== 'number' || !Number.isFinite(value)) {
                 return { field: fieldPath, message: 'Debe ser un número válido' };
             }
+            if (rule.integer && !Number.isInteger(value)) {
+                return { field: fieldPath, message: 'Debe ser un número entero' };
+            }
             break;
 
         case 'boolean':
@@ -106,6 +112,21 @@ function validateField(
                 return { field: fieldPath, message: 'Debe ser un objeto' };
             }
             break;
+    }
+
+    // ---- nested array/object validation ----
+    if (rule.type === 'array' && Array.isArray(value) && rule.items) {
+        for (let index = 0; index < value.length; index++) {
+            const error = validateField(value[index], rule.items, `${fieldPath}[${index}]`);
+            if (error) return error;
+        }
+    }
+    if (rule.type === 'object' && typeof value === 'object' && value !== null && rule.properties) {
+        const objectValue = value as Record<string, unknown>;
+        for (const [property, propertyRule] of Object.entries(rule.properties)) {
+            const error = validateField(objectValue[property], propertyRule, `${fieldPath}.${property}`);
+            if (error) return error;
+        }
     }
 
     // ---- min / max ----

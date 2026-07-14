@@ -1,12 +1,17 @@
 import { Router } from 'express';
 import { InvoiceController } from '../controllers/invoice.controller';
-import { auth as authenticate, requireRole } from '../middlewares/auth';
+import { auth as authenticate, requirePermission } from '../middlewares/auth';
 
 const router = Router();
 
 // Apply auth middleware to all invoice routes
 router.use(authenticate);
-router.use(requireRole('SUPERADMIN', 'ADMIN', 'CAJERO'));
+
+// Both endpoints call InvoiceService.generateInvoice(), which assigns the
+// official number when one does not exist. They are issuance operations rather
+// than read-only invoice views and therefore require the stronger permission.
+// Debt: invoices.view needs a pure read endpoint that never assigns a number.
+const canIssueInvoice = requirePermission('invoices.issue', 'SUPERADMIN', 'ADMIN', 'CAJERO');
 
 /**
  * @swagger
@@ -36,7 +41,7 @@ router.use(requireRole('SUPERADMIN', 'ADMIN', 'CAJERO'));
  *       404:
  *         description: Order not found
  */
-router.get('/:id', InvoiceController.getInvoiceData);
+router.get('/:id', canIssueInvoice, InvoiceController.getInvoiceData);
 
 /**
  * @swagger
@@ -62,6 +67,6 @@ router.get('/:id', InvoiceController.getInvoiceData);
  *               type: string
  *               format: binary
  */
-router.get('/:id/pdf', InvoiceController.getInvoicePDF);
+router.get('/:id/pdf', canIssueInvoice, InvoiceController.getInvoicePDF);
 
 export default router;

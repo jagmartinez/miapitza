@@ -37,6 +37,7 @@ export class MenuItemService {
         brandId?: number;
         active?: boolean;
         type?: 'PREPARED' | 'DIRECT';
+        resolveBranchPrice?: boolean;
     }) {
         const where: Prisma.MenuItemWhereInput = { companyId };
 
@@ -63,7 +64,7 @@ export class MenuItemService {
             where.type = filters.type;
         }
 
-        return await prisma.menuItem.findMany({
+        const menuItems = await prisma.menuItem.findMany({
             where,
             include: {
                 category: {
@@ -113,13 +114,26 @@ export class MenuItemService {
                         recipes: true,
                         modifierGroups: true
                     }
-                }
+                },
+                branchPrices: filters?.branchId && filters.resolveBranchPrice
+                    ? {
+                        where: { branchId: filters.branchId, active: true },
+                        select: { price: true }
+                    }
+                    : false
             },
             orderBy: [
                 { categoryId: 'asc' },
                 { name: 'asc' }
             ]
         });
+
+        if (!filters?.branchId || !filters.resolveBranchPrice) return menuItems;
+        return menuItems.map((item) => ({
+            ...item,
+            basePrice: item.price,
+            price: item.branchPrices[0]?.price ?? item.price
+        }));
     }
 
     static async getById(id: number, companyId: number) {
@@ -155,6 +169,7 @@ export class MenuItemService {
                     }
                 },
                 modifierGroups: {
+                    where: { active: true },
                     include: {
                         modifiers: {
                             where: { active: true }
@@ -270,6 +285,9 @@ export class MenuItemService {
         active?: boolean;
         type?: 'PREPARED' | 'DIRECT';
     }) {
+        if (data.name !== undefined && !data.name.trim()) {
+            throw new Error('El nombre del elemento de menú es requerido');
+        }
         // Validate price if provided
         if (data.price !== undefined) {
             const price = Number(data.price);

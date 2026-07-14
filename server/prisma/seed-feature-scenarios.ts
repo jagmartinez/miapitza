@@ -1,12 +1,15 @@
 import { PrismaClient, StorageType, TableStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { bootstrapCentralWarehouses } from './bootstrap-central-warehouses';
+import { BCRYPT_ROUNDS } from '../src/utils/password-policy';
+import { resolveDemoSeedConfig } from '../src/utils/demo-seed-security';
 
 const prisma = new PrismaClient();
 
-const COMPANY_ID = 1;
-const PRIMARY_BRANCH_CODE = 'MAIN';
-const SECOND_BRANCH_CODE = 'NORTH';
+let COMPANY_ID: number;
+let PRIMARY_BRANCH_CODE: string;
+let SECOND_BRANCH_CODE: string;
+let DEMO_PASSWORD_HASH: string;
 
 function minutesAgo(minutes: number) {
     return new Date(Date.now() - minutes * 60_000);
@@ -65,6 +68,9 @@ async function ensureBranch(params: {
     });
 
     if (existing) {
+        if (existing.status !== 'ACTIVE') {
+            throw new Error(`La sucursal demo ${params.code} existe pero esta inactiva`);
+        }
         return existing;
     }
 
@@ -179,16 +185,15 @@ async function ensureUser(params: {
     branchId: number;
     primaryRoleId: number;
     color: string;
-    password?: string;
-    resetPasswordOnExisting?: boolean;
 }) {
-    const hashedPassword = await bcrypt.hash(params.password ?? 'password123', 10);
-
     const existing = await prisma.user.findFirst({
         where: { username: params.username }
     });
 
     if (existing) {
+        if (existing.companyId !== params.companyId) {
+            throw new Error(`El usuario demo ${params.username} ya pertenece a otra empresa; no se reasignará automáticamente`);
+        }
         const updated = await prisma.user.update({
             where: { id: existing.id },
             data: {
@@ -196,7 +201,7 @@ async function ensureUser(params: {
                 branchId: params.branchId,
                 roleId: params.primaryRoleId,
                 color: existing.color ?? params.color,
-                ...(params.resetPasswordOnExisting ? { password: hashedPassword } : {}),
+                password: DEMO_PASSWORD_HASH,
                 mustChangePassword: false,
                 passwordChangedAt: existing.passwordChangedAt ?? new Date()
             }
@@ -213,7 +218,7 @@ async function ensureUser(params: {
             companyId: params.companyId,
             branchId: params.branchId,
             roleId: params.primaryRoleId,
-            password: hashedPassword,
+            password: DEMO_PASSWORD_HASH,
             color: params.color,
             status: 'ACTIVE',
             mustChangePassword: false,
@@ -556,19 +561,26 @@ async function ensureDemoOrder(params: {
 }
 
 async function main() {
+    const demoConfig = resolveDemoSeedConfig(process.env, 'features');
+    COMPANY_ID = demoConfig.companyId;
+    PRIMARY_BRANCH_CODE = demoConfig.primaryBranchCode!;
+    SECOND_BRANCH_CODE = demoConfig.secondaryBranchCode!;
+    DEMO_PASSWORD_HASH = await bcrypt.hash(demoConfig.password, BCRYPT_ROUNDS);
     console.log('Seeding feature scenarios...');
 
     const company = await prisma.company.findUnique({
-        where: { id: COMPANY_ID }
+        where: { id: COMPANY_ID },
+        select: { id: true, active: true }
     });
-    if (!company) {
-        throw new Error('No existe la empresa base. Ejecute primero seed:base.');
+    if (!company?.active) {
+        throw new Error('No existe una empresa base activa. Ejecute primero seed:base.');
     }
 
     const primaryBranch = await prisma.branch.findFirst({
         where: {
             companyId: COMPANY_ID,
-            code: PRIMARY_BRANCH_CODE
+            code: PRIMARY_BRANCH_CODE,
+            status: 'ACTIVE'
         }
     });
     if (!primaryBranch) {
@@ -602,9 +614,7 @@ async function main() {
         companyId: COMPANY_ID,
         branchId: primaryBranch.id,
         primaryRoleId: superAdminRole.id,
-        color: '#111827',
-        password: 'QATest123!',
-        resetPasswordOnExisting: true
+        color: '#111827'
     });
 
     const branchNorth = await ensureBranch({
@@ -872,7 +882,7 @@ async function main() {
         tableNumber: 'T20',
         branchId: primaryBranch.id,
         userId: meseroCaja.id,
-        status: 'DELIVERED',
+        status: 'READY',
         createdAt: minutesAgo(90),
         items: [
             {

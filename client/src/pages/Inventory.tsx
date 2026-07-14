@@ -23,6 +23,7 @@ import { formatCurrency, currencyInputPadding, type CurrencySettings } from '../
 import { useCurrency } from '../hooks/useCurrency';
 import { isCategoryVisibleInInventory } from '../utils/categoryVisibility';
 import { effectiveUnitCost } from '../utils/productCost';
+import { newIdempotencyKey } from '../utils/idempotency';
 import './Inventory.css';
 
 interface CategoryRow {
@@ -87,7 +88,7 @@ export default function Inventory() {
     /** Backend: DELETE /products — SUPERADMIN only */
     const canDeleteProduct = hasAnyRole(user, ['SUPERADMIN']);
     /** Backend: POST /inventory-movements — SUPERADMIN | ADMIN | CAJERO | BODEGA */
-    const canAdjustStock = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CAJERO', 'BODEGA']);
+    const canAdjustStock = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'BODEGA']);
     /** Backend: POST /advanced/auto-po/create — SUPERADMIN | ADMIN */
     const canCreateAutoPO = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'BODEGA']);
     const [products, setProducts] = useState<Product[]>([]);
@@ -136,6 +137,8 @@ export default function Inventory() {
     });
 
     const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
+    const [adjusting, setAdjusting] = useState(false);
+    const adjustmentAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
     const [adjustmentData, setAdjustmentData] = useState({
         productId: 0,
         productName: '',
@@ -304,39 +307,35 @@ export default function Inventory() {
     };
 
     const loadProductUnits = useCallback(async (productId: number) => {
-        const product = products.find(p => p.id === productId);
-        try {
-            const res = await unitsAPI.getProductUnits(productId);
-            const units: ProductAllowedUnit[] = res.data.data || [];
-            if (units.length > 0) {
-                setAdjustmentUnits(units);
-                const defaultUnit = units.find(u => u.isDefault) || units.find(u => u.isBase) || units[0];
-                return defaultUnit?.abbreviation || product?.unit || '';
-            } else {
-                const baseUnit = product?.unit || 'unidad';
-                setAdjustmentUnits([{ unitId: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
-                return baseUnit;
-            }
-        } catch {
-            const baseUnit = product?.unit || 'unidad';
-            setAdjustmentUnits([{ unitId: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
-            return baseUnit;
+        const res = await unitsAPI.getProductUnits(productId);
+        const units: ProductAllowedUnit[] = res.data.data || [];
+        if (units.length === 0) {
+            throw new Error('El producto no tiene una unidad base utilizable');
         }
-    }, [products]);
+        setAdjustmentUnits(units);
+        const defaultUnit = units.find(u => u.isDefault) || units.find(u => u.isBase) || units[0];
+        return defaultUnit.abbreviation;
+    }, []);
 
     const handleOpenAdjustment = async (product: Product) => {
-        const storedWarehouseId = localStorage.getItem('inventory_adjustment_warehouse_id');
-        const defaultUnitAbbr = await loadProductUnits(product.id);
-        setAdjustmentData({
-            productId: product.id,
-            productName: product.name,
-            warehouseId: storedWarehouseId || warehouses[0]?.id?.toString() || '',
-            type: 'OUT',
-            quantity: '',
-            reason: '',
-            unit: defaultUnitAbbr
-        });
-        setIsAdjustmentModalOpen(true);
+        try {
+            const storedWarehouseId = localStorage.getItem('inventory_adjustment_warehouse_id');
+            const defaultUnitAbbr = await loadProductUnits(product.id);
+            setAdjustmentData({
+                productId: product.id,
+                productName: product.name,
+                warehouseId: storedWarehouseId || warehouses[0]?.id?.toString() || '',
+                type: 'OUT',
+                quantity: '',
+                reason: '',
+                unit: defaultUnitAbbr
+            });
+            adjustmentAttemptRef.current = null;
+            setIsAdjustmentModalOpen(true);
+        } catch (error: unknown) {
+            setAdjustmentUnits([]);
+            showError('No se puede ajustar el inventario: ' + apiErrorMessage(error));
+        }
     };
 
     const handleAdjustmentSubmit = async (e: React.FormEvent) => {
@@ -353,21 +352,31 @@ export default function Inventory() {
             return;
         }
 
-        try {
-            await inventoryMovementsAPI.create({
+        const payload = {
                 warehouseId: Number(adjustmentData.warehouseId),
                 productId: adjustmentData.productId,
                 type: adjustmentData.type,
                 quantity: parseFloat(adjustmentData.quantity),
                 reason: adjustmentData.reason,
                 unit: adjustmentData.unit || undefined
-            });
+        };
+        const fingerprint = JSON.stringify(payload);
+        if (adjustmentAttemptRef.current?.fingerprint !== fingerprint) {
+            adjustmentAttemptRef.current = { fingerprint, key: newIdempotencyKey() };
+        }
+
+        setAdjusting(true);
+        try {
+            await inventoryMovementsAPI.create(payload, adjustmentAttemptRef.current.key);
             localStorage.setItem('inventory_adjustment_warehouse_id', adjustmentData.warehouseId);
             showSuccess('Ajuste realizado correctamente');
+            adjustmentAttemptRef.current = null;
             setIsAdjustmentModalOpen(false);
             loadInventory();
         } catch (error: unknown) {
             showError('Error: ' + apiErrorMessage(error));
+        } finally {
+            setAdjusting(false);
         }
     };
 
@@ -445,7 +454,9 @@ export default function Inventory() {
                 try {
                     await unitsAPI.autoConfigureProduct(savedProductId);
                 } catch {
-                    // Sin unidades en catálogo o sin mapeo legacy; configurar en vista de conversiones
+                    showWarning(
+                        'Producto guardado, pero no se pudo autoconfigurar su unidad. Revise Conversiones antes de comprar o consumir inventario.'
+                    );
                 }
             }
 
@@ -1790,14 +1801,14 @@ export default function Inventory() {
                                     label="Tipo de Movimiento"
                                     options={[
                                         { value: 'OUT', label: 'Salida (Desperdicio/Uso)' },
-                                        { value: 'ADJUSTMENT', label: 'Entrada (Corrección/Compra)' },
+                                        { value: 'ADJUSTMENT', label: 'Entrada (Corrección de conteo)' },
                                         { value: 'IN', label: 'Entrada Directa' }
                                     ]}
                                     value={{
                                         value: adjustmentData.type,
                                         label: {
                                             'OUT': 'Salida (Desperdicio/Uso)',
-                                            'ADJUSTMENT': 'Entrada (Corrección/Compra)',
+                                            'ADJUSTMENT': 'Entrada (Corrección de conteo)',
                                             'IN': 'Entrada Directa'
                                         }[adjustmentData.type]
                                     }}
@@ -1862,8 +1873,8 @@ export default function Inventory() {
                             <Button type="button" variant="ghost" onClick={() => setIsAdjustmentModalOpen(false)}>
                                 Cancelar
                             </Button>
-                            <Button type="submit" variant="primary">
-                                Confirmar Ajuste
+                            <Button type="submit" variant="primary" disabled={adjusting}>
+                                {adjusting ? 'Aplicando...' : 'Confirmar Ajuste'}
                             </Button>
                         </div>
                     </form>

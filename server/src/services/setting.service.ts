@@ -10,7 +10,9 @@ export const DEFAULT_COMPANY_SETTINGS: Readonly<Record<string, string>> = Object
     currency_symbol: 'C$',
     currency_name: 'Córdoba Nicaragüense',
     tax_rate: '15',
-    timezone: 'America/Managua'
+    timezone: 'America/Managua',
+    kds_warning_minutes: '3',
+    kds_urgent_minutes: '10'
 });
 
 export class SettingService {
@@ -84,13 +86,24 @@ export class SettingService {
         if (name === 'timezone' && !isValidTimeZone(value.trim())) {
             throw new Error('La zona horaria configurada no es válida');
         }
+        if (name === 'kds_warning_minutes' || name === 'kds_urgent_minutes') {
+            const minutes = Number(value);
+            if (!Number.isInteger(minutes) || minutes < 1 || minutes > 240) {
+                throw new Error('Los umbrales KDS deben ser minutos enteros entre 1 y 240');
+            }
+        }
     }
 
-    /** Shared cash/arqueo tolerance. Default C$1 preserves the historical arqueo contract. */
+    /** Shared cash/arqueo tolerance. Default one currency unit preserves the historical contract. */
     static async getCashReconciliationTolerance(companyId: number): Promise<number> {
         const settings = await this.getAll(companyId);
         const configured = Number(settings.cash_reconciliation_tolerance);
         return Number.isFinite(configured) && configured >= 0 ? configured : 1;
+    }
+
+    static async getCurrencySymbol(companyId: number): Promise<string> {
+        const settings = await this.getAll(companyId);
+        return settings.currency_symbol?.trim() || DEFAULT_COMPANY_SETTINGS.currency_symbol;
     }
 
     static async getTimezone(companyId: number): Promise<string> {
@@ -113,12 +126,34 @@ export class SettingService {
         return value;
     }
 
+    static async getKdsTimingConfig(companyId: number): Promise<{ warningMinutes: number; urgentMinutes: number }> {
+        const settings = await this.getAll(companyId);
+        const warningMinutes = Number(settings.kds_warning_minutes ?? DEFAULT_COMPANY_SETTINGS.kds_warning_minutes);
+        const urgentMinutes = Number(settings.kds_urgent_minutes ?? DEFAULT_COMPANY_SETTINGS.kds_urgent_minutes);
+        if (!Number.isInteger(warningMinutes) || !Number.isInteger(urgentMinutes) || warningMinutes >= urgentMinutes) {
+            return {
+                warningMinutes: Number(DEFAULT_COMPANY_SETTINGS.kds_warning_minutes),
+                urgentMinutes: Number(DEFAULT_COMPANY_SETTINGS.kds_urgent_minutes)
+            };
+        }
+        return { warningMinutes, urgentMinutes };
+    }
+
     static async update(companyId: number, data: Record<string, string>) {
         const prefix = `${companyId}_`;
 
         // Validate all values before starting transaction
         for (const [name, value] of Object.entries(data)) {
             this.validateSettingValue(name, value);
+        }
+
+        if (data.kds_warning_minutes !== undefined || data.kds_urgent_minutes !== undefined) {
+            const current = await this.getKdsTimingConfig(companyId);
+            const warningMinutes = Number(data.kds_warning_minutes ?? current.warningMinutes);
+            const urgentMinutes = Number(data.kds_urgent_minutes ?? current.urgentMinutes);
+            if (warningMinutes >= urgentMinutes) {
+                throw new Error('El umbral de advertencia KDS debe ser menor que el umbral urgente');
+            }
         }
 
         await prisma.$transaction(async (tx) => {

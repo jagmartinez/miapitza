@@ -12,9 +12,10 @@ const stubMenuItem: MenuItem = {
 };
 
 describe('order status utils', () => {
-    it('includes in-preparation and delivered in active statuses', () => {
+    it('keeps only operationally active statuses', () => {
         expect(ACTIVE_ORDER_STATUSES).toContain('IN_PREPARATION');
-        expect(ACTIVE_ORDER_STATUSES).toContain('DELIVERED');
+        expect(ACTIVE_ORDER_STATUSES).not.toContain('DELIVERED');
+        expect(ACTIVE_ORDER_STATUSES).not.toContain('PAID');
     });
 
     it('maps kitchen statuses to user-friendly labels and classes', () => {

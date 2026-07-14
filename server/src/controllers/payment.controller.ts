@@ -3,6 +3,7 @@ import { PaymentService } from '../services/payment.service';
 import { OrderService } from '../services/order.service';
 import { assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
 import prisma from '../utils/prisma';
+import { WebSocketService } from '../services/websocket.service';
 
 export class PaymentController {
     static async getPaymentMethods(req: Request, res: Response, next: NextFunction) {
@@ -68,7 +69,18 @@ export class PaymentController {
                 const order = await OrderService.getById(parseInt(String(req.body.orderId)), companyId);
                 assertBranchAccess(req.user!, order.branchId);
             }
-            const payment = await PaymentService.create(companyId, req.body, req.user?.userId!);
+            const rawIdempotencyKey = req.headers['x-idempotency-key'];
+            const idempotencyKey = typeof rawIdempotencyKey === 'string' ? rawIdempotencyKey : undefined;
+            const payment = await PaymentService.create(
+                companyId,
+                { ...req.body, idempotencyKey },
+                req.user!.userId
+            );
+            const order = await OrderService.getById(payment.orderId, companyId);
+            WebSocketService.broadcastOrderUpdate(order.id, 'PAYMENT_UPDATED', order, {
+                companyId,
+                branchId: order.branchId
+            });
             res.status(201).json({
                 success: true,
                 message: 'Pago procesado exitosamente',
@@ -90,12 +102,17 @@ export class PaymentController {
 
             const payment = await prisma.payment.findFirst({
                 where: { id, order: { companyId } },
-                select: { order: { select: { branchId: true } } }
+                select: { orderId: true, order: { select: { branchId: true } } }
             });
             if (!payment) return next({ statusCode: 404, message: 'Pago no encontrado' });
             assertBranchAccess(req.user!, payment.order.branchId);
 
             await PaymentService.delete(id, companyId, userId, reason);
+            const order = await OrderService.getById(payment.orderId, companyId);
+            WebSocketService.broadcastOrderUpdate(order.id, 'PAYMENT_UPDATED', order, {
+                companyId,
+                branchId: order.branchId
+            });
             res.json({
                 success: true,
                 message: 'Pago eliminado exitosamente'

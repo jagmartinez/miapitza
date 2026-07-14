@@ -5,6 +5,7 @@ import path from 'path';
 import prisma from '../../utils/prisma';
 import { OrderService } from '../../services/order.service';
 import { PaymentService } from '../../services/payment.service';
+import { InvoiceService } from '../../services/invoice.service';
 import { ProductionRecipeService } from '../../services/production-recipe.service';
 import { ProductionOrderService } from '../../services/production-order.service';
 import { InventoryEngineService } from '../../services/inventory-engine.service';
@@ -224,6 +225,7 @@ describe('Recipe inventory flows (integration)', () => {
         await prisma.inventoryMovement.deleteMany({ where: { companyId } });
         await prisma.inventoryBatch.deleteMany({ where: { companyId } });
         await prisma.productCostHistory.deleteMany({ where: { companyId } });
+        await prisma.kitchenNotification.deleteMany({ where: { companyId } });
         await prisma.payment.deleteMany({ where: { order: { companyId } } });
         await prisma.orderItemModifier.deleteMany({ where: { orderItem: { order: { companyId } } } });
         await prisma.orderItem.deleteMany({ where: { order: { companyId } } });
@@ -242,13 +244,14 @@ describe('Recipe inventory flows (integration)', () => {
         await prisma.warehouse.deleteMany({ where: { companyId } });
         await prisma.unitOfMeasure.deleteMany({ where: { companyId } });
         await prisma.category.deleteMany({ where: { companyId } });
+        await prisma.invoiceSequence.deleteMany({ where: { companyId } });
         await prisma.user.deleteMany({ where: { companyId } });
         await prisma.role.deleteMany({ where: { id: roleId } });
         await prisma.branch.deleteMany({ where: { companyId } });
         await prisma.company.deleteMany({ where: { id: companyId } });
     });
 
-    it('pays once, consumes the menu recipe once, reverses payment, and can consume again', async () => {
+    it('separates financial payment/reversal from the single operational recipe consumption', async () => {
         const order = await OrderService.create(companyId, {
             branchId,
             userId,
@@ -257,6 +260,7 @@ describe('Recipe inventory flows (integration)', () => {
         });
         if (!order) throw new Error('OrderService.create returned null in recipe E2E fixture.');
         orderId = order.id;
+        await InvoiceService.generateInvoice(orderId, companyId);
 
         const firstPayment = await PaymentService.create(
             companyId,
@@ -264,10 +268,10 @@ describe('Recipe inventory flows (integration)', () => {
             userId
         );
 
-        expect(await quantity(saleIngredientId)).toBeCloseTo(96, 6);
+        expect(await quantity(saleIngredientId)).toBeCloseTo(100, 6);
         expect(await prisma.inventoryMovement.count({
             where: { companyId, reference: `ORD-${orderId}`, type: 'OUT' }
-        })).toBe(1);
+        })).toBe(0);
 
         await PaymentService.delete(firstPayment.id, companyId, userId, 'Integration refund');
         expect(await quantity(saleIngredientId)).toBeCloseTo(100, 6);
@@ -287,11 +291,18 @@ describe('Recipe inventory flows (integration)', () => {
             { orderId, paymentMethodId, amount: Number(order.total) },
             userId
         );
-        expect(await quantity(saleIngredientId)).toBeCloseTo(96, 6);
+        expect(await quantity(saleIngredientId)).toBeCloseTo(100, 6);
 
-        // complete() routes through the same idempotent consumer and must not
-        // produce a second outstanding deduction.
-        await OrderService.complete(orderId, companyId, warehouseId);
+        await OrderService.sendToKitchen(orderId, companyId);
+        const kitchenItems = await prisma.orderItem.findMany({ where: { orderId }, select: { id: true } });
+        for (const item of kitchenItems) {
+            await OrderService.startItem(orderId, item.id, companyId);
+            await OrderService.finishItem(orderId, item.id, companyId);
+        }
+        expect((await prisma.order.findUnique({ where: { id: orderId } }))?.status).toBe('READY');
+
+        // complete() owns the physical event and consumes the recipe exactly once.
+        await OrderService.complete(orderId, companyId, warehouseId, userId);
         expect(await quantity(saleIngredientId)).toBeCloseTo(96, 6);
         const allMovements = await prisma.inventoryMovement.findMany({
             where: { companyId, reference: `ORD-${orderId}` },
@@ -303,17 +314,18 @@ describe('Recipe inventory flows (integration)', () => {
         );
         expect(outstanding).toBeCloseTo(4, 6);
 
-        // DELIVERED is an operational fact, not proof that the payment still
-        // exists. Removing the last payment reverses the financial close while
-        // preserving that the food was delivered.
+        // DELIVERED is an operational fact. Reversing finance must preserve both
+        // the delivery and its physical inventory consumption.
         await PaymentService.delete(secondPayment.id, companyId, userId, 'Second integration refund');
-        expect(await quantity(saleIngredientId)).toBeCloseTo(100, 6);
+        expect(await quantity(saleIngredientId)).toBeCloseTo(96, 6);
         const reopened = await prisma.order.findUnique({ where: { id: orderId } });
         expect(reopened?.status).toBe('DELIVERED');
+        expect(reopened?.financialStatus).toBe('UNPAID');
         expect(reopened?.closedAt).toBeNull();
     });
 
-    it('atomically reverses inventory, payments and promotion usage for a paid channel cancellation', async () => {
+    it('preserves invoice, payment and promotion when a paid channel cancellation lacks a credit note', async () => {
+        const initialIngredientQuantity = await quantity(saleIngredientId);
         const promotion = await prisma.promotion.create({
             data: {
                 companyId,
@@ -337,27 +349,27 @@ describe('Recipe inventory flows (integration)', () => {
             where: { id: order.id },
             data: { discountCode: promotion.code }
         });
+        await InvoiceService.generateInvoice(order.id, companyId);
 
         await PaymentService.create(
             companyId,
             { orderId: order.id, paymentMethodId, amount: Number(order.total) },
             userId
         );
-        expect(await quantity(saleIngredientId)).toBeCloseTo(96, 6);
+        expect(await quantity(saleIngredientId)).toBeCloseTo(initialIngredientQuantity, 6);
         expect((await prisma.promotion.findUnique({ where: { id: promotion.id } }))?.usageCount).toBe(1);
 
-        const cancelled = await OrderService.cancel(
+        await expect(OrderService.cancel(
             order.id,
             companyId,
             userId,
             'External channel cancellation',
             { allowPaidReversal: true }
-        );
-        expect(cancelled.status).toBe('CANCELLED');
-        expect(await quantity(saleIngredientId)).toBeCloseTo(100, 6);
-        expect(await prisma.payment.count({ where: { orderId: order.id, status: 'ACTIVE' } })).toBe(0);
-        expect(await prisma.payment.count({ where: { orderId: order.id, status: 'REVERSED' } })).toBe(1);
-        expect((await prisma.promotion.findUnique({ where: { id: promotion.id } }))?.usageCount).toBe(0);
+        )).rejects.toThrow('nota de cr');
+        expect(await quantity(saleIngredientId)).toBeCloseTo(initialIngredientQuantity, 6);
+        expect(await prisma.payment.count({ where: { orderId: order.id, status: 'ACTIVE' } })).toBe(1);
+        expect(await prisma.payment.count({ where: { orderId: order.id, status: 'REVERSED' } })).toBe(0);
+        expect((await prisma.promotion.findUnique({ where: { id: promotion.id } }))?.usageCount).toBe(1);
 
         const movements = await prisma.inventoryMovement.findMany({
             where: { companyId, reference: `ORD-${order.id}` },
@@ -406,6 +418,7 @@ describe('Recipe inventory flows (integration)', () => {
             userId
         );
         productionOrderId = order.id;
+        await ProductionOrderService.setStatus(productionOrderId, companyId, 'IN_PROGRESS', userId);
 
         const finished = await ProductionOrderService.finish(
             productionOrderId,
@@ -634,6 +647,7 @@ describe('Recipe inventory flows (integration)', () => {
             },
             userId
         );
+        await ProductionOrderService.setStatus(order.id, companyId, 'IN_PROGRESS', userId);
 
         const attempts = await Promise.allSettled([
             ProductionOrderService.finish(order.id, companyId, userId, { producedQuantity: 4 }),
@@ -779,6 +793,7 @@ describe('Recipe inventory flows (integration)', () => {
             },
             userId
         );
+        await ProductionOrderService.setStatus(target.id, companyId, 'IN_PROGRESS', userId);
         await ProductionOrderService.finish(target.id, companyId, userId, { producedQuantity: 10 });
         expect(Number((await prisma.product.findUnique({ where: { id: output.id } }))?.currentAverageCost)).toBeCloseTo(6, 6);
 
@@ -822,6 +837,7 @@ describe('Recipe inventory flows (integration)', () => {
             },
             userId
         );
+        await ProductionOrderService.setStatus(later.id, companyId, 'IN_PROGRESS', userId);
         await ProductionOrderService.finish(later.id, companyId, userId, { producedQuantity: 5 });
 
         await ProductionOrderService.cancel(target.id, companyId, userId, 'Replay earlier intact layer');
@@ -905,6 +921,7 @@ describe('Recipe inventory flows (integration)', () => {
             branchId,
             status: 'PENDING'
         }, userId);
+        await ProductionOrderService.setStatus(order.id, companyId, 'IN_PROGRESS', userId);
 
         const finished = await ProductionOrderService.finish(order.id, companyId, userId, {});
         expect(Number(finished.realCost)).toBeCloseTo(18, 6); // 5@2 + 1@8

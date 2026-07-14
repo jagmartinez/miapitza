@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
+import { AuditLogService } from './audit-log.service';
 
 type Tx = Prisma.TransactionClient;
 
@@ -117,8 +118,9 @@ export class PurchaseOrderService {
      * Resolve a default purchase unit when the caller omits one, so the conversion
      * to base unit (and baseQuantity/baseCost) always runs instead of storing raw
      * quantities. Order per business rule: the product's default ProductUnit, then
-     * its configured base unit. Returns null if neither exists (legacy behavior:
-     * the raw quantity is treated as already being in base unit).
+     * its configured base unit, then the product's legacy unit. The legacy value
+     * still goes through UnitConversionService, so omission never bypasses the
+     * unit contract or leaves baseQuantity/baseCost without traceability.
      */
     private static async resolveDefaultPurchaseUnit(
         productId: number,
@@ -135,10 +137,14 @@ export class PurchaseOrderService {
 
         const product = await db.product.findFirst({
             where: { id: productId, companyId },
-            include: { baseUnit: true }
+            select: { unit: true, baseUnit: { select: { abbreviation: true } } }
         });
         if (product?.baseUnit?.abbreviation) {
             return product.baseUnit.abbreviation;
+        }
+
+        if (product?.unit?.trim()) {
+            return product.unit.trim();
         }
 
         return null;
@@ -164,10 +170,10 @@ export class PurchaseOrderService {
     }) {
         for (const item of data.items) {
             if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
-                throw new Error('La cantidad de cada artÃ­culo debe ser un nÃºmero finito mayor a 0');
+                throw new Error('La cantidad de cada artículo debe ser un número finito mayor a 0');
             }
             if (!Number.isFinite(item.cost) || item.cost < 0) {
-                throw new Error('El costo de cada artÃ­culo debe ser un nÃºmero finito mayor o igual a 0');
+                throw new Error('El costo de cada artículo debe ser un número finito mayor o igual a 0');
             }
         }
         // Verify branch (findFirst guarantees the companyId scope; findUnique can't
@@ -209,6 +215,14 @@ export class PurchaseOrderService {
             return sum + (item.quantity * item.cost);
         }, 0));
         const invoiceType = data.invoiceType || 'CASH';
+        const invoiceDate = data.invoiceDate ? new Date(data.invoiceDate) : null;
+        const paymentDueDate = data.paymentDueDate ? new Date(data.paymentDueDate) : null;
+        if (invoiceDate && Number.isNaN(invoiceDate.getTime())) {
+            throw new Error('La fecha de factura no es válida');
+        }
+        if (paymentDueDate && Number.isNaN(paymentDueDate.getTime())) {
+            throw new Error('La fecha de vencimiento no es válida');
+        }
 
         return await prisma.$transaction(async (tx: Tx) => {
             // Create purchase order
@@ -219,9 +233,9 @@ export class PurchaseOrderService {
                     notes: data.notes,
                     invoiceNumber: data.invoiceNumber,
                     invoicePdf: data.invoicePdf,
-                    invoiceDate: data.invoiceDate ? new Date(data.invoiceDate) : null,
+                    invoiceDate,
                     invoiceType,
-                    paymentDueDate: data.paymentDueDate ? new Date(data.paymentDueDate) : null,
+                    paymentDueDate,
                     bank: data.bank,
                     transferNumber: data.transferNumber,
                     paymentStatus: invoiceType === 'CASH' ? 'PAID' : 'PENDING',
@@ -334,10 +348,14 @@ export class PurchaseOrderService {
 
             const updateData: Record<string, unknown> = { ...data };
             if (data.invoiceDate !== undefined) {
-                updateData.invoiceDate = data.invoiceDate ? new Date(data.invoiceDate) : null;
+                const value = data.invoiceDate ? new Date(data.invoiceDate) : null;
+                if (value && Number.isNaN(value.getTime())) throw new Error('La fecha de factura no es válida');
+                updateData.invoiceDate = value;
             }
             if (data.paymentDueDate !== undefined) {
-                updateData.paymentDueDate = data.paymentDueDate ? new Date(data.paymentDueDate) : null;
+                const value = data.paymentDueDate ? new Date(data.paymentDueDate) : null;
+                if (value && Number.isNaN(value.getTime())) throw new Error('La fecha de vencimiento no es válida');
+                updateData.paymentDueDate = value;
             }
             if (data.invoiceType === 'CASH') {
                 updateData.paymentStatus = 'PAID';
@@ -355,6 +373,13 @@ export class PurchaseOrderService {
                 if (!allowed[existing.status as 'DRAFT' | 'ISSUED']?.includes(data.status as 'ISSUED' | 'CANCELLED')) {
                     throw new Error(`Transición de orden de compra inválida: ${existing.status} -> ${data.status}`);
                 }
+            }
+
+            if (data.status === 'CANCELLED') {
+                // Payments cannot be recorded before receipt. Clear the implicit
+                // cash settlement so cancelled POs are never reported as paid.
+                updateData.paidAmount = 0;
+                updateData.paymentStatus = 'PENDING';
             }
 
             return tx.purchaseOrder.update({
@@ -441,6 +466,19 @@ export class PurchaseOrderService {
                 throw new Error('Cannot receive a draft purchase order. It must be issued first.');
             }
 
+            // The warehouse scope is mutable while it has no history. Revalidate
+            // it under lock in the same transaction that posts the receipt so a
+            // concurrent branch reassignment cannot redirect an issued PO.
+            await tx.$queryRaw`SELECT id FROM \`Warehouse\` WHERE id = ${warehouseId} AND companyId = ${companyId} FOR UPDATE`;
+            const lockedWarehouse = await tx.warehouse.findFirst({
+                where: { id: warehouseId, companyId },
+                select: { branchId: true }
+            });
+            if (!lockedWarehouse) throw new Error('Almacén no encontrado');
+            if (lockedOrder.branchId && lockedWarehouse.branchId && lockedWarehouse.branchId !== lockedOrder.branchId) {
+                throw new Error('El almacén no pertenece a la sucursal de la orden de compra');
+            }
+
             // Import CostingService / engine dynamically to avoid circular deps.
             const { CostingService } = await import('./costing.service');
             const { InventoryEngineService } = await import('./inventory-engine.service');
@@ -458,16 +496,32 @@ export class PurchaseOrderService {
                 let baseCost: number | null =
                     item.baseCost != null ? Number(item.baseCost) : null;
 
-                // Legacy items created before conversion ran: if no baseQuantity was
-                // stored but a purchaseUnit exists, reconvert now so kg-vs-g style
-                // purchases are not mis-costed by treating the raw quantity as base.
-                if (baseQuantity == null && item.purchaseUnit) {
+                // Legacy items created before conversion ran: resolve an explicit
+                // unit even when purchaseUnit itself is null. Treating the raw
+                // quantity as base would silently mis-cost kg-vs-g receipts.
+                if (baseQuantity == null) {
+                    const effectivePurchaseUnit = item.purchaseUnit ||
+                        await this.resolveDefaultPurchaseUnit(item.productId, companyId, tx);
+                    if (!effectivePurchaseUnit) {
+                        throw new Error(
+                            `El artículo ${item.id} no tiene unidad de compra/base trazable; configure la UOM antes de recibir`
+                        );
+                    }
                     const conv = await UnitConversionService.convertWithCost(
-                        item.productId, companyId, Number(item.quantity), item.purchaseUnit, Number(item.cost), tx
+                        item.productId, companyId, Number(item.quantity), effectivePurchaseUnit, Number(item.cost), tx
                     );
                     conversionFactor = conv.conversionFactor;
                     baseQuantity = conv.baseQuantity;
                     baseCost = conv.baseCost;
+                    await tx.purchaseOrderItem.update({
+                        where: { id: item.id },
+                        data: {
+                            purchaseUnit: conv.originalUnit,
+                            conversionFactor,
+                            baseQuantity,
+                            baseCost
+                        }
+                    });
                 }
 
                 const stockQty = baseQuantity != null ? baseQuantity : Number(item.quantity);
@@ -554,10 +608,10 @@ export class PurchaseOrderService {
         purchaseUnit?: string;
     }) {
         if (!Number.isFinite(data.quantity) || data.quantity <= 0) {
-            throw new Error('La cantidad del artÃ­culo debe ser un nÃºmero finito mayor a 0');
+            throw new Error('La cantidad del artículo debe ser un número finito mayor a 0');
         }
         if (!Number.isFinite(data.cost) || data.cost < 0) {
-            throw new Error('El costo del artÃ­culo debe ser un nÃºmero finito mayor o igual a 0');
+            throw new Error('El costo del artículo debe ser un número finito mayor o igual a 0');
         }
         const order = await prisma.purchaseOrder.findFirst({
             where: { id: orderId, companyId }
@@ -713,7 +767,11 @@ export class PurchaseOrderService {
             throw new Error('El monto del pago debe ser finito');
         }
         const paymentAmount = this.roundMoney(data.amount);
-        if (paymentAmount <= 0) throw new Error('El monto mínimo del pago es C$ 0.01');
+        if (paymentAmount <= 0) throw new Error('El monto mínimo del pago es 0.01');
+        const paymentDate = data.date ? new Date(data.date) : new Date();
+        if (Number.isNaN(paymentDate.getTime())) {
+            throw new Error('La fecha del pago no es válida');
+        }
         const order = await prisma.purchaseOrder.findFirst({
             where: { id: purchaseOrderId, companyId }
         });
@@ -726,7 +784,7 @@ export class PurchaseOrderService {
         const orderTotal = Number(order.total);
 
         if (currentPaid > orderTotal) {
-            throw new Error(`El monto excede el saldo pendiente. Saldo: C$ ${(orderTotal - Number(order.paidAmount)).toFixed(2)}`);
+            throw new Error(`El monto excede el saldo pendiente. Saldo: ${(orderTotal - Number(order.paidAmount)).toFixed(2)}`);
         }
 
         const paymentStatus = currentPaid >= orderTotal ? 'PAID' : 'PARTIAL';
@@ -736,7 +794,7 @@ export class PurchaseOrderService {
                 data: {
                     purchaseOrderId,
                     amount: paymentAmount,
-                    date: data.date ? new Date(data.date) : new Date(),
+                    date: paymentDate,
                     bank: data.bank,
                     referenceNumber: data.referenceNumber,
                     observations: data.observations
@@ -757,11 +815,113 @@ export class PurchaseOrderService {
                 }
             });
             if (claimed.count !== 1) {
-                throw new Error('La orden cambiÃ³ durante el pago; vuelva a consultar el saldo e intente de nuevo');
+                throw new Error('La orden cambió durante el pago; vuelva a consultar el saldo e intente de nuevo');
             }
 
             return payment;
         });
+    }
+
+    /** Reverse a completed receipt only while all of its original FIFO layers remain. */
+    static async reverseReceipt(
+        id: number,
+        companyId: number,
+        userId: number,
+        reversalReason: string
+    ) {
+        const reason = reversalReason.trim();
+        if (!reason) throw new Error('El motivo del reverso de recepción es requerido');
+
+        const result = await prisma.$transaction(async (tx: Tx) => {
+            await tx.$queryRaw`SELECT id FROM \`PurchaseOrder\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const order = await tx.purchaseOrder.findFirst({
+                where: { id, companyId },
+                include: { items: true }
+            });
+            if (!order) throw new Error('Orden de compra no encontrada');
+            const actor = await tx.user.findFirst({
+                where: { id: userId, OR: [{ companyId }, { companyId: null }] },
+                select: { id: true }
+            });
+            if (!actor) throw new Error('Usuario no autorizado para esta empresa');
+            if (order.status !== 'RECEIVED') {
+                throw new Error('Solo se puede revertir la recepción de una orden recibida');
+            }
+
+            const activePayments = await tx.purchaseOrderPayment.count({
+                where: { purchaseOrderId: id, status: 'ACTIVE' }
+            });
+            if (activePayments > 0) {
+                throw new Error('Revierta primero todos los abonos activos de esta orden');
+            }
+
+            const reference = `PO-${id}`;
+            const receiptBatches = await tx.inventoryBatch.findMany({
+                where: { companyId, sourceRef: reference, sourceType: 'PURCHASE' },
+                select: { warehouseId: true, productId: true, originalQty: true }
+            });
+            if (receiptBatches.length === 0) {
+                throw new Error('No se encontraron las capas originales de la recepción');
+            }
+            const warehouseIds = [...new Set(receiptBatches.map((batch) => batch.warehouseId))];
+            if (warehouseIds.length !== 1) {
+                throw new Error('La recepción histórica abarca varias bodegas y requiere revisión manual');
+            }
+
+            const quantityByProduct = new Map<number, number>();
+            for (const batch of receiptBatches) {
+                quantityByProduct.set(
+                    batch.productId,
+                    (quantityByProduct.get(batch.productId) || 0) + Number(batch.originalQty)
+                );
+            }
+
+            const { InventoryEngineService } = await import('./inventory-engine.service');
+            const { CostingService } = await import('./costing.service');
+            for (const [productId, quantity] of [...quantityByProduct.entries()].sort((a, b) => a[0] - b[0])) {
+                await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${productId} AND companyId = ${companyId} FOR UPDATE`;
+                const product = await tx.product.findFirst({
+                    where: { id: productId, companyId },
+                    select: { name: true }
+                });
+                if (!product) throw new Error(`Producto ${productId} no encontrado`);
+                await InventoryEngineService.applyMovement(tx, {
+                    type: 'OUT',
+                    companyId,
+                    warehouseId: warehouseIds[0],
+                    productId,
+                    userId,
+                    quantity,
+                    reason: `Reverso de recepción OC #${id}: ${reason}`,
+                    reference,
+                    consumeSourceRef: reference,
+                    valueFromConsumedLayers: true,
+                    productName: product.name
+                });
+            }
+
+            await CostingService.reversePurchaseCost(
+                tx,
+                order.items.map((item) => item.id),
+                companyId
+            );
+            const updated = await tx.purchaseOrder.update({
+                where: { id },
+                data: { status: 'CANCELLED', paidAmount: 0, paymentStatus: 'PENDING' }
+            });
+            return { updated, warehouseId: warehouseIds[0], products: quantityByProduct.size };
+        });
+
+        AuditLogService.log({
+            companyId,
+            userId,
+            entityType: 'PurchaseOrder',
+            entityId: id,
+            action: 'REVERSE_RECEIPT',
+            details: { reason, warehouseId: result.warehouseId, products: result.products }
+        }).catch((error) => console.error('[PurchaseOrderService] receipt reversal audit failed:', error));
+
+        return result.updated;
     }
 
     static async getPayments(purchaseOrderId: number, companyId: number) {
@@ -773,7 +933,84 @@ export class PurchaseOrderService {
 
         return await prisma.purchaseOrderPayment.findMany({
             where: { purchaseOrderId },
+            include: { reversedBy: { select: { id: true, name: true } } },
             orderBy: { date: 'desc' }
         });
+    }
+
+    /** Reverse a payment without deleting its immutable ledger row. */
+    static async reversePayment(
+        purchaseOrderId: number,
+        paymentId: number,
+        companyId: number,
+        userId: number,
+        reversalReason: string
+    ) {
+        const reason = reversalReason.trim();
+        if (!reason) throw new Error('El motivo del reverso es requerido');
+
+        const result = await prisma.$transaction(async (tx: Tx) => {
+            await tx.$queryRaw`SELECT id FROM \`PurchaseOrder\` WHERE id = ${purchaseOrderId} AND companyId = ${companyId} FOR UPDATE`;
+            const order = await tx.purchaseOrder.findFirst({
+                where: { id: purchaseOrderId, companyId },
+                select: { id: true, invoiceType: true, status: true, total: true }
+            });
+            if (!order) throw new Error('Orden de compra no encontrada');
+            const actor = await tx.user.findFirst({
+                where: { id: userId, OR: [{ companyId }, { companyId: null }] },
+                select: { id: true }
+            });
+            if (!actor) throw new Error('Usuario no autorizado para esta empresa');
+            if (order.invoiceType !== 'CREDIT' || order.status !== 'RECEIVED') {
+                throw new Error('Solo se pueden revertir pagos de órdenes de crédito recibidas');
+            }
+
+            const payment = await tx.purchaseOrderPayment.findFirst({
+                where: { id: paymentId, purchaseOrderId },
+                select: { id: true, status: true, amount: true }
+            });
+            if (!payment) throw new Error('Pago de orden de compra no encontrado');
+            if (payment.status === 'REVERSED') throw new Error('El pago ya fue revertido');
+
+            const reversed = await tx.purchaseOrderPayment.update({
+                where: { id: paymentId },
+                data: {
+                    status: 'REVERSED',
+                    reversedAt: new Date(),
+                    reversedById: userId,
+                    reversalReason: reason
+                }
+            });
+
+            const active = await tx.purchaseOrderPayment.aggregate({
+                where: { purchaseOrderId, status: 'ACTIVE' },
+                _sum: { amount: true }
+            });
+            const paidAmount = this.roundMoney(Number(active._sum.amount ?? 0));
+            const total = Number(order.total);
+            const paymentStatus = paidAmount <= 0
+                ? 'PENDING'
+                : paidAmount >= total
+                    ? 'PAID'
+                    : 'PARTIAL';
+
+            await tx.purchaseOrder.update({
+                where: { id: purchaseOrderId },
+                data: { paidAmount, paymentStatus }
+            });
+
+            return { reversed, paidAmount, paymentStatus };
+        });
+
+        AuditLogService.log({
+            companyId,
+            userId,
+            entityType: 'PurchaseOrderPayment',
+            entityId: paymentId,
+            action: 'REVERSE',
+            details: { purchaseOrderId, amount: result.reversed.amount, reason }
+        }).catch((error) => console.error('[PurchaseOrderService] payment reversal audit failed:', error));
+
+        return result;
     }
 }

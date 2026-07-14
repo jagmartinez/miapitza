@@ -31,7 +31,7 @@ export class CompanyController {
 
     static async create(req: Request, res: Response, next: NextFunction) {
         try {
-            const company = await CompanyService.create(req.body);
+            const company = await CompanyService.create(req.body, req.user!.userId);
             res.status(201).json({
                 success: true,
                 message: 'Empresa creada exitosamente',
@@ -45,7 +45,7 @@ export class CompanyController {
     static async update(req: Request, res: Response, next: NextFunction) {
         try {
             const id = parseInt(req.params.id);
-            const company = await CompanyService.update(id, req.body);
+            const company = await CompanyService.update(id, req.body, req.user!.userId);
             res.json({
                 success: true,
                 message: 'Empresa actualizada exitosamente',

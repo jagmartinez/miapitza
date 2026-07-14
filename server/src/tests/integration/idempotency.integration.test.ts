@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from '@jest/globals';
+import { afterAll, describe, expect, it, jest } from '@jest/globals';
 import express from 'express';
 import request from 'supertest';
 import { idempotency } from '../../middlewares/idempotency';
@@ -25,7 +25,15 @@ describe('durable idempotency across application instances', () => {
     const secondInstance = instance(counters);
 
     afterAll(async () => {
-        await prisma.idempotencyRecord.deleteMany({ where: { namespace: 'anon' } });
+        await prisma.idempotencyRecord.deleteMany({
+            where: {
+                OR: [
+                    { namespace: 'anon' },
+                    { namespace: { startsWith: 'k:' } },
+                    { namespace: { startsWith: 'w:' } }
+                ]
+            }
+        });
     });
 
     it('executes a concurrent request on exactly one instance and durably replays it', async () => {
@@ -66,5 +74,39 @@ describe('durable idempotency across application instances', () => {
         const failure1 = await request(firstInstance).post('/failure').set('X-Idempotency-Key', failureKey).send({ value: 1 });
         const failure2 = await request(secondInstance).post('/failure').set('X-Idempotency-Key', failureKey).send({ value: 1 });
         expect([failure1.body.execution, failure2.body.execution]).toEqual([3, 4]);
+    });
+
+    it('isolates identical keys used by different API keys and webhook signatures', async () => {
+        const key = `credentials-${Date.now()}`;
+        const before = counters.success;
+        await request(firstInstance).post('/payments').set('X-Api-Key', 'integration-a').set('X-Idempotency-Key', key).send({ amount: 10 }).expect(201);
+        await request(firstInstance).post('/payments').set('X-Api-Key', 'integration-b').set('X-Idempotency-Key', key).send({ amount: 10 }).expect(201);
+        await request(firstInstance).post('/payments').set('X-Webhook-Signature', 'signature-a').set('X-Idempotency-Key', key).send({ amount: 10 }).expect(201);
+        await request(firstInstance).post('/payments').set('X-Webhook-Signature', 'signature-b').set('X-Idempotency-Key', key).send({ amount: 10 }).expect(201);
+        expect(counters.success - before).toBe(4);
+
+        await request(secondInstance).post('/payments').set('X-Api-Key', 'integration-a').set('X-Idempotency-Key', key).send({ amount: 10 }).expect(201);
+        await request(secondInstance).post('/payments').set('X-Webhook-Signature', 'signature-a').set('X-Idempotency-Key', key).send({ amount: 10 }).expect(201);
+        expect(counters.success - before).toBe(4);
+
+        const rows = await prisma.idempotencyRecord.findMany({ where: { key } });
+        expect(rows).toHaveLength(4);
+        expect(new Set(rows.map((row) => row.namespace)).size).toBe(4);
+        expect(JSON.stringify(rows)).not.toContain('integration-a');
+        expect(JSON.stringify(rows)).not.toContain('signature-a');
+    });
+
+    it('preserves a committed 2xx response if durable response finalization fails', async () => {
+        const key = `finalize-failure-${Date.now()}`;
+        const update = jest.spyOn(prisma.idempotencyRecord, 'update').mockRejectedValueOnce(new Error('simulated finalization outage'));
+        const response = await request(firstInstance).post('/payments').set('X-Idempotency-Key', key).send({ amount: 77 });
+        update.mockRestore();
+
+        expect(response.status).toBe(201);
+        expect(response.body.amount).toBe(77);
+        const record = await prisma.idempotencyRecord.findUnique({
+            where: { namespace_scope_key: { namespace: 'anon', scope: 'POST:/payments', key } }
+        });
+        expect(record?.status).toBe('PROCESSING');
     });
 });

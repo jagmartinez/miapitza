@@ -4,11 +4,12 @@ import prisma from '../utils/prisma';
 import { SessionService } from './session.service';
 import { TwoFactorService } from './twoFactor.service';
 import { ROLES } from '../constants/roles';
+import {
+    assertStrongPassword,
+    BCRYPT_ROUNDS
+} from '../utils/password-policy';
 
-/** Password strength regex: min 8 chars, 1 upper, 1 lower, 1 digit, 1 symbol */
-export const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
-
-export const BCRYPT_ROUNDS = 12;
+export { BCRYPT_ROUNDS, PASSWORD_REGEX } from '../utils/password-policy';
 
 /** In-memory login attempt tracker for account lockout */
 const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
@@ -81,9 +82,7 @@ export class AuthService {
         companyId?: number;
     }, actingRoles: string[] = []) {
         // Validate password strength on registration
-        if (!PASSWORD_REGEX.test(data.password)) {
-            throw new Error('La contraseña debe tener mínimo 8 caracteres, incluyendo mayúscula, minúscula, número y símbolo');
-        }
+        assertStrongPassword(data.password);
 
         const role = await prisma.role.findUnique({
             where: { id: data.roleId },
@@ -147,7 +146,7 @@ export class AuthService {
                 userRoles: { select: { role: { select: { id: true, name: true } } } },
                 company: { select: { id: true, name: true, ruc: true, active: true } },
                 branch: { select: { status: true } },
-                allowedBranches: { select: { branchId: true } }
+                allowedBranches: { select: { branchId: true } },
             }
         });
 
@@ -167,14 +166,14 @@ export class AuthService {
         const isSuperAdmin = authoritativeRoleNames.includes(ROLES.SUPERADMIN);
         if ((!user.company?.active || (user.branchId && user.branch?.status !== 'ACTIVE')) && !isSuperAdmin) {
             recordFailedAttempt(username);
-            throw new Error('Credenciales invÃ¡lidas');
+            throw new Error('Credenciales inválidas');
         }
         if (
             !isSuperAdmin && user.branchId && user.allowedBranches.length > 0 &&
             !user.allowedBranches.some((entry) => entry.branchId === user.branchId)
         ) {
             recordFailedAttempt(username);
-            throw new Error('Credenciales invÃ¡lidas');
+            throw new Error('Credenciales inválidas');
         }
 
         const isValidPassword = await bcrypt.compare(password, user.password);
@@ -246,7 +245,7 @@ export class AuthService {
             user: {
                 id: user.id, name: user.name, email: user.email, username: user.username,
                 role: user.role, roles: allRoles, branchId: user.branchId,
-                companyId: user.companyId, company: user.company, color: user.color
+                companyId: user.companyId, company: user.company, color: user.color,
             },
             mustChangePassword: user.mustChangePassword,
             passwordExpired,
@@ -261,9 +260,7 @@ export class AuthService {
         const isValid = await bcrypt.compare(oldPassword, user.password);
         if (!isValid) throw new Error('Contraseña actual incorrecta');
 
-        if (!PASSWORD_REGEX.test(newPassword)) {
-            throw new Error('La contraseña debe tener mínimo 8 caracteres, incluyendo mayúscula, minúscula, número y símbolo');
-        }
+        assertStrongPassword(newPassword);
 
         if (oldPassword === newPassword) {
             throw new Error('La nueva contraseña debe ser diferente a la actual');

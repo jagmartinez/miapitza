@@ -1,4 +1,7 @@
 import prisma from '../utils/prisma';
+import type { Prisma } from '@prisma/client';
+
+type PricingClient = Pick<Prisma.TransactionClient, 'branch' | 'menuItemBranchPrice' | 'menuItem'>;
 
 /**
  * Dynamic Pricing Service
@@ -8,8 +11,13 @@ export class DynamicPricingService {
     /**
      * Get price for a menu item at a specific branch
      */
-    static async getPrice(menuItemId: number, branchId: number, companyId: number): Promise<number> {
-        const branch = await prisma.branch.findFirst({
+    static async getPrice(
+        menuItemId: number,
+        branchId: number,
+        companyId: number,
+        db: PricingClient = prisma
+    ): Promise<number> {
+        const branch = await db.branch.findFirst({
             where: { id: branchId, companyId },
             select: { id: true }
         });
@@ -19,7 +27,7 @@ export class DynamicPricingService {
 
         // First check for branch-specific price. Only active branch prices apply;
         // a deactivated branch price must fall back to the base MenuItem price.
-        const branchPrice = await prisma.menuItemBranchPrice.findFirst({
+        const branchPrice = await db.menuItemBranchPrice.findFirst({
             where: {
                 menuItemId,
                 branchId,
@@ -33,7 +41,7 @@ export class DynamicPricingService {
         }
 
         // Fall back to default menu item price
-        const menuItem = await prisma.menuItem.findFirst({
+        const menuItem = await db.menuItem.findFirst({
             where: { id: menuItemId, companyId },
             select: { price: true }
         });

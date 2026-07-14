@@ -9,7 +9,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
-import { Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin, Building2 } from 'lucide-react';
+import { Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin, Building2, MapPinned, ArrowRightLeft, Merge } from 'lucide-react';
 import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
@@ -18,6 +18,9 @@ import type { SingleValue } from 'react-select';
 import Select from '../components/Select';
 import { ACTIVE_ORDER_STATUSES } from '../utils/orderStatus';
 import './Tables.css';
+import TableMap, { type PositionedTable } from '../components/TableMap';
+import { newIdempotencyKey } from '../utils/idempotency';
+import TableOperationModal from '../components/TableOperationModal';
 
 interface ApiValidationError { field?: string; message?: string }
 function extractApiError(error: unknown, fallback: string): string {
@@ -38,11 +41,14 @@ function extractApiError(error: unknown, fallback: string): string {
 export default function Tables() {
     const { user } = useAuth();
     const { confirm } = useConfirmDialog();
-    const { error: showError, warning: showWarning } = useAppToast();
+    const { error: showError, warning: showWarning, success: showSuccess } = useAppToast();
     const userRoleNames = getUserRoleNames(user);
     const canCreateTable = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const canEditTable = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'HOST'].includes(role));
     const canDeleteTable = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
+    const canEditMap = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
+    const canTransfer = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'MESERO'].includes(role));
+    const canConsolidate = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'CAJERO'].includes(role));
     // Managers (company-wide) may create/list tables across branches of their company.
     const canChooseBranch = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [tables, setTables] = useState<Table[]>([]);
@@ -68,6 +74,10 @@ export default function Tables() {
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
     const [tableOrders, setTableOrders] = useState<Order[]>([]);
     const { viewMode, setViewMode } = useViewMode('tables');
+    const [showMap, setShowMap] = useState(false);
+    const [savingLayout, setSavingLayout] = useState(false);
+    const [operation, setOperation] = useState<'TRANSFER' | 'CONSOLIDATE' | null>(null);
+    const [submittingOperation, setSubmittingOperation] = useState(false);
 
     const loadTables = useCallback(async () => {
         try {
@@ -156,7 +166,6 @@ export default function Tables() {
                     number: formData.number,
                     capacity: parseInt(formData.capacity),
                     location: formData.location,
-                    status: formData.status,
                     ...(formData.branchId ? { branchId: parseInt(formData.branchId) } : {})
                 });
             }
@@ -200,6 +209,77 @@ export default function Tables() {
         }
     };
 
+    const filteredTables = statusFilter
+        ? tables.filter(t => t.status === statusFilter)
+        : tables;
+
+    const mapBranchIds = Array.from(new Set(filteredTables.map((table) => table.branchId)));
+    const mapBranchId = mapBranchIds.length === 1 ? mapBranchIds[0] : undefined;
+
+    const handleSaveLayout = async (changed: PositionedTable[]) => {
+        if (!mapBranchId) {
+            showWarning('Selecciona una sucursal antes de editar su plano.');
+            return;
+        }
+        setSavingLayout(true);
+        try {
+            await tablesAPI.updateLayout(
+                mapBranchId,
+                changed.map((table) => ({
+                    id: table.id,
+                    x: table.mapX,
+                    y: table.mapY,
+                    width: table.mapWidth,
+                    height: table.mapHeight,
+                    rotation: table.mapRotation,
+                    shape: table.mapShape,
+                    expectedVersion: table.mapVersion
+                })),
+                newIdempotencyKey()
+            );
+            await loadTables();
+        } catch (error) {
+            showError(extractApiError(error, 'No se pudo guardar el plano de mesas'));
+            throw error;
+        } finally {
+            setSavingLayout(false);
+        }
+    };
+
+    const handleTransfer = async (data: {
+        sourceTableId: number;
+        destinationTableId: number;
+        orderId: number;
+        items?: Array<{ orderItemId: number; quantity: number }>;
+        reason?: string;
+    }) => {
+        setSubmittingOperation(true);
+        try {
+            await tablesAPI.transfer(data, newIdempotencyKey());
+            setOperation(null);
+            await loadTables();
+            showSuccess('El consumo fue trasladado a la mesa destino.');
+        } catch (error) {
+            showError(extractApiError(error, 'No se pudo cambiar la mesa'));
+        } finally {
+            setSubmittingOperation(false);
+        }
+    };
+
+    const handleConsolidate = async (data: { destinationTableId: number; sourceTableIds: number[]; reason?: string }) => {
+        setSubmittingOperation(true);
+        try {
+            await tablesAPI.consolidate(data, newIdempotencyKey());
+            setOperation(null);
+            await loadTables();
+            showSuccess('Las cuentas fueron consolidadas en la mesa principal.');
+        } catch (error) {
+            showError(extractApiError(error, 'No se pudieron consolidar las cuentas'));
+        } finally {
+            setSubmittingOperation(false);
+        }
+    };
+
     const getStatusColor = (status: string) => {
         switch (status) {
             case 'AVAILABLE': return 'available';
@@ -218,11 +298,6 @@ export default function Tables() {
         }
     };
 
-    const filteredTables = statusFilter
-        ? tables.filter(t => t.status === statusFilter)
-        : tables;
-
-
     if (loading) return <div className="tables-loading">Cargando...</div>;
 
     return (
@@ -232,7 +307,25 @@ export default function Tables() {
                 icon={Grid3x3}
                 actions={(
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <ViewToggle value={viewMode} onChange={setViewMode} />
+                        <button
+                            type="button"
+                            className={`tables-map-toggle ${showMap ? 'active' : ''}`}
+                            onClick={() => setShowMap((value) => !value)}
+                        >
+                            <MapPinned size={18} />
+                            Plano
+                        </button>
+                        {!showMap && <ViewToggle value={viewMode} onChange={setViewMode} />}
+                        {canTransfer && (
+                            <button type="button" className="tables-map-toggle" onClick={() => setOperation('TRANSFER')}>
+                                <ArrowRightLeft size={18} /> Cambiar mesa
+                            </button>
+                        )}
+                        {canConsolidate && (
+                            <button type="button" className="tables-map-toggle" onClick={() => setOperation('CONSOLIDATE')}>
+                                <Merge size={18} /> Consolidar
+                            </button>
+                        )}
                         {canCreateTable && (
                             <Button onClick={() => handleOpenSidebar()}>
                                 <Plus size={20} />
@@ -293,7 +386,24 @@ export default function Tables() {
                 )}
             </div>
 
-            {viewMode === 'table' && filteredTables.length > 0 && (
+            {showMap && filteredTables.length > 0 && mapBranchIds.length > 1 && (
+                <div className="table-map-branch-required">
+                    <MapPinned size={24} />
+                    Selecciona una sucursal para visualizar y editar su plano.
+                </div>
+            )}
+
+            {showMap && filteredTables.length > 0 && mapBranchIds.length === 1 && (
+                <TableMap
+                    tables={filteredTables}
+                    canEdit={canEditMap}
+                    saving={savingLayout}
+                    onSelect={handleViewOrders}
+                    onSave={handleSaveLayout}
+                />
+            )}
+
+            {!showMap && viewMode === 'table' && filteredTables.length > 0 && (
                 <CatalogTable<Table>
                     rows={filteredTables}
                     rowKey={(table) => table.id}
@@ -374,7 +484,7 @@ export default function Tables() {
                 />
             )}
 
-            {viewMode === 'cards' && (
+            {!showMap && viewMode === 'cards' && (
             <div className="tables-grid-new">
                 {filteredTables.map(table => {
                     return (
@@ -577,23 +687,25 @@ export default function Tables() {
                                         />
                                     </div>
 
-                                    <Select
-                                        variant="modal"
-                                        label="Estado Inicial"
-                                        options={[
-                                            { value: 'AVAILABLE', label: 'Disponible' },
-                                            { value: 'OCCUPIED', label: 'Ocupada' },
-                                            { value: 'RESERVED', label: 'Reservada' },
-                                            { value: 'OUT_OF_SERVICE', label: 'Fuera de Servicio' }
-                                        ]}
-                                        value={{
-                                            value: formData.status,
-                                            label: getStatusText(formData.status)
-                                        }}
-                                        onChange={(option: SingleValue<{ value: Table['status']; label: string }>) =>
-                                            option && setFormData({ ...formData, status: option.value })}
-                                        isSearchable={false}
-                                    />
+                                    {editingTable && (
+                                        <Select
+                                            variant="modal"
+                                            label="Estado Operativo"
+                                            options={[
+                                                { value: 'AVAILABLE', label: 'Disponible' },
+                                                { value: 'RESERVED', label: 'Reservada' },
+                                                { value: 'OUT_OF_SERVICE', label: 'Fuera de Servicio' }
+                                            ]}
+                                            value={{
+                                                value: formData.status,
+                                                label: getStatusText(formData.status)
+                                            }}
+                                            onChange={(option: SingleValue<{ value: Table['status']; label: string }>) =>
+                                                option && setFormData({ ...formData, status: option.value })}
+                                            isDisabled={editingTable.status === 'OCCUPIED'}
+                                            isSearchable={false}
+                                        />
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -616,6 +728,15 @@ export default function Tables() {
                 onClose={() => setIsOrdersModalOpen(false)}
                 tableNumber={selectedTable?.number || ''}
                 orders={tableOrders}
+            />
+            <TableOperationModal
+                isOpen={operation !== null}
+                operation={operation ?? 'TRANSFER'}
+                tables={mapBranchId ? tables.filter((table) => table.branchId === mapBranchId) : tables}
+                submitting={submittingOperation}
+                onClose={() => setOperation(null)}
+                onTransfer={handleTransfer}
+                onConsolidate={handleConsolidate}
             />
         </div>
     );

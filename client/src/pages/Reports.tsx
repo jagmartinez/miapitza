@@ -107,8 +107,15 @@ const PRODUCTION_REPORT_IDS = new Set([
     'prod-orders', 'prod-plan-vs-real', 'prod-input-consumption', 'prod-profitability', 'prod-kardex',
 ]);
 
-interface ProdProductRef { name: string; sku: string | null; type?: string }
+interface ProdProductRef {
+    name: string;
+    sku: string | null;
+    type?: string;
+    unit?: string;
+    baseUnit?: { abbreviation: string } | null;
+}
 interface ProdWarehouseRef { name: string }
+interface QuantityByUnit { unit: string; quantity: number }
 
 interface ProdOrderRow {
     code: string;
@@ -125,19 +132,24 @@ interface ProdOrderRow {
 }
 interface ProdOrdersSummary {
     count: number; finished: number; cancelled: number;
-    totalPlanned: number; totalProduced: number;
+    totalPlanned: number | null; totalProduced: number | null;
+    plannedQuantities: QuantityByUnit[]; producedQuantities: QuantityByUnit[];
+    mixedOutputUnits: boolean;
     totalEstimatedCost: number; totalRealCost: number;
 }
 interface ProdOrdersResponse { summary: ProdOrdersSummary; items: ProdOrderRow[] }
 
 interface PlanVsRealRow {
     id: number; code: string; product: ProdProductRef | null; finishedAt: string | null;
+    unit: string;
     plannedQuantity: number; producedQuantity: number; quantityDiff: number; yieldPct: number;
     estimatedCost: number; realCost: number; costVariance: number;
     estimatedUnitCost: number; realUnitCost: number;
 }
 interface PlanVsRealSummary {
-    count: number; totalPlanned: number; totalProduced: number;
+    count: number; totalPlanned: number | null; totalProduced: number | null;
+    plannedQuantities: QuantityByUnit[]; producedQuantities: QuantityByUnit[];
+    mixedOutputUnits: boolean;
     totalCostVariance: number; avgYieldPct: number;
 }
 interface PlanVsRealResponse { summary: PlanVsRealSummary; items: PlanVsRealRow[] }
@@ -164,17 +176,30 @@ interface ProdKardexResponse { items: ProdKardexRow[] }
 
 type ProductionReportData = { items: Record<string, unknown>[]; summary: Record<string, number> };
 
+function physicalProductionSummary(summary: ProdOrdersSummary | PlanVsRealSummary): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const [key, value] of Object.entries(summary)) {
+        if (key === 'totalPlanned' || key === 'totalProduced' || key === 'plannedQuantities' ||
+            key === 'producedQuantities' || key === 'mixedOutputUnits') continue;
+        if (typeof value === 'number' && Number.isFinite(value)) result[key] = value;
+    }
+    for (const row of summary.plannedQuantities) result[`plannedQuantity__${row.unit}`] = row.quantity;
+    for (const row of summary.producedQuantities) result[`producedQuantity__${row.unit}`] = row.quantity;
+    return result;
+}
+
 async function loadProductionReport(reportId: string, params: Record<string, string>): Promise<ProductionReportData> {
     switch (reportId) {
         case 'prod-orders': {
             const d = (await productionReportsAPI.getProductions(params)).data.data as ProdOrdersResponse;
             return {
-                summary: { ...d.summary },
+                summary: physicalProductionSummary(d.summary),
                 items: d.items.map((o) => ({
                     code: o.code,
                     productName: o.product?.name ?? '-',
                     sku: o.product?.sku ?? '-',
                     warehouseName: o.warehouse?.name ?? '-',
+                    unit: o.product?.baseUnit?.abbreviation || o.product?.unit || '-',
                     date: o.date,
                     plannedQuantity: o.plannedQuantity,
                     producedQuantity: o.producedQuantity,
@@ -188,12 +213,13 @@ async function loadProductionReport(reportId: string, params: Record<string, str
         case 'prod-plan-vs-real': {
             const d = (await productionReportsAPI.getPlanVsReal(params)).data.data as PlanVsRealResponse;
             return {
-                summary: { ...d.summary },
+                summary: physicalProductionSummary(d.summary),
                 items: d.items.map((o) => ({
                     code: o.code,
                     productName: o.product?.name ?? '-',
                     sku: o.product?.sku ?? '-',
                     finishedAt: o.finishedAt,
+                    unit: o.unit,
                     plannedQuantity: o.plannedQuantity,
                     producedQuantity: o.producedQuantity,
                     quantityDiff: o.quantityDiff,
@@ -838,6 +864,7 @@ function getColumns(reportId: string): ColDef[] {
             { key: 'productName', header: 'Producto' },
             { key: 'categoryName', header: 'Categoría' },
             { key: 'quantity', header: 'Cantidad', align: 'right', format: 'number' },
+            { key: 'unit', header: 'Unidad' },
             { key: 'unitCost', header: 'Costo Unit.', align: 'right', format: 'currency' },
             { key: 'totalCost', header: 'Costo Total', align: 'right', format: 'currency' },
             { key: 'status', header: 'Estado', format: 'status' },
@@ -1057,6 +1084,7 @@ function getColumns(reportId: string): ColDef[] {
             { key: 'productName', header: 'Producto' },
             { key: 'sku', header: 'SKU' },
             { key: 'warehouseName', header: 'Almacén' },
+            { key: 'unit', header: 'Unidad' },
             { key: 'date', header: 'Fecha', format: 'date' },
             { key: 'plannedQuantity', header: 'Planificado', align: 'right', format: 'number' },
             { key: 'producedQuantity', header: 'Producido', align: 'right', format: 'number' },
@@ -1070,6 +1098,7 @@ function getColumns(reportId: string): ColDef[] {
             { key: 'productName', header: 'Producto' },
             { key: 'sku', header: 'SKU' },
             { key: 'finishedAt', header: 'Finalizado', format: 'date' },
+            { key: 'unit', header: 'Unidad' },
             { key: 'plannedQuantity', header: 'Planificado', align: 'right', format: 'number' },
             { key: 'producedQuantity', header: 'Producido', align: 'right', format: 'number' },
             { key: 'quantityDiff', header: 'Diferencia', align: 'right', format: 'number', signColor: true },
@@ -1155,6 +1184,8 @@ function renderCell(value: unknown, col: ColDef, fmtCurrency: (n: number) => str
 }
 
 function formatSummaryLabel(key: string): string {
+    if (key.startsWith('plannedQuantity__')) return `Planificado (${key.slice('plannedQuantity__'.length)})`;
+    if (key.startsWith('producedQuantity__')) return `Producido (${key.slice('producedQuantity__'.length)})`;
     const map: Record<string, string> = {
         totalProducts: 'Total Productos', totalValue: 'Valor Total',
         lowStockCount: 'Stock Bajo', criticalCount: 'Crítico',

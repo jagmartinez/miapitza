@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api, { unitsAPI } from '../services/api';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import type { SingleValue } from 'react-select';
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAppToast } from '../context/ToastContext';
 import { formatLocalDateInput } from '../utils/dateInput';
+import { newIdempotencyKey } from '../utils/idempotency';
 
 type StrOption = { value: string; label: string };
 
@@ -39,13 +40,14 @@ interface WasteEntry {
 interface WasteReport {
     summary: {
         totalEntries: number;
-        totalUnits: number;
+        quantities: Array<{ unit: string; quantity: number }>;
         totalCost: number;
     };
     byReason: Array<{
         reason: string;
         count: number;
         quantity: number;
+        unit: string;
         cost: number;
     }>;
     details: WasteEntry[];
@@ -82,6 +84,7 @@ const WasteReport: React.FC = () => {
     const [report, setReport] = useState<WasteReport | null>(null);
     const [settings, setSettings] = useState<CurrencySettings>({});
     const [loading, setLoading] = useState(false);
+    const wasteAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
     const [productUnits, setProductUnits] = useState<AllowedUnit[]>([]);
 
@@ -128,16 +131,24 @@ const WasteReport: React.FC = () => {
     const handleRecordWaste = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
+        const payload = {
+            warehouseId: parseInt(formData.warehouseId),
+            productId: parseInt(formData.productId),
+            quantity: parseFloat(formData.quantity),
+            reason: formData.reason,
+            notes: formData.notes,
+            ...(formData.unit ? { unit: formData.unit } : {})
+        };
+        const fingerprint = JSON.stringify(payload);
+        if (wasteAttemptRef.current?.fingerprint !== fingerprint) {
+            wasteAttemptRef.current = { fingerprint, key: newIdempotencyKey() };
+        }
         try {
-            await api.post('/advanced/waste', {
-                warehouseId: parseInt(formData.warehouseId),
-                productId: parseInt(formData.productId),
-                quantity: parseFloat(formData.quantity),
-                reason: formData.reason,
-                notes: formData.notes,
-                ...(formData.unit ? { unit: formData.unit } : {})
+            await api.post('/advanced/waste', payload, {
+                headers: { 'X-Idempotency-Key': wasteAttemptRef.current.key }
             });
             success('Merma registrada exitosamente');
+            wasteAttemptRef.current = null;
             setFormData({
                 warehouseId: '',
                 productId: '',
@@ -203,15 +214,16 @@ const WasteReport: React.FC = () => {
                 setProductUnits(units);
                 const base = units.find((u) => u.isBase) ?? units[0];
                 setFormData((fd) => ({ ...fd, unit: base ? base.abbreviation : '' }));
-            } catch {
+            } catch (error: unknown) {
                 if (!cancelled) {
                     setProductUnits([]);
                     setFormData((fd) => ({ ...fd, unit: '' }));
+                    showError('No se pudieron cargar las unidades del producto: ' + errMsg(error));
                 }
             }
         })();
         return () => { cancelled = true; };
-    }, [formData.productId]);
+    }, [formData.productId, showError]);
 
     const detailEntries = report?.details ?? [];
     const totalPages = Math.max(1, Math.ceil(detailEntries.length / PAGE_SIZE));
@@ -462,9 +474,13 @@ const WasteReport: React.FC = () => {
                                 </div>
                                 <div className="kpi-card kpi-warning">
                                     <div className="kpi-label">
-                                        <Package size={14} /> Total Unidades
+                                        <Package size={14} /> Cantidad física
                                     </div>
-                                    <div className="kpi-value">{report.summary.totalUnits.toFixed(2)}</div>
+                                    <div className="kpi-value">
+                                        {report.summary.quantities.length > 0
+                                            ? report.summary.quantities.map((item) => `${item.quantity.toFixed(2)} ${item.unit}`).join(' · ')
+                                            : '0'}
+                                    </div>
                                 </div>
                                 <div className="kpi-card kpi-danger">
                                     <div className="kpi-label">
@@ -487,6 +503,7 @@ const WasteReport: React.FC = () => {
                                                 <th>Razón</th>
                                                 <th className="text-right">Entradas</th>
                                                 <th className="text-right">Unidades</th>
+                                                <th>Unidad</th>
                                                 <th className="text-right">Costo</th>
                                             </tr>
                                         </thead>
@@ -496,11 +513,12 @@ const WasteReport: React.FC = () => {
                                                     <td>{item.reason}</td>
                                                     <td className="text-right">{item.count}</td>
                                                     <td className="text-right">{item.quantity.toFixed(2)}</td>
+                                                    <td>{item.unit}</td>
                                                     <td className="text-right font-semibold">{formatCurrency(item.cost, settings)}</td>
                                                 </tr>
                                             ))}
                                             {report.byReason.length === 0 && (
-                                                <tr><td colSpan={4} className="data-table-empty">Sin datos para los filtros seleccionados</td></tr>
+                                                <tr><td colSpan={5} className="data-table-empty">Sin datos para los filtros seleccionados</td></tr>
                                             )}
                                         </tbody>
                                     </table>

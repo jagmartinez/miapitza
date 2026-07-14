@@ -10,7 +10,7 @@ function snapshot(overrides: Partial<OrderSnapshot> = {}): OrderSnapshot {
         id: 10,
         companyId: 1,
         branchId: 2,
-        status: 'PAID',
+        status: 'DELIVERED',
         salesChannel: 'RESTAURANT',
         total: 0,
         invoiceNumber: null,
@@ -49,7 +49,7 @@ describe('remediate-empty-orders safety classifier', () => {
         ['payment reference', { payments: [{ id: 4, amount: 0, status: 'ACTIVE', reference: 'provider-4' }] }, 'referencia externa'],
         ['promotion', { discountCode: 'PROMO' }, 'promoción'],
         ['non-empty order', { itemCount: 1 }, 'item(s)'],
-        ['non-terminal order', { status: 'OPEN' }, 'no es PAID/DELIVERED']
+        ['non-terminal order', { status: 'OPEN' }, 'no es DELIVERED']
     ])('blocks %s', (_label, overrides, blocker) => {
         const result = classifyOrder(snapshot(overrides as Partial<OrderSnapshot>));
         expect(result.eligible).toBe(false);

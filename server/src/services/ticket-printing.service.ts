@@ -14,6 +14,7 @@ export interface PrintableOrderTicket {
         logoUrl: string;
     };
     order: {
+        financialStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
         number: string;
         date: Date;
         type: string;
@@ -71,6 +72,7 @@ export class TicketPrintingService {
                 user: { select: { name: true } },
                 branch: true,
                 payments: {
+                    where: { status: 'ACTIVE' },
                     include: { paymentMethod: true }
                 }
             }
@@ -111,6 +113,7 @@ export class TicketPrintingService {
                 logoUrl: getSettingValue('logoUrl', '')
             },
             order: {
+                financialStatus: order.financialStatus,
                 number: order.id.toString().padStart(6, '0'),
                 date: order.createdAt,
                 type: order.orderType || 'DINE_IN',

@@ -230,6 +230,139 @@
 .action-buttons {
     display: flex;
     gap: 8px;
+    flex-wrap: wrap;
+}
+
+.invoice-payments-list {
+    display: grid;
+    gap: var(--spacing-md);
+}
+
+.invoice-payment-card {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg);
+    background: var(--color-background);
+}
+
+.invoice-payment-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+    color: var(--color-text);
+}
+
+.invoice-payment-status {
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--radius-full);
+    padding: 4px 10px;
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.invoice-payment-status.is-active {
+    color: #047857;
+    background: #d1fae5;
+}
+
+.invoice-payment-status.is-reversed {
+    color: #b91c1c;
+    background: #fee2e2;
+}
+
+.invoice-payment-details {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--spacing-md);
+    margin: 0;
+}
+
+.invoice-payment-details div {
+    min-width: 0;
+}
+
+.invoice-payment-details dt {
+    margin-bottom: 3px;
+    color: var(--color-text-tertiary);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.invoice-payment-details dd {
+    margin: 0;
+    color: var(--color-text);
+    font-size: var(--font-size-sm);
+    overflow-wrap: anywhere;
+}
+
+.invoice-payment-details .invoice-payment-amount {
+    color: #059669;
+    font-weight: 700;
+}
+
+.invoice-payment-reversal-audit {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    margin-top: var(--spacing-md);
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-danger, #dc2626) 8%, transparent);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+}
+
+.invoice-payment-reversal-audit span {
+    flex-basis: 100%;
+    color: var(--color-text-tertiary);
+    font-size: var(--font-size-xs);
+}
+
+.invoice-payment-actions,
+.invoice-payment-reversal-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-md);
+}
+
+.invoice-payment-reversal-form {
+    margin-top: var(--spacing-md);
+    padding-top: var(--spacing-md);
+    border-top: 1px solid var(--color-border);
+}
+
+.invoice-payment-reversal-form label {
+    display: block;
+    margin-bottom: var(--spacing-sm);
+    color: var(--color-text);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+}
+
+.invoice-payment-reversal-form textarea {
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+    min-height: 82px;
+    padding: var(--spacing-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font: inherit;
+}
+
+.invoice-payment-reversal-form textarea:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
 }
 
 @media (max-width: 768px) {
@@ -239,5 +372,23 @@
 
     .invoices-table {
         min-width: 800px;
+    }
+
+    .invoice-payment-details {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .invoice-payment-details {
+        grid-template-columns: 1fr;
+    }
+
+    .invoice-payment-reversal-buttons {
+        flex-direction: column-reverse;
+    }
+
+    .invoice-payment-reversal-buttons .btn {
+        width: 100%;
     }
 }

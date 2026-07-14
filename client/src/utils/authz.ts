@@ -71,6 +71,10 @@ export const canCancelOrder = (user: User | null | undefined): boolean =>
 export const canCreatePayment = (user: User | null | undefined): boolean =>
     hasAnyRole(user, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.CAJERO]);
 
+/** DELETE /payments/:id (reverso financiero inmutable) */
+export const canReversePayment = (user: User | null | undefined): boolean =>
+    hasAnyRole(user, [ROLES.SUPERADMIN, ROLES.ADMIN]);
+
 /** PATCH items start/finish, POST report-problem */
 export const canOperateKitchenLineItems = (user: User | null | undefined): boolean =>
     hasAnyRole(user, [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.COCINA, ROLES.CHEF]);

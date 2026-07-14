@@ -1,7 +1,11 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import crypto from 'crypto';
 import { bootstrapCentralWarehouses } from './bootstrap-central-warehouses';
+import {
+    assertStrongPassword,
+    BCRYPT_ROUNDS,
+    generateStrongRandomPassword
+} from '../src/utils/password-policy';
 
 const prisma = new PrismaClient();
 
@@ -35,6 +39,8 @@ async function main() {
         { name: 'MESERO', description: 'Waiter/Server' },
         { name: 'HOST', description: 'Host/Receptionist' },
         { name: 'COCINA', description: 'Kitchen Staff' },
+        { name: 'CHEF', description: 'Kitchen and recipe lead' },
+        { name: 'BODEGA', description: 'Warehouse and inventory staff' },
         { name: 'CAJERO', description: 'Cashier' },
     ];
 
@@ -48,13 +54,43 @@ async function main() {
 
     // 3. Create Permissions
     console.log('Creating permissions...');
-    const permissions = [
+    const basePermissions = [
         'view_users', 'create_user', 'edit_user', 'delete_user',
         'view_branches', 'create_branch', 'edit_branch', 'delete_branch',
         'view_orders', 'create_order', 'edit_order', 'delete_order',
         'view_menu', 'create_menu', 'edit_menu', 'delete_menu',
         'view_inventory', 'create_inventory', 'edit_inventory',
         'view_reports'
+    ];
+    const tablePermissions = [
+        'tables.map.view',
+        'tables.map.edit',
+        'tables.create',
+        'tables.edit',
+        'tables.status.manage',
+        'tables.delete',
+        'tables.transfer',
+        'tables.consolidate',
+    ];
+    const kdsPermissions = ['kds.view', 'kds.manage'];
+    const operationalPermissions = [
+        'orders.view',
+        'orders.create',
+        'orders.edit',
+        'orders.cancel',
+        'orders.deliver',
+        'invoices.issue',
+        'invoices.view',
+        'invoices.cancel',
+        'payments.process',
+        'payments.reverse',
+        'bills.split',
+    ];
+    const permissions = [
+        ...basePermissions,
+        ...tablePermissions,
+        ...kdsPermissions,
+        ...operationalPermissions,
     ];
 
     for (const permName of permissions) {
@@ -72,15 +108,19 @@ async function main() {
     const rolePermissionMap: Record<string, string[]> = {
         // Full access
         SUPERADMIN: permissions,
-        ADMIN: permissions,
+        ADMIN: [...basePermissions, ...tablePermissions, ...kdsPermissions, ...operationalPermissions],
         // Cashier: manage orders + read-only menu/reports
-        CAJERO: ['view_orders', 'create_order', 'edit_order', 'view_menu', 'view_reports'],
+        CAJERO: ['view_orders', 'create_order', 'edit_order', 'view_menu', 'view_reports', 'tables.map.view', 'tables.consolidate', 'orders.view', 'orders.create', 'orders.deliver', 'invoices.issue', 'invoices.view', 'payments.process', 'bills.split'],
         // Waiter: take and edit orders
-        MESERO: ['view_orders', 'create_order', 'edit_order', 'view_menu'],
+        MESERO: ['view_orders', 'create_order', 'edit_order', 'view_menu', 'tables.map.view', 'tables.transfer', 'tables.status.manage', 'orders.view', 'orders.create', 'orders.edit', 'orders.cancel', 'orders.deliver', 'bills.split'],
         // Kitchen: read orders only
-        COCINA: ['view_orders', 'view_menu'],
+        COCINA: ['view_orders', 'view_menu', 'orders.view', ...kdsPermissions],
+        // Chef: kitchen execution plus recipe/menu and stock maintenance.
+        CHEF: ['view_orders', 'view_menu', 'create_menu', 'edit_menu', 'view_inventory', 'create_inventory', 'edit_inventory', 'view_reports', 'orders.view', ...kdsPermissions],
+        // Warehouse: inventory custody without access to users, orders or destructive catalog operations.
+        BODEGA: ['view_menu', 'view_inventory', 'create_inventory', 'edit_inventory', 'view_reports', 'orders.view'],
         // Host/receptionist: read orders + menu
-        HOST: ['view_orders', 'view_menu'],
+        HOST: ['view_orders', 'view_menu', 'tables.map.view', 'tables.edit', 'tables.status.manage', 'orders.view'],
     };
 
     for (const [roleName, permNames] of Object.entries(rolePermissionMap)) {
@@ -113,33 +153,70 @@ async function main() {
 
     // 5. Create Super Admin User
     console.log('Creating super admin user...');
-    const superAdminPassword = process.env.SEED_SUPERADMIN_PASSWORD || crypto.randomBytes(18).toString('base64url');
-    const hashedPassword = await bcrypt.hash(superAdminPassword, 10);
-
-    await findOrCreate<any>(prisma.user, { username: 'admin' }, {
-        name: 'Super Administrator',
-        email: 'admin@restaurant.com',
-        password: hashedPassword,
-        roleId: roles['SUPERADMIN'].id,
-        branchId: branch.id,
-        companyId,
-        status: 'ACTIVE'
+    const existingAdmin = await prisma.user.findUnique({
+        where: { username: 'admin' },
+        select: { id: true, companyId: true, roleId: true }
     });
 
-    console.log('Super admin user created');
-    if (process.env.SEED_SUPERADMIN_PASSWORD) {
-        console.log('  Login: admin / [SEED_SUPERADMIN_PASSWORD]');
+    if (existingAdmin) {
+        console.log('Super admin user already exists; password and assignments were left unchanged.');
+        if (existingAdmin.companyId !== companyId || existingAdmin.roleId !== roles['SUPERADMIN'].id) {
+            console.warn('  WARNING: Existing username "admin" is not assigned to the seeded company/SUPERADMIN role. Review it manually.');
+        }
     } else {
-        console.log(`  Login: admin / ${superAdminPassword}`);
-        console.log('  WARNING: Store this generated password securely and rotate it immediately.');
+        const configuredPassword = process.env.SEED_SUPERADMIN_PASSWORD?.trim();
+        const superAdminPassword = configuredPassword || generateStrongRandomPassword();
+        assertStrongPassword(superAdminPassword);
+        const hashedPassword = await bcrypt.hash(superAdminPassword, BCRYPT_ROUNDS);
+
+        const createdAdmin = await prisma.user.create({
+            data: {
+                name: 'Super Administrator',
+                email: 'admin@restaurant.com',
+                username: 'admin',
+                password: hashedPassword,
+                mustChangePassword: true,
+                passwordChangedAt: null,
+                roleId: roles['SUPERADMIN'].id,
+                branchId: branch.id,
+                companyId,
+                status: 'ACTIVE'
+            }
+        });
+        await prisma.userBranch.create({
+            data: { userId: createdAdmin.id, branchId: branch.id }
+        });
+
+        console.log('Super admin user created; password change is required on first login.');
+        if (configuredPassword) {
+            console.log('  Login: admin / [SEED_SUPERADMIN_PASSWORD]');
+        } else {
+            console.log(`  One-time login: admin / ${superAdminPassword}`);
+            console.log('  WARNING: Store this generated password securely; it will not be printed on later seed runs.');
+        }
     }
 
     // 6. Create Payment Methods
     console.log('Creating payment methods...');
-    for (const method of ['Efectivo', 'Tarjeta', 'Transferencia']) {
-        await findOrCreate<any>(prisma.paymentMethod, { companyId, name: method }, {
-            active: true
+    const paymentMethods = [
+        { name: 'Efectivo', type: 'CASH' as const },
+        { name: 'Tarjeta', type: 'CARD' as const },
+        { name: 'Transferencia', type: 'BANK_TRANSFER' as const }
+    ];
+    for (const method of paymentMethods) {
+        const existing = await prisma.paymentMethod.findFirst({
+            where: { companyId, name: method.name }
         });
+        if (existing) {
+            await prisma.paymentMethod.update({
+                where: { id: existing.id },
+                data: { type: method.type }
+            });
+        } else {
+            await prisma.paymentMethod.create({
+                data: { companyId, name: method.name, type: method.type, active: true }
+            });
+        }
     }
     console.log('Payment methods created');
 

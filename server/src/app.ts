@@ -51,6 +51,7 @@ import productionRecipeRoutes from './routes/production-recipe.routes';
 import productionOrderRoutes from './routes/production-order.routes';
 import productionReportRoutes from './routes/production-report.routes';
 import adminRoutes from './routes/admin.routes';
+import kitchenNotificationRoutes from './routes/kitchen-notification.routes';
 import { getUploadsDir } from './utils/storage';
 import prisma from './utils/prisma';
 
@@ -198,6 +199,7 @@ app.use('/api/inventory-movements', inventoryMovementRoutes);
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/purchase-orders', purchaseOrderRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/kitchen-notifications', kitchenNotificationRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/cash-registers', cashRegisterRoutes);
 app.use('/api/cash-shifts', cashShiftRoutes);

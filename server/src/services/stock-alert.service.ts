@@ -18,6 +18,7 @@ export class StockAlertService {
         const products = await prisma.product.findMany({
             where: { active: true, companyId },
             include: {
+                baseUnit: { select: { abbreviation: true } },
                 stocks: {
                     where: Object.keys(stockWhere).length ? stockWhere : undefined,
                     include: {
@@ -47,7 +48,7 @@ export class StockAlertService {
                     productId: product.id,
                     productName: product.name,
                     sku: product.sku,
-                    unit: product.unit,
+                    unit: product.baseUnit?.abbreviation || product.unit,
                     currentStock: totalStock,
                     minStock,
                     deficit: Math.max(0, minStock - totalStock),

@@ -446,15 +446,15 @@ export default function CashRegisters() {
 
             <Sidebar isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Nueva Caja Registradora">
                 <div className="premium-modal-content">
-                    <div className="modal-tabs">
-                        <div className={`modal-tab ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>
+                    <div className="modal-tabs" role="tablist" aria-label="Configuración de caja registradora">
+                        <button type="button" role="tab" aria-selected={activeTab === 'general'} className={`modal-tab ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>
                             <Wallet size={18} />
                             <span>General</span>
-                        </div>
-                        <div className={`modal-tab ${activeTab === 'configuracion' ? 'active' : ''}`} onClick={() => setActiveTab('configuracion')}>
+                        </button>
+                        <button type="button" role="tab" aria-selected={activeTab === 'configuracion'} className={`modal-tab ${activeTab === 'configuracion' ? 'active' : ''}`} onClick={() => setActiveTab('configuracion')}>
                             <Settings size={18} />
                             <span>Configuración</span>
-                        </div>
+                        </button>
                     </div>
                     <div className="modal-tab-content">
                         {activeTab === 'general' && (
@@ -491,8 +491,8 @@ export default function CashRegisters() {
                         )}
                     </div>
                     <div className="modal-footer">
-                        <Button variant="ghost" onClick={() => setIsCreateModalOpen(false)}>Cancelar</Button>
-                        <Button onClick={handleCreateRegister}>Guardar Caja</Button>
+                        <Button type="button" variant="ghost" onClick={() => setIsCreateModalOpen(false)}>Cancelar</Button>
+                        <Button type="button" onClick={handleCreateRegister}>Guardar Caja</Button>
                     </div>
                 </div>
             </Sidebar>

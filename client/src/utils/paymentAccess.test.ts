@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { hasUsableCashShift, isCashPaymentMethodName } from './paymentAccess';
+import { hasUsableCashShift, isCashPaymentMethodType } from './paymentAccess';
 
 describe('payment access contract', () => {
-    it('uses the same exact cash names as the server ledger', () => {
-        expect(isCashPaymentMethodName('Efectivo')).toBe(true);
-        expect(isCashPaymentMethodName(' cash ')).toBe(true);
-        expect(isCashPaymentMethodName('Tarjeta')).toBe(false);
-        expect(isCashPaymentMethodName('Efectivo móvil')).toBe(false);
+    it('uses the persisted method type and ignores the display label', () => {
+        expect(isCashPaymentMethodType('CASH')).toBe(true);
+        expect(isCashPaymentMethodType('CARD')).toBe(false);
+        expect(isCashPaymentMethodType('OTHER')).toBe(false);
+        expect(isCashPaymentMethodType(undefined)).toBe(false);
     });
 
     it('requires a current shift from the order branch for cash', () => {

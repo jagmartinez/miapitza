@@ -5,7 +5,6 @@ export const ACTIVE_ORDER_STATUSES: Order['status'][] = [
     'SENT_TO_KITCHEN',
     'IN_PREPARATION',
     'READY',
-    'DELIVERED',
 ];
 
 export const KITCHEN_ORDER_STATUSES: Order['status'][] = [
@@ -26,8 +25,6 @@ export const getOrderStatusLabel = (status: Order['status']): string => {
             return 'Lista';
         case 'DELIVERED':
             return 'Entregada';
-        case 'PAID':
-            return 'Pagada';
         case 'CANCELLED':
             return 'Cancelada';
         default:
@@ -47,8 +44,6 @@ export const getOrderStatusClassName = (status: Order['status']): string => {
             return 'status-ready';
         case 'DELIVERED':
             return 'status-delivered';
-        case 'PAID':
-            return 'status-paid';
         case 'CANCELLED':
             return 'status-cancelled';
         default:
@@ -68,9 +63,9 @@ export const getOrderTimeline = (order: Pick<Order, 'createdAt' | 'items' | 'sta
         .sort();
 
     const allItemsFinished = items.length > 0 && readyTimes.length === items.length;
-    // If the order has already advanced past kitchen (READY/DELIVERED/PAID) but some legacy
+    // If the order has already advanced past kitchen (READY/DELIVERED) but some legacy
     // items lack finishedAt, fall back to the latest available finishedAt instead of "--:--".
-    const orderConsideredReady = ['READY', 'DELIVERED', 'PAID'].includes(order.status);
+    const orderConsideredReady = ['READY', 'DELIVERED'].includes(order.status);
     const readyAt = allItemsFinished
         ? readyTimes[readyTimes.length - 1]
         : (orderConsideredReady && readyTimes.length > 0 ? readyTimes[readyTimes.length - 1] : null);
