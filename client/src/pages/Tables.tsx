@@ -53,7 +53,7 @@ export default function Tables() {
     const canChooseBranch = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [tables, setTables] = useState<Table[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
-    const [branchFilter, setBranchFilter] = useState<number | null>(null);
+    const [branchFilter, setBranchFilter] = useState<number | null>(() => user?.branchId ?? null);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
@@ -74,7 +74,7 @@ export default function Tables() {
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
     const [tableOrders, setTableOrders] = useState<Order[]>([]);
     const { viewMode, setViewMode } = useViewMode('tables');
-    const [showMap, setShowMap] = useState(false);
+    const [showMap, setShowMap] = useState(true);
     const [savingLayout, setSavingLayout] = useState(false);
     const [operation, setOperation] = useState<'TRANSFER' | 'CONSOLIDATE' | null>(null);
     const [submittingOperation, setSubmittingOperation] = useState(false);
@@ -311,9 +311,10 @@ export default function Tables() {
                             type="button"
                             className={`tables-map-toggle ${showMap ? 'active' : ''}`}
                             onClick={() => setShowMap((value) => !value)}
+                            aria-pressed={showMap}
                         >
-                            <MapPinned size={18} />
-                            Plano
+                            {showMap ? <Grid3x3 size={18} /> : <MapPinned size={18} />}
+                            {showMap ? 'Lista' : 'Plano'}
                         </button>
                         {!showMap && <ViewToggle value={viewMode} onChange={setViewMode} />}
                         {canTransfer && (
