@@ -1,6 +1,6 @@
 import { useContext } from 'react';
 import { CurrencyContext } from '../context/currency-context';
-import { formatCurrency, getCurrencySymbol } from '../utils/currency';
+import { formatCurrencyGrouped, getCurrencySymbol } from '../utils/currency';
 
 export function useCurrency() {
   const ctx = useContext(CurrencyContext);
@@ -10,7 +10,7 @@ export function useCurrency() {
   return {
     settings: {},
     symbol,
-    formatMoney: (amount: unknown) => formatCurrency(amount),
+    formatMoney: (amount: unknown) => formatCurrencyGrouped(amount),
     refresh: async () => undefined,
     loading: false,
   };

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Armchair, ArrowRightLeft, CopyPlus, LayoutDashboard, Lock, Maximize2, Merge, Plus, RotateCw, Save, Shapes, Trash2, Unlock, ZoomIn, ZoomOut } from 'lucide-react';
+import { Armchair, CopyPlus, LayoutDashboard, Lock, Maximize2, Plus, RotateCw, Save, Shapes, Trash2, Unlock, ZoomIn, ZoomOut } from 'lucide-react';
 import type { SingleValue } from 'react-select';
 import type { FloorArea, FloorAreaKind, FloorAreaShape, Table, TableFloorPlan } from '../types';
 import Select from './Select';
@@ -38,8 +38,6 @@ interface TableMapProps {
     saving: boolean;
     onSelect: (table: Table) => void;
     onSave: (draft: FloorPlanDraft) => Promise<void>;
-    onTransfer?: () => void;
-    onConsolidate?: () => void;
     onCreateTable?: () => void;
     onReturnToAdministration?: () => void;
     branchControl?: ReactNode;
@@ -156,8 +154,6 @@ export default function TableMap({
     saving,
     onSelect,
     onSave,
-    onTransfer,
-    onConsolidate,
     onCreateTable,
     onReturnToAdministration,
     branchControl,
@@ -354,8 +350,6 @@ export default function TableMap({
                     />}
                     {!editing && branchControl}
                     {!editing && themeControl}
-                    {!editing && onTransfer && <button type="button" onClick={onTransfer}><ArrowRightLeft size={18} /> Cambiar mesa</button>}
-                    {!editing && onConsolidate && <button type="button" onClick={onConsolidate}><Merge size={18} /> Consolidar</button>}
                     {!editing && onCreateTable && <button type="button" className="primary" onClick={onCreateTable}><Plus size={18} /> Nueva mesa</button>}
                     {!editing && onReturnToAdministration && <button type="button" onClick={onReturnToAdministration}><LayoutDashboard size={18} /> Administración</button>}
                     {editing && (

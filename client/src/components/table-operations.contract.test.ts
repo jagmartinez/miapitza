@@ -47,10 +47,12 @@ describe('table operational center contract', () => {
         expect(tablesSource).toContain('tablesAPI.updateFloorPlan');
     });
 
-    it('keeps operational actions and filters inside the full-screen map toolbar', () => {
+    it('keeps the map toolbar focused on filters and floor-plan actions', () => {
         expect(mapSource).toContain('Todas las mesas');
-        expect(mapSource).toContain('Cambiar mesa');
-        expect(mapSource).toContain('Consolidar');
+        expect(mapSource).not.toContain('Cambiar mesa');
+        expect(mapSource).not.toContain('Consolidar');
+        expect(panelSource).toContain('Cambiar mesa');
+        expect(panelSource).toContain('Consolidar');
         expect(mapSource).toContain('Nueva mesa');
         expect(mapSource).toContain('onStatusFilterChange');
         expect(tablesSource).toContain('!showMap && <PageHeader');
@@ -87,6 +89,7 @@ describe('table operational center contract', () => {
 
     it('keeps a single orders view without the removed Cuenta tab', () => {
         expect(panelSource).toContain('Órdenes activas');
+        expect(panelSource).not.toContain('orders-section-heading');
         expect(panelSource).not.toContain("useState<'orders' | 'bill'>");
         expect(panelSource).not.toContain('role="tablist"');
     });

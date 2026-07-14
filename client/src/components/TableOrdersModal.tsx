@@ -21,6 +21,8 @@ interface TableOrdersModalProps {
     canIssueInvoice: boolean;
     canPay: boolean;
     canOperatePOS: boolean;
+    canTransfer: boolean;
+    canConsolidate: boolean;
     onOpenPOS: (table: Table) => void;
     onIssueInvoice: (order: Order) => void;
     onPay: (order: Order) => void;
@@ -38,6 +40,8 @@ export default function TableOrdersModal({
     canIssueInvoice,
     canPay,
     canOperatePOS,
+    canTransfer,
+    canConsolidate,
     onOpenPOS,
     onIssueInvoice,
     onPay,
@@ -171,19 +175,16 @@ export default function TableOrdersModal({
                     <div className="summary-total"><CircleDollarSign size={17} /><span><small>Consumo activo</small><strong>{formatMoney(totalAmount)}</strong></span></div>
                 </section>
 
-                <div className="table-command-strip" aria-label="Gestionar ubicación de la mesa">
-                    <button type="button" onClick={() => onTransfer(table)}>
-                        <ArrowRightLeft size={18} /><span>Cambiar mesa</span>
-                    </button>
-                    <button type="button" onClick={() => onConsolidate(table)}>
-                        <Merge size={18} /><span>Consolidar</span>
-                    </button>
-                </div>
-
-                <div className="orders-section-heading">
-                    <div><FileText size={18} /><span><strong>Órdenes activas</strong><small>Consulta productos, cocina, factura y cobro.</small></span></div>
-                    <b>{orders.length}</b>
-                </div>
+                {(canTransfer || canConsolidate) && (
+                    <div className="table-command-strip" aria-label="Gestionar ubicación de la mesa">
+                        {canTransfer && <button type="button" onClick={() => onTransfer(table)}>
+                            <ArrowRightLeft size={18} /><span>Cambiar mesa</span>
+                        </button>}
+                        {canConsolidate && <button type="button" onClick={() => onConsolidate(table)}>
+                            <Merge size={18} /><span>Consolidar</span>
+                        </button>}
+                    </div>
+                )}
 
                 <div className="modal-tab-content-orders">
                     <div className="orders-list animate-slide-in">

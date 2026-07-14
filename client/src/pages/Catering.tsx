@@ -965,7 +965,7 @@ export default function Catering() {
                     <div className="modal-tab-content">
                         {activeTab === 'info' && (
                             <div className="animate-slide-in catering-info-layout">
-                                <section className="modal-section catering-event-section">
+                                <section className="modal-section catering-event-section catering-customer-section">
                                     <div className="catering-section-heading">
                                         <span><Users size={18} /></span>
                                         <div><h3>Cliente</h3><p>Persona o empresa responsable de la contratación.</p></div>

@@ -13,6 +13,8 @@ describe('operational UX contracts', () => {
         expect(source).toContain('width="wide"');
         expect(styles).toContain('--catering-control-height: 46px');
         expect(styles).toContain('.catering-event-section');
+        expect(styles).toContain('minmax(220px, .8fr) minmax(300px, 1.2fr) auto');
+        expect(styles).toContain('.catering-customer-section .modal-form-row');
     });
 
     it('supports selecting several categories in sales reports end to end', () => {
@@ -22,6 +24,8 @@ describe('operational UX contracts', () => {
         expect(source).toContain('<Select<FilterOption, true>');
         expect(source).toContain('categoryIds');
         expect(source).toContain('closeMenuOnSelect={false}');
+        expect(source).toContain('CompactCategoryMultiValue');
+        expect(styles).toContain('.report-category-summary');
         expect(styles).toContain('max-width: 1700px');
         expect(styles).toContain('.reports-page > .reports-detail-page');
     });

@@ -540,6 +540,11 @@ export default function PaymentModal({
     if (!isOpen) return null;
 
     const busy = loading || previewLoading || balanceLoading;
+    const modeHelp = mode === 'single'
+        ? { step: 'Cobro directo', title: 'Un solo método', detail: 'Registra el saldo completo y confirma el cambio antes de cobrar.' }
+        : mode === 'mixed'
+            ? { step: 'Cobro combinado', title: 'Dos o tres métodos', detail: 'Distribuye una misma deuda entre efectivo, tarjeta o transferencia.' }
+            : { step: 'Cobro por persona', title: 'Cuenta entre comensales', detail: 'Asigna el consumo en partes iguales, por unidades o por monto.' };
     const renderMethodSelect = (
         inputId: string,
         value: number | null,
@@ -605,24 +610,34 @@ export default function PaymentModal({
                     </button>
                 </header>
 
-                <nav className="payment-mode-tabs" role="tablist" aria-label="Tipo de pago">
-                    <button type="button" role="tab" aria-selected={mode === 'single'} className={mode === 'single' ? 'active' : ''} onClick={() => changeMode('single')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
-                        <CreditCard size={18} /> Pago único
-                    </button>
-                    <button type="button" role="tab" aria-selected={mode === 'mixed'} className={mode === 'mixed' ? 'active' : ''} onClick={() => changeMode('mixed')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
-                        <Layers3 size={18} /> Pago mixto
-                    </button>
-                    <button type="button" role="tab" aria-selected={mode === 'split'} className={mode === 'split' ? 'active' : ''} onClick={() => changeMode('split')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
-                        <Users size={18} /> Dividir cuenta
-                    </button>
-                </nav>
+                <div className="payment-workspace">
+                    <aside className="payment-context" aria-label="Resumen y tipo de cobro">
+                        <section className="payment-total-card" aria-label="Saldo pendiente">
+                            <span>Saldo pendiente</span>
+                            <strong>{displayMoney(balance)}</strong>
+                            {order?.invoiceNumber && <small>Factura {order.invoiceNumber}</small>}
+                        </section>
 
-                <div ref={scrollAreaRef} className="payment-scroll-area">
-                    <section className="payment-total-card" aria-label="Saldo pendiente">
-                        <span>Saldo pendiente</span>
-                        <strong>{displayMoney(balance)}</strong>
-                        {order?.invoiceNumber && <small>Factura {order.invoiceNumber}</small>}
-                    </section>
+                        <nav className="payment-mode-tabs" role="tablist" aria-label="Tipo de pago">
+                            <button type="button" role="tab" aria-selected={mode === 'single'} className={mode === 'single' ? 'active' : ''} onClick={() => changeMode('single')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
+                                <CreditCard size={18} /><span><strong>Pago único</strong><small>Una forma de pago</small></span>
+                            </button>
+                            <button type="button" role="tab" aria-selected={mode === 'mixed'} className={mode === 'mixed' ? 'active' : ''} onClick={() => changeMode('mixed')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
+                                <Layers3 size={18} /><span><strong>Pago mixto</strong><small>Varios métodos</small></span>
+                            </button>
+                            <button type="button" role="tab" aria-selected={mode === 'split'} className={mode === 'split' ? 'active' : ''} onClick={() => changeMode('split')} disabled={mixedAttempted || splitAttempted || queuedPayment}>
+                                <Users size={18} /><span><strong>Dividir cuenta</strong><small>Varios comensales</small></span>
+                            </button>
+                        </nav>
+
+                        <div className="payment-context-help">
+                            <span>{modeHelp.step}</span>
+                            <strong>{modeHelp.title}</strong>
+                            <p>{modeHelp.detail}</p>
+                        </div>
+                    </aside>
+
+                    <div ref={scrollAreaRef} className="payment-scroll-area">
 
                     {methodsLoading && <div className="payment-state">Cargando métodos de pago…</div>}
                     {methodsError && <div className="payment-alert error" role="alert">{methodsError}</div>}
@@ -784,6 +799,7 @@ export default function PaymentModal({
                             <AllocationStatus summary={splitAllocation} currencySymbol={currencySymbol} valid={splitValid} />
                         </div>
                     )}
+                    </div>
                 </div>
 
                 <footer className="payment-dialog-footer">

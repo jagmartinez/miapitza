@@ -562,28 +562,6 @@
     }
 }
 
-.orders-section-heading {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px var(--spacing-xl);
-    border-bottom: 1px solid var(--color-border);
-    background: var(--color-background);
-    color: var(--color-text);
-}
-.orders-section-heading span {
-    min-width: 24px;
-    height: 24px;
-    margin-left: auto;
-    display: grid;
-    place-items: center;
-    border-radius: var(--radius-full);
-    background: var(--color-primary);
-    color: white;
-    font-size: var(--font-size-xs);
-    font-weight: 800;
-}
-
 .modal-tab-content-orders {
     scrollbar-width: thin;
     scrollbar-color: var(--color-border) transparent;
@@ -721,21 +699,27 @@
 
 .table-detail-summary {
     display: grid;
-    grid-template-columns: 1fr .82fr 1.2fr;
-    gap: 8px;
-    padding: 0 22px 14px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    padding: 2px 22px 16px;
 }
 
 .table-detail-summary > div {
     min-width: 0;
     display: flex;
-    align-items: center;
-    gap: 9px;
-    padding: 11px;
-    border: 1px solid var(--color-border);
+    align-items: flex-start;
+    gap: 10px;
+    padding: 13px 14px;
+    border: 1px solid color-mix(in srgb, var(--color-text-secondary) 32%, var(--color-border));
     border-radius: 12px;
-    background: var(--color-background);
-    color: var(--color-text-secondary);
+    background: color-mix(in srgb, var(--color-background) 82%, var(--color-surface));
+    color: var(--color-primary);
+}
+
+.table-detail-summary svg {
+    flex: 0 0 auto;
+    margin-top: 2px;
+    stroke-width: 2.2;
 }
 
 .table-detail-summary > div > span {
@@ -745,17 +729,17 @@
 }
 
 .table-detail-summary small {
-    color: var(--color-text-tertiary);
-    font-size: 10px;
-    font-weight: 650;
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
 }
 
 .table-detail-summary strong {
-    overflow: hidden;
     color: var(--color-text);
-    font-size: 12px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-size: 14px;
+    line-height: 1.25;
+    font-variant-numeric: tabular-nums;
 }
 
 .table-detail-summary .summary-total {
@@ -777,47 +761,6 @@
 .table-command-strip button {
     min-height: 40px;
     background: var(--color-background);
-}
-
-.orders-section-heading {
-    justify-content: space-between;
-    padding: 14px 22px;
-    background: var(--color-background);
-}
-
-.orders-section-heading > div {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-}
-
-.orders-section-heading > div > span {
-    min-width: 0;
-    height: auto;
-    display: grid;
-    margin: 0;
-    padding: 0;
-    place-items: initial;
-    border-radius: 0;
-    background: transparent;
-    color: inherit;
-}
-
-.orders-section-heading small {
-    color: var(--color-text-tertiary);
-    font-size: 10px;
-    font-weight: 500;
-}
-
-.orders-section-heading > b {
-    min-width: 26px;
-    height: 26px;
-    display: grid;
-    place-items: center;
-    border-radius: 999px;
-    background: var(--color-primary);
-    color: #fff;
-    font-size: 11px;
 }
 
 .modal-tab-content-orders {
@@ -891,9 +834,7 @@
     .table-detail-summary { grid-template-columns: 1fr 1fr; padding-inline: 16px; }
     .table-detail-summary .summary-total { grid-column: 1 / -1; }
     .table-command-strip,
-    .orders-section-heading,
     .modal-tab-content-orders,
     .orders-modal-footer { padding-inline: 16px; }
-    .orders-section-heading small { display: none; }
     .orders-modal-footer .btn-modal-secondary:first-child { flex: .7 1 90px; }
 }

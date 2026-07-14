@@ -4,7 +4,7 @@ import { reportsAPI, branchesAPI, categoriesAPI, suppliersAPI, warehousesAPI, me
 import Button from '../components/Button';
 import Pagination from '../components/Pagination';
 import Select from '../components/Select';
-import type { MultiValue, SingleValue } from 'react-select';
+import type { MultiValue, MultiValueProps, SingleValue } from 'react-select';
 import {
     Package, ShoppingCart, DollarSign, TrendingUp, BarChart3, AlertTriangle,
     ArrowLeft, Download, Search, FileSpreadsheet, Truck,
@@ -21,6 +21,16 @@ interface CategoryOption { id: number; name: string }
 interface WarehouseOption { id: number; name: string }
 interface BrandOption { id: number; name: string }
 interface FilterOption { value: string; label: string }
+
+function CompactCategoryMultiValue({ index, getValue, data }: MultiValueProps<FilterOption>) {
+    if (index > 0) return null;
+    const selected = getValue();
+    return (
+        <span className="report-category-summary">
+            {selected.length === 1 ? data.label : `${selected.length} categorías seleccionadas`}
+        </span>
+    );
+}
 
 const fmtNumber = (n: number) =>
     new Intl.NumberFormat('es-NI', { maximumFractionDigits: 2 }).format(n);
@@ -633,6 +643,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
                     <div className="filter-field">
                         {hasMultiCategoryFilter(reportId) ? (
                             <Select<FilterOption, true>
+                                className="report-category-multi"
                                 label={<><Tag size={12} /> Categorías</>}
                                 options={categories.map(c => ({ value: c.id.toString(), label: c.name }))}
                                 value={categories
@@ -643,6 +654,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
                                 isClearable
                                 closeMenuOnSelect={false}
                                 hideSelectedOptions={false}
+                                components={{ MultiValue: CompactCategoryMultiValue }}
                                 placeholder="Todas las categorías"
                                 noOptionsMessage={() => 'No hay más categorías'}
                             />

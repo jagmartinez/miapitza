@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { settingsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import {
-  formatCurrency,
+  formatCurrencyGrouped,
   getCurrencySymbol,
   type CurrencySettings,
 } from '../utils/currency';
@@ -45,7 +45,7 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return {
       settings,
       symbol,
-      formatMoney: (amount: unknown) => formatCurrency(amount, settings),
+      formatMoney: (amount: unknown) => formatCurrencyGrouped(amount, settings),
       refresh,
       loading,
     };

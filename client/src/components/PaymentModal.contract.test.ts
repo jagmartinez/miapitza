@@ -27,8 +27,11 @@ describe('PaymentModal contract', () => {
 
     it('keeps a stable workspace across modes and omits redundant footer labels', () => {
         const styles = readFileSync(new URL('./PaymentModal.css', import.meta.url), 'utf8');
-        expect(styles).toContain('width: min(1120px, 100%)');
-        expect(styles).toContain('height: min(840px, calc(100dvh - 48px))');
+        expect(source).toContain('payment-workspace');
+        expect(source).toContain('payment-context');
+        expect(source).toContain('modeHelp');
+        expect(styles).toContain('width: min(1180px, 100%)');
+        expect(styles).toContain('grid-template-columns: 310px minmax(0, 1fr)');
         expect(styles).toContain('.payment-dialog .select-group.modal .react-select__control');
         expect(styles).toContain('min-height: 46px');
         expect(source).toContain('scrollAreaRef.current?.scrollTo({ top: 0 })');

@@ -10,7 +10,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { canCreatePayment, getUserRoleNames } from '../utils/authz';
-import { Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin, Building2, MapPinned, ArrowRightLeft, Merge } from 'lucide-react';
+import { Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin, Building2, MapPinned } from 'lucide-react';
 import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
@@ -466,16 +466,6 @@ export default function Tables() {
                             <MapPinned size={18} /> Plano
                         </button>
                         <ViewToggle value={viewMode} onChange={setViewMode} />
-                        {canTransfer && (
-                            <button type="button" className="tables-map-toggle" onClick={() => { setOperationTableId(null); setOperation('TRANSFER'); }}>
-                                <ArrowRightLeft size={18} /> Cambiar mesa
-                            </button>
-                        )}
-                        {canConsolidate && (
-                            <button type="button" className="tables-map-toggle" onClick={() => { setOperationTableId(null); setOperation('CONSOLIDATE'); }}>
-                                <Merge size={18} /> Consolidar
-                            </button>
-                        )}
                         {canCreateTable && (
                             <Button onClick={() => handleOpenSidebar()}>
                                 <Plus size={20} />
@@ -552,8 +542,6 @@ export default function Tables() {
                     saving={savingLayout}
                     onSelect={handleViewOrders}
                     onSave={handleSaveLayout}
-                    onTransfer={canTransfer ? () => { setOperationTableId(null); setOperation('TRANSFER'); } : undefined}
-                    onConsolidate={canConsolidate ? () => { setOperationTableId(null); setOperation('CONSOLIDATE'); } : undefined}
                     onCreateTable={canCreateTable ? () => handleOpenSidebar() : undefined}
                     onReturnToAdministration={canEditMap ? () => navigate('/dashboard') : undefined}
                     themeControl={<KitchenNotificationBell inline />}
@@ -904,6 +892,8 @@ export default function Tables() {
                 canIssueInvoice={canIssueInvoice}
                 canPay={canPay}
                 canOperatePOS={canOperatePOS}
+                canTransfer={canTransfer}
+                canConsolidate={canConsolidate}
                 onOpenPOS={handleOpenPOS}
                 onIssueInvoice={(order) => void handleIssueInvoice(order)}
                 onPay={(order) => void openPayment(order, 'single')}
