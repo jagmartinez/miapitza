@@ -9,6 +9,8 @@ const router = Router();
 router.use(authMiddleware);
 
 router.get('/', requirePermission('tables.map.view', 'SUPERADMIN', 'ADMIN', 'HOST', 'MESERO', 'CAJERO'), TableController.getAll);
+router.get('/plan/:branchId', requirePermission('tables.map.view', 'SUPERADMIN', 'ADMIN', 'HOST', 'MESERO', 'CAJERO'), validate(s.tableFloorPlanParams), TableController.getFloorPlan);
+router.put('/plan/:branchId', requirePermission('tables.map.edit', 'SUPERADMIN', 'ADMIN'), validate(s.updateTableFloorPlan), TableController.updateFloorPlan);
 router.get('/branch/:branchId', requirePermission('tables.map.view', 'SUPERADMIN', 'ADMIN', 'HOST', 'MESERO', 'CAJERO'), TableController.getByBranch);
 router.put('/layout', requirePermission('tables.map.edit', 'SUPERADMIN', 'ADMIN'), validate(s.updateTableLayout), TableController.updateLayout);
 router.post('/consolidate', requirePermission('tables.consolidate', 'SUPERADMIN', 'ADMIN', 'CAJERO'), validate(s.consolidateTables), TableController.consolidate);

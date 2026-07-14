@@ -4,8 +4,46 @@ import { WebSocketService } from '../services/websocket.service';
 import { getErrorMessage } from '../utils/error';
 import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
 import { TableAccountService } from '../services/table-account.service';
+import { TableFloorPlanService } from '../services/table-floor-plan.service';
 
 export class TableController {
+    static async getFloorPlan(req: Request, res: Response, next: NextFunction) {
+        try {
+            const requestedBranchId = Number(req.params.branchId ?? req.user?.branchId);
+            const branchId = resolveBranchScope(req.user!, requestedBranchId);
+            if (!branchId) return next({ statusCode: 400, message: 'ID de sucursal requerido' });
+            const plan = await TableFloorPlanService.getSnapshot(req.user!.companyId, branchId);
+            res.json({ success: true, data: plan });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
+    static async updateFloorPlan(req: Request, res: Response, next: NextFunction) {
+        try {
+            const requestedBranchId = Number(req.params.branchId ?? req.user?.branchId);
+            const branchId = resolveBranchScope(req.user!, requestedBranchId);
+            if (!branchId) return next({ statusCode: 400, message: 'ID de sucursal requerido' });
+            const plan = await TableFloorPlanService.save(
+                req.user!.companyId,
+                branchId,
+                req.user!.userId,
+                req.body
+            );
+            for (const table of plan.tables) {
+                WebSocketService.broadcastTableUpdate(table.id, 'LAYOUT_UPDATED', { table, floorPlanVersion: plan.version }, {
+                    companyId: req.user!.companyId,
+                    branchId
+                });
+            }
+            res.json({ success: true, message: 'Plano guardado correctamente', data: plan });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 409, message: getErrorMessage(error) });
+        }
+    }
+
     static async updateLayout(req: Request, res: Response, next: NextFunction) {
         try {
             const requestedBranchId = Number(req.body.branchId ?? req.user?.branchId);

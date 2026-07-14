@@ -18,7 +18,8 @@ describe('table operational center contract', () => {
     });
 
     it('exposes order, invoice, payment and split actions from the table panel', () => {
-        expect(panelSource).toContain('Abrir pedido / POS');
+        expect(panelSource).toContain('Abrir pedido');
+        expect(panelSource).toContain('canOperatePOS');
         expect(panelSource).toContain('Emitir factura');
         expect(panelSource).toContain('Cobrar');
         expect(panelSource).toContain('Dividir por consumo');
@@ -34,8 +35,17 @@ describe('table operational center contract', () => {
         );
     });
 
-    it('renders named floor zones instead of an unstructured dot grid', () => {
-        expect(mapSource).toContain("table.location?.trim() || 'Salón principal'");
-        expect(mapSource).toContain('className={`table-map-zone tone-${zone.tone}`}');
+    it('renders editable persisted floor areas and table geometry', () => {
+        expect(mapSource).toContain('plan.areas.map(normalizeArea)');
+        expect(mapSource).toContain('Agregar salón');
+        expect(mapSource).toContain("mapShape: 'ROUND'");
+        expect(mapSource).toContain('Guardar plano');
+        expect(tablesSource).toContain('tablesAPI.updateFloorPlan');
+    });
+
+    it('does not render the removed split financial summary', () => {
+        expect(paymentSource).not.toContain('split-financial-summary');
+        expect(paymentSource).toContain('Por unidades');
+        expect(paymentSource).toContain('split-quantity-stepper');
     });
 });

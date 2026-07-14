@@ -14,18 +14,19 @@ import { Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin, Building2, MapPinned,
 import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
-import type { Table, Order, Branch } from '../types';
+import type { Table, Order, Branch, TableFloorPlan } from '../types';
 import type { SingleValue } from 'react-select';
 import Select from '../components/Select';
 import { ACTIVE_ORDER_STATUSES } from '../utils/orderStatus';
 import './Tables.css';
-import TableMap, { type PositionedTable } from '../components/TableMap';
+import TableMap, { type FloorPlanDraft } from '../components/TableMap';
 import { newIdempotencyKey } from '../utils/idempotency';
 import TableOperationModal from '../components/TableOperationModal';
 import POS from './POS';
 import { hasUsableCashShift, type CashShiftScope } from '../utils/paymentAccess';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
 import { useCurrency } from '../hooks/useCurrency';
+import ThemeToggle from '../components/ThemeToggle';
 
 interface ApiValidationError { field?: string; message?: string }
 function extractApiError(error: unknown, fallback: string): string {
@@ -57,6 +58,7 @@ export default function Tables() {
     const canConsolidate = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'CAJERO'].includes(role));
     const canIssueInvoice = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'CAJERO'].includes(role));
     const canPay = canCreatePayment(user);
+    const canOperatePOS = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'].includes(role));
     // Managers (company-wide) may create/list tables across branches of their company.
     const canChooseBranch = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [tables, setTables] = useState<Table[]>([]);
@@ -91,6 +93,10 @@ export default function Tables() {
     const [paymentMode, setPaymentMode] = useState<'single' | 'split'>('single');
     const [cashShiftStatus, setCashShiftStatus] = useState<CashShiftScope | null>(null);
     const [posTable, setPosTable] = useState<Table | null>(null);
+    const [floorPlan, setFloorPlan] = useState<TableFloorPlan | null>(null);
+
+    const loadedBranchIds = Array.from(new Set(tables.map((table) => table.branchId)));
+    const mapBranchId = loadedBranchIds.length === 1 ? loadedBranchIds[0] : undefined;
 
     const loadTables = useCallback(async () => {
         try {
@@ -106,6 +112,24 @@ export default function Tables() {
     useEffect(() => {
         loadTables();
     }, [loadTables]);
+
+    const loadFloorPlan = useCallback(async () => {
+        if (!mapBranchId) {
+            setFloorPlan(null);
+            return;
+        }
+        try {
+            const response = await tablesAPI.getFloorPlan(mapBranchId);
+            setFloorPlan(response.data.data as TableFloorPlan);
+        } catch (error) {
+            console.error('Error loading table floor plan:', error);
+            showError(extractApiError(error, 'No se pudo cargar el plano de la sucursal.'));
+        }
+    }, [mapBranchId, showError]);
+
+    useEffect(() => {
+        void loadFloorPlan();
+    }, [loadFloorPlan]);
 
     useEffect(() => {
         if (!canChooseBranch) return;
@@ -184,7 +208,8 @@ export default function Tables() {
             }
 
             setIsSidebarOpen(false);
-            loadTables();
+            await loadTables();
+            await loadFloorPlan();
         } catch (error) {
             console.error('Error saving table:', error);
             showError(extractApiError(error, 'Error al guardar la mesa'));
@@ -199,7 +224,8 @@ export default function Tables() {
         if (!(await confirm('¿Estás seguro de eliminar esta mesa?', { title: 'Confirmar acción' }))) return;
         try {
             await tablesAPI.delete(id);
-            loadTables();
+            await loadTables();
+            await loadFloorPlan();
         } catch (error) {
             console.error('Error deleting table:', error);
             showError(extractApiError(error, 'Error al eliminar la mesa'));
@@ -229,14 +255,19 @@ export default function Tables() {
     };
 
     const handleOpenPOS = (table: Table) => {
+        if (!canOperatePOS) {
+            showWarning('Tu rol puede consultar la mesa, pero no crear ni modificar pedidos.');
+            return;
+        }
         setIsOrdersModalOpen(false);
         setPosTable(table);
     };
 
     const refreshOperationalTable = useCallback(async () => {
         await loadTables();
+        await loadFloorPlan();
         if (selectedTable) await loadTableOrders(selectedTable);
-    }, [loadTableOrders, loadTables, selectedTable]);
+    }, [loadFloorPlan, loadTableOrders, loadTables, selectedTable]);
 
     const handleIssueInvoice = async (order: Order) => {
         if (!canIssueInvoice) {
@@ -251,6 +282,7 @@ export default function Tables() {
             const nextOrder = refreshed.data.data as Order;
             setTableOrders((current) => current.map((item) => item.id === nextOrder.id ? nextOrder : item));
             await loadTables();
+            await loadFloorPlan();
             showSuccess(`Factura ${invoiceNumber || ''} emitida correctamente.`.trim());
         } catch (error) {
             showError(extractApiError(error, 'No se pudo emitir la factura.'));
@@ -289,39 +321,60 @@ export default function Tables() {
                 WS_EVENTS.ORDER_IN_PREPARATION
             ].includes(message.type)) return;
             void loadTables();
+            void loadFloorPlan();
             if (selectedTable) void loadTableOrders(selectedTable);
         });
-    }, [loadTableOrders, loadTables, selectedTable]);
+    }, [loadFloorPlan, loadTableOrders, loadTables, selectedTable]);
 
     const filteredTables = statusFilter
         ? tables.filter(t => t.status === statusFilter)
         : tables;
 
-    const mapBranchIds = Array.from(new Set(tables.map((table) => table.branchId)));
-    const mapBranchId = mapBranchIds.length === 1 ? mapBranchIds[0] : undefined;
-
-    const handleSaveLayout = async (changed: PositionedTable[]) => {
+    const handleSaveLayout = async (draft: FloorPlanDraft) => {
         if (!mapBranchId) {
             showWarning('Selecciona una sucursal antes de editar su plano.');
             return;
         }
         setSavingLayout(true);
         try {
-            await tablesAPI.updateLayout(
+            const response = await tablesAPI.updateFloorPlan(
                 mapBranchId,
-                changed.map((table) => ({
-                    id: table.id,
-                    x: table.mapX,
-                    y: table.mapY,
-                    width: table.mapWidth,
-                    height: table.mapHeight,
-                    rotation: table.mapRotation,
-                    shape: table.mapShape,
-                    expectedVersion: table.mapVersion
-                })),
+                {
+                    expectedVersion: draft.expectedVersion,
+                    canvas: { width: draft.canvasWidth, height: draft.canvasHeight },
+                    areas: draft.areas.map((area) => ({
+                        ...(area.id ? { id: area.id } : { clientKey: area.clientKey }),
+                        name: area.name,
+                        kind: area.kind,
+                        x: area.mapX,
+                        y: area.mapY,
+                        width: area.mapWidth,
+                        height: area.mapHeight,
+                        rotation: area.mapRotation,
+                        shape: area.mapShape,
+                        color: area.color,
+                        expectedVersion: area.mapVersion
+                    })),
+                    deletedAreaIds: draft.deletedAreaIds,
+                    tables: draft.tables.map((table) => ({
+                        id: table.id,
+                        ...(table.floorAreaId ? { areaId: table.floorAreaId } : {}),
+                        ...(!table.floorAreaId && table.floorAreaClientKey ? { areaClientKey: table.floorAreaClientKey } : {}),
+                        x: table.mapX,
+                        y: table.mapY,
+                        width: table.mapWidth,
+                        height: table.mapHeight,
+                        rotation: table.mapRotation,
+                        shape: table.mapShape,
+                        expectedVersion: table.mapVersion
+                    }))
+                },
                 newIdempotencyKey()
             );
-            await loadTables();
+            const savedPlan = response.data.data as TableFloorPlan;
+            setFloorPlan(savedPlan);
+            setTables(savedPlan.tables);
+            showSuccess('Plano guardado. Las posiciones, formas y salones ya quedaron persistidos.');
         } catch (error) {
             showError(extractApiError(error, 'No se pudo guardar el plano de mesas'));
             throw error;
@@ -342,6 +395,7 @@ export default function Tables() {
             await tablesAPI.transfer(data, newIdempotencyKey());
             setOperation(null);
             await loadTables();
+            await loadFloorPlan();
             showSuccess('El consumo fue trasladado a la mesa destino.');
         } catch (error) {
             showError(extractApiError(error, 'No se pudo cambiar la mesa'));
@@ -356,6 +410,7 @@ export default function Tables() {
             await tablesAPI.consolidate(data, newIdempotencyKey());
             setOperation(null);
             await loadTables();
+            await loadFloorPlan();
             showSuccess('Las cuentas fueron consolidadas en la mesa principal.');
         } catch (error) {
             showError(extractApiError(error, 'No se pudieron consolidar las cuentas'));
@@ -385,12 +440,13 @@ export default function Tables() {
     if (loading) return <div className="tables-loading">Cargando...</div>;
 
     return (
-        <div className="tables-page">
+        <div className={`tables-page ${showMap ? 'tables-page--map' : 'tables-page--list'}`}>
             <PageHeader
                 title="Gestión de Mesas"
                 icon={Grid3x3}
                 actions={(
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <ThemeToggle />
                         <button
                             type="button"
                             className={`tables-map-toggle ${showMap ? 'active' : ''}`}
@@ -471,16 +527,16 @@ export default function Tables() {
                 )}
             </div>
 
-            {showMap && tables.length > 0 && mapBranchIds.length > 1 && (
+            {showMap && tables.length > 0 && loadedBranchIds.length > 1 && (
                 <div className="table-map-branch-required">
                     <MapPinned size={24} />
                     Selecciona una sucursal para visualizar y editar su plano.
                 </div>
             )}
 
-            {showMap && tables.length > 0 && mapBranchIds.length === 1 && (
+            {showMap && tables.length > 0 && loadedBranchIds.length === 1 && floorPlan && (
                 <TableMap
-                    tables={tables}
+                    plan={floorPlan}
                     statusFilter={statusFilter}
                     canEdit={canEditMap}
                     saving={savingLayout}
@@ -817,6 +873,7 @@ export default function Tables() {
                 busyOrderId={busyOrderId}
                 canIssueInvoice={canIssueInvoice}
                 canPay={canPay}
+                canOperatePOS={canOperatePOS}
                 onOpenPOS={handleOpenPOS}
                 onIssueInvoice={(order) => void handleIssueInvoice(order)}
                 onPay={(order) => void openPayment(order, 'single')}

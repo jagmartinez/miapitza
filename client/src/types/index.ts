@@ -56,6 +56,7 @@ export interface Table {
   capacity: number;
   status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'OUT_OF_SERVICE';
   location?: string;
+  floorAreaId?: number | null;
   mapX?: number;
   mapY?: number;
   mapWidth?: number;
@@ -72,6 +73,35 @@ export interface Table {
     name: string;
     code?: string;
   };
+}
+
+export type FloorAreaKind = 'DINING' | 'TERRACE' | 'BAR' | 'PRIVATE' | 'TAKEAWAY' | 'OTHER';
+export type FloorAreaShape = 'RECTANGLE' | 'ROUNDED' | 'OVAL' | 'L_SHAPE';
+
+export interface FloorArea {
+  id: number;
+  floorPlanId: number;
+  branchId: number;
+  name: string;
+  kind: FloorAreaKind;
+  mapX: number;
+  mapY: number;
+  mapWidth: number;
+  mapHeight: number;
+  mapRotation: number;
+  mapShape: FloorAreaShape;
+  color?: string | null;
+  mapVersion: number;
+}
+
+export interface TableFloorPlan {
+  id: number | null;
+  branchId: number;
+  canvasWidth: number;
+  canvasHeight: number;
+  version: number;
+  areas: FloorArea[];
+  tables: Table[];
 }
 
 export interface ModifierOption {

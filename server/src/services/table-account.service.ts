@@ -198,6 +198,14 @@ export class TableAccountService {
                 });
             }
 
+            // Keep the branch-level floor-plan version in sync for legacy
+            // clients that still call PUT /tables/layout during rolling deploys.
+            await tx.tableFloorPlan.upsert({
+                where: { branchId },
+                create: { companyId, branchId, version: 1 },
+                update: { version: { increment: 1 } }
+            });
+
             return tx.table.findMany({
                 where: { companyId, branchId, id: { in: ids } },
                 orderBy: { number: 'asc' }

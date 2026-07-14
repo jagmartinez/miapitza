@@ -31,6 +31,8 @@ model Company {
   users                    User[]
   auditLogs                AuditLog[]
   tables                   Table[]
+  floorAreas               FloorArea[]
+  tableFloorPlans          TableFloorPlan[]
   reservations             Reservation[]
   categories               Category[]
   menuBrands               MenuBrand[]
@@ -94,6 +96,8 @@ model Branch {
   users                          User[]
   allowedUsers                   UserBranch[]
   tables                         Table[]
+  floorAreas                     FloorArea[]
+  tableFloorPlans                TableFloorPlan[]
   reservations                   Reservation[]
   warehouses                     Warehouse[]
   purchaseOrders                 PurchaseOrder[]
@@ -274,6 +278,7 @@ model Table {
   capacity        Int
   status          TableStatus @default(AVAILABLE)
   location        String? // Salon, Terraza, VIP
+  floorAreaId     Int?
   mapX            Int         @default(0)
   mapY            Int         @default(0)
   mapWidth        Int         @default(120)
@@ -285,12 +290,60 @@ model Table {
 
   company      Company       @relation(fields: [companyId], references: [id])
   branch       Branch        @relation(fields: [branchId], references: [id])
+  floorArea    FloorArea?     @relation(fields: [floorAreaId], references: [id], onDelete: SetNull)
   orders       Order[]
   reservations Reservation[]
 
   @@unique([branchId, number])
   @@index([companyId])
   @@index([branchId])
+  @@index([floorAreaId])
+}
+
+model FloorArea {
+  id         Int            @id @default(autoincrement())
+  floorPlanId Int
+  companyId  Int
+  branchId   Int
+  name       String         @db.VarChar(100)
+  kind       FloorAreaKind  @default(DINING)
+  mapX       Int            @default(24)
+  mapY       Int            @default(24)
+  mapWidth   Int            @default(720)
+  mapHeight  Int            @default(480)
+  mapShape   FloorAreaShape @default(RECTANGLE)
+  mapRotation Int           @default(0)
+  color      String?        @db.VarChar(16)
+  mapVersion Int            @default(0)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+  branch  Branch  @relation(fields: [branchId], references: [id])
+  floorPlan TableFloorPlan @relation(fields: [floorPlanId], references: [id], onDelete: Cascade)
+  tables  Table[]
+
+  @@unique([floorPlanId, name])
+  @@index([floorPlanId])
+  @@index([companyId])
+  @@index([branchId])
+}
+
+model TableFloorPlan {
+  id           Int      @id @default(autoincrement())
+  companyId    Int
+  branchId     Int      @unique
+  canvasWidth  Int      @default(1600)
+  canvasHeight Int      @default(1000)
+  version      Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+  branch  Branch  @relation(fields: [branchId], references: [id])
+  areas   FloorArea[]
+
+  @@index([companyId])
 }
 
 enum TableStatus {
@@ -304,6 +357,22 @@ enum TableShape {
   RECTANGLE
   SQUARE
   ROUND
+}
+
+enum FloorAreaKind {
+  DINING
+  TERRACE
+  BAR
+  PRIVATE
+  TAKEAWAY
+  OTHER
+}
+
+enum FloorAreaShape {
+  RECTANGLE
+  ROUNDED
+  OVAL
+  L_SHAPE
 }
 
 // ==========================================

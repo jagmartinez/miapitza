@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { ordersAPI } from '../services/api';
-import { ChefHat, CheckCircle, CheckCheck, AlertCircle, Volume2, VolumeX, AlertTriangle, Play, Check, ListOrdered } from 'lucide-react';
+import { ChefHat, CheckCircle, CheckCheck, AlertCircle, Volume2, VolumeX, AlertTriangle, Play, Check, ListOrdered, Maximize2, Minimize2, MonitorUp, ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { initializeSound, playNotificationSound } from '../utils/sound';
 import { escapeHtml } from '../utils/escapeHtml';
 import { useDebounce } from '../utils/useDebounce';
@@ -47,8 +48,9 @@ function formatKitchenItemPreview(items: OrderItem[] | undefined, maxNames = 3):
     return truncated + extra;
 }
 
-export default function Kitchen() {
+export default function Kitchen({ displayMode = false }: { displayMode?: boolean }) {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const { error: showError, warning: showWarning, success } = useAppToast();
     const { confirm } = useConfirmDialog();
     const canKitchenLineOps = canOperateKitchenLineItems(user);
@@ -68,10 +70,24 @@ export default function Kitchen() {
     const [timingConfig, setTimingConfig] = useState<{ warningMinutes: number; urgentMinutes: number } | null>(null);
     const [, setClockTick] = useState(0);
     const previousOrderCount = useRef(0);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
 
     useEffect(() => {
         initializeSound();
+        const syncFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement));
+        document.addEventListener('fullscreenchange', syncFullscreen);
+        return () => document.removeEventListener('fullscreenchange', syncFullscreen);
     }, []);
+
+    const toggleFullscreen = async () => {
+        try {
+            if (document.fullscreenElement) await document.exitFullscreen();
+            else await document.documentElement.requestFullscreen();
+        } catch {
+            showWarning('El navegador no permitió activar pantalla completa.');
+        }
+    };
 
     const loadOrders = useCallback(async () => {
         try {
@@ -90,8 +106,10 @@ export default function Kitchen() {
 
             previousOrderCount.current = kitchenOrders.length;
             setOrders(kitchenOrders);
-        } catch (error) {
+            setLoadError(null);
+        } catch (error: unknown) {
             console.error('Error loading orders:', error);
+            setLoadError(axiosMsg(error, 'No se pudo cargar la cola de cocina. Revisa la conexión o tus permisos.'));
         } finally {
             setLoading(false);
         }
@@ -330,20 +348,20 @@ export default function Kitchen() {
         );
 
     return (
-        <div className="kitchen-page-new">
+        <div className={`kitchen-page-new ${displayMode ? 'kitchen-display-mode' : 'kitchen-admin-mode'}`}>
             <div className="kitchen-header-new">
                 <div className="header-left-kitchen">
-                    <h1><ChefHat size={28} /> Cocina (KDS)</h1>
+                    <h1><ChefHat size={28} /> {displayMode ? 'Pantalla de Cocina' : 'Cocina (supervisión)'}</h1>
                     <p className="kitchen-subtitle-new">{orders.length} {showHistory ? 'órdenes en historial' : 'órdenes en cola activa'}</p>
                 </div>
                 <div className="kitchen-controls">
-                    <button
+                    {!displayMode && <button
                         className={`sound-toggle-new ${showHistory ? 'enabled' : 'disabled'}`}
                         onClick={() => setShowHistory((value) => !value)}
                     >
                         <ListOrdered size={18} />
                         <span>{showHistory ? 'Ver cola activa' : 'Historial'}</span>
-                    </button>
+                    </button>}
                     <button
                         className={`sound-toggle-new ${soundEnabled ? 'enabled' : 'disabled'}`}
                         onClick={() => setSoundEnabled(!soundEnabled)}
@@ -351,8 +369,18 @@ export default function Kitchen() {
                         {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
                         <span>{soundEnabled ? 'Sonido ON' : 'Sonido OFF'}</span>
                     </button>
+                    <button className="sound-toggle-new" onClick={() => void toggleFullscreen()}>
+                        {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                        <span>{isFullscreen ? 'Salir de pantalla' : 'Pantalla completa'}</span>
+                    </button>
+                    <button className="sound-toggle-new" onClick={() => navigate(displayMode ? '/kitchen' : '/kds')}>
+                        {displayMode ? <ArrowLeft size={18} /> : <MonitorUp size={18} />}
+                        <span>{displayMode ? 'Supervisión PC' : 'Abrir KDS táctil'}</span>
+                    </button>
                 </div>
             </div>
+
+            {loadError && <div className="kitchen-load-error" role="alert"><AlertTriangle size={20} /><span>{loadError}</span><button type="button" onClick={() => void loadOrders()}>Reintentar</button></div>}
 
 
             {/* Filters Row */}
@@ -384,7 +412,7 @@ export default function Kitchen() {
                     </button>
                 </div>
 
-                <div className="additional-filters">
+                {!displayMode && <div className="additional-filters">
                     <div className="filter-group">
                         <input
                             id="table-filter"
@@ -405,7 +433,7 @@ export default function Kitchen() {
                             placeholder="Filtrar por fecha"
                         />
                     </div>
-                </div>
+                </div>}
             </div>
 
             <div className="kitchen-grid-new">
@@ -440,10 +468,7 @@ export default function Kitchen() {
                                 aria-label={!showHistory && order.status === 'SENT_TO_KITCHEN'
                                     ? `Iniciar preparación de la orden ${order.id}, mesa ${order.table?.number || 'sin mesa'}`
                                     : `Ver detalle de la orden ${order.id}, mesa ${order.table?.number || 'sin mesa'}`}
-                                onClick={() => {
-                                    if (!showHistory && order.status === 'SENT_TO_KITCHEN') void handleStartOrder(order.id);
-                                    else setDetailOrderId(order.id);
-                                }}
+                                onClick={() => setDetailOrderId(order.id)}
                             >
                                 <div className="kitchen-card-top-row">
                                     <div className="table-number-new">Mesa {order.table?.number || 'N/A'}</div>
@@ -517,6 +542,7 @@ export default function Kitchen() {
                                     </span>
                                     <span className="kitchen-items-summary-hint">Ver detalle</span>
                                 </div>
+                                {displayMode && <div className="kds-visible-items">{order.items?.map((item) => <div key={item.id} className={`kds-visible-item status-${item.status.toLowerCase()}`}><strong>{item.quantity}× {item.menuItem?.name || 'Producto'}</strong>{item.notes && <span>{item.notes}</span>}</div>)}</div>}
                             </button>
 
                             {/* Actions Footer */}

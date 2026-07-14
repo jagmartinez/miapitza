@@ -19,6 +19,7 @@ interface TableOrdersModalProps {
     busyOrderId?: number | null;
     canIssueInvoice: boolean;
     canPay: boolean;
+    canOperatePOS: boolean;
     onOpenPOS: (table: Table) => void;
     onIssueInvoice: (order: Order) => void;
     onPay: (order: Order) => void;
@@ -35,6 +36,7 @@ export default function TableOrdersModal({
     busyOrderId,
     canIssueInvoice,
     canPay,
+    canOperatePOS,
     onOpenPOS,
     onIssueInvoice,
     onPay,
@@ -165,10 +167,10 @@ export default function TableOrdersModal({
                 </div>
 
                 <div className="table-command-strip" aria-label="Acciones operativas de la mesa">
-                    <button type="button" className="table-command-primary" onClick={() => onOpenPOS(table)}>
+                    {canOperatePOS && <button type="button" className="table-command-primary" onClick={() => onOpenPOS(table)}>
                         <ShoppingCart size={19} />
-                        <span>{orders.length > 0 ? 'Continuar pedido / POS' : 'Abrir pedido / POS'}</span>
-                    </button>
+                        <span>{orders.length > 0 ? 'Continuar pedido' : 'Abrir pedido'}</span>
+                    </button>}
                     <button type="button" onClick={() => onTransfer(table)}>
                         <ArrowRightLeft size={18} /><span>Cambiar mesa</span>
                     </button>
@@ -266,7 +268,7 @@ export default function TableOrdersModal({
                                             <span className="order-total-amount">{formatMoney(Number(order.total))}</span>
                                         </div>
                                         <div className="table-order-actions">
-                                            {!order.invoiceNumber && order.financialStatus === 'UNPAID' && (
+                                            {canOperatePOS && !order.invoiceNumber && order.financialStatus === 'UNPAID' && (
                                                 <button type="button" onClick={() => onOpenPOS(table)}>
                                                     <ShoppingCart size={16} /> Agregar productos
                                                 </button>
@@ -349,10 +351,10 @@ export default function TableOrdersModal({
                     <button className="btn-modal-secondary" onClick={onClose}>
                         Cerrar
                     </button>
-                    <button className="btn-modal-primary" onClick={() => onOpenPOS(table)}>
+                    {canOperatePOS && <button className="btn-modal-primary" onClick={() => onOpenPOS(table)}>
                         <ShoppingCart size={18} />
-                        {orders.length > 0 ? 'Continuar en POS' : 'Crear pedido'}
-                    </button>
+                        {orders.length > 0 ? 'Continuar pedido' : 'Crear pedido'}
+                    </button>}
                     {orders.length > 0 && (
                         <button className="btn-modal-secondary" onClick={handlePrintBill}>
                             <Printer size={18} />

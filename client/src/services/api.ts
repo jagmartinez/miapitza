@@ -301,6 +301,12 @@ export const tablesAPI = {
     updateLayout: (branchId: number, tables: Array<Record<string, unknown>>, idempotencyKey: string) =>
         api.put('/tables/layout', { branchId, tables }, { headers: { 'X-Idempotency-Key': idempotencyKey } }),
 
+    getFloorPlan: (branchId: number) =>
+        api.get(`/tables/plan/${branchId}`),
+
+    updateFloorPlan: (branchId: number, data: Record<string, unknown>, idempotencyKey: string) =>
+        api.put(`/tables/plan/${branchId}`, data, { headers: { 'X-Idempotency-Key': idempotencyKey } }),
+
     consolidate: (data: Record<string, unknown>, idempotencyKey: string) =>
         api.post('/tables/consolidate', data, { headers: { 'X-Idempotency-Key': idempotencyKey } }),
 

@@ -240,8 +240,6 @@ const PaymentModal = ({
     const tenderedAmount = parseMoneyInput(amountTendered);
     const tenderedCents = tenderedAmount === null ? 0 : moneyToCents(tenderedAmount);
     const totalCents = moneyToCents(totalWithTip);
-    const originalOrderCents = moneyToCents(Number(order?.total ?? orderTotal));
-    const alreadyPaidCents = Math.max(0, originalOrderCents - totalCents);
 
     const calculateChange = () => Math.max(0, tenderedCents - totalCents) / 100;
 
@@ -293,13 +291,14 @@ const PaymentModal = ({
     };
 
     const initializeItemAssignments = useCallback((count: number) => {
-        const nextAssignments: Record<number, number[]> = {};
-        orderItems.forEach((item, index) => {
-            const quantities = Array<number>(count).fill(0);
-            quantities[index % count] = item.quantity;
-            nextAssignments[item.id] = quantities;
+        setItemQuantities((current) => {
+            const nextAssignments: Record<number, number[]> = {};
+            orderItems.forEach((item) => {
+                const previous = current[item.id] || [];
+                nextAssignments[item.id] = Array.from({ length: count }, (_, index) => previous[index] || 0);
+            });
+            return nextAssignments;
         });
-        setItemQuantities(nextAssignments);
     }, [orderItems]);
 
     useEffect(() => {
@@ -446,12 +445,6 @@ const PaymentModal = ({
     );
     const getSplitTotal = () => getSplitTotalCents() / 100;
     const getSplitRemaining = () => (totalCents - getSplitTotalCents()) / 100;
-    const paidInSessionCents = paidSplitIndexes.reduce(
-        (sum, index) => sum + moneyToCents(parseMoneyInput(splits[index]?.amount ?? '') || 0),
-        0
-    );
-    const totalPaidCents = Math.min(originalOrderCents, alreadyPaidCents + paidInSessionCents);
-    const pendingAfterPaymentsCents = Math.max(0, originalOrderCents - totalPaidCents);
 
     const handleSinglePayment = async () => {
         const tendered = tenderedAmount || 0;
@@ -632,7 +625,7 @@ const PaymentModal = ({
         >
             <div
                 ref={dialogRef}
-                className="payment-modal-new"
+                className={`payment-modal-new ${mode === 'split' ? 'payment-modal-split' : ''}`}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={titleId}
@@ -823,18 +816,10 @@ const PaymentModal = ({
                                 <div className="total-amount-large">{currencySymbol}{totalWithTip.toFixed(2)}</div>
                             </div>
 
-                            <div className="split-financial-summary" aria-label="Resumen de división de cuenta">
-                                <div><span>Total factura</span><strong>{currencySymbol}{(originalOrderCents / 100).toFixed(2)}</strong></div>
-                                <div><span>Total pagado</span><strong>{currencySymbol}{(totalPaidCents / 100).toFixed(2)}</strong></div>
-                                <div><span>Saldo de la orden</span><strong>{currencySymbol}{(pendingAfterPaymentsCents / 100).toFixed(2)}</strong></div>
-                                <div><span>Total asignado</span><strong>{currencySymbol}{getSplitTotal().toFixed(2)}</strong></div>
-                                <div><span>Por asignar</span><strong>{currencySymbol}{getSplitRemaining().toFixed(2)}</strong></div>
-                            </div>
-
                             <div className="split-toolbar">
                                 {[
                                     { value: 'evenly', label: 'Equitativa' },
-                                    { value: 'by-items', label: 'Por platos' },
+                                    { value: 'by-items', label: 'Por unidades' },
                                     { value: 'by-amount', label: 'Por monto' }
                                 ].map((option) => (
                                     <button
@@ -984,16 +969,11 @@ const PaymentModal = ({
                             </div>
 
                             {splitStrategy === 'by-items' && orderItems.length > 0 && (
-                                <div className="split-items-panel" style={{
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '8px',
-                                    padding: '12px',
-                                    borderRadius: '12px',
-                                    border: '1px solid var(--color-neutral-200)',
-                                    background: 'var(--color-neutral-50)'
-                                }}>
-                                    <div style={{ fontWeight: 700 }}>Asignación por unidades</div>
+                                <div className="split-items-panel split-allocation-panel">
+                                    <div className="split-allocation-intro">
+                                        <strong>¿Quién consumió cada unidad?</strong>
+                                        <span>Usa − y + para repartir las unidades reales. No podrás confirmar hasta asignarlas todas.</span>
+                                    </div>
                                     {orderItems.map((item) => {
                                         const quantities = itemQuantities[item.id] ?? Array<number>(splits.length).fill(0);
                                         const assigned = quantities.reduce((sum, quantity) => sum + quantity, 0);
@@ -1002,39 +982,36 @@ const PaymentModal = ({
                                             <div key={item.id} className="split-item-allocation">
                                                 <div className="split-item-heading">
                                                     <div>
-                                                        <strong>{item.quantity}x {item.menuItem?.name}</strong>
+                                                        <strong>{item.menuItem?.name} · {item.quantity} {item.quantity === 1 ? 'unidad' : 'unidades'}</strong>
                                                         <small>{currencySymbol}{Number(item.subtotal).toFixed(2)}</small>
                                                     </div>
                                                     <span className={pending === 0 ? 'complete' : 'pending'}>
-                                                        {pending === 0 ? 'Completo' : `${pending} sin asignar`}
+                                                        {assigned} de {item.quantity} asignadas
                                                     </span>
                                                 </div>
                                                 <div className="split-quantity-grid">
                                                     {splits.map((split, payerIndex) => {
                                                         const others = assigned - (quantities[payerIndex] ?? 0);
                                                         const max = Math.max(0, item.quantity - others);
+                                                        const currentQuantity = quantities[payerIndex] ?? 0;
+                                                        const applyQuantity = (nextQuantity: number) => {
+                                                            const bounded = Math.max(0, Math.min(max, nextQuantity));
+                                                            setItemQuantities((current) => {
+                                                                const next = [...(current[item.id] ?? Array<number>(splits.length).fill(0))];
+                                                                next[payerIndex] = bounded;
+                                                                return { ...current, [item.id]: next };
+                                                            });
+                                                        };
                                                         return (
                                                             <label key={split.id}>
                                                                 <span>{split.payerName}</span>
-                                                                <input
-                                                                    type="number"
-                                                                    inputMode="numeric"
-                                                                    min={0}
-                                                                    max={max}
-                                                                    step={1}
-                                                                    value={quantities[payerIndex] ?? 0}
-                                                                    disabled={hasAttemptedSplitPayments}
-                                                                    aria-label={`Unidades de ${item.menuItem?.name || `producto ${item.id}`} para ${split.payerName}`}
-                                                                    onChange={(event) => {
-                                                                        const raw = Number(event.target.value);
-                                                                        const nextQuantity = Number.isInteger(raw) ? Math.max(0, Math.min(max, raw)) : 0;
-                                                                        setItemQuantities((current) => {
-                                                                            const next = [...(current[item.id] ?? Array<number>(splits.length).fill(0))];
-                                                                            next[payerIndex] = nextQuantity;
-                                                                            return { ...current, [item.id]: next };
-                                                                        });
-                                                                    }}
-                                                                />
+                                                                <div className="split-quantity-stepper">
+                                                                    <button type="button" disabled={hasAttemptedSplitPayments || currentQuantity === 0} onClick={() => applyQuantity(currentQuantity - 1)} aria-label={`Quitar una unidad a ${split.payerName}`}>−</button>
+                                                                    <input type="number" inputMode="numeric" min={0} max={max} step={1} value={currentQuantity} disabled={hasAttemptedSplitPayments}
+                                                                        aria-label={`Unidades de ${item.menuItem?.name || `producto ${item.id}`} para ${split.payerName}`}
+                                                                        onChange={(event) => applyQuantity(Number.isInteger(Number(event.target.value)) ? Number(event.target.value) : 0)} />
+                                                                    <button type="button" disabled={hasAttemptedSplitPayments || currentQuantity >= max} onClick={() => applyQuantity(currentQuantity + 1)} aria-label={`Asignar una unidad a ${split.payerName}`}>+</button>
+                                                                </div>
                                                             </label>
                                                         );
                                                     })}

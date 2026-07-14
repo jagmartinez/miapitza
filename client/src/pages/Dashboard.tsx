@@ -883,8 +883,8 @@ export default function Dashboard() {
 
                 <div className="header-actions-wrapper">
                     <div className="command-bar">
-                        <button className="cmd-btn" onClick={() => navigate('/pos')} title="Punto de Venta">
-                            <CreditCard size={18} /> <span className="cmd-label">POS</span>
+                        <button className="cmd-btn" onClick={() => navigate('/tables')} title="Centro operativo de mesas">
+                            <CreditCard size={18} /> <span className="cmd-label">Mesas</span>
                         </button>
                         <button className="cmd-btn" onClick={() => navigate('/kitchen')} title="Cocina">
                             <ChefHat size={18} /> <span className="cmd-label">Cocina</span>

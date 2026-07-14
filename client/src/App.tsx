@@ -37,7 +37,6 @@ function RoleGuard({ roles, children }: { roles: string[]; children: React.React
 
 // Lazy-loaded pages (code-split per route)
 const Dashboard = lazy(() => import('./pages/Dashboard'));
-const POS = lazy(() => import('./pages/POS'));
 const Tables = lazy(() => import('./pages/Tables'));
 const Kitchen = lazy(() => import('./pages/Kitchen'));
 const Users = lazy(() => import('./pages/Users'));
@@ -100,9 +99,10 @@ function App() {
                                 <Route path="/manual" element={<Navigate to="/manual-usuario.html" replace />} />
 
                                 {/* Operations – role-restricted */}
-                                <Route path="/pos" element={<RoleGuard roles={OPS}><POS /></RoleGuard>} />
+                                <Route path="/pos" element={<Navigate to="/tables" replace />} />
                                 <Route path="/tables" element={<RoleGuard roles={WAITER_TABLE}><Tables /></RoleGuard>} />
                                 <Route path="/kitchen" element={<RoleGuard roles={KITCHEN_ROLES}><Kitchen /></RoleGuard>} />
+                                <Route path="/kds" element={<RoleGuard roles={KITCHEN_ROLES}><Kitchen displayMode /></RoleGuard>} />
                                 <Route path="/orders" element={<RoleGuard roles={OPS}><Orders /></RoleGuard>} />
                                 <Route path="/reservations" element={<RoleGuard roles={HOST_ROLES}><Reservations /></RoleGuard>} />
                                 <Route path="/cash-registers" element={<RoleGuard roles={CASHIER}><CashRegisters /></RoleGuard>} />

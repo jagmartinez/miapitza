@@ -2,6 +2,26 @@
 
 Estado documentado: 14 de julio de 2026. Este documento describe exclusivamente el código presente en el árbol de trabajo de `C:\restaurant` en esa fecha. No certifica despliegue ni migración en producción.
 
+## Revisión UX y plano persistente — 14 de julio de 2026
+
+La gestión de mesas ahora funciona como centro operativo inmersivo. La ruta `/tables` ocupa toda la ventana, conserva el acceso contextual a pedido, órdenes, factura y cobro, e incorpora un editor persistente por sucursal. La entrada POS independiente fue retirada de la navegación y `/pos` redirige al centro de mesas; el componente POS sigue reutilizándose internamente con la mesa seleccionada.
+
+El plano dejó de inferir zonas efímeras desde `Table.location`. La arquitectura nueva incorpora:
+
+- `TableFloorPlan`: tamaño de lienzo y versión optimista única por sucursal.
+- `FloorArea`: salones, terrazas, barras y áreas privadas con nombre, color, posición, tamaño, rotación y forma.
+- `Table.floorAreaId`: asignación explícita y opcional de cada mesa a un área.
+- `PUT /api/tables/plan/:branchId`: guardado transaccional de lienzo, áreas y geometría de mesas, con CAS por versión, auditoría y actualización WebSocket.
+- `GET /api/tables/plan/:branchId`: snapshot canónico completo para recarga y recuperación después de guardar.
+
+El editor permite mover y redimensionar salones y mesas, cambiar mesas entre forma rectangular, cuadrada y redonda, rotarlas y modificar las formas del área (`RECTANGLE`, `ROUNDED`, `OVAL`, `L_SHAPE`). Al salir con cambios sin guardar se solicita confirmación, y una recarga accidental activa la protección `beforeunload`.
+
+Procesar Pago fue simplificado: se eliminó `split-financial-summary`; la estrategia “Por platos” se renombró “Por unidades”; las asignaciones comienzan en cero y se conservan al cambiar el número de comensales; cada unidad se distribuye con controles −/+, mostrando progreso explícito. El modo dividido usa un ancho mayor y superficies basadas en tokens de tema.
+
+Cocina ahora ofrece dos experiencias con la misma lógica y permisos: `/kitchen` para supervisión PC y `/kds` como tablero táctil inmersivo. El tablero KDS no muestra navegación lateral, puede entrar en Fullscreen API, expone productos directamente en cada tarjeta y muestra errores de carga en lugar de confundir un 403/500 con una cola vacía. Los roles de cliente se alinearon con backend: MESERO observa el estado desde Mesas, pero no entra al KDS sin permiso.
+
+Migración: `20260714_add_floor_areas`. Rollback: elimina primero la relación de `Table`, luego `FloorArea` y `TableFloorPlan`.
+
 Convenciones: **Implementado** existe en código; **Parcial** existe una parte pero falta alcance o validación end-to-end; **Pendiente** no existe un flujo seguro.
 
 ## 1. Resumen ejecutivo de la implementación

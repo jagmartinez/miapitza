@@ -6,6 +6,30 @@
     margin: 0 auto;
 }
 
+.tables-page--map {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    min-height: 0;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 12px;
+    padding: 16px 20px;
+    overflow: hidden;
+}
+
+.tables-page--map .page-header,
+.tables-page--map .tables-filters-row {
+    margin-bottom: 0;
+}
+
+.tables-page--list {
+    height: 100dvh;
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
 /* Header */
 .tables-header-new {
     display: flex;
@@ -60,7 +84,7 @@
 }
 
 .table-status-btn:hover {
-    background: var(--color-neutral-100);
+    background: var(--color-surface-hover);
 }
 
 .table-status-btn.active {

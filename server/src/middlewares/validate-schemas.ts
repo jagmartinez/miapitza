@@ -168,6 +168,58 @@ export const updateTableLayout: ValidationSchema = {
     }
 };
 
+export const tableFloorPlanParams: ValidationSchema = {
+    params: { branchId: { type: 'number', required: true, min: 1, integer: true } },
+};
+
+export const updateTableFloorPlan: ValidationSchema = {
+    params: { branchId: { type: 'number', required: true, min: 1, integer: true } },
+    body: {
+        expectedVersion: { type: 'number', required: true, min: 0, integer: true },
+        canvas: {
+            type: 'object', required: true, properties: {
+                width: { type: 'number', required: true, min: 640, max: 10000, integer: true },
+                height: { type: 'number', required: true, min: 480, max: 10000, integer: true },
+            }
+        },
+        areas: {
+            type: 'array', required: true, max: 50, items: {
+                type: 'object', properties: {
+                    id: { type: 'number', min: 1, integer: true },
+                    clientKey: { type: 'string', min: 1, max: 100 },
+                    name: { type: 'string', required: true, min: 1, max: 100 },
+                    kind: { type: 'string', enum: ['DINING', 'TERRACE', 'BAR', 'PRIVATE', 'TAKEAWAY', 'OTHER'] },
+                    x: { type: 'number', required: true, min: 0, max: 10000, integer: true },
+                    y: { type: 'number', required: true, min: 0, max: 10000, integer: true },
+                    width: { type: 'number', required: true, min: 160, max: 10000, integer: true },
+                    height: { type: 'number', required: true, min: 140, max: 10000, integer: true },
+                    rotation: { type: 'number', min: 0, max: 359, integer: true },
+                    shape: { type: 'string', enum: ['RECTANGLE', 'ROUNDED', 'OVAL', 'L_SHAPE'] },
+                    color: { type: 'string', max: 16 },
+                    expectedVersion: { type: 'number', min: 0, integer: true },
+                }
+            }
+        },
+        deletedAreaIds: { type: 'array', max: 50, items: { type: 'number', min: 1, integer: true } },
+        tables: {
+            type: 'array', required: true, max: 250, items: {
+                type: 'object', properties: {
+                    id: { type: 'number', required: true, min: 1, integer: true },
+                    areaId: { type: 'number', min: 1, integer: true },
+                    areaClientKey: { type: 'string', min: 1, max: 100 },
+                    x: { type: 'number', required: true, min: 0, max: 10000, integer: true },
+                    y: { type: 'number', required: true, min: 0, max: 10000, integer: true },
+                    width: { type: 'number', required: true, min: 56, max: 400, integer: true },
+                    height: { type: 'number', required: true, min: 56, max: 400, integer: true },
+                    rotation: { type: 'number', min: 0, max: 359, integer: true },
+                    shape: { type: 'string', enum: ['RECTANGLE', 'SQUARE', 'ROUND'] },
+                    expectedVersion: { type: 'number', required: true, min: 0, integer: true },
+                }
+            }
+        }
+    }
+};
+
 export const consolidateTables: ValidationSchema = {
     body: {
         destinationTableId: { type: 'number', required: true, min: 1, integer: true },

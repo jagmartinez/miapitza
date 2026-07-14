@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../hooks/useLanguage';
@@ -23,7 +23,6 @@ import {
     Wallet,
     Building2,
     ChefHat,
-    CreditCard,
     Calendar,
     Utensils,
     ChevronLeft,
@@ -73,7 +72,7 @@ const ALL_ROLES: string[] = Object.values(ROLES);
 // Quick-access bottom nav for mobile (max 6 items, role-filtered)
 const MOBILE_QUICK_NAV: NavItem[] = [
     { to: '/dashboard', icon: BarChart3, label: 'BI', roles: ALL_ROLES },
-    { to: '/pos', icon: CreditCard, label: 'POS', roles: OPS },
+    { to: '/tables', icon: Utensils, label: 'Mesas', roles: WAITER_TABLE },
     { to: '/kitchen', icon: ChefHat, label: 'Cocina', roles: KITCHEN_ROLES },
     { to: '/reservations', icon: Calendar, label: 'Reservaciones', roles: HOST_ROLES },
     { to: '/orders', icon: ShoppingCart, label: 'Órdenes', roles: OPS },
@@ -85,7 +84,6 @@ const NAV_SECTIONS: NavSection[] = [
         section: 'Operaciones',
         items: [
             { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ALL_ROLES },
-            { to: '/pos', icon: CreditCard, label: 'POS', roles: OPS },
             { to: '/tables', icon: Utensils, label: 'Mesas', roles: WAITER_TABLE },
             { to: '/kitchen', icon: ChefHat, label: 'Cocina', roles: KITCHEN_ROLES },
             { to: '/reservations', icon: Calendar, label: 'Reservaciones', roles: HOST_ROLES },
@@ -141,6 +139,8 @@ export default function Layout() {
     const { user, logout } = useAuth();
     const { t } = useLanguage();
     const navigate = useNavigate();
+    const location = useLocation();
+    const isTableWorkspace = location.pathname === '/tables' || location.pathname === '/kds';
     const [isCollapsed, setIsCollapsed] = useState(() => {
         try { return localStorage.getItem('sidebar-collapsed') === 'true'; } catch { return false; }
     });
@@ -189,7 +189,7 @@ export default function Layout() {
     return (
         <ConfirmProvider>
         <ToastProvider>
-        <div className="layout">
+        <div className={`layout ${isTableWorkspace ? 'workspace-layout' : ''}`}>
             <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
                 <div className="sidebar-header">
                     <div className="header-brand-row">
@@ -244,7 +244,7 @@ export default function Layout() {
             </aside>
 
             <main
-                className={`main-content ${isCollapsed ? 'sidebar-collapsed' : ''}`}
+                className={`main-content ${isCollapsed ? 'sidebar-collapsed' : ''} ${isTableWorkspace ? 'workspace-content' : ''}`}
                 onClick={() => {
                     if (!isCollapsed) {
                         setIsCollapsed(true);

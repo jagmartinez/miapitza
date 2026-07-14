@@ -514,6 +514,21 @@
     width: calc(100% - 70px);
 }
 
+.workspace-layout .sidebar,
+.workspace-layout .mobile-bottom-nav {
+    display: none;
+}
+
+.main-content.workspace-content,
+.main-content.workspace-content.sidebar-collapsed {
+    margin-left: 0;
+    width: 100%;
+    height: 100dvh;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
 @media (max-width: 768px) {
     /* On mobile we drop the lateral sidebar entirely.
        Primary navigation + logout live in the bottom-nav. */
