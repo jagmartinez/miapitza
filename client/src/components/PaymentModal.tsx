@@ -62,6 +62,8 @@ interface PaymentModalProps {
     /** Defensa adicional: si la sucursal no tiene almacén, el cobro se bloquea. */
     /** Efectivo exige un turno abierto, vigente y de la misma sucursal que la orden. */
     hasUsableCashShift?: boolean;
+    /** Permite abrir directamente la asignación por comensal desde el mapa. */
+    initialMode?: 'single' | 'split';
 }
 
 const PaymentModal = ({
@@ -73,6 +75,7 @@ const PaymentModal = ({
     onPaymentSuccess,
     currencySymbol = '$',
     hasUsableCashShift = true,
+    initialMode = 'single',
 }: PaymentModalProps) => {
     const [mode, setMode] = useState<'single' | 'split'>('single');
 
@@ -180,7 +183,7 @@ const PaymentModal = ({
             setTipPercentage(0);
             setCustomTip('');
             setShowCustomTipInput(false);
-            setMode('single');
+            setMode(initialMode);
             setSplits([]);
             setSplitStrategy('evenly');
             setItemQuantities({});
@@ -193,7 +196,7 @@ const PaymentModal = ({
             singlePaymentKeyRef.current = newIdempotencyKey();
             splitPaymentKeysRef.current = [];
         }
-    }, [isOpen, orderTotal]);
+    }, [initialMode, isOpen, orderTotal]);
 
     useEffect(() => {
         if (!isOpen || !orderId) return;
@@ -298,6 +301,12 @@ const PaymentModal = ({
         });
         setItemQuantities(nextAssignments);
     }, [orderItems]);
+
+    useEffect(() => {
+        if (!isOpen || initialMode !== 'split' || defaultMethodId === null || splits.length > 0) return;
+        setSplits(buildSplitEntries(2, splitTotalEvenly(totalWithTip, 2)));
+        initializeItemAssignments(2);
+    }, [buildSplitEntries, defaultMethodId, initialMode, initializeItemAssignments, isOpen, splits.length, totalWithTip]);
 
     // Monotonic id used to ignore stale split-preview responses. Each invocation
     // claims the latest id; if a newer call starts before this one resolves, this

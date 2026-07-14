@@ -10,7 +10,7 @@ Se separó el estado operativo de la orden de su estado financiero, se hizo obli
 
 También se incorporaron un plano persistente de mesas, traslado total/parcial, consolidación atómica, trazabilidad de origen, estados operativos derivados, KDS táctil con inicio/listo/liberación persistentes y notificaciones WebSocket al mesero. Las rutas críticas usan permisos nominales con roles de compatibilidad.
 
-El alcance no está completamente cerrado: los cobros divididos son secuenciales y la asignación no se persiste como entidad histórica; el mapa no concentra todas las acciones de POS/factura/pago; y no existen anulación de factura, reversión de consolidación ni entidad persistente de comensal/división. Véase la sección 30.
+El alcance no está completamente cerrado: los cobros divididos son secuenciales y la asignación no se persiste como entidad histórica; no existen anulación de factura, reversión de consolidación ni entidad persistente de comensal/división. Véase la sección 30.
 
 ## 2. Problemas originales identificados
 
@@ -219,11 +219,13 @@ Destino: misma sucursal, no reservado/inhabilitado. Si tiene más de una orden a
 
 ## 19. Funcionamiento del mapa
 
-`TableMap` normaliza mesas sin posición en una grilla inicial, calcula canvas mínimo 960×600, ofrece zoom 60–160% y viewport desplazable. En edición, Pointer Events cambian coordenadas; en operación, un toque abre el resumen de órdenes. El guardado envía mesas sucias, versión esperada e idempotencia.
+`TableMap` normaliza mesas sin posición en una grilla inicial, calcula canvas mínimo 960×600, ofrece zoom 60–160% y viewport desplazable. Agrupa visualmente las mesas por `location`, dibuja contornos de zona y conserva todas las mesas en contexto cuando se aplica un filtro. En edición, Pointer Events cambian coordenadas; en operación, un toque abre el centro operativo de la mesa. El guardado envía mesas sucias, versión esperada e idempotencia.
 
 Backend limita coordenadas, tamaño, rotación, forma y lote; `mapVersion` detecta concurrencia. La UI marca intersecciones rectangulares y bloquea guardado. Cada tarjeta muestra texto además de color/borde.
 
-**Parcial**: la UI mueve, pero no ofrece redimensionar, rotar o cambiar forma aunque el contrato lo permite. CRUD/estado está en la página, no en menú contextual. Seleccionar abre `TableOrdersModal` con resumen/impresión, pero no crear orden, abrir menú/KDS, facturar, dividir o pagar. No hay entidad comensal ni estados separados “pendiente de facturación”/“cerrada”; se usan `READY`, `INVOICED`, `PAID`.
+Seleccionar abre `TableOrdersModal` como panel contextual: muestra orden, estado por producto en cocina, responsable, total y factura; permite abrir el POS real con la mesa preseleccionada, continuar/agregar productos, emitir factura, cobrar, dividir por consumo, cambiar mesa y consolidar. El POS se monta como workspace de pantalla completa dentro de `/tables` y regresa al plano al completar el cobro. `Tables` escucha eventos WebSocket y refresca el plano/panel.
+
+**Parcial visual**: la UI mueve mesas y representa zonas derivadas de `location`, pero todavía no existe una entidad geométrica persistente para paredes, puertas, mobiliario o fondos del local, ni controles visuales de redimensión/rotación/forma. No hay entidad comensal persistente ni estados separados “pendiente de facturación”/“cerrada”; se usan `READY`, `INVOICED`, `PAID`.
 
 ## 20. Funcionamiento del KDS
 

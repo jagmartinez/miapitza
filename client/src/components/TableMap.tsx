@@ -15,6 +15,7 @@ interface PositionedTable extends Table {
 
 interface TableMapProps {
     tables: Table[];
+    statusFilter?: string | null;
     canEdit: boolean;
     saving: boolean;
     onSelect: (table: Table) => void;
@@ -77,7 +78,7 @@ function resolveOperationalState(table: PositionedTable): NonNullable<Table['ope
     return table.status;
 }
 
-export default function TableMap({ tables, canEdit, saving, onSelect, onSave }: TableMapProps) {
+export default function TableMap({ tables, statusFilter, canEdit, saving, onSelect, onSave }: TableMapProps) {
     const [layout, setLayout] = useState<PositionedTable[]>(() => tables.map(normalize));
     const [editing, setEditing] = useState(false);
     const [zoom, setZoom] = useState(1);
@@ -120,6 +121,21 @@ export default function TableMap({ tables, canEdit, saving, onSelect, onSave }: 
             });
         });
         return result;
+    }, [layout]);
+
+    const zones = useMemo(() => {
+        const grouped = new Map<string, PositionedTable[]>();
+        layout.forEach((table) => {
+            const name = table.location?.trim() || 'Salón principal';
+            grouped.set(name, [...(grouped.get(name) || []), table]);
+        });
+        return Array.from(grouped.entries()).map(([name, zoneTables], index) => {
+            const left = Math.max(12, Math.min(...zoneTables.map((table) => table.mapX)) - 28);
+            const top = Math.max(12, Math.min(...zoneTables.map((table) => table.mapY)) - 42);
+            const right = Math.max(...zoneTables.map((table) => table.mapX + table.mapWidth)) + 28;
+            const bottom = Math.max(...zoneTables.map((table) => table.mapY + table.mapHeight)) + 28;
+            return { name, left, top, width: right - left, height: bottom - top, tone: index % 4 };
+        });
     }, [layout]);
 
     const bounds = useMemo(() => ({
@@ -172,8 +188,12 @@ export default function TableMap({ tables, canEdit, saving, onSelect, onSave }: 
         <section className="table-map-shell" aria-label="Mapa de mesas">
             <div className="table-map-toolbar">
                 <div>
-                    <strong>Plano operativo</strong>
-                    <span>{editing ? 'Arrastra las mesas y guarda los cambios' : 'Selecciona una mesa para ver sus órdenes'}</span>
+                    <strong>Mapa activo</strong>
+                    <span>
+                        {editing
+                            ? 'Arrastra las mesas y guarda los cambios'
+                            : `${layout.length} mesas · ${zones.length} ${zones.length === 1 ? 'zona' : 'zonas'} · toca una mesa para operarla`}
+                    </span>
                 </div>
                 <div className="table-map-actions">
                     <button type="button" onClick={() => setZoom((value) => Math.max(0.6, value - 0.1))} aria-label="Alejar plano">
@@ -209,13 +229,25 @@ export default function TableMap({ tables, canEdit, saving, onSelect, onSave }: 
                     style={{ width: bounds.width * zoom, height: bounds.height * zoom }}
                 >
                     <div style={{ width: bounds.width, height: bounds.height, transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
+                        <div className="table-map-floor-outline" aria-hidden="true" />
+                        {zones.map((zone) => (
+                            <div
+                                key={zone.name}
+                                className={`table-map-zone tone-${zone.tone}`}
+                                style={{ left: zone.left, top: zone.top, width: zone.width, height: zone.height }}
+                                aria-hidden="true"
+                            >
+                                <span>{zone.name}</span>
+                            </div>
+                        ))}
                         {layout.map((table) => {
                             const state = resolveOperationalState(table);
+                            const dimmed = Boolean(statusFilter && table.status !== statusFilter);
                             return (
                             <button
                                 key={table.id}
                                 type="button"
-                                className={`map-table state-${state.toLowerCase()} shape-${table.mapShape.toLowerCase()} ${collisions.has(table.id) ? 'collision' : ''}`}
+                                className={`map-table state-${state.toLowerCase()} shape-${table.mapShape.toLowerCase()} ${collisions.has(table.id) ? 'collision' : ''} ${dimmed ? 'dimmed' : ''}`}
                                 style={{
                                     left: table.mapX,
                                     top: table.mapY,
@@ -224,7 +256,8 @@ export default function TableMap({ tables, canEdit, saving, onSelect, onSave }: 
                                     transform: `rotate(${table.mapRotation}deg)`
                                 }}
                                 aria-label={`Mesa ${table.number}, ${operationalLabel[state]}, capacidad ${table.capacity}`}
-                                onClick={() => { if (!editing) onSelect(table); }}
+                                disabled={!editing && (state === 'DISABLED' || dimmed)}
+                                onClick={() => { if (!editing && !dimmed) onSelect(table); }}
                                 onPointerDown={(event) => beginDrag(event, table)}
                                 onPointerMove={moveDrag}
                                 onPointerUp={endDrag}

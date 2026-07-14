@@ -1,6 +1,9 @@
 import { useRef, useState } from 'react';
-import { X, Clock, DollarSign, FileText, Printer } from 'lucide-react';
-import type { Order, OrderItem } from '../types';
+import {
+    X, Clock, DollarSign, FileText, Printer, ShoppingCart, Receipt,
+    CreditCard, Scissors, ArrowRightLeft, Merge, ChefHat
+} from 'lucide-react';
+import type { Order, OrderItem, Table } from '../types';
 import { escapeHtml } from '../utils/escapeHtml';
 import { getUserAccentColor } from '../utils/authz';
 import { getOrderStatusClassName, getOrderStatusLabel } from '../utils/orderStatus';
@@ -11,18 +14,43 @@ import './TableOrdersModal.css';
 interface TableOrdersModalProps {
     isOpen: boolean;
     onClose: () => void;
-    tableNumber: string;
+    table: Table | null;
     orders: Order[];
+    busyOrderId?: number | null;
+    canIssueInvoice: boolean;
+    canPay: boolean;
+    onOpenPOS: (table: Table) => void;
+    onIssueInvoice: (order: Order) => void;
+    onPay: (order: Order) => void;
+    onSplit: (order: Order) => void;
+    onTransfer: (table: Table) => void;
+    onConsolidate: (table: Table) => void;
 }
 
-export default function TableOrdersModal({ isOpen, onClose, tableNumber, orders }: TableOrdersModalProps) {
+export default function TableOrdersModal({
+    isOpen,
+    onClose,
+    table,
+    orders,
+    busyOrderId,
+    canIssueInvoice,
+    canPay,
+    onOpenPOS,
+    onIssueInvoice,
+    onPay,
+    onSplit,
+    onTransfer,
+    onConsolidate
+}: TableOrdersModalProps) {
     const { formatMoney, symbol } = useCurrency();
     const containerRef = useRef<HTMLDivElement>(null);
     const { titleId } = useDialogA11y(isOpen, onClose, containerRef);
     // Modal Tab State
     const [activeTab, setActiveTab] = useState<'orders' | 'bill'>('orders');
 
-    if (!isOpen) return null;
+    if (!isOpen || !table) return null;
+
+    const tableNumber = table.number;
 
     const totalAmount = orders.reduce((sum, order) => sum + Number(order.total || 0), 0);
     const totalItems = orders.reduce((sum, order) => sum + (order.items?.reduce((s, i) => s + Number(i.quantity), 0) || 0), 0);
@@ -40,6 +68,12 @@ export default function TableOrdersModal({ isOpen, onClose, tableNumber, orders 
             hour: '2-digit',
             minute: '2-digit'
         });
+    };
+
+    const itemStatusLabel = (status: OrderItem['status']) => {
+        if (status === 'DONE') return 'Listo';
+        if (status === 'IN_PROGRESS') return 'Preparando';
+        return 'Pendiente';
     };
 
     const handlePrintBill = () => {
@@ -121,10 +155,25 @@ export default function TableOrdersModal({ isOpen, onClose, tableNumber, orders 
                 <div className="orders-modal-header">
                     <div className="header-title">
                         <h2 id={titleId}>Mesa {tableNumber}</h2>
-                        <span className="header-subtitle">Órdenes Activas</span>
+                        <span className="header-subtitle">
+                            {table.location || 'Salón principal'} · {table.capacity} personas
+                        </span>
                     </div>
                     <button type="button" className="close-btn-orders" onClick={onClose} aria-label="Cerrar">
                         <X size={24} aria-hidden="true" />
+                    </button>
+                </div>
+
+                <div className="table-command-strip" aria-label="Acciones operativas de la mesa">
+                    <button type="button" className="table-command-primary" onClick={() => onOpenPOS(table)}>
+                        <ShoppingCart size={19} />
+                        <span>{orders.length > 0 ? 'Continuar pedido / POS' : 'Abrir pedido / POS'}</span>
+                    </button>
+                    <button type="button" onClick={() => onTransfer(table)}>
+                        <ArrowRightLeft size={18} /><span>Cambiar mesa</span>
+                    </button>
+                    <button type="button" onClick={() => onConsolidate(table)}>
+                        <Merge size={18} /><span>Consolidar</span>
                     </button>
                 </div>
 
@@ -200,7 +249,12 @@ export default function TableOrdersModal({ isOpen, onClose, tableNumber, orders 
                                                 <div key={item.id || item.menuItemId} className="order-item-line">
                                                     <div className="item-quantity-name">
                                                         <span className="item-qty">{item.quantity}x</span>
-                                                        <span className="item-name">{item.menuItem?.name || 'Item'}</span>
+                                                        <span className="item-name">
+                                                            {item.menuItem?.name || 'Item'}
+                                                            <small className={`kitchen-line-status status-${item.status.toLowerCase()}`}>
+                                                                <ChefHat size={12} /> {itemStatusLabel(item.status)}
+                                                            </small>
+                                                        </span>
                                                     </div>
                                                     <span className="item-price">{formatMoney(Number(item.subtotal))}</span>
                                                 </div>
@@ -210,6 +264,39 @@ export default function TableOrdersModal({ isOpen, onClose, tableNumber, orders 
                                         <div className="order-card-footer">
                                             <span className="order-total-label">Total:</span>
                                             <span className="order-total-amount">{formatMoney(Number(order.total))}</span>
+                                        </div>
+                                        <div className="table-order-actions">
+                                            {!order.invoiceNumber && order.financialStatus === 'UNPAID' && (
+                                                <button type="button" onClick={() => onOpenPOS(table)}>
+                                                    <ShoppingCart size={16} /> Agregar productos
+                                                </button>
+                                            )}
+                                            {!order.invoiceNumber && canIssueInvoice && (
+                                                <button
+                                                    type="button"
+                                                    className="primary"
+                                                    disabled={busyOrderId === order.id}
+                                                    onClick={() => onIssueInvoice(order)}
+                                                >
+                                                    <Receipt size={16} />
+                                                    {busyOrderId === order.id ? 'Emitiendo…' : 'Emitir factura'}
+                                                </button>
+                                            )}
+                                            {order.invoiceNumber && (
+                                                <span className="invoice-issued-badge">
+                                                    <Receipt size={15} /> {order.invoiceNumber}
+                                                </span>
+                                            )}
+                                            {order.invoiceNumber && order.financialStatus !== 'PAID' && canPay && (
+                                                <>
+                                                    <button type="button" className="primary" onClick={() => onPay(order)}>
+                                                        <CreditCard size={16} /> Cobrar
+                                                    </button>
+                                                    <button type="button" onClick={() => onSplit(order)}>
+                                                        <Scissors size={16} /> Dividir por consumo
+                                                    </button>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                 ))
@@ -262,8 +349,12 @@ export default function TableOrdersModal({ isOpen, onClose, tableNumber, orders 
                     <button className="btn-modal-secondary" onClick={onClose}>
                         Cerrar
                     </button>
+                    <button className="btn-modal-primary" onClick={() => onOpenPOS(table)}>
+                        <ShoppingCart size={18} />
+                        {orders.length > 0 ? 'Continuar en POS' : 'Crear pedido'}
+                    </button>
                     {orders.length > 0 && (
-                        <button className="btn-modal-primary" onClick={handlePrintBill}>
+                        <button className="btn-modal-secondary" onClick={handlePrintBill}>
                             <Printer size={18} />
                             Imprimir Cuenta
                         </button>

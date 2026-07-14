@@ -55,6 +55,7 @@ export default function Orders() {
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
     const [activeShiftStatus, setActiveShiftStatus] = useState<ActiveShiftStatus | null>(null);
+    const [preparingPaymentOrderId, setPreparingPaymentOrderId] = useState<number | null>(null);
 
     // Cancel modal state
     const [showCancelModal, setShowCancelModal] = useState(false);
@@ -171,13 +172,27 @@ export default function Orders() {
         }
     };
 
-    const handlePaymentClick = (order: Order) => {
+    const handlePaymentClick = async (order: Order) => {
         if (!canPayOrder) {
             showWarning('Tu rol no puede registrar pagos. Pide apoyo a un cajero o administrador.');
             return;
         }
-        setPaymentOrder(order);
-        setShowPaymentModal(true);
+        setPreparingPaymentOrderId(order.id);
+        try {
+            // Keep the same fiscal invariant as POS and the table command center:
+            // an official invoice must exist before PaymentModal can collect.
+            await invoicesAPI.getData(order.id);
+            const refreshed = await ordersAPI.getById(order.id);
+            setPaymentOrder(refreshed.data.data as Order);
+            setShowPaymentModal(true);
+        } catch (error: unknown) {
+            const message = typeof error === 'object' && error !== null && 'response' in error
+                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                : undefined;
+            showError(message || 'No se pudo emitir la factura antes del cobro.');
+        } finally {
+            setPreparingPaymentOrderId(null);
+        }
     };
 
     const handlePaymentComplete = () => {
@@ -340,8 +355,13 @@ export default function Orders() {
 
         if (order.status !== 'CANCELLED' && order.financialStatus !== 'PAID' && canPayOrder) {
             buttons.push(
-                <Button key="pay" variant="primary" onClick={() => handlePaymentClick(order)}>
-                    <CreditCard size={16} /> Cobrar
+                <Button
+                    key="pay"
+                    variant="primary"
+                    disabled={preparingPaymentOrderId === order.id}
+                    onClick={() => void handlePaymentClick(order)}
+                >
+                    <CreditCard size={16} /> {preparingPaymentOrderId === order.id ? 'Facturando…' : 'Cobrar'}
                 </Button>
             );
         }

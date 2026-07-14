@@ -437,3 +437,16 @@
     background: var(--color-surface);
     text-align: center;
 }
+
+.table-pos-workspace {
+    position: fixed;
+    inset: 0;
+    z-index: 1400;
+    display: flex;
+    background: var(--color-background);
+}
+
+.table-pos-workspace .pos-container-new {
+    max-width: none;
+    height: 100dvh;
+}

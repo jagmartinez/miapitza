@@ -87,7 +87,14 @@ interface ShiftStatus {
     message: string | null;
 }
 
-export default function POS() {
+interface POSProps {
+    initialTableId?: number;
+    embedded?: boolean;
+    onExit?: () => void;
+    onOperationalChange?: () => void | Promise<void>;
+}
+
+export default function POS({ initialTableId, embedded = false, onExit, onOperationalChange }: POSProps = {}) {
     const navigate = useNavigate();
     const { user } = useAuth();
     const { symbol: currencySymbol } = useCurrency();
@@ -244,12 +251,13 @@ export default function POS() {
         checkBranchWarehouse();
     }, [checkBranchWarehouse]);
 
-    // Show table modal on first load if no table selected
+    // Show table modal on first load only in the standalone POS. The map-owned
+    // workspace receives a table explicitly and must never ask again.
     useEffect(() => {
-        if (!loading && !selectedTable && tables.length > 0) {
+        if (!initialTableId && !loading && !selectedTable && tables.length > 0) {
             setShowTableModal(true);
         }
-    }, [loading, selectedTable, tables]);
+    }, [initialTableId, loading, selectedTable, tables]);
 
     useEffect(() => {
         initializeWebSocket();
@@ -377,6 +385,15 @@ export default function POS() {
         setShowTableModal(false);
         await loadActiveOrderForTable(table);
     }, [cart.length, clearDraftCart, confirm, loadActiveOrderForTable, selectedTable?.id]);
+
+    const initialTableAppliedRef = useRef<number | null>(null);
+    useEffect(() => {
+        if (!initialTableId || loading || initialTableAppliedRef.current === initialTableId) return;
+        const table = tables.find((candidate) => candidate.id === initialTableId);
+        if (!table) return;
+        initialTableAppliedRef.current = initialTableId;
+        void handleSelectTable(table);
+    }, [handleSelectTable, initialTableId, loading, tables]);
 
     // Selector de modificadores: producto en edición + sus grupos cargados.
     const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
@@ -714,6 +731,8 @@ export default function POS() {
             success('Pago procesado exitosamente');
 
             await loadData();
+            await onOperationalChange?.();
+            if (embedded) onExit?.();
         } catch {
             showError('Error al procesar el pago.');
         }
@@ -840,17 +859,31 @@ export default function POS() {
     const canProcessPayment = canPay && (cart.length > 0 || Boolean(currentOrderId));
 
     return (
-        <div className="pos-container-new">
+        <div className={`pos-container-new ${embedded ? 'pos-embedded' : ''}`}>
             {/* Header */}
             <div className="pos-header-new">
                 <div className="header-left">
+                    {embedded && (
+                        <button
+                            type="button"
+                            className="pos-back-to-map"
+                            onClick={() => {
+                                void onOperationalChange?.();
+                                onExit?.();
+                            }}
+                        >
+                            <ChevronLeft size={18} /> Plano
+                        </button>
+                    )}
                     {selectedTable ? (
                         <div className="table-badge-new">
                             <Grid3x3 size={18} />
                             <span>Mesa {selectedTable.number}</span>
-                            <button onClick={() => setShowTableModal(true)} className="change-table-btn">
-                                Cambiar
-                            </button>
+                            {!embedded && (
+                                <button onClick={() => setShowTableModal(true)} className="change-table-btn">
+                                    Cambiar
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <button onClick={() => setShowTableModal(true)} className="select-table-btn">

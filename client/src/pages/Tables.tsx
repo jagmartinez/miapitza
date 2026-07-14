@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { tablesAPI, ordersAPI, branchesAPI } from '../services/api';
+import { tablesAPI, ordersAPI, branchesAPI, invoicesAPI, cashShiftsAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import PageHeader from '../components/PageHeader';
 import TableOrdersModal from '../components/TableOrdersModal';
+import PaymentModal from '../components/PaymentModal';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
-import { getUserRoleNames } from '../utils/authz';
+import { canCreatePayment, getUserRoleNames } from '../utils/authz';
 import { Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin, Building2, MapPinned, ArrowRightLeft, Merge } from 'lucide-react';
 import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
@@ -21,6 +22,10 @@ import './Tables.css';
 import TableMap, { type PositionedTable } from '../components/TableMap';
 import { newIdempotencyKey } from '../utils/idempotency';
 import TableOperationModal from '../components/TableOperationModal';
+import POS from './POS';
+import { hasUsableCashShift, type CashShiftScope } from '../utils/paymentAccess';
+import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
+import { useCurrency } from '../hooks/useCurrency';
 
 interface ApiValidationError { field?: string; message?: string }
 function extractApiError(error: unknown, fallback: string): string {
@@ -40,6 +45,7 @@ function extractApiError(error: unknown, fallback: string): string {
 
 export default function Tables() {
     const { user } = useAuth();
+    const { symbol: currencySymbol } = useCurrency();
     const { confirm } = useConfirmDialog();
     const { error: showError, warning: showWarning, success: showSuccess } = useAppToast();
     const userRoleNames = getUserRoleNames(user);
@@ -49,6 +55,8 @@ export default function Tables() {
     const canEditMap = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const canTransfer = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'MESERO'].includes(role));
     const canConsolidate = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'CAJERO'].includes(role));
+    const canIssueInvoice = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'CAJERO'].includes(role));
+    const canPay = canCreatePayment(user);
     // Managers (company-wide) may create/list tables across branches of their company.
     const canChooseBranch = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [tables, setTables] = useState<Table[]>([]);
@@ -78,6 +86,11 @@ export default function Tables() {
     const [savingLayout, setSavingLayout] = useState(false);
     const [operation, setOperation] = useState<'TRANSFER' | 'CONSOLIDATE' | null>(null);
     const [submittingOperation, setSubmittingOperation] = useState(false);
+    const [busyOrderId, setBusyOrderId] = useState<number | null>(null);
+    const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
+    const [paymentMode, setPaymentMode] = useState<'single' | 'split'>('single');
+    const [cashShiftStatus, setCashShiftStatus] = useState<CashShiftScope | null>(null);
+    const [posTable, setPosTable] = useState<Table | null>(null);
 
     const loadTables = useCallback(async () => {
         try {
@@ -193,27 +206,98 @@ export default function Tables() {
         }
     };
 
-    const handleViewOrders = async (table: Table) => {
-        setSelectedTable(table);
-        setIsOrdersModalOpen(true);
+    const loadTableOrders = useCallback(async (table: Table) => {
         try {
             const response = await ordersAPI.getAll({
                 tableId: table.id,
             });
             const active = response.data.data.filter((o: Order) =>
                 ACTIVE_ORDER_STATUSES.includes(o.status)
+                || (o.status === 'DELIVERED' && o.financialStatus !== 'PAID')
             );
             setTableOrders(active);
         } catch (error) {
             console.error('Error loading table orders:', error);
+            showError('No se pudieron cargar las órdenes de esta mesa.');
+        }
+    }, [showError]);
+
+    const handleViewOrders = async (table: Table) => {
+        setSelectedTable(table);
+        setIsOrdersModalOpen(true);
+        await loadTableOrders(table);
+    };
+
+    const handleOpenPOS = (table: Table) => {
+        setIsOrdersModalOpen(false);
+        setPosTable(table);
+    };
+
+    const refreshOperationalTable = useCallback(async () => {
+        await loadTables();
+        if (selectedTable) await loadTableOrders(selectedTable);
+    }, [loadTableOrders, loadTables, selectedTable]);
+
+    const handleIssueInvoice = async (order: Order) => {
+        if (!canIssueInvoice) {
+            showWarning('Tu rol no puede emitir facturas.');
+            return;
+        }
+        setBusyOrderId(order.id);
+        try {
+            const response = await invoicesAPI.getData(order.id);
+            const invoiceNumber = response.data?.data?.invoiceNumber as string | undefined;
+            const refreshed = await ordersAPI.getById(order.id);
+            const nextOrder = refreshed.data.data as Order;
+            setTableOrders((current) => current.map((item) => item.id === nextOrder.id ? nextOrder : item));
+            await loadTables();
+            showSuccess(`Factura ${invoiceNumber || ''} emitida correctamente.`.trim());
+        } catch (error) {
+            showError(extractApiError(error, 'No se pudo emitir la factura.'));
+        } finally {
+            setBusyOrderId(null);
         }
     };
+
+    const openPayment = async (order: Order, mode: 'single' | 'split') => {
+        if (!canPay) {
+            showWarning('Tu rol no puede procesar pagos.');
+            return;
+        }
+        if (!order.invoiceNumber) {
+            showWarning('Primero debes emitir la factura de esta orden.');
+            return;
+        }
+        try {
+            const response = await cashShiftsAPI.getActiveStatus();
+            setCashShiftStatus(response.data.data as CashShiftScope);
+        } catch {
+            setCashShiftStatus(null);
+            showWarning('No se pudo validar el turno de caja; el efectivo permanecerá bloqueado.');
+        }
+        setPaymentMode(mode);
+        setPaymentOrder(order);
+    };
+
+    useEffect(() => {
+        initializeWebSocket();
+        return subscribeWebSocket((message) => {
+            if (!message?.type || ![
+                WS_EVENTS.TABLE_STATUS_CHANGED,
+                WS_EVENTS.ORDER_UPDATE,
+                WS_EVENTS.ORDER_READY,
+                WS_EVENTS.ORDER_IN_PREPARATION
+            ].includes(message.type)) return;
+            void loadTables();
+            if (selectedTable) void loadTableOrders(selectedTable);
+        });
+    }, [loadTableOrders, loadTables, selectedTable]);
 
     const filteredTables = statusFilter
         ? tables.filter(t => t.status === statusFilter)
         : tables;
 
-    const mapBranchIds = Array.from(new Set(filteredTables.map((table) => table.branchId)));
+    const mapBranchIds = Array.from(new Set(tables.map((table) => table.branchId)));
     const mapBranchId = mapBranchIds.length === 1 ? mapBranchIds[0] : undefined;
 
     const handleSaveLayout = async (changed: PositionedTable[]) => {
@@ -387,16 +471,17 @@ export default function Tables() {
                 )}
             </div>
 
-            {showMap && filteredTables.length > 0 && mapBranchIds.length > 1 && (
+            {showMap && tables.length > 0 && mapBranchIds.length > 1 && (
                 <div className="table-map-branch-required">
                     <MapPinned size={24} />
                     Selecciona una sucursal para visualizar y editar su plano.
                 </div>
             )}
 
-            {showMap && filteredTables.length > 0 && mapBranchIds.length === 1 && (
+            {showMap && tables.length > 0 && mapBranchIds.length === 1 && (
                 <TableMap
-                    tables={filteredTables}
+                    tables={tables}
+                    statusFilter={statusFilter}
                     canEdit={canEditMap}
                     saving={savingLayout}
                     onSelect={handleViewOrders}
@@ -563,7 +648,7 @@ export default function Tables() {
             </div>
             )}
 
-            {filteredTables.length === 0 && (
+            {!showMap && filteredTables.length === 0 && (
                 <div className="no-tables-message">
                     <Grid3x3 size={48} />
                     <p>No hay mesas {statusFilter ? 'con este estado' : 'registradas'}</p>
@@ -727,9 +812,40 @@ export default function Tables() {
             <TableOrdersModal
                 isOpen={isOrdersModalOpen}
                 onClose={() => setIsOrdersModalOpen(false)}
-                tableNumber={selectedTable?.number || ''}
+                table={selectedTable}
                 orders={tableOrders}
+                busyOrderId={busyOrderId}
+                canIssueInvoice={canIssueInvoice}
+                canPay={canPay}
+                onOpenPOS={handleOpenPOS}
+                onIssueInvoice={(order) => void handleIssueInvoice(order)}
+                onPay={(order) => void openPayment(order, 'single')}
+                onSplit={(order) => void openPayment(order, 'split')}
+                onTransfer={() => {
+                    setIsOrdersModalOpen(false);
+                    setOperation('TRANSFER');
+                }}
+                onConsolidate={() => {
+                    setIsOrdersModalOpen(false);
+                    setOperation('CONSOLIDATE');
+                }}
             />
+            {paymentOrder && (
+                <PaymentModal
+                    isOpen
+                    onClose={() => setPaymentOrder(null)}
+                    orderId={paymentOrder.id}
+                    orderTotal={Number(paymentOrder.total)}
+                    order={paymentOrder}
+                    currencySymbol={currencySymbol}
+                    initialMode={paymentMode}
+                    hasUsableCashShift={hasUsableCashShift(cashShiftStatus, paymentOrder.branchId)}
+                    onPaymentSuccess={() => {
+                        setPaymentOrder(null);
+                        void refreshOperationalTable();
+                    }}
+                />
+            )}
             <TableOperationModal
                 isOpen={operation !== null}
                 operation={operation ?? 'TRANSFER'}
@@ -739,6 +855,17 @@ export default function Tables() {
                 onTransfer={handleTransfer}
                 onConsolidate={handleConsolidate}
             />
+            {posTable && (
+                <div className="table-pos-workspace" role="dialog" aria-modal="true" aria-label={`Pedido de mesa ${posTable.number}`}>
+                    <POS
+                        key={posTable.id}
+                        initialTableId={posTable.id}
+                        embedded
+                        onExit={() => setPosTable(null)}
+                        onOperationalChange={refreshOperationalTable}
+                    />
+                </div>
+            )}
         </div>
     );
 }
