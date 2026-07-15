@@ -338,7 +338,7 @@ export default function Categories() {
                         <div className="modal-tab-content">
                             {/* 1. INFORMACIÓN TAB */}
                             {activeTab === 'info' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <Tag size={18} />
                                         <h3>Detalles de Categoría</h3>
@@ -390,7 +390,7 @@ export default function Categories() {
 
                             {/* 2. CONFIGURACIÓN TAB */}
                             {activeTab === 'config' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <List size={18} />
                                         <h3>Ajustes Visuales</h3>

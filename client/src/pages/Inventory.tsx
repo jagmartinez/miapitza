@@ -1427,7 +1427,7 @@ export default function Inventory() {
                     <form onSubmit={handleSubmit} className="modal-form-new">
                         <div className="modal-tab-content">
                             {activeTab === 'general' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <Package size={18} />
                                         <h3>Información General</h3>
@@ -1632,7 +1632,7 @@ export default function Inventory() {
                             )}
 
                             {activeTab === 'stock' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <Truck size={18} />
                                         <h3>Gestión de Existencias</h3>
@@ -1661,7 +1661,7 @@ export default function Inventory() {
                             )}
 
                             {activeTab === 'finanzas' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <DollarSign size={18} />
                                         <h3>Información Financiera</h3>
@@ -1777,7 +1777,7 @@ export default function Inventory() {
                 <div className="premium-modal-content product-modal-content">
                     <form onSubmit={handleAdjustmentSubmit} className="modal-form-new">
                         <div className="modal-tab-content">
-                            <div className="modal-section animate-slide-in">
+                            <div className="modal-content-group">
                                 <div className="modal-section-header">
                                     <Activity size={18} />
                                     <h3>Ajuste para: {adjustmentData.productName}</h3>
@@ -1895,7 +1895,7 @@ export default function Inventory() {
                 <div className="premium-modal-content product-modal-content">
                     <form onSubmit={handleCreateAutoPurchaseOrder} className="modal-form-new">
                         <div className="modal-tab-content">
-                            <div className="modal-section animate-slide-in">
+                            <div className="modal-content-group">
                                 <div className="modal-section-header">
                                     <FileText size={18} />
                                     <h3>Sugerencias de reposición</h3>

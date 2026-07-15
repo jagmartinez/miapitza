@@ -783,7 +783,7 @@ export default function PurchaseOrders() {
                                     </div>
                                 </div>
 
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <FileText size={18} />
                                         <h3>Configurar borrador</h3>
@@ -825,7 +825,7 @@ export default function PurchaseOrders() {
                                     </div>
                                 </div>
 
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <AlertTriangle size={18} />
                                         <h3>Productos sugeridos</h3>
@@ -983,7 +983,7 @@ export default function PurchaseOrders() {
                         <div className="modal-tab-content">
                             {paymentTab === 'register' ? (
                                 <>
-                                    <div className="modal-section animate-slide-in">
+                                    <div className="modal-content-group">
                                         <div className="modal-section-header">
                                             <Info size={18} />
                                             <h3>Resumen de la factura</h3>
@@ -1011,7 +1011,7 @@ export default function PurchaseOrders() {
                                     </div>
 
                                     {Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0) > 0 ? (
-                                        <div className="modal-section animate-slide-in">
+                                        <div className="modal-content-group">
                                             <div className="modal-section-header">
                                                 <DollarSign size={18} />
                                                 <h3>Datos del pago</h3>
@@ -1086,7 +1086,7 @@ export default function PurchaseOrders() {
                                     )}
                                 </>
                             ) : (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <History size={18} />
                                         <h3>Abonos registrados</h3>

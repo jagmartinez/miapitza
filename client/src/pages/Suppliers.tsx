@@ -431,7 +431,7 @@ export default function Suppliers() {
                     <form onSubmit={handleSubmit} className="modal-form-new">
                         <div className="modal-tab-content">
                             {activeTab === 'empresa' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <Info size={16} />
                                         <h3>Información Principal</h3>
@@ -470,7 +470,7 @@ export default function Suppliers() {
                             )}
 
                             {activeTab === 'contacto' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <Users size={16} />
                                         <h3>Datos de Contacto</h3>
@@ -499,7 +499,7 @@ export default function Suppliers() {
                             )}
 
                             {activeTab === 'ubicacion' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <MapPin size={16} />
                                         <h3>Ubicación Física</h3>

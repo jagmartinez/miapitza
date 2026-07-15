@@ -908,7 +908,7 @@ export default function Reservations() {
                     <form onSubmit={handleSubmit} className="modal-form-new">
                         <div className="modal-tab-content">
                             {activeTab === 'cliente' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <Users size={18} />
                                         <h3>Información del Cliente</h3>
@@ -956,7 +956,7 @@ export default function Reservations() {
                             )}
 
                             {activeTab === 'reserva' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <Calendar size={18} />
                                         <h3>Detalles de la Reserva</h3>
@@ -1060,7 +1060,7 @@ export default function Reservations() {
                             )}
 
                             {activeTab === 'notas' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <MessageSquare size={18} />
                                         <h3>Notas y Observaciones</h3>

@@ -253,7 +253,7 @@ export default function EmployeeForm({
                             id="hr-employee-panel-data"
                             role="tabpanel"
                             aria-labelledby="hr-employee-tab-data"
-                            className="modal-section animate-slide-in"
+                            className="modal-content-group"
                         >
                             <div className="modal-section-header">
                                 <UserRound size={18} aria-hidden="true" />
@@ -324,7 +324,7 @@ export default function EmployeeForm({
                             id="hr-employee-panel-relationship"
                             role="tabpanel"
                             aria-labelledby="hr-employee-tab-relationship"
-                            className="modal-section animate-slide-in"
+                            className="modal-content-group"
                         >
                             <div className="modal-section-header">
                                 <Briefcase size={18} aria-hidden="true" />
@@ -380,7 +380,7 @@ export default function EmployeeForm({
                             id="hr-employee-panel-user"
                             role="tabpanel"
                             aria-labelledby="hr-employee-tab-user"
-                            className="modal-section animate-slide-in"
+                            className="modal-content-group"
                         >
                             <div className="modal-section-header">
                                 <FileText size={18} aria-hidden="true" />
@@ -414,7 +414,7 @@ export default function EmployeeForm({
                             id="hr-employee-panel-assignment"
                             role="tabpanel"
                             aria-labelledby="hr-employee-tab-assignment"
-                            className="modal-section animate-slide-in"
+                            className="modal-content-group"
                         >
                             <div className="modal-section-header">
                                 <Building2 size={18} aria-hidden="true" />

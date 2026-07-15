@@ -302,7 +302,7 @@ export default function CateringServices() {
                         <div className="modal-tab-content">
                             {activeServiceTab === 'general' && <div
                                 id="catering-service-panel-general"
-                                className="modal-section animate-slide-in"
+                                className="modal-content-group"
                                 role="tabpanel"
                                 aria-labelledby="catering-service-tab-general"
                             >
@@ -337,7 +337,7 @@ export default function CateringServices() {
 
                             {activeServiceTab === 'pricing' && <div
                                 id="catering-service-panel-pricing"
-                                className="modal-section animate-slide-in"
+                                className="modal-content-group"
                                 role="tabpanel"
                                 aria-labelledby="catering-service-tab-pricing"
                             >

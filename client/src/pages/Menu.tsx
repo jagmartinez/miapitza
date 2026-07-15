@@ -962,7 +962,7 @@ export default function Menu() {
             <div className="modal-tab-content">
               {/* 1. INFORMACIÓN TAB */}
               {activeTab === 'info' && (
-                <div className="modal-section animate-slide-in">
+                <div className="modal-content-group">
                   <div className="modal-section-header">
                     <Info size={18} />
                     <h3>Información del Plato</h3>
@@ -1062,7 +1062,7 @@ export default function Menu() {
 
               {/* 2. RECIPE & COSTOS TAB */}
               {activeTab === 'recipe' && (
-                <div className="modal-section animate-slide-in">
+                <div className="modal-content-group">
                   <div className="modal-section-header">
                     <PieChart size={18} />
                     <h3>Análisis de Costos y Receta</h3>
@@ -1255,7 +1255,7 @@ export default function Menu() {
 
               {/* 3. GALERÍA TAB */}
               {activeTab === 'gallery' && (
-                <div className="modal-section animate-slide-in">
+                <div className="modal-content-group">
                   <div className="modal-section-header">
                     <ImageIcon size={18} />
                     <h3>Galería de Imágenes</h3>
@@ -1299,7 +1299,7 @@ export default function Menu() {
               )}
 
               {activeTab === 'pricing' && editingItem && (
-                <div className="modal-section animate-slide-in">
+                <div className="modal-content-group">
                   <div className="modal-section-header">
                     <DollarSign size={18} />
                     <h3>Matriz de precios por sucursal</h3>
@@ -1419,7 +1419,7 @@ export default function Menu() {
 
             {/* Modifiers of selected group */}
             {selectedGroupId && (
-              <div className="modal-section animate-slide-in">
+              <div className="modal-content-group">
                 <div className="modal-section-header">
                   <Package size={18} />
                   <h3>Modificadores del grupo</h3>

@@ -14,10 +14,30 @@ describe('operational UX contracts', () => {
         expect(layoutSource).toContain('<div className="main-content-inner">');
         expect(layoutStyles).toContain('.main-content-inner {');
         expect(layoutStyles).toContain('max-width: 1700px');
+        expect(layoutStyles).toContain('.main-content-inner > * {');
+        expect(layoutStyles).toContain('max-width: 1700px !important');
         expect(layoutStyles).toContain('.main-content.workspace-content > .main-content-inner');
         expect(layoutStyles).toContain('height: 100%');
         expect(dashboardStyles).toContain('max-width: 1700px');
         expect(dashboardStyles).toContain('margin: 0 auto');
+    });
+
+    it('keeps modal content flush without nested section cards or reserved scrollbar space', () => {
+        const sharedStyles = read('../index.css');
+        const modalStyles = read('../components/Modal.css');
+        const sidebarStyles = read('../components/Sidebar.css');
+        const modalSection = sharedStyles.slice(
+            sharedStyles.indexOf('.modal-section,'),
+            sharedStyles.indexOf('.modal-section-header {'),
+        );
+
+        expect(sharedStyles).not.toContain('scrollbar-gutter: stable');
+        expect(modalStyles).not.toContain('scrollbar-gutter: stable');
+        expect(sidebarStyles).not.toContain('scrollbar-gutter: stable');
+        expect(modalSection).toContain('width: 100%');
+        expect(modalSection).not.toContain('padding:');
+        expect(modalSection).not.toContain('border:');
+        expect(modalSection).not.toContain('box-shadow:');
     });
 
     it('keeps the catering event editor structured as one guided workspace', () => {

@@ -519,6 +519,16 @@
     margin-inline: auto;
 }
 
+/* The routed view itself must honor the same contract. Several legacy page
+   styles used a narrower 1400/1600px cap or `max-width: none`. */
+.main-content-inner > * {
+    width: 100%;
+    max-width: 1700px !important;
+    min-width: 0;
+    margin-inline: auto;
+    box-sizing: border-box;
+}
+
 .main-content.sidebar-collapsed {
     margin-left: 70px;
     width: calc(100% - 70px);

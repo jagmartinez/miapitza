@@ -581,7 +581,7 @@ export default function Users() {
                         <div className="modal-tab-content">
                             {/* 1. PERFIL TAB */}
                             {activeTab === 'perfil' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <UserIcon size={18} />
                                         <h3>Información de Perfil</h3>
@@ -652,7 +652,7 @@ export default function Users() {
 
                             {/* 2. ACCESO TAB */}
                             {activeTab === 'acceso' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <Shield size={18} />
                                         <h3>Configuración de Acceso</h3>

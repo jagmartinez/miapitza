@@ -769,7 +769,7 @@ export default function Tables() {
                     <form onSubmit={handleSubmit} className="modal-form-new">
                         <div className="modal-tab-content">
                             {activeTab === 'general' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <Users size={18} />
                                         <h3>Información de la Mesa</h3>
@@ -835,7 +835,7 @@ export default function Tables() {
                             )}
 
                             {activeTab === 'ubicacion' && (
-                                <div className="modal-section animate-slide-in">
+                                <div className="modal-content-group">
                                     <div className="modal-section-header">
                                         <MapPin size={18} />
                                         <h3>Localización y Estado</h3>

@@ -413,7 +413,7 @@ export default function Warehouses() {
                 <div className="premium-modal-content">
                     <form onSubmit={handleCreateUpdate} className="modal-form-new">
                         <div className="modal-tab-content">
-                            <div className="modal-section animate-slide-in">
+                            <div className="modal-content-group">
                                 <div className="modal-section-header">
                                     <WarehouseIcon size={18} />
                                     <h3>Información de la bodega</h3>
@@ -500,7 +500,7 @@ export default function Warehouses() {
                 <div className="premium-modal-content">
                     <form onSubmit={handleTransfer} className="modal-form-new">
                         <div className="modal-tab-content">
-                            <div className="modal-section animate-slide-in">
+                            <div className="modal-content-group">
                                 <div className="modal-section-header">
                                     <ArrowRightLeft size={18} />
                                     <h3>Ruta del traslado</h3>
@@ -520,7 +520,7 @@ export default function Warehouses() {
                                 </div>
                                 </div>
                             </div>
-                            <div className="modal-section animate-slide-in">
+                            <div className="modal-content-group">
                                 <div className="modal-section-header">
                                     <Package size={18} />
                                     <h3>Producto y cantidad</h3>

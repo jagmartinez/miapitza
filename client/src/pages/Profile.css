@@ -4,7 +4,7 @@
     display: flex;
     gap: var(--spacing-xl);
     padding: var(--spacing-lg);
-    max-width: 1400px;
+    max-width: 1700px;
     margin: 0 auto;
     min-height: calc(100vh - 40px);
     animation: profileFadeIn 0.3s ease-out;

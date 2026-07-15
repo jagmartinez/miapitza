@@ -506,7 +506,7 @@ export default function ProductionOrders() {
             >
                 <div className="premium-modal-content po-production-form">
                     <div className="modal-tab-content">
-                        <div className="modal-section animate-slide-in">
+                        <div className="modal-content-group">
                             <div className="modal-section-header">
                                 <Factory size={18} />
                                 <h3>Datos de la producción</h3>
@@ -593,7 +593,7 @@ export default function ProductionOrders() {
                             </div>
                         </div>
 
-                        <div className="modal-section animate-slide-in">
+                        <div className="modal-content-group">
                             <div className="modal-section-header po-section-header-actions">
                                 <div className="po-section-heading">
                                     <Calculator size={18} />

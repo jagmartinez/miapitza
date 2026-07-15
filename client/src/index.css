@@ -394,18 +394,15 @@ button.modal-tab {
   gap: var(--spacing-lg);
   min-height: 0;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }
 
-.modal-section {
+.modal-section,
+.modal-content-group {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-lg);
-  padding: var(--spacing-lg);
-  border: 1px solid var(--dialog-panel-border);
-  border-radius: var(--radius-xl);
-  background: var(--color-surface);
-  box-shadow: 0 10px 24px -24px rgb(15 23 42 / 0.7);
+  width: 100%;
+  min-width: 0;
 }
 
 .modal-section-header {
@@ -646,7 +643,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 /* Standard page wrapper */
 .page-wrapper {
   padding: var(--spacing-lg);
-  max-width: 1400px;
+  max-width: 1700px;
   margin: 0 auto;
 }
 

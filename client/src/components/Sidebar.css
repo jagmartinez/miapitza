@@ -111,7 +111,6 @@
     padding: var(--spacing-xl);
     min-height: 0;
     overscroll-behavior: contain;
-    scrollbar-gutter: stable;
     background: color-mix(in srgb, var(--color-surface) 96%, var(--color-background) 4%);
 }
 

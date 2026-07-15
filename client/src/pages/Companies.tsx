@@ -292,7 +292,7 @@ export default function Companies() {
                 <div className="premium-modal-content companies-modal-content">
                     <form onSubmit={handleSubmit} className="modal-form-new">
                         <div className="modal-tab-content">
-                            <div className="modal-section animate-slide-in">
+                            <div className="modal-content-group">
                                 <div className="modal-section-header">
                                     <Building2 size={18} />
                                     <h3>Información General</h3>
