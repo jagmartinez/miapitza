@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { warehousesAPI, inventoryMovementsAPI, branchesAPI, productsAPI, unitsAPI } from '../services/api';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
@@ -12,6 +12,7 @@ import { useToast } from '../hooks/useToast';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { hasAnyRole } from '../utils/authz';
+import { newIdempotencyKey } from '../utils/idempotency';
 import {
     Warehouse as WarehouseIcon, Plus, ArrowRightLeft, Package, MapPin,
     Eye, Trash2, Edit2, Search, Info
@@ -35,7 +36,15 @@ interface StockItem {
     id: number;
     productId: number;
     quantity: number;
-    product: { id: number; name: string; sku?: string; unit: string; minStock: number; cost: number };
+    product: {
+        id: number;
+        name: string;
+        sku?: string;
+        unit: string;
+        baseUnit?: { abbreviation: string } | null;
+        minStock: number;
+        cost: number;
+    };
 }
 
 export default function Warehouses() {
@@ -74,6 +83,7 @@ export default function Warehouses() {
     });
     const [transferUnits, setTransferUnits] = useState<ProductAllowedUnit[]>([]);
     const [saving, setSaving] = useState(false);
+    const transferAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
     // Transfer history
     const [showHistory, setShowHistory] = useState(false);
@@ -86,7 +96,7 @@ export default function Warehouses() {
             const [whRes, brRes, prRes] = await Promise.all([
                 warehousesAPI.getAll(),
                 branchesAPI.getAll(),
-                productsAPI.getAll()
+                productsAPI.getAll({ active: true, limit: 500 })
             ]);
             setWarehouses(whRes.data.data);
             setBranches(brRes.data.data);
@@ -156,14 +166,18 @@ export default function Warehouses() {
             if (units.length > 0) {
                 setTransferUnits(units);
                 const defaultUnit = units.find(u => u.isDefault) || units.find(u => u.isBase) || units[0];
-                setTransferData(prev => ({ ...prev, productId, unit: defaultUnit?.abbreviation || product?.unit || '' }));
+                setTransferData(prev => ({
+                    ...prev,
+                    productId,
+                    unit: defaultUnit?.abbreviation || product?.baseUnit?.abbreviation || product?.unit || ''
+                }));
             } else {
-                const baseUnit = product?.unit || 'unidad';
+                const baseUnit = product?.baseUnit?.abbreviation || product?.unit || 'unidad';
                 setTransferUnits([{ unitId: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
                 setTransferData(prev => ({ ...prev, productId, unit: baseUnit }));
             }
         } catch {
-            const baseUnit = product?.unit || 'unidad';
+            const baseUnit = product?.baseUnit?.abbreviation || product?.unit || 'unidad';
             setTransferUnits([{ unitId: 0, abbreviation: baseUnit, name: baseUnit, conversionFactor: 1, isBase: true, isDefault: true }] as ProductAllowedUnit[]);
             setTransferData(prev => ({ ...prev, productId, unit: baseUnit }));
         }
@@ -174,14 +188,20 @@ export default function Warehouses() {
         if (!canTransferStock) return;
         setSaving(true);
         try {
-            await inventoryMovementsAPI.transfer({
+            const payload = {
                 fromWarehouseId: parseInt(transferData.fromWarehouseId),
                 toWarehouseId: parseInt(transferData.toWarehouseId),
                 productId: parseInt(transferData.productId),
                 quantity: parseFloat(transferData.quantity),
                 reference: transferData.reference || undefined,
                 unit: transferData.unit || undefined
-            });
+            };
+            const fingerprint = JSON.stringify(payload);
+            if (transferAttemptRef.current?.fingerprint !== fingerprint) {
+                transferAttemptRef.current = { fingerprint, key: newIdempotencyKey() };
+            }
+            await inventoryMovementsAPI.transfer(payload, transferAttemptRef.current.key);
+            transferAttemptRef.current = null;
             showSuccess('Traslado realizado correctamente');
             setShowTransfer(false);
             setTransferData({ fromWarehouseId: '', toWarehouseId: '', productId: '', quantity: '', reference: '', unit: '' });
@@ -452,18 +472,17 @@ export default function Warehouses() {
                         </div>
                         <div className="stock-items-list">
                             {filteredStock.map(s => {
-                                const isLow = Number(s.quantity) < Number(s.product.minStock);
                                 return (
-                                    <div key={s.id} className={`stock-item-row ${isLow ? 'stock-low' : ''}`}>
+                                    <div key={s.id} className="stock-item-row">
                                         <div>
                                             <div className="stock-item-name">{s.product.name}</div>
                                             {s.product.sku && <div className="stock-item-sku">{s.product.sku}</div>}
                                         </div>
                                         <div className="stock-item-qty">
-                                            <div className={`stock-item-value ${isLow ? 'stock-low-text' : ''}`}>
-                                                {Number(s.quantity).toFixed(2)} {s.product.unit}
+                                            <div className="stock-item-value">
+                                                {Number(s.quantity).toFixed(2)} {s.product.baseUnit?.abbreviation || s.product.unit}
                                             </div>
-                                            <div className="stock-item-min">Min: {Number(s.product.minStock)}</div>
+                                            <div className="stock-item-min">MÃ­n. agregado: {Number(s.product.minStock)}</div>
                                         </div>
                                     </div>
                                 );

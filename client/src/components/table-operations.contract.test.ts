@@ -31,11 +31,14 @@ describe('table operational center contract', () => {
     });
 
     it('keeps invoice issuance before collection in every order entry point', () => {
-        expect(tablesSource.indexOf('invoicesAPI.getData(order.id)')).toBeLessThan(
+        expect(tablesSource.indexOf('invoicesAPI.issue(order.id)')).toBeLessThan(
             tablesSource.indexOf("setPaymentMode(mode)")
         );
-        expect(ordersSource.indexOf('await invoicesAPI.getData(order.id)')).toBeLessThan(
+        expect(ordersSource.indexOf('await invoicesAPI.issue(order.id)')).toBeLessThan(
             ordersSource.indexOf('setShowPaymentModal(true)')
+        );
+        expect(posSource.indexOf('invoicesAPI.issue(orderId)')).toBeLessThan(
+            posSource.indexOf('setShowPaymentModal(true)')
         );
     });
 

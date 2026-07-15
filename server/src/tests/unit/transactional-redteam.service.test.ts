@@ -235,6 +235,45 @@ describe('transactional red-team regressions', () => {
         }));
     });
 
+    it('recreates the exact FIFO portions when order-consumption lineage is available', async () => {
+        const acquiredAt = '2026-01-02T03:04:05.000Z';
+        const tx = {
+            inventoryMovement: {
+                findMany: jest.fn(async () => [{
+                    warehouseId: 2,
+                    productId: 8,
+                    type: 'OUT',
+                    quantity: 3,
+                    unitCost: 50 / 3,
+                    totalCost: 50,
+                    consumedLayers: [
+                        { quantity: 1, unitCost: 10, sourceRef: 'PO-1', sourceType: 'PURCHASE', createdAt: acquiredAt },
+                        { quantity: 2, unitCost: 20, sourceRef: 'PO-2', sourceType: 'PURCHASE', createdAt: acquiredAt }
+                    ]
+                }])
+            }
+        };
+        const apply = jest.spyOn(InventoryEngineService, 'applyMovement')
+            .mockResolvedValue({} as never);
+
+        await InventoryConsumptionService.reverseForOrder(tx as never, {
+            orderId: 9,
+            companyId: 1,
+            userId: 7,
+            reason: 'Reversa de prueba',
+            sourceType: 'ADJUSTMENT',
+            reversalOrigin: 'UNIT_TEST'
+        });
+
+        expect(apply).toHaveBeenCalledWith(tx as never, expect.objectContaining({
+            inboundLayers: [
+                expect.objectContaining({ quantity: 1, unitCost: 10, sourceRef: 'PO-1', sourceType: 'PURCHASE' }),
+                expect.objectContaining({ quantity: 2, unitCost: 20, sourceRef: 'PO-2', sourceType: 'PURCHASE' })
+            ],
+            sourceType: undefined
+        }));
+    });
+
     it('does not let another product IN cancel the idempotency guard', async () => {
         const tx = {
             inventoryMovement: {

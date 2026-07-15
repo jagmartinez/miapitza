@@ -33,6 +33,7 @@ router.delete('/items/:itemId', requirePermission('orders.edit', 'SUPERADMIN', '
 router.post('/:id/send-to-kitchen', requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO'), validate(s.idParam), OrderController.sendToKitchen);
 router.patch('/:id/status', requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), validate(s.updateOrderStatus), OrderController.updateStatus);
 router.patch('/:id/pricing', requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), validate(s.idParam), OrderController.updatePricing);
+router.patch('/:id/fiscal-customer', requirePermission('invoices.issue', 'SUPERADMIN', 'ADMIN', 'CAJERO'), validate(s.updateFiscalCustomer), OrderController.updateFiscalCustomer);
 router.post('/:id/complete', requirePermission('orders.deliver', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), validate(s.idParam), OrderController.complete);
 router.post('/:id/cancel', requirePermission('orders.cancel', 'SUPERADMIN', 'ADMIN', 'MESERO'), validate(s.idParam), OrderController.cancel);
 

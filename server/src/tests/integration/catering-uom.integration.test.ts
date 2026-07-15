@@ -74,6 +74,7 @@ describe('Catering recipe UOM atomicity (integration)', () => {
         await prisma.auditLog.deleteMany({ where: { companyId } });
         await prisma.cateringMenuItem.deleteMany({ where: { event: { companyId } } });
         await prisma.cateringEvent.deleteMany({ where: { companyId } });
+        await prisma.customer.deleteMany({ where: { companyId } });
         await prisma.inventoryMovement.deleteMany({ where: { companyId } });
         await prisma.inventoryBatch.deleteMany({ where: { companyId } });
         await prisma.stock.deleteMany({ where: { companyId } });
@@ -90,7 +91,10 @@ describe('Catering recipe UOM atomicity (integration)', () => {
     });
 
     const eventData = (menuItemId: number, status: 'QUOTED' | 'FINISHED') => ({
-        branchId, title: `Event ${menuItemId} ${status}`, date: new Date(Date.now() + 86400000),
+        branchId,
+        customerName: `Cliente ${menuItemId}`,
+        title: `Event ${menuItemId} ${status}`,
+        date: new Date(Date.now() + 86400000),
         peopleCount: 4, status, menuItems: [{ menuItemId, quantity: 4, unitPrice: 10 }]
     });
 

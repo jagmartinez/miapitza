@@ -135,7 +135,7 @@ const NAV_SECTIONS: NavSection[] = [
             { to: '/rh/prestaciones', icon: BadgeDollarSign, label: 'Viáticos, préstamos y deducciones', roles: HR_OWNER },
             { to: '/rh/mi-portal/horario', icon: Calendar, label: 'Mi horario', internalOnly: true },
             { to: '/rh/marcaje', icon: MapPin, label: 'Marcaje', internalOnly: true },
-            { to: '/rh/biometria', icon: UserRoundCheck, label: 'Mi biometrÃ­a', internalOnly: true },
+            { to: '/rh/biometria', icon: UserRoundCheck, label: 'Mi biometría', internalOnly: true },
             { to: '/rh/mi-portal/gestion', icon: Briefcase, label: 'Mi gestión RH', internalOnly: true },
             { to: '/rh/mi-portal/nomina', icon: Wallet, label: 'Mis recibos', internalOnly: true },
             { to: '/rh/mi-portal/prestaciones', icon: BadgeDollarSign, label: 'Mis prestaciones', internalOnly: true },

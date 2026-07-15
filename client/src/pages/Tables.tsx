@@ -285,7 +285,7 @@ export default function Tables() {
         }
         setBusyOrderId(order.id);
         try {
-            const response = await invoicesAPI.getData(order.id);
+            const response = await invoicesAPI.issue(order.id);
             const invoiceNumber = response.data?.data?.invoiceNumber as string | undefined;
             const refreshed = await ordersAPI.getById(order.id);
             const nextOrder = refreshed.data.data as Order;

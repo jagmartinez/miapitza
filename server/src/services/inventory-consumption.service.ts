@@ -309,7 +309,15 @@ export class InventoryConsumptionService {
 
         const movements = await tx.inventoryMovement.findMany({
             where: { companyId, reference, type: { in: ['OUT', 'IN'] } },
-            select: { warehouseId: true, productId: true, type: true, quantity: true, unitCost: true }
+            select: {
+                warehouseId: true,
+                productId: true,
+                type: true,
+                quantity: true,
+                unitCost: true,
+                totalCost: true,
+                consumedLayers: true
+            }
         });
 
         // Aggregate outstanding (un-reversed) consumption per warehouse + product.
@@ -318,21 +326,49 @@ export class InventoryConsumptionService {
             productId: number;
             quantity: number;
             value: number;
+            layers: Array<{
+                quantity: number;
+                unitCost: number;
+                sourceRef: string | null;
+                sourceType: BatchSourceType;
+                createdAt?: Date;
+            }>;
         }>();
         for (const m of movements) {
             const key = `${m.warehouseId}|${m.productId}`;
             const delta = m.type === 'OUT' ? Number(m.quantity) : -Number(m.quantity);
-            const valueDelta = delta * Number(m.unitCost ?? 0);
+            const movementValue = Number(m.totalCost ?? (Number(m.quantity) * Number(m.unitCost ?? 0)));
+            const valueDelta = m.type === 'OUT' ? movementValue : -movementValue;
+            const storedLayers = m.type === 'OUT' && Array.isArray(m.consumedLayers)
+                ? m.consumedLayers.map((raw) => {
+                    const layer = raw as Record<string, unknown>;
+                    return {
+                        quantity: Number(layer.quantity),
+                        unitCost: Number(layer.unitCost),
+                        sourceRef: typeof layer.sourceRef === 'string' ? layer.sourceRef : null,
+                        sourceType: typeof layer.sourceType === 'string'
+                            ? layer.sourceType as BatchSourceType
+                            : 'ADJUSTMENT' as const,
+                        createdAt: typeof layer.createdAt === 'string' ? new Date(layer.createdAt) : undefined
+                    };
+                }).filter((layer) =>
+                    Number.isFinite(layer.quantity) && layer.quantity > 0 &&
+                    Number.isFinite(layer.unitCost) && layer.unitCost >= 0 &&
+                    (!layer.createdAt || !Number.isNaN(layer.createdAt.getTime()))
+                )
+                : [];
             const entry = net.get(key);
             if (entry) {
                 entry.quantity += delta;
                 entry.value += valueDelta;
+                entry.layers.push(...storedLayers);
             } else {
                 net.set(key, {
                     warehouseId: m.warehouseId,
                     productId: m.productId,
                     quantity: delta,
-                    value: valueDelta
+                    value: valueDelta,
+                    layers: storedLayers
                 });
             }
         }
@@ -346,6 +382,10 @@ export class InventoryConsumptionService {
             // order lines/layers at different costs; using the last cost corrupts
             // inventory valuation on reversal.
             const unitCost = Math.max(0, entry.value / entry.quantity);
+            const layerQuantity = entry.layers.reduce((sum, layer) => sum + layer.quantity, 0);
+            const exactLayers = Math.abs(layerQuantity - entry.quantity) <= 1e-6
+                ? entry.layers
+                : undefined;
             await InventoryEngineService.applyMovement(tx, {
                 type: 'IN',
                 companyId,
@@ -354,9 +394,10 @@ export class InventoryConsumptionService {
                 userId,
                 quantity: entry.quantity,
                 unitCost,
+                inboundLayers: exactLayers,
                 reason: `${reason.trim()} [${reversalOrigin.trim()}]`,
                 reference,
-                sourceType
+                sourceType: exactLayers ? undefined : sourceType
             });
             reversed = true;
         }

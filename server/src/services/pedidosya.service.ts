@@ -5,8 +5,10 @@ import { AuditLogService } from './audit-log.service';
 import { OrderService } from './order.service';
 import { encrypt, decrypt, isEncrypted } from '../utils/encryption';
 import { DynamicPricingService } from './dynamic-pricing.service';
+import { externalHttpTimeoutMs, fetchWithTimeout } from '../utils/external-http';
 
 const SECRET_FIELDS = ['clientSecret', 'webhookSecret', 'accessToken', 'refreshToken'] as const;
+const pedidosYaTimeoutMs = () => externalHttpTimeoutMs(process.env.PEDIDOSYA_HTTP_TIMEOUT_MS);
 
 export class PedidosYaService {
     static async resolveWebhookConfig(companyId: number, payload?: Record<string, unknown>) {
@@ -170,7 +172,7 @@ export class PedidosYaService {
         const clientSecret = this.decryptSecret(config.clientSecret);
         if (!clientSecret) throw new Error('No se pudo leer la credencial PedidosYa');
 
-        const response = await fetch(`${baseUrl}/oauth/token`, {
+        const response = await fetchWithTimeout(`${baseUrl}/oauth/token`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -178,7 +180,7 @@ export class PedidosYaService {
                 client_id: config.clientId,
                 client_secret: clientSecret,
             }),
-        });
+        }, pedidosYaTimeoutMs());
 
         if (!response.ok) {
             throw new Error(`OAuth token refresh failed: ${response.status}`);
@@ -428,7 +430,10 @@ export class PedidosYaService {
                 // Channel cancellations are authoritative even for PAID orders.
                 {
                     allowPaidReversal: true,
-                    wasteWarehouseId: config.defaultWarehouseId ?? undefined
+                    wasteWarehouseId: config.defaultWarehouseId ?? undefined,
+                    // The signed provider cancellation is the external refund
+                    // evidence for non-cash channel payments.
+                    externalRefundReference: `PEDIDOSYA-CANCEL-${externalId}`
                 }
             );
         } catch (err) {
@@ -595,14 +600,14 @@ export class PedidosYaService {
                 ? 'https://api.pedidosya.com'
                 : 'https://api-sandbox.pedidosya.com';
 
-            const response = await fetch(`${baseUrl}/v3/orders/${sync.externalId}/status`, {
+            const response = await fetchWithTimeout(`${baseUrl}/v3/orders/${sync.externalId}/status`, {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({ status: platformStatus }),
-            });
+            }, pedidosYaTimeoutMs());
             if (!response.ok) throw new Error(`PedidosYa status sync failed: HTTP ${response.status}`);
 
             await prisma.pedidosYaOrderSync.update({

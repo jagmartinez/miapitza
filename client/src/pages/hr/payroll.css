@@ -645,3 +645,34 @@
     grid-template-columns: 1fr;
   }
 }
+.hr-payroll-reconciliation {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-background);
+}
+
+.hr-payroll-reconciliation h3 { display: flex; align-items: center; gap: 0.4rem; margin: 0; }
+.hr-payroll-reconciliation p { margin: 0.25rem 0 0; color: var(--color-text-secondary); }
+.hr-payroll-reconciliation form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+.hr-payroll-reconciliation form label { display: grid; gap: 0.3rem; color: var(--color-text-secondary); font-size: 0.85rem; font-weight: 700; }
+.hr-payroll-reconciliation form input { padding: 0.65rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); color: var(--color-text); }
+.hr-payroll-reconciliation-alert,
+.hr-payroll-reconciliation-report { display: grid; gap: 0.5rem; padding: 0.85rem; border: 1px solid; border-radius: var(--radius-md); }
+.hr-payroll-reconciliation-report > strong { display: flex; align-items: center; gap: 0.4rem; }
+.hr-payroll-reconciliation-report.success { border-color: var(--color-success); }
+.hr-payroll-reconciliation-report.danger,
+.hr-payroll-reconciliation-alert.danger { border-color: var(--color-danger); color: var(--color-danger); }
+.hr-payroll-reconciliation-report ul { display: grid; gap: 0.4rem; margin: 0; padding: 0; list-style: none; color: var(--color-text); }
+.hr-payroll-reconciliation-report li { display: flex; align-items: flex-start; gap: 0.4rem; }
+.hr-payroll-reconciliation-report li span { display: grid; }
+.hr-payroll-reconciliation-report li small { color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.hr-payroll-reconciliation-report li.passed > svg { color: var(--color-success); }
+.hr-payroll-reconciliation-report li.failed > svg { color: var(--color-danger); }
+
+@media (max-width: 900px) {
+  .hr-payroll-reconciliation form { grid-template-columns: 1fr; }
+}

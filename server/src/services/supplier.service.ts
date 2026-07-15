@@ -48,9 +48,12 @@ export class SupplierService {
         email?: string;
         address?: string;
         taxId?: string;
+        supplyType?: string;
     }) {
         const name = data.name.trim();
         if (!name) throw new Error('Supplier name is required');
+
+        const supplyType = data.supplyType?.trim() || null;
 
         return await prisma.supplier.create({
             data: {
@@ -60,6 +63,7 @@ export class SupplierService {
                 email: data.email,
                 address: data.address,
                 taxId: data.taxId,
+                supplyType,
                 companyId,
                 active: true
             }
@@ -73,10 +77,15 @@ export class SupplierService {
         email?: string;
         address?: string;
         taxId?: string;
+        supplyType?: string | null;
         active?: boolean;
     }) {
         const name = data.name?.trim();
         if (data.name !== undefined && !name) throw new Error('Supplier name is required');
+
+        const supplyType = data.supplyType === undefined
+            ? undefined
+            : data.supplyType?.trim() || null;
 
         return await prisma.supplier.update({
             where: { id, companyId },
@@ -87,6 +96,7 @@ export class SupplierService {
                 ...(data.email !== undefined ? { email: data.email } : {}),
                 ...(data.address !== undefined ? { address: data.address } : {}),
                 ...(data.taxId !== undefined ? { taxId: data.taxId } : {}),
+                ...(supplyType !== undefined ? { supplyType } : {}),
                 ...(data.active !== undefined ? { active: data.active } : {})
             }
         });

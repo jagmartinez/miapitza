@@ -229,6 +229,38 @@ export interface HrPayrollRunDetail extends HrPayrollRun {
   receipts: HrPayrollReceiptSummary[];
 }
 
+export interface HrPayrollReconciliationPayload {
+  expectedGrossIncome: string;
+  expectedTotalDeductions: string;
+  expectedNetPay: string;
+  expectedEmployeeCount: number;
+  controlSource: string;
+  evidenceReference: string;
+}
+
+export interface HrPayrollReconciliationCheck {
+  code: string;
+  label: string;
+  passed: boolean;
+  expected: string | number;
+  actual: string | number;
+  detail?: string | null;
+}
+
+export interface HrPayrollReconciliationReport {
+  run: { id: number; code: string; kind: HrPayrollRunKind; status: HrPayrollRunStatus; revision: number; calculationRevision?: number | null; currency: string };
+  control: { source: string; evidenceReference: string };
+  expected: { grossIncome: string; totalDeductions: string; netPay: string; employeeCount: number };
+  actual: { grossIncome: string; totalDeductions: string; netPay: string; employeeCount: number };
+  checks: HrPayrollReconciliationCheck[];
+  perEmployee: Array<{ userId: number; grossIncome: string; totalDeductions: string; netPay: string }>;
+  readyForParallelSignoff: boolean;
+  legalValidationAsserted: false;
+  productionCertificationAsserted: false;
+  reconciliationHash: string;
+  generatedAt: string;
+}
+
 export interface HrPayrollRunPayload {
   periodId: number;
   ruleVersionId: number;

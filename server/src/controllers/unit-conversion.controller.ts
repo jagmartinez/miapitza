@@ -108,6 +108,14 @@ export class UnitConversionController {
                 return next({ statusCode: 404, message: 'Unidad no encontrada' });
             }
 
+            let referenceCount: number | undefined;
+            const getReferenceCount = async () => {
+                if (referenceCount === undefined) {
+                    referenceCount = await UnitConversionService.getUnitReferenceCount(unitId, companyId);
+                }
+                return referenceCount;
+            };
+
             const data: {
                 name?: string;
                 abbreviation?: string;
@@ -130,6 +138,12 @@ export class UnitConversionController {
                     return next({ statusCode: 400, message: 'La abreviatura de la unidad es requerida' });
                 }
                 if (safeAbbreviation !== existing.abbreviation) {
+                    if (await getReferenceCount() > 0) {
+                        return next({
+                            statusCode: 400,
+                            message: 'No se puede cambiar la abreviatura de una unidad que ya tiene productos, recetas o historial asociados'
+                        });
+                    }
                     const duplicate = await prisma.unitOfMeasure.findUnique({
                         where: { companyId_abbreviation: { companyId, abbreviation: safeAbbreviation } }
                     });
@@ -148,14 +162,10 @@ export class UnitConversionController {
                     return next({ statusCode: 400, message: 'Tipo de medida invalido' });
                 }
                 if (measurementType !== existing.measurementType) {
-                    const [baseUses, allowedUses] = await Promise.all([
-                        prisma.product.count({ where: { companyId, baseUnitId: unitId, active: true } }),
-                        prisma.productUnit.count({ where: { companyId, unitId, active: true } })
-                    ]);
-                    if (baseUses + allowedUses > 0) {
+                    if (await getReferenceCount() > 0) {
                         return next({
                             statusCode: 400,
-                            message: 'No se puede cambiar el tipo de medida mientras la unidad esté asignada a productos activos'
+                            message: 'No se puede cambiar el tipo de medida mientras la unidad tenga referencias físicas'
                         });
                     }
                 }
@@ -167,19 +177,22 @@ export class UnitConversionController {
                 if (!Number.isFinite(safeSystemFactor) || safeSystemFactor <= 0) {
                     return next({ statusCode: 400, message: 'El factor del sistema debe ser mayor a 0' });
                 }
+                if (safeSystemFactor !== Number(existing.systemFactor) && await getReferenceCount() > 0) {
+                    return next({
+                        statusCode: 400,
+                        message: 'No se puede cambiar el factor del sistema de una unidad con productos, recetas o historial asociados'
+                    });
+                }
                 data.systemFactor = safeSystemFactor;
             }
 
             if (active !== undefined) {
                 if (active === false) {
-                    const [productsUsingBase, productsUsingAllowed] = await Promise.all([
-                        prisma.product.count({ where: { companyId, baseUnitId: unitId, active: true } }),
-                        prisma.productUnit.count({ where: { companyId, unitId, active: true } })
-                    ]);
-                    if (productsUsingBase + productsUsingAllowed > 0) {
+                    const references = await getReferenceCount();
+                    if (references > 0) {
                         return next({
                             statusCode: 400,
-                            message: `No se puede inhabilitar: ${productsUsingBase + productsUsingAllowed} asignación(es) activas dependen de esta unidad`
+                            message: `No se puede inhabilitar: ${references} referencia(s) físicas dependen de esta unidad`
                         });
                     }
                 }
@@ -304,6 +317,17 @@ export class UnitConversionController {
             }
 
             await prisma.$transaction(async (tx) => {
+                await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${productId} AND companyId = ${companyId} FOR UPDATE`;
+                await UnitConversionService.assertProductUnitContractCanChange(
+                    productId,
+                    companyId,
+                    baseUnitId,
+                    safeAllowed.map((unit) => ({
+                        unitId: Number(unit.unitId),
+                        conversionFactor: Number(unit.conversionFactor)
+                    })),
+                    tx
+                );
                 // Sincroniza la cadena legacy `product.unit` con la abreviatura de la
                 // base recién fijada (igual que autoConfigureProduct) para que listados
                 // y kardex que muestran product.unit sigan coherentes.

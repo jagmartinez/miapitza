@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
-import { effectiveUnitCost } from '../utils/product-cost';
 import { UnitConversionService } from './unit-conversion.service';
+import { ProductionRecipeService } from './production-recipe.service';
 
 export class MenuItemService {
     static async getOwnerBranch(menuItemId: number, companyId: number): Promise<number | null> {
@@ -190,7 +190,10 @@ export class MenuItemService {
         const recipeCosts = await Promise.all(menuItem.recipes.map(async (recipe) => {
             const recipeUnit = recipe.unit || recipe.unitOfMeasure?.abbreviation || recipe.product.unit;
             const recipeQty = Number(recipe.quantity);
-            const unitCost = effectiveUnitCost(recipe.product.currentAverageCost, recipe.product.cost);
+            const unitCost = await ProductionRecipeService.resolveProductUnitCost(
+                recipe.product.id,
+                companyId
+            );
 
             try {
                 const conv = await UnitConversionService.convert(

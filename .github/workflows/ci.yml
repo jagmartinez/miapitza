@@ -86,6 +86,11 @@ jobs:
       - name: Run integration tests
         run: npm run test:integration
 
+      - name: Run local operational release harness
+        env:
+          RELEASE_HARNESS_ALLOW_LOCAL: "true"
+        run: npm run test:release-harness -- --requests 150 --concurrency 12 --soak-ms 3000
+
   client:
     name: Client Checks
     runs-on: ubuntu-latest

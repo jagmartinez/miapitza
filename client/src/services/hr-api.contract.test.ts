@@ -69,9 +69,9 @@ describe('Phase 3 attendance navigation contract', () => {
         expect(layoutSource).toContain("{ to: '/rh', icon: Briefcase, label: 'Panel RH', roles: HR_OWNER }");
         expect(layoutSource).toContain("{ to: '/rh/asistencia', icon: ClipboardList, label: 'Asistencia', roles: HR_OWNER }");
         expect(layoutSource).toContain("{ to: '/rh/marcaje', icon: MapPin, label: 'Marcaje', internalOnly: true }");
-        expect(layoutSource).toContain("{ to: '/rh/biometria', icon: UserRoundCheck, label: 'Mi biometrÃ­a', internalOnly: true }");
+        expect(layoutSource).toContain("{ to: '/rh/biometria', icon: UserRoundCheck, label: 'Mi biometría', internalOnly: true }");
         expect(layoutSource).not.toContain("label: 'Marcaje', roles:");
-        expect(layoutSource).not.toContain("label: 'Mi biometrÃ­a', roles:");
+        expect(layoutSource).not.toContain("label: 'Mi biometría', roles:");
 
         const hrPaths = Array.from(layoutSource.matchAll(/\{ to: '(\/rh[^']*)'/g), (match) => match[1]);
         expect(new Set(hrPaths).size).toBe(hrPaths.length);

@@ -11,7 +11,7 @@ router.use(authMiddleware);
 router.get('/', BranchController.getAll);
 router.get('/:id', validate(s.idParam), BranchController.getById);
 router.post('/', requireRole('SUPERADMIN'), validate(s.createBranch), BranchController.create);
-router.put('/:id', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), BranchController.update);
+router.put('/:id', requireRole('SUPERADMIN', 'ADMIN'), validate(s.updateBranch), BranchController.update);
 router.delete('/:id', requireRole('SUPERADMIN'), validate(s.idParam), BranchController.delete);
 
 export default router;

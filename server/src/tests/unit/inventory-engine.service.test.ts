@@ -263,6 +263,10 @@ describe('InventoryEngineService.applyMovement — OUT consumes FIFO layers olde
         expect(batchUpdates[1].data.remainingQty).toBeCloseTo(3, 6);
 
         expect(movementCreates[0].type).toBe('OUT');
+        expect(movementCreates[0].consumedLayers).toEqual([
+            expect.objectContaining({ quantity: 5, unitCost: 4 }),
+            expect.objectContaining({ quantity: 2, unitCost: 8 })
+        ]);
     });
 
     it('rejects an OUT that would drive the balance negative (no allowNegative)', async () => {

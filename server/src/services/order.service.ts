@@ -19,7 +19,51 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
     'CANCELLED': [], // terminal
 };
 
+export interface FiscalCustomerInput {
+    customerName?: unknown;
+    customerTaxId?: unknown;
+    customerTaxIdType?: unknown;
+    customerFiscalAddress?: unknown;
+    customerEmail?: unknown;
+    customerPhone?: unknown;
+}
+
+export interface OrderCancelOptions {
+    allowPaidReversal?: boolean;
+    wasteWarehouseId?: number;
+    fiscalCreditNoteId?: number;
+    fiscalInvoiceCancellationId?: number;
+    externalRefundReference?: string;
+    externalRefundReferences?: Array<{ paymentId: number; reference: string }>;
+}
+
 export class OrderService {
+    private static normalizeFiscalCustomer(data: FiscalCustomerInput) {
+        const text = (value: unknown, max: number, field: string): string | null => {
+            if (value === undefined || value === null) return null;
+            const normalized = String(value).trim();
+            if (!normalized) return null;
+            if (normalized.length > max) throw new Error(`${field} excede la longitud permitida`);
+            return normalized;
+        };
+        const normalized = {
+            customerName: text(data.customerName, 191, 'Nombre fiscal del cliente'),
+            customerTaxId: text(data.customerTaxId, 100, 'Identificación tributaria'),
+            customerTaxIdType: text(data.customerTaxIdType, 50, 'Tipo de identificación tributaria'),
+            customerFiscalAddress: text(data.customerFiscalAddress, 1000, 'Dirección fiscal'),
+            customerEmail: text(data.customerEmail, 191, 'Correo del cliente'),
+            customerPhone: text(data.customerPhone, 50, 'Teléfono del cliente')
+        };
+        if (normalized.customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized.customerEmail)) {
+            throw new Error('El correo fiscal del cliente no es válido');
+        }
+        const hasTaxIdentity = Boolean(normalized.customerTaxId || normalized.customerTaxIdType);
+        if (hasTaxIdentity && (!normalized.customerName || !normalized.customerTaxId || !normalized.customerTaxIdType)) {
+            throw new Error('Nombre, identificación tributaria y tipo de identificación deben registrarse juntos');
+        }
+        return normalized;
+    }
+
     private static syncPedidosYaStatus(companyId: number, order: { id: number; salesChannel?: string; status: string }) {
         if (order.salesChannel !== 'PEDIDOSYA') return;
         PedidosYaService.syncOrderStatus(companyId, order.id, order.status).catch((error) => {
@@ -224,6 +268,12 @@ export class OrderService {
                         include: {
                             menuItem: true
                         }
+                    },
+                    fiscalCreditNote: {
+                        select: { id: true, number: true, status: true, issuedAt: true }
+                    },
+                    fiscalInvoiceCancellation: {
+                        select: { id: true, cancelledAt: true, reason: true }
                     }
                 },
                 orderBy: {
@@ -291,6 +341,12 @@ export class OrderService {
                             }
                         }
                     }
+                },
+                fiscalCreditNote: {
+                    select: { id: true, number: true, status: true, issuedAt: true }
+                },
+                fiscalInvoiceCancellation: {
+                    select: { id: true, cancelledAt: true, reason: true }
                 }
             }
         });
@@ -354,6 +410,11 @@ export class OrderService {
         tableId?: number;
         userId: number;
         customerName?: string;
+        customerTaxId?: string;
+        customerTaxIdType?: string;
+        customerFiscalAddress?: string;
+        customerEmail?: string;
+        customerPhone?: string;
         orderType?: 'DINE_IN' | 'TAKEOUT' | 'DELIVERY';
         items?: Array<{
             menuItemId: number;
@@ -364,6 +425,7 @@ export class OrderService {
         }>;
     }) {
         if (!Number.isInteger(data.branchId) || data.branchId <= 0) throw new Error('Sucursal inválida');
+        const fiscalCustomer = this.normalizeFiscalCustomer(data);
         for (const item of data.items || []) {
             if (!Number.isInteger(item.quantity) || item.quantity <= 0) throw new Error('Quantity must be a positive integer');
         }
@@ -465,6 +527,7 @@ export class OrderService {
                             data: {
                                 total: newTotal,
                                 discount: repricedDiscount,
+                                ...fiscalCustomer,
                                 ...(existingOrder.status === 'READY' ? {
                                     status: 'SENT_TO_KITCHEN' as const,
                                     kitchenReleasedAt: null,
@@ -528,7 +591,7 @@ export class OrderService {
                     branchId: data.branchId,
                     tableId: data.tableId,
                     userId: data.userId,
-                    customerName: data.customerName,
+                    ...fiscalCustomer,
                     orderType: data.orderType,
                     total: 0,
                     status: 'OPEN'
@@ -796,8 +859,15 @@ export class OrderService {
     static async updateStatus(
         id: number,
         companyId: number,
-        status: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'CANCELLED'
+        status: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'CANCELLED',
+        kitchenActorUserId?: number
     ) {
+        // READY is a kitchen-controlled transition. Keeping the actor explicit
+        // prevents the generic waiter/cashier status endpoint from bypassing KDS
+        // permissions and lets the state change + audit record commit atomically.
+        if (status === 'READY' && (!Number.isInteger(kitchenActorUserId) || Number(kitchenActorUserId) <= 0)) {
+            throw new Error('Use el flujo dedicado de cocina para marcar una orden como lista');
+        }
         const updatedOrder = await prisma.$transaction(async (tx) => {
             // Lock order row to keep transition validation and update atomic.
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
@@ -809,6 +879,31 @@ export class OrderService {
 
             if (!existing) {
                 throw new Error('Order not found');
+            }
+
+            if (status === 'READY') {
+                const kitchenActor = await tx.user.findFirst({
+                    where: { id: kitchenActorUserId!, companyId, status: 'ACTIVE' },
+                    select: { id: true }
+                });
+                if (!kitchenActor) throw new Error('Usuario de cocina no válido para esta empresa');
+            }
+
+            // The dedicated KDS operation can be retried after the state/audit
+            // transaction committed but a notification response failed. Return
+            // the already-ready order so the durable, deduplicated notifier can
+            // be attempted again without manufacturing a second transition.
+            if (status === 'READY' && existing.status === 'READY') {
+                const readyOrder = await tx.order.findUnique({
+                    where: { id },
+                    include: {
+                        table: true,
+                        user: { select: { id: true, name: true, color: true } },
+                        items: { include: { menuItem: true, modifiers: true } }
+                    }
+                });
+                if (!readyOrder) throw new Error('Order not found');
+                return readyOrder;
             }
 
             // Cancellation has inventory/payment/table/audit counterflows and may
@@ -871,6 +966,19 @@ export class OrderService {
                     }
                 }
             });
+
+            if (status === 'READY') {
+                await tx.auditLog.create({
+                    data: {
+                        companyId,
+                        entityType: 'Order',
+                        entityId: id,
+                        action: 'KITCHEN_READY',
+                        userId: kitchenActorUserId!,
+                        details: { status: 'READY' }
+                    }
+                });
+            }
 
             return updated;
         });
@@ -943,6 +1051,50 @@ export class OrderService {
         });
         this.syncPedidosYaStatus(companyId, updatedOrder);
         return updatedOrder;
+    }
+
+    static async updateFiscalCustomer(
+        id: number,
+        companyId: number,
+        userId: number,
+        data: FiscalCustomerInput
+    ) {
+        const normalized = this.normalizeFiscalCustomer(data);
+        return prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const order = await tx.order.findFirst({
+                where: { id, companyId },
+                select: { id: true, branchId: true, invoiceNumber: true }
+            });
+            if (!order) throw new Error('Order not found');
+            if (order.invoiceNumber) {
+                throw new Error('Los datos fiscales no pueden modificarse después de emitir la factura');
+            }
+            const actor = await tx.user.findFirst({
+                where: { id: userId, companyId, status: 'ACTIVE' },
+                select: { id: true }
+            });
+            if (!actor) throw new Error('Invalid user for this company');
+
+            const updated = await tx.order.update({ where: { id }, data: normalized });
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    userId,
+                    entityType: 'Order',
+                    entityId: id,
+                    action: 'FISCAL_CUSTOMER_UPDATED',
+                    details: {
+                        hasTaxIdentity: Boolean(normalized.customerTaxId),
+                        taxIdType: normalized.customerTaxIdType,
+                        hasFiscalAddress: Boolean(normalized.customerFiscalAddress),
+                        hasEmail: Boolean(normalized.customerEmail),
+                        hasPhone: Boolean(normalized.customerPhone)
+                    }
+                }
+            });
+            return updated;
+        });
     }
 
     static async startItem(orderId: number, itemId: number, companyId: number) {
@@ -1128,6 +1280,11 @@ export class OrderService {
                 throw new Error('Order must be paid before completing');
             }
 
+            const itemSubtotal = order.items.reduce((sum, item) => sum + Number(item.subtotal), 0);
+            if (order.financialStatus !== 'PAID' && isZeroTotal && !order.discountCode && itemSubtotal > 0) {
+                throw new Error('Una orden con consumo y total cero requiere una promoción válida; el descuento manual no puede cerrar la venta');
+            }
+
             const actor = await tx.user.findFirst({
                 where: { id: deliveredById, companyId, status: 'ACTIVE' },
                 select: { id: true }
@@ -1140,10 +1297,22 @@ export class OrderService {
             if (order.financialStatus !== 'PAID' && isZeroTotal) {
                 if (order.discountCode) {
                     const promotion = await tx.promotion.findFirst({
-                        where: { companyId, code: order.discountCode.toUpperCase() },
-                        select: { id: true, usageLimit: true }
+                        where: { companyId, code: order.discountCode.toUpperCase() }
                     });
                     if (!promotion) throw new Error('Promotion is not active');
+                    const authoritativeDiscount = calculatePromotionDiscount(promotion, itemSubtotal);
+                    const authoritativeTotal = this.calculateFinalTotal(
+                        itemSubtotal,
+                        authoritativeDiscount,
+                        Number(order.tax || 0),
+                        Number(order.tipAmount || 0)
+                    );
+                    if (
+                        Math.round(authoritativeDiscount * 100) !== Math.round(Number(order.discount) * 100)
+                        || Math.round(authoritativeTotal * 100) !== Math.round(Number(order.total) * 100)
+                    ) {
+                        throw new Error('La promoción cambió; recalcule la orden antes de completarla');
+                    }
                     const claimed = await tx.promotion.updateMany({
                         where: {
                             id: promotion.id,
@@ -1244,9 +1413,22 @@ export class OrderService {
         // `allowPaidReversal` is reserved for authoritative channel cancellations.
         // Prepared local cancellations additionally require an explicit warehouse
         // so their physical consumption is recorded as waste, not silently lost.
-        options?: { allowPaidReversal?: boolean; wasteWarehouseId?: number }
+        options?: OrderCancelOptions
     ) {
-        return await prisma.$transaction(async (tx) => {
+        return prisma.$transaction((tx) => this.cancelWithTransaction(
+            tx, id, companyId, cancelledById, cancelReason, options
+        ));
+    }
+
+    /** Internal atomic cancellation used by fiscal credit notes. */
+    static async cancelWithTransaction(
+        tx: Prisma.TransactionClient,
+        id: number,
+        companyId: number,
+        cancelledById?: number,
+        cancelReason?: string,
+        options?: OrderCancelOptions
+    ) {
             // Serialize cancel with payment, delivery and another cancellation.
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
             const order = await tx.order.findFirst({
@@ -1267,13 +1449,16 @@ export class OrderService {
                                 }
                             }
                         }
+                    },
+                    fiscalCreditNote: {
+                        select: { id: true, number: true, status: true, issuedAt: true }
                     }
                 }
             });
 
             if (!order) throw new Error('Order not found');
             if (order.status === 'CANCELLED') throw new Error('Order is already cancelled');
-            if (order.invoiceNumber) {
+            if (order.invoiceNumber && !options?.fiscalCreditNoteId && !options?.fiscalInvoiceCancellationId) {
                 throw new Error('No se puede cancelar una orden facturada; emita una nota de crédito');
             }
 
@@ -1285,7 +1470,7 @@ export class OrderService {
             if (fullyPaid && !options?.allowPaidReversal) {
                 throw new Error('Cannot cancel paid orders');
             }
-            if (!fullyPaid && totalPaid > 0) {
+            if (!fullyPaid && totalPaid > 0 && !options?.allowPaidReversal) {
                 throw new Error(`Order has existing payments totaling ${totalPaid.toFixed(2)}. Please refund/delete payments before cancelling.`);
             }
 
@@ -1348,10 +1533,30 @@ export class OrderService {
             // Authoritative channel cancellations also reverse the local payment
             // ledger. This prevents cancelled delivery orders from remaining as
             // revenue/cash and mirrors PaymentService.delete semantics atomically.
-            if (fullyPaid && options?.allowPaidReversal) {
+            if (totalPaid > 0 && options?.allowPaidReversal) {
                 const paymentIds = order.payments.map((payment) => payment.id);
                 if (paymentIds.length > 0) {
                     const cashPayments = order.payments.filter((payment) => payment.methodType === 'CASH');
+                    const nonCashPayments = order.payments.filter((payment) => payment.methodType !== 'CASH');
+                    const explicitReferences = new Map(
+                        (options.externalRefundReferences || []).map((entry) => [entry.paymentId, entry.reference.trim()])
+                    );
+                    for (const payment of nonCashPayments) {
+                        const refundReference = explicitReferences.get(payment.id)
+                            || options.externalRefundReference?.trim();
+                        if (!refundReference) {
+                            throw new Error(`El pago no efectivo #${payment.id} requiere referencia verificable del reembolso externo`);
+                        }
+                        if (refundReference.length > 191) {
+                            throw new Error(`La referencia de reembolso del pago #${payment.id} es demasiado larga`);
+                        }
+                    }
+                    const unexpectedReference = [...explicitReferences.keys()].find((paymentId) =>
+                        !nonCashPayments.some((payment) => payment.id === paymentId)
+                    );
+                    if (unexpectedReference !== undefined) {
+                        throw new Error(`La referencia de reembolso corresponde a un pago no activo o en efectivo: #${unexpectedReference}`);
+                    }
                     for (const payment of cashPayments) {
                         const cashEntries = await tx.cashMovement.findMany({
                             where: { reference: { in: [`PAY-${payment.id}`, `REV-PAY-${payment.id}`] } },
@@ -1418,9 +1623,18 @@ export class OrderService {
                         where: { id: { in: paymentIds }, orderId: id, status: 'ACTIVE' },
                         data: { status: 'REVERSED', reversedAt: new Date(), reversedById: reversalUserId, reversalReason: cancelReason || 'Order cancellation' }
                     });
+                    for (const payment of nonCashPayments) {
+                        await tx.payment.update({
+                            where: { id: payment.id },
+                            data: {
+                                refundReference: explicitReferences.get(payment.id)
+                                    || options.externalRefundReference!.trim()
+                            }
+                        });
+                    }
                 }
 
-                if (order.discountCode) {
+                if (fullyPaid && order.discountCode) {
                     const promo = await tx.promotion.findFirst({
                         where: { companyId, code: order.discountCode.toUpperCase() },
                         select: { id: true, usageCount: true }
@@ -1438,11 +1652,11 @@ export class OrderService {
                 where: { id },
                 data: {
                     status: 'CANCELLED',
-                    ...(fullyPaid && options?.allowPaidReversal ? { financialStatus: 'UNPAID' as const } : {}),
+                    ...(totalPaid > 0 && options?.allowPaidReversal ? { financialStatus: 'UNPAID' as const } : {}),
                     cancelledById: cancelledById || null,
                     cancelReason: cancelReason || null,
                     cancelledAt: new Date(),
-                    closedAt: fullyPaid && options?.allowPaidReversal ? null : order.closedAt
+                    closedAt: totalPaid > 0 && options?.allowPaidReversal ? null : order.closedAt
                 }
             });
 
@@ -1475,15 +1689,16 @@ export class OrderService {
                             tableId: order.tableId,
                             wasteWarehouseId: requiresWaste ? options?.wasteWarehouseId : null,
                             wastedItemIds: requiresWaste ? preparedItems.map((item) => item.id) : [],
-                            reversedPayments: fullyPaid ? order.payments.length : 0,
-                            reversedAmount: fullyPaid ? totalPaid : 0
+                            reversedPayments: options?.allowPaidReversal ? order.payments.length : 0,
+                            reversedAmount: options?.allowPaidReversal ? totalPaid : 0,
+                            fiscalCreditNoteId: options?.fiscalCreditNoteId || null,
+                            fiscalInvoiceCancellationId: options?.fiscalInvoiceCancellationId || null
                         }
                     }
                 });
             }
 
             return updatedOrder;
-        });
     }
 
     static async updatePricing(

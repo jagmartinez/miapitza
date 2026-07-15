@@ -340,7 +340,18 @@ export class InventoryEngineService {
                 unitCost,
                 totalCost,
                 balanceQty: newQty,
-                balanceCost
+                balanceCost,
+                ...(direction === 'OUT' && consumedLayers.length > 0
+                    ? {
+                        consumedLayers: consumedLayers.map((layer) => ({
+                            quantity: layer.quantity,
+                            unitCost: layer.unitCost,
+                            sourceRef: layer.sourceRef ?? null,
+                            sourceType: layer.sourceType ?? 'ADJUSTMENT',
+                            createdAt: layer.createdAt?.toISOString() ?? null
+                        })) as Prisma.InputJsonValue
+                    }
+                    : {})
             },
             select: { id: true }
         });

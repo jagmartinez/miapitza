@@ -22,7 +22,7 @@ import NumericKeypad from '../components/NumericKeypad';
 import POSProductCard from '../components/POSProductCard';
 import { LoadingOverlay } from '../components/LoadingSpinner';
 import { Send, CreditCard, Printer, X, Search, Grid3x3, AlertTriangle, ChevronLeft, Check } from 'lucide-react';
-import type { MenuItem, ModifierGroupWithModifiers, ModifierOption, Order, Table } from '../types';
+import type { MenuItem, ModifierGroupWithModifiers, ModifierOption, Order, Table, Warehouse } from '../types';
 import { useCurrency } from '../hooks/useCurrency';
 import { hasUsableCashShift } from '../utils/paymentAccess';
 import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
@@ -74,6 +74,18 @@ interface POSSettings {
     enablePromotions?: string;
     [key: string]: string | undefined;
 }
+
+interface FiscalCustomerForm {
+    taxId: string;
+    taxIdType: string;
+    fiscalAddress: string;
+    email: string;
+    phone: string;
+}
+
+const EMPTY_FISCAL_CUSTOMER: FiscalCustomerForm = {
+    taxId: '', taxIdType: '', fiscalAddress: '', email: '', phone: ''
+};
 
 interface ShiftInfo {
     cashRegister?: { name: string; branch?: { id: number; name: string } };
@@ -127,6 +139,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const [appliedPromotionCode, setAppliedPromotionCode] = useState<string | null>(null);
     const [tipApplied, setTipApplied] = useState<boolean>(false);
     const [customerName, setCustomerName] = useState('');
+    const [fiscalCustomer, setFiscalCustomer] = useState<FiscalCustomerForm>(EMPTY_FISCAL_CUSTOMER);
+    const [showFiscalCustomer, setShowFiscalCustomer] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const debouncedSearch = useDebounce(searchQuery, 250);
     const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
@@ -137,6 +151,10 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const [showShiftWarning, setShowShiftWarning] = useState(false);
     // null = aún sin verificar; false bloquea el cobro proactivamente.
     const [hasWarehouse, setHasWarehouse] = useState<boolean | null>(null);
+    const [branchWarehouses, setBranchWarehouses] = useState<Warehouse[]>([]);
+    const [warehouseAction, setWarehouseAction] = useState<'DELIVER' | 'CANCEL' | null>(null);
+    const [operationalWarehouseId, setOperationalWarehouseId] = useState<number | null>(null);
+    const [pendingCancelReason, setPendingCancelReason] = useState<string | undefined>();
     const waiterAccentColor = getUserAccentColor(activeTableOrder?.user || user);
 
     // Scope the local menu cache by company + branch so different tenants/branches
@@ -163,6 +181,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
     const clearTableContext = useCallback(() => {
         clearDraftCart();
+        setFiscalCustomer(EMPTY_FISCAL_CUSTOMER);
         setSelectedTable(null);
         setCurrentOrderId(null);
         setActiveTableOrder(null);
@@ -234,16 +253,21 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             // Sin sucursal asignada (p. ej. SUPERADMIN global): no bloqueamos aquí;
             // el guard del backend sigue protegiendo el descargue de inventario.
             setHasWarehouse(true);
+            setBranchWarehouses([]);
             return;
         }
         try {
             const res = await warehousesAPI.getAll({ branchId });
-            const list = (res.data?.data || []) as unknown[];
+            const list = ((res.data?.data || []) as Warehouse[]).filter(
+                (warehouse) => warehouse.type === 'BRANCH' && warehouse.branchId === branchId
+            );
+            setBranchWarehouses(list);
             setHasWarehouse(list.length > 0);
         } catch {
             // Ante un fallo de consulta no bloqueamos proactivamente; el cobro lo
             // seguirá validando el backend.
             setHasWarehouse(true);
+            setBranchWarehouses([]);
         }
     }, [selectedTable?.branchId, user?.branchId]);
 
@@ -347,6 +371,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             setCurrentOrderId(null);
             setActiveTableOrder(null);
             setCustomerName('');
+            setFiscalCustomer(EMPTY_FISCAL_CUSTOMER);
             return;
         }
 
@@ -357,6 +382,13 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             setCurrentOrderId(tableOrder?.id ?? null);
             setActiveTableOrder(tableOrder);
             setCustomerName(tableOrder?.customerName || '');
+            setFiscalCustomer(tableOrder ? {
+                taxId: tableOrder.customerTaxId || '',
+                taxIdType: tableOrder.customerTaxIdType || '',
+                fiscalAddress: tableOrder.customerFiscalAddress || '',
+                email: tableOrder.customerEmail || '',
+                phone: tableOrder.customerPhone || ''
+            } : EMPTY_FISCAL_CUSTOMER);
 
             if (tableOrder) {
                 info(`Mesa ${table.number}: retomaste la orden #${tableOrder.id} (${tableOrder.status}).`);
@@ -500,6 +532,11 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         tableId: selectedTable?.id,
         branchId: selectedTable?.branchId,
         customerName: customerName || undefined,
+        customerTaxId: fiscalCustomer.taxId || undefined,
+        customerTaxIdType: fiscalCustomer.taxIdType || undefined,
+        customerFiscalAddress: fiscalCustomer.fiscalAddress || undefined,
+        customerEmail: fiscalCustomer.email || undefined,
+        customerPhone: fiscalCustomer.phone || undefined,
         items: cart.map(item => ({
             menuItemId: item.menuItemId,
             quantity: item.quantity,
@@ -507,7 +544,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             notes: item.notes || '',
             modifierIds: item.modifiers.map(mod => mod.id)
         }))
-    }), [selectedTable, customerName, cart]);
+    }), [selectedTable, customerName, fiscalCustomer, cart]);
 
     const syncOrderContext = useCallback(async (orderId: number) => {
         if (!offlineManager.getStatus()) {
@@ -519,6 +556,13 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         setActiveTableOrder(refreshedOrder);
         setCurrentOrderId(refreshedOrder.id);
         setCustomerName(refreshedOrder.customerName || '');
+        setFiscalCustomer({
+            taxId: refreshedOrder.customerTaxId || '',
+            taxIdType: refreshedOrder.customerTaxIdType || '',
+            fiscalAddress: refreshedOrder.customerFiscalAddress || '',
+            email: refreshedOrder.customerEmail || '',
+            phone: refreshedOrder.customerPhone || ''
+        });
         return refreshedOrder;
     }, []);
 
@@ -602,11 +646,54 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
         setSendingToKitchen(true);
         try {
-            const { orderId } = await persistCartToOrder();
+            const requestedDiscountPercent = discount;
+            const requestedDiscountOverride = discountAmountOverride;
+            const requestedPromotionCode = appliedPromotionCode;
+            const requestedTipApplied = tipApplied;
+            const { orderId, offlineQueued } = await persistCartToOrder();
 
             if (!orderId) {
                 warning('La orden quedó pendiente, pero no puede enviarse a cocina hasta existir en el servidor.');
                 return;
+            }
+
+            const hasExplicitPricing = requestedDiscountPercent > 0
+                || requestedDiscountOverride !== null
+                || Boolean(requestedPromotionCode)
+                || requestedTipApplied;
+            if (offlineQueued && hasExplicitPricing) {
+                setDiscount(requestedDiscountPercent);
+                setDiscountAmountOverride(requestedDiscountOverride);
+                setAppliedPromotionCode(requestedPromotionCode);
+                setTipApplied(requestedTipApplied);
+                warning('La promoción o propina no puede confirmarse sin conexión. La orden no se enviará a cocina hasta sincronizar el precio.');
+                return;
+            }
+
+            if (!offlineQueued && hasExplicitPricing) {
+                const refreshedOrder = await syncOrderContext(orderId);
+                if (!refreshedOrder) throw new Error('No se pudo confirmar el total de la orden');
+                const refreshedSubtotal = (refreshedOrder.items || []).reduce(
+                    (sum, item) => sum + Number(item.subtotal || 0),
+                    0
+                );
+                const computedDiscount = Math.min(
+                    Math.max(0, requestedDiscountOverride ?? (refreshedSubtotal * (requestedDiscountPercent / 100))),
+                    refreshedSubtotal
+                );
+                const taxRate = parseFloat(settings.taxRate || '0');
+                const computedTax = Math.max(0, (refreshedSubtotal - computedDiscount) * (taxRate / 100));
+                const computedTipRate = parseFloat(settings.tipRate || '0');
+                const computedTip = requestedTipApplied
+                    ? Math.max(0, (refreshedSubtotal - computedDiscount) * (computedTipRate / 100))
+                    : 0;
+                const pricingResponse = await ordersAPI.updatePricing(orderId, {
+                    discount: Number(computedDiscount.toFixed(2)),
+                    discountCode: requestedPromotionCode || null,
+                    tax: Number(computedTax.toFixed(2)),
+                    tipAmount: Number(computedTip.toFixed(2))
+                });
+                setActiveTableOrder(pricingResponse.data.data as Order);
             }
 
             const response = await ordersAPI.sendToKitchen(orderId, {
@@ -690,10 +777,21 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 setActiveTableOrder(pricingResponse.data.data as Order);
             }
 
+            if (!refreshedOrder?.invoiceNumber) {
+                await ordersAPI.updateFiscalCustomer(orderId, {
+                    customerName,
+                    customerTaxId: fiscalCustomer.taxId,
+                    customerTaxIdType: fiscalCustomer.taxIdType,
+                    customerFiscalAddress: fiscalCustomer.fiscalAddress,
+                    customerEmail: fiscalCustomer.email,
+                    customerPhone: fiscalCustomer.phone
+                });
+            }
+
             // Emit the fiscal document before opening collection. The backend
             // enforces the same invariant, so bypassing this UI cannot pay an
             // unbilled order.
-            const invoiceResponse = await invoicesAPI.getData(orderId);
+            const invoiceResponse = await invoicesAPI.issue(orderId);
             const invoiceNumber = invoiceResponse.data?.data?.invoiceNumber;
             if (!invoiceNumber) {
                 throw new Error('La factura no pudo emitirse antes del cobro');
@@ -742,17 +840,9 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         if (!activeTableOrder) {
             return;
         }
-
-        try {
-            await ordersAPI.updateStatus(activeTableOrder.id, 'DELIVERED');
-            await syncOrderContext(activeTableOrder.id);
-            await loadData();
-            success(`Orden #${activeTableOrder.id} marcada como entregada.`);
-        } catch (error: unknown) {
-            const axiosErr = error as { response?: { data?: { message?: string } } };
-            showError(axiosErr.response?.data?.message || 'No se pudo marcar la orden como entregada.');
-        }
-    }, [activeTableOrder, loadData, showError, success, syncOrderContext]);
+        setOperationalWarehouseId(branchWarehouses.length === 1 ? branchWarehouses[0].id : null);
+        setWarehouseAction('DELIVER');
+    }, [activeTableOrder, branchWarehouses]);
 
     const handleCancelActiveOrder = useCallback(async () => {
         if (!activeTableOrder) {
@@ -769,6 +859,13 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         }
 
         const reason = window.prompt('Motivo de cancelación (opcional):') || undefined;
+        const requiresWasteWarehouse = activeTableOrder.status !== 'OPEN';
+        if (requiresWasteWarehouse) {
+            setPendingCancelReason(reason);
+            setOperationalWarehouseId(branchWarehouses.length === 1 ? branchWarehouses[0].id : null);
+            setWarehouseAction('CANCEL');
+            return;
+        }
 
         try {
             await ordersAPI.cancel(activeTableOrder.id, reason);
@@ -779,7 +876,33 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             const axiosErr = error as { response?: { data?: { message?: string } } };
             showError(axiosErr.response?.data?.message || 'No se pudo cancelar la orden.');
         }
-    }, [activeTableOrder, canCancelActive, clearTableContext, confirm, loadData, showError, success, warning]);
+    }, [activeTableOrder, branchWarehouses, canCancelActive, clearTableContext, confirm, loadData, showError, success, warning]);
+
+    const handleWarehouseAction = useCallback(async () => {
+        if (!activeTableOrder || !warehouseAction || !operationalWarehouseId) {
+            warning('Selecciona una bodega de la sucursal.');
+            return;
+        }
+        try {
+            if (warehouseAction === 'DELIVER') {
+                await ordersAPI.complete(activeTableOrder.id, operationalWarehouseId);
+                await syncOrderContext(activeTableOrder.id);
+                await loadData();
+                success(`Orden #${activeTableOrder.id} marcada como entregada.`);
+            } else {
+                await ordersAPI.cancel(activeTableOrder.id, pendingCancelReason, operationalWarehouseId);
+                await loadData();
+                clearTableContext();
+                success(`Orden #${activeTableOrder.id} cancelada correctamente.`);
+            }
+            setWarehouseAction(null);
+            setOperationalWarehouseId(null);
+            setPendingCancelReason(undefined);
+        } catch (error: unknown) {
+            const axiosErr = error as { response?: { data?: { message?: string } } };
+            showError(axiosErr.response?.data?.message || 'No se pudo completar la operación de inventario.');
+        }
+    }, [activeTableOrder, clearTableContext, loadData, operationalWarehouseId, pendingCancelReason, showError, success, syncOrderContext, warehouseAction, warning]);
     const handleApplyPromotion = async (code: string) => {
         try {
             const res = await promotionsAPI.validate(code, subtotal);
@@ -1095,7 +1218,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                         Estado: {getOrderStatusLabel(activeTableOrder.status)} · {activeTableOrder.items?.length || 0} items
                                     </div>
                                     <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.65rem', flexWrap: 'wrap' }}>
-                                        {activeTableOrder.status === 'READY' && (
+                                        {activeTableOrder.status === 'READY'
+                                            && (activeTableOrder.financialStatus === 'PAID' || Math.round(activeOrderTotal * 100) === 0) && (
                                             <button className="header-action-btn secondary" onClick={handleMarkDelivered}>
                                                 Entregar
                                             </button>
@@ -1117,6 +1241,15 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                             </div>
                         </div>
                     )}
+                    <button
+                        type="button"
+                        className="header-action-btn secondary"
+                        onClick={() => setShowFiscalCustomer(true)}
+                        style={{ width: '100%', justifyContent: 'center', marginBottom: '0.75rem' }}
+                    >
+                        Datos fiscales del cliente
+                        {fiscalCustomer.taxId ? ` · ${fiscalCustomer.taxIdType || 'ID'} ${fiscalCustomer.taxId}` : ' · Consumidor final'}
+                    </button>
                     <OrderCart
                         cart={cart}
                         discount={discount}
@@ -1216,12 +1349,108 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 />
             )}
 
+            {showFiscalCustomer && (
+                <div className="pos-shift-warning-overlay" role="dialog" aria-modal="true" aria-labelledby="fiscal-customer-title">
+                    <div className="pos-shift-warning-modal" style={{ maxWidth: '620px' }}>
+                        <h2 id="fiscal-customer-title" className="shift-warning-title">Datos fiscales del cliente</h2>
+                        <p className="shift-warning-message">
+                            Déjalos vacíos para consumidor final. Si registras identificación tributaria, nombre, tipo e identificación son obligatorios y quedarán congelados al emitir.
+                        </p>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.75rem', width: '100%' }}>
+                            <label>
+                                Nombre o razón social
+                                <input className="input" value={customerName} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setCustomerName(event.target.value)} />
+                            </label>
+                            <label>
+                                Tipo de identificación
+                                <input className="input" value={fiscalCustomer.taxIdType} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, taxIdType: event.target.value }))} placeholder="RUC, NIT u otro configurado" />
+                            </label>
+                            <label>
+                                Identificación tributaria
+                                <input className="input" value={fiscalCustomer.taxId} maxLength={100} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, taxId: event.target.value }))} />
+                            </label>
+                            <label>
+                                Teléfono
+                                <input className="input" value={fiscalCustomer.phone} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, phone: event.target.value }))} />
+                            </label>
+                            <label style={{ gridColumn: '1 / -1' }}>
+                                Dirección fiscal
+                                <textarea className="input" rows={2} value={fiscalCustomer.fiscalAddress} maxLength={1000} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, fiscalAddress: event.target.value }))} />
+                            </label>
+                            <label style={{ gridColumn: '1 / -1' }}>
+                                Correo
+                                <input className="input" type="email" value={fiscalCustomer.email} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, email: event.target.value }))} />
+                            </label>
+                        </div>
+                        {activeTableOrder?.invoiceNumber && (
+                            <p className="shift-warning-note">La factura ya fue emitida; estos datos son de solo lectura.</p>
+                        )}
+                        <div className="shift-warning-actions">
+                            <button className="shift-warning-btn primary" onClick={() => setShowFiscalCustomer(false)}>Aceptar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {showKeypad && (
                 <NumericKeypad
                     onConfirm={handleKeypadConfirm}
                     onClose={() => setShowKeypad(false)}
                     initialValue={1}
                 />
+            )}
+
+            {warehouseAction && (
+                <div className="pos-shift-warning-overlay" role="dialog" aria-modal="true" aria-labelledby="warehouse-action-title">
+                    <div className="pos-shift-warning-modal">
+                        <div className="shift-warning-icon">
+                            <AlertTriangle size={48} />
+                        </div>
+                        <h2 id="warehouse-action-title" className="shift-warning-title">
+                            {warehouseAction === 'DELIVER' ? 'Bodega de entrega' : 'Bodega para registrar merma'}
+                        </h2>
+                        <p className="shift-warning-message">
+                            {warehouseAction === 'DELIVER'
+                                ? 'Selecciona la bodega de esta sucursal de la que se descontará el inventario.'
+                                : 'La orden ya fue enviada a cocina. Selecciona la bodega donde se registrará el desperdicio.'}
+                        </p>
+                        <select
+                            aria-label="Bodega operativa"
+                            value={operationalWarehouseId ?? ''}
+                            onChange={(event) => setOperationalWarehouseId(event.target.value ? Number(event.target.value) : null)}
+                            style={{ width: '100%', minHeight: '44px', margin: '0.75rem 0', borderRadius: '8px', padding: '0.6rem' }}
+                        >
+                            <option value="">Seleccionar bodega...</option>
+                            {branchWarehouses.map((warehouse) => (
+                                <option key={warehouse.id} value={warehouse.id}>
+                                    {warehouse.name} ({warehouse.code})
+                                </option>
+                            ))}
+                        </select>
+                        {branchWarehouses.length === 0 && (
+                            <p className="shift-warning-note">No hay una bodega tipo sucursal configurada para completar esta operación.</p>
+                        )}
+                        <div className="shift-warning-actions">
+                            <button
+                                className="shift-warning-btn primary"
+                                disabled={!operationalWarehouseId}
+                                onClick={() => void handleWarehouseAction()}
+                            >
+                                Confirmar
+                            </button>
+                            <button
+                                className="shift-warning-btn"
+                                onClick={() => {
+                                    setWarehouseAction(null);
+                                    setOperationalWarehouseId(null);
+                                    setPendingCancelReason(undefined);
+                                }}
+                            >
+                                Volver
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
 
             {modifierItem && (

@@ -140,9 +140,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     // any server-side role changes by mapping them into user.roles, which
                     // is the canonical source consumed by getUserRoleNames().
                     const refreshedRoles = mapServerRoles(serverUser.roles ?? serverUser.userRoles);
-                    setUser((prev) => (prev
-                        ? { ...prev, ...safeFields, ...(refreshedRoles ? { roles: refreshedRoles } : {}) }
-                        : prev));
+                    setUser((prev) => {
+                        if (!prev) return prev;
+                        const refreshedUser = {
+                            ...prev,
+                            ...safeFields,
+                            ...(refreshedRoles ? { roles: refreshedRoles } : {}),
+                        } as User;
+                        localStorage.setItem('user', JSON.stringify(refreshedUser));
+                        return refreshedUser;
+                    });
                 }
             })
             .catch((error: unknown) => {

@@ -54,7 +54,7 @@ function positiveInt(value: unknown, field: string, max = 1_000_000): number {
 function dateValue(value: unknown, field: string): Date {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new HrWorkforceError(`${field} debe usar YYYY-MM-DD`);
     const result = new Date(`${value}T00:00:00.000Z`);
-    if (Number.isNaN(result.getTime()) || result.toISOString().slice(0, 10) !== value) throw new HrWorkforceError(`${field} es invÃ¡lida`);
+    if (Number.isNaN(result.getTime()) || result.toISOString().slice(0, 10) !== value) throw new HrWorkforceError(`${field} es inválida`);
     return result;
 }
 
@@ -64,7 +64,7 @@ function dateKey(value: Date): string {
 
 function dateRangeKeys(from: Date, to: Date): string[] {
     const days = Math.floor((to.getTime() - from.getTime()) / 86_400_000) + 1;
-    if (days < 1 || days > 366) throw new HrWorkforceError('El rango debe contener entre 1 y 366 dÃ­as');
+    if (days < 1 || days > 366) throw new HrWorkforceError('El rango debe contener entre 1 y 366 días');
     return Array.from({ length: days }, (_, index) => new Date(from.getTime() + index * 86_400_000).toISOString().slice(0, 10));
 }
 
@@ -74,7 +74,7 @@ function localDateTime(value: unknown, timezone: unknown): { instant: Date; time
     const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
     if (!match) throw new HrWorkforceError('requestedOccurredAt debe usar YYYY-MM-DDTHH:mm');
     const zone = requiredText(timezone, 'requestedTimezone', 64);
-    if (!isValidTimeZone(zone)) throw new HrWorkforceError('requestedTimezone no es una zona IANA vÃ¡lida');
+    if (!isValidTimeZone(zone)) throw new HrWorkforceError('requestedTimezone no es una zona IANA válida');
     try {
         return {
             timezone: zone,
@@ -84,7 +84,7 @@ function localDateTime(value: unknown, timezone: unknown): { instant: Date; time
             }, zone),
         };
     } catch (error) {
-        throw new HrWorkforceError(error instanceof Error ? error.message : 'Hora local invÃ¡lida');
+        throw new HrWorkforceError(error instanceof Error ? error.message : 'Hora local inválida');
     }
 }
 
@@ -109,7 +109,7 @@ async function ensureUser(companyId: number, userId: number, db: Db = prisma, ac
         },
         select: { id: true, name: true, username: true, branchId: true },
     });
-    if (!user) throw new HrWorkforceError('El usuario no pertenece a la empresa o estÃ¡ inactivo', 404, 'HR_USER_NOT_FOUND');
+    if (!user) throw new HrWorkforceError('El usuario no pertenece a la empresa o está inactivo', 404, 'HR_USER_NOT_FOUND');
     return user;
 }
 
@@ -125,7 +125,7 @@ async function assertDatesOpen(companyId: number, from: Date, to: Date, db: Db =
         where: { companyId, status: 'CLOSED', dateFrom: { lte: to }, dateTo: { gte: from } },
         select: { id: true, dateFrom: true, dateTo: true },
     });
-    if (period) throw new HrWorkforceError(`El perÃ­odo ${dateKey(period.dateFrom)} a ${dateKey(period.dateTo)} estÃ¡ cerrado`, 409, 'HR_PERIOD_CLOSED');
+    if (period) throw new HrWorkforceError(`El período ${dateKey(period.dateFrom)} a ${dateKey(period.dateTo)} está cerrado`, 409, 'HR_PERIOD_CLOSED');
 }
 
 async function lockAttendancePeriod(tx: Prisma.TransactionClient, companyId: number, periodId: number) {
@@ -135,7 +135,7 @@ async function lockAttendancePeriod(tx: Prisma.TransactionClient, companyId: num
         WHERE id = ${periodId} AND companyId = ${companyId}
         FOR UPDATE
     `);
-    if (!rows[0]) throw new HrWorkforceError('PerÃ­odo no encontrado', 404, 'HR_PERIOD_NOT_FOUND');
+    if (!rows[0]) throw new HrWorkforceError('Período no encontrado', 404, 'HR_PERIOD_NOT_FOUND');
     return rows[0];
 }
 
@@ -150,11 +150,11 @@ async function idempotent<T>(input: {
         const record = await prisma.workforceIdempotencyRecord.findUnique({ where: { companyId_key: { companyId: input.companyId, key } } });
         if (!record) return null;
         if (record.operation !== input.operation || record.requestHash !== hash) {
-            throw new HrWorkforceError('Idempotency-Key ya fue usado con otra operaciÃ³n o payload', 409, 'IDEMPOTENCY_CONFLICT');
+            throw new HrWorkforceError('Idempotency-Key ya fue usado con otra operación o payload', 409, 'IDEMPOTENCY_CONFLICT');
         }
         if (record.response !== null) return record.response as T;
         const loaded = await input.load(record.entityId);
-        if (!loaded) throw new HrWorkforceError('La respuesta idempotente ya no estÃ¡ disponible', 409, 'IDEMPOTENCY_STALE');
+        if (!loaded) throw new HrWorkforceError('La respuesta idempotente ya no está disponible', 409, 'IDEMPOTENCY_STALE');
         return loaded;
     };
     const existing = await replay();
@@ -507,7 +507,7 @@ export class AttendanceDerivedService {
         await ensureUser(companyId, userId, prisma, false);
         const branch = await ensureBranch(companyId, branchId || null);
         const timezone = branch?.timezone || timezoneHint || 'America/Managua';
-        if (!isValidTimeZone(timezone)) throw new HrWorkforceError('Zona horaria IANA invÃ¡lida');
+        if (!isValidTimeZone(timezone)) throw new HrWorkforceError('Zona horaria IANA inválida');
         const localDate = dateValue(date, 'date');
         const scopeKey = branchId ? `BRANCH:${branchId}` : 'UNASSIGNED';
         const existing = await prisma.attendanceDailySummary.findUnique({
@@ -521,7 +521,7 @@ export class AttendanceDerivedService {
         });
         if (period?.status === 'CLOSED') {
             if (existing) return summaryApi(existing);
-            throw new HrWorkforceError('El perÃ­odo estÃ¡ cerrado y no admite nuevos resÃºmenes', 409, 'HR_PERIOD_CLOSED');
+            throw new HrWorkforceError('El período está cerrado y no admite nuevos resúmenes', 409, 'HR_PERIOD_CLOSED');
         }
 
         const bounds = dayBounds(date, timezone);
@@ -649,7 +649,7 @@ export class AttendanceDerivedService {
                 });
             }
         }
-        if (lateMinutes > 0) generated.push({ key: 'LATE_ARRIVAL', type: 'LATE_ARRIVAL', severity: 'WARNING', message: `Entrada tardÃ­a por ${lateMinutes} minutos` });
+        if (lateMinutes > 0) generated.push({ key: 'LATE_ARRIVAL', type: 'LATE_ARRIVAL', severity: 'WARNING', message: `Entrada tardía por ${lateMinutes} minutos` });
         if (earlyDepartureMinutes > 0) generated.push({ key: 'EARLY_DEPARTURE', type: 'EARLY_DEPARTURE', severity: 'WARNING', message: `Salida anticipada por ${earlyDepartureMinutes} minutos` });
         for (const anomaly of worked.anomalies) generated.push({ key: anomaly, type: anomaly, severity: 'WARNING', message: `Secuencia de marcaje irregular: ${anomaly}` });
         for (const event of rawEvents.filter(item => item.decision === 'REJECTED' || (item.decision === 'REVIEW' && item.review?.decision === 'REJECTED'))) {
@@ -671,7 +671,7 @@ export class AttendanceDerivedService {
                     include: summaryInclude,
                 });
                 if (frozen) return summaryApi(frozen);
-                throw new HrWorkforceError('El perÃ­odo estÃ¡ cerrado y no admite nuevos resÃºmenes', 409, 'HR_PERIOD_CLOSED');
+                throw new HrWorkforceError('El período está cerrado y no admite nuevos resúmenes', 409, 'HR_PERIOD_CLOSED');
             }
             const priorSummary = await tx.attendanceDailySummary.findUnique({
                 where: { companyId_userId_date_scopeKey: { companyId, userId, date: localDate, scopeKey } },
@@ -857,7 +857,7 @@ export class AttendancePeriodService {
         const dateTo = dateValue(body.dateTo, 'dateTo');
         dateRangeKeys(dateFrom, dateTo);
         const timezone = optionalText(body.timezone, 64) || 'America/Managua';
-        if (!isValidTimeZone(timezone)) throw new HrWorkforceError('timezone no es una zona IANA vÃ¡lida');
+        if (!isValidTimeZone(timezone)) throw new HrWorkforceError('timezone no es una zona IANA válida');
         const reason = optionalText(body.reason, 2000);
         return idempotent({
             companyId, key: idempotencyKey, operation: 'PERIOD_CREATE', entityType: 'AttendancePeriod',
@@ -865,7 +865,7 @@ export class AttendancePeriodService {
             load: id => periodWithCounts(id, companyId),
             execute: async tx => {
                 const overlap = await tx.attendancePeriod.findFirst({ where: { companyId, dateFrom: { lte: dateTo }, dateTo: { gte: dateFrom } } });
-                if (overlap) throw new HrWorkforceError('El rango se solapa con otro perÃ­odo de asistencia', 409, 'HR_PERIOD_OVERLAP');
+                if (overlap) throw new HrWorkforceError('El rango se solapa con otro período de asistencia', 409, 'HR_PERIOD_OVERLAP');
                 const created = await tx.attendancePeriod.create({ data: { companyId, dateFrom, dateTo, timezone, lastActionReason: reason, createdById: actorId } });
                 await AuditLogService.log({ companyId, userId: actorId, entityType: 'AttendancePeriod', entityId: created.id, action: 'CREATE', details: { dateFrom: dateKey(dateFrom), dateTo: dateKey(dateTo), timezone, reason } }, tx);
                 return { entityId: created.id, value: periodApi(await tx.attendancePeriod.findUniqueOrThrow({ where: { id: created.id }, include: { _count: { select: { summaries: true } } } }), { unresolvedIncidentCount: 0, pendingCorrectionCount: 0, pendingOvertimeCount: 0, pendingLeaveCount: 0 }) };
@@ -878,7 +878,7 @@ export class AttendancePeriodService {
         // Materialize all known summaries before the serializable close. New
         // corrections/overtime requests also lock against CLOSED inside their tx.
         const period = await prisma.attendancePeriod.findFirst({ where: { id, companyId } });
-        if (!period) throw new HrWorkforceError('PerÃ­odo no encontrado', 404, 'HR_PERIOD_NOT_FOUND');
+        if (!period) throw new HrWorkforceError('Período no encontrado', 404, 'HR_PERIOD_NOT_FOUND');
         const periodInstants = periodInstantBounds(period.dateFrom, period.dateTo, period.timezone);
         const [eventSources, scheduledSources] = await Promise.all([
             prisma.attendanceEvent.findMany({
@@ -913,10 +913,10 @@ export class AttendancePeriodService {
             load: entityId => periodWithCounts(entityId, companyId),
             execute: async tx => {
                 let current = await tx.attendancePeriod.findFirst({ where: { id, companyId } });
-                if (!current) throw new HrWorkforceError('PerÃ­odo no encontrado', 404, 'HR_PERIOD_NOT_FOUND');
+                if (!current) throw new HrWorkforceError('Período no encontrado', 404, 'HR_PERIOD_NOT_FOUND');
                 const locked = await lockAttendancePeriod(tx, companyId, id);
                 current = { ...current, status: locked.status, revision: locked.revision };
-                if (current.status === 'CLOSED') throw new HrWorkforceError('El perÃ­odo ya estÃ¡ cerrado', 409, 'HR_PERIOD_ALREADY_CLOSED');
+                if (current.status === 'CLOSED') throw new HrWorkforceError('El período ya está cerrado', 409, 'HR_PERIOD_ALREADY_CLOSED');
                 const instants = periodInstantBounds(current.dateFrom, current.dateTo, current.timezone);
                 const [critical, pendingCorrections, overtime, leave, attendanceReviews] = await Promise.all([
                     tx.attendanceIncident.count({ where: { companyId, status: 'OPEN', severity: 'CRITICAL', date: { gte: current.dateFrom, lte: current.dateTo } } }),
@@ -979,13 +979,13 @@ export class AttendancePeriodService {
                     if (attendanceReviews) {
                         throw new HrWorkforceError(`No se puede cerrar: ${attendanceReviews} marcajes pendientes de revisión`, 409, 'HR_PERIOD_PENDING_ATTENDANCE_REVIEWS');
                     }
-                    throw new HrWorkforceError(`No se puede cerrar: ${critical} incidencias crÃ­ticas, ${corrections} correcciones, ${overtime} horas extra y ${leave} ausencias pendientes`, 409, 'HR_PERIOD_PENDING_ITEMS');
+                    throw new HrWorkforceError(`No se puede cerrar: ${critical} incidencias críticas, ${corrections} correcciones, ${overtime} horas extra y ${leave} ausencias pendientes`, 409, 'HR_PERIOD_PENDING_ITEMS');
                 }
                 const changed = await tx.attendancePeriod.updateMany({
                     where: { id, companyId, status: { in: ['OPEN', 'REOPENED'] }, revision: current.revision },
                     data: { status: 'CLOSED', closedById: actorId, closedAt: new Date(), payrollEligible: true, lastActionReason: reason, revision: { increment: 1 } },
                 });
-                if (changed.count !== 1) throw new HrWorkforceError('El perÃ­odo cambiÃ³ concurrentemente', 409, 'HR_PERIOD_CAS_CONFLICT');
+                if (changed.count !== 1) throw new HrWorkforceError('El período cambió concurrentemente', 409, 'HR_PERIOD_CAS_CONFLICT');
                 await tx.attendanceDailySummary.updateMany({ where: { companyId, date: { gte: current.dateFrom, lte: current.dateTo } }, data: { periodId: id } });
                 await AuditLogService.log({ companyId, userId: actorId, entityType: 'AttendancePeriod', entityId: id, action: 'UPDATE', details: { transition: `${current.status}->CLOSED`, reason, payrollEligible: true } }, tx);
                 const updated = await tx.attendancePeriod.findUniqueOrThrow({ where: { id }, include: { _count: { select: { summaries: true } } } });
@@ -1001,17 +1001,17 @@ export class AttendancePeriodService {
             load: entityId => periodWithCounts(entityId, companyId),
             execute: async tx => {
                 let current = await tx.attendancePeriod.findFirst({ where: { id, companyId } });
-                if (!current) throw new HrWorkforceError('PerÃ­odo no encontrado', 404, 'HR_PERIOD_NOT_FOUND');
+                if (!current) throw new HrWorkforceError('Período no encontrado', 404, 'HR_PERIOD_NOT_FOUND');
                 const locked = await lockAttendancePeriod(tx, companyId, id);
                 current = { ...current, status: locked.status, revision: locked.revision };
-                if (current.status !== 'CLOSED') throw new HrWorkforceError('Solo un perÃ­odo cerrado puede reabrirse', 409, 'HR_PERIOD_NOT_CLOSED');
+                if (current.status !== 'CLOSED') throw new HrWorkforceError('Solo un período cerrado puede reabrirse', 409, 'HR_PERIOD_NOT_CLOSED');
                 const payrollDependency = await tx.payrollAttendanceDependency.findFirst({ where: { companyId, attendancePeriodId: id, run: { status: { not: 'VOID' } } }, select: { runId: true } });
                 if (payrollDependency) throw new HrWorkforceError(`No se puede reabrir: la corrida de nómina ${payrollDependency.runId} depende de este período y no está VOID`, 409, 'HR_PERIOD_USED_BY_PAYROLL');
                 const changed = await tx.attendancePeriod.updateMany({
                     where: { id, companyId, status: 'CLOSED', revision: current.revision },
                     data: { status: 'REOPENED', reopenedById: actorId, reopenedAt: new Date(), payrollEligible: false, lastActionReason: reason, revision: { increment: 1 } },
                 });
-                if (changed.count !== 1) throw new HrWorkforceError('El perÃ­odo cambiÃ³ concurrentemente', 409, 'HR_PERIOD_CAS_CONFLICT');
+                if (changed.count !== 1) throw new HrWorkforceError('El período cambió concurrentemente', 409, 'HR_PERIOD_CAS_CONFLICT');
                 await AuditLogService.log({ companyId, userId: actorId, entityType: 'AttendancePeriod', entityId: id, action: 'UPDATE', details: { transition: 'CLOSED->REOPENED', reason, payrollEligible: false } }, tx);
                 const updated = await tx.attendancePeriod.findUniqueOrThrow({ where: { id }, include: { _count: { select: { summaries: true } } } });
                 return { entityId: id, value: periodApi(updated) };
@@ -1068,7 +1068,7 @@ export class AttendanceCorrectionService {
 
     static async create(companyId: number, actorId: number, body: Record<string, unknown>, idempotencyKey: string, forcedUserId?: number) {
         const type = requiredText(body.type, 'type', 32) as AttendanceCorrectionType;
-        if (!['ADD_PUNCH', 'VOID_PUNCH', 'CHANGE_TIME', 'ASSIGN_BRANCH', 'OTHER'].includes(type)) throw new HrWorkforceError('type invÃ¡lido');
+        if (!['ADD_PUNCH', 'VOID_PUNCH', 'CHANGE_TIME', 'ASSIGN_BRANCH', 'OTHER'].includes(type)) throw new HrWorkforceError('type inválido');
         const reason = requiredText(body.reason, 'reason');
         const requestedAction = body.requestedAction === undefined
             ? null
@@ -1144,7 +1144,7 @@ export class AttendanceCorrectionService {
 
     static async decide(id: number, companyId: number, actorId: number, decisionValue: unknown, reasonValue: unknown, idempotencyKey: string) {
         const decision = requiredText(decisionValue, 'decision', 16) as Decision;
-        if (!['APPROVED', 'REJECTED'].includes(decision)) throw new HrWorkforceError('decision invÃ¡lida');
+        if (!['APPROVED', 'REJECTED'].includes(decision)) throw new HrWorkforceError('decision inválida');
         const reason = requiredText(reasonValue, 'reason');
         return idempotent({
             companyId, key: idempotencyKey, operation: `CORRECTION_DECIDE:${id}`, entityType: 'AttendanceCorrection', payload: { id, decision, reason },
@@ -1153,10 +1153,10 @@ export class AttendanceCorrectionService {
                 const current = await tx.attendanceCorrection.findFirst({
                     where: { id, companyId }, include: { targetEvent: true, dailySummary: true, requestedBranch: true },
                 });
-                if (!current) throw new HrWorkforceError('CorrecciÃ³n no encontrada', 404, 'HR_CORRECTION_NOT_FOUND');
-                if (current.status !== 'PENDING') throw new HrWorkforceError('La correcciÃ³n ya fue decidida', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+                if (!current) throw new HrWorkforceError('Corrección no encontrada', 404, 'HR_CORRECTION_NOT_FOUND');
+                if (current.status !== 'PENDING') throw new HrWorkforceError('La corrección ya fue decidida', 409, 'HR_WORKFLOW_CAS_CONFLICT');
                 if (actorId === current.userId) {
-                    throw new HrWorkforceError('Una persona no puede decidir su propia correcciÃ³n', 409, 'HR_SELF_APPROVAL_FORBIDDEN');
+                    throw new HrWorkforceError('Una persona no puede decidir su propia corrección', 409, 'HR_SELF_APPROVAL_FORBIDDEN');
                 }
                 const subjectUser = await ensureUser(companyId, current.userId, tx);
                 const targetBranch = current.targetEvent?.branchId
@@ -1195,14 +1195,14 @@ export class AttendanceCorrectionService {
                         select: { id: true },
                     });
                     if (conflicting && ['VOID_PUNCH', 'CHANGE_TIME', 'ASSIGN_BRANCH'].includes(current.type)) {
-                        throw new HrWorkforceError('El marcaje ya tiene una correcciÃ³n incompatible aplicada', 409, 'HR_CORRECTION_CONFLICT');
+                        throw new HrWorkforceError('El marcaje ya tiene una corrección incompatible aplicada', 409, 'HR_CORRECTION_CONFLICT');
                     }
                 }
                 if (decision === 'APPROVED' && ['ADD_PUNCH', 'VOID_PUNCH', 'CHANGE_TIME', 'ASSIGN_BRANCH'].includes(current.type)) {
                     const action = current.type === 'ADD_PUNCH'
                         ? current.requestedAction
                         : current.targetEvent?.action;
-                    if (!action) throw new HrWorkforceError('No se pudo inferir la acciÃ³n compensatoria', 409);
+                    if (!action) throw new HrWorkforceError('No se pudo inferir la acción compensatoria', 409);
                     const branchId = current.requestedBranchId || current.targetEvent?.branchId || subjectUser.branchId;
                     await ensureBranch(companyId, branchId, tx);
                     let scheduledShiftId = current.targetEvent?.scheduledShiftId || null;
@@ -1250,7 +1250,7 @@ export class AttendanceCorrectionService {
                         requestHash: requestHash({ correctionId: current.id, action, instant: instant.toISOString(), branchId }),
                         action, source: 'MANUAL', serverAt: instant, clientAt: instant,
                         faceStatus: 'NOT_REQUIRED', livenessStatus: 'NOT_REQUIRED', providerStatus: 'MANUAL_CORRECTION', decision: 'ACCEPTED',
-                        reasonCode: current.type, reasonCodes: [current.type], message: `${current.reason}\nAprobaciÃ³n: ${reason}`,
+                        reasonCode: current.type, reasonCodes: [current.type], message: `${current.reason}\nAprobación: ${reason}`,
                     } });
                     compensationEventId = event.id;
                     }
@@ -1260,7 +1260,7 @@ export class AttendanceCorrectionService {
                     where: { id, companyId, status: 'PENDING', revision: current.revision },
                     data: { status, decidedById: actorId, decisionReason: reason, decidedAt: new Date(), appliedAt: decision === 'APPROVED' ? new Date() : null, compensationEventId, revision: { increment: 1 } },
                 });
-                if (changed.count !== 1) throw new HrWorkforceError('La correcciÃ³n cambiÃ³ concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+                if (changed.count !== 1) throw new HrWorkforceError('La corrección cambió concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
                 if (decision === 'APPROVED' && current.incidentId) {
                     await tx.attendanceIncident.updateMany({ where: { id: current.incidentId, companyId, status: 'OPEN' }, data: { status: 'RESOLVED', resolvedAt: new Date(), resolvedById: actorId } });
                 }
@@ -1360,7 +1360,7 @@ export class OvertimeService {
 
     static async decide(id: number, companyId: number, actorId: number, body: Record<string, unknown>, idempotencyKey: string) {
         const decision = requiredText(body.decision, 'decision', 16) as Decision;
-        if (!['APPROVED', 'REJECTED'].includes(decision)) throw new HrWorkforceError('decision invÃ¡lida');
+        if (!['APPROVED', 'REJECTED'].includes(decision)) throw new HrWorkforceError('decision inválida');
         const reason = requiredText(body.reason, 'reason');
         return idempotent({
             companyId, key: idempotencyKey, operation: `OVERTIME_DECIDE:${id}`, entityType: 'OvertimeRequest', payload: { id, decision, reason, approvedMinutes: body.approvedMinutes },
@@ -1401,7 +1401,7 @@ export class OvertimeService {
                     const approvedTotal = Number(alreadyApproved._sum.approvedMinutes || 0) + Number(approvedMinutes || 0);
                     const candidate = currentSummary.candidateOvertimeMinutes;
                     if (approvedTotal > candidate) {
-                        throw new HrWorkforceError(`La aprobaciÃ³n excede el candidato calculado (${candidate} minutos)`, 409, 'HR_OVERTIME_EXCEEDS_CANDIDATE');
+                        throw new HrWorkforceError(`La aprobación excede el candidato calculado (${candidate} minutos)`, 409, 'HR_OVERTIME_EXCEEDS_CANDIDATE');
                     }
                 }
                 const status: OvertimeRequestStatus = decision;
@@ -1409,7 +1409,7 @@ export class OvertimeService {
                     where: { id, companyId, status: 'PENDING', revision: current.revision },
                     data: { status, approvedMinutes, decidedById: actorId, decisionReason: reason, decidedAt: new Date(), revision: { increment: 1 } },
                 });
-                if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambiÃ³ concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+                if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambió concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
                 if (decision === 'APPROVED' && current.dailySummaryId) {
                     const approved = await tx.overtimeRequest.aggregate({ where: { dailySummaryId: current.dailySummaryId, status: 'APPROVED' }, _sum: { approvedMinutes: true } });
                     await tx.attendanceDailySummary.update({ where: { id: current.dailySummaryId }, data: { approvedOvertimeMinutes: approved._sum.approvedMinutes || 0, sourceRevision: { increment: 1 } } });
@@ -1434,7 +1434,7 @@ export class OvertimeService {
                 const changed = await tx.overtimeRequest.updateMany({ where: { id, companyId, status: 'PENDING', revision: current.revision }, data: {
                     status: 'CANCELLED', cancelledAt: new Date(), decisionReason: reason, revision: { increment: 1 },
                 } });
-                if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambiÃ³ concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+                if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambió concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
                 await AuditLogService.log({ companyId, userId: actorId, entityType: 'OvertimeRequest', entityId: id, action: 'CANCEL', details: { reason } }, tx);
                 const updated = await tx.overtimeRequest.findUniqueOrThrow({ where: { id }, include: overtimeInclude });
                 return { entityId: id, value: overtimeApi(updated) };
@@ -1445,13 +1445,13 @@ export class OvertimeService {
 
 function unitValue(value: unknown): VacationBalanceUnit {
     const unit = requiredText(value, 'unit', 16) as VacationBalanceUnit;
-    if (!['DAYS', 'HOURS', 'MINUTES'].includes(unit)) throw new HrWorkforceError('unit invÃ¡lido');
+    if (!['DAYS', 'HOURS', 'MINUTES'].includes(unit)) throw new HrWorkforceError('unit inválido');
     return unit;
 }
 
 function fractionValue(value: unknown): LeaveFraction {
     const fraction = requiredText(value, 'fraction', 16) as LeaveFraction;
-    if (!['FULL_DAY', 'HALF_DAY', 'HOURS'].includes(fraction)) throw new HrWorkforceError('fraction invÃ¡lida');
+    if (!['FULL_DAY', 'HALF_DAY', 'HOURS'].includes(fraction)) throw new HrWorkforceError('fraction inválida');
     return fraction;
 }
 
@@ -1471,7 +1471,7 @@ export function leaveAmount(from: Date, to: Date, fraction: LeaveFraction, start
         }
         workDays = days * 0.5;
     } else {
-        if (days !== 1) throw new HrWorkforceError('Una ausencia por horas debe iniciar y finalizar el mismo dÃ­a');
+        if (days !== 1) throw new HrWorkforceError('Una ausencia por horas debe iniciar y finalizar el mismo día');
         if (!startTime || !endTime || !/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime)) {
             throw new HrWorkforceError('startTime y endTime HH:mm son requeridos para HOURS');
         }
@@ -1583,7 +1583,7 @@ export class LeaveTypeService {
                 where: { companyId, leaveTypeId: id, status: 'APPROVED' },
             });
             if (approvedHistory) {
-                throw new HrWorkforceError('No se puede alterar la semÃ¡ntica de un tipo con ausencias aprobadas; cree un tipo nuevo', 409, 'HR_LEAVE_TYPE_HISTORY_IMMUTABLE');
+                throw new HrWorkforceError('No se puede alterar la semántica de un tipo con ausencias aprobadas; cree un tipo nuevo', 409, 'HR_LEAVE_TYPE_HISTORY_IMMUTABLE');
             }
         }
         const updated = await prisma.$transaction(async tx => {
@@ -1662,7 +1662,7 @@ export class LeaveRequestService {
             const overlap = overlapCandidates.some(candidate => leaveRequestsOverlap(current, candidate));
             if (overlap) throw new HrWorkforceError('La solicitud se solapa con otra ausencia pendiente o aprobada', 409, 'HR_LEAVE_OVERLAP');
             const changed = await tx.leaveRequest.updateMany({ where: { id, companyId, status: 'DRAFT', revision: current.revision }, data: { status: 'PENDING', submittedAt: new Date(), revision: { increment: 1 } } });
-            if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambiÃ³ concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+            if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambió concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
             await AuditLogService.log({ companyId, userId: actorId, entityType: 'LeaveRequest', entityId: id, action: 'UPDATE', details: { transition: 'DRAFT->PENDING' } }, tx);
             return leaveRequestApi(await tx.leaveRequest.findUniqueOrThrow({ where: { id }, include: leaveRequestInclude }));
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -1670,7 +1670,7 @@ export class LeaveRequestService {
 
     static async decide(id: number, companyId: number, actorId: number, decisionValue: unknown, reasonValue: unknown) {
         const decision = requiredText(decisionValue, 'decision', 16) as Decision;
-        if (!['APPROVED', 'REJECTED'].includes(decision)) throw new HrWorkforceError('decision invÃ¡lida');
+        if (!['APPROVED', 'REJECTED'].includes(decision)) throw new HrWorkforceError('decision inválida');
         const reason = requiredText(reasonValue, 'reason');
         return prisma.$transaction(async tx => {
             const current = await tx.leaveRequest.findFirst({ where: { id, companyId }, include: { leaveType: true } });
@@ -1705,7 +1705,7 @@ export class LeaveRequestService {
             const changed = await tx.leaveRequest.updateMany({ where: { id, companyId, status: 'PENDING', revision: current.revision }, data: {
                 status, decidedById: actorId, decisionReason: reason, decidedAt: new Date(), revision: { increment: 1 },
             } });
-            if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambiÃ³ concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+            if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambió concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
             await AuditLogService.log({ companyId, userId: actorId, entityType: 'LeaveRequest', entityId: id, action: 'UPDATE', details: { transition: `PENDING->${status}`, reason } }, tx);
             return leaveRequestApi(await tx.leaveRequest.findUniqueOrThrow({ where: { id }, include: leaveRequestInclude }));
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -1750,7 +1750,7 @@ export class LeaveRequestService {
             const changed = await tx.leaveRequest.updateMany({ where: { id, companyId, status: current.status, revision: current.revision }, data: {
                 status: 'CANCELLED', cancelledAt: new Date(), decisionReason: reason, revision: { increment: 1 },
             } });
-            if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambiÃ³ concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+            if (changed.count !== 1) throw new HrWorkforceError('La solicitud cambió concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
             await AuditLogService.log({ companyId, userId: actorId, entityType: 'LeaveRequest', entityId: id, action: 'CANCEL', details: { reason } }, tx);
             return leaveRequestApi(await tx.leaveRequest.findUniqueOrThrow({ where: { id }, include: leaveRequestInclude }));
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -1782,11 +1782,11 @@ function decimalAmount(value: unknown, field: string, options: { nonZero?: boole
     const parsed = Number(value);
     const max = options.max ?? 1_000_000;
     if (!Number.isFinite(parsed) || Math.abs(parsed) > max) {
-        throw new HrWorkforceError(`${field} debe ser un nÃºmero entre -${max} y ${max}`);
+        throw new HrWorkforceError(`${field} debe ser un número entre -${max} y ${max}`);
     }
     if (options.nonZero && parsed === 0) throw new HrWorkforceError(`${field} no puede ser cero`);
     if (Math.round(parsed * 10_000) !== parsed * 10_000) {
-        throw new HrWorkforceError(`${field} admite como mÃ¡ximo cuatro decimales`);
+        throw new HrWorkforceError(`${field} admite como máximo cuatro decimales`);
     }
     return parsed;
 }

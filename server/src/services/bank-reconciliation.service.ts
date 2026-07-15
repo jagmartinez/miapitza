@@ -268,6 +268,9 @@ export class BankReconciliationService {
             throw new Error('Los identificadores de turno deben ser enteros positivos');
         }
         const shiftIds = Array.from(new Set(requestedShiftIds));
+        if (branchId !== undefined && shiftIds.length === 0) {
+            throw new Error('Un depósito restringido a sucursal debe asociar al menos un turno cerrado');
+        }
 
         if (Number.isNaN(date.getTime())) throw new Error('La fecha del depósito no es válida');
         if (!reference) throw new Error('La referencia del depósito es obligatoria');

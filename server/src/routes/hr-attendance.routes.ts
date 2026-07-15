@@ -97,6 +97,7 @@ router.post('/biometrics/users/:userId/revoke', biometricManage,
     }, body: { reason: { type: 'string', required: true, min: 3, max: 500 } } }),
     HrAttendanceController.revokeUserBiometrics);
 router.post('/biometrics/maintenance/run', biometricManage, allowHrBodyFields([]), HrAttendanceController.runBiometricMaintenance);
+router.get('/biometrics/provider/health', biometricManage, HrAttendanceController.biometricProviderHealth);
 
 router.post('/attendance/punches', selfAttendance, biometricLimiter, memoryFaceUpload,
     allowHrBodyFields(['action', 'challengeId', 'challengeToken', 'latitude', 'longitude', 'accuracyM', 'locationCapturedAt']),

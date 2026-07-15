@@ -83,6 +83,20 @@ describe('HR attendance security and invariants', () => {
         await expect(provider.verifyOneToOne(Buffer.from('capture'), 'template')).rejects.toBeInstanceOf(FaceProviderUnavailableError);
     });
 
+    it('requires HTTPS and credentials for the external HTTP provider in production', () => {
+        expect(() => createFaceVerificationProvider({
+            NODE_ENV: 'production', HR_FACE_PROVIDER: 'http', HR_FACE_PROVIDER_BASE_URL: 'http://faces.internal', HR_FACE_PROVIDER_TOKEN: 'secret',
+        })).toThrow('HTTPS');
+        expect(() => createFaceVerificationProvider({
+            NODE_ENV: 'production', HR_FACE_PROVIDER: 'http', HR_FACE_PROVIDER_BASE_URL: 'https://faces.internal',
+        })).toThrow('URL y token');
+    });
+
+    it('exposes a fail-closed provider health status without leaking credentials', async () => {
+        const provider = createFaceVerificationProvider({ NODE_ENV: 'production', HR_FACE_PROVIDER: 'disabled' });
+        await expect(provider.healthCheck?.()).resolves.toEqual(expect.objectContaining({ provider: 'disabled', status: 'UNAVAILABLE' }));
+    });
+
     it('rejects replayed challenges without attempting another CAS update', async () => {
         const update = jest.spyOn(prisma.biometricChallenge, 'updateMany');
         jest.spyOn(prisma.biometricChallenge, 'findFirst').mockResolvedValue({
@@ -309,5 +323,34 @@ describe('HR attendance security and invariants', () => {
         const select = findFirst.mock.calls[0][0]?.select as Record<string, unknown>;
         expect(select).not.toHaveProperty('templateRef');
         expect(select).not.toHaveProperty('provider');
+    });
+
+    it('claims a biometric purge with CAS before invoking the external provider', async () => {
+        jest.spyOn(prisma.biometricPurgeRequest, 'findFirst').mockResolvedValue({
+            id: 91, companyId: 4, biometricProfileId: 3, provider: 'test-provider',
+            encryptedTemplateRef: 'encrypted', reason: 'SELF_REVOKED', status: 'PENDING',
+            attempts: 0, nextAttemptAt: null, lastError: null, createdAt: new Date(), completedAt: null,
+        } as never);
+        const claim = jest.spyOn(prisma.biometricPurgeRequest, 'updateMany').mockResolvedValue({ count: 0 });
+        const revokeTemplate = jest.fn(async () => undefined);
+        const provider: FaceVerificationProvider = {
+            name: 'test-provider', model: 'test',
+            enroll: async () => ({
+                provider: 'test-provider', model: 'test', templateRef: 'template',
+                livenessPassed: true, providerStatus: 'TEST_ENROLLED',
+            }),
+            verifyOneToOne: async () => ({
+                matched: true, livenessPassed: true, score: 1, providerStatus: 'TEST_VERIFIED',
+            }),
+            revokeTemplate,
+        };
+
+        await expect(BiometricService.processPurgeRequest(91, provider)).resolves.toBe(false);
+
+        expect(claim).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({ id: 91, status: 'PENDING', attempts: 0 }),
+            data: expect.objectContaining({ attempts: 1 }),
+        }));
+        expect(revokeTemplate).not.toHaveBeenCalled();
     });
 });

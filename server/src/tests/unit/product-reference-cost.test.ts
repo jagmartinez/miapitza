@@ -39,4 +39,57 @@ describe('Product reference cost isolation', () => {
 
         expect(lookup).not.toHaveBeenCalled();
     });
+
+    it.each([Number.NaN, Number.POSITIVE_INFINITY, -0.001])('rejects invalid minimum stock %s', async (minStock) => {
+        const lookup = jest.spyOn(ProductService, 'getById');
+
+        await expect(ProductService.update(8, 1, { minStock })).rejects.toThrow(/inventario mínimo/i);
+
+        expect(lookup).not.toHaveBeenCalled();
+    });
+
+    it('does not let the product form bypass the configured base-unit contract', async () => {
+        jest.spyOn(ProductService, 'getById').mockResolvedValue({
+            id: 8,
+            companyId: 1,
+            name: 'Harina',
+            sku: 'ING-8',
+            categoryId: null,
+            unit: 'g',
+            baseUnitId: 4,
+            type: 'INGREDIENT'
+        } as never);
+        const update = jest.spyOn(prisma.product, 'update');
+
+        await expect(ProductService.update(8, 1, { unit: 'kg' }))
+            .rejects.toThrow(/Conversiones/i);
+
+        expect(update).not.toHaveBeenCalled();
+    });
+
+    it('evaluates the complete low-stock set before optional pagination and includes central stock', async () => {
+        const findMany = jest.spyOn(prisma.product, 'findMany').mockResolvedValue([
+            {
+                id: 8,
+                minStock: 10,
+                stocks: [{ quantity: 3 }],
+                category: null
+            }
+        ] as never);
+
+        const result = await ProductService.getLowStock(1, 2);
+
+        expect(result).toHaveLength(1);
+        expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+            where: { active: true, companyId: 1 },
+            include: expect.objectContaining({
+                stocks: expect.objectContaining({
+                    where: { warehouse: { OR: [{ branchId: 2 }, { branchId: null }] } }
+                })
+            })
+        }));
+        const args = findMany.mock.calls[0][0] as Record<string, unknown>;
+        expect(args.skip).toBeUndefined();
+        expect(args.take).toBeUndefined();
+    });
 });

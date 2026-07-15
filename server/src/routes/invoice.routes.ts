@@ -7,11 +7,27 @@ const router = Router();
 // Apply auth middleware to all invoice routes
 router.use(authenticate);
 
-// Both endpoints call InvoiceService.generateInvoice(), which assigns the
-// official number when one does not exist. They are issuance operations rather
-// than read-only invoice views and therefore require the stronger permission.
-// Debt: invoices.view needs a pure read endpoint that never assigns a number.
 const canIssueInvoice = requirePermission('invoices.issue', 'SUPERADMIN', 'ADMIN', 'CAJERO');
+const canViewInvoice = requirePermission('invoices.view', 'SUPERADMIN', 'ADMIN', 'CAJERO');
+const canCancelInvoice = requirePermission('invoices.cancel', 'SUPERADMIN', 'ADMIN');
+const canIssueCreditNote = requirePermission('invoices.credit', 'SUPERADMIN', 'ADMIN');
+
+// Issuance is intentionally a POST: it consumes a fiscal sequence and captures
+// an immutable rendering snapshot. Idempotent retries return that same snapshot.
+router.post('/:id/issue', canIssueInvoice, InvoiceController.issueInvoice);
+
+// Static report path must precede the parameterized invoice reads.
+router.get('/credit-notes', canViewInvoice, InvoiceController.listCreditNotes);
+router.get('/cancellations', canViewInvoice, InvoiceController.listInvoiceCancellations);
+
+// Fiscal mutation and its immutable reads are intentionally separate. GET never
+// consumes a sequence, reverses money or touches stock.
+router.post('/:id/credit-note', canIssueCreditNote, InvoiceController.issueCreditNote);
+router.get('/:id/credit-note', canViewInvoice, InvoiceController.getCreditNote);
+router.get('/:id/credit-note/pdf', canViewInvoice, InvoiceController.getCreditNotePDF);
+router.post('/:id/cancel', canCancelInvoice, InvoiceController.cancelInvoice);
+router.get('/:id/cancellation', canViewInvoice, InvoiceController.getInvoiceCancellation);
+router.get('/:id/cancellation/pdf', canViewInvoice, InvoiceController.getInvoiceCancellationPDF);
 
 /**
  * @swagger
@@ -41,7 +57,7 @@ const canIssueInvoice = requirePermission('invoices.issue', 'SUPERADMIN', 'ADMIN
  *       404:
  *         description: Order not found
  */
-router.get('/:id', canIssueInvoice, InvoiceController.getInvoiceData);
+router.get('/:id', canViewInvoice, InvoiceController.getInvoiceData);
 
 /**
  * @swagger
@@ -67,6 +83,6 @@ router.get('/:id', canIssueInvoice, InvoiceController.getInvoiceData);
  *               type: string
  *               format: binary
  */
-router.get('/:id/pdf', canIssueInvoice, InvoiceController.getInvoicePDF);
+router.get('/:id/pdf', canViewInvoice, InvoiceController.getInvoicePDF);
 
 export default router;

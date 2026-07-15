@@ -1596,9 +1596,14 @@ export default function Inventory() {
                                                 setFormData({ ...formData, unit: option.value });
                                             }}
                                             placeholder={allUnits.length === 0 ? 'Sin unidades' : 'Seleccionar...'}
-                                            isDisabled={allUnits.length === 0}
+                                            isDisabled={allUnits.length === 0 || !!editingProduct}
                                             isSearchable
                                         />
+                                        {editingProduct && (
+                                            <p className="modal-input-hint">
+                                                La unidad base y sus factores se administran desde Conversiones para proteger el historial físico.
+                                            </p>
+                                        )}
                                         {allUnits.length === 0 && (
                                             <p className="modal-input-hint">
                                                 No hay unidades activas.{' '}

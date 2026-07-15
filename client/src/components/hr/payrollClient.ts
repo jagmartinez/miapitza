@@ -14,6 +14,8 @@ import type {
   HrPayrollPeriodPayload,
   HrPayrollReceiptDetail,
   HrPayrollReceiptSummary,
+  HrPayrollReconciliationPayload,
+  HrPayrollReconciliationReport,
   HrPayrollRulePayload,
   HrPayrollRuleConfigurationRevision,
   HrPayrollRuleVersion,
@@ -396,6 +398,19 @@ export const payrollClient = {
   async getRun(kind: HrPayrollRunKind, id: number): Promise<HrPayrollRun> {
     const response = await api.get(runPath(kind, id), { skipOfflineCache: true });
     return requireRun(response.data, 'corrida de nómina');
+  },
+
+  async reconcileParallelControl(
+    kind: HrPayrollRunKind,
+    id: number,
+    payload: HrPayrollReconciliationPayload
+  ): Promise<HrPayrollReconciliationReport> {
+    const response = await api.post(`${runPath(kind, id)}/reconciliation`, payload);
+    const result = dataOf<HrPayrollReconciliationReport>(response.data);
+    if (!result || !Array.isArray(result.checks) || typeof result.reconciliationHash !== 'string') {
+      throw new PayrollContractError('conciliación paralela');
+    }
+    return result;
   },
 
   async createRun(payload: HrPayrollRunPayload, idempotencyKey: string): Promise<HrPayrollRun> {

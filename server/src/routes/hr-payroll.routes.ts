@@ -72,6 +72,16 @@ router.post('/aguinaldo/runs', ownerManage, allowHrBodyFields(['year', 'cutoffDa
 
 function runContract(prefix: '/runs' | '/aguinaldo/runs') {
     router.get(`${prefix}/:id`, ownerRead, validate({ params: idParam }), HrPayrollController.run);
+    router.post(`${prefix}/:id/reconciliation`, ownerRead,
+        allowHrBodyFields(['expectedGrossIncome', 'expectedTotalDeductions', 'expectedNetPay', 'expectedEmployeeCount', 'controlSource', 'evidenceReference']),
+        validate({ params: idParam, body: {
+            expectedGrossIncome: { type: 'string', required: true, pattern: /^\d+(?:\.\d{1,2})?$/ },
+            expectedTotalDeductions: { type: 'string', required: true, pattern: /^\d+(?:\.\d{1,2})?$/ },
+            expectedNetPay: { type: 'string', required: true, pattern: /^\d+(?:\.\d{1,2})?$/ },
+            expectedEmployeeCount: { type: 'number', required: true, integer: true, min: 0 },
+            controlSource: { type: 'string', required: true, min: 3, max: 160 },
+            evidenceReference: { type: 'string', required: true, min: 3, max: 500 },
+        } }), HrPayrollController.reconcileParallelControl);
     router.post(`${prefix}/:id/calculate`, ownerManage, allowHrBodyFields(transitionFields), validate({ params: idParam, body: transitionBody }), HrPayrollController.transition('calculate'));
     router.post(`${prefix}/:id/recalculate`, ownerManage, allowHrBodyFields(transitionFields), validate({ params: idParam, body: transitionBody }), HrPayrollController.transition('recalculate'));
     router.post(`${prefix}/:id/submit-review`, ownerManage, allowHrBodyFields(transitionFields), validate({ params: idParam, body: transitionBody }), HrPayrollController.transition('submit-review'));

@@ -11,6 +11,7 @@ import { AuditLogService } from './audit-log.service';
 
 type Db = Prisma.TransactionClient | typeof prisma;
 type JsonObject = Record<string, unknown>;
+type InputMap = Record<string, unknown>;
 type Scope = { companyId: number; actorId: number; selfUserId?: number };
 
 export class HrBenefitsError extends Error {
@@ -83,7 +84,7 @@ function requestHash(value: unknown): string { return createHash('sha256').updat
 function serialize<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T; }
 function benefitCode(prefix: 'VIA' | 'PRE' | 'DED'): string { return `${prefix}-${randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`; }
 
-function paging(filters: any) {
+function paging(filters: InputMap) {
     const page = Math.max(1, Number(filters.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(filters.limit) || 25));
     return { page, pageSize, skip: (page - 1) * pageSize };
@@ -142,7 +143,7 @@ async function trace(db: Db, input: { companyId: number; resourceType: 'TRAVEL' 
     await db.hrBenefitTrace.create({ data: input });
 }
 
-function transitionInput(payload: any) {
+function transitionInput(payload: InputMap) {
     const expectedRevision = Number(payload.expectedRevision);
     if (!Number.isInteger(expectedRevision) || expectedRevision < 0) throw new HrBenefitsError('expectedRevision es requerido', 409, 'HR_BENEFITS_REVISION_REQUIRED');
     if (payload.confirmed !== true) throw new HrBenefitsError('Debe confirmar la transicion');
@@ -206,43 +207,61 @@ export function reconcileTravelAmounts(advanceValue: Prisma.Decimal.Value, expen
     };
 }
 
-async function presentTravel(item: any, db: Db = prisma, detail = false, self = false) {
+const travelInclude = Prisma.validator<Prisma.HrTravelRequestInclude>()({ user: { select: userSelect }, branch: { select: { id: true, name: true } }, expenses: { orderBy: [{ occurredOn: 'asc' }, { id: 'asc' }] }, ledger: { include: { reversalEntries: { select: { id: true } } }, orderBy: { id: 'asc' } } });
+const loanInclude = Prisma.validator<Prisma.HrLoanInclude>()({ user: { select: userSelect }, scheduleVersions: { include: { installments: { orderBy: { number: 'asc' } } }, orderBy: { version: 'desc' } }, ledger: { include: { actor: { select: actorSelect }, reversalEntries: { select: { id: true } } }, orderBy: { id: 'asc' } } });
+const deductionInclude = Prisma.validator<Prisma.HrDeductionInclude>()({ user: { select: userSelect }, versions: { orderBy: { version: 'desc' }, take: 1 } });
+type TravelItem = Prisma.HrTravelRequestGetPayload<{ include: typeof travelInclude }>;
+type LoanItem = Prisma.HrLoanGetPayload<{ include: typeof loanInclude }>;
+type DeductionItem = Prisma.HrDeductionGetPayload<{ include: typeof deductionInclude }>;
+
+async function presentTravel(item: TravelItem, db: Db = prisma, detail = false, self = false) {
     const actions = allowedTravelActions(item.status);
-    const result: any = { ...item, allowedActions: self ? actions.filter(action => ['SUBMIT', 'START_SETTLEMENT', 'CANCEL'].includes(action)) : actions };
-    if (detail) {
-        result.trace = await db.hrBenefitTrace.findMany({ where: { companyId: item.companyId, resourceType: 'TRAVEL', resourceId: item.id }, include: { actor: { select: actorSelect } }, orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }] });
-    }
+    const traceRows = detail
+        ? await db.hrBenefitTrace.findMany({ where: { companyId: item.companyId, resourceType: 'TRAVEL', resourceId: item.id }, include: { actor: { select: actorSelect } }, orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }] })
+        : undefined;
+    const result = {
+        ...item,
+        allowedActions: self ? actions.filter(action => ['SUBMIT', 'START_SETTLEMENT', 'CANCEL'].includes(action)) : actions,
+        ...(traceRows ? { trace: traceRows } : {}),
+    };
     return serialize(result);
 }
 
-async function presentLoan(item: any, db: Db = prisma, detail = false, self = false) {
-    const result: any = { ...item, allowedActions: self ? [] : allowedLoanActions(item.status) };
+async function presentLoan(item: LoanItem, db: Db = prisma, detail = false, self = false) {
+    let schedule: Array<Record<string, unknown>> | undefined;
+    let traceRows;
     if (detail) {
-        const scheduleVersion = item.scheduleVersions?.find((version: any) => version.status === 'ACTIVE') ?? item.scheduleVersions?.[0];
-        const payments = (item.ledger ?? []).filter((entry: any) => ['PAYMENT', 'PAYROLL_DEDUCTION'].includes(entry.type) && !entry.reversalEntries?.length);
-        let paid = payments.reduce((sum: Prisma.Decimal, entry: any) => sum.plus(entry.amount), new Prisma.Decimal(0));
-        result.schedule = (scheduleVersion?.installments ?? []).map((installment: any) => {
+        const scheduleVersion = item.scheduleVersions.find(version => version.status === 'ACTIVE') ?? item.scheduleVersions[0];
+        const payments = item.ledger.filter(entry => ['PAYMENT', 'PAYROLL_DEDUCTION'].includes(entry.type) && !entry.reversalEntries.length);
+        let paid = payments.reduce((sum, entry) => sum.plus(entry.amount), new Prisma.Decimal(0));
+        schedule = (scheduleVersion?.installments ?? []).map(installment => {
             const applied = Prisma.Decimal.min(paid, installment.scheduledTotal);
             paid = Prisma.Decimal.max(0, paid.minus(applied));
             const outstanding = installment.scheduledTotal.minus(applied);
             return serialize({ ...installment, paidAmount: applied, outstandingAmount: outstanding, status: outstanding.isZero() ? 'PAID' : applied.greaterThan(0) ? 'PARTIAL' : new Date(installment.dueDate) < new Date() ? 'OVERDUE' : 'PENDING' });
         });
-        result.scheduleVersions = undefined;
-        result.trace = await db.hrBenefitTrace.findMany({ where: { companyId: item.companyId, resourceType: 'LOAN', resourceId: item.id }, include: { actor: { select: actorSelect } }, orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }] });
+        traceRows = await db.hrBenefitTrace.findMany({ where: { companyId: item.companyId, resourceType: 'LOAN', resourceId: item.id }, include: { actor: { select: actorSelect } }, orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }] });
     }
+    const result = {
+        ...item,
+        allowedActions: self ? [] : allowedLoanActions(item.status),
+        ...(detail ? { scheduleVersions: undefined, schedule, trace: traceRows } : {}),
+    };
     return serialize(result);
 }
 
-async function presentDeduction(item: any, db: Db = prisma, detail = false, self = false) {
-    const version = item.versions?.[0];
-    const result: any = { ...item, ...version, id: item.id, versionId: version?.id, source: item.source, allowedActions: self ? [] : allowedDeductionActions(item.status), versions: undefined };
-    if (detail) result.trace = await db.hrBenefitTrace.findMany({ where: { companyId: item.companyId, resourceType: 'DEDUCTION', resourceId: item.id }, include: { actor: { select: actorSelect } }, orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }] });
+async function presentDeduction(item: DeductionItem, db: Db = prisma, detail = false, self = false) {
+    const version = item.versions[0];
+    const traceRows = detail
+        ? await db.hrBenefitTrace.findMany({ where: { companyId: item.companyId, resourceType: 'DEDUCTION', resourceId: item.id }, include: { actor: { select: actorSelect } }, orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }] })
+        : undefined;
+    const result = {
+        ...item, ...version, id: item.id, versionId: version?.id, source: item.source,
+        allowedActions: self ? [] : allowedDeductionActions(item.status), versions: undefined,
+        ...(traceRows ? { trace: traceRows } : {}),
+    };
     return serialize(result);
 }
-
-const travelInclude = Prisma.validator<Prisma.HrTravelRequestInclude>()({ user: { select: userSelect }, branch: { select: { id: true, name: true } }, expenses: { orderBy: [{ occurredOn: 'asc' }, { id: 'asc' }] }, ledger: { include: { reversalEntries: { select: { id: true } } }, orderBy: { id: 'asc' } } });
-const loanInclude = Prisma.validator<Prisma.HrLoanInclude>()({ user: { select: userSelect }, scheduleVersions: { include: { installments: { orderBy: { number: 'asc' } } }, orderBy: { version: 'desc' } }, ledger: { include: { actor: { select: actorSelect }, reversalEntries: { select: { id: true } } }, orderBy: { id: 'asc' } } });
-const deductionInclude = Prisma.validator<Prisma.HrDeductionInclude>()({ user: { select: userSelect }, versions: { orderBy: { version: 'desc' }, take: 1 } });
 
 function scopedUser(scope: Scope, requested: unknown): number { return scope.selfUserId ?? positiveId(requested, 'userId'); }
 
@@ -252,7 +271,7 @@ function enumFilter<T extends string>(value: unknown, allowed: readonly T[], fie
     return value as T;
 }
 
-function filterDates(filters: any, field: string, timestamp = false) {
+function filterDates(filters: InputMap, field: string, timestamp = false) {
     const from = filters.dateFrom ? dateValue(filters.dateFrom, 'dateFrom') : undefined;
     const to = filters.dateTo ? dateValue(filters.dateTo, 'dateTo') : undefined;
     if (from && to && from > to) throw new HrBenefitsError('dateFrom no puede ser posterior a dateTo');
@@ -261,7 +280,7 @@ function filterDates(filters: any, field: string, timestamp = false) {
 }
 
 export class HrTravelService {
-    static async list(scope: Scope, filters: any) {
+    static async list(scope: Scope, filters: InputMap) {
         const p = paging(filters);
         const where: Prisma.HrTravelRequestWhereInput = { companyId: scope.companyId, userId: scope.selfUserId ?? (filters.userId ? Number(filters.userId) : undefined), user: scope.selfUserId ? { accountType: 'INTERNAL', status: 'ACTIVE', employee: { is: { status: { in: ['ACTIVE', 'ON_LEAVE'] } } } } : undefined, branchId: filters.branchId ? Number(filters.branchId) : undefined, status: enumFilter(filters.status, ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'ADVANCED', 'IN_SETTLEMENT', 'SETTLED', 'CANCELLED', 'REVERSED'] as const), ...filterDates(filters, 'departureDate') };
         const [items, total] = await Promise.all([prisma.hrTravelRequest.findMany({ where, include: travelInclude, orderBy: { updatedAt: 'desc' }, skip: p.skip, take: p.pageSize }), prisma.hrTravelRequest.count({ where })]);
@@ -274,7 +293,7 @@ export class HrTravelService {
         return presentTravel(item, prisma, true, Boolean(scope.selfUserId));
     }
 
-    static async create(scope: Scope, payload: any, key: string) {
+    static async create(scope: Scope, payload: InputMap, key: string) {
         return idempotent(scope.companyId, key, `TRAVEL_CREATE:${scope.selfUserId ?? 'OWNER'}`, { actorId: scope.actorId, payload }, async tx => {
             const user = await ensureInternalUser(scope.companyId, scopedUser(scope, payload.userId), tx);
             const branchId = payload.branchId ? positiveId(payload.branchId, 'branchId') : null;
@@ -289,7 +308,7 @@ export class HrTravelService {
         });
     }
 
-    static async update(scope: Scope, id: number, payload: any, key: string) {
+    static async update(scope: Scope, id: number, payload: InputMap, key: string) {
         if (scope.selfUserId) throw new HrBenefitsError('El autoservicio no permite editar borradores por esta ruta', 403);
         return idempotent(scope.companyId, key, `TRAVEL_UPDATE:${id}`, { actorId: scope.actorId, payload }, async tx => {
             const item = await tx.hrTravelRequest.findFirst({ where: { id, companyId: scope.companyId } });
@@ -309,7 +328,7 @@ export class HrTravelService {
         });
     }
 
-    static async addExpense(scope: Scope, id: number, payload: any, key: string) {
+    static async addExpense(scope: Scope, id: number, payload: InputMap, key: string) {
         return idempotent(scope.companyId, key, `TRAVEL_EXPENSE:${id}`, { actorId: scope.actorId, payload }, async tx => {
             const item = await tx.hrTravelRequest.findFirst({ where: { id, companyId: scope.companyId, userId: scope.selfUserId, user: scope.selfUserId ? { accountType: 'INTERNAL', status: 'ACTIVE', employee: { is: { status: { in: ['ACTIVE', 'ON_LEAVE'] } } } } : undefined } });
             if (!item) throw new HrBenefitsError('Viatico no encontrado', 404);
@@ -321,13 +340,29 @@ export class HrTravelService {
             if (occurredOn < item.departureDate || occurredOn > item.returnDate) throw new HrBenefitsError('occurredOn debe estar dentro de las fechas del viaje');
             const expenseCurrency = currency(payload.currency);
             if (expenseCurrency !== item.currency) throw new HrBenefitsError('La moneda del gasto debe coincidir con la del viatico');
+            const claimed = await tx.hrTravelRequest.updateMany({
+                where: {
+                    id,
+                    companyId: scope.companyId,
+                    revision: item.revision,
+                    status: { in: ['ADVANCED', 'IN_SETTLEMENT'] },
+                },
+                data: { revision: { increment: 1 } },
+            });
+            if (claimed.count !== 1) {
+                throw new HrBenefitsError(
+                    'El viatico cambio concurrentemente; recargue el detalle',
+                    409,
+                    'HR_BENEFITS_REVISION_CONFLICT',
+                );
+            }
             const expense = await tx.hrTravelExpense.create({ data: { companyId: scope.companyId, travelRequestId: id, category: requiredText(payload.category, 'category', 64), description: requiredText(payload.description, 'description', 600), occurredOn, currency: expenseCurrency, claimedAmount: money(payload.claimedAmount, 'claimedAmount'), receiptReference: optionalText(payload.receiptReference, 160), createdById: scope.actorId } });
-            await trace(tx, { companyId: scope.companyId, resourceType: 'TRAVEL', resourceId: id, event: 'ADD_EXPENSE', actorId: scope.actorId, reason: expense.description, revision: item.revision, metadata: { expenseId: expense.id, amount: expense.claimedAmount.toFixed(2) } });
+            await trace(tx, { companyId: scope.companyId, resourceType: 'TRAVEL', resourceId: id, event: 'ADD_EXPENSE', actorId: scope.actorId, reason: expense.description, revision: item.revision + 1, metadata: { expenseId: expense.id, amount: expense.claimedAmount.toFixed(2) } });
             return serialize(expense);
         });
     }
 
-    static async transition(scope: Scope, id: number, action: string, payload: any, key: string) {
+    static async transition(scope: Scope, id: number, action: string, payload: InputMap, key: string) {
         return idempotent(scope.companyId, key, `TRAVEL_${action}:${id}`, { actorId: scope.actorId, payload }, async tx => {
             const item = await tx.hrTravelRequest.findFirst({ where: { id, companyId: scope.companyId, userId: scope.selfUserId, user: scope.selfUserId ? { accountType: 'INTERNAL', status: 'ACTIVE', employee: { is: { status: { in: ['ACTIVE', 'ON_LEAVE'] } } } } : undefined }, include: { ledger: { include: { reversalEntries: true } }, expenses: true } });
             if (!item) throw new HrBenefitsError('Viatico no encontrado', 404);
@@ -354,6 +389,13 @@ export class HrTravelService {
                 if (advanceTrace?.actorId === scope.actorId) throw new HrBenefitsError('Segregacion de funciones: quien registro el anticipo no puede cerrar la liquidacion', 409, 'HR_BENEFITS_DUTY_SEGREGATION');
                 const reference = requiredText(payload.settlementReference ?? input.reference, 'settlementReference', 160);
                 const pendingExpenses = item.expenses.filter(expense => expense.status === 'PENDING');
+                if (pendingExpenses.some(expense => expense.evidenceId === null)) {
+                    throw new HrBenefitsError(
+                        'La liquidacion no puede aceptar gastos sin evidencia verificada por un repositorio seguro',
+                        409,
+                        'HR_BENEFITS_EVIDENCE_REPOSITORY_REQUIRED',
+                    );
+                }
                 const reconciliation = reconcileTravelAmounts(item.advanceAmount ?? 0, pendingExpenses.map(expense => expense.claimedAmount));
                 const total = reconciliation.recognized;
                 for (const expense of pendingExpenses) await tx.hrTravelExpense.update({ where: { id: expense.id }, data: { status: 'ACCEPTED', recognizedAmount: expense.claimedAmount } });
@@ -400,7 +442,7 @@ async function createPrincipalSchedule(tx: Prisma.TransactionClient, companyId: 
 }
 
 export class HrLoanService {
-    static async list(scope: Scope, filters: any) {
+    static async list(scope: Scope, filters: InputMap) {
         const p = paging(filters); const where: Prisma.HrLoanWhereInput = { companyId: scope.companyId, userId: scope.selfUserId ?? (filters.userId ? Number(filters.userId) : undefined), user: scope.selfUserId ? { accountType: 'INTERNAL', status: 'ACTIVE', employee: { is: { status: { in: ['ACTIVE', 'ON_LEAVE'] } } } } : undefined, status: enumFilter(filters.status, ['REQUESTED', 'APPROVED', 'REJECTED', 'DISBURSED', 'ACTIVE', 'PAID', 'CLOSED', 'CANCELLED', 'REVERSED'] as const), ...filterDates(filters, 'requestedAt', true) };
         const [items, total] = await Promise.all([prisma.hrLoan.findMany({ where, include: loanInclude, orderBy: { updatedAt: 'desc' }, skip: p.skip, take: p.pageSize }), prisma.hrLoan.count({ where })]);
         return { items: await Promise.all(items.map(item => presentLoan(item, prisma, false, Boolean(scope.selfUserId)))), pagination: { page: p.page, pageSize: p.pageSize, total, totalPages: Math.ceil(total / p.pageSize) } };
@@ -412,7 +454,7 @@ export class HrLoanService {
         return presentLoan(item, prisma, true, Boolean(scope.selfUserId));
     }
 
-    static async create(scope: Scope, payload: any, key: string) {
+    static async create(scope: Scope, payload: InputMap, key: string) {
         return idempotent(scope.companyId, key, `LOAN_CREATE:${scope.selfUserId ?? 'OWNER'}`, { actorId: scope.actorId, payload }, async tx => {
             const user = await ensureInternalUser(scope.companyId, scopedUser(scope, payload.userId), tx);
             const preferredInstallments = positiveInt(payload.preferredInstallments, 'preferredInstallments', 120);
@@ -422,7 +464,7 @@ export class HrLoanService {
         });
     }
 
-    static async transition(scope: Scope, id: number, action: string, payload: any, key: string) {
+    static async transition(scope: Scope, id: number, action: string, payload: InputMap, key: string) {
         if (scope.selfUserId) throw new HrBenefitsError('Las transiciones de prestamo requieren Owner', 403);
         return idempotent(scope.companyId, key, `LOAN_${action}:${id}`, { actorId: scope.actorId, payload }, async tx => {
             const item = await tx.hrLoan.findFirst({ where: { id, companyId: scope.companyId }, include: { ledger: { include: { reversalEntries: true } }, scheduleVersions: true, deduction: { include: { applications: { include: { reversals: true } } } } } });
@@ -476,7 +518,7 @@ export class HrLoanService {
     }
 }
 
-function deductionVersionData(payload: any) {
+function deductionVersionData(payload: InputMap) {
     const requestedAmount = money(payload.requestedAmount, 'requestedAmount'); const perPeriodLimit = payload.perPeriodLimit ? money(payload.perPeriodLimit, 'perPeriodLimit') : null;
     const effectiveFrom = dateValue(payload.effectiveFrom, 'effectiveFrom'); const effectiveTo = optionalDate(payload.effectiveTo, 'effectiveTo');
     if (effectiveTo && effectiveTo < effectiveFrom) throw new HrBenefitsError('effectiveTo no puede ser anterior a effectiveFrom');
@@ -485,7 +527,7 @@ function deductionVersionData(payload: any) {
 }
 
 export class HrDeductionService {
-    static async list(scope: Scope, filters: any) {
+    static async list(scope: Scope, filters: InputMap) {
         const p = paging(filters); const where: Prisma.HrDeductionWhereInput = { companyId: scope.companyId, userId: scope.selfUserId ?? (filters.userId ? Number(filters.userId) : undefined), user: scope.selfUserId ? { accountType: 'INTERNAL', status: 'ACTIVE', employee: { is: { status: { in: ['ACTIVE', 'ON_LEAVE'] } } } } : undefined, status: enumFilter(filters.status, ['DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED', 'CANCELLED', 'REVERSED'] as const), ...filterDates(filters, 'createdAt', true) };
         const [items, total] = await Promise.all([prisma.hrDeduction.findMany({ where, include: deductionInclude, orderBy: { updatedAt: 'desc' }, skip: p.skip, take: p.pageSize }), prisma.hrDeduction.count({ where })]);
         return { items: await Promise.all(items.map(item => presentDeduction(item, prisma, false, Boolean(scope.selfUserId)))), pagination: { page: p.page, pageSize: p.pageSize, total, totalPages: Math.ceil(total / p.pageSize) } };
@@ -497,7 +539,7 @@ export class HrDeductionService {
         return presentDeduction(item, prisma, true, Boolean(scope.selfUserId));
     }
 
-    static async create(scope: Scope, payload: any, key: string) {
+    static async create(scope: Scope, payload: InputMap, key: string) {
         if (scope.selfUserId) throw new HrBenefitsError('Las deducciones solo pueden ser creadas por Owner', 403);
         return idempotent(scope.companyId, key, 'DEDUCTION_CREATE', { actorId: scope.actorId, payload }, async tx => {
             const user = await ensureInternalUser(scope.companyId, positiveId(payload.userId, 'userId'), tx); const versionData = deductionVersionData(payload);
@@ -506,7 +548,7 @@ export class HrDeductionService {
         });
     }
 
-    static async update(scope: Scope, id: number, payload: any, key: string) {
+    static async update(scope: Scope, id: number, payload: InputMap, key: string) {
         return idempotent(scope.companyId, key, `DEDUCTION_UPDATE:${id}`, { actorId: scope.actorId, payload }, async tx => {
             const item = await tx.hrDeduction.findFirst({ where: { id, companyId: scope.companyId }, include: { versions: { orderBy: { version: 'desc' }, take: 1 } } }); if (!item) throw new HrBenefitsError('Deduccion no encontrada', 404); if (item.status !== 'DRAFT') throw new HrBenefitsError('Solo una deduccion DRAFT puede editarse', 409);
             const expectedRevision = Number(payload.expectedRevision); if (!Number.isInteger(expectedRevision) || expectedRevision < 0) throw new HrBenefitsError('expectedRevision es requerido');
@@ -517,7 +559,7 @@ export class HrDeductionService {
         });
     }
 
-    static async transition(scope: Scope, id: number, action: string, payload: any, key: string) {
+    static async transition(scope: Scope, id: number, action: string, payload: InputMap, key: string) {
         return idempotent(scope.companyId, key, `DEDUCTION_${action}:${id}`, { actorId: scope.actorId, payload }, async tx => {
             const item = await tx.hrDeduction.findFirst({ where: { id, companyId: scope.companyId }, include: { applications: { include: { reversals: true } } } }); if (!item) throw new HrBenefitsError('Deduccion no encontrada', 404); const input = transitionInput(payload); if (item.revision !== input.expectedRevision) throw new HrBenefitsError('La deduccion cambio concurrentemente', 409, 'HR_BENEFITS_REVISION_CONFLICT');
             if (action === 'reverse' && !input.reference) throw new HrBenefitsError('reference es requerida para revertir la deduccion');

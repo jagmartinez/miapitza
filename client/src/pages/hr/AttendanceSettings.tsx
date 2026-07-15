@@ -34,6 +34,7 @@ import type {
   HrAttendanceSettingsLookups,
   HrAttendanceViolationMode,
   HrBiometricMaintenanceResult,
+  HrBiometricProviderHealth,
   HrBiometricStatus,
 } from '../../types/hr-attendance';
 import './attendance-settings.css';
@@ -96,6 +97,8 @@ export default function AttendanceSettings() {
   const [biometricReason, setBiometricReason] = useState('');
   const [revokedStatus, setRevokedStatus] = useState<HrBiometricStatus | null>(null);
   const [maintenance, setMaintenance] = useState<HrBiometricMaintenanceResult | null>(null);
+  const [providerHealth, setProviderHealth] = useState<HrBiometricProviderHealth | null>(null);
+  const [providerHealthLoading, setProviderHealthLoading] = useState(false);
 
   const scopeBranchId = scope ? Number(scope) : undefined;
   const selectedBranch = lookups.branches.find((branch) => branch.id === scopeBranchId);
@@ -137,6 +140,19 @@ export default function AttendanceSettings() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const loadProviderHealth = useCallback(async () => {
+    setProviderHealthLoading(true);
+    try {
+      setProviderHealth(await attendanceClient.getBiometricProviderHealth());
+    } catch (healthError) {
+      setProviderHealth({ provider: 'unknown', model: 'unknown', status: 'UNAVAILABLE', checkedAt: new Date().toISOString(), detail: getAttendanceErrorMessage(healthError, 'No fue posible consultar el proveedor') });
+    } finally {
+      setProviderHealthLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadProviderHealth(); }, [loadProviderHealth]);
 
   const updatePolicyField = <K extends keyof HrAttendancePolicy>(
     field: K,
@@ -719,6 +735,22 @@ export default function AttendanceSettings() {
           </section>
 
           <div className="hr-settings-columns">
+            <section className="hr-settings-card" aria-labelledby="provider-health-title">
+              <header>
+                <div>
+                  <h2 id="provider-health-title">Proveedor biométrico</h2>
+                  <p>Health check del adaptador configurado; no prueba precisión ni cumplimiento del proveedor.</p>
+                </div>
+                <ScanFace size={22} />
+              </header>
+              <dl className="hr-maintenance-result" aria-live="polite">
+                <div><dt>Estado</dt><dd>{providerHealthLoading ? 'Consultando…' : providerHealth?.status ?? 'Sin consultar'}</dd></div>
+                <div><dt>Adaptador</dt><dd>{providerHealth ? `${providerHealth.provider} · ${providerHealth.model}` : '—'}</dd></div>
+                <div><dt>Revisado</dt><dd>{providerHealth ? displayDateTime(providerHealth.checkedAt) : '—'}</dd></div>
+              </dl>
+              {providerHealth?.detail && <p className="hr-form-help">{providerHealth.detail}</p>}
+              <Button variant="ghost" onClick={() => void loadProviderHealth()} disabled={!online || providerHealthLoading}><RefreshCw size={15} /> Revalidar proveedor</Button>
+            </section>
             <section className="hr-settings-card" aria-labelledby="revoke-biometric-title">
               <header>
                 <div>

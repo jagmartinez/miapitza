@@ -39,4 +39,17 @@ describe('operational UX contracts', () => {
         expect(styles).toContain('max-width: 1700px');
         expect(styles).toContain('.reports-page > .reports-detail-page');
     });
+
+    it('uses the dedicated kitchen and explicit-warehouse delivery boundaries', () => {
+        const orders = read('./Orders.tsx');
+        const pos = read('./POS.tsx');
+
+        expect(orders).toContain('ordersAPI.markKitchenReady(orderId)');
+        expect(orders).toContain('canManageKitchen &&');
+        expect(pos).toContain('ordersAPI.complete(activeTableOrder.id, operationalWarehouseId)');
+        expect(pos).toContain('ordersAPI.cancel(activeTableOrder.id, pendingCancelReason, operationalWarehouseId)');
+        expect(pos).not.toContain("ordersAPI.updateStatus(activeTableOrder.id, 'DELIVERED')");
+        expect(pos.match(/ordersAPI\.updatePricing\(orderId/g)).toHaveLength(2);
+        expect(pos).toContain('La orden no se enviará a cocina hasta sincronizar el precio.');
+    });
 });

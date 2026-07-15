@@ -82,9 +82,7 @@ export class InventoryMovementService {
                     }
                 }
             },
-            orderBy: {
-                createdAt: 'desc'
-            },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             skip,
             take: limit
         });
@@ -300,9 +298,7 @@ export class InventoryMovementService {
                     }
                 }
             },
-            orderBy: {
-                createdAt: 'asc'
-            }
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
         });
     }
 

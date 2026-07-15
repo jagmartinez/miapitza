@@ -199,15 +199,45 @@ export class TicketPrintingService {
         const separator = '='.repeat(charWidth);
         const dashedLine = '-'.repeat(charWidth);
 
-        const center = (text: string) => {
-            const padding = Math.max(0, Math.floor((charWidth - text.length) / 2));
-            return ' '.repeat(padding) + text;
+        const sanitize = (value: unknown) => Array.from(String(value ?? ''), (character) => {
+            const code = character.charCodeAt(0);
+            return code < 32 || code === 127 ? ' ' : character;
+        }).join('')
+            .replace(/\s+/g, ' ')
+            .trim();
+        const wrap = (value: unknown): string[] => {
+            const text = sanitize(value);
+            if (!text) return [''];
+            const chunks: string[] = [];
+            for (let offset = 0; offset < text.length; offset += charWidth) {
+                chunks.push(text.slice(offset, offset + charWidth));
+            }
+            return chunks;
         };
 
+        const center = (text: string) => wrap(text).map((line) => {
+            const padding = Math.max(0, Math.floor((charWidth - line.length) / 2));
+            return ' '.repeat(padding) + line;
+        }).join('\n');
+
         const formatLine = (left: string, right: string) => {
-            const spaces = charWidth - left.length - right.length;
-            return left + ' '.repeat(Math.max(1, spaces)) + right;
+            const safeLeft = sanitize(left);
+            const safeRight = sanitize(right).slice(0, Math.max(1, charWidth - 2));
+            if (safeLeft.length + safeRight.length + 1 <= charWidth) {
+                return safeLeft + ' '.repeat(charWidth - safeLeft.length - safeRight.length) + safeRight;
+            }
+            const leftLines = wrap(safeLeft);
+            const lastLeft = leftLines.pop() ?? '';
+            if (lastLeft.length + safeRight.length + 1 <= charWidth) {
+                leftLines.push(lastLeft + ' '.repeat(charWidth - lastLeft.length - safeRight.length) + safeRight);
+            } else {
+                if (lastLeft) leftLines.push(lastLeft);
+                leftLines.push(safeRight.padStart(charWidth));
+            }
+            return leftLines.join('\n');
         };
+
+        const plainLine = (text: string) => wrap(text).join('\n');
 
         const lines: string[] = [];
 
@@ -219,12 +249,12 @@ export class TicketPrintingService {
         lines.push(separator);
 
         // Order info
-        lines.push(`Orden #: ${ticketData.order.number}`);
-        lines.push(`Fecha: ${new Date(ticketData.order.date).toLocaleString()}`);
-        lines.push(`Mesa: ${ticketData.order.table}`);
-        lines.push(`Mesero: ${ticketData.order.waiter}`);
+        lines.push(plainLine(`Orden #: ${ticketData.order.number}`));
+        lines.push(plainLine(`Fecha: ${new Date(ticketData.order.date).toLocaleString()}`));
+        lines.push(plainLine(`Mesa: ${ticketData.order.table}`));
+        lines.push(plainLine(`Mesero: ${ticketData.order.waiter}`));
         if (ticketData.order.customerName) {
-            lines.push(`Cliente: ${ticketData.order.customerName}`);
+            lines.push(plainLine(`Cliente: ${ticketData.order.customerName}`));
         }
         lines.push(dashedLine);
 
@@ -235,7 +265,7 @@ export class TicketPrintingService {
                 formatCurrency(item.subtotal, ticketData.header)
             ));
             for (const mod of item.modifiers) {
-                lines.push(`  + ${mod.name} ${formatCurrency(mod.price, ticketData.header)}`);
+                lines.push(plainLine(`  + ${mod.name} ${formatCurrency(mod.price, ticketData.header)}`));
             }
         }
         lines.push(dashedLine);

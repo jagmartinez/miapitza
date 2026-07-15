@@ -52,7 +52,7 @@ function selfUserId(req: Request): number {
 
 function requireCompanyOwner(req: Request): void {
     if (!isCompanyWide(req.user!)) {
-        throw new HrWorkforceError('Esta operaciÃ³n de RH requiere alcance Owner sobre toda la empresa', 403, 'HR_OWNER_SCOPE_REQUIRED');
+        throw new HrWorkforceError('Esta operación de RH requiere alcance Owner sobre toda la empresa', 403, 'HR_OWNER_SCOPE_REQUIRED');
     }
 }
 
@@ -79,7 +79,7 @@ function handleError(error: unknown, res: Response, next: NextFunction): void {
             return;
         }
         if (error.code === 'P2003') {
-            res.status(400).json({ success: false, message: 'La referencia indicada no es vÃ¡lida' });
+            res.status(400).json({ success: false, message: 'La referencia indicada no es válida' });
             return;
         }
     }
@@ -132,7 +132,7 @@ export class HrWorkforceController {
                 idempotencyKey(req),
                 forcedUserId,
             );
-            res.status(201).json({ success: true, data, message: 'Solicitud de correcciÃ³n creada' });
+            res.status(201).json({ success: true, data, message: 'Solicitud de corrección creada' });
         } catch (error) { handleError(error, res, next); }
     }
 
@@ -143,7 +143,7 @@ export class HrWorkforceController {
                 Number(req.params.id), req.user!.companyId, req.user!.userId,
                 req.body.decision, req.body.reason, idempotencyKey(req),
             );
-            res.json({ success: true, data, message: 'CorrecciÃ³n decidida mediante evento compensatorio' });
+            res.json({ success: true, data, message: 'Corrección decidida mediante evento compensatorio' });
         } catch (error) { handleError(error, res, next); }
     }
 
@@ -159,7 +159,7 @@ export class HrWorkforceController {
         try {
             requireCompanyOwner(req);
             const data = await AttendancePeriodService.create(req.user!.companyId, req.user!.userId, req.body, idempotencyKey(req));
-            res.status(201).json({ success: true, data, message: 'PerÃ­odo de asistencia creado' });
+            res.status(201).json({ success: true, data, message: 'Período de asistencia creado' });
         } catch (error) { handleError(error, res, next); }
     }
 
@@ -167,7 +167,7 @@ export class HrWorkforceController {
         try {
             requireCompanyOwner(req);
             const data = await AttendancePeriodService.close(Number(req.params.id), req.user!.companyId, req.user!.userId, req.body.reason, idempotencyKey(req));
-            res.json({ success: true, data, message: 'PerÃ­odo cerrado y habilitado como fuente de nÃ³mina' });
+            res.json({ success: true, data, message: 'Período cerrado y habilitado como fuente de nómina' });
         } catch (error) { handleError(error, res, next); }
     }
 
@@ -175,7 +175,7 @@ export class HrWorkforceController {
         try {
             requireCompanyOwner(req);
             const data = await AttendancePeriodService.reopen(Number(req.params.id), req.user!.companyId, req.user!.userId, req.body.reason, idempotencyKey(req));
-            res.json({ success: true, data, message: 'PerÃ­odo reabierto; dejÃ³ de ser elegible para nÃ³mina' });
+            res.json({ success: true, data, message: 'Período reabierto; dejó de ser elegible para nómina' });
         } catch (error) { handleError(error, res, next); }
     }
 

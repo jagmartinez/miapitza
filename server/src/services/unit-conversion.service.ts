@@ -25,6 +25,100 @@ export class UnitConversionService {
         return factor;
     }
 
+    /** Count every live or historical FK that depends on a unit definition. */
+    static async getUnitReferenceCount(
+        unitId: number,
+        companyId: number,
+        db: Prisma.TransactionClient | typeof prisma = prisma
+    ): Promise<number> {
+        const counts = await Promise.all([
+            db.product.count({ where: { companyId, baseUnitId: unitId } }),
+            db.productUnit.count({ where: { companyId, unitId } }),
+            db.recipe.count({ where: { unitId, menuItem: { companyId } } }),
+            db.modifier.count({ where: { unitId, modifierGroup: { companyId } } }),
+            db.productionRecipe.count({ where: { companyId, yieldUnitId: unitId } }),
+            db.productionRecipeComponent.count({ where: { unitId, recipe: { companyId } } }),
+            db.productionOrderItem.count({ where: { unitId, productionOrder: { companyId } } })
+        ]);
+        return counts.reduce((sum, count) => sum + count, 0);
+    }
+
+    /**
+     * Guard a semantic product-unit change. Historical base quantities and recipe
+     * contracts cannot be reinterpreted by changing a base unit or an existing
+     * conversion factor in place. Adding a new alternative unit is safe.
+     */
+    static async assertProductUnitContractCanChange(
+        productId: number,
+        companyId: number,
+        nextBaseUnitId: number,
+        nextAllowedUnits: Array<{ unitId: number; conversionFactor: number }>,
+        db: Prisma.TransactionClient | typeof prisma = prisma
+    ): Promise<void> {
+        const product = await db.product.findFirst({
+            where: { id: productId, companyId },
+            select: {
+                unit: true,
+                baseUnitId: true,
+                allowedUnits: {
+                    where: { companyId, active: true },
+                    select: { unitId: true, conversionFactor: true }
+                }
+            }
+        });
+        if (!product) throw new Error('Producto no encontrado para la empresa');
+
+        const nextBase = await db.unitOfMeasure.findFirst({
+            where: { id: nextBaseUnitId, companyId, active: true },
+            select: { abbreviation: true }
+        });
+        if (!nextBase) throw new Error('La unidad base no existe o no pertenece a la empresa');
+
+        // Pinning a legacy product to the catalog row with the same abbreviation
+        // preserves its physical meaning and is a safe migration, even with history.
+        const legacyEquivalentBase = product.baseUnitId == null
+            && this.normalizeLegacyAbbreviation(product.unit) ===
+                this.normalizeLegacyAbbreviation(nextBase.abbreviation);
+        let semanticChange = product.baseUnitId !== nextBaseUnitId && !legacyEquivalentBase;
+
+        const nextByUnit = new Map(nextAllowedUnits.map((unit) => [unit.unitId, unit.conversionFactor]));
+        for (const current of product.allowedUnits) {
+            // The base remains implicitly available with factor 1 even when the UI
+            // omits it from allowedUnits.
+            if (current.unitId === nextBaseUnitId) continue;
+            const nextFactor = nextByUnit.get(current.unitId);
+            if (nextFactor === undefined ||
+                Math.abs(Number(current.conversionFactor) - Number(nextFactor)) > 1e-9) {
+                semanticChange = true;
+                break;
+            }
+        }
+
+        if (!semanticChange) return;
+
+        const references = await Promise.all([
+            db.stock.count({ where: { productId, companyId, quantity: { not: 0 } } }),
+            db.inventoryMovement.count({ where: { productId, companyId } }),
+            db.inventoryBatch.count({ where: { productId, companyId } }),
+            db.purchaseOrderItem.count({ where: { productId, purchaseOrder: { companyId } } }),
+            db.recipe.count({ where: { productId, menuItem: { companyId } } }),
+            db.productionRecipe.count({ where: { productId, companyId } }),
+            db.productionRecipeComponent.count({
+                where: { componentProductId: productId, recipe: { companyId } }
+            }),
+            db.productionOrder.count({ where: { productId, companyId } }),
+            db.productionOrderItem.count({
+                where: { componentProductId: productId, productionOrder: { companyId } }
+            }),
+            db.modifier.count({ where: { productId, modifierGroup: { companyId } } })
+        ]);
+        if (references.some((count) => count > 0)) {
+            throw new Error(
+                'No se puede reinterpretar la unidad base o una conversión existente de un producto con existencias, historial o recetas.'
+            );
+        }
+    }
+
     private static sanitizeLegacyUnit(raw: string): string {
         return String(raw || '').trim().toLowerCase().replace(/[.\s_-]+/g, '');
     }
@@ -581,7 +675,13 @@ export class UnitConversionService {
 
         const product = await db.product.findFirst({
             where: { id: productId, companyId },
-            select: { id: true }
+            select: {
+                id: true,
+                allowedUnits: {
+                    where: { companyId, active: true },
+                    select: { unitId: true, conversionFactor: true }
+                }
+            }
         });
         if (!product) {
             throw new Error('Producto no encontrado para la empresa');
@@ -612,6 +712,37 @@ export class UnitConversionService {
         });
         if (!baseUom?.active) return null;
 
+        const relatedConfigs: Array<{ unitId: number; conversionFactor: number }> = [];
+        for (const abbr of config.relatedAbbrs) {
+            const relatedUom = await db.unitOfMeasure.findUnique({
+                where: { companyId_abbreviation: { companyId, abbreviation: abbr } }
+            });
+            if (!relatedUom?.active) continue;
+            if (relatedUom.measurementType === 'PACKAGE' &&
+                !(baseUom.measurementType === 'UNIT' && relatedUom.abbreviation === 'docena')) continue;
+            relatedConfigs.push({
+                unitId: relatedUom.id,
+                conversionFactor:
+                    this.positiveFactor(relatedUom.systemFactor, `la unidad "${relatedUom.abbreviation}"`) /
+                    this.positiveFactor(baseUom.systemFactor, `la unidad base "${baseUom.abbreviation}"`)
+            });
+        }
+
+        const proposedUnits = new Map(
+            product.allowedUnits.map((unit) => [unit.unitId, Number(unit.conversionFactor)])
+        );
+        proposedUnits.set(baseUom.id, 1);
+        for (const related of relatedConfigs) {
+            proposedUnits.set(related.unitId, related.conversionFactor);
+        }
+        await this.assertProductUnitContractCanChange(
+            productId,
+            companyId,
+            baseUom.id,
+            [...proposedUnits].map(([unitId, conversionFactor]) => ({ unitId, conversionFactor })),
+            db
+        );
+
         // Pin baseUnitId and align the legacy `unit` string to the resolved base
         // abbreviation so listings/kardex (which still display `product.unit`)
         // stay consistent with the configured base unit (e.g. "gr" -> "g").
@@ -634,36 +765,19 @@ export class UnitConversionService {
             update: { active: true }
         });
 
-        // Add related units
-        for (const abbr of config.relatedAbbrs) {
-            const relatedUom = await db.unitOfMeasure.findUnique({
-                where: { companyId_abbreviation: { companyId, abbreviation: abbr } }
-            });
-            if (!relatedUom?.active) continue;
-
-            // Skip PACKAGE-type related units (caja, saco, paquete, ...). Their
-            // systemFactor is 1, so an auto-derived factor would be a bogus 1:1
-            // conversion (e.g. 1 caja = 1 base). Packaging factors are product
-            // specific and must be configured manually in "Conversiones".
-            if (relatedUom.measurementType === 'PACKAGE' && !(baseUom.measurementType === 'UNIT' && relatedUom.abbreviation === 'docena')) continue;
-
-            // conversionFactor = how many base units per 1 of this unit
-            // systemFactor is in reference units (g for MASS, ml for VOLUME)
-            // factor = relatedUom.systemFactor / baseUom.systemFactor
-            const factor = this.positiveFactor(relatedUom.systemFactor, `la unidad "${relatedUom.abbreviation}"`) /
-                this.positiveFactor(baseUom.systemFactor, `la unidad base "${baseUom.abbreviation}"`);
-
+        // Add related units (already resolved and validated above).
+        for (const related of relatedConfigs) {
             await db.productUnit.upsert({
-                where: { productId_unitId: { productId, unitId: relatedUom.id } },
+                where: { productId_unitId: { productId, unitId: related.unitId } },
                 create: {
                     companyId,
                     productId,
-                    unitId: relatedUom.id,
-                    conversionFactor: factor,
+                    unitId: related.unitId,
+                    conversionFactor: related.conversionFactor,
                     isDefault: false,
                     active: true
                 },
-                update: { conversionFactor: factor, active: true }
+                update: { conversionFactor: related.conversionFactor, active: true }
             });
         }
 

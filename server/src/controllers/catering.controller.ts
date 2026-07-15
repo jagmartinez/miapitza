@@ -97,7 +97,7 @@ export class CateringController {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
             await CateringController.assertEventBranch(req, id);
-            await CateringService.deleteEvent(id, companyId);
+            await CateringService.deleteEvent(id, companyId, req.user!.userId);
             res.json({ success: true, message: 'Evento eliminado exitosamente' });
         } catch (error: unknown) {
             if (error instanceof BranchScopeError) return next(error);

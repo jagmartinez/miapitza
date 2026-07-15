@@ -40,10 +40,18 @@ services:
       DOCS_PASSWORD: ${DOCS_PASSWORD:-}
       BACKUP_ADMIN_COMPANY_ID: ${BACKUP_ADMIN_COMPANY_ID:-}
       STORAGE_DIR: /app/storage
+      PEDIDOSYA_HTTP_TIMEOUT_MS: ${PEDIDOSYA_HTTP_TIMEOUT_MS:-8000}
+      READINESS_DB_TIMEOUT_MS: ${READINESS_DB_TIMEOUT_MS:-2000}
       PORT: 3000
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   client:
     build:
@@ -58,7 +66,8 @@ services:
       # The runtime image serves the SPA on 8080; CLIENT_PORT is the host port.
       - "${CLIENT_PORT:-5173}:8080"
     depends_on:
-      - server
+      server:
+        condition: service_healthy
 
 # See .env.example for required environment variables
 

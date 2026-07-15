@@ -1,6 +1,6 @@
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
-import { effectiveUnitCost } from '../utils/product-cost';
+import { ProductionRecipeService } from './production-recipe.service';
 
 export class ReportProductionService {
     /**
@@ -27,7 +27,7 @@ export class ReportProductionService {
 
         const items = await Promise.all(menuItems.map(async (mi) => {
             const ingredients = await Promise.all(mi.recipes.map(async (r) => {
-                const unitCost = effectiveUnitCost(r.product.currentAverageCost, r.product.cost);
+                const unitCost = await ProductionRecipeService.resolveProductUnitCost(r.product.id, companyId);
                 const recipeUnit = r.unit || r.product.unit;
                 const qty = Number(r.quantity);
                 let baseQty = qty;
@@ -101,7 +101,11 @@ export class ReportProductionService {
     static async getProductionYield(companyId: number, filters?: { warehouseId?: number; branchId?: number }) {
         const stockWhere: Record<string, unknown> = { companyId };
         if (filters?.warehouseId) stockWhere.warehouseId = filters.warehouseId;
-        if (filters?.branchId) stockWhere.warehouse = { branchId: filters.branchId };
+        if (filters?.branchId) {
+            // CENTRAL warehouses are shared stock for every branch and must be
+            // included consistently with POS consumption and inventory alerts.
+            stockWhere.warehouse = { OR: [{ branchId: filters.branchId }, { branchId: null }] };
+        }
 
         const menuItems = await prisma.menuItem.findMany({
             where: { companyId, active: true },
@@ -256,7 +260,10 @@ export class ReportProductionService {
                         `${error instanceof Error ? error.message : String(error)}`
                     );
                 }
-                recipeCost += qtyInBase * effectiveUnitCost(r.product.currentAverageCost, r.product.cost);
+                recipeCost += qtyInBase * await ProductionRecipeService.resolveProductUnitCost(
+                    r.product.id,
+                    companyId
+                );
             }
             const margin = Number(mi.price) - recipeCost;
 
@@ -313,7 +320,10 @@ export class ReportProductionService {
      * Purchase Projection: estimates required purchases based on recent sales velocity and current stock.
      */
     static async getPurchaseProjection(companyId: number, filters?: { days?: number; warehouseId?: number; branchId?: number }) {
-        const projectionDays = filters?.days || 7;
+        const projectionDays = filters?.days ?? 7;
+        if (!Number.isInteger(projectionDays) || projectionDays < 1 || projectionDays > 365) {
+            throw new Error('Los dÃ­as de proyecciÃ³n deben ser un entero entre 1 y 365');
+        }
         const lookbackDays = 30;
         const since = new Date();
         since.setDate(since.getDate() - lookbackDays);
@@ -372,29 +382,32 @@ export class ReportProductionService {
 
         const stockWhere: Record<string, unknown> = { companyId };
         if (filters?.warehouseId) stockWhere.warehouseId = filters.warehouseId;
-        if (filters?.branchId) stockWhere.warehouse = { branchId: filters.branchId };
+        if (filters?.branchId) {
+            stockWhere.warehouse = { OR: [{ branchId: filters.branchId }, { branchId: null }] };
+        }
 
         const products = await prisma.product.findMany({
             where: { companyId, active: true, id: { in: Array.from(productDemand.keys()) } },
             include: {
                 stocks: { where: stockWhere, select: { quantity: true } },
-                category: { select: { name: true } }
+                category: { select: { name: true } },
+                baseUnit: { select: { abbreviation: true } }
             }
         });
 
-        const items = products.map(p => {
+        const items = await Promise.all(products.map(async p => {
             const dailyUsage = productDemand.get(p.id) || 0;
             const currentStock = p.stocks.reduce((s, st) => s + Number(st.quantity), 0);
             const projectedNeed = dailyUsage * projectionDays;
             const deficit = projectedNeed - currentStock;
             const daysUntilStockout = dailyUsage > 0 ? Math.floor(currentStock / dailyUsage) : 999;
-            const cost = effectiveUnitCost(p.currentAverageCost, p.cost);
+            const cost = await ProductionRecipeService.resolveProductUnitCost(p.id, companyId);
 
             return {
                 productId: p.id,
                 productName: p.name,
                 category: p.category?.name || 'Sin categoría',
-                unit: p.unit,
+                unit: p.baseUnit?.abbreviation || p.unit,
                 currentStock: Math.round(currentStock * 100) / 100,
                 dailyUsage: Math.round(dailyUsage * 100) / 100,
                 projectedNeed: Math.round(projectedNeed * 100) / 100,
@@ -402,7 +415,7 @@ export class ReportProductionService {
                 daysUntilStockout,
                 estimatedCost: Math.round(Math.max(0, deficit) * cost * 100) / 100,
             };
-        });
+        }));
 
         items.sort((a, b) => a.daysUntilStockout - b.daysUntilStockout);
 

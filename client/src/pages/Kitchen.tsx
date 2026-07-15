@@ -228,7 +228,10 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
 
     const printOrderTicket = (order: Order) => {
         const printWindow = window.open('', '_blank');
-        if (!printWindow) return;
+        if (!printWindow) {
+            showError('No se pudo abrir la impresión. Permite ventanas emergentes e inténtalo de nuevo.');
+            return;
+        }
 
         const e = escapeHtml;
         const ticketHTML = `

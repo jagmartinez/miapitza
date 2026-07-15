@@ -1,11 +1,14 @@
 import api from '../../services/api';
 import type {
     HrDashboardData,
+    HrCompensationRecord,
     HrEmployee,
+    HrEmployeeDocument,
     HrEmployeeFilters,
     HrEmployeeListResult,
     HrEmployeePayload,
     HrEnvelope,
+    HrEmploymentContract,
     HrNamedEntity,
     HrOrganizationCatalogs,
     HrUserSummary,
@@ -123,6 +126,68 @@ export const hrClient = {
             { status, ...details }
         );
         return unwrap(response.data);
+    },
+
+    async getEmployeeContracts(employeeId: number): Promise<HrEmploymentContract[]> {
+        const response = await api.get<HrEnvelope<HrEmploymentContract[]>>(`${HR_BASE}/employees/${employeeId}/contracts`);
+        return unwrap(response.data);
+    },
+
+    async createEmployeeContract(employeeId: number, payload: {
+        contractNumber: string; employmentType: string; startDate: string; endDate?: string; notes?: string;
+    }): Promise<HrEmploymentContract> {
+        const response = await api.post<HrEnvelope<HrEmploymentContract>>(`${HR_BASE}/employees/${employeeId}/contracts`, payload);
+        return unwrap(response.data);
+    },
+
+    async transitionEmployeeContract(employeeId: number, contractId: number, payload: {
+        action: 'ACTIVATE' | 'TERMINATE' | 'EXPIRE'; signedAt?: string; endDate?: string; reason: string;
+    }): Promise<HrEmploymentContract> {
+        const response = await api.post<HrEnvelope<HrEmploymentContract>>(`${HR_BASE}/employees/${employeeId}/contracts/${contractId}/transition`, payload);
+        return unwrap(response.data);
+    },
+
+    async getEmployeeCompensations(employeeId: number): Promise<HrCompensationRecord[]> {
+        const response = await api.get<HrEnvelope<HrCompensationRecord[]>>(`${HR_BASE}/employees/${employeeId}/compensations`);
+        return unwrap(response.data);
+    },
+
+    async appendEmployeeCompensation(employeeId: number, payload: {
+        contractId?: number; compensationType: 'SALARY' | 'HOURLY'; payFrequency: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY';
+        amount: string; currency: string; effectiveFrom: string; reason: string;
+    }): Promise<HrCompensationRecord> {
+        const response = await api.post<HrEnvelope<HrCompensationRecord>>(`${HR_BASE}/employees/${employeeId}/compensations`, payload);
+        return unwrap(response.data);
+    },
+
+    async getEmployeeDocuments(employeeId: number): Promise<HrEmployeeDocument[]> {
+        const response = await api.get<HrEnvelope<HrEmployeeDocument[]>>(`${HR_BASE}/employees/${employeeId}/documents`);
+        return unwrap(response.data);
+    },
+
+    async uploadEmployeeDocument(employeeId: number, payload: { documentType: string; expiresAt?: string; file: File }): Promise<HrEmployeeDocument> {
+        const form = new FormData();
+        form.append('documentType', payload.documentType);
+        if (payload.expiresAt) form.append('expiresAt', payload.expiresAt);
+        form.append('document', payload.file);
+        const response = await api.post<HrEnvelope<HrEmployeeDocument>>(`${HR_BASE}/employees/${employeeId}/documents`, form, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        return unwrap(response.data);
+    },
+
+    async downloadEmployeeDocument(employeeId: number, document: HrEmployeeDocument): Promise<void> {
+        const response = await api.get<Blob>(`${HR_BASE}/employees/${employeeId}/documents/${document.id}/download`, { responseType: 'blob' });
+        const url = URL.createObjectURL(response.data);
+        const anchor = window.document.createElement('a');
+        anchor.href = url;
+        anchor.download = document.fileName;
+        anchor.click();
+        URL.revokeObjectURL(url);
+    },
+
+    async revokeEmployeeDocument(employeeId: number, documentId: number, reason: string): Promise<void> {
+        await api.post(`${HR_BASE}/employees/${employeeId}/documents/${documentId}/revoke`, { reason });
     },
 
     async getOrganization(): Promise<HrOrganizationCatalogs> {

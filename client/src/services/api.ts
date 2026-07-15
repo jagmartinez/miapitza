@@ -416,6 +416,9 @@ export const ordersAPI = {
     updatePricing: (id: number, data: Record<string, unknown>) =>
         api.patch(`/orders/${id}/pricing`, data),
 
+    updateFiscalCustomer: (id: number, data: Record<string, unknown>) =>
+        api.patch(`/orders/${id}/fiscal-customer`, data),
+
     cancel: (id: number, cancelReason?: string, warehouseId?: number) =>
         api.post(`/orders/${id}/cancel`, { cancelReason, ...(warehouseId ? { warehouseId } : {}) }),
 
@@ -430,10 +433,36 @@ export const ordersAPI = {
 };
 
 export const invoicesAPI = {
+    issue: (orderId: number) => api.post(`/invoices/${orderId}/issue`),
+
     getData: (orderId: number) => api.get(`/invoices/${orderId}`),
 
     downloadPdf: (orderId: number) =>
         api.get(`/invoices/${orderId}/pdf`, { responseType: 'blob' }),
+
+    cancel: (orderId: number, data: { idempotencyKey: string; reason: string; wasteWarehouseId?: number }) =>
+        api.post(`/invoices/${orderId}/cancel`, data),
+
+    getCancellation: (orderId: number) => api.get(`/invoices/${orderId}/cancellation`),
+
+    downloadCancellationPdf: (orderId: number) =>
+        api.get(`/invoices/${orderId}/cancellation/pdf`, { responseType: 'blob' }),
+
+    issueCreditNote: (orderId: number, data: {
+        idempotencyKey: string;
+        reason: string;
+        inventoryAction: 'NO_RETURN' | 'RETURN_TO_STOCK';
+        externalRefunds: Array<{ paymentId: number; reference: string }>;
+    }) => api.post(`/invoices/${orderId}/credit-note`, data),
+
+    getCreditNote: (orderId: number) => api.get(`/invoices/${orderId}/credit-note`),
+
+    downloadCreditNotePdf: (orderId: number) =>
+        api.get(`/invoices/${orderId}/credit-note/pdf`, { responseType: 'blob' }),
+
+    listCreditNotes: (params?: Record<string, unknown>) => api.get('/invoices/credit-notes', { params }),
+
+    listCancellations: (params?: Record<string, unknown>) => api.get('/invoices/cancellations', { params }),
 };
 
 // Products API

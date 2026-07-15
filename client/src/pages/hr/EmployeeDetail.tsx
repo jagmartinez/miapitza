@@ -5,6 +5,8 @@ import {
     Briefcase,
     Building2,
     FileText,
+    FileLock2,
+    Landmark,
     Link,
     MapPin,
     RefreshCw,
@@ -14,12 +16,13 @@ import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
 import HrStatusPill from '../../components/hr/HrStatusPill';
+import EmployeeRecordPanel from '../../components/hr/EmployeeRecordPanel';
 import { getHrErrorMessage, hrClient } from '../../components/hr/hrClient';
 import type { HrEmployee } from '../../types/hr';
 import './hr.css';
 
-type DetailTab = 'data' | 'relationship' | 'user' | 'assignment';
-const DETAIL_TABS: DetailTab[] = ['data', 'relationship', 'user', 'assignment'];
+type DetailTab = 'data' | 'relationship' | 'user' | 'assignment' | 'contracts' | 'compensation' | 'documents';
+const DETAIL_TABS: DetailTab[] = ['data', 'relationship', 'user', 'assignment', 'contracts', 'compensation', 'documents'];
 
 function displayDate(value?: string | null): string {
     if (!value) return '—';
@@ -123,6 +126,9 @@ export default function EmployeeDetail() {
                         {tab('relationship', 'Relación', <Briefcase size={17} />)}
                         {tab('user', 'Usuario', <Link size={17} />)}
                         {tab('assignment', 'Asignación', <MapPin size={17} />)}
+                        {tab('contracts', 'Contratos', <FileText size={17} />)}
+                        {tab('compensation', 'Compensación', <Landmark size={17} />)}
+                        {tab('documents', 'Documentos', <FileLock2 size={17} />)}
                     </div>
 
                     <section
@@ -188,6 +194,9 @@ export default function EmployeeDetail() {
                                 <div className="hr-panel-empty"><MapPin size={32} /><p>Sin adscripciones laborales registradas.</p></div>
                             )
                         )}
+                        {activeTab === 'contracts' && <EmployeeRecordPanel employeeId={employee.id} mode="contracts" />}
+                        {activeTab === 'compensation' && <EmployeeRecordPanel employeeId={employee.id} mode="compensation" />}
+                        {activeTab === 'documents' && <EmployeeRecordPanel employeeId={employee.id} mode="documents" />}
                     </section>
                 </>
             )}

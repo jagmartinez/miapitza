@@ -40,7 +40,8 @@
     "test": "npm run test:unit",
     "test:unit": "jest --config jest.unit.config.cjs",
     "test:integration": "jest --config jest.integration.config.cjs --runInBand",
-    "test:coverage": "jest --config jest.unit.config.cjs --coverage"
+    "test:coverage": "jest --config jest.unit.config.cjs --coverage",
+    "test:release-harness": "ts-node --transpile-only scripts/release-operational-harness.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

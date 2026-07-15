@@ -47,6 +47,10 @@ export class WebSocketService {
                 }
             }
         });
+        const initializedServer = this.wss;
+        initializedServer.on('close', () => {
+            if (this.wss === initializedServer) this.wss = null;
+        });
 
         this.wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
             const client = ws as WebSocketClient;
@@ -436,6 +440,10 @@ export class WebSocketService {
         return this.clients.size;
     }
 
+    static isInitialized(): boolean {
+        return this.wss !== null;
+    }
+
     static shutdown(): void {
         this.clients.forEach((client) => {
             client.close(1000, 'Server shutting down');
@@ -445,6 +453,7 @@ export class WebSocketService {
 
         if (this.wss) {
             this.wss.close();
+            this.wss = null;
         }
     }
 }

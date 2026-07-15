@@ -19,6 +19,7 @@ describe('Phase 3 attendance API contract', () => {
     expect(source).toContain('`${HR_BASE}/attendance/devices/${id}/revoke`');
     expect(source).toContain('`${HR_BASE}/biometrics/users/${userId}/revoke`');
     expect(source).toContain('`${HR_BASE}/biometrics/maintenance/run`');
+    expect(source).toContain('`${HR_BASE}/biometrics/provider/health`');
   });
 
   it('sends evidence as multipart and requires idempotency headers', () => {

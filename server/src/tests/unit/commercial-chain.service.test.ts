@@ -9,12 +9,19 @@ import { InventoryConsumptionService } from '../../services/inventory-consumptio
 import { PedidosYaService } from '../../services/pedidosya.service';
 import { calculatePromotionDiscount } from '../../services/promotion.service';
 import { ReservationService } from '../../services/reservation.service';
+import { BranchService } from '../../services/branch.service';
 
 afterEach(() => {
     jest.restoreAllMocks();
 });
 
 describe('commercial chain request and pricing invariants', () => {
+    it('rejects empty and invalid branch mutations at the service boundary', async () => {
+        await expect(BranchService.update(2, 1, { name: '   ' }, 9)).rejects.toThrow(/nombre/i);
+        await expect(BranchService.update(2, 1, { status: 'DELETED' as never }, 9)).rejects.toThrow(/estado/i);
+        await expect(BranchService.update(2, 1, {}, 9)).rejects.toThrow(/campos válidos/i);
+    });
+
     it('rejects fractional POS quantities at the HTTP contract', () => {
         const req = { params: { id: '9' }, body: { menuItemId: 4, quantity: 1.5 } } as unknown as Request;
         const status = jest.fn().mockReturnThis();
@@ -70,6 +77,31 @@ describe('commercial chain request and pricing invariants', () => {
 });
 
 describe('kitchen order state invariants', () => {
+    it('does not settle a consumed zero-total order created with a manual discount', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 8,
+                    branchId: 2,
+                    status: 'READY',
+                    financialStatus: 'UNPAID',
+                    total: 0,
+                    discount: 10,
+                    discountCode: null,
+                    tax: 0,
+                    tipAmount: 0,
+                    items: [{ id: 2, subtotal: 10, menuItem: { recipes: [] } }],
+                    table: null
+                }))
+            }
+        };
+        jest.spyOn(prisma, '$transaction')
+            .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
+
+        await expect(OrderService.complete(8, 1, 3, 4)).rejects.toThrow(/promoción válida/i);
+    });
+
     it('cannot mark READY while an item has never been sent to kitchen', async () => {
         const tx = {
             $queryRaw: jest.fn(async () => []),
@@ -81,14 +113,42 @@ describe('kitchen order state invariants', () => {
                 })),
                 update: jest.fn()
             },
-            orderItem: { updateMany: jest.fn() }
+            user: { findFirst: jest.fn(async () => ({ id: 4 })) },
+            orderItem: { updateMany: jest.fn() },
+            auditLog: { create: jest.fn() }
         };
         jest.spyOn(prisma, '$transaction')
             .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
 
-        await expect(OrderService.updateStatus(8, 1, 'READY')).rejects.toThrow(/sin enviar a cocina/i);
+        await expect(OrderService.updateStatus(8, 1, 'READY', 4)).rejects.toThrow(/sin enviar a cocina/i);
         expect(tx.order.update).not.toHaveBeenCalled();
         expect(tx.orderItem.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects READY through the generic status boundary without a kitchen actor', async () => {
+        await expect(OrderService.updateStatus(8, 1, 'READY')).rejects.toThrow(/flujo dedicado de cocina/i);
+    });
+
+    it('makes a dedicated READY retry idempotent for notification recovery', async () => {
+        const ready = { id: 8, status: 'READY', salesChannel: 'RESTAURANT', items: [] };
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ready),
+                findUnique: jest.fn(async () => ready),
+                update: jest.fn()
+            },
+            user: { findFirst: jest.fn(async () => ({ id: 4 })) },
+            auditLog: { create: jest.fn() }
+        };
+        jest.spyOn(prisma, '$transaction')
+            .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
+
+        const result = await OrderService.updateStatus(8, 1, 'READY', 4);
+
+        expect(result.status).toBe('READY');
+        expect(tx.order.update).not.toHaveBeenCalled();
+        expect(tx.auditLog.create).not.toHaveBeenCalled();
     });
 
     it('send-to-kitchen stamps only unsent items and derives SENT_TO_KITCHEN', async () => {

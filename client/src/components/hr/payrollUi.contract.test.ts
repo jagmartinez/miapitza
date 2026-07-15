@@ -8,6 +8,7 @@ const transition = read('./PayrollTransitionForm.tsx');
 const configuration = read('./PayrollRuleConfigurationPanel.tsx');
 const receipt = read('./PayrollReceiptBreakdown.tsx');
 const onlineNotice = read('./PayrollOnlineNotice.tsx');
+const reconciliation = read('./PayrollReconciliationPanel.tsx');
 const css = read('../../pages/hr/payroll.css');
 const ui = [management, mine, transition, receipt, onlineNotice].join('\n');
 
@@ -38,6 +39,13 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(configuration).toContain("revision.status === 'UPLOADED'");
     expect(configuration).toContain("review(revision, 'VALIDATED')");
     expect(configuration).toContain('otra identidad revise la carga');
+  });
+
+  it('exposes an exact parallel reconciliation without claiming legal or production certification', () => {
+    expect(management).toContain('PayrollReconciliationPanel');
+    expect(reconciliation).toContain('reconcileParallelControl');
+    expect(reconciliation).toContain('No se aplica tolerancia ni fallback');
+    expect(reconciliation).toContain('no afirma validación legal ni certificación productiva');
   });
 
   it('presents regular payroll and aguinaldo as independent traceable runs', () => {

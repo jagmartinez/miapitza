@@ -7,6 +7,47 @@ export type ProductTypeValue = 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH' | 'INT
 
 export class ProductService {
 
+    /**
+     * `Product.unit` is the physical base for products that have not yet been
+     * migrated to `baseUnitId`. Reinterpreting it after transactional or recipe
+     * references exist would silently change historical quantities. Once a
+     * configured base exists, base changes must use the conversion endpoint.
+     */
+    private static async assertLegacyUnitCanChange(
+        productId: number,
+        companyId: number,
+        currentBaseUnitId: number | null
+    ): Promise<void> {
+        if (currentBaseUnitId) {
+            throw new Error(
+                'La unidad de referencia se administra desde Conversiones. No puede cambiarse desde la ficha del producto.'
+            );
+        }
+
+        const references = await Promise.all([
+            prisma.stock.count({ where: { productId, companyId, quantity: { not: 0 } } }),
+            prisma.inventoryMovement.count({ where: { productId, companyId } }),
+            prisma.inventoryBatch.count({ where: { productId, companyId } }),
+            prisma.purchaseOrderItem.count({ where: { productId, purchaseOrder: { companyId } } }),
+            prisma.recipe.count({ where: { productId, menuItem: { companyId } } }),
+            prisma.productionRecipe.count({ where: { productId, companyId } }),
+            prisma.productionRecipeComponent.count({
+                where: { componentProductId: productId, recipe: { companyId } }
+            }),
+            prisma.productionOrder.count({ where: { productId, companyId } }),
+            prisma.productionOrderItem.count({
+                where: { componentProductId: productId, productionOrder: { companyId } }
+            }),
+            prisma.modifier.count({ where: { productId, modifierGroup: { companyId } } })
+        ]);
+
+        if (references.some((count) => count > 0)) {
+            throw new Error(
+                'No se puede cambiar la unidad base de un producto con existencias, historial o recetas. Cree un producto nuevo o realice una migración controlada.'
+            );
+        }
+    }
+
     static async getAll(companyId: number, filters?: {
         type?: ProductTypeValue;
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE';
@@ -184,14 +225,24 @@ export class ProductService {
         unit: string;
         minStock?: number;
         cost?: number;
-        price?: number;
+        price?: number | null;
         type?: ProductTypeValue;
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE';
         observation?: string | null;
         active?: boolean;
     }, userId?: number) {
+        const name = data.name?.trim();
+        const unit = data.unit?.trim().toLowerCase();
+        if (!name) throw new Error('El nombre del producto es requerido.');
+        if (!unit) throw new Error('La unidad de referencia del producto es requerida.');
         if (data.cost !== undefined && (!Number.isFinite(data.cost) || data.cost < 0)) {
             throw new Error('El costo de referencia debe ser un número finito mayor o igual a cero.');
+        }
+        if (data.minStock !== undefined && (!Number.isFinite(data.minStock) || data.minStock < 0)) {
+            throw new Error('El inventario mínimo debe ser un número finito mayor o igual a cero.');
+        }
+        if (data.price != null && (!Number.isFinite(data.price) || data.price < 0)) {
+            throw new Error('El precio debe ser un número finito mayor o igual a cero.');
         }
         // La categoría, si se indica, debe pertenecer a la empresa (evita asociar
         // productos a categorías de otro tenant).
@@ -221,10 +272,10 @@ export class ProductService {
 
         const product = await prisma.product.create({
             data: {
-                name: data.name,
+                name,
                 sku: data.sku,
                 categoryId: data.categoryId,
-                unit: data.unit,
+                unit,
                 companyId,
                 minStock: data.minStock ?? 0,
                 cost: data.cost ?? 0,
@@ -261,16 +312,34 @@ export class ProductService {
         unit?: string;
         minStock?: number;
         cost?: number;
-        price?: number;
+        price?: number | null;
         type?: ProductTypeValue;
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE' | null;
         observation?: string | null;
         active?: boolean;
     }, userId?: number) {
+        const name = data.name === undefined ? undefined : data.name.trim();
+        const unit = data.unit === undefined ? undefined : data.unit.trim().toLowerCase();
+        if (name !== undefined && !name) throw new Error('El nombre del producto es requerido.');
+        if (unit !== undefined && !unit) throw new Error('La unidad de referencia del producto es requerida.');
         if (data.cost !== undefined && (!Number.isFinite(data.cost) || data.cost < 0)) {
             throw new Error('El costo de referencia debe ser un número finito mayor o igual a cero.');
         }
+        if (data.minStock !== undefined && (!Number.isFinite(data.minStock) || data.minStock < 0)) {
+            throw new Error('El inventario mínimo debe ser un número finito mayor o igual a cero.');
+        }
+        if (data.price != null && (!Number.isFinite(data.price) || data.price < 0)) {
+            throw new Error('El precio debe ser un número finito mayor o igual a cero.');
+        }
         const existing = await this.getById(id, companyId);
+
+        if (unit !== undefined && unit !== String(existing.unit).trim().toLowerCase()) {
+            await this.assertLegacyUnitCanChange(
+                id,
+                companyId,
+                (existing as { baseUnitId?: number | null }).baseUnitId ?? null
+            );
+        }
 
         // La categoría, si se indica, debe pertenecer a la empresa (evita reasignar
         // productos a categorías de otro tenant).
@@ -314,10 +383,10 @@ export class ProductService {
         // facts (`currentAverageCost` or `lastPurchaseCost`). Those fields are
         // updated exclusively by received purchases/valued inventory flows.
         const updateData: Prisma.ProductUncheckedUpdateInput = {
-            ...(data.name !== undefined ? { name: data.name } : {}),
+            ...(name !== undefined ? { name } : {}),
             ...(data.sku !== undefined ? { sku: data.sku } : {}),
             ...(data.categoryId !== undefined ? { categoryId: data.categoryId } : {}),
-            ...(data.unit !== undefined ? { unit: data.unit } : {}),
+            ...(unit !== undefined ? { unit } : {}),
             ...(data.minStock !== undefined ? { minStock: data.minStock } : {}),
             ...(data.cost !== undefined ? { cost: data.cost } : {}),
             ...(data.price !== undefined ? { price: data.price } : {}),
@@ -398,19 +467,13 @@ export class ProductService {
                 companyId
             };
 
-            const resolvedPage = page || 1;
-            const resolvedLimit = Math.min(limit || 100, 500);
-            const skip = (resolvedPage - 1) * resolvedLimit;
-
             const products = await prisma.product.findMany({
                 where,
-                skip,
-                take: resolvedLimit,
                 include: {
                     stocks: {
                         where: branchId ? {
                             warehouse: {
-                                branchId
+                                OR: [{ branchId }, { branchId: null }]
                             }
                         } : undefined,
                         include: {
@@ -450,7 +513,15 @@ export class ProductService {
                 return totalStock <= minStock;
             });
 
-            return lowStockProducts;
+            // Filtering happens after aggregating stocks, so applying skip/take to
+            // the SQL product list first would miss low-stock rows on later pages.
+            // Default callers need the complete alert set; explicit pagination is
+            // applied only after the physical predicate has been evaluated.
+            if (!limit) return lowStockProducts;
+            const resolvedPage = page || 1;
+            const resolvedLimit = Math.min(limit, 500);
+            const skip = (resolvedPage - 1) * resolvedLimit;
+            return lowStockProducts.slice(skip, skip + resolvedLimit);
         } catch (error: unknown) {
             console.error('[ProductService.getLowStock] Error:', error);
             throw new Error(`Failed to fetch low stock products: ${getErrorMessage(error)}`);

@@ -205,6 +205,13 @@ export class AttendancePolicyService {
 }
 
 export class BiometricService {
+    static async providerHealth(provider: FaceVerificationProvider = createFaceVerificationProvider()) {
+        if (!provider.healthCheck) {
+            return { provider: provider.name, model: provider.model, status: 'UNAVAILABLE' as const, checkedAt: new Date().toISOString(), detail: 'El adaptador no implementa health check' };
+        }
+        return provider.healthCheck();
+    }
+
     static async getMyProfile(companyId: number, userId: number) {
         await assertInternalEmployee(companyId, userId);
         const profile = await prisma.biometricProfile.findFirst({ where: { companyId, userId }, select: safeProfileSelect });
@@ -420,20 +427,40 @@ export class BiometricService {
     }
 
     static async processPurgeRequest(id: number, provider: FaceVerificationProvider = createFaceVerificationProvider()) {
+        const now = new Date();
         const request = await prisma.biometricPurgeRequest.findFirst({
-            where: { id, status: { in: ['PENDING', 'FAILED'] } },
+            where: {
+                id,
+                status: { in: ['PENDING', 'FAILED'] },
+                OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
+            },
         });
         if (!request) return false;
         if (request.encryptedTemplateRef === 'PURGED') return false;
+        const claimedAttempts = request.attempts + 1;
+        const claim = await prisma.biometricPurgeRequest.updateMany({
+            where: {
+                id,
+                status: request.status,
+                attempts: request.attempts,
+                OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
+            },
+            data: {
+                attempts: claimedAttempts,
+                nextAttemptAt: new Date(now.getTime() + 60 * 60_000),
+                lastError: null,
+            },
+        });
+        if (claim.count !== 1) return false;
         let requestProvider = provider;
         if (request.provider !== provider.name) {
             try {
                 requestProvider = createFaceVerificationProviderForName(request.provider);
             } catch (error) {
                 await prisma.biometricPurgeRequest.updateMany({
-                    where: { id, status: { in: ['PENDING', 'FAILED'] } },
+                    where: { id, status: request.status, attempts: claimedAttempts },
                     data: {
-                        status: 'FAILED', attempts: { increment: 1 },
+                        status: 'FAILED',
                         nextAttemptAt: new Date(Date.now() + 24 * 3600_000),
                         lastError: `Adaptador de purga no disponible para ${request.provider}: ${error instanceof Error ? error.message : 'error desconocido'}`.slice(0, 1000),
                     },
@@ -443,21 +470,20 @@ export class BiometricService {
         }
         try {
             await requestProvider.revokeTemplate(decryptBiometricTemplate(request.encryptedTemplateRef));
-            await prisma.biometricPurgeRequest.updateMany({
-                where: { id, status: { in: ['PENDING', 'FAILED'] } },
+            const completed = await prisma.biometricPurgeRequest.updateMany({
+                where: { id, status: request.status, attempts: claimedAttempts },
                 data: {
-                    status: 'COMPLETED', encryptedTemplateRef: 'PURGED', attempts: { increment: 1 },
+                    status: 'COMPLETED', encryptedTemplateRef: 'PURGED',
                     nextAttemptAt: null, lastError: null, completedAt: new Date(),
                 },
             });
-            return true;
+            return completed.count === 1;
         } catch (error) {
-            const attempts = request.attempts + 1;
             await prisma.biometricPurgeRequest.updateMany({
-                where: { id, status: { in: ['PENDING', 'FAILED'] } },
+                where: { id, status: request.status, attempts: claimedAttempts },
                 data: {
-                    status: 'FAILED', attempts: { increment: 1 },
-                    nextAttemptAt: new Date(Date.now() + Math.min(24 * 3600_000, 2 ** Math.min(attempts, 10) * 60_000)),
+                    status: 'FAILED',
+                    nextAttemptAt: new Date(Date.now() + Math.min(24 * 3600_000, 2 ** Math.min(claimedAttempts, 10) * 60_000)),
                     lastError: error instanceof Error ? error.message.slice(0, 1000) : 'Provider purge failed',
                 },
             });

@@ -55,6 +55,11 @@ export interface RecipeCost {
     lines: RecipeCostBreakdownLine[];
 }
 
+interface CostResolutionContext {
+    memo: Map<number, number>;
+    visiting: Set<number>;
+}
+
 export class ProductionRecipeService {
     // ==========================================
     // Reads
@@ -193,6 +198,78 @@ export class ProductionRecipeService {
         companyId: number,
         db: Tx | typeof prisma = prisma
     ): Promise<RecipeCost> {
+        return this.computeRecipeCostWithContext(recipeId, companyId, db, {
+            memo: new Map<number, number>(),
+            visiting: new Set<number>()
+        });
+    }
+
+    /**
+     * Resolve a product cost per base unit. A real weighted-average/reference
+     * cost wins; when an intermediate has no stored cost yet, derive it from
+     * its ACTIVE recipe. Legacy circular recipes fail closed.
+     */
+    static async resolveProductUnitCost(
+        productId: number,
+        companyId: number,
+        db: Tx | typeof prisma = prisma
+    ): Promise<number> {
+        return this.resolveProductUnitCostWithContext(productId, companyId, db, {
+            memo: new Map<number, number>(),
+            visiting: new Set<number>()
+        });
+    }
+
+    private static async resolveProductUnitCostWithContext(
+        productId: number,
+        companyId: number,
+        db: Tx | typeof prisma,
+        context: CostResolutionContext
+    ): Promise<number> {
+        const memoized = context.memo.get(productId);
+        if (memoized !== undefined) return memoized;
+        if (context.visiting.has(productId)) {
+            throw new Error(`Dependencia circular detectada al calcular el costo del producto ${productId}.`);
+        }
+
+        const product = await db.product.findFirst({
+            where: { id: productId, companyId },
+            select: { currentAverageCost: true, cost: true }
+        });
+        if (!product) throw new Error('Producto no encontrado para calcular costo.');
+
+        const directCost = effectiveUnitCost(product.currentAverageCost, product.cost);
+        if (directCost > 0) {
+            context.memo.set(productId, directCost);
+            return directCost;
+        }
+
+        const activeRecipe = await db.productionRecipe.findFirst({
+            where: { productId, companyId, status: 'ACTIVE' },
+            select: { id: true },
+            orderBy: { version: 'desc' }
+        });
+        if (!activeRecipe) {
+            context.memo.set(productId, directCost);
+            return directCost;
+        }
+
+        const recipeCost = await this.computeRecipeCostWithContext(
+            activeRecipe.id,
+            companyId,
+            db,
+            context
+        );
+        context.memo.set(productId, recipeCost.unitCost);
+        return recipeCost.unitCost;
+    }
+
+    private static async computeRecipeCostWithContext(
+        recipeId: number,
+        companyId: number,
+        db: Tx | typeof prisma,
+        context: CostResolutionContext
+    ): Promise<RecipeCost> {
         const recipe = await db.productionRecipe.findFirst({
             where: { id: recipeId, companyId },
             include: {
@@ -220,57 +297,69 @@ export class ProductionRecipeService {
         });
         if (!recipe) throw new Error('Receta de producción no encontrada');
 
+        if (context.visiting.has(recipe.productId)) {
+            throw new Error(`Dependencia circular detectada al calcular el costo del producto ${recipe.productId}.`);
+        }
+        context.visiting.add(recipe.productId);
+
         const lines: RecipeCostBreakdownLine[] = [];
         let batchCost = 0;
+        try {
+            for (const c of recipe.components) {
+                const unitAbbr = c.unitOfMeasure?.abbreviation || c.unit ||
+                    c.componentProduct.baseUnit?.abbreviation || c.componentProduct.unit;
+                const conv = await UnitConversionService.convert(
+                    c.componentProductId,
+                    companyId,
+                    Number(c.quantity),
+                    unitAbbr,
+                    db as Tx
+                );
+                const unitCost = await this.resolveProductUnitCostWithContext(
+                    c.componentProductId,
+                    companyId,
+                    db,
+                    context
+                );
+                const totalCost = conv.baseQuantity * unitCost;
+                batchCost += totalCost;
+                lines.push({
+                    componentProductId: c.componentProductId,
+                    componentName: c.componentProduct.name,
+                    componentType: c.componentProduct.type,
+                    unit: unitAbbr,
+                    baseUnit: conv.baseUnit,
+                    quantity: Number(c.quantity),
+                    baseQuantity: conv.baseQuantity,
+                    unitCost,
+                    totalCost
+                });
+            }
 
-        for (const c of recipe.components) {
-            const unitAbbr = c.unitOfMeasure?.abbreviation || c.unit ||
-                c.componentProduct.baseUnit?.abbreviation || c.componentProduct.unit;
-            const conv = await UnitConversionService.convert(
-                c.componentProductId,
+            // Convert recipe yield into the OUTPUT product's base unit.
+            const yieldUnitAbbr = this.effectiveYieldUnit(recipe).abbreviation;
+            const yieldConv = await UnitConversionService.convert(
+                recipe.productId,
                 companyId,
-                Number(c.quantity),
-                unitAbbr,
+                Number(recipe.yieldQuantity),
+                yieldUnitAbbr,
                 db as Tx
             );
-            const unitCost = effectiveUnitCost(
-                c.componentProduct.currentAverageCost,
-                c.componentProduct.cost
-            );
-            const totalCost = conv.baseQuantity * unitCost;
-            batchCost += totalCost;
-            lines.push({
-                componentProductId: c.componentProductId,
-                componentName: c.componentProduct.name,
-                componentType: c.componentProduct.type,
-                unit: unitAbbr,
-                baseUnit: conv.baseUnit,
-                quantity: Number(c.quantity),
-                baseQuantity: conv.baseQuantity,
-                unitCost,
-                totalCost
-            });
+            const yieldBaseQuantity = yieldConv.baseQuantity;
+            const unitCost = yieldBaseQuantity > 0 ? batchCost / yieldBaseQuantity : 0;
+
+            const result = {
+                batchCost: round6(batchCost),
+                yieldBaseQuantity,
+                yieldBaseUnit: yieldConv.baseUnit,
+                unitCost: round6(unitCost),
+                lines
+            };
+            context.memo.set(recipe.productId, result.unitCost);
+            return result;
+        } finally {
+            context.visiting.delete(recipe.productId);
         }
-
-        // Convert recipe yield into the OUTPUT product's base unit.
-        const yieldUnitAbbr = this.effectiveYieldUnit(recipe).abbreviation;
-        const yieldConv = await UnitConversionService.convert(
-            recipe.productId,
-            companyId,
-            Number(recipe.yieldQuantity),
-            yieldUnitAbbr,
-            db as Tx
-        );
-        const yieldBaseQuantity = yieldConv.baseQuantity;
-        const unitCost = yieldBaseQuantity > 0 ? batchCost / yieldBaseQuantity : 0;
-
-        return {
-            batchCost: round6(batchCost),
-            yieldBaseQuantity,
-            yieldBaseUnit: yieldConv.baseUnit,
-            unitCost: round6(unitCost),
-            lines
-        };
     }
 
     static async previewCost(companyId: number, data: {
@@ -321,7 +410,7 @@ export class ProductionRecipeService {
                 Number(component.quantity),
                 unit
             );
-            const unitCost = effectiveUnitCost(product.currentAverageCost, product.cost);
+            const unitCost = await this.resolveProductUnitCost(product.id, companyId);
             const totalCost = conversion.baseQuantity * unitCost;
             batchCost += totalCost;
             lines.push({

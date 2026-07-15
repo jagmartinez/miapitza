@@ -28,6 +28,8 @@ export interface User {
       name: string;
     };
   }[];
+  /** Effective grants across the primary and secondary roles. */
+  permissions?: string[];
   companyId: number;
   /** Effective company timezone supplied by the authenticated session. */
   timezone?: string;
@@ -223,8 +225,16 @@ export interface Order {
   status: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'CANCELLED';
   financialStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
   customerName?: string;
+  customerTaxId?: string;
+  customerTaxIdType?: string;
+  customerFiscalAddress?: string;
+  customerEmail?: string;
+  customerPhone?: string;
   invoiceNumber?: string;
   invoicedAt?: string;
+  invoiceFiscalStatus?: 'NOT_ISSUED' | 'ISSUED' | 'CREDITED' | 'CANCELLED';
+  fiscalCreditNote?: { id: number; number: string; status: 'ISSUED'; issuedAt: string } | null;
+  fiscalInvoiceCancellation?: { id: number; cancelledAt: string; reason: string } | null;
   closedAt?: string;
   deliveredAt?: string;
   kitchenStartedAt?: string | null;

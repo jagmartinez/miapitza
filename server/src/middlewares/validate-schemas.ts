@@ -24,6 +24,24 @@ export const createOrder: ValidationSchema = {
     body: {
         tableId: { type: 'number', min: 1 },
         orderType: { type: 'string', enum: ['DINE_IN', 'TAKEOUT', 'DELIVERY'] },
+        customerName: { type: 'string', max: 191 },
+        customerTaxId: { type: 'string', max: 100 },
+        customerTaxIdType: { type: 'string', max: 50 },
+        customerFiscalAddress: { type: 'string', max: 1000 },
+        customerEmail: { type: 'string', max: 191 },
+        customerPhone: { type: 'string', max: 50 },
+    },
+};
+
+export const updateFiscalCustomer: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1 } },
+    body: {
+        customerName: { type: 'string', max: 191 },
+        customerTaxId: { type: 'string', max: 100 },
+        customerTaxIdType: { type: 'string', max: 50 },
+        customerFiscalAddress: { type: 'string', max: 1000 },
+        customerEmail: { type: 'string', max: 191 },
+        customerPhone: { type: 'string', max: 50 },
     },
 };
 
@@ -346,6 +364,17 @@ export const createBranch: ValidationSchema = {
         maxLocationAccuracyM: { type: 'number', required: true, min: 1, max: 5000, integer: true },
         timezone: { type: 'string', max: 64 },
         attendanceEnabled: { type: 'boolean' },
+        status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'] },
+    },
+};
+
+export const updateBranch: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1, integer: true } },
+    body: {
+        name: { type: 'string', min: 1, max: 200 },
+        code: { type: 'string', min: 1, max: 20 },
+        address: { type: 'string', max: 500 },
+        phone: { type: 'string', max: 50 },
         status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'] },
     },
 };
@@ -713,5 +742,6 @@ export const finishProductionOrder: ValidationSchema = {
     params: { id: { type: 'number', required: true, min: 1 } },
     body: {
         producedQuantity: { type: 'number', required: false, min: 0 },
+        allowNegative: { type: 'boolean', required: false },
     },
 };

@@ -15,6 +15,25 @@ export const DEFAULT_COMPANY_SETTINGS: Readonly<Record<string, string>> = Object
     kds_urgent_minutes: '10'
 });
 
+export function validateConfiguredFiscalTaxId(
+    taxId: string,
+    settings: Record<string, string>,
+    label: string
+): void {
+    const length = Number(settings.fiscal_tax_id_length);
+    const charset = settings.fiscal_tax_id_charset?.trim().toUpperCase();
+    if (!Number.isInteger(length) || length < 1 || length > 50 || !['DIGITS', 'ALPHANUMERIC'].includes(charset || '')) {
+        throw new Error('Configure longitud y tipo de identificación fiscal antes de usar RUC/NIT');
+    }
+    const normalized = taxId.trim();
+    const validCharacters = charset === 'DIGITS'
+        ? /^\d+$/.test(normalized)
+        : /^[A-Za-z0-9-]+$/.test(normalized);
+    if (normalized.length !== length || !validCharacters) {
+        throw new Error(`${label} no cumple la configuración tributaria de la empresa`);
+    }
+}
+
 export class SettingService {
     private static readonly TIMEZONE_CACHE_TTL_MS = 60_000;
     private static readonly timezoneCache = new Map<number, { value: string; expiresAt: number }>();
@@ -91,6 +110,24 @@ export class SettingService {
             if (!Number.isInteger(minutes) || minutes < 1 || minutes > 240) {
                 throw new Error('Los umbrales KDS deben ser minutos enteros entre 1 y 240');
             }
+        }
+        if (name === 'fiscal_jurisdiction') {
+            const jurisdiction = value.trim();
+            if (!/^[A-Za-z0-9_-]{2,32}$/.test(jurisdiction)) {
+                throw new Error('La jurisdicción fiscal debe tener entre 2 y 32 caracteres alfanuméricos');
+            }
+        }
+        if (name === 'credit_note_series' && !/^[A-Z0-9][A-Z0-9-]{0,19}$/.test(value.trim())) {
+            throw new Error('La serie de nota de crédito admite A-Z, 0-9 y guion; máximo 20 caracteres');
+        }
+        if (name === 'fiscal_tax_id_length') {
+            const length = Number(value);
+            if (!Number.isInteger(length) || length < 1 || length > 50) {
+                throw new Error('La longitud de identificación fiscal debe ser un entero entre 1 y 50');
+            }
+        }
+        if (name === 'fiscal_tax_id_charset' && !['DIGITS', 'ALPHANUMERIC'].includes(value.trim().toUpperCase())) {
+            throw new Error('El tipo de identificación fiscal debe ser DIGITS o ALPHANUMERIC');
         }
     }
 

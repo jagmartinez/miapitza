@@ -3,7 +3,7 @@ import { HrBenefitsController } from '../controllers/hr-benefits.controller';
 import { ROLES } from '../constants/roles';
 import { requirePermission } from '../middlewares/auth';
 import { allowHrBodyFields } from '../middlewares/hr-dto';
-import { validate } from '../middlewares/validate';
+import { validate, type FieldRule } from '../middlewares/validate';
 
 const router = Router();
 const ownerRead = requirePermission('hr.benefits.read', ROLES.SUPERADMIN);
@@ -63,8 +63,8 @@ router.post('/travel-requests', ownerManage, allowHrBodyFields(travelFields), va
 router.put('/travel-requests/:id', ownerManage, allowHrBodyFields(travelUpdateFields), validate({ params: idParam, body: { ...travelBody, expectedRevision: transitionBody.expectedRevision } }), HrBenefitsController.travelUpdate);
 router.post('/travel-requests/:id/expenses', ownerManage, allowHrBodyFields(expenseFields), validate({ params: idParam, body: expenseBody }), HrBenefitsController.travelExpense);
 
-function travelTransition(path: string, action: string, permission: ReturnType<typeof requirePermission>, extraFields: readonly string[] = [], extraBody: Record<string, any> = {}) {
-    router.post(`/travel-requests/:id/${path}`, permission, allowHrBodyFields([...transitionFields, ...extraFields] as any), validate({ params: idParam, body: { ...transitionBody, ...extraBody } }), HrBenefitsController.travelTransition(action));
+function travelTransition(path: string, action: string, permission: ReturnType<typeof requirePermission>, extraFields: readonly string[] = [], extraBody: Record<string, FieldRule> = {}) {
+    router.post(`/travel-requests/:id/${path}`, permission, allowHrBodyFields([...transitionFields, ...extraFields]), validate({ params: idParam, body: { ...transitionBody, ...extraBody } }), HrBenefitsController.travelTransition(action));
 }
 travelTransition('submit', 'submit', ownerManage);
 travelTransition('approve', 'approve', ownerApprove, ['approvedAmount'], { approvedAmount: { type: 'string', required: true, pattern: moneyPattern } });
@@ -78,8 +78,8 @@ travelTransition('reverse', 'reverse', ownerApprove);
 router.get('/loans', ownerRead, validate({ query: listQuery }), HrBenefitsController.loanList);
 router.get('/loans/:id', ownerRead, validate({ params: idParam }), HrBenefitsController.loanGet);
 router.post('/loan-requests', ownerManage, allowHrBodyFields(loanFields), validate({ body: { ...loanBody, userId: { ...loanBody.userId, required: true } } }), HrBenefitsController.loanCreate);
-function loanTransition(path: string, action: string, extraFields: readonly string[] = [], extraBody: Record<string, any> = {}) {
-    router.post(`/loans/:id/${path}`, ownerApprove, allowHrBodyFields([...transitionFields, ...extraFields] as any), validate({ params: idParam, body: { ...transitionBody, ...extraBody } }), HrBenefitsController.loanTransition(action));
+function loanTransition(path: string, action: string, extraFields: readonly string[] = [], extraBody: Record<string, FieldRule> = {}) {
+    router.post(`/loans/:id/${path}`, ownerApprove, allowHrBodyFields([...transitionFields, ...extraFields]), validate({ params: idParam, body: { ...transitionBody, ...extraBody } }), HrBenefitsController.loanTransition(action));
 }
 loanTransition('approve', 'approve', ['approvedAmount', 'installmentCount', 'firstDueDate'], { approvedAmount: { type: 'string', required: true, pattern: moneyPattern }, installmentCount: { type: 'number', required: true, integer: true, min: 1, max: 120 }, firstDueDate: { type: 'string', required: true, pattern: datePattern } });
 loanTransition('reject', 'reject');

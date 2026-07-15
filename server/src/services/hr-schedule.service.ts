@@ -52,6 +52,57 @@ async function ensureSchedulableUser(
     if (!user) throw new HrScheduleError('El horario requiere un usuario interno con empleado activo', 403);
 }
 
+type EmployeeBranchWindow = {
+    branchId: number;
+    effectiveFrom: Date;
+    effectiveTo: Date | null;
+};
+
+function employeeBranchAssignmentCovers(
+    assignments: EmployeeBranchWindow[],
+    branchId: number,
+    localDateKey: string,
+) {
+    return assignments.some((assignment) => {
+        const from = assignment.effectiveFrom.toISOString().slice(0, 10);
+        const to = assignment.effectiveTo?.toISOString().slice(0, 10) || null;
+        return assignment.branchId === branchId && from <= localDateKey && (to === null || to >= localDateKey);
+    });
+}
+
+async function ensureEmployeeBranchAssignment(
+    companyId: number,
+    userId: number,
+    branchId: number,
+    startAt: Date,
+    timezone: string,
+    db: Prisma.TransactionClient | typeof prisma = prisma,
+) {
+    const localDateKey = zonedDateKey(startAt, timezone);
+    const localDate = parseDateKey(localDateKey, 'shiftDate').date;
+    const employee = await db.employee.findFirst({
+        where: {
+            companyId,
+            userId,
+            status: 'ACTIVE',
+            branchAssignments: {
+                some: {
+                    branchId,
+                    effectiveFrom: { lte: localDate },
+                    OR: [{ effectiveTo: null }, { effectiveTo: { gte: localDate } }],
+                },
+            },
+        },
+        select: { id: true },
+    });
+    if (!employee) {
+        throw new HrScheduleError(
+            `El empleado ${userId} no tiene una adscripción RH vigente para la sucursal ${branchId} en ${localDateKey}`,
+            409,
+        );
+    }
+}
+
 function nonNegativeInt(value: unknown, field: string, fallback = 0): number {
     if (value === undefined) return fallback;
     const parsed = Number(value);
@@ -515,6 +566,9 @@ export class WeeklyScheduleService {
         const positionIds = Array.from(new Set(shifts.map((shift) => optionalId(shift.jobPositionId, 'jobPositionId')).filter((id): id is number => !!id)));
         const templateIds = Array.from(new Set(shifts.map((shift) => optionalId(shift.shiftTemplateId, 'shiftTemplateId')).filter((id): id is number => !!id)));
         branchIds.forEach((branchId) => assertScopedBranch(branchId, scopeBranchId));
+        const weekEnd = addDateKey(weekStart, 6);
+        const weekStartDate = parseDateKey(weekStart, 'weekStart').date;
+        const weekEndDate = parseDateKey(weekEnd, 'weekEnd').date;
         const [branches, users, positions, templates] = await Promise.all([
             prisma.branch.findMany({ where: { companyId, id: { in: branchIds }, status: 'ACTIVE' }, select: { id: true, timezone: true } }),
             prisma.user.findMany({
@@ -522,7 +576,22 @@ export class WeeklyScheduleService {
                     companyId, id: { in: userIds }, status: 'ACTIVE',
                     accountType: 'INTERNAL', employee: { is: { status: 'ACTIVE' } },
                 },
-                select: { id: true, branchId: true, allowedBranches: { select: { branchId: true } } },
+                select: {
+                    id: true,
+                    branchId: true,
+                    allowedBranches: { select: { branchId: true } },
+                    employee: {
+                        select: {
+                            branchAssignments: {
+                                where: {
+                                    effectiveFrom: { lte: weekEndDate },
+                                    OR: [{ effectiveTo: null }, { effectiveTo: { gte: weekStartDate } }],
+                                },
+                                select: { branchId: true, effectiveFrom: true, effectiveTo: true },
+                            },
+                        },
+                    },
+                },
             }),
             prisma.jobPosition.findMany({ where: { companyId, id: { in: positionIds }, active: true }, select: { id: true } }),
             prisma.shiftTemplate.findMany({ where: { companyId, id: { in: templateIds }, active: true }, select: { id: true, branchId: true } }),
@@ -534,7 +603,6 @@ export class WeeklyScheduleService {
         const branchMap = new Map(branches.map((branch) => [branch.id, branch]));
         const userMap = new Map(users.map((user) => [user.id, user]));
         const templateMap = new Map(templates.map((template) => [template.id, template]));
-        const weekEnd = addDateKey(weekStart, 6);
         const normalized = shifts.map((shift): NormalizedScheduledShift => {
             const userId = positiveInt(shift.userId, 'userId');
             const branchId = positiveInt(shift.branchId, 'branchId');
@@ -570,6 +638,12 @@ export class WeeklyScheduleService {
             const localStart = zonedDateKey(startAt, branch.timezone);
             if (localStart < weekStart || localStart > weekEnd) {
                 throw new HrScheduleError(`El turno debe iniciar dentro de la semana ${weekStart}`);
+            }
+            if (!employeeBranchAssignmentCovers(user.employee!.branchAssignments, branchId, localStart)) {
+                throw new HrScheduleError(
+                    `El empleado ${userId} no tiene una adscripción RH vigente para la sucursal ${branchId} en ${localStart}`,
+                    409,
+                );
             }
             const breakMinutes = nonNegativeInt(shift.breakMinutes, 'breakMinutes');
             if (breakMinutes >= durationMinutes) throw new HrScheduleError('El descanso debe ser menor que la duración del turno');
@@ -728,6 +802,17 @@ export class WeeklyScheduleService {
                 id: true,
                 branchId: true,
                 allowedBranches: { select: { branchId: true } },
+                employee: {
+                    select: {
+                        branchAssignments: {
+                            where: {
+                                effectiveFrom: { lte: new Date(schedule.weekStart.getTime() + 6 * 86400000) },
+                                OR: [{ effectiveTo: null }, { effectiveTo: { gte: schedule.weekStart } }],
+                            },
+                            select: { branchId: true, effectiveFrom: true, effectiveTo: true },
+                        },
+                    },
+                },
             },
         });
         if (users.length !== userIds.length) {
@@ -742,6 +827,13 @@ export class WeeklyScheduleService {
             if (user.branchId !== shift.branchId && !user.allowedBranches.some((entry) => entry.branchId === shift.branchId)) {
                 throw new HrScheduleError(
                     `El usuario ${shift.userId} ya no esta autorizado para la sucursal ${shift.branchId}`,
+                    409,
+                );
+            }
+            const localDateKey = zonedDateKey(shift.startAt, shift.timezoneSnapshot);
+            if (!employeeBranchAssignmentCovers(user.employee!.branchAssignments, shift.branchId, localDateKey)) {
+                throw new HrScheduleError(
+                    `El empleado ${shift.userId} ya no tiene una adscripción RH vigente para la sucursal ${shift.branchId} en ${localDateKey}`,
                     409,
                 );
             }
@@ -909,6 +1001,9 @@ export class ShiftSwapService {
             select: { id: true },
         });
         if (!target) throw new HrScheduleError('Usuario destino no elegible para la sucursal', 404);
+        await ensureEmployeeBranchAssignment(
+            companyId, targetUserId, shift.branchId, shift.startAt, shift.timezoneSnapshot,
+        );
         const offeredShiftId = optionalId(input.offeredShiftId, 'offeredShiftId') || null;
         if (offeredShiftId) {
             const offered = await prisma.scheduledShift.findFirst({
@@ -916,12 +1011,15 @@ export class ShiftSwapService {
                     id: offeredShiftId, companyId, userId: targetUserId, status: 'SCHEDULED',
                     scheduleId: shift.scheduleId, assignmentOverride: { is: null },
                 },
-                select: { id: true, branchId: true },
+                select: { id: true, branchId: true, startAt: true, timezoneSnapshot: true },
             });
             if (!offered) throw new HrScheduleError('Turno ofrecido no pertenece al usuario destino o a la misma agenda', 404);
             if (offered.branchId !== shift.branchId) {
                 throw new HrScheduleError('Los turnos de un intercambio deben pertenecer a la misma sucursal', 409);
             }
+            await ensureEmployeeBranchAssignment(
+                companyId, requestedById, offered.branchId, offered.startAt, offered.timezoneSnapshot,
+            );
         }
         return prisma.$transaction(async (tx) => {
             const request = await tx.shiftSwapRequest.create({
@@ -1049,6 +1147,24 @@ export class ShiftSwapService {
             });
             if (eligibleUsers !== 2) {
                 throw new HrScheduleError('Uno de los usuarios ya no está activo o habilitado para la sucursal', 409);
+            }
+            await ensureEmployeeBranchAssignment(
+                companyId,
+                request.targetUserId,
+                request.requesterShift.branchId,
+                request.requesterShift.startAt,
+                request.requesterShift.timezoneSnapshot,
+                tx,
+            );
+            if (request.offeredShift) {
+                await ensureEmployeeBranchAssignment(
+                    companyId,
+                    request.requestedById,
+                    request.offeredShift.branchId,
+                    request.offeredShift.startAt,
+                    request.offeredShift.timezoneSnapshot,
+                    tx,
+                );
             }
             await this.assertApprovalConflicts(tx, request, companyId);
             const approved = await tx.shiftSwapRequest.updateMany({

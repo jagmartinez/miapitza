@@ -164,17 +164,35 @@ export class BranchService {
         phone?: string;
         status?: 'ACTIVE' | 'INACTIVE';
     }, actorUserId: number) {
-        // Verify ownership
-        const branch = await this.getById(id, companyId);
-        if (!branch) throw new Error("Branch not found or unauthorized");
+        if (!Number.isInteger(id) || id <= 0) throw new Error('Sucursal inválida');
+        if (data.name !== undefined && !data.name.trim()) throw new Error('El nombre de la sucursal es requerido');
+        if (data.name !== undefined && data.name.trim().length > 200) throw new Error('El nombre de la sucursal es demasiado largo');
+        if (data.code !== undefined && !data.code.trim()) throw new Error('El código de la sucursal es requerido');
+        if (data.code !== undefined && data.code.trim().length > 20) throw new Error('El código de la sucursal es demasiado largo');
+        if (data.status !== undefined && data.status !== 'ACTIVE' && data.status !== 'INACTIVE') {
+            throw new Error('Estado de sucursal inválido');
+        }
+        if (Object.values(data).every((value) => value === undefined)) throw new Error('No hay campos válidos para actualizar');
 
-        const disablingAttendance = data.status === 'INACTIVE' && branch.attendanceEnabled;
         return prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`Branch\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const branch = await tx.branch.findFirst({ where: { id, companyId } });
+            if (!branch) throw new Error('Branch not found or unauthorized');
+
+            const normalizedCode = data.code?.trim().toUpperCase();
+            if (normalizedCode !== undefined && normalizedCode !== branch.code) {
+                const duplicate = await tx.branch.findFirst({
+                    where: { companyId, code: normalizedCode, id: { not: id } },
+                    select: { id: true }
+                });
+                if (duplicate) throw new Error('Ya existe una sucursal con este código en la empresa');
+            }
+            const disablingAttendance = data.status === 'INACTIVE' && branch.attendanceEnabled;
             const updated = await tx.branch.update({
                 where: { id },
                 data: {
                     ...(data.name !== undefined ? { name: data.name.trim() } : {}),
-                    ...(data.code !== undefined ? { code: data.code.trim().toUpperCase() } : {}),
+                    ...(normalizedCode !== undefined ? { code: normalizedCode } : {}),
                     ...(data.address !== undefined ? { address: data.address.trim() || null } : {}),
                     ...(data.phone !== undefined ? { phone: data.phone.trim() || null } : {}),
                     ...(data.status !== undefined ? { status: data.status } : {}),

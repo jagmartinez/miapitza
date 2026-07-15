@@ -10,6 +10,7 @@ import { getUserAccentColor } from '../utils/authz';
 import { getOrderStatusClassName, getOrderStatusLabel } from '../utils/orderStatus';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import { useCurrency } from '../hooks/useCurrency';
+import { useAppToast } from '../context/ToastContext';
 import './TableOrdersModal.css';
 
 interface TableOrdersModalProps {
@@ -50,6 +51,7 @@ export default function TableOrdersModal({
     onConsolidate
 }: TableOrdersModalProps) {
     const { formatMoney, symbol } = useCurrency();
+    const { error: showError } = useAppToast();
     const containerRef = useRef<HTMLDivElement>(null);
     const { titleId } = useDialogA11y(isOpen, onClose, containerRef);
     if (!isOpen || !table) return null;
@@ -81,7 +83,10 @@ export default function TableOrdersModal({
     const handlePrintBill = () => {
         // ... (print logic remains the same)
         const printWindow = window.open('', '_blank');
-        if (!printWindow) return;
+        if (!printWindow) {
+            showError('No se pudo abrir la impresión. Permite ventanas emergentes e inténtalo de nuevo.');
+            return;
+        }
 
         const e = escapeHtml;
         const billHTML = `

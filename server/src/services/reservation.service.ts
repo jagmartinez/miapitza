@@ -428,6 +428,9 @@ export class ReservationService {
 
     // Get upcoming reservations
     static async getUpcomingReservations(companyId: number, branchId?: number, days: number = 7) {
+        if (!Number.isInteger(days) || days < 1 || days > 365) {
+            throw new Error('days debe ser un entero entre 1 y 365');
+        }
         const where: Prisma.ReservationWhereInput = {
             companyId,
             date: {

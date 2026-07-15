@@ -162,6 +162,14 @@ export class CateringService {
 
     static async createEvent(companyId: number, userId: number, data: CateringEventWriteBody) {
         const { services, menuItems, customerName, customerPhone, customerTaxId, customerId: cid, ...eventData } = data;
+        const normalizedCustomerName = customerName?.trim();
+        const normalizedTitle = typeof eventData.title === 'string' ? eventData.title.trim() : '';
+        const eventDate = new Date(eventData.date as string | number | Date);
+        const peopleCount = Number(eventData.peopleCount);
+        if (!normalizedCustomerName) throw new Error('El nombre del cliente es requerido');
+        if (!normalizedTitle) throw new Error('El título del evento es requerido');
+        if (Number.isNaN(eventDate.getTime()) || eventDate < new Date()) throw new Error('La fecha del evento debe ser futura');
+        if (!Number.isInteger(peopleCount) || peopleCount < 1) throw new Error('La cantidad de personas debe ser un entero mayor a 0');
         if (data.status !== undefined && data.status !== 'QUOTED') {
             throw new Error('Los eventos nuevos deben iniciar en estado COTIZADO');
         }
@@ -181,9 +189,9 @@ export class CateringService {
         let createCustomer = false;
 
         // If no customerId but name is provided, find or create
-        if (!customerId && customerName) {
+        if (!customerId && normalizedCustomerName) {
             const customer = await prisma.customer.findFirst({
-                where: { name: customerName, companyId }
+                where: { name: normalizedCustomerName, companyId }
             });
 
             if (customer) {
@@ -198,6 +206,8 @@ export class CateringService {
 
         // Services total
         const servicesToCreate = services?.map((s) => {
+            const cateringServiceId = parseInt(String(s.cateringServiceId), 10);
+            if (!Number.isInteger(cateringServiceId) || cateringServiceId <= 0) throw new Error('Servicio de catering inválido');
             const quantity = Number(s.quantity);
             const unitPrice = Number(s.unitPrice);
             if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('La cantidad del servicio debe ser mayor a 0');
@@ -205,7 +215,7 @@ export class CateringService {
             const subtotal = new Decimal(s.quantity).mul(new Decimal(s.unitPrice));
             totalAmount = totalAmount.add(subtotal);
             return {
-                cateringServiceId: parseInt(String(s.cateringServiceId), 10),
+                cateringServiceId,
                 quantity: new Decimal(s.quantity),
                 unitPrice: new Decimal(s.unitPrice),
                 subtotal,
@@ -215,6 +225,8 @@ export class CateringService {
 
         // Menu items total
         const menuItemsToCreate = menuItems?.map((m) => {
+            const menuItemId = parseInt(String(m.menuItemId), 10);
+            if (!Number.isInteger(menuItemId) || menuItemId <= 0) throw new Error('Plato de menú inválido');
             const quantity = Number(m.quantity);
             if (!Number.isInteger(quantity) || quantity <= 0) {
                 throw new Error('La cantidad de platos del menú debe ser un entero mayor a 0');
@@ -225,7 +237,7 @@ export class CateringService {
             const subtotal = new Decimal(m.quantity).mul(new Decimal(m.unitPrice));
             totalAmount = totalAmount.add(subtotal);
             return {
-                menuItemId: parseInt(String(m.menuItemId), 10),
+                menuItemId,
                 quantity,
                 unitPrice: new Decimal(m.unitPrice),
                 subtotal
@@ -241,8 +253,8 @@ export class CateringService {
         });
 
         const cleanEventData: Record<string, unknown> = {
-            title: eventData.title,
-            peopleCount: eventData.peopleCount,
+            title: normalizedTitle,
+            peopleCount,
             status: 'QUOTED',
             location: eventData.location,
             notes: eventData.notes,
@@ -253,8 +265,8 @@ export class CateringService {
             // Create the event and (if it starts FINISHED) deduct inventory in the
             // SAME transaction so a deduction failure rolls back the event.
             const event = await prisma.$transaction(async (tx) => {
-                if (createCustomer && customerName) {
-                    const customer = await tx.customer.create({ data: { name: customerName, phone: customerPhone, taxId: customerTaxId, companyId } });
+                if (createCustomer && normalizedCustomerName) {
+                    const customer = await tx.customer.create({ data: { name: normalizedCustomerName, phone: customerPhone, taxId: customerTaxId, companyId } });
                     customerId = customer.id;
                 } else if (customerId && (customerPhone || customerTaxId)) {
                     await tx.customer.updateMany({ where: { id: customerId, companyId }, data: { phone: customerPhone, taxId: customerTaxId } });
@@ -269,15 +281,28 @@ export class CateringService {
                         balance: totalAmount,
                         services: { create: servicesToCreate },
                         menuItems: { create: menuItemsToCreate },
-                        date:
-                            eventData.date != null
-                                ? new Date(eventData.date as string | number | Date)
-                                : undefined
+                        date: eventDate
                     } as Prisma.CateringEventCreateInput,
                     include: {
                         customer: true,
                         services: true,
                         menuItems: true
+                    }
+                });
+
+                await tx.auditLog.create({
+                    data: {
+                        companyId,
+                        userId,
+                        entityType: 'CateringEvent',
+                        entityId: created.id,
+                        action: 'CREATE',
+                        details: {
+                            branchId,
+                            totalAmount: Number(totalAmount),
+                            serviceLines: servicesToCreate.length,
+                            menuLines: menuItemsToCreate.length
+                        }
                     }
                 });
 
@@ -293,12 +318,28 @@ export class CateringService {
 
     static async updateEvent(id: number, companyId: number, userId: number, data: CateringEventWriteBody) {
         const { services, menuItems, customerName, customerPhone, customerTaxId, customerId: cid, warehouseId: warehouseIdInput, ...eventData } = data;
+        const normalizedCustomerName = customerName === undefined ? undefined : customerName.trim();
+        const normalizedTitle = eventData.title === undefined ? undefined : String(eventData.title).trim();
+        if (normalizedCustomerName !== undefined && !normalizedCustomerName) throw new Error('El nombre del cliente es requerido');
+        if (normalizedTitle !== undefined && !normalizedTitle) throw new Error('El título del evento es requerido');
+        if (eventData.peopleCount !== undefined) {
+            const peopleCount = Number(eventData.peopleCount);
+            if (!Number.isInteger(peopleCount) || peopleCount < 1) throw new Error('La cantidad de personas debe ser un entero mayor a 0');
+            eventData.peopleCount = peopleCount;
+        }
+        if (eventData.date !== undefined) {
+            const requestedDate = new Date(eventData.date as string | number | Date);
+            if (Number.isNaN(requestedDate.getTime())) throw new Error('La fecha del evento no es válida');
+            eventData.date = requestedDate;
+        }
+        if (normalizedTitle !== undefined) eventData.title = normalizedTitle;
 
         // Tenant-scoped load: never operate on another company's event.
         const oldEvent = await prisma.cateringEvent.findFirst({
             where: { id, companyId },
             select: {
                 status: true,
+                date: true,
                 branchId: true,
                 customerId: true,
                 services: { select: { subtotal: true } },
@@ -308,6 +349,13 @@ export class CateringService {
         });
 
         if (!oldEvent) throw new Error('Catering event not found');
+        if (
+            eventData.date instanceof Date
+            && eventData.date < new Date()
+            && eventData.date.getTime() !== oldEvent.date.getTime()
+        ) {
+            throw new Error('La fecha del evento debe ser futura');
+        }
         if (oldEvent.status === 'FINISHED' || oldEvent.status === 'CANCELLED') {
             throw new Error('Los eventos finalizados o cancelados son inmutables');
         }
@@ -345,9 +393,9 @@ export class CateringService {
         let createCustomer = false;
 
         // If no customerId but name is provided, find or create
-        if (!customerId && customerName) {
+        if (!customerId && normalizedCustomerName) {
             const customer = await prisma.customer.findFirst({
-                where: { name: customerName, companyId }
+                where: { name: normalizedCustomerName, companyId }
             });
 
             if (customer) {
@@ -367,6 +415,8 @@ export class CateringService {
             totalAmount = oldEvent.menuItems.reduce((sum, line) => sum.add(new Decimal(line.subtotal)), totalAmount);
         }
         const servicesToUpdate = services?.map((s) => {
+            const cateringServiceId = parseInt(String(s.cateringServiceId), 10);
+            if (!Number.isInteger(cateringServiceId) || cateringServiceId <= 0) throw new Error('Servicio de catering inválido');
             const quantity = Number(s.quantity);
             const unitPrice = Number(s.unitPrice);
             if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('La cantidad del servicio debe ser mayor a 0');
@@ -374,7 +424,7 @@ export class CateringService {
             const subtotal = new Decimal(s.quantity).mul(new Decimal(s.unitPrice));
             totalAmount = totalAmount.add(subtotal);
             return {
-                cateringServiceId: parseInt(String(s.cateringServiceId), 10),
+                cateringServiceId,
                 quantity: new Decimal(s.quantity),
                 unitPrice: new Decimal(s.unitPrice),
                 subtotal,
@@ -383,6 +433,8 @@ export class CateringService {
         }) || [];
 
         const menuItemsToUpdate = menuItems?.map((m) => {
+            const menuItemId = parseInt(String(m.menuItemId), 10);
+            if (!Number.isInteger(menuItemId) || menuItemId <= 0) throw new Error('Plato de menú inválido');
             const quantity = Number(m.quantity);
             if (!Number.isInteger(quantity) || quantity <= 0) {
                 throw new Error('La cantidad de platos del menú debe ser un entero mayor a 0');
@@ -391,7 +443,7 @@ export class CateringService {
             const subtotal = new Decimal(m.quantity).mul(new Decimal(m.unitPrice));
             totalAmount = totalAmount.add(subtotal);
             return {
-                menuItemId: parseInt(String(m.menuItemId), 10),
+                menuItemId,
                 quantity,
                 unitPrice: new Decimal(m.unitPrice),
                 subtotal
@@ -416,11 +468,11 @@ export class CateringService {
 
         try {
             const updatedEvent = await prisma.$transaction(async (tx) => {
-                if (createCustomer && customerName) {
-                    const customer = await tx.customer.create({ data: { name: customerName, phone: customerPhone, taxId: customerTaxId, companyId } });
+                if (createCustomer && normalizedCustomerName) {
+                    const customer = await tx.customer.create({ data: { name: normalizedCustomerName, phone: customerPhone, taxId: customerTaxId, companyId } });
                     customerId = customer.id;
-                } else if (customerId && (customerName || customerPhone || customerTaxId)) {
-                    await tx.customer.updateMany({ where: { id: customerId, companyId }, data: { name: customerName, phone: customerPhone, taxId: customerTaxId } });
+                } else if (customerId && (normalizedCustomerName || customerPhone || customerTaxId)) {
+                    await tx.customer.updateMany({ where: { id: customerId, companyId }, data: { name: normalizedCustomerName, phone: customerPhone, taxId: customerTaxId } });
                 }
                 await tx.$queryRaw`SELECT id FROM \`CateringEvent\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
                 const locked = await tx.cateringEvent.findFirst({
@@ -430,6 +482,9 @@ export class CateringService {
                 if (!locked) throw new Error('Catering event not found');
                 if (locked.status !== oldEvent.status) throw new Error('El evento cambió de estado; recargue e intente nuevamente');
                 if (data.status === 'CANCELLED' && locked.payments.length > 0) throw new Error('No se puede cancelar un evento con pagos activos; revierta los pagos primero');
+                if (locked.payments.length > 0 && branchId !== undefined && branchId !== oldEvent.branchId) {
+                    throw new Error('No se puede cambiar la sucursal de un evento con pagos activos; revierta los pagos primero');
+                }
                 if ((services !== undefined || menuItems !== undefined) && locked.payments.length > 0) {
                     throw new Error('No se pueden modificar conceptos o totales de un evento con pagos activos; revierta los pagos primero');
                 }
@@ -470,6 +525,22 @@ export class CateringService {
                 if (oldEvent?.status !== 'FINISHED' && data.status === 'FINISHED') {
                     await this.deductInventoryTx(tx, id, companyId, userId, warehouseId!);
                 }
+
+                await tx.auditLog.create({
+                    data: {
+                        companyId,
+                        userId,
+                        entityType: 'CateringEvent',
+                        entityId: id,
+                        action: data.status && data.status !== oldEvent.status ? 'STATUS_CHANGE' : 'UPDATE',
+                        details: {
+                            previousStatus: oldEvent.status,
+                            nextStatus: data.status ?? oldEvent.status,
+                            fields: Object.keys(data).filter((key) => data[key as keyof CateringEventWriteBody] !== undefined),
+                            warehouseId: data.status === 'FINISHED' ? warehouseId : null
+                        }
+                    }
+                });
 
                 return finalEvent;
             });
@@ -555,7 +626,7 @@ export class CateringService {
         }
     }
 
-    static async deleteEvent(id: number, companyId: number) {
+    static async deleteEvent(id: number, companyId: number, userId: number) {
         return await prisma.$transaction(async (tx) => {
             await tx.$queryRaw`SELECT id FROM \`CateringEvent\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
             const event = await tx.cateringEvent.findFirst({
@@ -571,7 +642,18 @@ export class CateringService {
             }
             await tx.cateringServiceItem.deleteMany({ where: { cateringEventId: id } });
             await tx.cateringMenuItem.deleteMany({ where: { cateringEventId: id } });
-            return await tx.cateringEvent.delete({ where: { id } });
+            const deleted = await tx.cateringEvent.delete({ where: { id } });
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    userId,
+                    entityType: 'CateringEvent',
+                    entityId: id,
+                    action: 'DELETE',
+                    details: { previousStatus: event.status }
+                }
+            });
+            return deleted;
         });
     }
 
@@ -971,26 +1053,38 @@ export class CateringService {
         companyId: number,
         data: Omit<Prisma.CateringServiceUncheckedCreateInput, 'companyId'>
     ) {
+        const name = String(data.name || '').trim();
+        const internalCost = Number(data.internalCost);
+        const salePrice = Number(data.salePrice);
+        if (!name) throw new Error('El nombre del servicio es requerido');
+        if (!Number.isFinite(internalCost) || internalCost < 0) throw new Error('El costo interno no puede ser negativo');
+        if (!Number.isFinite(salePrice) || salePrice < 0) throw new Error('El precio de venta no puede ser negativo');
         return await prisma.cateringService.create({
             data: {
                 companyId,
-                name: String(data.name).trim(),
+                name,
                 description: data.description,
-                internalCost: data.internalCost,
-                salePrice: data.salePrice,
+                internalCost,
+                salePrice,
                 active: data.active ?? true
             }
         });
     }
 
     static async updateService(id: number, companyId: number, data: Prisma.CateringServiceUpdateInput) {
+        const name = data.name === undefined ? undefined : String(data.name).trim();
+        const internalCost = data.internalCost === undefined ? undefined : Number(data.internalCost);
+        const salePrice = data.salePrice === undefined ? undefined : Number(data.salePrice);
+        if (name !== undefined && !name) throw new Error('El nombre del servicio es requerido');
+        if (internalCost !== undefined && (!Number.isFinite(internalCost) || internalCost < 0)) throw new Error('El costo interno no puede ser negativo');
+        if (salePrice !== undefined && (!Number.isFinite(salePrice) || salePrice < 0)) throw new Error('El precio de venta no puede ser negativo');
         return await prisma.cateringService.update({
             where: { id, companyId },
             data: {
-                ...(data.name !== undefined ? { name: data.name } : {}),
+                ...(name !== undefined ? { name } : {}),
                 ...(data.description !== undefined ? { description: data.description } : {}),
-                ...(data.internalCost !== undefined ? { internalCost: data.internalCost } : {}),
-                ...(data.salePrice !== undefined ? { salePrice: data.salePrice } : {}),
+                ...(internalCost !== undefined ? { internalCost } : {}),
+                ...(salePrice !== undefined ? { salePrice } : {}),
                 ...(data.active !== undefined ? { active: data.active } : {})
             }
         });

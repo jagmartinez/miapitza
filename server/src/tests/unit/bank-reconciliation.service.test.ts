@@ -137,6 +137,12 @@ describe('BankReconciliationService deposit lifecycle', () => {
         jest.spyOn(SettingService, 'getCashReconciliationTolerance').mockResolvedValue(1);
     });
 
+    it('rejects an unlinked deposit that would be orphaned from a branch-scoped actor', async () => {
+        await expect(BankReconciliationService.recordDeposit(1, 5, {
+            date: '2026-07-12', amount: 100, bankAccount: 'BAC-1', reference: 'DEP-ORPHAN'
+        }, 3)).rejects.toThrow(/asociar al menos un turno/i);
+    });
+
     it('allows a shift to be linked to a new deposit after the previous deposit was reversed', async () => {
         const tx = {
             $queryRaw: jest.fn().mockResolvedValue([] as never),

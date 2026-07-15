@@ -133,7 +133,7 @@ describe('HR workforce invariants', () => {
             (async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as never,
         );
 
-        await expect(LeaveRequestService.decide(7, 4, 11, 'APPROVED', 'AprobaciÃ³n'))
+        await expect(LeaveRequestService.decide(7, 4, 11, 'APPROVED', 'Aprobación'))
             .rejects.toMatchObject({ code: 'HR_SELF_APPROVAL_FORBIDDEN', statusCode: 409 });
     });
 

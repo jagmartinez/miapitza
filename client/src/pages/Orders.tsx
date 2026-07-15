@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { ordersAPI, invoicesAPI, cashShiftsAPI, warehousesAPI } from '../services/api';
-import { canSendOrderToKitchen, canCancelOrder, canCreatePayment } from '../utils/authz';
+import { canSendOrderToKitchen, canCancelOrder, canCreatePayment, canOperateKitchenLineItems } from '../utils/authz';
 import { useDebounce } from '../utils/useDebounce';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
@@ -34,6 +34,7 @@ export default function Orders() {
     const { formatMoney, symbol: currencySymbol } = useCurrency();
     const { error: showError, warning: showWarning } = useAppToast();
     const canSendKitchen = canSendOrderToKitchen(user);
+    const canManageKitchen = canOperateKitchenLineItems(user);
     const canCancel = canCancelOrder(user);
     const canPayOrder = canCreatePayment(user);
 
@@ -158,9 +159,15 @@ export default function Orders() {
             showWarning('Tu rol no puede enviar órdenes a cocina. Pide apoyo a un mesero o administrador.');
             return;
         }
+        if (newStatus === 'READY' && !canManageKitchen) {
+            showWarning('Solo cocina puede marcar una orden como lista.');
+            return;
+        }
         try {
             if (newStatus === 'SENT_TO_KITCHEN') {
                 await ordersAPI.sendToKitchen(orderId);
+            } else if (newStatus === 'READY') {
+                await ordersAPI.markKitchenReady(orderId);
             } else {
                 await ordersAPI.updateStatus(orderId, newStatus);
             }
@@ -181,7 +188,7 @@ export default function Orders() {
         try {
             // Keep the same fiscal invariant as POS and the table command center:
             // an official invoice must exist before PaymentModal can collect.
-            await invoicesAPI.getData(order.id);
+            await invoicesAPI.issue(order.id);
             const refreshed = await ordersAPI.getById(order.id);
             setPaymentOrder(refreshed.data.data as Order);
             setShowPaymentModal(true);
@@ -279,6 +286,25 @@ export default function Orders() {
         }
     };
 
+    const downloadFiscalCounterDocument = async (order: Order, kind: 'CREDIT_NOTE' | 'CANCELLATION') => {
+        try {
+            const response = kind === 'CREDIT_NOTE'
+                ? await invoicesAPI.downloadCreditNotePdf(order.id)
+                : await invoicesAPI.downloadCancellationPdf(order.id);
+            const fileName = kind === 'CREDIT_NOTE'
+                ? (order.fiscalCreditNote?.number || `nota-credito-${order.id}`)
+                : `anulacion-${order.invoiceNumber || order.id}`;
+            const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${fileName}.pdf`;
+            link.click();
+            URL.revokeObjectURL(url);
+        } catch {
+            showError('No se pudo descargar el contraflujo fiscal.');
+        }
+    };
+
     const openDeliveryModal = async (order: Order) => {
         setDeliveryOrder(order);
         setDeliveryWarehouseId(null);
@@ -337,7 +363,7 @@ export default function Orders() {
             );
         }
 
-        if (order.status === 'SENT_TO_KITCHEN' || order.status === 'IN_PREPARATION') {
+        if (canManageKitchen && (order.status === 'SENT_TO_KITCHEN' || order.status === 'IN_PREPARATION')) {
             buttons.push(
                 <Button key="ready" variant="primary" onClick={() => handleUpdateStatus(order.id, 'READY')}>
                     <CheckCircle size={16} /> Marcar Lista
@@ -366,7 +392,7 @@ export default function Orders() {
             );
         }
 
-        if (order.financialStatus === 'UNPAID' && order.status !== 'CANCELLED' && canCancel) {
+        if (order.financialStatus === 'UNPAID' && order.status !== 'CANCELLED' && !order.invoiceNumber && canCancel) {
             buttons.push(
                 <Button key="cancel" variant="ghost" className="text-danger" onClick={() => void openCancelModal(order)}>
                     <XCircle size={16} /> Cancelar
@@ -374,11 +400,24 @@ export default function Orders() {
             );
         }
 
-        // Add reprint invoice button for paid orders
-        if (order.financialStatus === 'PAID') {
+        if (order.invoiceNumber) {
             buttons.push(
                 <Button key="reprint" variant="secondary" onClick={() => void handleReprintInvoice(order)}>
                     <Printer size={16} /> Descargar Factura
+                </Button>
+            );
+        }
+        if (order.fiscalCreditNote) {
+            buttons.push(
+                <Button key="credit-note" variant="secondary" onClick={() => void downloadFiscalCounterDocument(order, 'CREDIT_NOTE')}>
+                    <Printer size={16} /> Nota de crédito
+                </Button>
+            );
+        }
+        if (order.fiscalInvoiceCancellation) {
+            buttons.push(
+                <Button key="invoice-cancellation" variant="secondary" onClick={() => void downloadFiscalCounterDocument(order, 'CANCELLATION')}>
+                    <Printer size={16} /> Constancia de anulación
                 </Button>
             );
         }
@@ -660,6 +699,18 @@ export default function Orders() {
                                             <div className="detail-info-item customer-item">
                                                 <span className="detail-label">Cliente</span>
                                                 <span className="detail-value">{selectedOrder.customerName}</span>
+                                            </div>
+                                        )}
+                                        {selectedOrder.invoiceNumber && (
+                                            <div className="detail-info-item">
+                                                <span className="detail-label">Estado fiscal</span>
+                                                <span className="detail-value">
+                                                    {selectedOrder.invoiceFiscalStatus === 'CREDITED'
+                                                        ? `Acreditada · ${selectedOrder.fiscalCreditNote?.number || ''}`
+                                                        : selectedOrder.invoiceFiscalStatus === 'CANCELLED'
+                                                            ? 'Anulada'
+                                                            : 'Emitida'}
+                                                </span>
                                             </div>
                                         )}
                                         {selectedOrder.status === 'CANCELLED' && (

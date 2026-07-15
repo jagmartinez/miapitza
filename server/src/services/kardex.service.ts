@@ -96,9 +96,13 @@ export class KardexService {
                         }
                     }
                 },
-                orderBy: {
-                    createdAt: 'asc'
-                }
+                // `createdAt` only has millisecond precision. Use the immutable id
+                // as a tie-breaker so simultaneous movements always replay in the
+                // same order as the persisted ledger.
+                orderBy: [
+                    { createdAt: 'asc' },
+                    { id: 'asc' }
+                ]
             });
 
             // Calculate opening balance (stock before first movement in range).
@@ -128,9 +132,10 @@ export class KardexService {
                 // Walk movements oldest-first so the last entry per warehouse wins.
                 const previousMovements = await prisma.inventoryMovement.findMany({
                     where: openingWhere,
-                    orderBy: {
-                        createdAt: 'asc'
-                    },
+                    orderBy: [
+                        { createdAt: 'asc' },
+                        { id: 'asc' }
+                    ],
                     select: {
                         warehouseId: true,
                         balanceQty: true,
@@ -163,7 +168,23 @@ export class KardexService {
 
             const enrichedMovements = movements.map((movement) => {
                 const quantity = Number(movement.quantity);
-                const unitCost = effectiveUnitCost(movement.unitCost, product.currentAverageCost);
+                const persistedUnitCost = movement.unitCost === null
+                    ? Number.NaN
+                    : Number(movement.unitCost);
+                const persistedTotalCost = movement.totalCost === null
+                    ? Number.NaN
+                    : Number(movement.totalCost);
+                // A legitimate historical cost of zero must stay zero. Replacing it
+                // with today's product average would rewrite the financial meaning
+                // of an immutable inventory movement in reports and exports.
+                const unitCost = Number.isFinite(persistedUnitCost)
+                    ? persistedUnitCost
+                    : Number.isFinite(persistedTotalCost) && quantity !== 0
+                        ? persistedTotalCost / quantity
+                        : effectiveUnitCost(null, product.currentAverageCost);
+                const totalCost = Number.isFinite(persistedTotalCost)
+                    ? persistedTotalCost
+                    : quantity * unitCost;
 
                 // A TRANSFER has two legs sharing a transferGroupId: the OUT leg (source
                 // warehouse) and the IN leg (destination warehouse). Distinguish them by
@@ -205,7 +226,7 @@ export class KardexService {
                     out: isIncoming ? null : quantity,
                     balance,
                     unitCost,
-                    totalCost: quantity * unitCost,
+                    totalCost,
                     balanceCost,
                     // Original unit/quantity as entered by the user (before conversion
                     // to the base unit). Exposed so the UI can show e.g. "2 caja".

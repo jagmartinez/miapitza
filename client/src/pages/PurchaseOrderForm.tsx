@@ -85,7 +85,9 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
         try {
             const [supRes, prodRes, branchRes, warehouseRes] = await Promise.all([
                 suppliersAPI.getAll({ active: true }),
-                productsAPI.getAll({ type: 'INGREDIENT' }), // Assuming we buy ingredients
+                // Purchasing may include ingredients, packaging, resale goods or
+                // externally sourced intermediates; do not hide valid product types.
+                productsAPI.getAll({ active: true, limit: 500 }),
                 branchesAPI.getAll(),
                 warehousesAPI.getAll()
             ]);

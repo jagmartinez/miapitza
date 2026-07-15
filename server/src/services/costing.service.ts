@@ -82,7 +82,7 @@ export class CostingService {
         if (batchDelegate?.findFirst) {
             const oldest = await batchDelegate.findFirst({
                 where: { productId, companyId, remainingQty: { gt: 0 } },
-                orderBy: { createdAt: 'asc' },
+                orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
                 select: { unitCost: true }
             });
             if (oldest && Number(oldest.unitCost) > 0) {
@@ -321,7 +321,7 @@ export class CostingService {
         for (const productId of productIds) {
             const history = await db.productCostHistory.findMany({
                 where: { productId, companyId },
-                orderBy: { createdAt: 'asc' }
+                orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
             });
             histories.set(productId, history);
         }
@@ -404,7 +404,7 @@ export class CostingService {
         for (const productId of productIds) {
             histories.set(productId, await db.productCostHistory.findMany({
                 where: { productId, companyId },
-                orderBy: { createdAt: 'asc' }
+                orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
             }));
         }
 
@@ -530,7 +530,7 @@ export class CostingService {
             // Weighted average: replay all purchase history entries
             const history = await prisma.productCostHistory.findMany({
                 where: { productId, companyId },
-                orderBy: { createdAt: 'asc' }
+                orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
             });
 
             let runningStock = 0;

@@ -16,6 +16,7 @@ import type {
   HrAttendanceReviewPayload,
   HrBiometricEnrollPayload,
   HrBiometricMaintenanceResult,
+  HrBiometricProviderHealth,
   HrBiometricProfile,
   HrAttendanceSettingsLookups,
   HrTodayAttendance,
@@ -239,6 +240,19 @@ export const attendanceClient = {
   async runBiometricMaintenance(): Promise<HrBiometricMaintenanceResult> {
     const response = await api.post(`${HR_BASE}/biometrics/maintenance/run`, {});
     return unwrap(response.data);
+  },
+
+  async getBiometricProviderHealth(): Promise<HrBiometricProviderHealth> {
+    try {
+      const response = await api.get(`${HR_BASE}/biometrics/provider/health`, { skipOfflineCache: true });
+      return unwrap(response.data);
+    } catch (error) {
+      const response = (error as { response?: { status?: number; data?: unknown } }).response;
+      if (response?.status === 503 && response.data && typeof response.data === 'object' && 'data' in response.data) {
+        return (response.data as { data: HrBiometricProviderHealth }).data;
+      }
+      throw error;
+    }
   },
 };
 

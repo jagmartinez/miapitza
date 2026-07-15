@@ -377,3 +377,88 @@
 .hr-employee-detail-page .page-tab {
     flex: 0 0 auto;
 }
+
+.hr-record-panel {
+    display: grid;
+    gap: var(--spacing-lg);
+    padding: var(--spacing-lg);
+}
+
+.hr-record-form {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-background);
+}
+
+.hr-record-form h3,
+.hr-record-form .span-full {
+    grid-column: 1 / -1;
+}
+
+.hr-record-form h3 {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin: 0;
+}
+
+.hr-record-form label,
+.hr-record-reason {
+    display: grid;
+    gap: var(--spacing-xs);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+}
+
+.hr-record-form input,
+.hr-record-form select,
+.hr-record-form textarea,
+.hr-record-reason input {
+    width: 100%;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    color: var(--color-text);
+}
+
+.hr-record-alert {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-background);
+}
+
+.hr-record-alert.danger { border-color: var(--color-danger); color: var(--color-danger); }
+.hr-record-alert.success { border-color: var(--color-success); color: var(--color-success); }
+
+.hr-record-list { display: grid; gap: var(--spacing-sm); }
+.hr-record-list article {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-background);
+}
+.hr-record-list article > div:first-child { display: grid; gap: 3px; }
+.hr-record-list span,
+.hr-record-list small { color: var(--color-text-secondary); }
+.hr-record-actions { display: flex; flex-wrap: wrap; gap: var(--spacing-xs); }
+
+@media (max-width: 900px) {
+    .hr-record-form { grid-template-columns: 1fr; }
+    .hr-record-form h3,
+    .hr-record-form .span-full { grid-column: auto; }
+    .hr-record-list article { align-items: flex-start; flex-direction: column; }
+}

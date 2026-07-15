@@ -9,6 +9,7 @@ import { commitBenefitDeductions, projectBenefitDeductions, reverseBenefitDeduct
 
 type Db = Prisma.TransactionClient | typeof prisma;
 type JsonObject = Record<string, unknown>;
+type InputMap = Record<string, unknown>;
 
 export class HrPayrollError extends Error {
     constructor(message: string, public readonly statusCode = 400, public readonly code = 'HR_PAYROLL_INVALID') {
@@ -233,11 +234,16 @@ const runInclude = {
 
 function serialize<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T; }
 
-function presentRule(rule: any) {
+function presentRule<T extends object>(rule: T) {
     return serialize({ ...rule, configuration: undefined });
 }
 
-function presentRun(run: any) {
+type RunWithRelations = Prisma.PayrollRunGetPayload<{ include: typeof runInclude }> & {
+    anomalyCount?: number;
+    blockingAnomalyCount?: number;
+};
+
+function presentRun(run: RunWithRelations) {
     return serialize({
         ...run,
         ruleVersion: run.ruleVersion ? presentRule(run.ruleVersion) : run.ruleVersion,
@@ -308,13 +314,13 @@ async function idempotent<T>(companyId: number, keyValue: string, operation: str
     }
 }
 
-function paging(input: any) {
+function paging(input: InputMap) {
     const page = Math.max(1, Number(input.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(input.limit) || 25));
     return { page, pageSize, skip: (page - 1) * pageSize };
 }
 
-function transitionInput(payload: any) {
+function transitionInput(payload: InputMap) {
     return {
         reason: requiredText(payload.reason, 'reason'),
         expectedRevision: Number(payload.expectedRevision),
@@ -343,7 +349,7 @@ async function trace(tx: Prisma.TransactionClient, data: { companyId: number; ru
 }
 
 export class PayrollRuleService {
-    static async list(companyId: number, filters: any) {
+    static async list(companyId: number, filters: InputMap) {
         const p = paging(filters);
         const where: Prisma.PayrollRuleVersionWhereInput = { companyId, status: filters.status || undefined };
         const [items, total] = await Promise.all([
@@ -353,7 +359,7 @@ export class PayrollRuleService {
         return { items: items.map(presentRule), pagination: { page: p.page, pageSize: p.pageSize, total, totalPages: Math.ceil(total / p.pageSize) } };
     }
 
-    static async create(companyId: number, actorId: number, payload: any, key: string) {
+    static async create(companyId: number, actorId: number, payload: InputMap, key: string) {
         return idempotent(companyId, key, 'PAYROLL_RULE_CREATE', { actorId, payload }, async tx => {
             const name = requiredText(payload.name, 'name', 120);
             const effectiveFrom = dateValue(payload.effectiveFrom, 'effectiveFrom');
@@ -370,7 +376,7 @@ export class PayrollRuleService {
         });
     }
 
-    static async update(id: number, companyId: number, actorId: number, payload: any, key: string) {
+    static async update(id: number, companyId: number, actorId: number, payload: InputMap, key: string) {
         return idempotent(companyId, key, `PAYROLL_RULE_UPDATE:${id}`, { actorId, payload }, async tx => {
             const current = await tx.payrollRuleVersion.findFirst({ where: { id, companyId } });
             if (!current) throw new HrPayrollError('Regla no encontrada', 404, 'HR_PAYROLL_RULE_NOT_FOUND');
@@ -389,7 +395,7 @@ export class PayrollRuleService {
         });
     }
 
-    static async uploadConfiguration(id: number, companyId: number, actorId: number, payload: any, key: string) {
+    static async uploadConfiguration(id: number, companyId: number, actorId: number, payload: InputMap, key: string) {
         return idempotent(companyId, key, `PAYROLL_RULE_CONFIG_UPLOAD:${id}`, { actorId, payload }, async tx => {
             const rule = await tx.payrollRuleVersion.findFirst({ where: { id, companyId } });
             if (!rule) throw new HrPayrollError('Regla no encontrada', 404, 'HR_PAYROLL_RULE_NOT_FOUND');
@@ -425,7 +431,7 @@ export class PayrollRuleService {
         })));
     }
 
-    static async reviewConfiguration(id: number, companyId: number, actorId: number, payload: any, key: string) {
+    static async reviewConfiguration(id: number, companyId: number, actorId: number, payload: InputMap, key: string) {
         return idempotent(companyId, key, `PAYROLL_RULE_CONFIG_REVIEW:${id}`, { actorId, payload }, async tx => {
             const rule = await tx.payrollRuleVersion.findFirst({ where: { id, companyId } });
             if (!rule) throw new HrPayrollError('Regla no encontrada', 404, 'HR_PAYROLL_RULE_NOT_FOUND');
@@ -450,7 +456,7 @@ export class PayrollRuleService {
         });
     }
 
-    static async transition(id: number, companyId: number, actorId: number, action: 'activate' | 'retire', payload: any, key: string) {
+    static async transition(id: number, companyId: number, actorId: number, action: 'activate' | 'retire', payload: InputMap, key: string) {
         return idempotent(companyId, key, `PAYROLL_RULE_${action.toUpperCase()}:${id}`, { actorId, payload }, async tx => {
             const input = transitionInput(payload);
             if (!input.confirmed) throw new HrPayrollError('Debe confirmar la transición');
@@ -477,7 +483,7 @@ export class PayrollRuleService {
 }
 
 export class PayrollPeriodService {
-    static async list(companyId: number, filters: any) {
+    static async list(companyId: number, filters: InputMap) {
         const p = paging(filters);
         const where: Prisma.PayrollPeriodWhereInput = { companyId, status: filters.status || undefined };
         const [items, total] = await Promise.all([
@@ -486,7 +492,7 @@ export class PayrollPeriodService {
         return { items: serialize(items), pagination: { page: p.page, pageSize: p.pageSize, total, totalPages: Math.ceil(total / p.pageSize) } };
     }
 
-    static async create(companyId: number, actorId: number, payload: any, key: string) {
+    static async create(companyId: number, actorId: number, payload: InputMap, key: string) {
         return idempotent(companyId, key, 'PAYROLL_PERIOD_CREATE', { actorId, payload }, async tx => {
             const dateFrom = dateValue(payload.dateFrom, 'dateFrom'); const dateTo = dateValue(payload.dateTo, 'dateTo');
             const payDate = dateValue(payload.payDate, 'payDate');
@@ -511,110 +517,6 @@ async function ensureActiveRule(tx: Prisma.TransactionClient, companyId: number,
     if (!rule) throw new HrPayrollError('La regla no está ACTIVE o no aplica a la fecha de corte', 409, 'HR_PAYROLL_RULE_NOT_ACTIVE');
     if (!rule.activeConfigurationRevision || rule.activeConfigurationRevision.review?.decision !== 'VALIDATED') throw new HrPayrollError('La regla ACTIVE no tiene configuración legal VALIDATED', 409, 'HR_PAYROLL_VALIDATED_CONFIGURATION_REQUIRED');
     return { rule, configurationRevision: rule.activeConfigurationRevision, config: validateLegalConfiguration(rule.activeConfigurationRevision.configuration) };
-}
-
-async function employeeCandidates(tx: Prisma.TransactionClient, companyId: number, branchIds: number[] | null, employeeIds: number[] | null, cutoff: Date) {
-    return tx.employee.findMany({ where: {
-        companyId, status: { in: ['ACTIVE', 'ON_LEAVE'] }, user: { accountType: 'INTERNAL', status: 'ACTIVE' },
-        id: employeeIds?.length ? { in: employeeIds } : undefined,
-        branchAssignments: branchIds?.length ? { some: { branchId: { in: branchIds }, effectiveFrom: { lte: cutoff }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: cutoff } }] } } : undefined,
-    }, include: { user: { select: { ...userSelect, branchId: true } } } });
-}
-
-async function activeCompensation(tx: Prisma.TransactionClient, companyId: number, employeeId: number, cutoff: Date) {
-    return tx.compensationHistory.findFirst({ where: { companyId, employeeId, effectiveFrom: { lte: cutoff }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: cutoff } }] }, orderBy: [{ effectiveFrom: 'desc' }, { id: 'desc' }] });
-}
-
-async function calculateLegacy(tx: Prisma.TransactionClient, companyId: number, runId: number, actorId: number, kind: PayrollRunKind, reason: string) {
-    const run = await tx.payrollRun.findFirst({ where: { id: runId, companyId, kind }, include: { period: true, ruleVersion: true } });
-    if (!run) throw new HrPayrollError('Corrida no encontrada', 404);
-    if (!['DRAFT', 'CALCULATED'].includes(run.status)) throw new HrPayrollError('La corrida ya no admite cálculo', 409, 'HR_PAYROLL_RUN_IMMUTABLE');
-    const cutoff = kind === 'REGULAR' ? run.period!.dateTo : run.cutoffDate!;
-    const { config } = await ensureActiveRule(tx, companyId, run.ruleVersionId, cutoff);
-    let attendancePeriod: { id: number } | null = null;
-    if (kind === 'REGULAR') {
-        attendancePeriod = await tx.attendancePeriod.findFirst({ where: { companyId, status: 'CLOSED', payrollEligible: true, dateFrom: run.period!.dateFrom, dateTo: run.period!.dateTo }, select: { id: true } });
-        if (!attendancePeriod) throw new HrPayrollError('El período de asistencia debe estar CLOSED y payrollEligible antes de calcular', 409, 'HR_PAYROLL_ATTENDANCE_PERIOD_NOT_ELIGIBLE');
-    }
-    await tx.payrollSnapshotLine.deleteMany({ where: { runId, companyId } });
-    await tx.payrollAnomaly.deleteMany({ where: { runId, companyId } });
-    await tx.payrollComponent.deleteMany({ where: { runId, companyId, source: { not: 'MANUAL' } } });
-    const branches = Array.isArray(run.branchIds) ? (run.branchIds as number[]) : null;
-    const selectedEmployees = Array.isArray(run.employeeIds) ? (run.employeeIds as number[]) : null;
-    const employees = await employeeCandidates(tx, companyId, branches, selectedEmployees, cutoff);
-    const aguinaldoFrom = new Date(cutoff.getTime() - (config.aguinaldo.lookbackDays - 1) * 86_400_000);
-    for (const employee of employees) {
-        const summaries = await tx.attendanceDailySummary.findMany({ where: {
-            companyId, userId: employee.userId,
-            ...(kind === 'REGULAR' ? { periodId: attendancePeriod!.id } : { date: { gte: aguinaldoFrom, lte: cutoff } }),
-        }, select: { id: true, branchId: true, ordinaryMinutes: true, approvedOvertimeMinutes: true, sourceRevision: true } });
-        const leaveRequests = await tx.leaveRequest.findMany({ where: {
-            companyId, userId: employee.userId, status: 'APPROVED',
-            startDate: { lte: cutoff }, endDate: { gte: kind === 'REGULAR' ? run.period!.dateFrom : aguinaldoFrom },
-        }, include: { leaveType: { select: { paid: true, code: true } } } });
-        const ordinaryMinutes = summaries.reduce((sum, item) => sum + item.ordinaryMinutes, 0);
-        const approvedOvertimeMinutes = summaries.reduce((sum, item) => sum + item.approvedOvertimeMinutes, 0);
-        const compensation = await activeCompensation(tx, companyId, employee.id, cutoff);
-        const sourceRevision = summaries.reduce((max, item) => Math.max(max, item.sourceRevision), 0) || null;
-        const paidLeaveMinutes = kind === 'REGULAR' ? leaveRequests.filter(item => item.leaveType.paid).reduce((sum, item) => {
-            return sum.plus(item.requestedAmount.times(config.regular.paidLeaveUnitMinutes[item.balanceUnit]));
-        }, new Prisma.Decimal(0)) : new Prisma.Decimal(0);
-        const paidLeaveAmount = compensation && kind === 'REGULAR'
-            ? money(compensation.amount.dividedBy(config.regular.minuteDivisors[compensation.payFrequency]).times(paidLeaveMinutes))
-            : new Prisma.Decimal(0);
-        await tx.payrollSnapshotLine.create({ data: {
-            companyId, runId, userId: employee.userId, employeeId: employee.id, branchId: employee.user.branchId,
-            attendancePeriodId: attendancePeriod?.id, compensationHistoryId: compensation?.id,
-            ordinaryMinutes, approvedOvertimeMinutes, paidLeaveAmount, compensationAmount: compensation?.amount,
-            compensationType: compensation?.compensationType, payFrequency: compensation?.payFrequency,
-            currency: compensation?.currency ?? config.currency, sourceRevision,
-            coverageFrom: kind === 'REGULAR' ? run.period!.dateFrom : aguinaldoFrom, coverageTo: cutoff,
-            attendancePeriodRevision: null, attendancePeriodStatus: kind === 'REGULAR' ? 'CLOSED' : null,
-            summaryRevisions: summaries.map(item => ({ id: item.id, revision: item.sourceRevision })), contractSegments: [], compensationSegments: [], aguinaldoIncomeSegments: [],
-            sourceTrace: {
-                summaryIds: summaries.map(item => item.id),
-                approvedLeaves: leaveRequests.map(item => ({ id: item.id, type: item.leaveType.code, paid: item.leaveType.paid, requestedAmount: item.requestedAmount.toString(), unit: item.balanceUnit })),
-                cutoff: dateKey(cutoff), sourceFrom: kind === 'REGULAR' ? dateKey(run.period!.dateFrom) : dateKey(aguinaldoFrom), frozen: true,
-            },
-        } });
-        if (!compensation) {
-            await tx.payrollAnomaly.create({ data: { companyId, runId, employeeId: employee.id, userId: employee.userId, code: 'MISSING_COMPENSATION', severity: 'BLOCKING', blocking: true, message: 'No existe una compensación vigente y trazable para la fecha de corte' } });
-            continue;
-        }
-        let ordinaryAmount: Prisma.Decimal;
-        let overtimeAmount = new Prisma.Decimal(0);
-        if (kind === 'REGULAR') {
-            const divisor = new Prisma.Decimal(config.regular.minuteDivisors[compensation.payFrequency]);
-            const minuteRate = compensation.amount.dividedBy(divisor);
-            ordinaryAmount = money(minuteRate.times(ordinaryMinutes));
-            overtimeAmount = money(minuteRate.times(approvedOvertimeMinutes).times(config.regular.overtimeMultiplier));
-        } else {
-            ordinaryAmount = money(compensation.amount.dividedBy(config.aguinaldo.incomeDivisor));
-        }
-        await tx.payrollComponent.create({ data: {
-            companyId, runId, userId: employee.userId, code: kind === 'AGUINALDO' ? 'AGUINALDO_PARAMETRIZADO' : 'INGRESO_ORDINARIO',
-            name: kind === 'AGUINALDO' ? 'Aguinaldo según regla validada' : 'Ingreso ordinario según regla validada',
-            type: 'INCOME', source: 'RULE', amount: ordinaryAmount, traceReference: `snapshot:user:${employee.userId};compensation:${compensation.id}`,
-        } });
-        if (overtimeAmount.greaterThan(0)) await tx.payrollComponent.create({ data: {
-            companyId, runId, userId: employee.userId, code: 'HORAS_EXTRA_APROBADAS', name: 'Horas extra aprobadas', type: 'INCOME', source: 'OVERTIME', amount: overtimeAmount,
-            traceReference: `snapshot:user:${employee.userId};minutes:${approvedOvertimeMinutes}`,
-        } });
-        if (paidLeaveAmount.greaterThan(0)) await tx.payrollComponent.create({ data: {
-            companyId, runId, userId: employee.userId, code: 'PERMISO_PAGADO_APROBADO', name: 'Permiso pagado aprobado', type: 'INCOME', source: 'LEAVE', amount: paidLeaveAmount,
-            traceReference: `snapshot:user:${employee.userId};leaveIds:${leaveRequests.filter(item => item.leaveType.paid).map(item => item.id).join('|')}`,
-        } });
-    }
-    const aggregate = await tx.payrollComponent.groupBy({ by: ['type'], where: { runId, companyId }, _sum: { amount: true } });
-    const gross = money(aggregate.find(item => item.type === 'INCOME')?._sum.amount ?? 0);
-    const deductions = money(aggregate.find(item => item.type === 'DEDUCTION')?._sum.amount ?? 0);
-    const revision = run.revision + 1;
-    await tx.payrollRun.update({ where: { id: runId }, data: {
-        status: 'CALCULATED', revision, currency: config.currency, grossIncome: gross, totalDeductions: deductions,
-        netPay: money(gross.minus(deductions)), employeeCount: employees.length, calculatedById: actorId,
-        calculatedAt: new Date(), lastReason: reason,
-    } });
-    await trace(tx, { companyId, runId, event: run.status === 'DRAFT' ? 'CALCULATE' : 'RECALCULATE', actorId, reason, fromStatus: run.status, toStatus: 'CALCULATED', revision });
 }
 
 async function addAnomaly(tx: Prisma.TransactionClient, data: { companyId: number; runId: number; employeeId?: number; userId?: number; code: string; message: string; severity?: 'INFO' | 'WARNING' | 'BLOCKING' }) {
@@ -743,7 +645,7 @@ async function calculate(tx: Prisma.TransactionClient, companyId: number, runId:
             contractSegments: contracts.map(item => ({ id: item.id, from: dateKey(item.startDate), to: item.endDate ? dateKey(item.endDate) : null, status: item.status })) as Prisma.InputJsonValue,
             compensationSegments: compensationSegments as Prisma.InputJsonValue,
             aguinaldoIncomeSegments: historicalSegments as Prisma.InputJsonValue,
-            sourceTrace: { hireDate: dateKey(employee.hireDate), terminationDate: employee.terminationDate ? dateKey(employee.terminationDate) : null, serviceFrom: dateKey(serviceFrom), serviceTo: dateKey(serviceTo), configurationRevisionId: configurationRevision.id, configurationHash: configurationRevision.configurationHash, leaves: leaves.map(item => ({ id: item.id, from: dateKey(item.startDate), to: dateKey(item.endDate), paid: item.leaveType.paid, amount: item.requestedAmount.toString(), unit: item.balanceUnit })), frozen: true },
+            sourceTrace: { hireDate: dateKey(employee.hireDate), terminationDate: employee.terminationDate ? dateKey(employee.terminationDate) : null, serviceFrom: dateKey(serviceFrom), serviceTo: dateKey(serviceTo), configurationRevisionId: configurationRevision.id, configurationHash: configurationRevision.configurationHash, approvedLeaves: leaves.map(item => ({ id: item.id, from: dateKey(item.startDate), to: dateKey(item.endDate), paid: item.leaveType.paid, amount: item.requestedAmount.toString(), unit: item.balanceUnit })), frozen: true },
         } });
         if (ordinary.greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: kind === 'AGUINALDO' ? 'AGUINALDO_HISTORICO' : 'INGRESO_ORDINARIO', name: kind === 'AGUINALDO' ? 'Aguinaldo histórico parametrizado' : 'Ingreso ordinario segmentado', type: 'INCOME', source: 'RULE', amount: money(ordinary), traceReference: `snapshot:user:${employee.userId};config:${configurationRevision.id}` } });
         if (overtime.greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: 'HORAS_EXTRA_APROBADAS', name: 'Horas extra aprobadas', type: 'INCOME', source: 'OVERTIME', amount: money(overtime), traceReference: `snapshot:user:${employee.userId}` } });
@@ -817,7 +719,7 @@ async function assertNotLiveAguinaldoSource(tx: Prisma.TransactionClient, compan
 }
 
 export class PayrollRunService {
-    static async list(companyId: number, kind: PayrollRunKind, filters: any) {
+    static async list(companyId: number, kind: PayrollRunKind, filters: InputMap) {
         const p = paging(filters);
         const where: Prisma.PayrollRunWhereInput = { companyId, kind, status: filters.status || undefined, periodId: filters.periodId ? Number(filters.periodId) : undefined, year: filters.year ? Number(filters.year) : undefined };
         const [items, total] = await Promise.all([prisma.payrollRun.findMany({ where, include: runInclude, orderBy: { createdAt: 'desc' }, skip: p.skip, take: p.pageSize }), prisma.payrollRun.count({ where })]);
@@ -828,7 +730,118 @@ export class PayrollRunService {
 
     static get(companyId: number, id: number, kind: PayrollRunKind) { return loadRun(companyId, id, kind); }
 
-    static async createRegular(companyId: number, actorId: number, payload: any, key: string) {
+    static async reconcileParallelControl(
+        companyId: number,
+        actorId: number,
+        id: number,
+        kind: PayrollRunKind,
+        payload: InputMap,
+    ) {
+        const expectedGrossIncome = nonNegativeMoney(payload.expectedGrossIncome, 'expectedGrossIncome');
+        const expectedTotalDeductions = nonNegativeMoney(payload.expectedTotalDeductions, 'expectedTotalDeductions');
+        const expectedNetPay = nonNegativeMoney(payload.expectedNetPay, 'expectedNetPay');
+        const expectedEmployeeCount = Number(payload.expectedEmployeeCount);
+        if (!Number.isInteger(expectedEmployeeCount) || expectedEmployeeCount < 0) {
+            throw new HrPayrollError('expectedEmployeeCount debe ser un entero no negativo');
+        }
+        const controlSource = requiredText(payload.controlSource, 'controlSource', 160);
+        const evidenceReference = requiredText(payload.evidenceReference, 'evidenceReference', 500);
+        const run = await prisma.payrollRun.findFirst({
+            where: { id, companyId, kind },
+            include: {
+                configurationRevision: { include: { review: true } },
+                snapshots: { select: { userId: true } },
+                components: { include: { reversal: { select: { id: true } } } },
+                anomalies: { where: { blocking: true, resolvedAt: null }, select: { id: true, code: true } },
+                coverageClaims: { include: { release: { select: { id: true } } } },
+                receipts: { select: { userId: true, status: true, grossIncome: true, totalDeductions: true, netPay: true } },
+            },
+        });
+        if (!run) throw new HrPayrollError('Corrida no encontrada', 404);
+        if (run.status === 'DRAFT' || run.status === 'VOID') {
+            throw new HrPayrollError('La conciliación requiere una corrida calculada y vigente', 409, 'HR_PAYROLL_RECONCILIATION_NOT_READY');
+        }
+
+        const activeComponents = run.components.filter(component => !component.reversal);
+        const calculatedGross = money(activeComponents.filter(component => component.type === 'INCOME').reduce((sum, component) => sum.plus(component.amount), new Prisma.Decimal(0)));
+        const calculatedDeductions = money(activeComponents.filter(component => component.type === 'DEDUCTION').reduce((sum, component) => sum.plus(component.amount), new Prisma.Decimal(0)));
+        const calculatedNet = money(calculatedGross.minus(calculatedDeductions));
+        const snapshotUsers = new Set(run.snapshots.map(snapshot => snapshot.userId));
+        const activeClaims = run.coverageClaims.filter(claim => !claim.release);
+        const componentUsersValid = activeComponents.every(component => snapshotUsers.has(component.userId));
+        const claimUsers = new Set(activeClaims.map(claim => claim.userId));
+        const coverageValid = activeClaims.length === run.snapshots.length && snapshotUsers.size === claimUsers.size && [...snapshotUsers].every(userId => claimUsers.has(userId));
+        const perEmployee = [...snapshotUsers].map(userId => {
+            const components = activeComponents.filter(component => component.userId === userId);
+            const gross = money(components.filter(component => component.type === 'INCOME').reduce((sum, component) => sum.plus(component.amount), new Prisma.Decimal(0)));
+            const deductions = money(components.filter(component => component.type === 'DEDUCTION').reduce((sum, component) => sum.plus(component.amount), new Prisma.Decimal(0)));
+            return { userId, grossIncome: gross.toFixed(2), totalDeductions: deductions.toFixed(2), netPay: money(gross.minus(deductions)).toFixed(2) };
+        });
+        let frozenSourcesFresh = true;
+        let frozenSourceDetail = 'Fuentes congeladas vigentes';
+        try {
+            await prisma.$transaction(async tx => revalidateFrozenSources(tx, companyId, id));
+        } catch (error) {
+            frozenSourcesFresh = false;
+            frozenSourceDetail = error instanceof Error ? error.message : 'No fue posible revalidar las fuentes';
+        }
+
+        const receiptGross = money(run.receipts.reduce((sum, receipt) => sum.plus(receipt.grossIncome), new Prisma.Decimal(0)));
+        const receiptDeductions = money(run.receipts.reduce((sum, receipt) => sum.plus(receipt.totalDeductions), new Prisma.Decimal(0)));
+        const receiptNet = money(run.receipts.reduce((sum, receipt) => sum.plus(receipt.netPay), new Prisma.Decimal(0)));
+        const receiptsRequired = run.status === 'PAID';
+        const receiptsValid = !receiptsRequired || (
+            run.receipts.length === run.snapshots.length &&
+            run.receipts.every(receipt => receipt.status === 'PUBLISHED') &&
+            receiptGross.equals(calculatedGross) && receiptDeductions.equals(calculatedDeductions) && receiptNet.equals(calculatedNet)
+        );
+
+        const check = (code: string, label: string, passed: boolean, expected: string | number, actual: string | number, detail?: string) => ({ code, label, passed, expected, actual, detail: detail ?? null });
+        const checks = [
+            check('RUN_GROSS_MATCHES_COMPONENTS', 'Bruto de corrida contra componentes', run.grossIncome.equals(calculatedGross), run.grossIncome.toFixed(2), calculatedGross.toFixed(2)),
+            check('RUN_DEDUCTIONS_MATCH_COMPONENTS', 'Deducciones de corrida contra componentes', run.totalDeductions.equals(calculatedDeductions), run.totalDeductions.toFixed(2), calculatedDeductions.toFixed(2)),
+            check('RUN_NET_MATCHES_COMPONENTS', 'Neto de corrida contra componentes', run.netPay.equals(calculatedNet), run.netPay.toFixed(2), calculatedNet.toFixed(2)),
+            check('RUN_EMPLOYEE_COUNT_MATCHES_SNAPSHOT', 'Cantidad de personas contra snapshot', run.employeeCount === run.snapshots.length && snapshotUsers.size === run.snapshots.length, run.employeeCount, run.snapshots.length),
+            check('COMPONENT_SUBJECTS_IN_SNAPSHOT', 'Sujetos de componentes dentro del snapshot', componentUsersValid, 'todos incluidos', componentUsersValid ? 'todos incluidos' : 'existen sujetos ajenos'),
+            check('COVERAGE_CLAIMS_MATCH_SNAPSHOT', 'Cobertura exclusiva contra snapshot', coverageValid, run.snapshots.length, activeClaims.length),
+            check('NO_NEGATIVE_EMPLOYEE_NET', 'Neto individual no negativo', perEmployee.every(item => !new Prisma.Decimal(item.netPay).isNegative()), 'ningún neto negativo', perEmployee.filter(item => new Prisma.Decimal(item.netPay).isNegative()).length),
+            check('NO_BLOCKING_ANOMALIES', 'Anomalías bloqueantes resueltas', run.anomalies.length === 0, 0, run.anomalies.length),
+            check('VALIDATED_FROZEN_CONFIGURATION', 'Configuración congelada con revisión independiente', run.configurationRevision?.review?.decision === 'VALIDATED', 'VALIDATED', run.configurationRevision?.review?.decision ?? 'MISSING'),
+            check('FROZEN_SOURCES_FRESH', 'Fuentes congeladas aún vigentes', frozenSourcesFresh, 'vigentes', frozenSourcesFresh ? 'vigentes' : 'obsoletas', frozenSourceDetail),
+            check('PUBLISHED_RECEIPTS_RECONCILE', 'Recibos publicados contra corrida pagada', receiptsValid, receiptsRequired ? run.snapshots.length : 'no requerido antes de pago', run.receipts.length),
+            check('EXTERNAL_GROSS_MATCH', 'Bruto contra control paralelo externo', calculatedGross.equals(expectedGrossIncome), expectedGrossIncome.toFixed(2), calculatedGross.toFixed(2)),
+            check('EXTERNAL_DEDUCTIONS_MATCH', 'Deducciones contra control paralelo externo', calculatedDeductions.equals(expectedTotalDeductions), expectedTotalDeductions.toFixed(2), calculatedDeductions.toFixed(2)),
+            check('EXTERNAL_NET_MATCH', 'Neto contra control paralelo externo', calculatedNet.equals(expectedNetPay), expectedNetPay.toFixed(2), calculatedNet.toFixed(2)),
+            check('EXTERNAL_EMPLOYEE_COUNT_MATCH', 'Personas contra control paralelo externo', run.snapshots.length === expectedEmployeeCount, expectedEmployeeCount, run.snapshots.length),
+        ];
+        const reconciliationHash = hashPayload({
+            companyId, runId: id, kind, runRevision: run.revision, calculationRevision: run.calculationRevision,
+            controlSource, evidenceReference,
+            expected: { grossIncome: expectedGrossIncome.toFixed(2), totalDeductions: expectedTotalDeductions.toFixed(2), netPay: expectedNetPay.toFixed(2), employeeCount: expectedEmployeeCount },
+            actual: { grossIncome: calculatedGross.toFixed(2), totalDeductions: calculatedDeductions.toFixed(2), netPay: calculatedNet.toFixed(2), employeeCount: run.snapshots.length },
+            checks: checks.map(item => ({ code: item.code, passed: item.passed })),
+        });
+        const result = {
+            run: { id: run.id, code: run.code, kind: run.kind, status: run.status, revision: run.revision, calculationRevision: run.calculationRevision, currency: run.currency },
+            control: { source: controlSource, evidenceReference },
+            expected: { grossIncome: expectedGrossIncome.toFixed(2), totalDeductions: expectedTotalDeductions.toFixed(2), netPay: expectedNetPay.toFixed(2), employeeCount: expectedEmployeeCount },
+            actual: { grossIncome: calculatedGross.toFixed(2), totalDeductions: calculatedDeductions.toFixed(2), netPay: calculatedNet.toFixed(2), employeeCount: run.snapshots.length },
+            checks,
+            perEmployee,
+            readyForParallelSignoff: checks.every(item => item.passed),
+            legalValidationAsserted: false,
+            productionCertificationAsserted: false,
+            reconciliationHash,
+            generatedAt: new Date().toISOString(),
+        };
+        await AuditLogService.log({
+            companyId, userId: actorId, entityType: 'PayrollRun', entityId: id, action: 'UPDATE',
+            details: { operation: 'PARALLEL_RECONCILIATION', runRevision: run.revision, reconciliationHash, controlSource, evidenceReference, readyForParallelSignoff: result.readyForParallelSignoff, failedChecks: checks.filter(item => !item.passed).map(item => item.code) },
+        });
+        return result;
+    }
+
+    static async createRegular(companyId: number, actorId: number, payload: InputMap, key: string) {
         return idempotent(companyId, key, 'PAYROLL_RUN_CREATE', { actorId, payload }, async tx => {
             const periodId = positiveId(payload.periodId, 'periodId'); const ruleVersionId = positiveId(payload.ruleVersionId, 'ruleVersionId');
             const period = await tx.payrollPeriod.findFirst({ where: { id: periodId, companyId, status: { in: ['OPEN', 'CLOSED'] } } });
@@ -851,7 +864,7 @@ export class PayrollRunService {
         });
     }
 
-    static async createAguinaldo(companyId: number, actorId: number, payload: any, key: string) {
+    static async createAguinaldo(companyId: number, actorId: number, payload: InputMap, key: string) {
         return idempotent(companyId, key, 'AGUINALDO_RUN_CREATE', { actorId, payload }, async tx => {
             const year = Number(payload.year); if (!Number.isInteger(year) || year < 2000 || year > 2200) throw new HrPayrollError('year no es válido');
             const cutoffDate = dateValue(payload.cutoffDate, 'cutoffDate');
@@ -874,7 +887,7 @@ export class PayrollRunService {
         });
     }
 
-    static async transition(companyId: number, actorId: number, id: number, kind: PayrollRunKind, action: string, payload: any, key: string) {
+    static async transition(companyId: number, actorId: number, id: number, kind: PayrollRunKind, action: string, payload: InputMap, key: string) {
         return idempotent(companyId, key, `PAYROLL_RUN_${action.toUpperCase()}:${id}`, { actorId, payload }, async tx => {
             const input = transitionInput(payload); if (!input.confirmed) throw new HrPayrollError('Debe confirmar la transición');
             const locked = await lockedRun(tx, companyId, id, kind); await assertRevision(locked, input.expectedRevision);
@@ -953,16 +966,30 @@ export class PayrollRunService {
     }
 
     static anomalies(companyId: number, runId: number, kind: PayrollRunKind) { return this.scopedList(companyId, runId, kind, 'payrollAnomaly'); }
-    static snapshots(companyId: number, runId: number, kind: PayrollRunKind) { return this.scopedList(companyId, runId, kind, 'payrollSnapshotLine', { include: { user: { select: userSelect }, branch: { select: { id: true, name: true } } } }); }
-    static components(companyId: number, runId: number, kind: PayrollRunKind) { return this.scopedList(companyId, runId, kind, 'payrollComponent', { include: { user: { select: userSelect } } }); }
+    static snapshots(companyId: number, runId: number, kind: PayrollRunKind) { return this.scopedList(companyId, runId, kind, 'payrollSnapshotLine'); }
+    static components(companyId: number, runId: number, kind: PayrollRunKind) { return this.scopedList(companyId, runId, kind, 'payrollComponent'); }
     static receipts(companyId: number, runId: number, kind: PayrollRunKind) { return this.scopedList(companyId, runId, kind, 'payrollReceipt'); }
 
-    private static async scopedList(companyId: number, runId: number, kind: PayrollRunKind, model: 'payrollAnomaly' | 'payrollSnapshotLine' | 'payrollComponent' | 'payrollReceipt', extra: any = {}) {
+    private static async scopedList(companyId: number, runId: number, kind: PayrollRunKind, model: 'payrollAnomaly' | 'payrollSnapshotLine' | 'payrollComponent' | 'payrollReceipt') {
         if (!await prisma.payrollRun.findFirst({ where: { id: runId, companyId, kind }, select: { id: true } })) throw new HrPayrollError('Corrida no encontrada', 404);
-        return serialize(await (prisma[model] as any).findMany({ where: { companyId, runId }, orderBy: { id: 'asc' }, ...extra }));
+        if (model === 'payrollAnomaly') {
+            return serialize(await prisma.payrollAnomaly.findMany({ where: { companyId, runId }, orderBy: { id: 'asc' } }));
+        }
+        if (model === 'payrollSnapshotLine') {
+            return serialize(await prisma.payrollSnapshotLine.findMany({
+                where: { companyId, runId }, orderBy: { id: 'asc' },
+                include: { user: { select: userSelect }, branch: { select: { id: true, name: true } } },
+            }));
+        }
+        if (model === 'payrollComponent') {
+            return serialize(await prisma.payrollComponent.findMany({
+                where: { companyId, runId }, orderBy: { id: 'asc' }, include: { user: { select: userSelect } },
+            }));
+        }
+        return serialize(await prisma.payrollReceipt.findMany({ where: { companyId, runId }, orderBy: { id: 'asc' } }));
     }
 
-    static async addComponent(companyId: number, actorId: number, runId: number, kind: PayrollRunKind, payload: any, key: string) {
+    static async addComponent(companyId: number, actorId: number, runId: number, kind: PayrollRunKind, payload: InputMap, key: string) {
         return idempotent(companyId, key, `PAYROLL_COMPONENT_CREATE:${runId}`, { actorId, payload }, async tx => {
             const run = await tx.payrollRun.findFirst({ where: { id: runId, companyId, kind } });
             if (!run) throw new HrPayrollError('Corrida no encontrada', 404);
@@ -1022,28 +1049,36 @@ export class PayrollRunService {
     }
 }
 
-async function receiptDetail(receipt: any, selfSafe = false) {
+const receiptInclude = Prisma.validator<Prisma.PayrollReceiptInclude>()({
+    components: true,
+    user: { select: userSelect },
+    employee: { select: { employeeCode: true, legalName: true } },
+    run: { include: { trace: { include: { actor: { select: actorSelect } }, orderBy: { occurredAt: 'asc' } } } },
+});
+type ReceiptItem = Prisma.PayrollReceiptGetPayload<{ include: typeof receiptInclude }>;
+
+async function receiptDetail(receipt: ReceiptItem, selfSafe = false) {
     return serialize({ ...receipt, components: receipt.components, trace: selfSafe ? [] : receipt.run.trace, run: undefined, user: receipt.user, employeeCode: receipt.employee.employeeCode, legalName: receipt.employee.legalName });
 }
 
 export class PayrollReceiptService {
-    static async myList(companyId: number, userId: number, filters: any) {
+    static async myList(companyId: number, userId: number, filters: InputMap) {
         const p = paging(filters); const where: Prisma.PayrollReceiptWhereInput = { companyId, userId, status: 'PUBLISHED', payDate: { gte: filters.dateFrom ? dateValue(filters.dateFrom, 'dateFrom') : undefined, lte: filters.dateTo ? dateValue(filters.dateTo, 'dateTo') : undefined } };
         const [items, total] = await Promise.all([prisma.payrollReceipt.findMany({ where, orderBy: { payDate: 'desc' }, skip: p.skip, take: p.pageSize }), prisma.payrollReceipt.count({ where })]);
         return { items: serialize(items), pagination: { page: p.page, pageSize: p.pageSize, total, totalPages: Math.ceil(total / p.pageSize) } };
     }
 
     static async get(companyId: number, receiptId: number, opts: { userId?: number; runId?: number; publishedOnly?: boolean; selfSafe?: boolean } = {}) {
-        const receipt = await prisma.payrollReceipt.findFirst({ where: { id: receiptId, companyId, userId: opts.userId, runId: opts.runId, status: opts.publishedOnly ? 'PUBLISHED' : undefined }, include: {
-            components: true, user: { select: userSelect }, employee: { select: { employeeCode: true, legalName: true } },
-            run: { include: { trace: { include: { actor: { select: actorSelect } }, orderBy: { occurredAt: 'asc' } } } },
-        } });
+        const receipt = await prisma.payrollReceipt.findFirst({
+            where: { id: receiptId, companyId, userId: opts.userId, runId: opts.runId, status: opts.publishedOnly ? 'PUBLISHED' : undefined },
+            include: receiptInclude,
+        });
         if (!receipt) throw new HrPayrollError('Recibo no encontrado', 404, 'HR_PAYROLL_RECEIPT_NOT_FOUND');
         return receiptDetail(receipt, opts.selfSafe === true);
     }
 
     static async pdf(companyId: number, receiptId: number, opts: { userId?: number; runId?: number; publishedOnly?: boolean; selfSafe?: boolean } = {}) {
-        const receipt: any = await this.get(companyId, receiptId, opts);
+        const receipt = await this.get(companyId, receiptId, opts);
         const document = new jsPDF(); document.setFontSize(16); document.text('Recibo de nómina', 14, 18);
         document.setFontSize(10); const lines = [
             `Corrida: ${receipt.runCode}`, `Colaborador: ${receipt.legalName}`, `Código: ${receipt.employeeCode}`,

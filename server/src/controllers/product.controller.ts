@@ -89,7 +89,7 @@ export class ProductController {
     static async create(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const product = await ProductService.create(companyId, req.body);
+            const product = await ProductService.create(companyId, req.body, req.user!.userId);
             res.status(201).json({
                 success: true,
                 message: 'Producto creado exitosamente',
@@ -104,7 +104,7 @@ export class ProductController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
-            const product = await ProductService.update(id, companyId, req.body);
+            const product = await ProductService.update(id, companyId, req.body, req.user!.userId);
             res.json({
                 success: true,
                 message: 'Producto actualizado exitosamente',
@@ -119,7 +119,7 @@ export class ProductController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
-            await ProductService.delete(id, companyId);
+            await ProductService.delete(id, companyId, req.user!.userId);
             res.json({
                 success: true,
                 message: 'Producto eliminado exitosamente'

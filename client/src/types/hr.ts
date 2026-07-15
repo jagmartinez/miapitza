@@ -55,6 +55,48 @@ export interface HrContractSummary {
     status?: string | null;
 }
 
+export interface HrEmploymentContract {
+    id: number;
+    employeeId: number;
+    contractNumber: string;
+    employmentType: string;
+    startDate: string;
+    endDate?: string | null;
+    status: 'DRAFT' | 'ACTIVE' | 'EXPIRED' | 'TERMINATED';
+    signedAt?: string | null;
+    notes?: string | null;
+    jobPosition?: HrNamedEntity | null;
+    costCenter?: HrNamedEntity | null;
+}
+
+export interface HrCompensationRecord {
+    id: number;
+    employeeId: number;
+    contractId?: number | null;
+    compensationType: 'SALARY' | 'HOURLY';
+    payFrequency: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY';
+    amount: string;
+    currency: string;
+    effectiveFrom: string;
+    effectiveTo?: string | null;
+    reason?: string | null;
+    changedBy?: Pick<HrUserSummary, 'id' | 'name' | 'username'> | null;
+}
+
+export interface HrEmployeeDocument {
+    id: number;
+    employeeId: number;
+    documentType: string;
+    fileName: string;
+    contentHash: string;
+    mimeType: string;
+    sizeBytes: number;
+    expiresAt?: string | null;
+    status: 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+    createdAt: string;
+    uploadedBy?: Pick<HrUserSummary, 'id' | 'name' | 'username'> | null;
+}
+
 export interface HrEmployee {
     id: number;
     companyId?: number;

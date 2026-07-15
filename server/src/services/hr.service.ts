@@ -1,4 +1,5 @@
-import type { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
 import { AuditLogService } from './audit-log.service';
@@ -190,6 +191,32 @@ async function assertTenantReference(
     }
 }
 
+async function assertAcyclicSupervisorHierarchy(
+    companyId: number,
+    employeeId: number | undefined,
+    supervisorEmployeeId: number | null | undefined,
+    db: Prisma.TransactionClient | typeof prisma = prisma,
+) {
+    if (!employeeId || supervisorEmployeeId == null) return;
+    const visited = new Set<number>();
+    let currentId: number | null = supervisorEmployeeId;
+    while (currentId !== null) {
+        if (currentId === employeeId) {
+            throw new HrDomainError('La relación de supervisión no puede formar un ciclo', 409);
+        }
+        if (visited.has(currentId)) {
+            throw new HrDomainError('La jerarquía de supervisión existente contiene un ciclo', 409);
+        }
+        visited.add(currentId);
+        const current: { supervisorEmployeeId: number | null } | null = await db.employee.findFirst({
+            where: { id: currentId, companyId },
+            select: { supervisorEmployeeId: true },
+        });
+        if (!current) throw new HrDomainError('Supervisor no encontrado en la empresa', 404);
+        currentId = current.supervisorEmployeeId;
+    }
+}
+
 async function assertBranches(companyId: number, branchIds: number[] | undefined, primaryBranchId?: number | null) {
     if (branchIds === undefined) return;
     if (branchIds.length > 0 && primaryBranchId == null) {
@@ -229,7 +256,12 @@ export class HrEmployeeService {
         if (filters.jobPositionId) where.jobPositionId = filters.jobPositionId;
         if (filters.costCenterId) where.costCenterId = filters.costCenterId;
         if (filters.branchId) {
-            where.branchAssignments = { some: { branchId: filters.branchId, effectiveTo: null } };
+            const today = todayDate();
+            where.branchAssignments = { some: {
+                branchId: filters.branchId,
+                effectiveFrom: { lte: today },
+                OR: [{ effectiveTo: null }, { effectiveTo: { gte: today } }],
+            } };
         }
         const search = filters.search?.trim();
         if (search) {
@@ -258,7 +290,11 @@ export class HrEmployeeService {
                 id,
                 companyId,
                 ...(options.branchId
-                    ? { branchAssignments: { some: { branchId: options.branchId, effectiveTo: null } } }
+                    ? { branchAssignments: { some: {
+                        branchId: options.branchId,
+                        effectiveFrom: { lte: todayDate() },
+                        OR: [{ effectiveTo: null }, { effectiveTo: { gte: todayDate() } }],
+                    } } }
                     : {}),
             },
             select: options.sensitive ? employeeSensitiveSelect : employeeListSelect,
@@ -281,6 +317,11 @@ export class HrEmployeeService {
             assertTenantReference(companyId, 'costCenter', optionalId(input.costCenterId, 'costCenterId')),
             assertTenantReference(companyId, 'employee', optionalId(input.supervisorEmployeeId, 'supervisorEmployeeId'), employeeId),
         ]);
+        await assertAcyclicSupervisorHierarchy(
+            companyId,
+            employeeId,
+            optionalId(input.supervisorEmployeeId, 'supervisorEmployeeId'),
+        );
         const effectiveDepartmentId = input.departmentId !== undefined ? departmentId ?? null : current?.departmentId ?? null;
         const effectiveJobPositionId = input.jobPositionId !== undefined ? jobPositionId ?? null : current?.jobPositionId ?? null;
         if (effectiveJobPositionId !== null) {
@@ -414,6 +455,19 @@ export class HrEmployeeService {
         if (input.supervisorEmployeeId !== undefined) data.supervisor = input.supervisorEmployeeId == null ? { disconnect: true } : { connect: { id: input.supervisorEmployeeId } };
 
         await prisma.$transaction(async (tx) => {
+            if (input.supervisorEmployeeId !== undefined) {
+                await tx.$queryRaw(Prisma.sql`
+                    SELECT id FROM Employee
+                    WHERE companyId = ${companyId}
+                    FOR UPDATE
+                `);
+                await assertAcyclicSupervisorHierarchy(
+                    companyId,
+                    id,
+                    optionalId(input.supervisorEmployeeId, 'supervisorEmployeeId'),
+                    tx,
+                );
+            }
             await tx.employee.update({ where: { id }, data });
             if (branchIds !== undefined) {
                 const current = await tx.employeeBranchAssignment.findMany({
@@ -494,13 +548,17 @@ export class HrEmployeeService {
             throw new HrDomainError('terminationDate sólo aplica al estado TERMINATED');
         }
         await prisma.$transaction(async (tx) => {
-            await tx.employee.update({
-                where: { id },
+            let biometricPurgeRequestId: number | null = null;
+            const changed = await tx.employee.updateMany({
+                where: { id, companyId, status: existing.status },
                 data: {
                     status,
                     terminationDate: status === 'TERMINATED' ? statusDate : null,
                 },
             });
+            if (changed.count !== 1) {
+                throw new HrDomainError('El estado del empleado cambió concurrentemente; recargue el expediente', 409);
+            }
             if (status === 'TERMINATED') {
                 const [futureAssignment, futureContract] = await Promise.all([
                     tx.employeeBranchAssignment.findFirst({
@@ -531,10 +589,48 @@ export class HrEmployeeService {
                     where: { userId: existing.userId, revoked: false },
                     data: { revoked: true },
                 });
+                const biometric = await tx.biometricProfile.findFirst({
+                    where: { companyId, userId: existing.userId, status: 'ACTIVE' },
+                    select: { id: true, provider: true, templateRef: true },
+                });
+                if (biometric) {
+                    const now = new Date();
+                    const revoked = await tx.biometricProfile.updateMany({
+                        where: { id: biometric.id, companyId, userId: existing.userId, status: 'ACTIVE' },
+                        data: {
+                            status: 'REVOKED',
+                            templateRef: `REVOKED:${randomUUID()}`,
+                            revokedAt: now,
+                            purgeRequestedAt: now,
+                            revocationReason: 'EMPLOYMENT_TERMINATED',
+                        },
+                    });
+                    if (revoked.count === 1) {
+                        const purge = await tx.biometricPurgeRequest.create({
+                            data: {
+                                companyId,
+                                biometricProfileId: biometric.id,
+                                provider: biometric.provider,
+                                encryptedTemplateRef: biometric.templateRef,
+                                reason: 'EMPLOYMENT_TERMINATED',
+                                status: 'PENDING',
+                                attempts: 0,
+                                nextAttemptAt: now,
+                            },
+                            select: { id: true },
+                        });
+                        biometricPurgeRequestId = purge.id;
+                    }
+                }
             }
             await AuditLogService.log({
                 companyId, userId: actorUserId, entityType: 'Employee', entityId: id,
-                action: 'UPDATE', details: { field: 'status', from: existing.status, to: status, reason: reason?.trim() || null },
+                action: 'UPDATE',
+                details: {
+                    field: 'status', from: existing.status, to: status,
+                    reason: reason?.trim() || null,
+                    biometricPurgeRequestId,
+                },
             }, tx);
         });
         return this.getById(id, companyId);

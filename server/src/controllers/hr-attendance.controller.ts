@@ -69,6 +69,13 @@ function handleError(error: unknown, res: Response, next: NextFunction): void {
 }
 
 export class HrAttendanceController {
+    static async biometricProviderHealth(req: Request, res: Response, next: NextFunction) {
+        try {
+            const data = await BiometricService.providerHealth();
+            res.status(data.status === 'AVAILABLE' ? 200 : 503).json({ success: data.status === 'AVAILABLE', data });
+        } catch (error) { handleError(error, res, next); }
+    }
+
     static async getPolicy(req: Request, res: Response, next: NextFunction) {
         try {
             const requested = queryId(req.query.branchId);

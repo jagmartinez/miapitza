@@ -6,12 +6,12 @@ import EmptyState from '../components/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Modal from '../components/Modal';
 import Pagination from '../components/Pagination';
-import { ordersAPI, invoicesAPI, settingsAPI, paymentsAPI } from '../services/api';
-import type { Order, Payment } from '../types';
+import { ordersAPI, invoicesAPI, settingsAPI, paymentsAPI, warehousesAPI } from '../services/api';
+import type { Order, Payment, Warehouse } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
-import { canReversePayment } from '../utils/authz';
+import { canReversePayment, canCancelInvoice, canIssueCreditNote } from '../utils/authz';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import './InvoiceHistory.css';
@@ -25,6 +25,11 @@ interface Invoice {
     total: number;
     paymentMethod: string;
     status: string;
+    orderStatus: Order['status'];
+    branchId: number;
+    fiscalStatus: NonNullable<Order['invoiceFiscalStatus']>;
+    creditNoteNumber?: string;
+    cancellationReason?: string;
 }
 
 const PAGE_SIZE = 20;
@@ -78,6 +83,17 @@ export default function InvoiceHistory() {
     const [reversalReason, setReversalReason] = useState('');
     const [reversingPaymentId, setReversingPaymentId] = useState<number | null>(null);
     const mayReversePayments = canReversePayment(user);
+    const mayCancelInvoice = canCancelInvoice(user);
+    const mayIssueCreditNote = canIssueCreditNote(user);
+    const [fiscalInvoice, setFiscalInvoice] = useState<Invoice | null>(null);
+    const [fiscalAction, setFiscalAction] = useState<'CANCEL' | 'CREDIT_NOTE' | null>(null);
+    const [fiscalReason, setFiscalReason] = useState('');
+    const [inventoryAction, setInventoryAction] = useState<'NO_RETURN' | 'RETURN_TO_STOCK'>('NO_RETURN');
+    const [externalRefundReferences, setExternalRefundReferences] = useState<Record<number, string>>({});
+    const [fiscalWarehouses, setFiscalWarehouses] = useState<Warehouse[]>([]);
+    const [fiscalWasteWarehouseId, setFiscalWasteWarehouseId] = useState<number | null>(null);
+    const [fiscalIdempotencyKey, setFiscalIdempotencyKey] = useState('');
+    const [fiscalProcessing, setFiscalProcessing] = useState(false);
 
     const loadSettings = useCallback(async () => {
         try {
@@ -113,6 +129,11 @@ export default function InvoiceHistory() {
                         || order.payments?.[0]?.paymentMethod?.name
                         || 'N/A',
                     status: order.financialStatus,
+                    orderStatus: order.status,
+                    branchId: order.branchId,
+                    fiscalStatus: order.invoiceFiscalStatus || 'ISSUED',
+                    creditNoteNumber: order.fiscalCreditNote?.number,
+                    cancellationReason: order.fiscalInvoiceCancellation?.reason,
                 }));
 
             setInvoices(invoiceData);
@@ -222,6 +243,107 @@ export default function InvoiceHistory() {
         }
     };
 
+    const closeFiscalAction = () => {
+        setFiscalInvoice(null);
+        setFiscalAction(null);
+        setFiscalReason('');
+        setInventoryAction('NO_RETURN');
+        setExternalRefundReferences({});
+        setFiscalWarehouses([]);
+        setFiscalWasteWarehouseId(null);
+        setFiscalIdempotencyKey('');
+        setPayments([]);
+    };
+
+    const openFiscalAction = async (invoice: Invoice, action: 'CANCEL' | 'CREDIT_NOTE') => {
+        setFiscalInvoice(invoice);
+        setFiscalAction(action);
+        setFiscalReason('');
+        setInventoryAction('NO_RETURN');
+        setFiscalWasteWarehouseId(null);
+        setFiscalWarehouses([]);
+        setExternalRefundReferences({});
+        setFiscalIdempotencyKey(globalThis.crypto?.randomUUID?.() || `fiscal-${invoice.id}-${Date.now()}`);
+        setPaymentsLoading(true);
+        try {
+            const paymentsResponse = await paymentsAPI.getByOrderId(invoice.id);
+            const activePayments = (Array.isArray(paymentsResponse.data?.data) ? paymentsResponse.data.data : [])
+                .filter((payment: Payment) => payment.status !== 'REVERSED');
+            setPayments(activePayments);
+            if (action === 'CANCEL' && invoice.orderStatus !== 'OPEN') {
+                const warehousesResponse = await warehousesAPI.getAll();
+                const warehouses = (Array.isArray(warehousesResponse.data?.data) ? warehousesResponse.data.data : [])
+                    .filter((warehouse: Warehouse) => warehouse.type === 'BRANCH' && warehouse.branchId === invoice.branchId);
+                setFiscalWarehouses(warehouses);
+                if (warehouses.length === 1) setFiscalWasteWarehouseId(warehouses[0].id);
+            }
+        } catch (err) {
+            showError(errorMessage(err, 'No se pudo preparar el contraflujo fiscal.'));
+            closeFiscalAction();
+        } finally {
+            setPaymentsLoading(false);
+        }
+    };
+
+    const downloadCounterDocument = async (invoice: Invoice, action: 'CANCEL' | 'CREDIT_NOTE') => {
+        const response = action === 'CANCEL'
+            ? await invoicesAPI.downloadCancellationPdf(invoice.id)
+            : await invoicesAPI.downloadCreditNotePdf(invoice.id);
+        const name = action === 'CANCEL'
+            ? `anulacion-${invoice.invoiceNumber}`
+            : (invoice.creditNoteNumber || `nota-credito-${invoice.invoiceNumber}`);
+        const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${name}.pdf`;
+        link.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const submitFiscalAction = async () => {
+        if (!fiscalInvoice || !fiscalAction || fiscalReason.trim().length < 5 || !fiscalIdempotencyKey) {
+            showWarning('Indica un motivo de al menos 5 caracteres.');
+            return;
+        }
+        if (fiscalAction === 'CANCEL' && fiscalInvoice.orderStatus !== 'OPEN' && !fiscalWasteWarehouseId) {
+            showWarning('Selecciona la bodega donde se registrará la merma de cocina.');
+            return;
+        }
+        const nonCashPayments = payments.filter((payment) => payment.status !== 'REVERSED' && payment.paymentMethod?.type !== 'CASH');
+        if (fiscalAction === 'CREDIT_NOTE' && nonCashPayments.some((payment) => !externalRefundReferences[payment.id]?.trim())) {
+            showWarning('Cada pago no efectivo requiere la referencia real del reembolso externo.');
+            return;
+        }
+        setFiscalProcessing(true);
+        try {
+            if (fiscalAction === 'CANCEL') {
+                await invoicesAPI.cancel(fiscalInvoice.id, {
+                    idempotencyKey: fiscalIdempotencyKey,
+                    reason: fiscalReason.trim(),
+                    ...(fiscalWasteWarehouseId ? { wasteWarehouseId: fiscalWasteWarehouseId } : {})
+                });
+            } else {
+                await invoicesAPI.issueCreditNote(fiscalInvoice.id, {
+                    idempotencyKey: fiscalIdempotencyKey,
+                    reason: fiscalReason.trim(),
+                    inventoryAction,
+                    externalRefunds: nonCashPayments.map((payment) => ({
+                        paymentId: payment.id,
+                        reference: externalRefundReferences[payment.id].trim()
+                    }))
+                });
+            }
+            await downloadCounterDocument(fiscalInvoice, fiscalAction);
+            await loadInvoices(false);
+            showSuccess(fiscalAction === 'CANCEL' ? 'Factura anulada con trazabilidad.' : 'Nota de crédito emitida y conciliada.');
+            closeFiscalAction();
+        } catch (err) {
+            showError(errorMessage(err, 'No se pudo completar el contraflujo fiscal.'));
+        } finally {
+            setFiscalProcessing(false);
+        }
+    };
+
     const filteredInvoices = invoices.filter((invoice) => {
         const q = searchTerm.toLowerCase();
         return (
@@ -323,6 +445,7 @@ export default function InvoiceHistory() {
                                     <th>Mesero</th>
                                     <th>Método de Pago</th>
                                     <th className="text-right">Total</th>
+                                    <th>Estado fiscal</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -358,6 +481,15 @@ export default function InvoiceHistory() {
                                             {formatCurrency(invoice.total, settings)}
                                         </td>
                                         <td>
+                                            <span className={`invoice-payment-status ${invoice.fiscalStatus === 'ISSUED' ? 'is-active' : 'is-reversed'}`}>
+                                                {invoice.fiscalStatus === 'CREDITED'
+                                                    ? `Acreditada · ${invoice.creditNoteNumber || ''}`
+                                                    : invoice.fiscalStatus === 'CANCELLED'
+                                                        ? 'Anulada'
+                                                        : 'Emitida'}
+                                            </span>
+                                        </td>
+                                        <td>
                                             <div className="action-buttons">
                                                 <Button
                                                     variant="secondary"
@@ -383,6 +515,28 @@ export default function InvoiceHistory() {
                                                     <CreditCard size={16} />
                                                     Pagos
                                                 </Button>
+                                                {invoice.fiscalStatus === 'ISSUED' && invoice.status === 'UNPAID'
+                                                    && invoice.orderStatus !== 'DELIVERED' && mayCancelInvoice && (
+                                                    <Button variant="danger" size="sm" onClick={() => void openFiscalAction(invoice, 'CANCEL')}>
+                                                        <RotateCcw size={15} /> Anular factura
+                                                    </Button>
+                                                )}
+                                                {invoice.fiscalStatus === 'ISSUED' && invoice.status === 'PAID'
+                                                    && invoice.orderStatus === 'DELIVERED' && mayIssueCreditNote && (
+                                                    <Button variant="danger" size="sm" onClick={() => void openFiscalAction(invoice, 'CREDIT_NOTE')}>
+                                                        <RotateCcw size={15} /> Nota de crédito
+                                                    </Button>
+                                                )}
+                                                {invoice.fiscalStatus === 'CREDITED' && (
+                                                    <Button variant="secondary" size="sm" onClick={() => void downloadCounterDocument(invoice, 'CREDIT_NOTE')}>
+                                                        <Download size={15} /> Nota de crédito
+                                                    </Button>
+                                                )}
+                                                {invoice.fiscalStatus === 'CANCELLED' && (
+                                                    <Button variant="secondary" size="sm" onClick={() => void downloadCounterDocument(invoice, 'CANCEL')}>
+                                                        <Download size={15} /> Constancia
+                                                    </Button>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -530,6 +684,96 @@ export default function InvoiceHistory() {
                                 </article>
                             );
                         })}
+                    </div>
+                )}
+            </Modal>
+
+            <Modal
+                isOpen={fiscalInvoice !== null && fiscalAction !== null}
+                onClose={closeFiscalAction}
+                title={fiscalAction === 'CANCEL'
+                    ? `Anular factura ${fiscalInvoice?.invoiceNumber || ''}`
+                    : `Emitir nota de crédito para ${fiscalInvoice?.invoiceNumber || ''}`}
+                size="lg"
+                closeOnBackdrop={!fiscalProcessing}
+                closeOnEscape={!fiscalProcessing}
+                description={fiscalAction === 'CANCEL'
+                    ? 'Solo aplica antes de pago y entrega. El número original se conserva como anulado.'
+                    : 'Solo aplica a una venta pagada y entregada. Revierte pagos y registra por separado el hecho físico.'}
+                footer={(
+                    <>
+                        <Button variant="ghost" onClick={closeFiscalAction} disabled={fiscalProcessing}>Volver</Button>
+                        <Button variant="danger" onClick={() => void submitFiscalAction()} disabled={fiscalProcessing || paymentsLoading}>
+                            {fiscalProcessing ? 'Procesando…' : fiscalAction === 'CANCEL' ? 'Confirmar anulación' : 'Emitir nota de crédito'}
+                        </Button>
+                    </>
+                )}
+            >
+                {paymentsLoading ? (
+                    <LoadingSpinner size="md" text="Validando contraflujo..." />
+                ) : (
+                    <div className="invoice-payment-reversal-form">
+                        <label htmlFor="fiscal-action-reason">Motivo obligatorio</label>
+                        <textarea
+                            id="fiscal-action-reason"
+                            value={fiscalReason}
+                            onChange={(event) => setFiscalReason(event.target.value)}
+                            minLength={5}
+                            maxLength={500}
+                            rows={3}
+                            disabled={fiscalProcessing}
+                            placeholder="Describe el hecho que origina el documento fiscal"
+                        />
+
+                        {fiscalAction === 'CANCEL' && fiscalInvoice?.orderStatus !== 'OPEN' && (
+                            <label htmlFor="fiscal-waste-warehouse">
+                                Bodega donde se registrará la merma de lo preparado
+                                <select
+                                    id="fiscal-waste-warehouse"
+                                    value={fiscalWasteWarehouseId || ''}
+                                    onChange={(event) => setFiscalWasteWarehouseId(event.target.value ? Number(event.target.value) : null)}
+                                    disabled={fiscalProcessing}
+                                >
+                                    <option value="">Seleccionar bodega</option>
+                                    {fiscalWarehouses.map((warehouse) => (
+                                        <option key={warehouse.id} value={warehouse.id}>{warehouse.name} ({warehouse.code})</option>
+                                    ))}
+                                </select>
+                            </label>
+                        )}
+
+                        {fiscalAction === 'CREDIT_NOTE' && (
+                            <>
+                                <label htmlFor="credit-note-inventory-action">
+                                    Hecho físico de inventario
+                                    <select
+                                        id="credit-note-inventory-action"
+                                        value={inventoryAction}
+                                        onChange={(event) => setInventoryAction(event.target.value as 'NO_RETURN' | 'RETURN_TO_STOCK')}
+                                        disabled={fiscalProcessing}
+                                    >
+                                        <option value="NO_RETURN">Producto no retornado: no reponer inventario</option>
+                                        <option value="RETURN_TO_STOCK">Producto devuelto: reponer consumo en bodega original</option>
+                                    </select>
+                                </label>
+                                {payments.filter((payment) => payment.paymentMethod?.type !== 'CASH').map((payment) => (
+                                    <label key={payment.id} htmlFor={`external-refund-${payment.id}`}>
+                                        Referencia de reembolso externo · Pago #{payment.id} ({payment.paymentMethod?.name})
+                                        <input
+                                            id={`external-refund-${payment.id}`}
+                                            value={externalRefundReferences[payment.id] || ''}
+                                            maxLength={191}
+                                            onChange={(event) => setExternalRefundReferences((current) => ({ ...current, [payment.id]: event.target.value }))}
+                                            disabled={fiscalProcessing}
+                                            placeholder="Referencia confirmada por banco/procesador"
+                                        />
+                                    </label>
+                                ))}
+                                <p className="invoice-payment-reversal-audit">
+                                    Los pagos en efectivo exigen un turno de caja abierto y generan un egreso compensatorio. Los pagos no efectivos no se marcarán revertidos sin referencia externa.
+                                </p>
+                            </>
+                        )}
                     </div>
                 )}
             </Modal>

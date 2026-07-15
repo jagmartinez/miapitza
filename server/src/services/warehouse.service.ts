@@ -50,6 +50,7 @@ export class WarehouseService {
                                 id: true,
                                 name: true,
                                 unit: true,
+                                baseUnit: { select: { abbreviation: true } },
                                 minStock: true,
                                 type: true
                             }
@@ -217,6 +218,7 @@ export class WarehouseService {
                         name: true,
                         sku: true,
                         unit: true,
+                        baseUnit: { select: { abbreviation: true } },
                         minStock: true,
                         cost: true
                     }

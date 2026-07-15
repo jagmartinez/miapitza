@@ -127,6 +127,8 @@ describe('HR benefits API, persistence and security contract', () => {
         expect(service).toContain('Prisma.TransactionIsolationLevel.Serializable');
         expect(service).toContain('requestHash');
         expect(service).toContain("revision: { increment: 1 }");
+        expect(service).toContain("event: 'ADD_EXPENSE'");
+        expect(service).toContain("status: { in: ['ADVANCED', 'IN_SETTLEMENT'] }");
         expect(service).toContain('HR_BENEFITS_REVISION_CONFLICT');
     });
 
@@ -141,6 +143,7 @@ describe('HR benefits API, persistence and security contract', () => {
 
     it('fails closed for unverified evidence identifiers', () => {
         expect(service).toContain('HR_BENEFITS_EVIDENCE_REPOSITORY_REQUIRED');
+        expect(service).toContain('pendingExpenses.some(expense => expense.evidenceId === null)');
         expect(service).toContain('evidenceId se rechaza de forma cerrada');
         expect(schema).toContain('evidenceId');
     });

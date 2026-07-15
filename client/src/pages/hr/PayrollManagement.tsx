@@ -17,6 +17,7 @@ import PageHeader from '../../components/PageHeader';
 import Sidebar from '../../components/Sidebar';
 import PayrollComponentForm from '../../components/hr/PayrollComponentForm';
 import PayrollOnlineNotice from '../../components/hr/PayrollOnlineNotice';
+import PayrollReconciliationPanel from '../../components/hr/PayrollReconciliationPanel';
 import PayrollRuleConfigurationPanel from '../../components/hr/PayrollRuleConfigurationPanel';
 import PayrollRuleForm from '../../components/hr/PayrollRuleForm';
 import PayrollRunForm from '../../components/hr/PayrollRunForm';
@@ -711,6 +712,7 @@ export default function PayrollManagement() {
                     </small>
                   </div>
                 </div>
+                <PayrollReconciliationPanel key={`${selected.kind}-${selected.id}-${selected.revision}`} run={selected} />
 
                 <div className="hr-payroll-workspace-grid">
                   <section>

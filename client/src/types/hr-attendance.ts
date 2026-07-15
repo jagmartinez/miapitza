@@ -62,6 +62,14 @@ export interface HrBiometricMaintenanceResult {
   pendingChecked: number;
 }
 
+export interface HrBiometricProviderHealth {
+  provider: string;
+  model: string;
+  status: 'AVAILABLE' | 'UNAVAILABLE';
+  checkedAt: string;
+  detail?: string;
+}
+
 export interface HrAttendanceSettingsLookups {
   branches: HrNamedEntity[];
   users: HrUserSummary[];

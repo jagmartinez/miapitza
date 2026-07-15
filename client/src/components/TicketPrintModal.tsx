@@ -113,6 +113,10 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
 
   const handlePrint = () => {
     setPrintError(null);
+    if (!ticketData || loadError) {
+      setPrintError('El ticket no estÃ¡ disponible; vuelve a cargarlo antes de imprimir');
+      return;
+    }
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       setPrintError('Por favor permite ventanas emergentes para imprimir');
@@ -160,11 +164,18 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
       </html>
     `);
 
-    printWindow.document.close();
-    setTimeout(() => {
+    let printed = false;
+    const printWhenReady = () => {
+      if (printed || printWindow.closed) return;
+      printed = true;
       printWindow.print();
       printWindow.close();
-    }, 250);
+    };
+    printWindow.addEventListener('load', printWhenReady, { once: true });
+    printWindow.document.close();
+    // Some popup documents do not emit load consistently. Keep a bounded
+    // fallback, while the guard above prevents a duplicate print dialog.
+    setTimeout(printWhenReady, 1_500);
   };
 
   const renderCustomerTicket = () => {
@@ -377,7 +388,7 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
           <button className="btn btn-secondary" onClick={onClose}>
             Cancelar
           </button>
-          <button className="btn btn-primary" onClick={handlePrint} disabled={loading}>
+          <button className="btn btn-primary" onClick={handlePrint} disabled={loading || !ticketData || !!loadError}>
             <Printer size={18} />
             Imprimir
           </button>

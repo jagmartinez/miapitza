@@ -93,7 +93,11 @@ describe('HrEmployeeService tenant and account invariants', () => {
         expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
             where: expect.objectContaining({
                 companyId: 4,
-                branchAssignments: { some: { branchId: 10, effectiveTo: null } },
+                branchAssignments: { some: expect.objectContaining({
+                    branchId: 10,
+                    effectiveFrom: expect.objectContaining({ lte: expect.any(Date) }),
+                    OR: [{ effectiveTo: null }, { effectiveTo: { gte: expect.any(Date) } }],
+                }) },
             }),
             select: expect.objectContaining({
                 id: true,
@@ -120,7 +124,11 @@ describe('HrEmployeeService tenant and account invariants', () => {
             where: {
                 id: 8,
                 companyId: 4,
-                branchAssignments: { some: { branchId: 10, effectiveTo: null } },
+                branchAssignments: { some: expect.objectContaining({
+                    branchId: 10,
+                    effectiveFrom: expect.objectContaining({ lte: expect.any(Date) }),
+                    OR: [{ effectiveTo: null }, { effectiveTo: { gte: expect.any(Date) } }],
+                }) },
             },
         }));
     });
@@ -164,6 +172,22 @@ describe('HrEmployeeService tenant and account invariants', () => {
         expect(transaction).not.toHaveBeenCalled();
     });
 
+    it('rejects indirect cycles in the supervisor hierarchy', async () => {
+        jest.spyOn(prisma.employee, 'findFirst')
+            .mockResolvedValueOnce({
+                id: 8, companyId: 4, employeeCode: 'EMP-8', status: 'ACTIVE',
+                departmentId: null, jobPositionId: null, terminationDate: null,
+            } as never)
+            .mockResolvedValueOnce({ id: 9 } as never)
+            .mockResolvedValueOnce({ supervisorEmployeeId: 8 } as never);
+        const transaction = jest.spyOn(prisma, '$transaction');
+
+        await expect(HrEmployeeService.update(8, 4, { supervisorEmployeeId: 9 }, 3))
+            .rejects.toMatchObject({ statusCode: 409 });
+
+        expect(transaction).not.toHaveBeenCalled();
+    });
+
     it('terminates access and revokes sessions in the same transaction', async () => {
         jest.spyOn(prisma.employee, 'findFirst').mockResolvedValue({
             id: 8,
@@ -176,7 +200,7 @@ describe('HrEmployeeService tenant and account invariants', () => {
             terminationDate: null,
         } as never);
         const tx = {
-            employee: { update: jest.fn().mockResolvedValue({ id: 8 } as never) },
+            employee: { updateMany: jest.fn().mockResolvedValue({ count: 1 } as never) },
             employeeBranchAssignment: {
                 findFirst: jest.fn().mockResolvedValue(null as never),
                 updateMany: jest.fn().mockResolvedValue({ count: 1 } as never),
@@ -187,6 +211,15 @@ describe('HrEmployeeService tenant and account invariants', () => {
             },
             user: { updateMany: jest.fn().mockResolvedValue({ count: 1 } as never) },
             userSession: { updateMany: jest.fn().mockResolvedValue({ count: 2 } as never) },
+            biometricProfile: {
+                findFirst: jest.fn().mockResolvedValue({
+                    id: 31, provider: 'face-provider', templateRef: 'encrypted-template',
+                } as never),
+                updateMany: jest.fn().mockResolvedValue({ count: 1 } as never),
+            },
+            biometricPurgeRequest: {
+                create: jest.fn().mockResolvedValue({ id: 91 } as never),
+            },
             auditLog: { create: jest.fn().mockResolvedValue({ id: 1 } as never) },
         };
         jest.spyOn(prisma, '$transaction').mockImplementation(
@@ -203,5 +236,17 @@ describe('HrEmployeeService tenant and account invariants', () => {
             where: { userId: 21, revoked: false },
             data: { revoked: true },
         });
+        expect(tx.biometricProfile.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+            where: { id: 31, companyId: 4, userId: 21, status: 'ACTIVE' },
+            data: expect.objectContaining({ status: 'REVOKED', revocationReason: 'EMPLOYMENT_TERMINATED' }),
+        }));
+        expect(tx.biometricPurgeRequest.create).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                companyId: 4,
+                biometricProfileId: 31,
+                encryptedTemplateRef: 'encrypted-template',
+                reason: 'EMPLOYMENT_TERMINATED',
+            }),
+        }));
     });
 });

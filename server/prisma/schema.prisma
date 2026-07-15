@@ -55,6 +55,9 @@ model Company {
   promotions                      Promotion[]
   productCostHistories            ProductCostHistory[]
   invoiceSequences                InvoiceSequence[]
+  creditNoteSequences             CreditNoteSequence[]
+  fiscalCreditNotes               FiscalCreditNote[]
+  fiscalInvoiceCancellations      FiscalInvoiceCancellation[]
   apiKeys                         ApiKey[]
   unitsOfMeasure                  UnitOfMeasure[]
   productUnits                    ProductUnit[]
@@ -179,6 +182,8 @@ model Branch {
   menuItemPrices                 MenuItemBranchPrice[]
   cateringEvents                 CateringEvent[]
   invoiceSequences               InvoiceSequence[]
+  fiscalCreditNotes              FiscalCreditNote[]
+  fiscalInvoiceCancellations     FiscalInvoiceCancellation[]
   pedidosYaConfigs               PedidosYaConfig[]
   productionOrders               ProductionOrder[]
   employeeAssignments            EmployeeBranchAssignment[]
@@ -213,6 +218,103 @@ model InvoiceSequence {
   branch  Branch  @relation(fields: [branchId], references: [id])
 
   @@unique([companyId, branchId])
+}
+
+enum InvoiceFiscalStatus {
+  NOT_ISSUED
+  ISSUED
+  CREDITED
+  CANCELLED
+}
+
+enum FiscalCreditNoteStatus {
+  ISSUED
+}
+
+enum CreditNoteInventoryDisposition {
+  NOT_CONSUMED
+  NOT_RETURNED
+  RETURNED_TO_ORIGINAL_STOCK
+}
+
+model CreditNoteSequence {
+  id         Int      @id @default(autoincrement())
+  companyId  Int
+  series     String   @db.VarChar(20)
+  lastNumber Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, series])
+  @@index([companyId])
+}
+
+model FiscalCreditNote {
+  id                   Int                            @id @default(autoincrement())
+  companyId            Int
+  branchId             Int
+  orderId              Int                            @unique
+  number               String                         @unique @db.VarChar(80)
+  series               String                         @db.VarChar(20)
+  sequenceNumber       Int
+  status               FiscalCreditNoteStatus         @default(ISSUED)
+  originalInvoiceNumber String                         @db.VarChar(191)
+  reason               String                         @db.VarChar(500)
+  jurisdiction         String                         @db.VarChar(32)
+  idempotencyKey       String                         @db.VarChar(191)
+  requestHash          String                         @db.VarChar(64)
+  subtotal             Decimal                        @db.Decimal(10, 2)
+  tax                  Decimal                        @db.Decimal(10, 2)
+  tipAmount            Decimal                        @db.Decimal(10, 2)
+  total                Decimal                        @db.Decimal(10, 2)
+  inventoryDisposition CreditNoteInventoryDisposition
+  wasteWarehouseId     Int?
+  snapshot             Json
+  issuedAt             DateTime                       @default(now())
+  issuedById           Int
+  createdAt            DateTime                       @default(now())
+
+  company        Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch         Branch     @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  order          Order      @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  wasteWarehouse Warehouse? @relation(fields: [wasteWarehouseId], references: [id], onDelete: Restrict)
+  issuedBy       User       @relation("FiscalCreditNoteIssuedBy", fields: [issuedById], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, idempotencyKey])
+  @@unique([companyId, branchId, series, sequenceNumber])
+  @@index([companyId, branchId, issuedAt])
+  @@index([originalInvoiceNumber])
+  @@index([issuedById])
+}
+
+model FiscalInvoiceCancellation {
+  id                    Int      @id @default(autoincrement())
+  companyId             Int
+  branchId              Int
+  orderId               Int      @unique
+  originalInvoiceNumber String   @db.VarChar(191)
+  reason                String   @db.VarChar(500)
+  jurisdiction          String   @db.VarChar(32)
+  idempotencyKey        String   @db.VarChar(191)
+  requestHash           String   @db.VarChar(64)
+  wasteWarehouseId      Int?
+  snapshot              Json
+  cancelledAt           DateTime @default(now())
+  cancelledById         Int
+  createdAt             DateTime @default(now())
+
+  company        Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch         Branch     @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  order          Order      @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  wasteWarehouse Warehouse? @relation(fields: [wasteWarehouseId], references: [id], onDelete: Restrict)
+  cancelledBy    User       @relation("FiscalInvoiceCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, branchId, cancelledAt])
+  @@index([originalInvoiceNumber])
+  @@index([cancelledById])
 }
 
 enum BranchStatus {
@@ -270,6 +372,8 @@ model User {
   bankDepositsReversed              BankDeposit[]                      @relation("BankDepositReversedBy")
   paymentsRegistered                Payment[]                          @relation("PaymentRegisteredBy")
   paymentsReversed                  Payment[]                          @relation("PaymentReversedBy")
+  fiscalCreditNotesIssued           FiscalCreditNote[]                 @relation("FiscalCreditNoteIssuedBy")
+  fiscalInvoicesCancelled           FiscalInvoiceCancellation[]        @relation("FiscalInvoiceCancelledBy")
   cateringPaymentsRegistered        CateringPayment[]                  @relation("CateringPaymentRegisteredBy")
   cateringPaymentsReversed          CateringPayment[]                  @relation("CateringPaymentReversedBy")
   purchasePaymentsReversed          PurchaseOrderPayment[]             @relation("PurchaseOrderPaymentReversedBy")
@@ -2981,6 +3085,8 @@ model Warehouse {
   inventoryBatches InventoryBatch[]
   pedidosYaConfigs PedidosYaConfig[]
   ProductionOrder  ProductionOrder[]
+  fiscalCreditNotes FiscalCreditNote[]
+  fiscalInvoiceCancellations FiscalInvoiceCancellation[]
 
   @@unique([companyId, code])
   @@unique([companyId, branchId, name])
@@ -3027,6 +3133,9 @@ model InventoryMovement {
   totalCost        Decimal?     @db.Decimal(18, 6)
   balanceQty       Decimal?     @db.Decimal(18, 6)
   balanceCost      Decimal?     @db.Decimal(18, 6)
+  // Exact FIFO portions consumed by an OUT movement. This lets a compensating
+  // reversal recreate the original layers/cost order instead of one averaged lot.
+  consumedLayers   Json?
   createdAt        DateTime     @default(now())
 
   warehouse Warehouse @relation(fields: [warehouseId], references: [id])
@@ -3227,6 +3336,11 @@ model Order {
   cashRegisterId          Int? // Linked when paid/processed
   cashRegister            CashRegister?        @relation("OrderCashRegister", fields: [cashRegisterId], references: [id])
   customerName            String?
+  customerTaxId           String?              @db.VarChar(100)
+  customerTaxIdType       String?              @db.VarChar(50)
+  customerFiscalAddress   String?              @db.Text
+  customerEmail           String?              @db.VarChar(191)
+  customerPhone           String?              @db.VarChar(50)
   orderType               OrderType            @default(DINE_IN)
   salesChannel            SalesChannel         @default(RESTAURANT)
   status                  OrderStatus          @default(OPEN)
@@ -3240,6 +3354,11 @@ model Order {
   channelMarkup           Decimal              @default(0) @db.Decimal(10, 2) // price markup applied for channel
   invoiceNumber           String?              @unique
   invoicedAt              DateTime?
+  invoiceFiscalStatus     InvoiceFiscalStatus  @default(NOT_ISSUED)
+  // Immutable fiscal rendering payload captured when the number is issued.
+  // Reads and PDF downloads must never reconstruct an issued document from
+  // mutable menu, company, branch or settings master data.
+  invoiceSnapshot         Json?
   cancelledById           Int? // User who cancelled the order
   cancelReason            String? // Reason for cancellation
   cancelledAt             DateTime? // Timestamp of cancellation
@@ -3269,6 +3388,8 @@ model Order {
   payments             Payment[]
   pedidosYaSyncs       PedidosYaOrderSync[]
   kitchenNotifications KitchenNotification[]
+  fiscalCreditNote     FiscalCreditNote?
+  fiscalInvoiceCancellation FiscalInvoiceCancellation?
 
   @@index([companyId, branchId])
   @@index([companyId, status])
@@ -3418,6 +3539,7 @@ model Payment {
   reversedAt      DateTime?
   reversedById    Int?
   reversalReason  String?
+  refundReference String?           @db.VarChar(191)
 
   order         Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
   paymentMethod PaymentMethod @relation(fields: [paymentMethodId], references: [id])

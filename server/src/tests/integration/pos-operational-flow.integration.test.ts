@@ -31,6 +31,17 @@ describe('POS operational flow', () => {
     beforeAll(async () => {
         const role = await prisma.role.findFirst({ where: { name: 'ADMIN', companyId: null } })
             ?? await prisma.role.create({ data: { name: 'ADMIN', description: 'Integration admin' } });
+        const invoicePermissions = await Promise.all(['invoices.issue', 'invoices.view'].map((name) =>
+            prisma.permission.upsert({
+                where: { name },
+                update: {},
+                create: { name, description: `POS integration ${name}` }
+            })
+        ));
+        await prisma.role.update({
+            where: { id: role.id },
+            data: { permissions: { connect: invoicePermissions.map(({ id }) => ({ id })) } }
+        });
         await prisma.company.upsert({
             where: { id: companyId },
             update: { active: true },
@@ -157,8 +168,8 @@ describe('POS operational flow', () => {
         expect(priced.body.data.discountCode).toBe('POS10');
         expect(Number(priced.body.data.total)).toBe(90);
 
-        const issuedInvoice = await request(app).get(`/api/invoices/${paidOrderId}`).set('Authorization', `Bearer ${token}`);
-        expect(issuedInvoice.status).toBe(200);
+        const issuedInvoice = await request(app).post(`/api/invoices/${paidOrderId}/issue`).set('Authorization', `Bearer ${token}`);
+        expect(issuedInvoice.status).toBe(201);
         expect(issuedInvoice.body.data.invoiceNumber).toMatch(/^FAC-/);
 
         const paid = await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
@@ -221,6 +232,9 @@ describe('POS operational flow', () => {
 
         await request(app).post(`/api/orders/${orderId}/send-to-kitchen`).set('Authorization', `Bearer ${token}`).expect(200);
         expect((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status).toBe('SENT_TO_KITCHEN');
+        await request(app).patch(`/api/orders/${orderId}/status`).set('Authorization', `Bearer ${token}`)
+            .send({ status: 'READY' }).expect(400);
+        expect((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status).toBe('SENT_TO_KITCHEN');
         await request(app).patch(`/api/orders/${orderId}/items/${itemId}/start`).set('Authorization', `Bearer ${token}`).expect(200);
         expect((await prisma.orderItem.findUniqueOrThrow({ where: { id: itemId } })).status).toBe('IN_PROGRESS');
         const finished = await request(app).patch(`/api/orders/${orderId}/items/${itemId}/finish`).set('Authorization', `Bearer ${token}`);
@@ -266,7 +280,7 @@ describe('POS operational flow', () => {
         expect(split.body.data.splits.map((entry: { amount: number }) => entry.amount)).toEqual([33.35, 33.34, 33.34]);
         expect(split.body.data.splits.reduce((sum: number, entry: { amount: number }) => sum + entry.amount, 0)).toBe(100.03);
 
-        await request(app).get(`/api/invoices/${splitOrderId}`).set('Authorization', `Bearer ${token}`).expect(200);
+        await request(app).post(`/api/invoices/${splitOrderId}/issue`).set('Authorization', `Bearer ${token}`).expect(201);
 
         const first = await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
             .send({ orderId: splitOrderId, paymentMethodId, amount: 40 });
@@ -346,7 +360,7 @@ describe('POS operational flow', () => {
                 .send({ menuItemId, quantity: 1 }).expect(201);
             await request(app).patch(`/api/orders/${orderId}/pricing`).set('Authorization', `Bearer ${token}`)
                 .send({ discount: 1, discountCode: 'RACE1' }).expect(200);
-            await request(app).get(`/api/invoices/${orderId}`).set('Authorization', `Bearer ${token}`).expect(200);
+            await request(app).post(`/api/invoices/${orderId}/issue`).set('Authorization', `Bearer ${token}`).expect(201);
         }
 
         const attempts = await Promise.all(orderIds.map((orderId) =>
