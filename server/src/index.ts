@@ -8,6 +8,7 @@ import { SessionService } from './services/session.service';
 import { stopAuthCleanup } from './services/auth.service';
 import { ensureStorageReady } from './utils/storage';
 import { collectEnvironmentErrors } from './utils/env-validation';
+import { BiometricService } from './services/hr-biometric.service';
 
 // Keep the local fallback aligned with Docker, examples and the client defaults.
 const PORT = process.env.PORT || 3000;
@@ -57,6 +58,22 @@ const sessionPurgeTimer = setInterval(() => {
 }, 60 * 60 * 1000);
 if (sessionPurgeTimer.unref) sessionPurgeTimer.unref();
 
+// Apply biometric retention and retry the provider purge outbox hourly. The
+// operation is tenant-scoped and uses an active SUPERADMIN as the audit actor.
+BiometricService.runScheduledMaintenance().catch(err => {
+    console.error('Initial biometric maintenance error:', err);
+});
+const biometricMaintenanceTimer = setInterval(() => {
+    BiometricService.runScheduledMaintenance().then(results => {
+        for (const result of results) {
+            if (!result.ok) console.error(`Biometric maintenance failed for company ${result.companyId}: ${result.error}`);
+        }
+    }).catch(err => {
+        console.error('Biometric maintenance error:', err);
+    });
+}, 60 * 60 * 1000);
+if (biometricMaintenanceTimer.unref) biometricMaintenanceTimer.unref();
+
 // Start background notification service
 NotificationService.start();
 
@@ -73,6 +90,7 @@ const shutdown = async () => {
     NotificationService.stop();
     stopAuthCleanup();
     clearInterval(sessionPurgeTimer);
+    clearInterval(biometricMaintenanceTimer);
     await prisma.$disconnect();
     server.close(() => {
         console.log('HTTP server closed');

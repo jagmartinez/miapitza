@@ -45,6 +45,10 @@ import {
     ShoppingBag,
     FlaskConical,
     Factory,
+    Briefcase,
+    UserRoundCheck,
+    SlidersHorizontal,
+    BadgeDollarSign,
     type LucideIcon
 } from 'lucide-react';
 import { getUserAccentColor, getUserRoleNames } from '../utils/authz';
@@ -59,11 +63,12 @@ import {
     HOST_ROLES,
     WAREHOUSE,
     CHEF_MGMT,
+    HR_OWNER,
 } from '../constants/roles';
 import './Layout.css';
 
 // Role-based navigation items
-type NavItem = { to: string; icon: LucideIcon; label: string; roles: string[] };
+type NavItem = { to: string; icon: LucideIcon; label: string; roles?: string[]; internalOnly?: boolean };
 type NavSection = { section: string; items: NavItem[] };
 
 const ALL_ROLES: string[] = Object.values(ROLES);
@@ -117,6 +122,26 @@ const NAV_SECTIONS: NavSection[] = [
         ],
     },
     {
+        section: 'Recursos Humanos',
+        items: [
+            { to: '/rh', icon: Briefcase, label: 'Panel RH', roles: HR_OWNER },
+            { to: '/rh/personal', icon: Users, label: 'Personal', roles: HR_OWNER },
+            { to: '/rh/horarios', icon: Calendar, label: 'Horarios', roles: HR_OWNER },
+            { to: '/rh/asistencia', icon: ClipboardList, label: 'Asistencia', roles: HR_OWNER },
+            { to: '/rh/asistencia/configuracion', icon: SlidersHorizontal, label: 'Configurar asistencia', roles: HR_OWNER },
+            { to: '/rh/jornadas', icon: ClipboardList, label: 'Jornadas y extras', roles: HR_OWNER },
+            { to: '/rh/ausencias', icon: Calendar, label: 'Permisos y vacaciones', roles: HR_OWNER },
+            { to: '/rh/nomina', icon: Wallet, label: 'Nómina y aguinaldo', roles: HR_OWNER },
+            { to: '/rh/prestaciones', icon: BadgeDollarSign, label: 'Viáticos, préstamos y deducciones', roles: HR_OWNER },
+            { to: '/rh/mi-portal/horario', icon: Calendar, label: 'Mi horario', internalOnly: true },
+            { to: '/rh/marcaje', icon: MapPin, label: 'Marcaje', internalOnly: true },
+            { to: '/rh/biometria', icon: UserRoundCheck, label: 'Mi biometrÃ­a', internalOnly: true },
+            { to: '/rh/mi-portal/gestion', icon: Briefcase, label: 'Mi gestión RH', internalOnly: true },
+            { to: '/rh/mi-portal/nomina', icon: Wallet, label: 'Mis recibos', internalOnly: true },
+            { to: '/rh/mi-portal/prestaciones', icon: BadgeDollarSign, label: 'Mis prestaciones', internalOnly: true },
+        ],
+    },
+    {
         section: 'Configuración',
         items: [
             { to: '/branches', icon: MapPin, label: 'Sucursales', roles: ADMIN },
@@ -147,6 +172,7 @@ export default function Layout() {
 
     const userRoleNames = getUserRoleNames(user);
     const userAccentColor = getUserAccentColor(user);
+    const isInternalEmployee = user?.accountType === 'INTERNAL' && Boolean(user.employeeId);
 
     const handleLogout = () => {
         logout();
@@ -163,7 +189,10 @@ export default function Layout() {
 
     const renderNavSections = (onNavigate?: () => void) =>
         NAV_SECTIONS.map((section, sIdx) => {
-            const visibleItems = section.items.filter(item => userRoleNames.some(r => item.roles.includes(r)));
+            const visibleItems = section.items.filter(item =>
+                (!item.roles || userRoleNames.some(r => item.roles!.includes(r))) &&
+                (!item.internalOnly || isInternalEmployee)
+            );
             if (visibleItems.length === 0) return null;
             return (
                 <div key={section.section}>
@@ -173,6 +202,7 @@ export default function Layout() {
                         <NavLink
                             key={item.to}
                             to={item.to}
+                            end={item.to === '/rh'}
                             className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}
                             title={item.label}
                             onClick={onNavigate}
@@ -257,7 +287,7 @@ export default function Layout() {
 
             {(() => {
                 const visibleQuickItems = MOBILE_QUICK_NAV.filter(item =>
-                    userRoleNames.some(r => item.roles.includes(r))
+                    !item.roles || userRoleNames.some(r => item.roles!.includes(r))
                 );
                 if (visibleQuickItems.length === 0) return null;
                 return (

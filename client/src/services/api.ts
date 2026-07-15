@@ -17,6 +17,8 @@ type OfflineRequestMeta = Pick<SyncItem, 'operationType' | 'dependencyKey' | 'en
 declare module 'axios' {
     export interface AxiosRequestConfig {
         offlineMeta?: OfflineRequestMeta;
+        /** Sensitive GETs (for example payroll receipts) must never enter IndexedDB or use stale fallback data. */
+        skipOfflineCache?: boolean;
     }
 }
 
@@ -183,7 +185,7 @@ api.interceptors.response.use(
         const url = response.config.url || '';
         const isBinaryResponse = response.config.responseType === 'arraybuffer'
             || response.config.responseType === 'blob';
-        if (method === 'get' && !url.startsWith('/auth/') && !isBinaryResponse) {
+        if (method === 'get' && !url.startsWith('/auth/') && !isBinaryResponse && !response.config.skipOfflineCache) {
             try {
                 await offlineManager.putCachedData(buildCacheKey(response.config), response.data);
             } catch {
@@ -232,7 +234,7 @@ api.interceptors.response.use(
         }
 
         // Handle GET failure due to network (offline fallback with TTL check)
-        if (!error.response && (error.config?.method === 'get' || error.config?.method === 'GET')) {
+        if (!error.response && !error.config?.skipOfflineCache && (error.config?.method === 'get' || error.config?.method === 'GET')) {
             const cacheKey = buildCacheKey(error.config);
             const cachedData = await offlineManager.getCachedData(cacheKey);
             if (cachedData !== null) {
@@ -905,6 +907,54 @@ export const usersAPI = {
     delete: (id: number) => api.delete(`/users/${id}`)
 };
 
+const HR_API_BASE = '/v1/hr';
+
+export interface BranchGeofencePayload {
+    name?: string;
+    code?: string;
+    address?: string | null;
+    phone?: string | null;
+    status?: 'ACTIVE' | 'INACTIVE';
+    latitude: number | null;
+    longitude: number | null;
+    geofenceRadiusM: number | null;
+    maxLocationAccuracyM: number | null;
+    timezone: string | null;
+    attendanceEnabled: boolean;
+    expectedVersion?: number;
+}
+
+/**
+ * Phase 1 Human Resources contract. Keeping the versioned prefix in one place
+ * prevents HR pages from accidentally falling back to unversioned routes.
+ */
+export const hrAPI = {
+    getDashboard: () => api.get(`${HR_API_BASE}/dashboard`),
+    getEmployees: (params?: Record<string, unknown>) =>
+        api.get(`${HR_API_BASE}/employees`, { params }),
+    getEmployee: (employeeId: number) =>
+        api.get(`${HR_API_BASE}/employees/${employeeId}`),
+    createEmployee: (data: Record<string, unknown>) =>
+        api.post(`${HR_API_BASE}/employees`, data),
+    updateEmployee: (employeeId: number, data: Record<string, unknown>) =>
+        api.put(`${HR_API_BASE}/employees/${employeeId}`, data),
+    changeEmployeeStatus: (employeeId: number, data: Record<string, unknown>) =>
+        api.patch(`${HR_API_BASE}/employees/${employeeId}/status`, data),
+    getOrganization: (params?: Record<string, unknown>) =>
+        api.get(`${HR_API_BASE}/lookups`, { params }),
+    getBranchGeofence: (branchId: number) =>
+        api.get(`${HR_API_BASE}/branches/${branchId}/geofence`),
+    createBranch: (data: BranchGeofencePayload & { name: string; code: string }) =>
+        api.post(`${HR_API_BASE}/branches`, data),
+    updateBranchGeofence: (branchId: number, data: BranchGeofencePayload) =>
+        api.put(`${HR_API_BASE}/branches/${branchId}/geofence`, data),
+};
+
+/** Focused alias for branch administration screens. */
+export const branchGeofenceAPI = {
+    get: hrAPI.getBranchGeofence,
+    update: hrAPI.updateBranchGeofence,
+};
 
 export const inventoryMovementsAPI = {
     getAll: (params?: Record<string, unknown>) =>

@@ -75,7 +75,9 @@ describe('table operational center contract', () => {
     it('does not render the removed split financial summary', () => {
         expect(paymentSource).not.toContain('split-financial-summary');
         expect(paymentSource).toContain('Por unidades');
-        expect(paymentSource).toContain('unit-stepper');
+        expect(paymentSource).toContain('¿Quién paga cada plato?');
+        expect(paymentSource).toContain('unit-payer-options');
+        expect(paymentSource).toContain('assignItemUnit');
     });
 
     it('uses themed react-select controls throughout table operations', () => {
@@ -85,6 +87,8 @@ describe('table operational center contract', () => {
         expect(tablesSource).toContain('initialTableId={operationTableId}');
         expect(operationSource).not.toContain('<select');
         expect(mapSource).toContain('Select<SelectOption>');
+        expect(operationSource).toContain('Buscar por mesa o salón');
+        expect(operationSource).toContain('visibleConsolidationSources');
     });
 
     it('keeps a single orders view without the removed Cuenta tab', () => {

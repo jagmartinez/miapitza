@@ -67,6 +67,7 @@ export const createUser: ValidationSchema = {
         username: { type: 'string', required: true, min: 3, max: 50 },
         password: { type: 'string', required: true, min: 8, max: 128 },
         roleId: { type: 'number', required: true, min: 1 },
+        accountType: { type: 'string', enum: ['INTERNAL', 'EXTERNAL'] },
     },
 };
 
@@ -75,6 +76,7 @@ export const updateUser: ValidationSchema = {
     body: {
         name: { type: 'string', min: 1, max: 100 },
         email: { type: 'email' },
+        accountType: { type: 'string', enum: ['INTERNAL', 'EXTERNAL'] },
     },
 };
 
@@ -338,6 +340,12 @@ export const createBranch: ValidationSchema = {
         companyId: { type: 'number', min: 1, integer: true },
         address: { type: 'string', max: 500 },
         phone: { type: 'string', max: 50 },
+        latitude: { type: 'number', required: true, min: -90, max: 90 },
+        longitude: { type: 'number', required: true, min: -180, max: 180 },
+        geofenceRadiusM: { type: 'number', required: true, min: 10, max: 10000, integer: true },
+        maxLocationAccuracyM: { type: 'number', required: true, min: 1, max: 5000, integer: true },
+        timezone: { type: 'string', max: 64 },
+        attendanceEnabled: { type: 'boolean' },
         status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'] },
     },
 };
@@ -346,6 +354,25 @@ export const createBranch: ValidationSchema = {
 export const createRole: ValidationSchema = {
     body: {
         name: { type: 'string', required: true, min: 1, max: 50 },
+        description: { type: 'string', max: 1000 },
+        permissionIds: {
+            type: 'array',
+            max: 500,
+            items: { type: 'number', min: 1, integer: true }
+        },
+    },
+};
+
+export const updateRole: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1, integer: true } },
+    body: {
+        name: { type: 'string', min: 1, max: 50 },
+        description: { type: 'string', max: 1000 },
+        permissionIds: {
+            type: 'array',
+            max: 500,
+            items: { type: 'number', min: 1, integer: true }
+        },
     },
 };
 

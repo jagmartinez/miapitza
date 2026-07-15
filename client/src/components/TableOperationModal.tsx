@@ -6,6 +6,7 @@ import { ordersAPI } from '../services/api';
 import { ACTIVE_ORDER_STATUSES } from '../utils/orderStatus';
 import type { Order, Table } from '../types';
 import type { SingleValue } from 'react-select';
+import { Search } from 'lucide-react';
 import './TableOperationModal.css';
 
 type Operation = 'TRANSFER' | 'CONSOLIDATE';
@@ -41,6 +42,7 @@ export default function TableOperationModal({
     const [loadingOrders, setLoadingOrders] = useState(false);
     const [ordersError, setOrdersError] = useState('');
     const [reason, setReason] = useState('');
+    const [sourceSearch, setSourceSearch] = useState('');
 
     useEffect(() => {
         if (!isOpen) return;
@@ -54,6 +56,7 @@ export default function TableOperationModal({
         setOrders([]);
         setOrdersError('');
         setReason('');
+        setSourceSearch('');
     }, [initialTableId, isOpen, operation, tables]);
 
     useEffect(() => {
@@ -109,6 +112,17 @@ export default function TableOperationModal({
         value: String(order.id),
         label: `Orden #${order.id} · ${order.items?.length || 0} productos`
     })), [orders]);
+    const consolidationSources = useMemo(
+        () => eligibleSources.filter((table) => table.id !== Number(destinationTableId)),
+        [destinationTableId, eligibleSources]
+    );
+    const visibleConsolidationSources = useMemo(() => {
+        const query = sourceSearch.trim().toLocaleLowerCase('es');
+        if (!query) return consolidationSources;
+        return consolidationSources.filter((table) => (
+            `mesa ${table.number} ${table.location || 'salón principal'}`.toLocaleLowerCase('es').includes(query)
+        ));
+    }, [consolidationSources, sourceSearch]);
 
     const submit = async () => {
         if (operation === 'TRANSFER') {
@@ -138,6 +152,7 @@ export default function TableOperationModal({
             isOpen={isOpen}
             onClose={submitting ? () => undefined : onClose}
             title={operation === 'TRANSFER' ? 'Cambiar consumo de mesa' : 'Consolidar cuentas de mesas'}
+            size={operation === 'CONSOLIDATE' ? 'lg' : 'md'}
             description={operation === 'TRANSFER'
                 ? 'El traslado completo conserva productos, notas, modificadores y estado de cocina.'
                 : 'Las órdenes origen se absorben en una cuenta principal y las mesas secundarias se liberan atómicamente.'}
@@ -244,13 +259,24 @@ export default function TableOperationModal({
                 )}
 
                 {operation === 'CONSOLIDATE' && (
-                    <fieldset>
+                    <fieldset className="table-operation-sources">
                         <legend>Mesas origen</legend>
+                        <div className="table-operation-source-toolbar">
+                            <label className="table-operation-search">
+                                <Search size={17} aria-hidden="true" />
+                                <input
+                                    type="search"
+                                    value={sourceSearch}
+                                    onChange={(event) => setSourceSearch(event.target.value)}
+                                    placeholder="Buscar por mesa o salón"
+                                    aria-label="Buscar mesas origen"
+                                />
+                            </label>
+                            <span><strong>{sourceTableIds.length}</strong> seleccionadas · {consolidationSources.length} disponibles</span>
+                        </div>
                         <div className="table-operation-checks">
-                            {eligibleSources
-                                .filter((table) => table.id !== Number(destinationTableId))
-                                .map((table) => (
-                                    <label key={table.id} className={sourceTableIds.includes(table.id) ? 'selected' : ''}>
+                            {visibleConsolidationSources.map((table) => (
+                                     <label key={table.id} className={sourceTableIds.includes(table.id) ? 'selected' : ''}>
                                         <input
                                             type="checkbox"
                                             checked={sourceTableIds.includes(table.id)}
@@ -259,8 +285,11 @@ export default function TableOperationModal({
                                                 : current.filter((id) => id !== table.id))}
                                         />
                                         <span><strong>Mesa {table.number}</strong><small>{table.location || 'Salón principal'}</small></span>
-                                    </label>
+                                     </label>
                                 ))}
+                            {visibleConsolidationSources.length === 0 && (
+                                <div className="table-operation-empty">No hay mesas ocupadas que coincidan con la búsqueda.</div>
+                            )}
                         </div>
                     </fieldset>
                 )}

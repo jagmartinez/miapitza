@@ -5,6 +5,7 @@ import { WebSocketService } from '../services/websocket.service';
 import { authMiddleware, requireRole } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import { generateApiKey } from '../utils/apiKeyGenerator';
+import hrRoutes from './hr.routes';
 
 const v1 = Router();
 
@@ -24,6 +25,7 @@ const globalLimiter = rateLimit({
 });
 
 v1.use(globalLimiter);
+v1.use('/hr', hrRoutes);
 
 // ── Extended health endpoint ──
 v1.get('/health', async (_req: Request, res: Response) => {

@@ -8,7 +8,7 @@ import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
 import { Users as UsersIcon, Plus, Edit2, UserX, UserCheck, Shield, MapPin, Building2, Mail, User as UserIcon, Lock, Palette } from 'lucide-react';
-import type { User, Branch, Company } from '../types';
+import type { User, Branch, Company, UserAccountType } from '../types';
 import type { SingleValue } from 'react-select';
 
 interface UserSavePayload {
@@ -22,6 +22,7 @@ interface UserSavePayload {
     branchIds?: number[];
     status: string;
     color: string | null;
+    accountType: UserAccountType;
     companyId?: number;
 }
 import { useAuth } from '../hooks/useAuth';
@@ -67,7 +68,8 @@ export default function Users() {
         branchId: '',
         branchIds: [] as string[],
         status: 'ACTIVE',
-        color: ''
+        color: '',
+        accountType: 'EXTERNAL' as UserAccountType
     });
     const [activeTab, setActiveTab] = useState<'perfil' | 'acceso'>('perfil');
     const [saving, setSaving] = useState(false);
@@ -130,7 +132,8 @@ export default function Users() {
                 branchId: user.branchId?.toString() || '',
                 branchIds: allowedIds,
                 status: user.status,
-                color: user.color || ''
+                color: user.color || '',
+                accountType: user.accountType || (user.employee ? 'INTERNAL' : 'EXTERNAL')
             });
         } else {
             setEditingUser(null);
@@ -145,7 +148,8 @@ export default function Users() {
                 branchId: '',
                 branchIds: [],
                 status: 'ACTIVE',
-                color: ''
+                color: '',
+                accountType: 'EXTERNAL'
             });
         }
         setIsSidebarOpen(true);
@@ -192,6 +196,11 @@ export default function Users() {
             return;
         }
 
+        if (editingUser?.employee && formData.accountType === 'EXTERNAL') {
+            showError('La cuenta no puede convertirse en externa mientras conserve un expediente laboral histórico.');
+            return;
+        }
+
         setSaving(true);
         try {
             const payload: UserSavePayload = {
@@ -202,7 +211,8 @@ export default function Users() {
                 roleId: selectedRoleIds[0],
                 roleIds: selectedRoleIds,
                 status: formData.status,
-                color: formData.color || null
+                color: formData.color || null,
+                accountType: formData.accountType
             };
 
             // Branch assignment/rotation is SUPERADMIN-only. A SUPERADMIN sends the
@@ -407,6 +417,25 @@ export default function Users() {
                             render: (u: User) => u.company?.name || '-'
                         }] : []),
                         {
+                            key: 'accountType',
+                            header: 'Tipo',
+                            render: (u) => {
+                                const accountType = u.accountType || (u.employee ? 'INTERNAL' : 'EXTERNAL');
+                                return (
+                                    <div className="catalog-cell-stack">
+                                        <span className={`catalog-pill ${accountType === 'INTERNAL' ? 'ok' : 'neutral'}`}>
+                                            {accountType === 'INTERNAL' ? 'Interno' : 'Externo'}
+                                        </span>
+                                        {accountType === 'INTERNAL' && (
+                                            <span className="cell-sub">
+                                                {u.employee ? `Expediente ${u.employee.employeeCode || u.employee.employeeNumber || `#${u.employee.id}`}` : 'Vínculo pendiente'}
+                                            </span>
+                                        )}
+                                    </div>
+                                );
+                            }
+                        },
+                        {
                             key: 'status',
                             header: 'Estado',
                             render: (u) => <span className={`catalog-pill ${u.status === 'ACTIVE' ? 'ok' : 'neutral'}`}>{u.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}</span>
@@ -478,6 +507,14 @@ export default function Users() {
                                 <div className="user-detail">
                                     <MapPin size={16} />
                                     <span className="detail-value">{user.branch?.name || 'Todas las Sucursales'}</span>
+                                </div>
+                                <div className="user-detail">
+                                    <UserIcon size={16} />
+                                    <span className="detail-value">
+                                        {(user.accountType || (user.employee ? 'INTERNAL' : 'EXTERNAL')) === 'INTERNAL'
+                                            ? `Personal interno${user.employee?.employeeCode || user.employee?.employeeNumber ? ` · ${user.employee.employeeCode || user.employee?.employeeNumber}` : ''}`
+                                            : 'Usuario externo'}
+                                    </span>
                                 </div>
                                 {isSuperAdmin && user.company && (
                                     <div className="user-detail">
@@ -605,7 +642,8 @@ export default function Users() {
                                                 value={formData.password}
                                                 onChange={e => setFormData({ ...formData, password: e.target.value })}
                                                 required={!editingUser}
-                                                placeholder="Min. 6 caracteres"
+                                                maxLength={72}
+                                                placeholder="Mín. 8: mayúscula, minúscula, número y símbolo"
                                             />
                                         </div>
                                     </div>
@@ -641,6 +679,32 @@ export default function Users() {
                                             />
                                         </div>
                                     )}
+
+                                    <div className="modal-input-group">
+                                        <Select
+                                            variant="modal"
+                                            label="Tipo de cuenta"
+                                            options={formData.accountType === 'INTERNAL'
+                                                ? [{ value: 'INTERNAL' as UserAccountType, label: 'Interno · ligado a personal' }]
+                                                : [{ value: 'EXTERNAL' as UserAccountType, label: 'Externo · solo acceso al sistema' }]}
+                                            value={formData.accountType === 'INTERNAL'
+                                                ? { value: 'INTERNAL' as UserAccountType, label: 'Interno · ligado a personal' }
+                                                : { value: 'EXTERNAL' as UserAccountType, label: 'Externo · solo acceso al sistema' }}
+                                            onChange={(option: SingleValue<{ value: UserAccountType; label: string }>) => {
+                                                if (!option) return;
+                                                setFormData({ ...formData, accountType: option.value });
+                                            }}
+                                            isDisabled
+                                            isSearchable={false}
+                                        />
+                                        <small style={{ color: 'var(--color-neutral-500)', lineHeight: 1.45 }}>
+                                            {formData.accountType === 'INTERNAL'
+                                                ? editingUser?.employee
+                                                    ? `Vinculado al expediente ${editingUser.employee.employeeCode || editingUser.employee.employeeNumber || `#${editingUser.employee.id}`} · ${editingUser.employee.status}.`
+                                                    : 'La cuenta quedará interna únicamente cuando exista un expediente laboral válido.'
+                                                : 'Crea primero la cuenta externa y conviértela en interna desde Recursos Humanos > Personal, capturando el expediente y la fecha de ingreso.'}
+                                        </small>
+                                    </div>
 
                                     <div className="modal-input-group">
                                         <label className="modal-input-label" id="user-roles-label">Roles del Sistema (puede tener varios)</label>

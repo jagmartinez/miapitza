@@ -128,6 +128,7 @@ export class AuthService {
             select: {
                 id: true, name: true, email: true, username: true,
                 roleId: true, branchId: true, companyId: true, status: true,
+                accountType: true,
                 role: { select: { id: true, name: true } }
             }
         });
@@ -147,6 +148,7 @@ export class AuthService {
                 company: { select: { id: true, name: true, ruc: true, active: true } },
                 branch: { select: { status: true } },
                 allowedBranches: { select: { branchId: true } },
+                employee: { select: { id: true } }
             }
         });
 
@@ -246,6 +248,8 @@ export class AuthService {
                 id: user.id, name: user.name, email: user.email, username: user.username,
                 role: user.role, roles: allRoles, branchId: user.branchId,
                 companyId: user.companyId, company: user.company, color: user.color,
+                accountType: user.accountType,
+                employeeId: user.employee?.id
             },
             mustChangePassword: user.mustChangePassword,
             passwordExpired,

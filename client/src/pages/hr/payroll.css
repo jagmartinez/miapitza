@@ -1,0 +1,647 @@
+.hr-payroll-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.hr-payroll-header-actions,
+.hr-payroll-form-actions,
+.hr-payroll-workspace-actions,
+.hr-payroll-subheading > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.hr-payroll-online {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid rgba(34, 197, 94, 0.32);
+  border-radius: var(--radius-md);
+  background: rgba(34, 197, 94, 0.07);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.hr-payroll-online.offline {
+  border-color: rgba(239, 68, 68, 0.38);
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--color-danger);
+}
+
+.hr-payroll-online.compact {
+  margin-bottom: var(--spacing-md);
+}
+
+.hr-payroll-filterbar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(170px, 1fr)) auto;
+  align-items: end;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.hr-my-payroll-page .hr-payroll-filterbar {
+  grid-template-columns: repeat(2, minmax(170px, 1fr)) auto;
+}
+
+.hr-payroll-filterbar label,
+.hr-payroll-form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.hr-payroll-filterbar input,
+.hr-payroll-filterbar select,
+.hr-payroll-form input,
+.hr-payroll-form select,
+.hr-payroll-form textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  outline: none;
+  background: var(--color-background);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.hr-payroll-form textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.hr-payroll-filterbar input:focus-visible,
+.hr-payroll-filterbar select:focus-visible,
+.hr-payroll-form input:focus-visible,
+.hr-payroll-form select:focus-visible,
+.hr-payroll-form textarea:focus-visible,
+.hr-payroll-run-list button:focus-visible,
+.hr-my-receipt-list button:focus-visible {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.16);
+}
+
+.hr-payroll-columns,
+.hr-my-payroll-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-lg);
+  align-items: start;
+}
+
+.hr-my-payroll-layout {
+  grid-template-columns: minmax(290px, 0.85fr) minmax(0, 1.4fr);
+}
+
+.hr-payroll-section {
+  min-width: 0;
+  padding: var(--spacing-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.hr-payroll-section-heading,
+.hr-payroll-workspace-header,
+.hr-payroll-subheading,
+.hr-receipt-detail > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.hr-payroll-section-heading {
+  margin-bottom: var(--spacing-md);
+}
+
+.hr-payroll-section-heading h2,
+.hr-payroll-section-heading p,
+.hr-payroll-workspace-header h2,
+.hr-payroll-subheading h3,
+.hr-receipt-detail h3 {
+  margin: 0;
+}
+
+.hr-payroll-section-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--color-text);
+  font-size: var(--font-size-lg);
+}
+
+.hr-payroll-section-heading p,
+.hr-payroll-empty,
+.hr-payroll-help,
+.hr-payroll-empty-workspace p {
+  margin: var(--spacing-xs) 0 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.hr-payroll-count {
+  min-width: 2rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: var(--color-background);
+  color: var(--color-text-secondary);
+  text-align: center;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+.hr-payroll-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.22rem 0.55rem;
+  border-radius: 999px;
+  background: var(--color-background);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.hr-payroll-status.ok {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.hr-payroll-status.warning {
+  background: rgba(245, 158, 11, 0.14);
+  color: #a16207;
+}
+
+.hr-payroll-status.danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--color-danger);
+}
+
+.dark .hr-payroll-status.ok {
+  color: #86efac;
+}
+
+.dark .hr-payroll-status.warning {
+  color: #fcd34d;
+}
+
+.hr-payroll-run-list,
+.hr-payroll-records,
+.hr-my-receipt-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.hr-payroll-run-list article,
+.hr-payroll-records article {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-background);
+}
+
+.hr-payroll-run-list article.selected {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.12);
+}
+
+.hr-payroll-run-list button,
+.hr-my-receipt-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  width: 100%;
+  padding: var(--spacing-md);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  outline: none;
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.hr-payroll-run-list button:disabled,
+.hr-my-receipt-list button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.hr-payroll-run-list button > div,
+.hr-payroll-records article > div,
+.hr-payroll-workspace-header > div,
+.hr-my-receipt-list button > span:not(.hr-receipt-kind-icon) {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.hr-payroll-run-list button > div:last-child {
+  align-items: flex-end;
+}
+
+.hr-payroll-run-list span,
+.hr-payroll-run-list small,
+.hr-payroll-records span,
+.hr-payroll-records small,
+.hr-my-receipt-list small {
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.hr-payroll-records article {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+}
+
+.hr-payroll-records article > div:last-child {
+  align-items: flex-end;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.hr-payroll-workspace {
+  min-height: 260px;
+}
+
+.hr-payroll-empty-workspace,
+.hr-payroll-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  padding: var(--spacing-lg);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.hr-payroll-empty-workspace h2 {
+  margin: var(--spacing-sm) 0 0;
+  color: var(--color-text);
+  font-size: var(--font-size-lg);
+}
+
+.hr-payroll-workspace-header {
+  padding-bottom: var(--spacing-md);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.hr-payroll-workspace-header > div > span,
+.hr-payroll-workspace-header small {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.hr-payroll-workspace-header > div > div {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.hr-payroll-totals,
+.hr-receipt-totals {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--spacing-sm);
+  margin: var(--spacing-lg) 0;
+}
+
+.hr-payroll-totals > div,
+.hr-receipt-totals > div {
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-background);
+}
+
+.hr-payroll-totals dt,
+.hr-receipt-totals dt {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.hr-payroll-totals dd,
+.hr-receipt-totals dd {
+  margin: var(--spacing-xs) 0 0;
+  color: var(--color-text);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.hr-payroll-totals .net,
+.hr-receipt-totals .net {
+  border-color: rgba(34, 197, 94, 0.38);
+  background: rgba(34, 197, 94, 0.07);
+}
+
+.hr-payroll-dual-control,
+.hr-payroll-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: var(--radius-md);
+  background: rgba(59, 130, 246, 0.07);
+  color: var(--color-text-secondary);
+}
+
+.hr-payroll-dual-control > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.hr-payroll-dual-control strong {
+  color: var(--color-text);
+}
+
+.hr-payroll-warning {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.hr-payroll-warning.danger {
+  border-color: rgba(239, 68, 68, 0.38);
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--color-danger);
+}
+
+.hr-payroll-workspace-grid,
+.hr-receipt-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-lg);
+  margin-top: var(--spacing-lg);
+}
+
+.hr-payroll-workspace-grid > section,
+.hr-receipt-columns > section {
+  min-width: 0;
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-background);
+}
+
+.hr-payroll-subheading {
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+}
+
+.hr-payroll-subheading > span {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.hr-payroll-sidebar {
+  padding: var(--spacing-md);
+}
+
+.hr-payroll-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-md);
+}
+
+.hr-payroll-form .span-full {
+  grid-column: 1 / -1;
+}
+
+.hr-payroll-form-actions {
+  justify-content: flex-end;
+  padding-top: var(--spacing-sm);
+}
+
+.hr-payroll-confirm {
+  display: grid !important;
+  grid-template-columns: auto 1fr;
+  align-items: flex-start;
+}
+
+.hr-payroll-confirm input {
+  width: 1.1rem;
+  min-height: 1.1rem;
+  margin-top: 0.15rem;
+}
+
+.hr-my-receipt-list button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  border-color: var(--color-border);
+  background: var(--color-background);
+}
+
+.hr-my-receipt-list button:hover:not(:disabled),
+.hr-my-receipt-list button.selected {
+  border-color: var(--color-primary);
+  background: rgba(234, 88, 12, 0.06);
+}
+
+.hr-receipt-kind-icon {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: rgba(234, 88, 12, 0.12);
+  color: var(--color-primary);
+}
+
+.hr-my-receipt-amount {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.hr-my-receipt-workspace {
+  position: sticky;
+  top: var(--spacing-lg);
+}
+
+.hr-receipt-detail > header > div {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.hr-receipt-detail > header > div:first-child > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.hr-receipt-detail > header span,
+.hr-receipt-detail small {
+  color: var(--color-text-secondary);
+}
+
+.hr-receipt-totals {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.hr-receipt-columns dl {
+  margin: 0;
+}
+
+.hr-receipt-columns dl > div {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.hr-receipt-columns dl > div:last-child {
+  border-bottom: 0;
+}
+
+.hr-receipt-columns dt {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.hr-receipt-columns dd {
+  margin: 0;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.hr-receipt-trace {
+  margin-top: var(--spacing-lg);
+}
+
+.hr-receipt-trace > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr);
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.hr-payroll-configuration {
+  display: grid;
+  gap: var(--spacing-lg);
+}
+
+.hr-payroll-config-history {
+  display: grid;
+  gap: var(--spacing-md);
+}
+
+.hr-payroll-config-history > article {
+  display: grid;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-lg);
+  background: var(--color-surface);
+}
+
+.hr-payroll-config-history > article > div:first-child,
+.hr-payroll-config-review {
+  display: grid;
+  gap: var(--spacing-xs);
+}
+
+.hr-payroll-config-review > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1024px) {
+  .hr-my-payroll-layout,
+  .hr-payroll-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .hr-my-receipt-workspace {
+    position: static;
+  }
+
+  .hr-payroll-totals {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .hr-payroll-filterbar,
+  .hr-my-payroll-page .hr-payroll-filterbar,
+  .hr-payroll-form,
+  .hr-payroll-workspace-grid,
+  .hr-receipt-columns,
+  .hr-receipt-totals {
+    grid-template-columns: 1fr;
+  }
+
+  .hr-payroll-filterbar .btn,
+  .hr-payroll-form-actions .btn {
+    width: 100%;
+  }
+
+  .hr-payroll-section,
+  .hr-payroll-sidebar {
+    padding: var(--spacing-md);
+  }
+
+  .hr-payroll-section-heading,
+  .hr-payroll-workspace-header,
+  .hr-receipt-detail > header,
+  .hr-payroll-records article {
+    flex-direction: column;
+  }
+
+  .hr-payroll-workspace-actions,
+  .hr-receipt-detail > header > div:last-child {
+    width: 100%;
+  }
+
+  .hr-my-receipt-list button {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .hr-my-receipt-amount {
+    grid-column: 1 / -1;
+    align-items: flex-start !important;
+    padding-left: calc(2.25rem + var(--spacing-md));
+    text-align: left;
+  }
+
+  .hr-receipt-trace > div {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .hr-payroll-totals {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,373 @@
+.hr-workforce-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.hr-header-actions,
+.hr-form-actions,
+.hr-record-actions,
+.hr-summary-card footer > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.hr-online-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid rgba(34, 197, 94, 0.32);
+  border-radius: var(--radius-md);
+  background: rgba(34, 197, 94, 0.07);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.hr-online-notice.offline {
+  border-color: rgba(239, 68, 68, 0.38);
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--color-danger);
+}
+
+.hr-online-notice.compact {
+  margin-bottom: var(--spacing-md);
+}
+
+.hr-workforce-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(170px, 1fr)) auto;
+  align-items: end;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.hr-workforce-filters label,
+.hr-workforce-form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.hr-workforce-filters input,
+.hr-workforce-filters select,
+.hr-workforce-form input,
+.hr-workforce-form select,
+.hr-workforce-form textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  outline: none;
+  background: var(--color-background);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.hr-workforce-form textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.hr-workforce-filters input:focus-visible,
+.hr-workforce-filters select:focus-visible,
+.hr-workforce-form input:focus-visible,
+.hr-workforce-form select:focus-visible,
+.hr-workforce-form textarea:focus-visible {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.16);
+}
+
+.hr-workforce-section {
+  min-width: 0;
+  padding: var(--spacing-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.hr-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.hr-section-heading h2,
+.hr-section-heading p {
+  margin: 0;
+}
+
+.hr-section-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--color-text);
+  font-size: var(--font-size-lg);
+}
+
+.hr-section-heading p,
+.hr-empty,
+.hr-form-help {
+  margin-top: var(--spacing-xs);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.hr-workforce-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.hr-summary-grid,
+.hr-balance-grid,
+.hr-type-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.hr-summary-card,
+.hr-balance-grid article,
+.hr-type-grid article {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  min-width: 0;
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-background);
+}
+
+.hr-summary-card header,
+.hr-summary-card footer,
+.hr-type-grid article > div,
+.hr-calendar-list article {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.hr-summary-card header > div,
+.hr-balance-grid article,
+.hr-type-grid article,
+.hr-calendar-list article > div,
+.hr-record-list article > div:first-child {
+  min-width: 0;
+}
+
+.hr-summary-card header span,
+.hr-balance-grid span,
+.hr-balance-grid small,
+.hr-type-grid span,
+.hr-record-list span,
+.hr-record-list small,
+.hr-calendar-list span {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.hr-summary-card footer {
+  align-items: center;
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--color-border);
+}
+
+.hr-summary-card footer small {
+  color: var(--color-text-secondary);
+}
+
+.hr-minute-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-xs);
+  margin: 0;
+}
+
+.hr-minute-grid div {
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.hr-minute-grid dt {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.hr-minute-grid dd {
+  margin: 0.2rem 0 0;
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.hr-record-list,
+.hr-calendar-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.hr-record-list article,
+.hr-calendar-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.hr-record-list article:last-child,
+.hr-calendar-list article:last-child {
+  border-bottom: 0;
+}
+
+.hr-record-actions {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.hr-calendar-list time {
+  flex: 0 0 auto;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-md);
+  background: rgba(234, 88, 12, 0.1);
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.hr-type-grid code {
+  color: var(--color-text-secondary);
+}
+
+.hr-workforce-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-md);
+}
+
+.hr-sidebar-body {
+  padding: var(--spacing-lg);
+}
+
+.hr-sidebar-body.hr-workforce-form {
+  padding: var(--spacing-lg);
+}
+
+.hr-workforce-form .span-full,
+.hr-sidebar-body > .hr-online-notice {
+  grid-column: 1 / -1;
+}
+
+.hr-form-actions {
+  justify-content: flex-end;
+  padding-top: var(--spacing-sm);
+}
+
+.hr-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-sm);
+}
+
+.hr-checkbox-grid label {
+  flex-direction: row;
+  align-items: center;
+}
+
+.hr-checkbox-grid input {
+  width: 18px;
+  min-height: 18px;
+}
+
+.hr-sensitive-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border: 1px solid rgba(245, 158, 11, 0.42);
+  border-radius: var(--radius-md);
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}
+
+.hr-sensitive-warning svg {
+  flex: 0 0 auto;
+  color: var(--color-warning);
+}
+
+@media (max-width: 1080px) {
+  .hr-workforce-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hr-workforce-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .hr-workforce-filters,
+  .hr-workforce-form,
+  .hr-checkbox-grid,
+  .hr-minute-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hr-workforce-section,
+  .hr-sidebar-body,
+  .hr-sidebar-body.hr-workforce-form {
+    padding: var(--spacing-md);
+  }
+
+  .hr-section-heading,
+  .hr-summary-card header,
+  .hr-summary-card footer,
+  .hr-record-list article,
+  .hr-calendar-list article {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .hr-record-actions,
+  .hr-header-actions,
+  .hr-form-actions,
+  .hr-summary-card footer > div {
+    justify-content: stretch;
+  }
+
+  .hr-record-actions .btn,
+  .hr-header-actions .btn,
+  .hr-form-actions .btn,
+  .hr-summary-card footer .btn {
+    flex: 1 1 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hr-workforce-page *,
+  .hr-workforce-page *::before,
+  .hr-workforce-page *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

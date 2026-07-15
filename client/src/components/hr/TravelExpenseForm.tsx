@@ -1,0 +1,153 @@
+import { useState } from 'react';
+import { FileCheck2 } from 'lucide-react';
+import Button from '../Button';
+import type { HrTravelExpensePayload } from '../../types/hr-benefits';
+
+interface TravelExpenseFormProps {
+  online: boolean;
+  saving: boolean;
+  onSubmit: (payload: HrTravelExpensePayload) => Promise<void>;
+  onCancel: () => void;
+}
+
+export default function TravelExpenseForm({
+  online,
+  saving,
+  onSubmit,
+  onCancel,
+}: TravelExpenseFormProps) {
+  const [form, setForm] = useState<HrTravelExpensePayload>({
+    category: 'ALIMENTACION',
+    description: '',
+    occurredOn: new Date().toISOString().slice(0, 10),
+    currency: 'NIO',
+    claimedAmount: '',
+  });
+  const [confirmed, setConfirmed] = useState(false);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!confirmed) return;
+    await onSubmit({
+      ...form,
+      description: form.description.trim(),
+      receiptReference: form.receiptReference?.trim() || undefined,
+    });
+  };
+
+  return (
+    <form className="hr-benefits-form" onSubmit={(event) => void submit(event)}>
+      <div className="hr-benefits-warning span-full" role="note">
+        <FileCheck2 size={19} aria-hidden="true" />
+        <span>
+          Este formulario registra metadatos. Los archivos se cargan por el flujo seguro de
+          evidencias y se referencian por identificador.
+        </span>
+      </div>
+      <label>
+        Categoría
+        <select
+          value={form.category}
+          onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
+        >
+          <option value="ALIMENTACION">Alimentación</option>
+          <option value="TRANSPORTE">Transporte</option>
+          <option value="HOSPEDAJE">Hospedaje</option>
+          <option value="OTRO">Otro</option>
+        </select>
+      </label>
+      <label>
+        Fecha
+        <input
+          type="date"
+          value={form.occurredOn}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, occurredOn: event.target.value }))
+          }
+          required
+        />
+      </label>
+      <label>
+        Moneda
+        <select
+          value={form.currency}
+          onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value }))}
+        >
+          <option value="NIO">NIO</option>
+          <option value="USD">USD</option>
+        </select>
+      </label>
+      <label>
+        Monto reclamado
+        <input
+          type="number"
+          min="0.01"
+          step="0.01"
+          inputMode="decimal"
+          value={form.claimedAmount}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, claimedAmount: event.target.value }))
+          }
+          required
+        />
+      </label>
+      <label className="span-full">
+        Referencia de factura o soporte
+        <input
+          value={form.receiptReference ?? ''}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, receiptReference: event.target.value }))
+          }
+          maxLength={160}
+        />
+      </label>
+      <label className="span-full">
+        ID de evidencia segura
+        <input
+          type="number"
+          min="1"
+          inputMode="numeric"
+          value={form.evidenceId ?? ''}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              evidenceId: event.target.value ? Number(event.target.value) : undefined,
+            }))
+          }
+          aria-describedby="evidence-help"
+        />
+        <small id="evidence-help">
+          Opcional. Usa el identificador emitido por el flujo seguro de documentos.
+        </small>
+      </label>
+      <label className="span-full">
+        Descripción
+        <textarea
+          rows={4}
+          value={form.description}
+          onChange={(event) =>
+            setForm((current) => ({ ...current, description: event.target.value }))
+          }
+          maxLength={600}
+          required
+        />
+      </label>
+      <label className="hr-benefits-confirm span-full">
+        <input
+          type="checkbox"
+          checked={confirmed}
+          onChange={(event) => setConfirmed(event.target.checked)}
+        />
+        <span>Confirmo que el gasto y su referencia coinciden con el soporte.</span>
+      </label>
+      <div className="hr-benefits-form-actions span-full">
+        <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
+          Cancelar
+        </Button>
+        <Button type="submit" disabled={!online || saving || !confirmed}>
+          {saving ? 'Registrando…' : 'Registrar gasto'}
+        </Button>
+      </div>
+    </form>
+  );
+}

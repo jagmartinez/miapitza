@@ -51,8 +51,15 @@ export class BranchController {
                 name: req.body.name,
                 code: req.body.code,
                 address: req.body.address,
-                phone: req.body.phone
-            });
+                phone: req.body.phone,
+                latitude: req.body.latitude,
+                longitude: req.body.longitude,
+                geofenceRadiusM: req.body.geofenceRadiusM,
+                maxLocationAccuracyM: req.body.maxLocationAccuracyM,
+                timezone: req.body.timezone,
+                attendanceEnabled: req.body.attendanceEnabled,
+                status: req.body.status,
+            }, req.user!.userId);
             res.status(201).json({
                 success: true,
                 message: 'Sucursal creada exitosamente',
@@ -75,7 +82,7 @@ export class BranchController {
                 address: req.body.address,
                 phone: req.body.phone,
                 status: req.body.status
-            });
+            }, req.user!.userId);
             res.json({
                 success: true,
                 message: 'Sucursal actualizada exitosamente',
@@ -91,7 +98,7 @@ export class BranchController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
-            await BranchService.delete(id, companyId);
+            await BranchService.delete(id, companyId, req.user!.userId);
             res.json({
                 success: true,
                 message: 'Sucursal eliminada exitosamente'

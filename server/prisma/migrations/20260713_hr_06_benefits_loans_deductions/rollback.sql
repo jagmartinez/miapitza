@@ -1,0 +1,30 @@
+DROP TRIGGER IF EXISTS `HrDeductionVersion_no_delete`;
+DROP TRIGGER IF EXISTS `HrDeductionVersion_no_update`;
+DROP TRIGGER IF EXISTS `HrLoanInstallment_no_delete`;
+DROP TRIGGER IF EXISTS `HrLoanInstallment_no_update`;
+DROP TRIGGER IF EXISTS `HrLoanScheduleVersion_no_delete`;
+DROP TRIGGER IF EXISTS `HrLoanScheduleVersion_no_update`;
+DROP TRIGGER IF EXISTS `HrBenefitTrace_no_delete`;
+DROP TRIGGER IF EXISTS `HrBenefitTrace_no_update`;
+DROP TRIGGER IF EXISTS `HrDeductionApplication_no_delete`;
+DROP TRIGGER IF EXISTS `HrDeductionApplication_no_update`;
+DROP TRIGGER IF EXISTS `HrLoanLedgerEntry_no_delete`;
+DROP TRIGGER IF EXISTS `HrLoanLedgerEntry_no_update`;
+DROP TRIGGER IF EXISTS `HrTravelLedgerEntry_no_delete`;
+DROP TRIGGER IF EXISTS `HrTravelLedgerEntry_no_update`;
+
+DELETE pr FROM `_PermissionToRole` pr JOIN `Permission` p ON p.`id`=pr.`A` WHERE p.`name` IN ('hr.benefits.read','hr.benefits.manage','hr.benefits.approve','hr.benefits.self');
+DELETE FROM `Permission` WHERE `name` IN ('hr.benefits.read','hr.benefits.manage','hr.benefits.approve','hr.benefits.self');
+
+DROP TABLE IF EXISTS `HrBenefitIdempotencyRecord`;
+DROP TABLE IF EXISTS `HrBenefitTrace`;
+DROP TABLE IF EXISTS `HrDeductionApplication`;
+DROP TABLE IF EXISTS `HrDeductionVersion`;
+DROP TABLE IF EXISTS `HrDeduction`;
+DROP TABLE IF EXISTS `HrLoanLedgerEntry`;
+DROP TABLE IF EXISTS `HrLoanInstallment`;
+DROP TABLE IF EXISTS `HrLoanScheduleVersion`;
+DROP TABLE IF EXISTS `HrLoan`;
+DROP TABLE IF EXISTS `HrTravelLedgerEntry`;
+DROP TABLE IF EXISTS `HrTravelExpense`;
+DROP TABLE IF EXISTS `HrTravelRequest`;

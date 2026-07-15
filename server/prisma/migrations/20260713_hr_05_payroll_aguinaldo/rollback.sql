@@ -1,0 +1,37 @@
+DROP TRIGGER IF EXISTS `PayrollTrace_no_delete`;
+DROP TRIGGER IF EXISTS `PayrollTrace_no_update`;
+DROP TRIGGER IF EXISTS `PayrollRuleConfigurationRevision_no_update`;
+DROP TRIGGER IF EXISTS `PayrollRuleConfigurationRevision_no_delete`;
+DROP TRIGGER IF EXISTS `PayrollRuleConfigurationReview_no_update`;
+DROP TRIGGER IF EXISTS `PayrollRuleConfigurationReview_no_delete`;
+DROP TRIGGER IF EXISTS `PayrollRunReversal_no_update`;
+DROP TRIGGER IF EXISTS `PayrollRunReversal_no_delete`;
+DROP TRIGGER IF EXISTS `PayrollComponentReversal_no_update`;
+DROP TRIGGER IF EXISTS `PayrollComponentReversal_no_delete`;
+DROP TRIGGER IF EXISTS `PayrollCoverageClaim_no_update`;
+DROP TRIGGER IF EXISTS `PayrollCoverageClaim_no_delete`;
+DROP TRIGGER IF EXISTS `PayrollCoverageRelease_no_update`;
+DROP TRIGGER IF EXISTS `PayrollCoverageRelease_no_delete`;
+DROP TRIGGER IF EXISTS `PayrollAguinaldoDependency_no_update`;
+DROP TRIGGER IF EXISTS `PayrollAguinaldoDependency_no_delete`;
+-- Los permisos son compartidos globalmente y pudieron preexistir. El rollback
+-- los conserva para no retirar autoridad ajena a esta migracion.
+DROP TABLE IF EXISTS `PayrollIdempotencyRecord`;
+DROP TABLE IF EXISTS `PayrollPaymentRecord`;
+DROP TABLE IF EXISTS `PayrollComponentReversal`;
+DROP TABLE IF EXISTS `PayrollAguinaldoSourceDependency`;
+DROP TABLE IF EXISTS `PayrollCoverageRelease`;
+DROP TABLE IF EXISTS `PayrollCoverageClaim`;
+DROP TABLE IF EXISTS `PayrollAttendanceDependency`;
+DROP TABLE IF EXISTS `PayrollTrace`;
+DROP TABLE IF EXISTS `PayrollRunReversal`;
+DROP TABLE IF EXISTS `PayrollComponent`;
+DROP TABLE IF EXISTS `PayrollReceipt`;
+DROP TABLE IF EXISTS `PayrollAnomaly`;
+DROP TABLE IF EXISTS `PayrollSnapshotLine`;
+DROP TABLE IF EXISTS `PayrollRun`;
+DROP TABLE IF EXISTS `PayrollPeriod`;
+ALTER TABLE `PayrollRuleVersion` DROP FOREIGN KEY `PayrollRuleVersion_activeConfigurationRevisionId_fkey`;
+DROP TABLE IF EXISTS `PayrollRuleConfigurationReview`;
+DROP TABLE IF EXISTS `PayrollRuleConfigurationRevision`;
+DROP TABLE IF EXISTS `PayrollRuleVersion`;

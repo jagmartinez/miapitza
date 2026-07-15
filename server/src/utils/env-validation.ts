@@ -10,6 +10,8 @@ export function collectEnvironmentErrors(env: NodeJS.ProcessEnv): string[] {
     const isProduction = env.NODE_ENV === 'production';
     const jwtSecret = env.JWT_SECRET;
     const normalizedJwtSecret = jwtSecret?.trim().toLowerCase();
+    const faceProvider = env.HR_FACE_PROVIDER?.trim().toLowerCase() || 'disabled';
+    const supportedFaceProviders = new Set(['disabled', 'fake']);
 
     if (!jwtSecret || jwtSecret.trim() === '') {
         errors.push('JWT_SECRET is required but not set.');
@@ -19,6 +21,21 @@ export function collectEnvironmentErrors(env: NodeJS.ProcessEnv): string[] {
         errors.push('JWT_SECRET must contain at least 32 bytes in production.');
     }
 
+    if (!supportedFaceProviders.has(faceProvider)) {
+        errors.push('HR_FACE_PROVIDER must be one of: disabled, fake.');
+    }
+    if (faceProvider === 'fake' && env.HR_ALLOW_FAKE_FACE_PROVIDER !== 'true') {
+        errors.push('HR_ALLOW_FAKE_FACE_PROVIDER=true is required to opt in to the fake provider.');
+    }
+    if (isProduction && faceProvider === 'fake') {
+        errors.push('The fake face provider is forbidden in production.');
+    }
+    if (faceProvider !== 'disabled') {
+        const biometricKey = env.HR_BIOMETRIC_ENCRYPTION_KEY;
+        if (!biometricKey || !/^[0-9a-fA-F]{64}$/.test(biometricKey)) {
+            errors.push('HR_BIOMETRIC_ENCRYPTION_KEY must be a 64-character hexadecimal key when facial verification is enabled.');
+        }
+    }
 
     if (isProduction) {
         const encryptionKey = env.TWO_FA_ENCRYPTION_KEY;

@@ -54,7 +54,13 @@ export class UserController {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
             const actingRoles = req.user!.roles || [req.user!.role];
-            const user = await UserService.update(id, companyId, req.body, actingRoles);
+            const user = await UserService.update(
+                id,
+                companyId,
+                req.body,
+                actingRoles,
+                req.user!.userId,
+            );
             res.json({
                 success: true,
                 message: 'Usuario actualizado exitosamente',
@@ -75,6 +81,7 @@ export class UserController {
             delete updateData.roleIds;
             delete updateData.status;
             delete updateData.companyId;
+            delete updateData.accountType;
             // Password changes must go through /auth/change-password so the
             // current password is verified and all existing sessions are revoked.
             delete updateData.password;
@@ -115,7 +122,11 @@ export class UserController {
                 companyId = parseInt(req.body.companyId);
             }
             const actingRoles = req.user?.roles || [req.user?.role as string];
-            const user = await UserService.create(companyId, req.body, actingRoles);
+            const user = await UserService.create(
+                companyId,
+                req.body,
+                actingRoles,
+            );
             res.status(201).json({
                 success: true,
                 message: 'Usuario creado exitosamente',

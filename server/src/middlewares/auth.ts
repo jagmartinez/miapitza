@@ -16,6 +16,8 @@ declare global {
                 branchId?: number;
                 companyId: number;
                 timezone: string;
+                accountType?: 'INTERNAL' | 'EXTERNAL';
+                employeeId?: number;
             };
         }
     }
@@ -64,6 +66,8 @@ export const auth = async (
                 role: { select: { name: true } },
                 userRoles: { select: { role: { select: { name: true } } } },
                 status: true,
+                accountType: true,
+                employee: { select: { id: true } },
                 mustChangePassword: true,
                 passwordChangedAt: true,
                 company: {
@@ -122,6 +126,8 @@ export const auth = async (
             branchId: user.branchId || undefined,
             companyId: user.companyId,
             timezone,
+            accountType: user.accountType,
+            employeeId: user.employee?.id,
         };
 
         // Password-policy flags are security controls, not UI hints. Keep only

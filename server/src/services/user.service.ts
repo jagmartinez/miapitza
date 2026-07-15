@@ -1,15 +1,16 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import bcrypt from 'bcryptjs';
-import { BCRYPT_ROUNDS, PASSWORD_REGEX } from './auth.service';
+import { assertStrongPassword, BCRYPT_ROUNDS } from '../utils/password-policy';
 import { ROLES } from '../constants/roles';
 import { invalidatePermissionCache } from '../middlewares/auth';
+import { AuditLogService } from './audit-log.service';
+
+type UserAccountTypeValue = 'INTERNAL' | 'EXTERNAL';
 
 export class UserService {
     private static validatePassword(password: string) {
-        if (!PASSWORD_REGEX.test(password)) {
-            throw new Error('La contraseña debe tener mínimo 8 caracteres, incluyendo mayúscula, minúscula, número y símbolo');
-        }
+        assertStrongPassword(password);
     }
 
     /**
@@ -81,6 +82,7 @@ export class UserService {
                 roleId: true,
                 branchId: true,
                 status: true,
+                accountType: true,
                 color: true,
                 createdAt: true,
                 role: {
@@ -109,6 +111,9 @@ export class UserService {
                 allowedBranches: {
                     select: { branch: { select: { id: true, name: true, code: true } } }
                 },
+                employee: {
+                    select: { id: true, employeeCode: true, status: true }
+                },
                 company: {
                     select: {
                         id: true,
@@ -130,6 +135,7 @@ export class UserService {
                 roleId: true,
                 branchId: true,
                 status: true,
+                accountType: true,
                 color: true,
                 nif: true,
                 address: true,
@@ -171,6 +177,9 @@ export class UserService {
                 allowedBranches: {
                     select: { branch: { select: { id: true, name: true, code: true } } }
                 },
+                employee: {
+                    select: { id: true, employeeCode: true, status: true }
+                },
                 company: {
                     select: {
                         id: true,
@@ -194,14 +203,15 @@ export class UserService {
         password?: string;
         roleId?: number;
         roleIds?: number[];
-        branchId?: number;
+        branchId?: number | null;
         branchIds?: number[];
         status?: 'ACTIVE' | 'INACTIVE';
+        accountType?: UserAccountTypeValue;
         color?: string | null;
         nif?: string;
         address?: string;
         phone?: string;
-    }, actingRoles: string[] = []) {
+    }, actingRoles: string[] = [], actorUserId?: number) {
         if (data.password) {
             this.validatePassword(data.password);
             data.password = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
@@ -209,9 +219,21 @@ export class UserService {
 
         const existingUser = await this.getById(id, companyId);
 
+        const isSuperAdmin = actingRoles.includes(ROLES.SUPERADMIN);
         const { roleIds, branchIds, ...rest } = data;
 
-        const isSuperAdmin = actingRoles.includes(ROLES.SUPERADMIN);
+        if (rest.accountType !== undefined && !['INTERNAL', 'EXTERNAL'].includes(rest.accountType)) {
+            throw new Error('Tipo de cuenta inválido');
+        }
+        if (rest.accountType !== undefined && rest.accountType !== existingUser.accountType && !isSuperAdmin) {
+            throw new Error('Solo un SUPERADMIN puede cambiar el tipo de cuenta');
+        }
+        if (rest.accountType === 'EXTERNAL' && existingUser.employee) {
+            throw new Error('No se puede convertir a EXTERNAL porque el expediente histórico requiere conservar el vínculo; esta transición no está implementada');
+        }
+        if (rest.accountType === 'INTERNAL' && !existingUser.employee) {
+            throw new Error('Cree primero el expediente real mediante /api/v1/hr/employees');
+        }
 
         const targetRoles = [
             existingUser.role.name,
@@ -263,6 +285,7 @@ export class UserService {
                 roleId: rest.roleId,
                 branchId: rest.branchId,
                 status: rest.status,
+                accountType: rest.accountType,
                 color: rest.color,
                 nif: rest.nif,
                 address: rest.address,
@@ -286,9 +309,11 @@ export class UserService {
                     roleId: true,
                     branchId: true,
                     status: true,
+                    accountType: true,
                     color: true,
                     role: { select: { id: true, name: true } },
-                    userRoles: { select: { role: { select: { id: true, name: true } } } }
+                    userRoles: { select: { role: { select: { id: true, name: true } } } },
+                    employee: { select: { id: true, employeeCode: true, status: true } }
                 }
             });
 
@@ -316,16 +341,30 @@ export class UserService {
                 await tx.userRole.createMany({
                     data: roleIds.map((roleId: number) => ({ userId: id, roleId }))
                 });
-                const updated = await tx.user.findUnique({
+            }
+
+            if (rest.accountType !== undefined && rest.accountType !== existingUser.accountType && actorUserId) {
+                await AuditLogService.log({
+                    companyId,
+                    userId: actorUserId,
+                    entityType: 'User',
+                    entityId: id,
+                    action: 'UPDATE',
+                    details: { field: 'accountType', from: existingUser.accountType, to: rest.accountType },
+                }, tx);
+            }
+
+            if (roleIds && roleIds.length > 0) {
+                return tx.user.findUnique({
                     where: { id },
                     select: {
                         id: true, name: true, email: true, username: true,
-                        roleId: true, branchId: true, status: true, color: true,
+                        roleId: true, branchId: true, status: true, accountType: true, color: true,
                         role: { select: { id: true, name: true } },
-                        userRoles: { select: { role: { select: { id: true, name: true } } } }
+                        userRoles: { select: { role: { select: { id: true, name: true } } } },
+                        employee: { select: { id: true, employeeCode: true, status: true } }
                     }
                 });
-                return updated;
             }
 
             return user;
@@ -344,14 +383,21 @@ export class UserService {
         password: string;
         roleId: number;
         roleIds?: number[];
-        branchId?: number;
+        branchId?: number | null;
         branchIds?: number[];
         color?: string;
+        accountType?: UserAccountTypeValue;
     }, actingRoles: string[] = []) {
+        if (data.accountType !== undefined && !['INTERNAL', 'EXTERNAL'].includes(data.accountType)) {
+            throw new Error('Tipo de cuenta inválido');
+        }
+        const isSuperAdmin = actingRoles.includes(ROLES.SUPERADMIN);
+        if (data.accountType === 'INTERNAL') {
+            throw new Error('Cree la cuenta como EXTERNAL y complete el alta real mediante /api/v1/hr/employees');
+        }
         this.validatePassword(data.password);
         const hashedPassword = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
 
-        const isSuperAdmin = actingRoles.includes(ROLES.SUPERADMIN);
         // Only a SUPERADMIN may define a multi-branch permitted set.
         if (data.branchIds !== undefined && !isSuperAdmin) {
             throw new Error('No autorizado para asignar las sucursales permitidas del usuario');
@@ -389,11 +435,12 @@ export class UserService {
                     branchId: data.branchId || null,
                     companyId: companyId,
                     color: data.color || null,
+                    accountType: data.accountType || 'EXTERNAL',
                     status: 'ACTIVE'
                 },
                 select: {
                     id: true, name: true, email: true, username: true,
-                    roleId: true, branchId: true, status: true, color: true,
+                    roleId: true, branchId: true, status: true, accountType: true, color: true,
                     role: { select: { id: true, name: true } }
                 }
             });
@@ -412,9 +459,10 @@ export class UserService {
                 where: { id: user.id },
                 select: {
                     id: true, name: true, email: true, username: true,
-                    roleId: true, branchId: true, status: true, color: true,
+                    roleId: true, branchId: true, status: true, accountType: true, color: true,
                     role: { select: { id: true, name: true } },
-                    userRoles: { select: { role: { select: { id: true, name: true } } } }
+                    userRoles: { select: { role: { select: { id: true, name: true } } } },
+                    employee: { select: { id: true, employeeCode: true, status: true } }
                 }
             });
         });

@@ -4,6 +4,16 @@ import { describe, expect, it } from 'vitest';
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 describe('operational UX contracts', () => {
+    it('keeps the main shell fluid and centers the dashboard at 1700px', () => {
+        const layoutStyles = read('../components/Layout.css');
+        const dashboardStyles = read('./Dashboard.css');
+
+        expect(layoutStyles).toContain('.main-content {');
+        expect(layoutStyles).toContain('max-width: none');
+        expect(dashboardStyles).toContain('max-width: 1700px');
+        expect(dashboardStyles).toContain('margin: 0 auto');
+    });
+
     it('keeps the catering event editor structured as one guided workspace', () => {
         const source = read('./Catering.tsx');
         const styles = read('./CateringMod.css');

@@ -11,9 +11,7 @@ import {
     Banknote,
     CreditCard,
     Layers3,
-    Minus,
     Plus,
-    Scissors,
     Smartphone,
     Trash2,
     Users,
@@ -83,7 +81,7 @@ function apiErrorMessage(error: unknown, fallback: string): string {
 }
 
 function createLeg(methodId: number | null, amount = 0): PaymentLeg {
-    const formatted = amount.toFixed(2);
+    const formatted = formatMoneyInput(amount.toFixed(2));
     return {
         id: newIdempotencyKey(),
         paymentMethodId: methodId,
@@ -126,7 +124,7 @@ export default function PaymentModal({
 
     const [singleMethodId, setSingleMethodId] = useState<number | null>(null);
     const [singleReference, setSingleReference] = useState('');
-    const [singleReceived, setSingleReceived] = useState(orderTotal.toFixed(2));
+    const [singleReceived, setSingleReceived] = useState(formatMoneyInput(orderTotal.toFixed(2)));
     const singleKeyRef = useRef(newIdempotencyKey());
 
     const [mixedLegs, setMixedLegs] = useState<PaymentLeg[]>([]);
@@ -136,7 +134,7 @@ export default function PaymentModal({
 
     const [splitStrategy, setSplitStrategy] = useState<SplitStrategy>('evenly');
     const [splitLegs, setSplitLegs] = useState<SplitLeg[]>([]);
-    const [itemQuantities, setItemQuantities] = useState<Record<number, number[]>>({});
+    const [itemUnitOwners, setItemUnitOwners] = useState<Record<number, Array<number | null>>>({});
     const [splitSucceeded, setSplitSucceeded] = useState<string[]>([]);
     const [splitAttempted, setSplitAttempted] = useState(false);
     const [previewLoading, setPreviewLoading] = useState(false);
@@ -216,13 +214,13 @@ export default function PaymentModal({
         setNotice('');
         setQueuedPayment(false);
         setSingleReference('');
-        setSingleReceived(orderTotal.toFixed(2));
+        setSingleReceived(formatMoneyInput(orderTotal.toFixed(2)));
         setMixedLegs([]);
         setMixedSucceeded([]);
         setMixedAttempted(false);
         setSplitStrategy('evenly');
         setSplitLegs([]);
-        setItemQuantities({});
+        setItemUnitOwners({});
         setSplitSucceeded([]);
         setSplitAttempted(false);
         setPreviewLoading(false);
@@ -242,7 +240,7 @@ export default function PaymentModal({
                 if (!Number.isFinite(remaining) || remaining < 0) throw new Error('Saldo pendiente inválido.');
                 const normalized = centsToMoney(moneyToCents(remaining));
                 setBalance(normalized);
-                setSingleReceived(normalized.toFixed(2));
+                setSingleReceived(formatMoneyInput(normalized.toFixed(2)));
                 if (normalized <= 0) setBalanceError('La orden ya no tiene saldo pendiente.');
             })
             .catch((requestError: unknown) => {
@@ -281,7 +279,7 @@ export default function PaymentModal({
                 reference: existing?.reference ?? '',
                 received: existing?.received && parseMoneyInput(existing.received) !== parseMoneyInput(existing.amount)
                     ? existing.received
-                    : amount.toFixed(2),
+                    : formatMoneyInput(amount.toFixed(2)),
             };
         });
     }, [balance, usableMethodOptions]);
@@ -319,17 +317,31 @@ export default function PaymentModal({
         && mixedCashValid
         && mixedAllocation.exact;
 
-    const initializeEmptyAssignments = useCallback((payerCount: number) => {
-        setItemQuantities(Object.fromEntries(
-            orderItems.map((item) => [item.id, Array<number>(payerCount).fill(0)]),
+    const initializeEmptyAssignments = useCallback(() => {
+        setItemUnitOwners(Object.fromEntries(
+            orderItems.map((item) => [item.id, Array<number | null>(item.quantity).fill(null)]),
         ));
     }, [orderItems]);
 
     const itemAssignmentsComplete = useMemo(() => splitStrategy !== 'by-items' || (
         orderItems.length > 0
-        && orderItems.every((item) => (itemQuantities[item.id] || []).reduce((sum, value) => sum + value, 0) === item.quantity)
-        && splitLegs.every((_, payerIndex) => orderItems.some((item) => (itemQuantities[item.id]?.[payerIndex] ?? 0) > 0))
-    ), [itemQuantities, orderItems, splitLegs, splitStrategy]);
+        && orderItems.every((item) => {
+            const owners = itemUnitOwners[item.id] || [];
+            return owners.length === item.quantity
+                && owners.every((owner) => owner !== null && owner >= 0 && owner < splitLegs.length);
+        })
+        && splitLegs.every((_, payerIndex) => orderItems.some((item) => itemUnitOwners[item.id]?.includes(payerIndex)))
+    ), [itemUnitOwners, orderItems, splitLegs, splitStrategy]);
+
+    const assignItemUnit = useCallback((itemId: number, unitIndex: number, payerIndex: number) => {
+        setItemUnitOwners((current) => {
+            const item = orderItems.find((candidate) => candidate.id === itemId);
+            if (!item) return current;
+            const nextOwners = [...(current[itemId] ?? Array<number | null>(item.quantity).fill(null))];
+            nextOwners[unitIndex] = payerIndex;
+            return { ...current, [itemId]: nextOwners };
+        });
+    }, [orderItems]);
 
     const rebuildSplitPreview = useCallback(async (): Promise<SplitLeg[] | null> => {
         if (!orderId || splitLegs.length === 0) return splitLegs;
@@ -347,7 +359,10 @@ export default function PaymentModal({
                 const assignments = splitLegs.map((leg, payerIndex) => ({
                     personName: leg.payerName,
                     items: orderItems
-                        .map((item) => ({ orderItemId: item.id, quantity: itemQuantities[item.id]?.[payerIndex] ?? 0 }))
+                        .map((item) => ({
+                            orderItemId: item.id,
+                            quantity: (itemUnitOwners[item.id] || []).filter((owner) => owner === payerIndex).length,
+                        }))
                         .filter((item) => item.quantity > 0),
                 }));
                 const response = await splitBillAPI.splitByItems(orderId, assignments);
@@ -370,8 +385,8 @@ export default function PaymentModal({
                     && parseField(leg.received) !== parseField(leg.amount);
                 return {
                     ...leg,
-                    amount: amount.toFixed(2),
-                    received: preserveTendered ? leg.received : amount.toFixed(2),
+                    amount: formatMoneyInput(amount.toFixed(2)),
+                    received: preserveTendered ? leg.received : formatMoneyInput(amount.toFixed(2)),
                 };
             });
             setSplitLegs(next);
@@ -382,7 +397,7 @@ export default function PaymentModal({
         } finally {
             if (!stale()) setPreviewLoading(false);
         }
-    }, [isCash, itemAssignmentsComplete, itemQuantities, orderId, orderItems, splitLegs, splitStrategy]);
+    }, [isCash, itemAssignmentsComplete, itemUnitOwners, orderId, orderItems, splitLegs, splitStrategy]);
 
     const splitAllocation = summarizePaymentAllocation(balance, splitLegs.map((leg) => parseField(leg.amount)));
     const splitLegsArePayable = useCallback((legs: SplitLeg[]) => {
@@ -671,9 +686,15 @@ export default function PaymentModal({
 
                     {!methodsLoading && !methodsError && mode === 'mixed' && (
                         <div className="payment-panel">
-                            <div className="payment-section-heading">
+                            <div className="payment-section-heading payment-section-heading-with-actions">
                                 <div><h3>Pago mixto</h3><p>Una deuda, distribuida entre 2 o 3 métodos distintos.</p></div>
-                                <Layers3 size={26} />
+                                <div className="payment-heading-tools">
+                                    {!mixedAttempted && mixedLegs.length < 3 && mixedMethodOptions.length > mixedLegs.length && <button type="button" className="payment-add-leg" onClick={() => {
+                                        const nextMethod = mixedMethodOptions.find((option) => !mixedMethodIds.includes(option.value));
+                                        if (nextMethod) setMixedLegs((current) => [...current, createLeg(nextMethod.value, 0)]);
+                                    }}><Plus size={17} /> Agregar método</button>}
+                                    <AllocationStatus summary={mixedAllocation} currencySymbol={currencySymbol} valid={mixedValid} compact />
+                                </div>
                             </div>
                             {mixedMethodOptions.length < 2 ? (
                                 <div className="payment-alert error">Configura al menos dos métodos entre efectivo, tarjeta y transferencia.</div>
@@ -701,11 +722,6 @@ export default function PaymentModal({
                                             );
                                         })}
                                     </div>
-                                    {!mixedAttempted && mixedLegs.length < 3 && mixedMethodOptions.length > mixedLegs.length && <button type="button" className="payment-add-leg" onClick={() => {
-                                        const nextMethod = mixedMethodOptions.find((option) => !mixedMethodIds.includes(option.value));
-                                        if (nextMethod) setMixedLegs((current) => [...current, createLeg(nextMethod.value, 0)]);
-                                    }}><Plus size={17} /> Agregar tercer método</button>}
-                                    <AllocationStatus summary={mixedAllocation} currencySymbol={currencySymbol} valid={mixedValid} />
                                     {!mixedMethodsUnique && <div className="payment-alert error">Cada tramo debe usar un método distinto.</div>}
                                 </>
                             )}
@@ -714,9 +730,12 @@ export default function PaymentModal({
 
                     {!methodsLoading && !methodsError && mode === 'split' && (
                         <div className="payment-panel split-panel">
-                            <div className="payment-section-heading">
+                            <div className="payment-section-heading payment-section-heading-with-actions">
                                 <div><h3>Dividir cuenta</h3><p>Cobra a cada comensal por partes iguales, unidades consumidas o monto.</p></div>
-                                <Scissors size={26} />
+                                <div className="payment-heading-tools">
+                                    <button type="button" className="payment-recalculate" disabled={splitAttempted || previewLoading || !itemAssignmentsComplete} onClick={() => void rebuildSplitPreview()}>{previewLoading ? 'Calculando…' : 'Recalcular importes'}</button>
+                                    <AllocationStatus summary={splitAllocation} currencySymbol={currencySymbol} valid={splitValid} compact />
+                                </div>
                             </div>
                             <div className="split-strategies" role="group" aria-label="Forma de dividir">
                                 {([
@@ -726,7 +745,7 @@ export default function PaymentModal({
                                 ] as Array<[SplitStrategy, string]>).map(([value, label]) => (
                                     <button type="button" key={value} className={splitStrategy === value ? 'active' : ''} disabled={splitAttempted} onClick={() => {
                                         setSplitStrategy(value);
-                                        if (value === 'by-items') initializeEmptyAssignments(splitLegs.length || 2);
+                                        if (value === 'by-items') initializeEmptyAssignments();
                                     }}>{label}</button>
                                 ))}
                             </div>
@@ -734,12 +753,12 @@ export default function PaymentModal({
                                 <span>Comensales</span>
                                 {[2, 3, 4].map((count) => <button type="button" key={count} className={splitLegs.length === count ? 'active' : ''} disabled={splitAttempted} onClick={() => {
                                     setSplitLegs(buildSplitLegs(count, splitLegs));
-                                    if (splitStrategy === 'by-items') initializeEmptyAssignments(count);
+                                    if (splitStrategy === 'by-items') initializeEmptyAssignments();
                                 }}>{count}</button>)}
                                 <button type="button" className="icon" disabled={splitAttempted} onClick={() => {
                                     const count = splitLegs.length + 1;
                                     setSplitLegs(buildSplitLegs(count, splitLegs));
-                                    if (splitStrategy === 'by-items') initializeEmptyAssignments(count);
+                                    if (splitStrategy === 'by-items') initializeEmptyAssignments();
                                 }} aria-label="Agregar comensal"><Plus size={17} /></button>
                             </div>
                             <div className="payment-leg-list">
@@ -760,7 +779,7 @@ export default function PaymentModal({
                                             {splitLegs.length > 2 && !splitAttempted && <button type="button" className="leg-remove" onClick={() => {
                                                 const next = splitLegs.filter((item) => item.id !== leg.id);
                                                 setSplitLegs(buildSplitLegs(next.length, next));
-                                                if (splitStrategy === 'by-items') initializeEmptyAssignments(next.length);
+                                                if (splitStrategy === 'by-items') initializeEmptyAssignments();
                                             }}><Trash2 size={16} /> Eliminar</button>}
                                         </article>
                                     );
@@ -769,34 +788,39 @@ export default function PaymentModal({
 
                             {splitStrategy === 'by-items' && (
                                 <section className="unit-allocation">
-                                    <div className="unit-allocation-header"><div><h4>Asignación por unidades</h4><p>Usa − y + hasta distribuir exactamente cada producto.</p></div></div>
+                                    <div className="unit-allocation-header"><div><h4>¿Quién paga cada plato?</h4><p>Selecciona un comensal para cada plato o unidad de la orden.</p></div></div>
                                     {orderItems.length === 0 ? <div className="payment-alert error">La orden no tiene unidades disponibles para dividir.</div> : orderItems.map((item) => {
-                                        const quantities = itemQuantities[item.id] ?? Array<number>(splitLegs.length).fill(0);
-                                        const assigned = quantities.reduce((sum, value) => sum + value, 0);
+                                        const owners = itemUnitOwners[item.id] ?? Array<number | null>(item.quantity).fill(null);
+                                        const assigned = owners.filter((owner) => owner !== null).length;
                                         const pending = item.quantity - assigned;
                                         return (
                                             <article className="unit-row" key={item.id}>
                                                 <header><div><strong>{item.menuItem?.name || 'Producto'}</strong><span>{item.quantity} unidades · {displayMoney(Number(item.subtotal))}</span></div><b className={pending === 0 ? 'complete' : 'pending'}>{assigned} de {item.quantity} asignadas</b></header>
-                                                <div className="unit-payers">
-                                                    {splitLegs.map((leg, payerIndex) => {
-                                                        const current = quantities[payerIndex] ?? 0;
-                                                        const max = item.quantity - (assigned - current);
-                                                        const setQuantity = (nextValue: number) => setItemQuantities((currentAssignments) => {
-                                                            const next = [...(currentAssignments[item.id] ?? Array<number>(splitLegs.length).fill(0))];
-                                                            next[payerIndex] = Math.max(0, Math.min(max, nextValue));
-                                                            return { ...currentAssignments, [item.id]: next };
-                                                        });
-                                                        return <div className="unit-payer" key={leg.id}><span>{leg.payerName}</span><div className="unit-stepper"><button type="button" onClick={() => setQuantity(current - 1)} disabled={splitAttempted || current <= 0} aria-label={`Quitar una unidad de ${item.menuItem?.name} a ${leg.payerName}`}><Minus size={15} /></button><output>{current}</output><button type="button" onClick={() => setQuantity(current + 1)} disabled={splitAttempted || current >= max} aria-label={`Asignar una unidad de ${item.menuItem?.name} a ${leg.payerName}`}><Plus size={15} /></button></div></div>;
-                                                    })}
+                                                <div className="unit-assignment-list">
+                                                    {Array.from({ length: item.quantity }, (_, unitIndex) => (
+                                                        <div className="unit-assignment-row" key={`${item.id}-${unitIndex}`}>
+                                                            <span>{item.quantity === 1 ? 'Plato' : `Unidad ${unitIndex + 1}`}</span>
+                                                            <div className="unit-payer-options" role="radiogroup" aria-label={`Quién paga ${item.menuItem?.name || 'producto'}, unidad ${unitIndex + 1}`}>
+                                                                {splitLegs.map((leg, payerIndex) => (
+                                                                    <button
+                                                                        type="button"
+                                                                        key={leg.id}
+                                                                        className={owners[unitIndex] === payerIndex ? 'selected' : ''}
+                                                                        aria-pressed={owners[unitIndex] === payerIndex}
+                                                                        disabled={splitAttempted}
+                                                                        onClick={() => assignItemUnit(item.id, unitIndex, payerIndex)}
+                                                                    >{leg.payerName || `Comensal ${payerIndex + 1}`}</button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ))}
                                                 </div>
                                             </article>
                                         );
                                     })}
-                                    {!itemAssignmentsComplete && <div className="payment-alert warning">Faltan unidades por asignar o algún comensal no tiene consumo.</div>}
+                                    {!itemAssignmentsComplete && <div className="payment-alert warning">Asigna todos los platos y verifica que cada comensal tenga al menos uno.</div>}
                                 </section>
                             )}
-                            <button type="button" className="payment-recalculate" disabled={splitAttempted || previewLoading || !itemAssignmentsComplete} onClick={() => void rebuildSplitPreview()}>{previewLoading ? 'Calculando…' : 'Recalcular importes'}</button>
-                            <AllocationStatus summary={splitAllocation} currencySymbol={currencySymbol} valid={splitValid} />
                         </div>
                     )}
                     </div>
@@ -822,14 +846,16 @@ function AllocationStatus({
     summary,
     currencySymbol,
     valid,
+    compact = false,
 }: {
     summary: ReturnType<typeof summarizePaymentAllocation>;
     currencySymbol: string;
     valid: boolean;
+    compact?: boolean;
 }) {
     const difference = centsToMoney(Math.abs(summary.differenceCents));
     return (
-        <div className={`allocation-status ${valid ? 'valid' : 'invalid'}`} role="status">
+        <div className={`allocation-status ${compact ? 'compact' : ''} ${valid ? 'valid' : 'invalid'}`} role="status">
             <div><span>Total asignado</span><strong>{formatMoneyAmount(centsToMoney(summary.allocatedCents), currencySymbol)}</strong></div>
             <b>{summary.exact ? 'Suma exacta' : summary.differenceCents > 0 ? `Falta ${formatMoneyAmount(difference, currencySymbol)}` : `Excede ${formatMoneyAmount(difference, currencySymbol)}`}</b>
         </div>

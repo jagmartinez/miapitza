@@ -3,7 +3,118 @@ import { AuditLogService } from './audit-log.service';
 import { invalidatePermissionCache } from '../middlewares/auth';
 import { ROLES } from '../constants/roles';
 
+export class RoleServiceError extends Error {
+    constructor(
+        message: string,
+        public readonly statusCode = 400,
+        public readonly code = 'ROLE_INVALID_OPERATION'
+    ) {
+        super(message);
+        this.name = 'RoleServiceError';
+    }
+}
+
+type RoleMutationAuthority = {
+    isSuperAdmin: boolean;
+    assignedRoleIds: Set<number>;
+    permissionIds: Set<number>;
+};
+
+function normalizedPermissionIds(value: unknown): number[] {
+    if (!Array.isArray(value)) {
+        throw new RoleServiceError('permissionIds debe ser un arreglo de identificadores');
+    }
+    const permissionIds = value.map((entry) => Number(entry));
+    if (permissionIds.some((id) => !Number.isInteger(id) || id <= 0)) {
+        throw new RoleServiceError('permissionIds contiene un identificador inválido');
+    }
+    return Array.from(new Set(permissionIds));
+}
+
 export class RoleService {
+    private static async mutationAuthority(companyId: number, actorUserId?: number): Promise<RoleMutationAuthority> {
+        if (!actorUserId) {
+            throw new RoleServiceError(
+                'No autorizado: se requiere un actor autenticado para modificar privilegios',
+                403,
+                'ROLE_ACTOR_REQUIRED'
+            );
+        }
+        const actor = await prisma.user.findFirst({
+            where: { id: actorUserId, companyId, status: 'ACTIVE' },
+            select: {
+                roleId: true,
+                role: {
+                    select: {
+                        name: true,
+                        permissions: { select: { id: true } }
+                    }
+                },
+                userRoles: {
+                    select: {
+                        roleId: true,
+                        role: {
+                            select: {
+                                permissions: { select: { id: true } }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        if (!actor) {
+            throw new RoleServiceError(
+                'No autorizado: el actor no pertenece a la empresa o está inactivo',
+                403,
+                'ROLE_ACTOR_FORBIDDEN'
+            );
+        }
+        return {
+            // Match auth.ts: SUPERADMIN is authoritative only as the primary role.
+            isSuperAdmin: actor.role.name === ROLES.SUPERADMIN,
+            assignedRoleIds: new Set([actor.roleId, ...actor.userRoles.map((entry) => entry.roleId)]),
+            permissionIds: new Set([
+                ...actor.role.permissions.map((permission) => permission.id),
+                ...actor.userRoles.flatMap((entry) => entry.role.permissions.map((permission) => permission.id))
+            ])
+        };
+    }
+
+    private static async assertPermissionGrantAllowed(
+        companyId: number,
+        actorUserId: number | undefined,
+        permissionIds: number[],
+        targetRoleId?: number
+    ): Promise<void> {
+        const authority = await this.mutationAuthority(companyId, actorUserId);
+        if (!authority.isSuperAdmin && targetRoleId && authority.assignedRoleIds.has(targetRoleId)) {
+            throw new RoleServiceError(
+                'No autorizado: no puede modificar los privilegios de un rol asignado a su propio usuario',
+                403,
+                'ROLE_SELF_PRIVILEGE_EDIT_FORBIDDEN'
+            );
+        }
+
+        const permissions = permissionIds.length > 0
+            ? await prisma.permission.findMany({
+                where: { id: { in: permissionIds } },
+                select: { id: true }
+            })
+            : [];
+        if (permissions.length !== permissionIds.length) {
+            throw new RoleServiceError('Uno o más permisos no existen');
+        }
+        if (authority.isSuperAdmin) return;
+
+        if (permissions.some((permission) => !authority.permissionIds.has(permission.id))) {
+            throw new RoleServiceError(
+                'No autorizado: no puede otorgar permisos que su usuario no posee',
+                403,
+                'ROLE_PERMISSION_ESCALATION_FORBIDDEN'
+            );
+        }
+    }
+
     static async getAll(companyId: number) {
         return await prisma.role.findMany({
             where: { companyId },
@@ -41,12 +152,31 @@ export class RoleService {
         name: string;
         description?: string;
         permissionIds?: number[];
-    }, userId?: number, actingRoles: string[] = []) {
-        const { permissionIds } = data;
+    }, userId?: number, _actingRoles: string[] = []) {
+        const permissionIds = data.permissionIds === undefined
+            ? undefined
+            : normalizedPermissionIds(data.permissionIds);
         const name = data.name.trim();
         if (!name) throw new Error('El nombre del rol es requerido');
-        if (name === ROLES.SUPERADMIN && !actingRoles.includes(ROLES.SUPERADMIN)) {
-            throw new Error('No autorizado para crear o modificar el rol SUPERADMIN');
+        if (name === ROLES.SUPERADMIN) {
+            if (!userId) {
+                throw new RoleServiceError(
+                    'No autorizado para crear o modificar el rol SUPERADMIN sin un actor autenticado',
+                    403,
+                    'ROLE_SUPERADMIN_REQUIRED'
+                );
+            }
+            const authority = await this.mutationAuthority(companyId, userId);
+            if (!authority.isSuperAdmin) {
+                throw new RoleServiceError(
+                    'No autorizado para crear o modificar el rol SUPERADMIN',
+                    403,
+                    'ROLE_SUPERADMIN_REQUIRED'
+                );
+            }
+        }
+        if (permissionIds !== undefined) {
+            await this.assertPermissionGrantAllowed(companyId, userId, permissionIds);
         }
 
         const role = await prisma.role.create({
@@ -77,8 +207,10 @@ export class RoleService {
         name?: string;
         description?: string;
         permissionIds?: number[];
-    }, userId?: number, actingRoles: string[] = []) {
-        const { permissionIds } = data;
+    }, userId?: number, _actingRoles: string[] = []) {
+        const permissionIds = data.permissionIds === undefined
+            ? undefined
+            : normalizedPermissionIds(data.permissionIds);
 
         // Tenant scoping: ensure the role belongs to this company before mutating it.
         const existing = await prisma.role.findFirst({
@@ -92,11 +224,37 @@ export class RoleService {
         if (data.name !== undefined && !requestedName) {
             throw new Error('El nombre del rol es requerido');
         }
+        let authority: RoleMutationAuthority | undefined;
+        const changesRoleIdentity = requestedName !== undefined && requestedName !== existing.name;
+        if ((existing.name === ROLES.SUPERADMIN || requestedName === ROLES.SUPERADMIN) && !userId) {
+            throw new RoleServiceError(
+                'No autorizado para crear o modificar el rol SUPERADMIN sin un actor autenticado',
+                403,
+                'ROLE_SUPERADMIN_REQUIRED'
+            );
+        }
+        if (existing.name === ROLES.SUPERADMIN || requestedName === ROLES.SUPERADMIN || changesRoleIdentity) {
+            authority = await this.mutationAuthority(companyId, userId);
+        }
         if (
             (existing.name === ROLES.SUPERADMIN || requestedName === ROLES.SUPERADMIN) &&
-            !actingRoles.includes(ROLES.SUPERADMIN)
+            !authority?.isSuperAdmin
         ) {
-            throw new Error('No autorizado para crear o modificar el rol SUPERADMIN');
+            throw new RoleServiceError(
+                'No autorizado para crear o modificar el rol SUPERADMIN',
+                403,
+                'ROLE_SUPERADMIN_REQUIRED'
+            );
+        }
+        if (changesRoleIdentity && !authority?.isSuperAdmin && authority?.assignedRoleIds.has(id)) {
+            throw new RoleServiceError(
+                'No autorizado: no puede modificar la identidad de un rol asignado a su propio usuario',
+                403,
+                'ROLE_SELF_PRIVILEGE_EDIT_FORBIDDEN'
+            );
+        }
+        if (permissionIds !== undefined) {
+            await this.assertPermissionGrantAllowed(companyId, userId, permissionIds, id);
         }
 
         const role = await prisma.role.update({
@@ -104,7 +262,7 @@ export class RoleService {
             data: {
                 ...(requestedName !== undefined ? { name: requestedName } : {}),
                 ...(data.description !== undefined ? { description: data.description } : {}),
-                permissions: permissionIds ? {
+                permissions: permissionIds !== undefined ? {
                     set: permissionIds.map(id => ({ id }))
                 } : undefined
             },

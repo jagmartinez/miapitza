@@ -1,6 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
-import { RoleService } from '../services/role.service';
+import { RoleService, RoleServiceError } from '../services/role.service';
 import { getErrorMessage } from '../utils/error';
+
+function handleRoleError(error: unknown, next: NextFunction): void {
+    if (error instanceof RoleServiceError) {
+        next(error);
+        return;
+    }
+    next({ statusCode: 500, message: getErrorMessage(error) });
+}
 
 export class RoleController {
 
@@ -13,7 +21,7 @@ export class RoleController {
                 data: roles
             });
         } catch (error: unknown) {
-            next({ statusCode: 500, message: getErrorMessage(error) });
+            handleRoleError(error, next);
         }
     }
 
@@ -27,7 +35,7 @@ export class RoleController {
                 data: role
             });
         } catch (error: unknown) {
-            next({ statusCode: 500, message: getErrorMessage(error) });
+            handleRoleError(error, next);
         }
     }
 
@@ -45,7 +53,7 @@ export class RoleController {
                 data: role
             });
         } catch (error: unknown) {
-            next({ statusCode: 500, message: getErrorMessage(error) });
+            handleRoleError(error, next);
         }
     }
 
@@ -65,7 +73,7 @@ export class RoleController {
                 data: role
             });
         } catch (error: unknown) {
-            next({ statusCode: 500, message: getErrorMessage(error) });
+            handleRoleError(error, next);
         }
     }
 

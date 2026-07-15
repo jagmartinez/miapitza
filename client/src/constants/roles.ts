@@ -21,6 +21,8 @@ export type RoleName = (typeof ROLES)[keyof typeof ROLES];
 
 export const ADMIN: RoleName[] = [ROLES.SUPERADMIN, ROLES.ADMIN];
 export const PLATFORM_ADMIN: RoleName[] = [ROLES.SUPERADMIN];
+/** Temporary tenant Owner mapping for the first HR release. */
+export const HR_OWNER: RoleName[] = [ROLES.SUPERADMIN];
 export const OPS: RoleName[] = [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.CAJERO, ROLES.MESERO];
 export const CASHIER: RoleName[] = [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.CAJERO];
 export const WAITER_TABLE: RoleName[] = [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.MESERO, ROLES.HOST, ROLES.CAJERO];

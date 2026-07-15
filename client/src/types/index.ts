@@ -1,3 +1,13 @@
+export type UserAccountType = 'INTERNAL' | 'EXTERNAL';
+
+export type EmployeeStatus = 'DRAFT' | 'ACTIVE' | 'INACTIVE' | 'ON_LEAVE' | 'SUSPENDED' | 'TERMINATED' | 'ARCHIVED';
+
+export interface UserEmployeeLink {
+  id: number;
+  employeeCode?: string | null;
+  employeeNumber?: string | null;
+  status: EmployeeStatus;
+}
 
 export interface User {
   id: number;
@@ -31,6 +41,10 @@ export interface User {
     branch: { id: number; name: string; code?: string };
   }[];
   status: string;
+  /** Historical users may omit this until the HR backfill is deployed. */
+  accountType?: UserAccountType;
+  employeeId?: number | null;
+  employee?: UserEmployeeLink | null;
   color?: string | null;
   nif?: string;
   address?: string;
@@ -469,6 +483,13 @@ export interface Branch {
   address?: string;
   phone?: string;
   status: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  geofenceRadiusM?: number | null;
+  maxLocationAccuracyM?: number | null;
+  timezone?: string | null;
+  attendanceEnabled?: boolean;
+  geofenceVersion?: number;
   _count?: {
     users: number;
     tables: number;

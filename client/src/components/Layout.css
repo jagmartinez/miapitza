@@ -502,13 +502,12 @@
 .main-content {
     flex: 1;
     margin-left: 300px;
-    margin-right: auto;
     padding: var(--spacing-2xl);
     background-color: var(--color-background);
     min-height: 100vh;
     transition: margin-left var(--transition-normal);
     width: calc(100% - 300px);
-    max-width: 1700px;
+    max-width: none;
 }
 
 .main-content.sidebar-collapsed {

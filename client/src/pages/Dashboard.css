@@ -2,7 +2,9 @@
 
 .dashboard {
     padding: var(--spacing-lg);
-    max-width: 1400px;
+    width: 100%;
+    max-width: 1700px;
+    box-sizing: border-box;
     margin: 0 auto;
     padding-bottom: var(--spacing-2xl);
     animation: fadeIn 0.5s ease-out;

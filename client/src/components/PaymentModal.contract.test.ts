@@ -25,6 +25,14 @@ describe('PaymentModal contract', () => {
         expect(source).toContain("{cash && <div className=\"leg-change\"");
     });
 
+    it('formats initial money fields and keeps split controls in the panel header', () => {
+        expect(source).toContain('formatMoneyInput(amount.toFixed(2))');
+        expect(source).toContain('payment-heading-tools');
+        expect(source).toContain('Agregar método');
+        expect(source).toContain('Recalcular importes');
+        expect(source).toContain('compact />');
+    });
+
     it('keeps a stable workspace across modes and omits redundant footer labels', () => {
         const styles = readFileSync(new URL('./PaymentModal.css', import.meta.url), 'utf8');
         expect(source).toContain('payment-workspace');

@@ -1,4 +1,6 @@
 import prisma from '../utils/prisma';
+import { isValidTimeZone } from '../utils/timezone';
+import { AuditLogService } from './audit-log.service';
 
 export class BranchService {
     static async getAll(companyId: number) {
@@ -64,25 +66,95 @@ export class BranchService {
         code: string;
         address?: string;
         phone?: string;
-    }) {
+        latitude: number;
+        longitude: number;
+        geofenceRadiusM: number;
+        maxLocationAccuracyM: number;
+        timezone?: string;
+        attendanceEnabled?: boolean;
+        status?: 'ACTIVE' | 'INACTIVE';
+    }, actorUserId: number) {
+        const name = data.name?.trim();
+        const code = data.code?.trim().toUpperCase();
+        if (!name) throw new Error('El nombre de la sucursal es requerido');
+        if (!code) throw new Error('El código de la sucursal es requerido');
+        const latitude = Number(data.latitude);
+        const longitude = Number(data.longitude);
+        const geofenceRadiusM = Number(data.geofenceRadiusM);
+        const maxLocationAccuracyM = Number(data.maxLocationAccuracyM);
+        const timezone = data.timezone?.trim() || 'America/Managua';
+        if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+            throw new Error('Latitud fuera de rango');
+        }
+        if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+            throw new Error('Longitud fuera de rango');
+        }
+        if (!Number.isInteger(geofenceRadiusM) || geofenceRadiusM < 10 || geofenceRadiusM > 10000) {
+            throw new Error('geofenceRadiusM debe estar entre 10 y 10000 metros');
+        }
+        if (!Number.isInteger(maxLocationAccuracyM) || maxLocationAccuracyM < 1 || maxLocationAccuracyM > 5000) {
+            throw new Error('maxLocationAccuracyM debe estar entre 1 y 5000 metros');
+        }
+        if (!isValidTimeZone(timezone)) throw new Error('Zona horaria inválida');
+        const status = data.status || 'ACTIVE';
+        if (status !== 'ACTIVE' && status !== 'INACTIVE') throw new Error('Estado de sucursal inválido');
+        const attendanceEnabled = data.attendanceEnabled ?? false;
+        if (attendanceEnabled && status !== 'ACTIVE') {
+            throw new Error('No se puede habilitar asistencia en una sucursal inactiva');
+        }
+
         // Check if code exists within the same company
         const existing = await prisma.branch.findFirst({
-            where: { code: data.code, companyId: data.companyId }
+            where: { code, companyId: data.companyId }
         });
 
         if (existing) {
             throw new Error('Ya existe una sucursal con este código en la empresa');
         }
 
-        return await prisma.branch.create({
-            data: {
+        const branch = await prisma.$transaction(async (tx) => {
+            const created = await tx.branch.create({
+                data: {
+                    companyId: data.companyId,
+                    name,
+                    code,
+                    address: data.address?.trim() || null,
+                    phone: data.phone?.trim() || null,
+                    latitude,
+                    longitude,
+                    geofenceRadiusM,
+                    maxLocationAccuracyM,
+                    timezone,
+                    attendanceEnabled,
+                    geofenceVersion: 1,
+                    status,
+                }
+            });
+            await tx.branchGeofenceVersion.create({
+                data: {
+                    companyId: data.companyId,
+                    branchId: created.id,
+                    version: 1,
+                    latitude,
+                    longitude,
+                    geofenceRadiusM,
+                    maxLocationAccuracyM,
+                    timezone,
+                    attendanceEnabled,
+                    changedById: actorUserId,
+                }
+            });
+            await AuditLogService.log({
                 companyId: data.companyId,
-                name: data.name,
-                code: data.code,
-                address: data.address,
-                phone: data.phone
-            }
+                userId: actorUserId,
+                entityType: 'Branch',
+                entityId: created.id,
+                action: 'CREATE',
+                details: { code: created.code, geofenceVersion: 1, attendanceEnabled: created.attendanceEnabled }
+            }, tx);
+            return created;
         });
+        return { ...branch, latitude: Number(branch.latitude), longitude: Number(branch.longitude), version: branch.geofenceVersion };
     }
 
     static async update(id: number, companyId: number, data: {
@@ -91,32 +163,62 @@ export class BranchService {
         address?: string;
         phone?: string;
         status?: 'ACTIVE' | 'INACTIVE';
-    }) {
+    }, actorUserId: number) {
         // Verify ownership
         const branch = await this.getById(id, companyId);
         if (!branch) throw new Error("Branch not found or unauthorized");
 
-        return await prisma.branch.update({
-            where: { id },
-            data: {
-                ...(data.name !== undefined ? { name: data.name } : {}),
-                ...(data.code !== undefined ? { code: data.code } : {}),
-                ...(data.address !== undefined ? { address: data.address } : {}),
-                ...(data.phone !== undefined ? { phone: data.phone } : {}),
-                ...(data.status !== undefined ? { status: data.status } : {})
+        const disablingAttendance = data.status === 'INACTIVE' && branch.attendanceEnabled;
+        return prisma.$transaction(async (tx) => {
+            const updated = await tx.branch.update({
+                where: { id },
+                data: {
+                    ...(data.name !== undefined ? { name: data.name.trim() } : {}),
+                    ...(data.code !== undefined ? { code: data.code.trim().toUpperCase() } : {}),
+                    ...(data.address !== undefined ? { address: data.address.trim() || null } : {}),
+                    ...(data.phone !== undefined ? { phone: data.phone.trim() || null } : {}),
+                    ...(data.status !== undefined ? { status: data.status } : {}),
+                    ...(disablingAttendance ? {
+                        attendanceEnabled: false,
+                        geofenceVersion: branch.geofenceVersion + 1,
+                    } : {}),
+                },
+            });
+            if (disablingAttendance) {
+                await tx.branchGeofenceVersion.create({
+                    data: {
+                        companyId,
+                        branchId: id,
+                        version: branch.geofenceVersion + 1,
+                        latitude: branch.latitude,
+                        longitude: branch.longitude,
+                        geofenceRadiusM: branch.geofenceRadiusM,
+                        maxLocationAccuracyM: branch.maxLocationAccuracyM,
+                        timezone: branch.timezone,
+                        attendanceEnabled: false,
+                        changedById: actorUserId,
+                        reason: 'Sucursal inactivada',
+                    },
+                });
             }
+            await AuditLogService.log({
+                companyId,
+                userId: actorUserId,
+                entityType: 'Branch',
+                entityId: id,
+                action: 'UPDATE',
+                details: { fields: Object.keys(data), attendanceDisabled: disablingAttendance },
+            }, tx);
+            return updated;
         });
     }
 
-    static async delete(id: number, companyId: number) {
+    static async delete(id: number, companyId: number, actorUserId: number) {
         // Soft delete by setting status to INACTIVE
         // Verify ownership
         const branch = await this.getById(id, companyId);
         if (!branch) throw new Error("Branch not found or unauthorized");
 
-        return await prisma.branch.update({
-            where: { id },
-            data: { status: 'INACTIVE' }
-        });
+        return this.update(id, companyId, { status: 'INACTIVE' }, actorUserId);
     }
 }

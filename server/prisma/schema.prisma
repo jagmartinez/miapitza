@@ -26,48 +26,114 @@ model Company {
   updatedAt     DateTime      @updatedAt
 
   // Relations
-  branches                 Branch[]
-  settings                 Setting[]
-  users                    User[]
-  auditLogs                AuditLog[]
-  tables                   Table[]
-  floorAreas               FloorArea[]
-  tableFloorPlans          TableFloorPlan[]
-  reservations             Reservation[]
-  categories               Category[]
-  menuBrands               MenuBrand[]
-  menuItems                MenuItem[]
-  products                 Product[]
-  warehouses               Warehouse[]
-  suppliers                Supplier[]
-  purchaseOrders           PurchaseOrder[]
-  orders                   Order[]
-  paymentMethods           PaymentMethod[]
-  cashRegisters            CashRegister[]
-  cashShifts               CashShift[]
-  modifierGroups           ModifierGroup[]
-  roles                    Role[]
-  stocks                   Stock[]
-  inventoryMovements       InventoryMovement[]
-  cateringEvents           CateringEvent[]
-  cateringServices         CateringService[]
-  customers                Customer[]
-  promotions               Promotion[]
-  productCostHistories     ProductCostHistory[]
-  invoiceSequences         InvoiceSequence[]
-  apiKeys                  ApiKey[]
-  unitsOfMeasure           UnitOfMeasure[]
-  productUnits             ProductUnit[]
-  salesChannelConfigs      SalesChannelConfig[]
-  pedidosYaConfigs         PedidosYaConfig[]
-  pedidosYaMappings        PedidosYaProductMapping[]
-  pedidosYaWebhookLogs     PedidosYaWebhookLog[]
-  pedidosYaOrderSyncs      PedidosYaOrderSync[]
-  productionRecipes        ProductionRecipe[]
-  productionOrders         ProductionOrder[]
-  inventoryBatches         InventoryBatch[]
-  bankDeposits             BankDeposit[]
-  kitchenNotifications     KitchenNotification[]
+  branches                        Branch[]
+  settings                        Setting[]
+  users                           User[]
+  auditLogs                       AuditLog[]
+  tables                          Table[]
+  floorAreas                      FloorArea[]
+  tableFloorPlans                 TableFloorPlan[]
+  reservations                    Reservation[]
+  categories                      Category[]
+  menuBrands                      MenuBrand[]
+  menuItems                       MenuItem[]
+  products                        Product[]
+  warehouses                      Warehouse[]
+  suppliers                       Supplier[]
+  purchaseOrders                  PurchaseOrder[]
+  orders                          Order[]
+  paymentMethods                  PaymentMethod[]
+  cashRegisters                   CashRegister[]
+  cashShifts                      CashShift[]
+  modifierGroups                  ModifierGroup[]
+  roles                           Role[]
+  stocks                          Stock[]
+  inventoryMovements              InventoryMovement[]
+  cateringEvents                  CateringEvent[]
+  cateringServices                CateringService[]
+  customers                       Customer[]
+  promotions                      Promotion[]
+  productCostHistories            ProductCostHistory[]
+  invoiceSequences                InvoiceSequence[]
+  apiKeys                         ApiKey[]
+  unitsOfMeasure                  UnitOfMeasure[]
+  productUnits                    ProductUnit[]
+  salesChannelConfigs             SalesChannelConfig[]
+  pedidosYaConfigs                PedidosYaConfig[]
+  pedidosYaMappings               PedidosYaProductMapping[]
+  pedidosYaWebhookLogs            PedidosYaWebhookLog[]
+  pedidosYaOrderSyncs             PedidosYaOrderSync[]
+  productionRecipes               ProductionRecipe[]
+  productionOrders                ProductionOrder[]
+  inventoryBatches                InventoryBatch[]
+  bankDeposits                    BankDeposit[]
+  departments                     Department[]
+  jobPositions                    JobPosition[]
+  costCenters                     CostCenter[]
+  employees                       Employee[]
+  employmentContracts             EmploymentContract[]
+  employeeBranches                EmployeeBranchAssignment[]
+  compensationHistory             CompensationHistory[]
+  geofenceVersions                BranchGeofenceVersion[]
+  employeeDocuments               EmployeeDocument[]
+  shiftTemplates                  ShiftTemplate[]
+  weeklySchedules                 WeeklySchedule[]
+  scheduledShifts                 ScheduledShift[]
+  scheduleAcknowledgements        ScheduleAcknowledgement[]
+  holidayCalendars                HolidayCalendar[]
+  holidays                        Holiday[]
+  shiftSwapRequests               ShiftSwapRequest[]
+  shiftSwapReservations           ShiftSwapReservation[]
+  shiftAssignmentOverrides        ShiftAssignmentOverride[]
+  attendancePolicies              AttendancePolicy[]
+  biometricProfiles               BiometricProfile[]
+  biometricChallenges             BiometricChallenge[]
+  attendanceDevices               AttendanceDevice[]
+  attendanceEvents                AttendanceEvent[]
+  attendanceReviews               AttendanceReview[]
+  attendancePunchRequests         AttendancePunchRequest[]
+  biometricPurgeRequests          BiometricPurgeRequest[]
+  attendancePeriods               AttendancePeriod[]
+  attendanceDailySummaries        AttendanceDailySummary[]
+  attendanceIncidents             AttendanceIncident[]
+  attendanceCorrections           AttendanceCorrection[]
+  overtimeRequests                OvertimeRequest[]
+  leaveTypes                      LeaveType[]
+  leaveRequests                   LeaveRequest[]
+  vacationBalances                VacationBalance[]
+  vacationLedgerEntries           VacationLedgerEntry[]
+  workforceIdempotency            WorkforceIdempotencyRecord[]
+  payrollRules                    PayrollRuleVersion[]
+  payrollPeriods                  PayrollPeriod[]
+  payrollRuns                     PayrollRun[]
+  payrollSnapshots                PayrollSnapshotLine[]
+  payrollComponents               PayrollComponent[]
+  payrollAnomalies                PayrollAnomaly[]
+  payrollReceipts                 PayrollReceipt[]
+  payrollReversals                PayrollRunReversal[]
+  payrollTraces                   PayrollTrace[]
+  payrollIdempotency              PayrollIdempotencyRecord[]
+  payrollRuleConfigurations       PayrollRuleConfigurationRevision[]
+  payrollRuleConfigurationReviews PayrollRuleConfigurationReview[]
+  payrollAttendanceDependencies   PayrollAttendanceDependency[]
+  payrollAguinaldoDependencies    PayrollAguinaldoSourceDependency[]
+  payrollCoverageClaims           PayrollCoverageClaim[]
+  payrollCoverageReleases         PayrollCoverageRelease[]
+  payrollComponentReversals       PayrollComponentReversal[]
+  payrollPayments                 PayrollPaymentRecord[]
+  travelRequests                  HrTravelRequest[]
+  travelExpenses                  HrTravelExpense[]
+  travelLedger                    HrTravelLedgerEntry[]
+  loans                           HrLoan[]
+  loanScheduleVersions            HrLoanScheduleVersion[]
+  loanInstallments                HrLoanInstallment[]
+  loanLedger                      HrLoanLedgerEntry[]
+  deductions                      HrDeduction[]
+  deductionVersions               HrDeductionVersion[]
+  deductionApplications           HrDeductionApplication[]
+  benefitTraces                   HrBenefitTrace[]
+  benefitIdempotency              HrBenefitIdempotencyRecord[]
+  kitchenNotifications            KitchenNotification[]
 }
 
 enum CostingMethod {
@@ -86,7 +152,13 @@ model Branch {
   code                 String
   address              String?
   phone                String?
+  latitude             Decimal?     @db.Decimal(10, 7)
+  longitude            Decimal?     @db.Decimal(10, 7)
+  geofenceRadiusM      Int?
+  maxLocationAccuracyM Int?
   timezone             String       @default("America/Managua") @db.VarChar(64)
+  attendanceEnabled    Boolean      @default(false)
+  geofenceVersion      Int          @default(0)
   status               BranchStatus @default(ACTIVE)
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
@@ -109,7 +181,21 @@ model Branch {
   invoiceSequences               InvoiceSequence[]
   pedidosYaConfigs               PedidosYaConfig[]
   productionOrders               ProductionOrder[]
+  employeeAssignments            EmployeeBranchAssignment[]
+  geofenceVersions               BranchGeofenceVersion[]
+  shiftTemplates                 ShiftTemplate[]
+  scheduledShifts                ScheduledShift[]
+  holidays                       Holiday[]
+  attendancePolicies             AttendancePolicy[]
+  attendanceDevices              AttendanceDevice[]
+  attendanceEvents               AttendanceEvent[]
+  attendanceDailySummaries       AttendanceDailySummary[]
+  attendanceIncidents            AttendanceIncident[]
+  requestedAttendanceCorrections AttendanceCorrection[]
+  leaveRequests                  LeaveRequest[]
+  payrollSnapshots               PayrollSnapshotLine[]
   kitchenNotifications           KitchenNotification[]
+  travelRequests                 HrTravelRequest[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -150,6 +236,7 @@ model User {
   roleId                 Int
   branchId               Int? // Primary branch
   status                 UserStatus      @default(ACTIVE)
+  accountType            UserAccountType @default(EXTERNAL)
   color                  String? // Hex color for visual identification (e.g. waiters)
   nif                    String?
   address                String?
@@ -164,27 +251,100 @@ model User {
   sessions        UserSession[]
   userRoles       UserRole[]
   allowedBranches UserBranch[] // Branches a SUPERADMIN permits this user to be assigned to
+  employee        Employee?
 
   // Operational relations
-  orders                         Order[]                   @relation("OrderCreator")
-  cancelledOrders                Order[]                   @relation("OrderCancelledBy")
-  kitchenStarts                  Order[]                   @relation("OrderKitchenStartedBy")
-  kitchenReleases                Order[]                   @relation("OrderKitchenReleasedBy")
-  kitchenNotifications           KitchenNotification[]     @relation("KitchenNotificationRecipient")
-  cashShifts                     CashShift[]
-  movements                      InventoryMovement[]
-  auditLogs                      AuditLog[]
-  apiKeys                        ApiKey[]                  @relation("ApiKeyCreator")
-  productionRecipesCreated       ProductionRecipe[]        @relation("ProductionRecipeCreatedBy")
-  productionOrders               ProductionOrder[]         @relation("ProductionOrderUser")
-  cancelledProductionOrders      ProductionOrder[]         @relation("ProductionOrderCancelledBy")
-  bankDepositsCreated            BankDeposit[]             @relation("BankDepositCreatedBy")
-  bankDepositsReversed           BankDeposit[]             @relation("BankDepositReversedBy")
-  paymentsRegistered             Payment[]                 @relation("PaymentRegisteredBy")
-  paymentsReversed               Payment[]                 @relation("PaymentReversedBy")
-  cateringPaymentsRegistered     CateringPayment[]         @relation("CateringPaymentRegisteredBy")
-  cateringPaymentsReversed       CateringPayment[]         @relation("CateringPaymentReversedBy")
-  purchasePaymentsReversed       PurchaseOrderPayment[]    @relation("PurchaseOrderPaymentReversedBy")
+  orders                            Order[]                            @relation("OrderCreator")
+  cancelledOrders                   Order[]                            @relation("OrderCancelledBy")
+  kitchenStarts                     Order[]                            @relation("OrderKitchenStartedBy")
+  kitchenReleases                   Order[]                            @relation("OrderKitchenReleasedBy")
+  kitchenNotifications              KitchenNotification[]              @relation("KitchenNotificationRecipient")
+  cashShifts                        CashShift[]
+  movements                         InventoryMovement[]
+  auditLogs                         AuditLog[]
+  apiKeys                           ApiKey[]                           @relation("ApiKeyCreator")
+  productionRecipesCreated          ProductionRecipe[]                 @relation("ProductionRecipeCreatedBy")
+  productionOrders                  ProductionOrder[]                  @relation("ProductionOrderUser")
+  cancelledProductionOrders         ProductionOrder[]                  @relation("ProductionOrderCancelledBy")
+  bankDepositsCreated               BankDeposit[]                      @relation("BankDepositCreatedBy")
+  bankDepositsReversed              BankDeposit[]                      @relation("BankDepositReversedBy")
+  paymentsRegistered                Payment[]                          @relation("PaymentRegisteredBy")
+  paymentsReversed                  Payment[]                          @relation("PaymentReversedBy")
+  cateringPaymentsRegistered        CateringPayment[]                  @relation("CateringPaymentRegisteredBy")
+  cateringPaymentsReversed          CateringPayment[]                  @relation("CateringPaymentReversedBy")
+  purchasePaymentsReversed          PurchaseOrderPayment[]             @relation("PurchaseOrderPaymentReversedBy")
+  compensationChanges               CompensationHistory[]              @relation("CompensationChangedBy")
+  geofenceChanges                   BranchGeofenceVersion[]            @relation("BranchGeofenceChangedBy")
+  employeeDocumentsUploaded         EmployeeDocument[]                 @relation("EmployeeDocumentUploadedBy")
+  scheduledShifts                   ScheduledShift[]
+  schedulesCreated                  WeeklySchedule[]                   @relation("WeeklyScheduleCreatedBy")
+  schedulesPublished                WeeklySchedule[]                   @relation("WeeklySchedulePublishedBy")
+  scheduleAcknowledgements          ScheduleAcknowledgement[]
+  swapRequestsCreated               ShiftSwapRequest[]                 @relation("ShiftSwapRequestedBy")
+  swapRequestsTargeted              ShiftSwapRequest[]                 @relation("ShiftSwapTargetUser")
+  swapRequestsDecided               ShiftSwapRequest[]                 @relation("ShiftSwapDecidedBy")
+  shiftAssignmentsReceived          ShiftAssignmentOverride[]          @relation("ShiftAssignmentAssignedUser")
+  shiftAssignmentsCreated           ShiftAssignmentOverride[]          @relation("ShiftAssignmentAssignedBy")
+  attendancePoliciesCreated         AttendancePolicy[]                 @relation("AttendancePolicyCreatedBy")
+  biometricProfile                  BiometricProfile?
+  biometricChallenges               BiometricChallenge[]
+  attendanceEvents                  AttendanceEvent[]                  @relation("AttendanceEventSubject")
+  attendanceEventsCreated           AttendanceEvent[]                  @relation("AttendanceEventActor")
+  attendanceReviews                 AttendanceReview[]                 @relation("AttendanceReviewReviewer")
+  attendanceDevicesCreated          AttendanceDevice[]                 @relation("AttendanceDeviceCreatedBy")
+  attendanceDevicesRevoked          AttendanceDevice[]                 @relation("AttendanceDeviceRevokedBy")
+  attendancePunchRequests           AttendancePunchRequest[]
+  attendancePeriodsCreated          AttendancePeriod[]                 @relation("AttendancePeriodCreatedBy")
+  attendancePeriodsClosed           AttendancePeriod[]                 @relation("AttendancePeriodClosedBy")
+  attendancePeriodsReopened         AttendancePeriod[]                 @relation("AttendancePeriodReopenedBy")
+  attendanceDailySummaries          AttendanceDailySummary[]
+  attendanceIncidents               AttendanceIncident[]               @relation("AttendanceIncidentSubject")
+  attendanceIncidentsResolved       AttendanceIncident[]               @relation("AttendanceIncidentResolvedBy")
+  attendanceCorrections             AttendanceCorrection[]             @relation("AttendanceCorrectionSubject")
+  attendanceCorrectionsRequested    AttendanceCorrection[]             @relation("AttendanceCorrectionRequestedBy")
+  attendanceCorrectionsDecided      AttendanceCorrection[]             @relation("AttendanceCorrectionDecidedBy")
+  overtimeRequests                  OvertimeRequest[]                  @relation("OvertimeRequestSubject")
+  overtimeRequestsCreated           OvertimeRequest[]                  @relation("OvertimeRequestRequestedBy")
+  overtimeRequestsDecided           OvertimeRequest[]                  @relation("OvertimeRequestDecidedBy")
+  leaveRequests                     LeaveRequest[]                     @relation("LeaveRequestSubject")
+  leaveRequestsCreated              LeaveRequest[]                     @relation("LeaveRequestRequestedBy")
+  leaveRequestsDecided              LeaveRequest[]                     @relation("LeaveRequestDecidedBy")
+  vacationBalances                  VacationBalance[]
+  vacationLedgerEntries             VacationLedgerEntry[]              @relation("VacationLedgerSubject")
+  vacationLedgerActors              VacationLedgerEntry[]              @relation("VacationLedgerActor")
+  payrollRulesCreated               PayrollRuleVersion[]               @relation("PayrollRuleCreatedBy")
+  payrollRulesValidated             PayrollRuleVersion[]               @relation("PayrollRuleValidatedBy")
+  payrollPeriodsCreated             PayrollPeriod[]                    @relation("PayrollPeriodCreatedBy")
+  payrollRunsCreated                PayrollRun[]                       @relation("PayrollRunCreatedBy")
+  payrollRunsCalculated             PayrollRun[]                       @relation("PayrollRunCalculatedBy")
+  payrollRunsReviewed               PayrollRun[]                       @relation("PayrollRunReviewedBy")
+  payrollRunsApproved               PayrollRun[]                       @relation("PayrollRunApprovedBy")
+  payrollRunsPaid                   PayrollRun[]                       @relation("PayrollRunPaidBy")
+  payrollRunsVoided                 PayrollRun[]                       @relation("PayrollRunVoidedBy")
+  payrollSnapshotLines              PayrollSnapshotLine[]
+  payrollComponents                 PayrollComponent[]                 @relation("PayrollComponentSubject")
+  payrollComponentsCreated          PayrollComponent[]                 @relation("PayrollComponentCreatedBy")
+  payrollAnomalies                  PayrollAnomaly[]                   @relation("PayrollAnomalySubject")
+  payrollReceipts                   PayrollReceipt[]                   @relation("PayrollReceiptSubject")
+  payrollReversalsCreated           PayrollRunReversal[]               @relation("PayrollRunReversalActor")
+  payrollTraces                     PayrollTrace[]                     @relation("PayrollTraceActor")
+  payrollRuleConfigurationsUploaded PayrollRuleConfigurationRevision[] @relation("PayrollRuleConfigurationUploader")
+  payrollRuleConfigurationsReviewed PayrollRuleConfigurationReview[]   @relation("PayrollRuleConfigurationReviewer")
+  payrollCoverageReleasesCreated    PayrollCoverageRelease[]           @relation("PayrollCoverageReleaseActor")
+  payrollComponentReversalsCreated  PayrollComponentReversal[]         @relation("PayrollComponentReversalActor")
+  payrollPaymentsCreated            PayrollPaymentRecord[]             @relation("PayrollPaymentActor")
+  payrollCoverageClaims             PayrollCoverageClaim[]
+  travelRequests                    HrTravelRequest[]                  @relation("HrTravelSubject")
+  travelRequestsCreated             HrTravelRequest[]                  @relation("HrTravelCreator")
+  travelExpensesCreated             HrTravelExpense[]                  @relation("HrTravelExpenseCreator")
+  travelLedgerEntries               HrTravelLedgerEntry[]              @relation("HrTravelLedgerActor")
+  loans                             HrLoan[]                           @relation("HrLoanSubject")
+  loansCreated                      HrLoan[]                           @relation("HrLoanCreator")
+  loanLedgerEntries                 HrLoanLedgerEntry[]                @relation("HrLoanLedgerActor")
+  deductions                        HrDeduction[]                      @relation("HrDeductionSubject")
+  deductionsCreated                 HrDeduction[]                      @relation("HrDeductionCreator")
+  deductionApplicationsCreated      HrDeductionApplication[]           @relation("HrDeductionApplicationActor")
+  benefitTraces                     HrBenefitTrace[]                   @relation("HrBenefitTraceActor")
 
   // DEFERRED (require data migration / backfill - NOT done in this additive pass):
   //  - email/username are globally @unique; making them tenant-scoped composite
@@ -234,6 +394,11 @@ enum UserStatus {
   INACTIVE
 }
 
+enum UserAccountType {
+  INTERNAL
+  EXTERNAL
+}
+
 model UserRole {
   id     Int @id @default(autoincrement())
   userId Int
@@ -270,6 +435,2146 @@ model Permission {
 }
 
 // ==========================================
+// 1B. RECURSOS HUMANOS - FUNDACION
+// ==========================================
+
+model Department {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  name        String
+  code        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  employees    Employee[]
+  jobPositions JobPosition[]
+
+  @@unique([companyId, code])
+  @@unique([companyId, name])
+  @@index([companyId, active])
+}
+
+model JobPosition {
+  id           Int      @id @default(autoincrement())
+  companyId    Int
+  departmentId Int?
+  name         String
+  code         String
+  description  String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company         Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  department      Department?          @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  employees       Employee[]
+  contracts       EmploymentContract[]
+  shiftTemplates  ShiftTemplate[]
+  scheduledShifts ScheduledShift[]
+
+  @@unique([companyId, code])
+  @@unique([companyId, name])
+  @@index([companyId, active])
+  @@index([departmentId])
+}
+
+model CostCenter {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  name        String
+  code        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company   Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  employees Employee[]
+  contracts EmploymentContract[]
+
+  @@unique([companyId, code])
+  @@unique([companyId, name])
+  @@index([companyId, active])
+}
+
+model Employee {
+  id                           Int            @id @default(autoincrement())
+  companyId                    Int
+  userId                       Int            @unique
+  employeeCode                 String
+  legalName                    String
+  preferredName                String?
+  documentType                 String?
+  documentNumber               String?
+  socialSecurityNumber         String?
+  taxId                        String?
+  workEmail                    String?
+  workPhone                    String?
+  address                      String?
+  emergencyContactName         String?
+  emergencyContactPhone        String?
+  emergencyContactRelationship String?
+  hireDate                     DateTime       @db.Date
+  terminationDate              DateTime?      @db.Date
+  employmentType               EmploymentType @default(FULL_TIME)
+  status                       EmployeeStatus @default(ACTIVE)
+  departmentId                 Int?
+  jobPositionId                Int?
+  costCenterId                 Int?
+  supervisorEmployeeId         Int?
+  notes                        String?        @db.Text
+  createdAt                    DateTime       @default(now())
+  updatedAt                    DateTime       @updatedAt
+
+  company           Company                    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user              User                       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  department        Department?                @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  jobPosition       JobPosition?               @relation(fields: [jobPositionId], references: [id], onDelete: SetNull)
+  costCenter        CostCenter?                @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  supervisor        Employee?                  @relation("EmployeeSupervisor", fields: [supervisorEmployeeId], references: [id], onDelete: SetNull)
+  directReports     Employee[]                 @relation("EmployeeSupervisor")
+  contracts         EmploymentContract[]
+  branchAssignments EmployeeBranchAssignment[]
+  compensation      CompensationHistory[]
+  documents         EmployeeDocument[]
+  payrollSnapshots  PayrollSnapshotLine[]
+  payrollAnomalies  PayrollAnomaly[]
+  payrollReceipts   PayrollReceipt[]
+  travelRequests    HrTravelRequest[]
+  loans             HrLoan[]
+  deductions        HrDeduction[]
+
+  @@unique([companyId, employeeCode])
+  @@index([companyId, status])
+  @@index([departmentId])
+  @@index([jobPositionId])
+  @@index([costCenterId])
+  @@index([supervisorEmployeeId])
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  ON_LEAVE
+  INACTIVE
+  SUSPENDED
+  TERMINATED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  TEMPORARY
+  CONTRACTOR
+  INTERN
+}
+
+model EmploymentContract {
+  id             Int                      @id @default(autoincrement())
+  companyId      Int
+  employeeId     Int
+  jobPositionId  Int?
+  costCenterId   Int?
+  contractNumber String
+  employmentType EmploymentType
+  startDate      DateTime                 @db.Date
+  endDate        DateTime?                @db.Date
+  status         EmploymentContractStatus @default(DRAFT)
+  signedAt       DateTime?
+  notes          String?                  @db.Text
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  company      Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  employee     Employee              @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  jobPosition  JobPosition?          @relation(fields: [jobPositionId], references: [id], onDelete: SetNull)
+  costCenter   CostCenter?           @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  compensation CompensationHistory[]
+
+  @@unique([companyId, contractNumber])
+  @@index([companyId, status])
+  @@index([employeeId, startDate])
+}
+
+enum EmploymentContractStatus {
+  DRAFT
+  ACTIVE
+  EXPIRED
+  TERMINATED
+}
+
+model EmployeeBranchAssignment {
+  id            Int       @id @default(autoincrement())
+  companyId     Int
+  employeeId    Int
+  branchId      Int
+  isPrimary     Boolean   @default(false)
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  branch   Branch   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  @@unique([employeeId, branchId, effectiveFrom])
+  @@index([companyId, branchId])
+  @@index([employeeId, effectiveTo])
+}
+
+model CompensationHistory {
+  id               Int              @id @default(autoincrement())
+  companyId        Int
+  employeeId       Int
+  contractId       Int?
+  changedById      Int
+  compensationType CompensationType
+  payFrequency     PayFrequency
+  amount           Decimal          @db.Decimal(12, 2)
+  currency         String           @default("NIO") @db.VarChar(3)
+  effectiveFrom    DateTime         @db.Date
+  effectiveTo      DateTime?        @db.Date
+  reason           String?
+  createdAt        DateTime         @default(now())
+
+  company          Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  employee         Employee              @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  contract         EmploymentContract?   @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  changedBy        User                  @relation("CompensationChangedBy", fields: [changedById], references: [id], onDelete: Restrict)
+  payrollSnapshots PayrollSnapshotLine[]
+
+  @@index([companyId, employeeId, effectiveFrom])
+  @@index([contractId])
+  @@index([changedById])
+}
+
+enum CompensationType {
+  SALARY
+  HOURLY
+}
+
+enum PayFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+model BranchGeofenceVersion {
+  id                   Int      @id @default(autoincrement())
+  companyId            Int
+  branchId             Int
+  version              Int
+  latitude             Decimal? @db.Decimal(10, 7)
+  longitude            Decimal? @db.Decimal(10, 7)
+  geofenceRadiusM      Int?
+  maxLocationAccuracyM Int?
+  timezone             String   @default("America/Managua") @db.VarChar(64)
+  attendanceEnabled    Boolean  @default(false)
+  changedById          Int
+  reason               String?
+  createdAt            DateTime @default(now())
+
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch           Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  changedBy        User              @relation("BranchGeofenceChangedBy", fields: [changedById], references: [id], onDelete: Restrict)
+  attendanceEvents AttendanceEvent[]
+
+  @@unique([branchId, version])
+  @@index([companyId, createdAt])
+  @@index([changedById])
+}
+
+model EmployeeDocument {
+  id           Int                    @id @default(autoincrement())
+  companyId    Int
+  employeeId   Int
+  uploadedById Int
+  documentType String
+  fileName     String
+  storageKey   String                 @unique
+  contentHash  String                 @db.Char(64)
+  mimeType     String                 @db.VarChar(100)
+  sizeBytes    Int
+  expiresAt    DateTime?              @db.Date
+  status       EmployeeDocumentStatus @default(ACTIVE)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  uploadedBy User     @relation("EmployeeDocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, employeeId])
+  @@index([uploadedById])
+  @@index([expiresAt])
+}
+
+enum EmployeeDocumentStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+// ==========================================
+// 1C. RECURSOS HUMANOS - HORARIOS SEMANALES
+// ==========================================
+
+model ShiftTemplate {
+  id            Int      @id @default(autoincrement())
+  companyId     Int
+  branchId      Int
+  jobPositionId Int?
+  name          String
+  code          String
+  startMinute   Int
+  endMinute     Int
+  breakMinutes  Int      @default(0)
+  paidBreak     Boolean  @default(false)
+  timezone      String   @db.VarChar(64)
+  notes         String?  @db.Text
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch      Branch           @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  jobPosition JobPosition?     @relation(fields: [jobPositionId], references: [id], onDelete: SetNull)
+  shifts      ScheduledShift[]
+
+  @@unique([companyId, code])
+  @@index([companyId, branchId, active])
+  @@index([jobPositionId])
+}
+
+model WeeklySchedule {
+  id                   Int                  @id @default(autoincrement())
+  companyId            Int
+  weekStart            DateTime             @db.Date
+  version              Int
+  revision             Int                  @default(0)
+  status               WeeklyScheduleStatus @default(DRAFT)
+  publicationKey       String?              @db.VarChar(64)
+  supersedesScheduleId Int?
+  createdById          Int
+  publishedById        Int?
+  publishedAt          DateTime?
+  supersededAt         DateTime?
+  cancelledAt          DateTime?
+  notes                String?              @db.Text
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  company            Company                   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  createdBy          User                      @relation("WeeklyScheduleCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  publishedBy        User?                     @relation("WeeklySchedulePublishedBy", fields: [publishedById], references: [id], onDelete: Restrict)
+  supersedesSchedule WeeklySchedule?           @relation("WeeklyScheduleSupersession", fields: [supersedesScheduleId], references: [id], onDelete: Restrict)
+  supersededBy       WeeklySchedule[]          @relation("WeeklyScheduleSupersession")
+  shifts             ScheduledShift[]
+  acknowledgements   ScheduleAcknowledgement[]
+  swapRequests       ShiftSwapRequest[]
+
+  @@unique([companyId, publicationKey])
+  @@unique([companyId, weekStart, version])
+  @@index([companyId, weekStart, status])
+  @@index([supersedesScheduleId])
+  @@index([createdById])
+  @@index([publishedById])
+}
+
+enum WeeklyScheduleStatus {
+  DRAFT
+  PUBLISHED
+  SUPERSEDED
+  CANCELLED
+}
+
+model ScheduledShift {
+  id               Int                  @id @default(autoincrement())
+  companyId        Int
+  scheduleId       Int
+  userId           Int
+  branchId         Int
+  jobPositionId    Int?
+  shiftTemplateId  Int?
+  startAt          DateTime
+  endAt            DateTime
+  timezoneSnapshot String               @db.VarChar(64)
+  breakMinutes     Int                  @default(0)
+  paidBreak        Boolean              @default(false)
+  notes            String?              @db.Text
+  status           ScheduledShiftStatus @default(SCHEDULED)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  company               Company                  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  schedule              WeeklySchedule           @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
+  user                  User                     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  branch                Branch                   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  jobPosition           JobPosition?             @relation(fields: [jobPositionId], references: [id], onDelete: SetNull)
+  shiftTemplate         ShiftTemplate?           @relation(fields: [shiftTemplateId], references: [id], onDelete: SetNull)
+  requesterSwapRequests ShiftSwapRequest[]       @relation("SwapRequesterShift")
+  offeredSwapRequests   ShiftSwapRequest[]       @relation("SwapOfferedShift")
+  assignmentOverride    ShiftAssignmentOverride?
+  swapReservation       ShiftSwapReservation?
+  attendanceEvents      AttendanceEvent[]
+
+  @@index([companyId, userId, startAt])
+  @@index([scheduleId, status])
+  @@index([branchId, startAt])
+  @@index([jobPositionId])
+  @@index([shiftTemplateId])
+}
+
+enum ScheduledShiftStatus {
+  SCHEDULED
+  CANCELLED
+}
+
+model ScheduleAcknowledgement {
+  id             Int      @id @default(autoincrement())
+  companyId      Int
+  scheduleId     Int
+  userId         Int
+  acknowledgedAt DateTime @default(now())
+
+  company  Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  schedule WeeklySchedule @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
+  user     User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([scheduleId, userId])
+  @@index([companyId, userId, acknowledgedAt])
+}
+
+model HolidayCalendar {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  name      String
+  timezone  String   @db.VarChar(64)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  holidays Holiday[]
+
+  @@unique([companyId, name])
+  @@index([companyId, active])
+}
+
+model Holiday {
+  id            Int      @id @default(autoincrement())
+  companyId     Int
+  calendarId    Int
+  branchId      Int?
+  scopeKey      String   @db.VarChar(32)
+  name          String
+  date          DateTime @db.Date
+  paid          Boolean  @default(true)
+  payMultiplier Decimal  @default(1) @db.Decimal(5, 2)
+  notes         String?  @db.Text
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company  Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  calendar HolidayCalendar @relation(fields: [calendarId], references: [id], onDelete: Restrict)
+  branch   Branch?         @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  @@unique([calendarId, date, scopeKey])
+  @@index([companyId, date, active])
+  @@index([branchId, date])
+}
+
+model ShiftSwapRequest {
+  id                Int                    @id @default(autoincrement())
+  companyId         Int
+  scheduleId        Int
+  requesterShiftId  Int
+  offeredShiftId    Int?
+  requestedById     Int
+  targetUserId      Int
+  status            ShiftSwapRequestStatus @default(PENDING)
+  reason            String?                @db.Text
+  targetRespondedAt DateTime?
+  decidedById       Int?
+  decidedAt         DateTime?
+  decisionNotes     String?                @db.Text
+  openRequesterKey  String?                @unique @db.VarChar(64)
+  openOfferedKey    String?                @unique @db.VarChar(64)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  company        Company                   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  schedule       WeeklySchedule            @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
+  requesterShift ScheduledShift            @relation("SwapRequesterShift", fields: [requesterShiftId], references: [id], onDelete: Restrict)
+  offeredShift   ScheduledShift?           @relation("SwapOfferedShift", fields: [offeredShiftId], references: [id], onDelete: Restrict)
+  requestedBy    User                      @relation("ShiftSwapRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  targetUser     User                      @relation("ShiftSwapTargetUser", fields: [targetUserId], references: [id], onDelete: Restrict)
+  decidedBy      User?                     @relation("ShiftSwapDecidedBy", fields: [decidedById], references: [id], onDelete: Restrict)
+  assignments    ShiftAssignmentOverride[]
+  reservations   ShiftSwapReservation[]
+
+  @@index([companyId, status, createdAt])
+  @@index([scheduleId])
+  @@index([requestedById, status])
+  @@index([targetUserId, status])
+  @@index([requesterShiftId])
+  @@index([offeredShiftId])
+  @@index([decidedById])
+}
+
+model ShiftSwapReservation {
+  id               Int      @id @default(autoincrement())
+  companyId        Int
+  swapRequestId    Int
+  scheduledShiftId Int      @unique
+  createdAt        DateTime @default(now())
+
+  company        Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  swapRequest    ShiftSwapRequest @relation(fields: [swapRequestId], references: [id], onDelete: Restrict)
+  scheduledShift ScheduledShift   @relation(fields: [scheduledShiftId], references: [id], onDelete: Restrict)
+
+  @@unique([swapRequestId, scheduledShiftId])
+  @@index([companyId, createdAt])
+  @@index([swapRequestId])
+}
+
+// A published shift remains immutable. An approved, audited swap changes its
+// effective assignee through this ledger row instead of overwriting userId.
+model ShiftAssignmentOverride {
+  id               Int      @id @default(autoincrement())
+  companyId        Int
+  scheduledShiftId Int      @unique
+  assignedUserId   Int
+  swapRequestId    Int
+  assignedById     Int
+  effectiveAt      DateTime @default(now())
+  createdAt        DateTime @default(now())
+
+  company        Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  scheduledShift ScheduledShift   @relation(fields: [scheduledShiftId], references: [id], onDelete: Restrict)
+  assignedUser   User             @relation("ShiftAssignmentAssignedUser", fields: [assignedUserId], references: [id], onDelete: Restrict)
+  swapRequest    ShiftSwapRequest @relation(fields: [swapRequestId], references: [id], onDelete: Restrict)
+  assignedBy     User             @relation("ShiftAssignmentAssignedBy", fields: [assignedById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, assignedUserId, effectiveAt])
+  @@index([swapRequestId])
+  @@index([assignedById])
+}
+
+enum ShiftSwapRequestStatus {
+  PENDING
+  ACCEPTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model AttendancePolicy {
+  id                       Int                       @id @default(autoincrement())
+  companyId                Int
+  branchId                 Int?
+  scopeKey                 String                    @db.VarChar(64)
+  currentKey               String?                   @db.VarChar(64)
+  version                  Int
+  timezone                 String                    @db.VarChar(64)
+  requireBiometric         Boolean                   @default(true)
+  requireLiveness          Boolean                   @default(true)
+  requireGeolocation       Boolean                   @default(true)
+  maxLocationAccuracyM     Int                       @default(50)
+  earlyCheckInMinutes      Int                       @default(60)
+  lateCheckInToleranceM    Int                       @default(10)
+  earlyCheckOutToleranceM  Int                       @default(15)
+  lateCheckOutMinutes      Int                       @default(240)
+  scheduleViolationMode    AttendanceEnforcementMode @default(REVIEW)
+  geofenceViolationMode    AttendanceEnforcementMode @default(BLOCK)
+  biometricViolationMode   AttendanceEnforcementMode @default(BLOCK)
+  allowUnscheduledPunch    Boolean                   @default(false)
+  unscheduledViolationMode AttendanceEnforcementMode @default(REVIEW)
+  allowManualFallback      Boolean                   @default(true)
+  biometricConsentVersion  String                    @db.VarChar(64)
+  biometricRetentionDays   Int                       @default(365)
+  biometricRetentionNotice String?                   @db.Text
+  active                   Boolean                   @default(true)
+  createdById              Int
+  createdAt                DateTime                  @default(now())
+  supersededAt             DateTime?
+
+  company   Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch    Branch?           @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy User              @relation("AttendancePolicyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  events    AttendanceEvent[]
+
+  @@unique([companyId, scopeKey, version])
+  @@unique([companyId, currentKey])
+  @@index([companyId, branchId, active])
+  @@index([createdById])
+}
+
+enum AttendanceEnforcementMode {
+  BLOCK
+  REVIEW
+  WARN
+}
+
+model BiometricProfile {
+  id                 Int                    @id @default(autoincrement())
+  companyId          Int
+  userId             Int                    @unique
+  status             BiometricProfileStatus @default(PENDING)
+  consentVersion     String                 @db.VarChar(64)
+  consentedAt        DateTime
+  provider           String                 @db.VarChar(64)
+  model              String                 @db.VarChar(128)
+  templateRef        String                 @db.Text
+  enrolledAt         DateTime?
+  retentionExpiresAt DateTime?
+  purgeRequestedAt   DateTime?
+  revokedAt          DateTime?
+  revocationReason   String?                @db.Text
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  company       Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user          User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  events        AttendanceEvent[]
+  purgeRequests BiometricPurgeRequest[]
+
+  @@index([companyId, status])
+}
+
+enum BiometricProfileStatus {
+  PENDING
+  ACTIVE
+  REVOKED
+}
+
+model BiometricChallenge {
+  id              String                    @id @default(uuid())
+  companyId       Int
+  userId          Int
+  purpose         BiometricChallengePurpose
+  action          AttendanceAction?
+  tokenHash       String                    @db.VarChar(64)
+  nonce           String                    @db.VarChar(64)
+  expiresAt       DateTime
+  usedAt          DateTime?
+  usedByKey       String?                   @db.VarChar(128)
+  usedRequestHash String?                   @db.VarChar(64)
+  attempts        Int                       @default(0)
+  maxAttempts     Int                       @default(3)
+  createdAt       DateTime                  @default(now())
+
+  company Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  event   AttendanceEvent?
+
+  @@index([companyId, userId, purpose, expiresAt])
+  @@index([expiresAt, usedAt])
+}
+
+enum BiometricChallengePurpose {
+  ATTENDANCE_PUNCH
+  BIOMETRIC_ENROLLMENT
+}
+
+enum AttendancePunchRequestStatus {
+  PROCESSING
+  COMPLETED
+}
+
+// Durable claim created before consuming a biometric challenge. It prevents a
+// concurrent loser from persisting a rejection as the canonical idempotent result.
+model AttendancePunchRequest {
+  id             Int                          @id @default(autoincrement())
+  companyId      Int
+  userId         Int
+  idempotencyKey String                       @db.VarChar(128)
+  requestHash    String                       @db.VarChar(64)
+  challengeId    String                       @db.VarChar(191)
+  status         AttendancePunchRequestStatus @default(PROCESSING)
+  leaseExpiresAt DateTime
+  eventId        Int?                         @unique
+  attempts       Int                          @default(1)
+  lastError      String?                      @db.VarChar(191)
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
+
+  company Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  event   AttendanceEvent? @relation(fields: [eventId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, status, leaseExpiresAt])
+  @@index([userId, createdAt])
+}
+
+enum BiometricPurgeRequestStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+// The prior provider reference remains encrypted only while an external purge
+// is pending. Local consent withdrawal never waits for provider availability.
+model BiometricPurgeRequest {
+  id                   Int                         @id @default(autoincrement())
+  companyId            Int
+  biometricProfileId   Int
+  provider             String                      @db.VarChar(64)
+  encryptedTemplateRef String                      @db.Text
+  reason               String                      @db.VarChar(64)
+  status               BiometricPurgeRequestStatus @default(PENDING)
+  attempts             Int                         @default(0)
+  nextAttemptAt        DateTime?
+  lastError            String?                     @db.Text
+  createdAt            DateTime                    @default(now())
+  completedAt          DateTime?
+
+  company Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  profile BiometricProfile @relation(fields: [biometricProfileId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, status, nextAttemptAt])
+  @@index([biometricProfileId, createdAt])
+}
+
+model AttendanceDevice {
+  id          Int                    @id @default(autoincrement())
+  companyId   Int
+  branchId    Int
+  name        String                 @db.VarChar(100)
+  code        String                 @db.VarChar(50)
+  keyHash     String                 @db.VarChar(64)
+  status      AttendanceDeviceStatus @default(ACTIVE)
+  createdById Int
+  revokedById Int?
+  revokedAt   DateTime?
+  lastSeenAt  DateTime?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  company   Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch    Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy User              @relation("AttendanceDeviceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  revokedBy User?             @relation("AttendanceDeviceRevokedBy", fields: [revokedById], references: [id], onDelete: Restrict)
+  events    AttendanceEvent[]
+
+  @@unique([companyId, code])
+  @@index([companyId, branchId, status])
+  @@index([createdById])
+  @@index([revokedById])
+}
+
+enum AttendanceDeviceStatus {
+  ACTIVE
+  REVOKED
+}
+
+model AttendanceEvent {
+  id                 Int                      @id @default(autoincrement())
+  companyId          Int
+  userId             Int
+  actorUserId        Int?
+  branchId           Int?
+  scheduledShiftId   Int?
+  geofenceVersionId  Int?
+  policyId           Int?
+  policyVersion      Int?
+  biometricProfileId Int?
+  challengeId        String?                  @unique
+  deviceId           Int?
+  adjustsEventId     Int?
+  idempotencyKey     String                   @db.VarChar(128)
+  requestHash        String                   @db.VarChar(64)
+  sessionKey         String?                  @db.VarChar(191)
+  sequenceKey        String?                  @db.VarChar(191)
+  action             AttendanceAction
+  source             AttendanceSource
+  serverAt           DateTime
+  clientAt           DateTime?
+  latitude           Decimal?                 @db.Decimal(10, 7)
+  longitude          Decimal?                 @db.Decimal(10, 7)
+  locationAccuracyM  Decimal?                 @db.Decimal(10, 2)
+  distanceM          Decimal?                 @db.Decimal(10, 2)
+  faceStatus         AttendanceEvidenceStatus @default(NOT_REQUIRED)
+  livenessStatus     AttendanceEvidenceStatus @default(NOT_REQUIRED)
+  providerStatus     String?                  @db.VarChar(64)
+  providerScore      Decimal?                 @db.Decimal(6, 5)
+  decision           AttendanceEventDecision
+  reasonCode         String?                  @db.VarChar(64)
+  reasonCodes        Json
+  message            String?                  @db.Text
+  checks             Json?
+  createdAt          DateTime                 @default(now())
+
+  company                 Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user                    User                    @relation("AttendanceEventSubject", fields: [userId], references: [id], onDelete: Restrict)
+  actorUser               User?                   @relation("AttendanceEventActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  branch                  Branch?                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  scheduledShift          ScheduledShift?         @relation(fields: [scheduledShiftId], references: [id], onDelete: Restrict)
+  geofenceVersion         BranchGeofenceVersion?  @relation(fields: [geofenceVersionId], references: [id], onDelete: Restrict)
+  policy                  AttendancePolicy?       @relation(fields: [policyId], references: [id], onDelete: Restrict)
+  biometricProfile        BiometricProfile?       @relation(fields: [biometricProfileId], references: [id], onDelete: Restrict)
+  challenge               BiometricChallenge?     @relation(fields: [challengeId], references: [id], onDelete: Restrict)
+  device                  AttendanceDevice?       @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+  adjustsEvent            AttendanceEvent?        @relation("AttendanceEventAdjustment", fields: [adjustsEventId], references: [id], onDelete: Restrict)
+  adjustments             AttendanceEvent[]       @relation("AttendanceEventAdjustment")
+  review                  AttendanceReview?
+  punchRequest            AttendancePunchRequest?
+  incidents               AttendanceIncident[]
+  targetedCorrections     AttendanceCorrection[]  @relation("AttendanceCorrectionTargetEvent")
+  compensationCorrections AttendanceCorrection[]  @relation("AttendanceCorrectionCompensationEvent")
+
+  @@unique([companyId, idempotencyKey])
+  @@unique([companyId, sequenceKey])
+  @@index([companyId, userId, serverAt])
+  @@index([companyId, branchId, serverAt])
+  @@index([companyId, userId, sessionKey, serverAt])
+  @@index([scheduledShiftId])
+  @@index([geofenceVersionId])
+  @@index([decision, serverAt])
+  @@index([actorUserId])
+  @@index([deviceId])
+  @@index([adjustsEventId])
+}
+
+enum AttendanceAction {
+  CHECK_IN
+  BREAK_START
+  BREAK_END
+  CHECK_OUT
+}
+
+enum AttendanceSource {
+  SELF
+  KIOSK
+  MANUAL
+}
+
+enum AttendanceEvidenceStatus {
+  PASSED
+  FAILED
+  REVIEW
+  NOT_REQUIRED
+  ERROR
+}
+
+enum AttendanceEventDecision {
+  ACCEPTED
+  REVIEW
+  REJECTED
+}
+
+model AttendanceReview {
+  id                Int                      @id @default(autoincrement())
+  companyId         Int
+  attendanceEventId Int                      @unique
+  reviewerId        Int
+  decision          AttendanceReviewDecision
+  reason            String                   @db.Text
+  createdAt         DateTime                 @default(now())
+
+  company  Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  event    AttendanceEvent @relation(fields: [attendanceEventId], references: [id], onDelete: Restrict)
+  reviewer User            @relation("AttendanceReviewReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, createdAt])
+  @@index([reviewerId])
+}
+
+enum AttendanceReviewDecision {
+  APPROVED
+  REJECTED
+}
+
+// ==========================================
+// 1E. RH - JORNADA, INCIDENCIAS Y AUSENCIAS
+// ==========================================
+
+model AttendancePeriod {
+  id               Int                    @id @default(autoincrement())
+  companyId        Int
+  dateFrom         DateTime               @db.Date
+  dateTo           DateTime               @db.Date
+  timezone         String                 @db.VarChar(64)
+  status           AttendancePeriodStatus @default(OPEN)
+  revision         Int                    @default(0)
+  lastActionReason String?                @db.Text
+  payrollEligible  Boolean                @default(false)
+  createdById      Int
+  closedById       Int?
+  closedAt         DateTime?
+  reopenedById     Int?
+  reopenedAt       DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  company             Company                       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  createdBy           User                          @relation("AttendancePeriodCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  closedBy            User?                         @relation("AttendancePeriodClosedBy", fields: [closedById], references: [id], onDelete: Restrict)
+  reopenedBy          User?                         @relation("AttendancePeriodReopenedBy", fields: [reopenedById], references: [id], onDelete: Restrict)
+  summaries           AttendanceDailySummary[]
+  payrollSnapshots    PayrollSnapshotLine[]
+  payrollDependencies PayrollAttendanceDependency[]
+
+  @@unique([companyId, dateFrom, dateTo])
+  @@index([companyId, status, dateFrom, dateTo])
+  @@index([createdById])
+  @@index([closedById])
+  @@index([reopenedById])
+}
+
+enum AttendancePeriodStatus {
+  OPEN
+  CLOSED
+  REOPENED
+}
+
+model AttendanceDailySummary {
+  id                       Int      @id @default(autoincrement())
+  companyId                Int
+  userId                   Int
+  branchId                 Int?
+  scopeKey                 String   @db.VarChar(64)
+  date                     DateTime @db.Date
+  timezone                 String   @db.VarChar(64)
+  periodId                 Int?
+  scheduledMinutes         Int?
+  ordinaryMinutes          Int      @default(0)
+  breakMinutes             Int      @default(0)
+  lateMinutes              Int      @default(0)
+  earlyDepartureMinutes    Int      @default(0)
+  candidateOvertimeMinutes Int      @default(0)
+  approvedOvertimeMinutes  Int      @default(0)
+  calculatedAt             DateTime @default(now())
+  sourceRevision           Int      @default(1)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  company          Company                @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user             User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  branch           Branch?                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  period           AttendancePeriod?      @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  incidents        AttendanceIncident[]
+  corrections      AttendanceCorrection[]
+  overtimeRequests OvertimeRequest[]
+
+  @@unique([companyId, userId, date, scopeKey])
+  @@index([companyId, date, branchId])
+  @@index([periodId])
+}
+
+model AttendanceIncident {
+  id                Int                        @id @default(autoincrement())
+  companyId         Int
+  dailySummaryId    Int?
+  userId            Int
+  branchId          Int?
+  date              DateTime                   @db.Date
+  type              String                     @db.VarChar(64)
+  severity          AttendanceIncidentSeverity @default(WARNING)
+  status            AttendanceIncidentStatus   @default(OPEN)
+  reasonCode        String?                    @db.VarChar(64)
+  message           String                     @db.Text
+  attendanceEventId Int?
+  dedupeKey         String                     @db.VarChar(191)
+  resolvedAt        DateTime?
+  resolvedById      Int?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  company         Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  dailySummary    AttendanceDailySummary? @relation(fields: [dailySummaryId], references: [id], onDelete: Restrict)
+  user            User                    @relation("AttendanceIncidentSubject", fields: [userId], references: [id], onDelete: Restrict)
+  branch          Branch?                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  attendanceEvent AttendanceEvent?        @relation(fields: [attendanceEventId], references: [id], onDelete: Restrict)
+  resolvedBy      User?                   @relation("AttendanceIncidentResolvedBy", fields: [resolvedById], references: [id], onDelete: Restrict)
+  corrections     AttendanceCorrection[]
+
+  @@unique([companyId, dedupeKey])
+  @@index([companyId, date, status, severity])
+  @@index([userId, date])
+  @@index([dailySummaryId])
+  @@index([attendanceEventId])
+}
+
+enum AttendanceIncidentSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AttendanceIncidentStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+model AttendanceCorrection {
+  id                  Int                        @id @default(autoincrement())
+  companyId           Int
+  userId              Int
+  dailySummaryId      Int?
+  incidentId          Int?
+  targetEventId       Int?
+  compensationEventId Int?                       @unique
+  type                AttendanceCorrectionType
+  requestedAction     AttendanceAction?
+  requestedOccurredAt DateTime?
+  requestedTimezone   String?                    @db.VarChar(64)
+  requestedBranchId   Int?
+  reason              String                     @db.Text
+  status              AttendanceCorrectionStatus @default(PENDING)
+  revision            Int                        @default(0)
+  requestedById       Int
+  decidedById         Int?
+  decisionReason      String?                    @db.Text
+  decidedAt           DateTime?
+  appliedAt           DateTime?
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+
+  company           Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user              User                    @relation("AttendanceCorrectionSubject", fields: [userId], references: [id], onDelete: Restrict)
+  dailySummary      AttendanceDailySummary? @relation(fields: [dailySummaryId], references: [id], onDelete: Restrict)
+  incident          AttendanceIncident?     @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  targetEvent       AttendanceEvent?        @relation("AttendanceCorrectionTargetEvent", fields: [targetEventId], references: [id], onDelete: Restrict)
+  compensationEvent AttendanceEvent?        @relation("AttendanceCorrectionCompensationEvent", fields: [compensationEventId], references: [id], onDelete: Restrict)
+  requestedBranch   Branch?                 @relation(fields: [requestedBranchId], references: [id], onDelete: Restrict)
+  requestedBy       User                    @relation("AttendanceCorrectionRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  decidedBy         User?                   @relation("AttendanceCorrectionDecidedBy", fields: [decidedById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, status, createdAt])
+  @@index([userId, createdAt])
+  @@index([dailySummaryId])
+  @@index([incidentId])
+  @@index([targetEventId])
+}
+
+enum AttendanceCorrectionType {
+  ADD_PUNCH
+  VOID_PUNCH
+  CHANGE_TIME
+  ASSIGN_BRANCH
+  OTHER
+}
+
+enum AttendanceCorrectionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  APPLIED
+}
+
+model OvertimeRequest {
+  id                    Int                   @id @default(autoincrement())
+  companyId             Int
+  userId                Int
+  dailySummaryId        Int?
+  date                  DateTime              @db.Date
+  candidateMinutes      Int?
+  summarySourceRevision Int?
+  requestedMinutes      Int
+  approvedMinutes       Int?
+  reason                String                @db.Text
+  status                OvertimeRequestStatus @default(PENDING)
+  revision              Int                   @default(0)
+  requestedById         Int
+  decidedById           Int?
+  decisionReason        String?               @db.Text
+  decidedAt             DateTime?
+  cancelledAt           DateTime?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  company      Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user         User                    @relation("OvertimeRequestSubject", fields: [userId], references: [id], onDelete: Restrict)
+  dailySummary AttendanceDailySummary? @relation(fields: [dailySummaryId], references: [id], onDelete: Restrict)
+  requestedBy  User                    @relation("OvertimeRequestRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  decidedBy    User?                   @relation("OvertimeRequestDecidedBy", fields: [decidedById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, status, date])
+  @@index([userId, date])
+  @@index([dailySummaryId])
+}
+
+enum OvertimeRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model LeaveType {
+  id                 Int                 @id @default(autoincrement())
+  companyId          Int
+  code               String              @db.VarChar(50)
+  name               String              @db.VarChar(100)
+  description        String?             @db.Text
+  paid               Boolean             @default(false)
+  active             Boolean             @default(true)
+  balanceTracked     Boolean             @default(false)
+  unit               VacationBalanceUnit @default(DAYS)
+  requiresAttachment Boolean             @default(false)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  requests         LeaveRequest[]
+  vacationBalances VacationBalance[]
+
+  @@unique([companyId, code])
+  @@index([companyId, active])
+}
+
+model LeaveRequest {
+  id              Int                 @id @default(autoincrement())
+  companyId       Int
+  userId          Int
+  branchId        Int?
+  leaveTypeId     Int
+  startDate       DateTime            @db.Date
+  endDate         DateTime            @db.Date
+  fraction        LeaveFraction
+  startTime       String?             @db.VarChar(5)
+  endTime         String?             @db.VarChar(5)
+  requestedAmount Decimal             @db.Decimal(12, 4)
+  balanceUnit     VacationBalanceUnit
+  reason          String              @db.Text
+  status          LeaveRequestStatus  @default(DRAFT)
+  revision        Int                 @default(0)
+  requestedById   Int
+  decidedById     Int?
+  decisionReason  String?             @db.Text
+  submittedAt     DateTime?
+  decidedAt       DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  company       Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user          User                  @relation("LeaveRequestSubject", fields: [userId], references: [id], onDelete: Restrict)
+  branch        Branch?               @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  leaveType     LeaveType             @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
+  requestedBy   User                  @relation("LeaveRequestRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  decidedBy     User?                 @relation("LeaveRequestDecidedBy", fields: [decidedById], references: [id], onDelete: Restrict)
+  ledgerEntries VacationLedgerEntry[]
+
+  @@index([companyId, status, startDate, endDate])
+  @@index([userId, startDate, endDate])
+  @@index([leaveTypeId])
+}
+
+enum LeaveFraction {
+  FULL_DAY
+  HALF_DAY
+  HOURS
+}
+
+enum LeaveRequestStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model VacationBalance {
+  id             Int                 @id @default(autoincrement())
+  companyId      Int
+  userId         Int
+  leaveTypeId    Int?
+  scopeKey       String              @db.VarChar(64)
+  periodLabel    String?             @db.VarChar(64)
+  unit           VacationBalanceUnit
+  asOf           DateTime            @db.Date
+  sourceRevision Int                 @default(0)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  company       Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  leaveType     LeaveType?            @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
+  ledgerEntries VacationLedgerEntry[]
+
+  @@unique([companyId, userId, scopeKey])
+  @@index([companyId, asOf])
+  @@index([leaveTypeId])
+}
+
+enum VacationBalanceUnit {
+  DAYS
+  HOURS
+  MINUTES
+}
+
+model VacationLedgerEntry {
+  id               Int                 @id @default(autoincrement())
+  companyId        Int
+  balanceId        Int
+  userId           Int
+  leaveRequestId   Int?
+  effectiveDate    DateTime            @db.Date
+  amount           Decimal             @db.Decimal(12, 4)
+  unit             VacationBalanceUnit
+  type             VacationLedgerType
+  reason           String              @db.Text
+  reference        String?             @db.VarChar(191)
+  actorId          Int?
+  resultingBalance Decimal             @db.Decimal(12, 4)
+  createdAt        DateTime            @default(now())
+
+  company      Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  balance      VacationBalance @relation(fields: [balanceId], references: [id], onDelete: Restrict)
+  user         User            @relation("VacationLedgerSubject", fields: [userId], references: [id], onDelete: Restrict)
+  leaveRequest LeaveRequest?   @relation(fields: [leaveRequestId], references: [id], onDelete: Restrict)
+  actor        User?           @relation("VacationLedgerActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@unique([leaveRequestId, type])
+  @@unique([companyId, reference])
+  @@index([companyId, effectiveDate])
+  @@index([balanceId, id])
+  @@index([userId, effectiveDate])
+}
+
+enum VacationLedgerType {
+  ACCRUAL
+  USAGE
+  ADJUSTMENT
+  REVERSAL
+}
+
+model WorkforceIdempotencyRecord {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  key         String   @db.VarChar(128)
+  operation   String   @db.VarChar(64)
+  requestHash String   @db.VarChar(64)
+  entityType  String   @db.VarChar(64)
+  entityId    Int      @default(0)
+  response    Json?
+  createdAt   DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, key])
+  @@index([companyId, operation, createdAt])
+}
+
+// ==========================================
+// 1F. RH - NOMINA Y AGUINALDO
+// ==========================================
+
+model PayrollRuleVersion {
+  id                            Int               @id @default(autoincrement())
+  companyId                     Int
+  name                          String            @db.VarChar(120)
+  version                       Int
+  status                        PayrollRuleStatus @default(DRAFT)
+  effectiveFrom                 DateTime          @db.Date
+  effectiveTo                   DateTime?         @db.Date
+  sourceReference               String            @db.VarChar(500)
+  description                   String?           @db.Text
+  configurationSummary          String?           @db.VarChar(500)
+  revision                      Int               @default(0)
+  createdById                   Int
+  validatedById                 Int?
+  validatedAt                   DateTime?
+  activatedAt                   DateTime?
+  retiredAt                     DateTime?
+  activeConfigurationRevisionId Int?              @unique
+  createdAt                     DateTime          @default(now())
+  updatedAt                     DateTime          @updatedAt
+
+  company                     Company                            @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  createdBy                   User                               @relation("PayrollRuleCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  validatedBy                 User?                              @relation("PayrollRuleValidatedBy", fields: [validatedById], references: [id], onDelete: Restrict)
+  runs                        PayrollRun[]
+  configurationRevisions      PayrollRuleConfigurationRevision[] @relation("PayrollRuleConfigurationHistory")
+  activeConfigurationRevision PayrollRuleConfigurationRevision?  @relation("PayrollRuleActiveConfiguration", fields: [activeConfigurationRevisionId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, name, version])
+  @@index([companyId, status, effectiveFrom, effectiveTo])
+}
+
+model PayrollRuleConfigurationRevision {
+  id                Int      @id @default(autoincrement())
+  companyId         Int
+  ruleVersionId     Int
+  revision          Int
+  configuration     Json
+  configurationHash String   @db.Char(64)
+  sourceReference   String   @db.VarChar(500)
+  evidenceReference String   @db.VarChar(500)
+  uploadReason      String   @db.Text
+  uploadedById      Int
+  uploadedAt        DateTime @default(now())
+
+  company       Company                         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  rule          PayrollRuleVersion              @relation("PayrollRuleConfigurationHistory", fields: [ruleVersionId], references: [id], onDelete: Restrict)
+  activeForRule PayrollRuleVersion?             @relation("PayrollRuleActiveConfiguration")
+  uploadedBy    User                            @relation("PayrollRuleConfigurationUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  review        PayrollRuleConfigurationReview?
+  runs          PayrollRun[]
+
+  @@unique([ruleVersionId, revision])
+  @@unique([ruleVersionId, configurationHash])
+  @@index([companyId, uploadedAt])
+}
+
+model PayrollRuleConfigurationReview {
+  id                      Int                              @id @default(autoincrement())
+  companyId               Int
+  configurationRevisionId Int                              @unique
+  decision                PayrollRuleConfigurationDecision
+  reason                  String                           @db.Text
+  reviewerId              Int
+  reviewedAt              DateTime                         @default(now())
+
+  company               Company                          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  configurationRevision PayrollRuleConfigurationRevision @relation(fields: [configurationRevisionId], references: [id], onDelete: Restrict)
+  reviewer              User                             @relation("PayrollRuleConfigurationReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, reviewedAt])
+}
+
+enum PayrollRuleConfigurationDecision {
+  VALIDATED
+  REJECTED
+}
+
+enum PayrollRuleStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+model PayrollPeriod {
+  id          Int                 @id @default(autoincrement())
+  companyId   Int
+  code        String              @db.VarChar(64)
+  dateFrom    DateTime            @db.Date
+  dateTo      DateTime            @db.Date
+  payDate     DateTime            @db.Date
+  timezone    String              @db.VarChar(64)
+  status      PayrollPeriodStatus @default(DRAFT)
+  revision    Int                 @default(0)
+  reason      String              @db.Text
+  createdById Int
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  company   Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  createdBy User         @relation("PayrollPeriodCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  runs      PayrollRun[]
+
+  @@unique([companyId, code])
+  @@unique([companyId, dateFrom, dateTo])
+  @@index([companyId, status, payDate])
+}
+
+enum PayrollPeriodStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  VOID
+}
+
+model PayrollRun {
+  id                      Int              @id @default(autoincrement())
+  companyId               Int
+  kind                    PayrollRunKind
+  code                    String           @db.VarChar(80)
+  status                  PayrollRunStatus @default(DRAFT)
+  periodId                Int?
+  ruleVersionId           Int
+  configurationRevisionId Int?
+  year                    Int?
+  cutoffDate              DateTime?        @db.Date
+  branchIds               Json?
+  employeeIds             Json?
+  revision                Int              @default(0)
+  calculationRevision     Int?
+  currency                String           @default("NIO") @db.VarChar(3)
+  grossIncome             Decimal          @default(0) @db.Decimal(18, 2)
+  totalDeductions         Decimal          @default(0) @db.Decimal(18, 2)
+  employerContributions   Decimal          @default(0) @db.Decimal(18, 2)
+  netPay                  Decimal          @default(0) @db.Decimal(18, 2)
+  employeeCount           Int              @default(0)
+  lastReason              String?          @db.Text
+  createdById             Int
+  calculatedById          Int?
+  reviewSubmittedById     Int?
+  approvedById            Int?
+  paidById                Int?
+  voidedById              Int?
+  calculatedAt            DateTime?
+  reviewSubmittedAt       DateTime?
+  approvedAt              DateTime?
+  paidAt                  DateTime?
+  voidedAt                DateTime?
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+
+  company                     Company                            @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  period                      PayrollPeriod?                     @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  ruleVersion                 PayrollRuleVersion                 @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
+  configurationRevision       PayrollRuleConfigurationRevision?  @relation(fields: [configurationRevisionId], references: [id], onDelete: Restrict)
+  createdBy                   User                               @relation("PayrollRunCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  calculatedBy                User?                              @relation("PayrollRunCalculatedBy", fields: [calculatedById], references: [id], onDelete: Restrict)
+  reviewSubmittedBy           User?                              @relation("PayrollRunReviewedBy", fields: [reviewSubmittedById], references: [id], onDelete: Restrict)
+  approvedBy                  User?                              @relation("PayrollRunApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
+  paidBy                      User?                              @relation("PayrollRunPaidBy", fields: [paidById], references: [id], onDelete: Restrict)
+  voidedBy                    User?                              @relation("PayrollRunVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
+  snapshots                   PayrollSnapshotLine[]
+  components                  PayrollComponent[]
+  anomalies                   PayrollAnomaly[]
+  receipts                    PayrollReceipt[]
+  reversals                   PayrollRunReversal[]
+  trace                       PayrollTrace[]
+  deductionApplications       HrDeductionApplication[]
+  loanLedgerEntries           HrLoanLedgerEntry[]
+  attendanceDependencies      PayrollAttendanceDependency[]
+  coverageClaims              PayrollCoverageClaim[]
+  coverageReleases            PayrollCoverageRelease[]
+  payment                     PayrollPaymentRecord?
+  componentReversals          PayrollComponentReversal[]
+  aguinaldoTargetDependencies PayrollAguinaldoSourceDependency[] @relation("PayrollAguinaldoTargetRun")
+  aguinaldoSourceDependencies PayrollAguinaldoSourceDependency[] @relation("PayrollAguinaldoSourceRun")
+
+  @@unique([companyId, code])
+  @@index([companyId, kind, status, createdAt])
+  @@index([periodId])
+  @@index([ruleVersionId])
+  @@index([configurationRevisionId])
+}
+
+model PayrollAttendanceDependency {
+  id                      Int      @id @default(autoincrement())
+  companyId               Int
+  runId                   Int
+  attendancePeriodId      Int
+  capturedPeriodRevision  Int
+  capturedPeriodStatus    String   @db.VarChar(32)
+  capturedPayrollEligible Boolean
+  summaryFingerprint      String   @db.Char(64)
+  capturedAt              DateTime @default(now())
+
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  run              PayrollRun       @relation(fields: [runId], references: [id], onDelete: Restrict)
+  attendancePeriod AttendancePeriod @relation(fields: [attendancePeriodId], references: [id], onDelete: Restrict)
+
+  @@unique([runId, attendancePeriodId])
+  @@index([companyId, attendancePeriodId])
+}
+
+model PayrollAguinaldoSourceDependency {
+  id                        Int                  @id @default(autoincrement())
+  companyId                 Int
+  targetRunId               Int
+  calculationRevision       Int
+  sourceRunId               Int
+  sourceComponentId         Int
+  sourceReceiptId           Int
+  capturedRunRevision       Int
+  capturedRunStatus         PayrollRunStatus
+  capturedRunCurrency       String               @db.VarChar(3)
+  capturedComponentAmount   Decimal              @db.Decimal(18, 2)
+  capturedReceiptStatus     PayrollReceiptStatus
+  capturedComponentReversed Boolean
+  capturedRunReversed       Boolean
+  capturedAt                DateTime             @default(now())
+
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  targetRun       PayrollRun       @relation("PayrollAguinaldoTargetRun", fields: [targetRunId], references: [id], onDelete: Restrict)
+  sourceRun       PayrollRun       @relation("PayrollAguinaldoSourceRun", fields: [sourceRunId], references: [id], onDelete: Restrict)
+  sourceComponent PayrollComponent @relation(fields: [sourceComponentId], references: [id], onDelete: Restrict)
+  sourceReceipt   PayrollReceipt   @relation(fields: [sourceReceiptId], references: [id], onDelete: Restrict)
+
+  @@unique([targetRunId, calculationRevision, sourceComponentId], map: "PayrollAguinaldoDependency_target_revision_component_key")
+  @@index([companyId, targetRunId, calculationRevision], map: "PayrollAguinaldoDependency_target_idx")
+  @@index([companyId, sourceRunId], map: "PayrollAguinaldoDependency_source_run_idx")
+  @@index([sourceComponentId], map: "PayrollAguinaldoDependency_component_idx")
+  @@index([sourceReceiptId], map: "PayrollAguinaldoDependency_receipt_idx")
+}
+
+model PayrollCoverageClaim {
+  id           Int            @id @default(autoincrement())
+  companyId    Int
+  runId        Int
+  userId       Int
+  kind         PayrollRunKind
+  coverageFrom DateTime       @db.Date
+  coverageTo   DateTime       @db.Date
+  coverageKey  String         @db.Char(64)
+  createdAt    DateTime       @default(now())
+
+  company Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  run     PayrollRun              @relation(fields: [runId], references: [id], onDelete: Restrict)
+  user    User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  release PayrollCoverageRelease?
+
+  @@unique([runId, userId, kind, coverageKey])
+  @@index([companyId, userId, kind, coverageFrom, coverageTo])
+}
+
+model PayrollCoverageRelease {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  claimId   Int      @unique
+  runId     Int
+  actorId   Int
+  reason    String   @db.Text
+  createdAt DateTime @default(now())
+
+  company Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  claim   PayrollCoverageClaim @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  run     PayrollRun           @relation(fields: [runId], references: [id], onDelete: Restrict)
+  actor   User                 @relation("PayrollCoverageReleaseActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, runId])
+}
+
+enum PayrollRunKind {
+  REGULAR
+  AGUINALDO
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  CALCULATED
+  REVIEW
+  APPROVED
+  PAID
+  VOID
+}
+
+model PayrollSnapshotLine {
+  id                       Int      @id @default(autoincrement())
+  companyId                Int
+  runId                    Int
+  userId                   Int
+  employeeId               Int
+  branchId                 Int?
+  attendancePeriodId       Int?
+  compensationHistoryId    Int?
+  ordinaryMinutes          Int      @default(0)
+  approvedOvertimeMinutes  Int      @default(0)
+  paidLeaveAmount          Decimal  @default(0) @db.Decimal(18, 2)
+  unpaidLeaveAmount        Decimal  @default(0) @db.Decimal(18, 2)
+  compensationAmount       Decimal? @db.Decimal(18, 2)
+  compensationType         String?  @db.VarChar(32)
+  payFrequency             String?  @db.VarChar(32)
+  currency                 String   @default("NIO") @db.VarChar(3)
+  sourceRevision           Int?
+  sourceTrace              Json
+  coverageFrom             DateTime @db.Date
+  coverageTo               DateTime @db.Date
+  attendancePeriodRevision Int?
+  attendancePeriodStatus   String?  @db.VarChar(32)
+  summaryRevisions         Json
+  contractSegments         Json
+  compensationSegments     Json
+  aguinaldoIncomeSegments  Json
+  capturedAt               DateTime @default(now())
+
+  company             Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  run                 PayrollRun           @relation(fields: [runId], references: [id], onDelete: Restrict)
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  employee            Employee             @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  branch              Branch?              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  attendancePeriod    AttendancePeriod?    @relation(fields: [attendancePeriodId], references: [id], onDelete: Restrict)
+  compensationHistory CompensationHistory? @relation(fields: [compensationHistoryId], references: [id], onDelete: Restrict)
+
+  @@unique([runId, userId])
+  @@index([companyId, runId])
+  @@index([attendancePeriodId])
+}
+
+model PayrollComponent {
+  id             Int                  @id @default(autoincrement())
+  companyId      Int
+  runId          Int
+  receiptId      Int?
+  userId         Int
+  code           String               @db.VarChar(64)
+  name           String               @db.VarChar(160)
+  type           PayrollComponentType
+  source         String               @db.VarChar(32)
+  amount         Decimal              @db.Decimal(18, 2)
+  taxable        Boolean?
+  traceReference String?              @db.VarChar(500)
+  reason         String?              @db.Text
+  createdById    Int?
+  createdAt      DateTime             @default(now())
+
+  company                     Company                            @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  run                         PayrollRun                         @relation(fields: [runId], references: [id], onDelete: Restrict)
+  receipt                     PayrollReceipt?                    @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  user                        User                               @relation("PayrollComponentSubject", fields: [userId], references: [id], onDelete: Restrict)
+  createdBy                   User?                              @relation("PayrollComponentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  reversal                    PayrollComponentReversal?
+  aguinaldoSourceDependencies PayrollAguinaldoSourceDependency[]
+
+  @@index([companyId, runId, userId])
+  @@index([receiptId])
+}
+
+model PayrollComponentReversal {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  componentId Int      @unique
+  runId       Int
+  actorId     Int
+  amount      Decimal  @db.Decimal(18, 2)
+  reason      String   @db.Text
+  createdAt   DateTime @default(now())
+
+  company   Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  component PayrollComponent @relation(fields: [componentId], references: [id], onDelete: Restrict)
+  run       PayrollRun       @relation(fields: [runId], references: [id], onDelete: Restrict)
+  actor     User             @relation("PayrollComponentReversalActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, runId])
+}
+
+enum PayrollComponentType {
+  INCOME
+  DEDUCTION
+}
+
+model PayrollAnomaly {
+  id               Int                    @id @default(autoincrement())
+  companyId        Int
+  runId            Int
+  employeeId       Int?
+  userId           Int?
+  code             String                 @db.VarChar(64)
+  severity         PayrollAnomalySeverity
+  message          String                 @db.Text
+  blocking         Boolean                @default(false)
+  resolvedAt       DateTime?
+  resolutionReason String?                @db.Text
+  createdAt        DateTime               @default(now())
+
+  company  Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  run      PayrollRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+  employee Employee?  @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  user     User?      @relation("PayrollAnomalySubject", fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, runId, severity])
+}
+
+enum PayrollAnomalySeverity {
+  INFO
+  WARNING
+  BLOCKING
+}
+
+model PayrollReceipt {
+  id              Int                  @id @default(autoincrement())
+  companyId       Int
+  runId           Int
+  userId          Int
+  employeeId      Int
+  runKind         PayrollRunKind
+  runCode         String               @db.VarChar(80)
+  periodLabel     String               @db.VarChar(160)
+  payDate         DateTime             @db.Date
+  currency        String               @db.VarChar(3)
+  grossIncome     Decimal              @db.Decimal(18, 2)
+  totalDeductions Decimal              @db.Decimal(18, 2)
+  netPay          Decimal              @db.Decimal(18, 2)
+  status          PayrollReceiptStatus @default(PUBLISHED)
+  publishedAt     DateTime?
+  voidedAt        DateTime?
+  createdAt       DateTime             @default(now())
+
+  company                     Company                            @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  run                         PayrollRun                         @relation(fields: [runId], references: [id], onDelete: Restrict)
+  user                        User                               @relation("PayrollReceiptSubject", fields: [userId], references: [id], onDelete: Restrict)
+  employee                    Employee                           @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  components                  PayrollComponent[]
+  aguinaldoSourceDependencies PayrollAguinaldoSourceDependency[]
+
+  @@unique([runId, userId])
+  @@index([companyId, userId, status, payDate])
+}
+
+enum PayrollReceiptStatus {
+  PUBLISHED
+  VOID
+}
+
+model PayrollRunReversal {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  runId               Int
+  actorId             Int
+  reason              String    @db.Text
+  reversedGrossIncome Decimal   @db.Decimal(18, 2)
+  reversedDeductions  Decimal   @db.Decimal(18, 2)
+  reversedNetPay      Decimal   @db.Decimal(18, 2)
+  originalStatus      String    @db.VarChar(32)
+  reversalReference   String?   @db.VarChar(160)
+  reversalDate        DateTime? @db.Date
+  reversalMethod      String?   @db.VarChar(80)
+  evidenceReference   String?   @db.VarChar(500)
+  createdAt           DateTime  @default(now())
+
+  company Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  run     PayrollRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+  actor   User       @relation("PayrollRunReversalActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@unique([runId])
+  @@unique([companyId, reversalReference], map: "PayrollRunReversal_company_reference_key")
+  @@index([companyId, createdAt])
+}
+
+model PayrollPaymentRecord {
+  id                Int      @id @default(autoincrement())
+  companyId         Int
+  runId             Int      @unique
+  paymentReference  String   @db.VarChar(160)
+  paymentDate       DateTime @db.Date
+  paymentMethod     String   @db.VarChar(80)
+  batchReference    String?  @db.VarChar(160)
+  evidenceReference String   @db.VarChar(500)
+  actorId           Int
+  createdAt         DateTime @default(now())
+
+  company Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  run     PayrollRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+  actor   User       @relation("PayrollPaymentActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, paymentReference])
+  @@index([companyId, paymentDate])
+}
+
+model PayrollTrace {
+  id         Int      @id @default(autoincrement())
+  companyId  Int
+  runId      Int
+  event      String   @db.VarChar(64)
+  actorId    Int?
+  reason     String?  @db.Text
+  fromStatus String?  @db.VarChar(32)
+  toStatus   String?  @db.VarChar(32)
+  revision   Int
+  metadata   Json?
+  occurredAt DateTime @default(now())
+
+  company Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  run     PayrollRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+  actor   User?      @relation("PayrollTraceActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, runId, occurredAt])
+}
+
+model PayrollIdempotencyRecord {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  key         String   @db.VarChar(128)
+  operation   String   @db.VarChar(80)
+  requestHash String   @db.VarChar(64)
+  response    Json?
+  createdAt   DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, key])
+  @@index([companyId, operation, createdAt])
+}
+
+// ==========================================
+// RH F6: VIATICOS, PRESTAMOS Y DEDUCCIONES
+// ==========================================
+
+enum HrTravelStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  ADVANCED
+  IN_SETTLEMENT
+  SETTLED
+  CANCELLED
+  REVERSED
+}
+
+enum HrTravelExpenseStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  REVERSED
+}
+
+enum HrTravelLedgerType {
+  ADVANCE
+  EXPENSE_RECOGNITION
+  EMPLOYEE_RETURN
+  EMPLOYEE_REIMBURSEMENT
+  REVERSAL
+}
+
+model HrTravelRequest {
+  id                          Int            @id @default(autoincrement())
+  companyId                   Int
+  code                        String         @db.VarChar(64)
+  userId                      Int
+  employeeId                  Int
+  branchId                    Int?
+  destination                 String         @db.VarChar(160)
+  purpose                     String         @db.Text
+  departureDate               DateTime       @db.Date
+  returnDate                  DateTime       @db.Date
+  currency                    String         @db.VarChar(3)
+  requestedAmount             Decimal        @db.Decimal(18, 2)
+  approvedAmount              Decimal?       @db.Decimal(18, 2)
+  advanceAmount               Decimal?       @db.Decimal(18, 2)
+  recognizedExpenseAmount     Decimal?       @db.Decimal(18, 2)
+  employeeReturnAmount        Decimal?       @db.Decimal(18, 2)
+  employeeReimbursementAmount Decimal?       @db.Decimal(18, 2)
+  status                      HrTravelStatus @default(DRAFT)
+  revision                    Int            @default(0)
+  createdById                 Int
+  createdAt                   DateTime       @default(now())
+  updatedAt                   DateTime       @updatedAt
+
+  company   Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user      User                  @relation("HrTravelSubject", fields: [userId], references: [id], onDelete: Restrict)
+  employee  Employee              @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  branch    Branch?               @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy User                  @relation("HrTravelCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  expenses  HrTravelExpense[]
+  ledger    HrTravelLedgerEntry[]
+
+  @@unique([companyId, code])
+  @@index([companyId, userId, status, departureDate])
+  @@index([companyId, branchId, departureDate])
+}
+
+model HrTravelExpense {
+  id               Int                   @id @default(autoincrement())
+  companyId        Int
+  travelRequestId  Int
+  category         String                @db.VarChar(64)
+  description      String                @db.VarChar(600)
+  occurredOn       DateTime              @db.Date
+  currency         String                @db.VarChar(3)
+  claimedAmount    Decimal               @db.Decimal(18, 2)
+  recognizedAmount Decimal?              @db.Decimal(18, 2)
+  receiptReference String?               @db.VarChar(160)
+  evidenceId       Int?
+  status           HrTravelExpenseStatus @default(PENDING)
+  createdById      Int
+  createdAt        DateTime              @default(now())
+
+  company       Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  travelRequest HrTravelRequest @relation(fields: [travelRequestId], references: [id], onDelete: Restrict)
+  createdBy     User            @relation("HrTravelExpenseCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, travelRequestId, status])
+}
+
+model HrTravelLedgerEntry {
+  id              Int                @id @default(autoincrement())
+  companyId       Int
+  travelRequestId Int
+  type            HrTravelLedgerType
+  amount          Decimal            @db.Decimal(18, 2)
+  currency        String             @db.VarChar(3)
+  effectiveDate   DateTime           @db.Date
+  reference       String?            @db.VarChar(160)
+  reason          String             @db.Text
+  actorId         Int
+  reversedEntryId Int?
+  createdAt       DateTime           @default(now())
+
+  company         Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  travelRequest   HrTravelRequest       @relation(fields: [travelRequestId], references: [id], onDelete: Restrict)
+  actor           User                  @relation("HrTravelLedgerActor", fields: [actorId], references: [id], onDelete: Restrict)
+  reversedEntry   HrTravelLedgerEntry?  @relation("HrTravelLedgerReversal", fields: [reversedEntryId], references: [id], onDelete: Restrict)
+  reversalEntries HrTravelLedgerEntry[] @relation("HrTravelLedgerReversal")
+
+  @@unique([reversedEntryId])
+  @@unique([travelRequestId, type, reference])
+  @@index([companyId, travelRequestId, createdAt])
+}
+
+enum HrLoanStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  DISBURSED
+  ACTIVE
+  PAID
+  CLOSED
+  CANCELLED
+  REVERSED
+}
+
+enum HrLoanScheduleVersionStatus {
+  ACTIVE
+  SUPERSEDED
+  CANCELLED
+}
+
+enum HrLoanLedgerType {
+  DISBURSEMENT
+  CHARGE
+  PAYMENT
+  PAYROLL_DEDUCTION
+  REVERSAL
+}
+
+model HrLoan {
+  id                          Int          @id @default(autoincrement())
+  companyId                   Int
+  code                        String       @db.VarChar(64)
+  userId                      Int
+  employeeId                  Int
+  purpose                     String       @db.Text
+  currency                    String       @db.VarChar(3)
+  requestedAmount             Decimal      @db.Decimal(18, 2)
+  approvedAmount              Decimal?     @db.Decimal(18, 2)
+  disbursedAmount             Decimal?     @db.Decimal(18, 2)
+  outstandingBalance          Decimal      @default(0) @db.Decimal(18, 2)
+  preferredInstallments       Int
+  installmentCount            Int
+  payrollDeductionRequested   Boolean      @default(false)
+  firstPreferredDeductionDate DateTime?    @db.Date
+  firstDueDate                DateTime?    @db.Date
+  status                      HrLoanStatus @default(REQUESTED)
+  revision                    Int          @default(0)
+  createdById                 Int
+  requestedAt                 DateTime     @default(now())
+  updatedAt                   DateTime     @updatedAt
+
+  company          Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user             User                    @relation("HrLoanSubject", fields: [userId], references: [id], onDelete: Restrict)
+  employee         Employee                @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdBy        User                    @relation("HrLoanCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  scheduleVersions HrLoanScheduleVersion[]
+  ledger           HrLoanLedgerEntry[]
+  deduction        HrDeduction?
+
+  @@unique([companyId, code])
+  @@index([companyId, userId, status, requestedAt])
+}
+
+model HrLoanScheduleVersion {
+  id            Int                         @id @default(autoincrement())
+  companyId     Int
+  loanId        Int
+  version       Int
+  status        HrLoanScheduleVersionStatus @default(ACTIVE)
+  principalOnly Boolean                     @default(true)
+  createdAt     DateTime                    @default(now())
+
+  company      Company             @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  loan         HrLoan              @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  installments HrLoanInstallment[]
+
+  @@unique([loanId, version])
+  @@index([companyId, loanId, status])
+}
+
+model HrLoanInstallment {
+  id                 Int      @id @default(autoincrement())
+  companyId          Int
+  scheduleVersionId  Int
+  number             Int
+  dueDate            DateTime @db.Date
+  scheduledPrincipal Decimal  @db.Decimal(18, 2)
+  scheduledCharge    Decimal  @default(0) @db.Decimal(18, 2)
+  scheduledTotal     Decimal  @db.Decimal(18, 2)
+  createdAt          DateTime @default(now())
+
+  company         Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  scheduleVersion HrLoanScheduleVersion @relation(fields: [scheduleVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([scheduleVersionId, number])
+  @@index([companyId, scheduleVersionId, dueDate])
+}
+
+model HrLoanLedgerEntry {
+  id              Int              @id @default(autoincrement())
+  companyId       Int
+  loanId          Int
+  type            HrLoanLedgerType
+  amount          Decimal          @db.Decimal(18, 2)
+  currency        String           @db.VarChar(3)
+  effectiveDate   DateTime         @db.Date
+  payrollRunId    Int?
+  reference       String?          @db.VarChar(160)
+  reason          String           @db.Text
+  actorId         Int
+  reversedEntryId Int?
+  createdAt       DateTime         @default(now())
+
+  company         Company             @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  loan            HrLoan              @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  actor           User                @relation("HrLoanLedgerActor", fields: [actorId], references: [id], onDelete: Restrict)
+  payrollRun      PayrollRun?         @relation(fields: [payrollRunId], references: [id], onDelete: Restrict)
+  reversedEntry   HrLoanLedgerEntry?  @relation("HrLoanLedgerReversal", fields: [reversedEntryId], references: [id], onDelete: Restrict)
+  reversalEntries HrLoanLedgerEntry[] @relation("HrLoanLedgerReversal")
+
+  @@unique([reversedEntryId])
+  @@unique([loanId, type, reference])
+  @@index([companyId, loanId, createdAt])
+  @@index([payrollRunId])
+}
+
+enum HrDeductionStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+  REVERSED
+}
+
+enum HrDeductionFrequency {
+  ONCE
+  RECURRING
+}
+
+enum HrDeductionSource {
+  MANUAL
+  LOAN
+  LEGAL
+}
+
+enum HrDeductionApplicationKind {
+  APPLIED
+  REVERSAL
+}
+
+model HrDeduction {
+  id                       Int               @id @default(autoincrement())
+  companyId                Int
+  code                     String            @db.VarChar(64)
+  userId                   Int
+  employeeId               Int
+  loanId                   Int?              @unique
+  source                   HrDeductionSource @default(MANUAL)
+  status                   HrDeductionStatus @default(DRAFT)
+  revision                 Int               @default(0)
+  remainingAmount          Decimal?          @db.Decimal(18, 2)
+  lastPayrollApplicationId String?           @db.VarChar(160)
+  createdById              Int
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+
+  company      Company                  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user         User                     @relation("HrDeductionSubject", fields: [userId], references: [id], onDelete: Restrict)
+  employee     Employee                 @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  loan         HrLoan?                  @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  createdBy    User                     @relation("HrDeductionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  versions     HrDeductionVersion[]
+  applications HrDeductionApplication[]
+
+  @@unique([companyId, code])
+  @@index([companyId, userId, status, createdAt])
+}
+
+model HrDeductionVersion {
+  id               Int                  @id @default(autoincrement())
+  companyId        Int
+  deductionId      Int
+  version          Int
+  name             String               @db.VarChar(120)
+  reason           String               @db.Text
+  currency         String               @db.VarChar(3)
+  frequency        HrDeductionFrequency
+  requestedAmount  Decimal              @db.Decimal(18, 2)
+  applicableAmount Decimal              @db.Decimal(18, 2)
+  perPeriodLimit   Decimal?             @db.Decimal(18, 2)
+  priority         Int
+  effectiveFrom    DateTime             @db.Date
+  effectiveTo      DateTime?            @db.Date
+  createdAt        DateTime             @default(now())
+
+  company      Company                  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  deduction    HrDeduction              @relation(fields: [deductionId], references: [id], onDelete: Restrict)
+  applications HrDeductionApplication[]
+
+  @@unique([deductionId, version])
+  @@index([companyId, deductionId, createdAt])
+}
+
+model HrDeductionApplication {
+  id           Int                        @id @default(autoincrement())
+  companyId    Int
+  deductionId  Int
+  versionId    Int
+  payrollRunId Int
+  kind         HrDeductionApplicationKind @default(APPLIED)
+  amount       Decimal                    @db.Decimal(18, 2)
+  currency     String                     @db.VarChar(3)
+  componentId  Int?
+  reason       String                     @db.Text
+  actorId      Int
+  reversalOfId Int?
+  createdAt    DateTime                   @default(now())
+
+  company    Company                  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  deduction  HrDeduction              @relation(fields: [deductionId], references: [id], onDelete: Restrict)
+  version    HrDeductionVersion       @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  payrollRun PayrollRun               @relation(fields: [payrollRunId], references: [id], onDelete: Restrict)
+  actor      User                     @relation("HrDeductionApplicationActor", fields: [actorId], references: [id], onDelete: Restrict)
+  reversalOf HrDeductionApplication?  @relation("HrDeductionApplicationReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversals  HrDeductionApplication[] @relation("HrDeductionApplicationReversal")
+
+  @@unique([deductionId, payrollRunId, kind])
+  @@unique([reversalOfId])
+  @@index([companyId, payrollRunId, createdAt])
+}
+
+model HrBenefitTrace {
+  id           Int      @id @default(autoincrement())
+  companyId    Int
+  resourceType String   @db.VarChar(32)
+  resourceId   Int
+  event        String   @db.VarChar(64)
+  actorId      Int?
+  reason       String?  @db.Text
+  fromStatus   String?  @db.VarChar(32)
+  toStatus     String?  @db.VarChar(32)
+  revision     Int
+  metadata     Json?
+  occurredAt   DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  actor   User?   @relation("HrBenefitTraceActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, resourceType, resourceId, occurredAt])
+}
+
+model HrBenefitIdempotencyRecord {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  key         String   @db.VarChar(128)
+  operation   String   @db.VarChar(100)
+  requestHash String   @db.VarChar(64)
+  response    Json?
+  createdAt   DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, key])
+  @@index([companyId, operation, createdAt])
+}
+
+// ==========================================
+// 2. CONTROL DE MESAS
+// ==========================================
+
 model Table {
   id              Int         @id @default(autoincrement())
   companyId       Int
@@ -290,7 +2595,7 @@ model Table {
 
   company      Company       @relation(fields: [companyId], references: [id])
   branch       Branch        @relation(fields: [branchId], references: [id])
-  floorArea    FloorArea?     @relation(fields: [floorAreaId], references: [id], onDelete: SetNull)
+  floorArea    FloorArea?    @relation(fields: [floorAreaId], references: [id], onDelete: SetNull)
   orders       Order[]
   reservations Reservation[]
 
@@ -301,27 +2606,27 @@ model Table {
 }
 
 model FloorArea {
-  id         Int            @id @default(autoincrement())
+  id          Int            @id @default(autoincrement())
   floorPlanId Int
-  companyId  Int
-  branchId   Int
-  name       String         @db.VarChar(100)
-  kind       FloorAreaKind  @default(DINING)
-  mapX       Int            @default(24)
-  mapY       Int            @default(24)
-  mapWidth   Int            @default(720)
-  mapHeight  Int            @default(480)
-  mapShape   FloorAreaShape @default(RECTANGLE)
-  mapRotation Int           @default(0)
-  color      String?        @db.VarChar(16)
-  mapVersion Int            @default(0)
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+  companyId   Int
+  branchId    Int
+  name        String         @db.VarChar(100)
+  kind        FloorAreaKind  @default(DINING)
+  mapX        Int            @default(24)
+  mapY        Int            @default(24)
+  mapWidth    Int            @default(720)
+  mapHeight   Int            @default(480)
+  mapShape    FloorAreaShape @default(RECTANGLE)
+  mapRotation Int            @default(0)
+  color       String?        @db.VarChar(16)
+  mapVersion  Int            @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id])
-  branch  Branch  @relation(fields: [branchId], references: [id])
+  company   Company        @relation(fields: [companyId], references: [id])
+  branch    Branch         @relation(fields: [branchId], references: [id])
   floorPlan TableFloorPlan @relation(fields: [floorPlanId], references: [id], onDelete: Cascade)
-  tables  Table[]
+  tables    Table[]
 
   @@unique([floorPlanId, name])
   @@index([floorPlanId])
@@ -339,8 +2644,8 @@ model TableFloorPlan {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id])
-  branch  Branch  @relation(fields: [branchId], references: [id])
+  company Company     @relation(fields: [companyId], references: [id])
+  branch  Branch      @relation(fields: [branchId], references: [id])
   areas   FloorArea[]
 
   @@index([companyId])

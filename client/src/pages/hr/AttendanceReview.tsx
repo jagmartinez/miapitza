@@ -1,0 +1,225 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { SingleValue } from 'react-select';
+import { AlertTriangle, CheckCircle2, ClipboardCheck, Plus, RefreshCw, XCircle } from 'lucide-react';
+import Button from '../../components/Button';
+import LoadingSpinner from '../../components/LoadingSpinner';
+import PageHeader from '../../components/PageHeader';
+import Pagination from '../../components/Pagination';
+import Select from '../../components/Select';
+import Sidebar from '../../components/Sidebar';
+import { attendanceClient, createAttendanceIdempotencyKey, getAttendanceErrorMessage } from '../../components/hr/attendanceClient';
+import { ATTENDANCE_ACTION_LABELS, ATTENDANCE_DECISION_LABELS } from '../../components/hr/attendanceRules';
+import { hrClient } from '../../components/hr/hrClient';
+import { useAppToast } from '../../context/ToastContext';
+import type { HrOrganizationCatalogs } from '../../types/hr';
+import type {
+    HrAttendanceAction,
+    HrAttendanceDecision,
+    HrAttendanceEvent,
+    HrAttendanceManualPayload,
+    HrAttendanceReviewDecision,
+} from '../../types/hr-attendance';
+import './attendance.css';
+
+type Option = { value: string; label: string };
+type ReviewForm = { decision: HrAttendanceReviewDecision; reason: string };
+
+const EMPTY_LOOKUPS: HrOrganizationCatalogs = { departments: [], positions: [], costCenters: [], branches: [], users: [] };
+const ACTION_OPTIONS: Option[] = [{ value: '', label: 'Todas las acciones' }, ...Object.entries(ATTENDANCE_ACTION_LABELS).map(([value, label]) => ({ value, label }))];
+const DECISION_OPTIONS: Option[] = [{ value: '', label: 'Todos los resultados' }, ...Object.entries(ATTENDANCE_DECISION_LABELS).map(([value, label]) => ({ value, label }))];
+
+function todayDate(): string {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+function displayDate(value: string): string {
+    return new Intl.DateTimeFormat('es-NI', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
+}
+
+export default function AttendanceReview() {
+    const { success: showSuccess, error: showError } = useAppToast();
+    const [lookups, setLookups] = useState<HrOrganizationCatalogs>(EMPTY_LOOKUPS);
+    const [events, setEvents] = useState<HrAttendanceEvent[]>([]);
+    const [dateFrom, setDateFrom] = useState(todayDate());
+    const [dateTo, setDateTo] = useState(todayDate());
+    const [branchId, setBranchId] = useState('');
+    const [userId, setUserId] = useState('');
+    const [action, setAction] = useState('');
+    const [decision, setDecision] = useState('REVIEW_REQUIRED');
+    const [page, setPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [total, setTotal] = useState(0);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [selected, setSelected] = useState<HrAttendanceEvent | null>(null);
+    const [reviewForm, setReviewForm] = useState<ReviewForm>({ decision: 'APPROVED', reason: '' });
+    const [manualOpen, setManualOpen] = useState(false);
+    const [manual, setManual] = useState({ targetEventId: '', userId: '', branchId: '', action: 'CHECK_IN' as HrAttendanceAction, occurredAt: '', reason: '' });
+    const [saving, setSaving] = useState(false);
+
+    const loadLookups = useCallback(async () => {
+        try {
+            setLookups(await hrClient.getOrganization());
+        } catch {
+            setLookups(EMPTY_LOOKUPS);
+        }
+    }, []);
+
+    const loadEvents = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const result = await attendanceClient.getEvents({
+                dateFrom,
+                dateTo,
+                branchId: branchId ? Number(branchId) : undefined,
+                userId: userId ? Number(userId) : undefined,
+                action: action ? action as HrAttendanceAction : undefined,
+                decision: decision ? decision as HrAttendanceDecision : undefined,
+                page,
+                limit: 25,
+            });
+            setEvents(result.items);
+            setTotalPages(result.pagination?.totalPages ?? 1);
+            setTotal(result.pagination?.total ?? result.items.length);
+        } catch (loadError) {
+            setEvents([]);
+            setError(getAttendanceErrorMessage(loadError, 'No fue posible cargar los eventos de asistencia.'));
+        } finally {
+            setLoading(false);
+        }
+    }, [action, branchId, dateFrom, dateTo, decision, page, userId]);
+
+    useEffect(() => { void loadLookups(); }, [loadLookups]);
+    useEffect(() => { void loadEvents(); }, [loadEvents]);
+    useEffect(() => { setPage(1); }, [action, branchId, dateFrom, dateTo, decision, userId]);
+
+    const branchOptions = useMemo<Option[]>(() => [{ value: '', label: 'Todas las sucursales' }, ...(lookups.branches ?? []).map((branch) => ({ value: String(branch.id), label: branch.name }))], [lookups.branches]);
+    const userOptions = useMemo<Option[]>(() => [{ value: '', label: 'Todos los usuarios' }, ...(lookups.users ?? []).map((user) => ({ value: String(user.id), label: `${user.name} · @${user.username}` }))], [lookups.users]);
+
+    const targetOptions = useMemo<Option[]>(() => [
+        { value: '', label: 'Sin evento previo (requiere turno publicado)' },
+        ...events
+            .filter((event) => event.decision === 'REVIEW_REQUIRED' || event.decision === 'REJECTED')
+            .map((event) => ({
+                value: String(event.id),
+                label: `#${event.id} · ${event.user?.name ?? `Usuario ${event.userId}`} · ${ATTENDANCE_ACTION_LABELS[event.action]} · ${displayDate(event.occurredAt)}`,
+            })),
+    ], [events]);
+
+    const openReview = (event: HrAttendanceEvent) => {
+        if (event.decision !== 'REVIEW_REQUIRED' || event.reviewedAt) return;
+        setSelected(event);
+        setReviewForm({ decision: 'APPROVED', reason: '' });
+    };
+
+    const review = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!selected || !reviewForm.reason.trim()) {
+            showError('La decisión de revisión requiere una razón.');
+            return;
+        }
+        setSaving(true);
+        try {
+            await attendanceClient.reviewEvent(selected.id, { decision: reviewForm.decision, reason: reviewForm.reason.trim() });
+            showSuccess('Evento revisado con trazabilidad.');
+            setSelected(null);
+            await loadEvents();
+        } catch (reviewError) {
+            showError(getAttendanceErrorMessage(reviewError, 'No fue posible revisar el evento.'));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const createManual = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!manual.userId || !manual.branchId || !manual.occurredAt || !manual.reason.trim()) {
+            showError('Usuario, sucursal, fecha/hora y razón son obligatorios.');
+            return;
+        }
+        const payload: HrAttendanceManualPayload = {
+            userId: Number(manual.userId),
+            branchId: Number(manual.branchId),
+            action: manual.action,
+            occurredAt: new Date(manual.occurredAt).toISOString(),
+            reason: manual.reason.trim(),
+            targetEventId: manual.targetEventId ? Number(manual.targetEventId) : undefined,
+        };
+        setSaving(true);
+        try {
+            await attendanceClient.createManualEvent(payload, createAttendanceIdempotencyKey());
+            showSuccess('Marcaje manual registrado para auditoría.');
+            setManualOpen(false);
+            setManual({ targetEventId: '', userId: '', branchId: '', action: 'CHECK_IN', occurredAt: '', reason: '' });
+            await loadEvents();
+        } catch (manualError) {
+            showError(getAttendanceErrorMessage(manualError, 'No fue posible crear el marcaje manual.'));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="page-wrapper hr-attendance-review-page">
+            <PageHeader title="Revisión de asistencia" subtitle="Eventos, incidencias y fallback manual auditable" icon={ClipboardCheck} actions={<Button onClick={() => setManualOpen(true)}><Plus size={18} /> Marcaje manual</Button>} />
+
+            <div className="filters-toolbar hr-attendance-filters">
+                <div className="filter-field"><label className="filter-field-label" htmlFor="attendance-from">Desde</label><input id="attendance-from" className="filter-input" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></div>
+                <div className="filter-field"><label className="filter-field-label" htmlFor="attendance-to">Hasta</label><input id="attendance-to" className="filter-input" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div>
+                <div className="filter-field"><Select<Option> label="Sucursal" options={branchOptions} value={branchOptions.find((option) => option.value === branchId)} onChange={(option: SingleValue<Option>) => setBranchId(option?.value ?? '')} isSearchable /></div>
+                <div className="filter-field"><Select<Option> label="Usuario" options={userOptions} value={userOptions.find((option) => option.value === userId)} onChange={(option: SingleValue<Option>) => setUserId(option?.value ?? '')} isSearchable /></div>
+                <div className="filter-field"><Select<Option> label="Acción" options={ACTION_OPTIONS} value={ACTION_OPTIONS.find((option) => option.value === action)} onChange={(option: SingleValue<Option>) => setAction(option?.value ?? '')} /></div>
+                <div className="filter-field"><Select<Option> label="Resultado" options={DECISION_OPTIONS} value={DECISION_OPTIONS.find((option) => option.value === decision)} onChange={(option: SingleValue<Option>) => setDecision(option?.value ?? '')} /></div>
+            </div>
+
+            {loading && <LoadingSpinner text="Cargando eventos…" />}
+            {!loading && error && <div className="state-placeholder" role="alert"><AlertTriangle size={44} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadEvents()}><RefreshCw size={16} /> Reintentar</Button></div>}
+            {!loading && !error && events.length === 0 && <div className="state-placeholder"><ClipboardCheck size={46} /><p>No hay eventos para los filtros seleccionados.</p></div>}
+
+            {!loading && !error && events.length > 0 && (
+                <div className="hr-attendance-events">
+                    {events.map((attendanceEvent) => (
+                        <article key={attendanceEvent.id} className={`hr-attendance-event ${attendanceEvent.decision.toLowerCase()}`}>
+                            <div className="hr-attendance-event-main"><div><strong>{attendanceEvent.user?.name ?? `Usuario #${attendanceEvent.userId}`}</strong><span>{ATTENDANCE_ACTION_LABELS[attendanceEvent.action]} · {attendanceEvent.branch?.name ?? `Sucursal #${attendanceEvent.branchId ?? '—'}`}</span></div><time dateTime={attendanceEvent.occurredAt}>{displayDate(attendanceEvent.occurredAt)}</time></div>
+                            <div className="hr-attendance-event-result"><span>{ATTENDANCE_DECISION_LABELS[attendanceEvent.decision]}</span>{attendanceEvent.reasonCode && <code>{attendanceEvent.reasonCode}</code>}{attendanceEvent.locationAccuracyM != null && <small>Precisión ±{Math.round(attendanceEvent.locationAccuracyM)} m</small>}</div>
+                            {attendanceEvent.message && <p>{attendanceEvent.message}</p>}
+                            <Button size="sm" variant="secondary" onClick={() => openReview(attendanceEvent)} disabled={attendanceEvent.decision !== 'REVIEW_REQUIRED' || Boolean(attendanceEvent.reviewedAt)}>{attendanceEvent.reviewedAt ? 'Ya revisado' : attendanceEvent.decision === 'REVIEW_REQUIRED' ? 'Revisar' : 'No revisable'}</Button>
+                        </article>
+                    ))}
+                </div>
+            )}
+            {!loading && !error && totalPages > 1 && <Pagination page={page} totalPages={totalPages} totalItems={total} pageSize={25} onPageChange={setPage} />}
+
+            <Sidebar isOpen={Boolean(selected)} onClose={() => !saving && setSelected(null)} title="Revisar incidencia" width="wide" closeOnBackdrop={!saving} closeOnEscape={!saving}>
+                {selected && <form className="modal-form-new" onSubmit={review}><div className="modal-tab-content"><div className="hr-review-summary"><strong>{selected.user?.name ?? `Usuario #${selected.userId}`}</strong><span>{ATTENDANCE_ACTION_LABELS[selected.action]} · {displayDate(selected.occurredAt)}</span><p>{selected.message ?? selected.reasonCode ?? 'Sin explicación adicional.'}</p></div><div className="hr-review-decisions" role="radiogroup" aria-label="Decisión de revisión"><label className={reviewForm.decision === 'APPROVED' ? 'selected' : ''}><input type="radio" name="review-decision" checked={reviewForm.decision === 'APPROVED'} onChange={() => setReviewForm((current) => ({ ...current, decision: 'APPROVED' }))} /><CheckCircle2 size={18} /> Aprobar</label><label className={reviewForm.decision === 'REJECTED' ? 'selected danger' : 'danger'}><input type="radio" name="review-decision" checked={reviewForm.decision === 'REJECTED'} onChange={() => setReviewForm((current) => ({ ...current, decision: 'REJECTED' }))} /><XCircle size={18} /> Rechazar</label></div><div className="modal-input-group"><label htmlFor="attendance-review-reason">Razón de la decisión</label><textarea id="attendance-review-reason" className="modal-textarea" rows={5} maxLength={500} value={reviewForm.reason} onChange={(event) => setReviewForm((current) => ({ ...current, reason: event.target.value }))} required /></div></div><div className="modal-footer"><Button type="button" variant="ghost" onClick={() => setSelected(null)} disabled={saving}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Registrar decisión'}</Button></div></form>}
+            </Sidebar>
+
+            <Sidebar isOpen={manualOpen} onClose={() => !saving && setManualOpen(false)} title="Marcaje manual supervisado" width="wide" closeOnBackdrop={!saving} closeOnEscape={!saving}>
+                <div className="modal-tab-content">
+                    <Select<Option>
+                        variant="modal"
+                        label="Evento a compensar (opcional)"
+                        options={targetOptions}
+                        value={targetOptions.find((option) => option.value === manual.targetEventId)}
+                        onChange={(option: SingleValue<Option>) => {
+                            const target = events.find((item) => String(item.id) === option?.value);
+                            setManual((current) => ({
+                                ...current,
+                                targetEventId: option?.value ?? '',
+                                ...(target ? {
+                                    userId: String(target.userId),
+                                    branchId: String(target.branchId ?? ''),
+                                    action: target.action,
+                                } : {}),
+                            }));
+                        }}
+                        isSearchable
+                    />
+                </div>
+                <form className="modal-form-new" onSubmit={createManual}><div className="modal-tab-content"><div className="hr-attendance-alert warning"><AlertTriangle size={18} /><span>Este fallback no simula biometría ni GPS: crea un evento manual identificado, con actor y razón para auditoría.</span></div><Select<Option> variant="modal" label="Usuario" options={userOptions.filter((option) => option.value)} value={userOptions.find((option) => option.value === manual.userId)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, userId: option?.value ?? '' }))} isSearchable /><Select<Option> variant="modal" label="Sucursal" options={branchOptions.filter((option) => option.value)} value={branchOptions.find((option) => option.value === manual.branchId)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, branchId: option?.value ?? '' }))} isSearchable /><Select<Option> variant="modal" label="Acción" options={ACTION_OPTIONS.filter((option) => option.value)} value={ACTION_OPTIONS.find((option) => option.value === manual.action)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, action: (option?.value ?? 'CHECK_IN') as HrAttendanceAction }))} /><div className="modal-input-group"><label htmlFor="attendance-manual-at">Fecha y hora real</label><input id="attendance-manual-at" className="modal-standard-input" type="datetime-local" value={manual.occurredAt} onChange={(event) => setManual((current) => ({ ...current, occurredAt: event.target.value }))} required /></div><div className="modal-input-group"><label htmlFor="attendance-manual-reason">Razón del fallback</label><textarea id="attendance-manual-reason" className="modal-textarea" rows={5} maxLength={500} value={manual.reason} onChange={(event) => setManual((current) => ({ ...current, reason: event.target.value }))} required /></div></div><div className="modal-footer"><Button type="button" variant="ghost" onClick={() => setManualOpen(false)} disabled={saving}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? 'Registrando…' : 'Registrar marcaje manual'}</Button></div></form>
+            </Sidebar>
+        </div>
+    );
+}

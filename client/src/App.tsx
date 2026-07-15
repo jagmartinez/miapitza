@@ -23,6 +23,7 @@ import {
     HOST_ROLES,
     WAREHOUSE,
     CHEF_MGMT,
+    HR_OWNER,
 } from './constants/roles';
 
 /** Route guard: redirects to /dashboard if none of the user's roles are in the allowed list */
@@ -32,6 +33,15 @@ function RoleGuard({ roles, children }: { roles: string[]; children: React.React
     const userRoleNames = getUserRoleNames(user);
     const hasAccess = userRoleNames.some(rn => roles.includes(rn));
     if (!hasAccess) return <Navigate to="/dashboard" replace />;
+    return <>{children}</>;
+}
+
+/** Self-service is only meaningful for users with a persisted employee profile. */
+function InternalEmployeeGuard({ children }: { children: React.ReactNode }) {
+    const { user } = useAuth();
+    if (!user || user.accountType !== 'INTERNAL' || !user.employeeId) {
+        return <Navigate to="/dashboard" replace />;
+    }
     return <>{children}</>;
 }
 
@@ -73,6 +83,23 @@ const Reports = lazy(() => import('./pages/Reports'));
 const PedidosYaIntegration = lazy(() => import('./pages/PedidosYaIntegration'));
 const Profile = lazy(() => import('./pages/Profile'));
 const ChangePassword = lazy(() => import('./pages/ChangePassword'));
+const HrDashboard = lazy(() => import('./pages/hr/HrDashboard'));
+const Employees = lazy(() => import('./pages/hr/Employees'));
+const EmployeeDetail = lazy(() => import('./pages/hr/EmployeeDetail'));
+const MyHrLanding = lazy(() => import('./pages/hr/MyHrLanding'));
+const Schedules = lazy(() => import('./pages/hr/Schedules'));
+const MySchedule = lazy(() => import('./pages/hr/MySchedule'));
+const TimeClock = lazy(() => import('./pages/hr/TimeClock'));
+const Biometrics = lazy(() => import('./pages/hr/Biometrics'));
+const AttendanceReview = lazy(() => import('./pages/hr/AttendanceReview'));
+const AttendanceSettings = lazy(() => import('./pages/hr/AttendanceSettings'));
+const AttendanceManagement = lazy(() => import('./pages/hr/AttendanceManagement'));
+const LeaveManagement = lazy(() => import('./pages/hr/LeaveManagement'));
+const MyWorkforce = lazy(() => import('./pages/hr/MyWorkforce'));
+const PayrollManagement = lazy(() => import('./pages/hr/PayrollManagement'));
+const MyPayroll = lazy(() => import('./pages/hr/MyPayroll'));
+const BenefitsManagement = lazy(() => import('./pages/hr/BenefitsManagement'));
+const MyBenefits = lazy(() => import('./pages/hr/MyBenefits'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 function App() {
@@ -96,7 +123,27 @@ function App() {
                                 {/* Open to all authenticated users */}
                                 <Route path="/dashboard" element={<Dashboard />} />
                                 <Route path="/profile" element={<Profile />} />
+                                <Route path="/rh/mi-portal" element={<InternalEmployeeGuard><MyHrLanding /></InternalEmployeeGuard>} />
+                                <Route path="/rh/mi-portal/horario" element={<InternalEmployeeGuard><MySchedule /></InternalEmployeeGuard>} />
+                                <Route path="/rh/marcaje" element={<InternalEmployeeGuard><TimeClock /></InternalEmployeeGuard>} />
+                                <Route path="/rh/biometria" element={<InternalEmployeeGuard><Biometrics /></InternalEmployeeGuard>} />
+                                <Route path="/rh/mi-portal/biometria" element={<Navigate to="/rh/biometria" replace />} />
+                                <Route path="/rh/mi-portal/gestion" element={<InternalEmployeeGuard><MyWorkforce /></InternalEmployeeGuard>} />
+                                <Route path="/rh/mi-portal/nomina" element={<InternalEmployeeGuard><MyPayroll /></InternalEmployeeGuard>} />
+                                <Route path="/rh/mi-portal/prestaciones" element={<InternalEmployeeGuard><MyBenefits /></InternalEmployeeGuard>} />
                                 <Route path="/manual" element={<Navigate to="/manual-usuario.html" replace />} />
+
+                                {/* Human Resources – Owner administration + authenticated self-service */}
+                                <Route path="/rh" element={<RoleGuard roles={HR_OWNER}><HrDashboard /></RoleGuard>} />
+                                <Route path="/rh/personal" element={<RoleGuard roles={HR_OWNER}><Employees /></RoleGuard>} />
+                                <Route path="/rh/personal/:employeeId" element={<RoleGuard roles={HR_OWNER}><EmployeeDetail /></RoleGuard>} />
+                                <Route path="/rh/horarios" element={<RoleGuard roles={HR_OWNER}><Schedules /></RoleGuard>} />
+                                <Route path="/rh/asistencia" element={<RoleGuard roles={HR_OWNER}><AttendanceReview /></RoleGuard>} />
+                                <Route path="/rh/asistencia/configuracion" element={<RoleGuard roles={HR_OWNER}><AttendanceSettings /></RoleGuard>} />
+                                <Route path="/rh/jornadas" element={<RoleGuard roles={HR_OWNER}><AttendanceManagement /></RoleGuard>} />
+                                <Route path="/rh/ausencias" element={<RoleGuard roles={HR_OWNER}><LeaveManagement /></RoleGuard>} />
+                                <Route path="/rh/nomina" element={<RoleGuard roles={HR_OWNER}><PayrollManagement /></RoleGuard>} />
+                                <Route path="/rh/prestaciones" element={<RoleGuard roles={HR_OWNER}><BenefitsManagement /></RoleGuard>} />
 
                                 {/* Operations – role-restricted */}
                                 <Route path="/pos" element={<Navigate to="/tables" replace />} />

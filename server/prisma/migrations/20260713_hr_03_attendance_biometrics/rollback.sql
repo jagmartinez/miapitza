@@ -1,0 +1,10 @@
+DROP TRIGGER IF EXISTS `AttendanceEvent_prevent_update`;
+DROP TRIGGER IF EXISTS `AttendanceEvent_prevent_delete`;
+DROP TABLE IF EXISTS `AttendanceReview`;
+DROP TABLE IF EXISTS `AttendancePunchRequest`;
+DROP TABLE IF EXISTS `AttendanceEvent`;
+DROP TABLE IF EXISTS `AttendanceDevice`;
+DROP TABLE IF EXISTS `BiometricChallenge`;
+DROP TABLE IF EXISTS `BiometricPurgeRequest`;
+DROP TABLE IF EXISTS `BiometricProfile`;
+DROP TABLE IF EXISTS `AttendancePolicy`;
