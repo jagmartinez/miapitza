@@ -8,7 +8,10 @@ import { AuditLogService } from './audit-log.service';
 import { commitBenefitDeductions, projectBenefitDeductions, reverseBenefitDeductions } from './hr-benefits.service';
 import {
     calculateStatutoryPayroll,
+    effectiveIncomeTaxApplicability,
+    paymentConceptDefinition,
     type IncomeTaxTreatment,
+    type PayrollPaymentConceptDefinition,
     type PayrollStatutoryConfiguration,
     type StatutoryPayFrequency,
     validateStatutoryConfiguration,
@@ -87,7 +90,7 @@ function nonNegativeMoney(value: unknown, field: string): Prisma.Decimal {
 }
 
 export type LegalConfiguration = {
-    schema: 'HR_PAYROLL_PARAMETRIC_V3';
+    schema: 'HR_PAYROLL_PARAMETRIC_V4';
     legallyValidated: true;
     currency: string;
     regular: {
@@ -107,16 +110,93 @@ export type LegalConfiguration = {
     statutory: PayrollStatutoryConfiguration;
 };
 
+type LegacyV3StatutoryConfiguration = Omit<PayrollStatutoryConfiguration, 'companyTaxRegime' | 'inss' | 'inatec' | 'incomeTax' | 'paymentConceptCatalog'> & {
+    companyTaxRegime: Omit<PayrollStatutoryConfiguration['companyTaxRegime'], 'incomeTaxApplicability' | 'incomeTaxExceptionReason'>;
+    inss: PayrollStatutoryConfiguration['inss'] & { contributionComponentCodes?: string[] };
+    inatec: PayrollStatutoryConfiguration['inatec'] & { contributionComponentCodes?: string[] };
+    incomeTax: PayrollStatutoryConfiguration['incomeTax'] & {
+        applicability?: 'APPLIES' | 'DOES_NOT_APPLY';
+        exceptionReason?: string;
+        regimeIndependenceAcknowledged?: true;
+        fixedTaxableComponentCodes?: string[];
+        variableTaxableComponentCodes?: string[];
+        occasionalTaxableComponentCodes?: string[];
+        authorizedDeductionComponentCodes?: string[];
+    };
+};
+
+function normalizeLegacyConfiguration(value: unknown): unknown {
+    const legacy = value as { schema?: string; statutory?: LegacyV3StatutoryConfiguration } & JsonObject;
+    if (legacy?.schema !== 'HR_PAYROLL_PARAMETRIC_V3' || !legacy.statutory) return value;
+    const statutory = legacy.statutory;
+    const legacyInss = statutory.inss;
+    const legacyInatec = statutory.inatec;
+    const legacyIncomeTax = statutory.incomeTax;
+    const inssCodes = legacyInss.contributionComponentCodes ?? [];
+    const inatecCodes = legacyInatec.contributionComponentCodes ?? [];
+    const fixedCodes = legacyIncomeTax.fixedTaxableComponentCodes ?? [];
+    const variableCodes = legacyIncomeTax.variableTaxableComponentCodes ?? [];
+    const occasionalCodes = legacyIncomeTax.occasionalTaxableComponentCodes ?? [];
+    const deductibleCodes = legacyIncomeTax.authorizedDeductionComponentCodes ?? [];
+    const allCodes = [...new Set([...inssCodes, ...inatecCodes, ...fixedCodes, ...variableCodes, ...occasionalCodes, ...deductibleCodes])];
+    const paymentConceptCatalog: PayrollPaymentConceptDefinition[] = allCodes.map(code => {
+        const incomeTaxTreatment: IncomeTaxTreatment | null = fixedCodes.includes(code) ? 'REGULAR_FIXED'
+            : variableCodes.includes(code) ? 'REGULAR_VARIABLE'
+                : occasionalCodes.includes(code) ? 'OCCASIONAL' : null;
+        const type = deductibleCodes.includes(code) ? 'DEDUCTION' as const : 'INCOME' as const;
+        return {
+            code,
+            name: code,
+            type,
+            socialSecurityApplicable: type === 'INCOME' && inssCodes.includes(code),
+            trainingContributionApplicable: type === 'INCOME' && inatecCodes.includes(code),
+            incomeTaxTreatment: type === 'INCOME' ? incomeTaxTreatment : null,
+            incomeTaxDeductible: type === 'DEDUCTION',
+            sourceReference: type === 'DEDUCTION' || incomeTaxTreatment ? legacyIncomeTax.sourceReference : legacyInss.sourceReference,
+        };
+    });
+    const inss = { ...legacyInss };
+    const inatec = { ...legacyInatec };
+    const incomeTax = { ...legacyIncomeTax, regimeApplicabilityAcknowledged: true as const };
+    delete inss.contributionComponentCodes;
+    delete inatec.contributionComponentCodes;
+    delete incomeTax.applicability;
+    delete incomeTax.exceptionReason;
+    delete incomeTax.regimeIndependenceAcknowledged;
+    delete incomeTax.fixedTaxableComponentCodes;
+    delete incomeTax.variableTaxableComponentCodes;
+    delete incomeTax.occasionalTaxableComponentCodes;
+    delete incomeTax.authorizedDeductionComponentCodes;
+    return {
+        ...legacy,
+        schema: 'HR_PAYROLL_PARAMETRIC_V4',
+        statutory: {
+            companyTaxRegime: {
+                ...statutory.companyTaxRegime,
+                incomeTaxApplicability: legacyIncomeTax.applicability,
+                incomeTaxExceptionReason: legacyIncomeTax.applicability === 'DOES_NOT_APPLY' ? legacyIncomeTax.exceptionReason : undefined,
+            },
+            inss,
+            inatec,
+            incomeTax,
+            paymentConceptCatalog,
+        },
+    };
+}
+
 function positiveDecimalText(value: unknown): value is string {
     if (typeof value !== 'string' || !/^\d+(?:\.\d+)?$/.test(value)) return false;
     return new Prisma.Decimal(value).greaterThan(0);
 }
 
-export function validateLegalConfiguration(value: unknown): LegalConfiguration {
-    const config = value as Partial<LegalConfiguration> | null;
+export function validateLegalConfiguration(value: unknown, options: { requireCurrentSchema?: boolean } = {}): LegalConfiguration {
+    if (options.requireCurrentSchema && (value as { schema?: unknown } | null)?.schema !== 'HR_PAYROLL_PARAMETRIC_V4') {
+        throw new HrPayrollError('Las configuraciones nuevas deben usar el catálogo paramétrico HR_PAYROLL_PARAMETRIC_V4', 409, 'HR_PAYROLL_CURRENT_CONFIGURATION_REQUIRED');
+    }
+    const config = normalizeLegacyConfiguration(value) as Partial<LegalConfiguration> | null;
     const divisors = config?.regular?.minuteDivisors;
     if (
-        !config || config.schema !== 'HR_PAYROLL_PARAMETRIC_V3' || config.legallyValidated !== true ||
+        !config || config.schema !== 'HR_PAYROLL_PARAMETRIC_V4' || config.legallyValidated !== true ||
         typeof config.currency !== 'string' || !/^[A-Z]{3}$/.test(config.currency) ||
         !divisors || !positiveDecimalText(divisors.WEEKLY) || !positiveDecimalText(divisors.BIWEEKLY) ||
         !positiveDecimalText(divisors.MONTHLY) || !positiveDecimalText(config.regular?.overtimeMultiplier) ||
@@ -144,7 +224,7 @@ export function validateLegalConfiguration(value: unknown): LegalConfiguration {
 }
 
 function configurationSummary(config: LegalConfiguration, hash: string): string {
-    return `Esquema ${config.schema}; régimen ${config.statutory.companyTaxRegime.code}; moneda ${config.currency}; INSS ${config.statutory.inss.applicability}; INATEC ${config.statutory.inatec.applicability}; IR laboral ${config.statutory.incomeTax.applicability}; hash ${hash.slice(0, 12)}`;
+    return `Esquema ${config.schema}; régimen ${config.statutory.companyTaxRegime.code}; moneda ${config.currency}; INSS ${config.statutory.inss.applicability}; INATEC ${config.statutory.inatec.applicability}; IR laboral ${effectiveIncomeTaxApplicability(config.statutory)}; conceptos ${config.statutory.paymentConceptCatalog.length}; hash ${hash.slice(0, 12)}`;
 }
 
 function convertCurrency(amount: Prisma.Decimal, from: string, config: LegalConfiguration): { amount: Prisma.Decimal; trace: JsonObject } {
@@ -431,7 +511,7 @@ export class PayrollRuleService {
             assertRuleConfigurationMutable(rule);
             const expectedRevision = Number(payload.expectedRevision);
             if (!Number.isInteger(expectedRevision) || expectedRevision !== rule.revision) throw new HrPayrollError('La regla cambió; actualice la vista', 409, 'HR_PAYROLL_REVISION_CONFLICT');
-            const config = validateLegalConfiguration(payload.configuration);
+            const config = validateLegalConfiguration(payload.configuration, { requireCurrentSchema: true });
             const configurationHash = hashPayload(config);
             const latest = await tx.payrollRuleConfigurationRevision.findFirst({ where: { ruleVersionId: id }, orderBy: { revision: 'desc' }, select: { revision: true } });
             const revision = (latest?.revision ?? 0) + 1;
@@ -443,7 +523,7 @@ export class PayrollRuleService {
             const changed = await tx.payrollRuleVersion.updateMany({ where: { id, companyId, status: 'DRAFT', revision: expectedRevision }, data: { revision: { increment: 1 } } });
             if (changed.count !== 1) throw new HrPayrollError('La regla cambió concurrentemente', 409, 'HR_PAYROLL_REVISION_CONFLICT');
             await AuditLogService.log({ companyId, userId: actorId, entityType: 'PayrollRuleConfigurationRevision', entityId: item.id, action: 'CREATE', details: { ruleVersionId: id, revision, configurationHash, sourceReference: item.sourceReference, evidenceReference: item.evidenceReference } }, tx);
-            return serialize({ id: item.id, ruleVersionId: id, revision, configurationHash, sourceReference: item.sourceReference, evidenceReference: item.evidenceReference, uploadedById: actorId, uploadedAt: item.uploadedAt, status: 'UPLOADED' });
+            return serialize({ id: item.id, ruleVersionId: id, revision, configuration: config, configurationHash, sourceReference: item.sourceReference, evidenceReference: item.evidenceReference, uploadedById: actorId, uploadedAt: item.uploadedAt, status: 'UPLOADED' });
         });
     }
 
@@ -454,6 +534,7 @@ export class PayrollRuleService {
         }, orderBy: { revision: 'desc' } });
         return serialize(items.map(item => ({
             id: item.id, ruleVersionId: item.ruleVersionId, revision: item.revision, configurationHash: item.configurationHash,
+            configuration: validateLegalConfiguration(item.configuration),
             sourceReference: item.sourceReference, evidenceReference: item.evidenceReference, uploadReason: item.uploadReason,
             uploadedAt: item.uploadedAt, uploadedBy: item.uploadedBy, status: item.review?.decision ?? 'UPLOADED',
             reviewedAt: item.review?.reviewedAt ?? null, reviewer: item.review?.reviewer ?? null, reviewReason: item.review?.reason ?? null,
@@ -472,7 +553,7 @@ export class PayrollRuleService {
             if (!configuration) throw new HrPayrollError('Revisión de configuración no encontrada', 404, 'HR_PAYROLL_CONFIGURATION_NOT_FOUND');
             if (configuration.review) throw new HrPayrollError('La configuración ya fue revisada', 409, 'HR_PAYROLL_CONFIGURATION_ALREADY_REVIEWED');
             if (configuration.uploadedById === actorId) throw new HrPayrollError('Control dual: el cargador no puede validar su propia configuración', 409, 'HR_PAYROLL_DUAL_CONTROL_REQUIRED');
-            const config = validateLegalConfiguration(configuration.configuration);
+            const config = validateLegalConfiguration(configuration.configuration, { requireCurrentSchema: true });
             const decision = payload.decision === 'REJECTED' ? 'REJECTED' : payload.decision === 'VALIDATED' ? 'VALIDATED' : (() => { throw new HrPayrollError('decision debe ser VALIDATED o REJECTED'); })();
             await tx.payrollRuleConfigurationReview.create({ data: { companyId, configurationRevisionId, decision, reason: requiredText(payload.reason, 'reason'), reviewerId: actorId } });
             const update: Prisma.PayrollRuleVersionUncheckedUpdateManyInput = decision === 'VALIDATED' ? {
@@ -497,7 +578,7 @@ export class PayrollRuleService {
                 if (!current.activeConfigurationRevisionId) throw new HrPayrollError('La regla requiere una configuración revisada y VALIDATED', 409, 'HR_PAYROLL_VALIDATED_CONFIGURATION_REQUIRED');
                 const validated = await tx.payrollRuleConfigurationRevision.findFirst({ where: { id: current.activeConfigurationRevisionId, companyId, ruleVersionId: id, review: { decision: 'VALIDATED' } } });
                 if (!validated) throw new HrPayrollError('La revisión legal VALIDATED no está disponible', 409, 'HR_PAYROLL_VALIDATED_CONFIGURATION_REQUIRED');
-                validateLegalConfiguration(validated.configuration);
+                validateLegalConfiguration(validated.configuration, { requireCurrentSchema: true });
                 const overlap = await tx.payrollRuleVersion.findFirst({ where: { companyId, id: { not: id }, status: 'ACTIVE', effectiveFrom: { lte: current.effectiveTo ?? new Date('9999-12-31') }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: current.effectiveFrom } }] }, select: { id: true, name: true } });
                 if (overlap) throw new HrPayrollError(`Existe otra regla ACTIVE superpuesta: ${overlap.name}`, 409, 'HR_PAYROLL_ACTIVE_RULE_OVERLAP');
                 await tx.payrollRuleVersion.update({ where: { id }, data: { status: 'ACTIVE', revision: { increment: 1 }, activatedAt: new Date() } });
@@ -739,23 +820,15 @@ async function effectivePublishedShiftEvidence(
         .sort((a, b) => a.startAt.localeCompare(b.startAt) || a.shiftId - b.shiftId);
 }
 
-function incomeTaxTreatmentForCode(code: string, config: LegalConfiguration): IncomeTaxTreatment | null {
-    const incomeTax = config.statutory.incomeTax;
-    if (incomeTax.applicability !== 'APPLIES') return null;
-    if (incomeTax.fixedTaxableComponentCodes.includes(code)) return 'REGULAR_FIXED';
-    if (incomeTax.variableTaxableComponentCodes.includes(code)) return 'REGULAR_VARIABLE';
-    if (incomeTax.occasionalTaxableComponentCodes.includes(code)) return 'OCCASIONAL';
-    return null;
-}
-
 function statutoryFlags(code: string, config: LegalConfiguration) {
-    const incomeTaxTreatment = incomeTaxTreatmentForCode(code, config);
+    const concept = paymentConceptDefinition(config.statutory, code);
+    const incomeTaxTreatment = concept?.type === 'INCOME' ? concept.incomeTaxTreatment : null;
     return {
         taxable: incomeTaxTreatment !== null,
         incomeTaxTreatment,
-        incomeTaxDeductible: false,
-        socialSecurityApplicable: config.statutory.inss.applicability === 'APPLIES' && config.statutory.inss.contributionComponentCodes.includes(code),
-        trainingContributionApplicable: config.statutory.inatec.applicability === 'APPLIES' && config.statutory.inatec.contributionComponentCodes.includes(code),
+        incomeTaxDeductible: concept?.type === 'DEDUCTION' ? concept.incomeTaxDeductible : false,
+        socialSecurityApplicable: concept?.type === 'INCOME' ? concept.socialSecurityApplicable : false,
+        trainingContributionApplicable: concept?.type === 'INCOME' ? concept.trainingContributionApplicable : false,
     };
 }
 
@@ -786,7 +859,7 @@ async function priorStatutoryContext(tx: Prisma.TransactionClient, input: {
             statutoryCalculations: {
                 where: { userId: input.userId },
                 select: {
-                    calculationRevision: true, methodVersion: true, incomeTaxMethod: true, payFrequency: true,
+                    calculationRevision: true, methodVersion: true, incomeTaxMethod: true, companyTaxRegime: true, payFrequency: true,
                     annualPeriods: true, currentRegularIncomeTaxNet: true,
                     regularIncomeTaxWithheld: true, occasionalIncomeTaxWithheld: true, incomeTaxRefund: true, variableIncomeTaxGross: true,
                     fixedCompensationAmount: true, annualProjection: true, currentOccasionalIncomeTaxNet: true,
@@ -806,7 +879,7 @@ async function priorStatutoryContext(tx: Prisma.TransactionClient, input: {
         periodTo: run.period ? dateKey(run.period.dateTo) : null, reversed: run.reversals.length > 0,
         statutoryCalculations: run.statutoryCalculations.map(item => ({
             calculationRevision: item.calculationRevision, methodVersion: item.methodVersion,
-            incomeTaxMethod: item.incomeTaxMethod, payFrequency: item.payFrequency, annualPeriods: item.annualPeriods,
+            incomeTaxMethod: item.incomeTaxMethod, companyTaxRegime: item.companyTaxRegime, payFrequency: item.payFrequency, annualPeriods: item.annualPeriods,
             currentRegularIncomeTaxNet: item.currentRegularIncomeTaxNet.toFixed(2),
             regularIncomeTaxWithheld: item.regularIncomeTaxWithheld.toFixed(2), incomeTaxRefund: item.incomeTaxRefund.toFixed(2),
             occasionalIncomeTaxWithheld: item.occasionalIncomeTaxWithheld.toFixed(2),
@@ -851,6 +924,7 @@ async function priorStatutoryContext(tx: Prisma.TransactionClient, input: {
     const priorCoverageIntervals: Array<{ dateFrom: Date; dateTo: Date }> = [];
     const priorPayFrequencies = new Set<string>();
     const priorAnnualPeriods = new Set<number>();
+    const priorCompanyTaxRegimes = new Set<string>();
     let firstFiscalMonth: Date | null = null;
     for (const run of eligible) {
         const calculation = run.statutoryCalculations.find(item => item.calculationRevision === run.calculationRevision && item.methodVersion === 'ART19_V3');
@@ -862,6 +936,7 @@ async function priorStatutoryContext(tx: Prisma.TransactionClient, input: {
         }
         priorPayFrequencies.add(calculation.payFrequency);
         priorAnnualPeriods.add(calculation.annualPeriods);
+        priorCompanyTaxRegimes.add(calculation.companyTaxRegime);
         priorRegularIncomeTaxNet = priorRegularIncomeTaxNet.plus(calculation.currentRegularIncomeTaxNet);
         priorRegularIncomeTaxWithheld = priorRegularIncomeTaxWithheld.plus(calculation.regularIncomeTaxWithheld).minus(calculation.incomeTaxRefund);
         priorOccasionalIncomeTaxWithheld = priorOccasionalIncomeTaxWithheld.plus(calculation.occasionalIncomeTaxWithheld);
@@ -887,6 +962,7 @@ async function priorStatutoryContext(tx: Prisma.TransactionClient, input: {
         priorCoverageIntervals,
         priorPayFrequencies: [...priorPayFrequencies],
         priorAnnualPeriods: [...priorAnnualPeriods],
+        priorCompanyTaxRegimes: [...priorCompanyTaxRegimes],
         historyFingerprint: fingerprint,
         historyComplete: incompleteRuns.length === 0,
         incompleteRunCodes: incompleteRuns.map(run => run.period?.code || `run:${run.id}`),
@@ -963,7 +1039,7 @@ async function applyStatutoryForUser(tx: Prisma.TransactionClient, input: {
     };
 }) {
     await tx.payrollComponent.deleteMany({ where: { companyId: input.companyId, runId: input.runId, userId: input.userId, source: 'STATUTORY' } });
-    await tx.payrollAnomaly.deleteMany({ where: { companyId: input.companyId, runId: input.runId, userId: input.userId, code: { in: ['UNCLASSIFIED_MANUAL_INCOME', 'MISSING_STATUTORY_PAY_FREQUENCY', 'INSS_MINIMUM_BASE_APPLIED', 'INCOMPLETE_PRIOR_STATUTORY_HISTORY', 'IR_CREDIT_PENDING_SETTLEMENT'] }, resolvedAt: null } });
+    await tx.payrollAnomaly.deleteMany({ where: { companyId: input.companyId, runId: input.runId, userId: input.userId, code: { in: ['UNCLASSIFIED_MANUAL_INCOME', 'UNCONFIGURED_PAYMENT_CONCEPT', 'MISSING_STATUTORY_PAY_FREQUENCY', 'INSS_MINIMUM_BASE_APPLIED', 'INCOMPLETE_PRIOR_STATUTORY_HISTORY', 'IR_CREDIT_PENDING_SETTLEMENT'] }, resolvedAt: null } });
     if (!['WEEKLY', 'BIWEEKLY', 'MONTHLY'].includes(String(input.snapshot.payFrequency))) {
         await addAnomaly(tx, { companyId: input.companyId, runId: input.runId, employeeId: input.employeeId, userId: input.userId, code: 'MISSING_STATUTORY_PAY_FREQUENCY', message: 'No existe frecuencia de pago congelada para el cálculo estatutario' });
         return;
@@ -972,18 +1048,17 @@ async function applyStatutoryForUser(tx: Prisma.TransactionClient, input: {
         companyId: input.companyId, runId: input.runId, userId: input.userId, type: 'INCOME', source: { not: 'STATUTORY' }, reversal: null,
     }, orderBy: { id: 'asc' } });
     const manualComponents = await tx.payrollComponent.findMany({ where: { companyId: input.companyId, runId: input.runId, userId: input.userId, source: 'MANUAL', reversal: null }, orderBy: { id: 'asc' } });
-    const unclassified = manualComponents.filter(component =>
-        component.incomeTaxDeductible === null ||
-        (component.type === 'DEDUCTION' && component.incomeTaxDeductible === true && !input.config.statutory.incomeTax.authorizedDeductionComponentCodes.includes(component.code)) ||
-        (component.type === 'INCOME' && (
-            component.taxable === null || (component.taxable === true && component.incomeTaxTreatment === null) ||
-            (component.taxable === false && component.incomeTaxTreatment !== null) ||
-            component.socialSecurityApplicable === null || component.trainingContributionApplicable === null
-        )),
-    );
+    const unclassified = manualComponents.filter(component => {
+        const concept = paymentConceptDefinition(input.config.statutory, component.code);
+        const flags = statutoryFlags(component.code, input.config);
+        return !concept || component.type !== concept.type || component.taxable !== flags.taxable ||
+            component.incomeTaxTreatment !== flags.incomeTaxTreatment || component.incomeTaxDeductible !== flags.incomeTaxDeductible ||
+            component.socialSecurityApplicable !== flags.socialSecurityApplicable ||
+            component.trainingContributionApplicable !== flags.trainingContributionApplicable;
+    });
     if (unclassified.length) await addAnomaly(tx, {
         companyId: input.companyId, runId: input.runId, employeeId: input.employeeId, userId: input.userId,
-        code: 'UNCLASSIFIED_MANUAL_INCOME', message: `Los componentes manuales ${unclassified.map(item => item.id).join(', ')} no declaran su tratamiento INSS, INATEC e IR`,
+        code: 'UNCLASSIFIED_MANUAL_INCOME', message: `Los componentes manuales ${unclassified.map(item => item.id).join(', ')} no coinciden con el catálogo de pagos congelado`,
     });
     const sum = (predicate: (component: typeof incomeComponents[number]) => boolean) => money(incomeComponents.filter(predicate).reduce((total, component) => total.plus(component.amount), new Prisma.Decimal(0)));
     const currentInssBase = sum(component => component.socialSecurityApplicable === true);
@@ -1002,6 +1077,9 @@ async function applyStatutoryForUser(tx: Prisma.TransactionClient, input: {
         code: 'INCOMPLETE_PRIOR_STATUTORY_HISTORY',
         message: `Las planillas pagadas ${prior.incompleteRunCodes.join(', ')} no tienen clasificación y traza estatutaria V3 completas; concilie y haga backfill antes de aprobar`,
     });
+    if (prior.priorCompanyTaxRegimes.some(regime => regime !== input.config.statutory.companyTaxRegime.code)) {
+        throw new HrPayrollError('El régimen tributario empresarial cambió dentro del año fiscal; liquide y documente el cambio antes de continuar', 409, 'HR_PAYROLL_COMPANY_TAX_REGIME_CHANGED');
+    }
     const annualPeriods = input.config.statutory.incomeTax.annualPeriods[input.snapshot.payFrequency as StatutoryPayFrequency];
     if (prior.priorPayFrequencies.some(value => value !== input.snapshot.payFrequency) || prior.priorAnnualPeriods.some(value => value !== annualPeriods)) {
         throw new HrPayrollError(
@@ -1258,17 +1336,20 @@ async function calculate(tx: Prisma.TransactionClient, companyId: number, runId:
         const ordinaryFlags = kind === 'REGULAR' ? statutoryFlags(ordinaryCode, config) : { taxable: false, incomeTaxTreatment: null, incomeTaxDeductible: false, socialSecurityApplicable: false, trainingContributionApplicable: false };
         const overtimeFlags = statutoryFlags('HORAS_EXTRA_APROBADAS', config);
         const paidLeaveFlags = statutoryFlags('PERMISO_PAGADO_APROBADO', config);
-        if (kind === 'REGULAR') for (const [code, amount, flags] of [
-            [ordinaryCode, ordinary, ordinaryFlags],
-            ['HORAS_EXTRA_APROBADAS', overtime, overtimeFlags],
-            ['PERMISO_PAGADO_APROBADO', paidLeave, paidLeaveFlags],
-        ] as const) if (amount.greaterThan(0) && config.statutory.incomeTax.applicability === 'APPLIES' && flags.incomeTaxTreatment === null) await addAnomaly(tx, {
+        const ordinaryName = kind === 'AGUINALDO' ? 'Aguinaldo histórico parametrizado' : paymentConceptDefinition(config.statutory, ordinaryCode)?.name ?? ordinaryCode;
+        const overtimeName = paymentConceptDefinition(config.statutory, 'HORAS_EXTRA_APROBADAS')?.name ?? 'HORAS_EXTRA_APROBADAS';
+        const paidLeaveName = paymentConceptDefinition(config.statutory, 'PERMISO_PAGADO_APROBADO')?.name ?? 'PERMISO_PAGADO_APROBADO';
+        if (kind === 'REGULAR') for (const [code, amount] of [
+            [ordinaryCode, ordinary],
+            ['HORAS_EXTRA_APROBADAS', overtime],
+            ['PERMISO_PAGADO_APROBADO', paidLeave],
+        ] as const) if (amount.greaterThan(0) && !paymentConceptDefinition(config.statutory, code)) await addAnomaly(tx, {
             companyId, runId, employeeId: employee.id, userId: employee.userId,
-            code: 'UNCLASSIFIED_AUTOMATIC_INCOME', message: `El concepto automático ${code} no está clasificado como fijo, variable u ocasional en la regla V3`,
+            code: 'UNCONFIGURED_PAYMENT_CONCEPT', message: `El concepto automático ${code} no existe en el catálogo de pagos V4 congelado`,
         });
-        if (ordinary.greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: ordinaryCode, name: kind === 'AGUINALDO' ? 'Aguinaldo histórico parametrizado' : 'Ingreso ordinario segmentado', type: 'INCOME', source: 'RULE', amount: money(ordinary), ...ordinaryFlags, traceReference: `snapshot:user:${employee.userId};config:${configurationRevision.id}` } });
-        if (overtime.greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: 'HORAS_EXTRA_APROBADAS', name: 'Horas extra aprobadas', type: 'INCOME', source: 'OVERTIME', amount: money(overtime), ...overtimeFlags, traceReference: `snapshot:user:${employee.userId}` } });
-        if (paidLeave.greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: 'PERMISO_PAGADO_APROBADO', name: 'Permiso pagado aprobado', type: 'INCOME', source: 'LEAVE', amount: money(paidLeave), ...paidLeaveFlags, traceReference: `snapshot:user:${employee.userId}` } });
+        if (ordinary.greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: ordinaryCode, name: ordinaryName, type: 'INCOME', source: 'RULE', amount: money(ordinary), ...ordinaryFlags, traceReference: `snapshot:user:${employee.userId};config:${configurationRevision.id}` } });
+        if (overtime.greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: 'HORAS_EXTRA_APROBADAS', name: overtimeName, type: 'INCOME', source: 'OVERTIME', amount: money(overtime), ...overtimeFlags, traceReference: `snapshot:user:${employee.userId}` } });
+        if (paidLeave.greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: 'PERMISO_PAGADO_APROBADO', name: paidLeaveName, type: 'INCOME', source: 'LEAVE', amount: money(paidLeave), ...paidLeaveFlags, traceReference: `snapshot:user:${employee.userId}` } });
         if (kind === 'REGULAR') await projectBenefitDeductions(tx, { companyId, runId, userId: employee.userId, currency: config.currency, cutoff });
     }
     let employerContributions = new Prisma.Decimal(0);
@@ -1286,7 +1367,7 @@ async function calculate(tx: Prisma.TransactionClient, companyId: number, runId:
                 companyId, runId, employeeId: employee.id, userId: employee.userId, code: 'MISSING_INSS_NUMBER',
                 message: 'El colaborador no tiene número INSS para una obligación configurada como aplicable',
             });
-            if (config.statutory.incomeTax.applicability === 'APPLIES' && !employee.taxId?.trim() && !employee.documentNumber?.trim()) await addAnomaly(tx, {
+            if (effectiveIncomeTaxApplicability(config.statutory) === 'APPLIES' && !employee.taxId?.trim() && !employee.documentNumber?.trim()) await addAnomaly(tx, {
                 companyId, runId, employeeId: employee.id, userId: employee.userId, code: 'MISSING_TAX_IDENTIFICATION',
                 message: 'El colaborador no tiene RUC ni identificación para la planilla de rentas del trabajo',
             });
@@ -1402,6 +1483,9 @@ async function revalidateFrozenSources(tx: Prisma.TransactionClient, companyId: 
             }
             const snapshot = run.snapshots.find(item => item.userId === calculation.userId);
             if (!snapshot || !['WEEKLY', 'BIWEEKLY', 'MONTHLY'].includes(String(snapshot.payFrequency))) throw new HrPayrollError('La frecuencia congelada del cálculo estatutario no está disponible', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
+            if (prior.priorCompanyTaxRegimes.some(regime => regime !== frozenConfig.statutory.companyTaxRegime.code)) {
+                throw new HrPayrollError('El régimen tributario empresarial cambió dentro del año fiscal', 409, 'HR_PAYROLL_COMPANY_TAX_REGIME_CHANGED');
+            }
             const annualPeriods = frozenConfig.statutory.incomeTax.annualPeriods[snapshot.payFrequency as StatutoryPayFrequency];
             if (prior.priorPayFrequencies.some(value => value !== snapshot.payFrequency) || prior.priorAnnualPeriods.some(value => value !== annualPeriods)) {
                 throw new HrPayrollError('La frecuencia fiscal cambió dentro del año; la corrida no es reproducible', 409, 'HR_PAYROLL_FISCAL_FREQUENCY_CHANGED');
@@ -1409,15 +1493,19 @@ async function revalidateFrozenSources(tx: Prisma.TransactionClient, companyId: 
             const currentIncome = await tx.payrollComponent.findMany({ where: { companyId, runId, userId: calculation.userId, type: 'INCOME', source: { not: 'STATUTORY' }, reversal: null } });
             const currentTaxDeductions = await tx.payrollComponent.findMany({ where: { companyId, runId, userId: calculation.userId, type: 'DEDUCTION', source: { not: 'STATUTORY' }, incomeTaxDeductible: true, reversal: null } });
             if (currentIncome.some(component => {
-                const treatment = incomeTaxTreatmentForCode(component.code, frozenConfig);
-                const socialSecurity = frozenConfig.statutory.inss.applicability === 'APPLIES' && frozenConfig.statutory.inss.contributionComponentCodes.includes(component.code);
-                const training = frozenConfig.statutory.inatec.applicability === 'APPLIES' && frozenConfig.statutory.inatec.contributionComponentCodes.includes(component.code);
-                return component.taxable !== Boolean(treatment) || component.incomeTaxTreatment !== treatment ||
-                    component.socialSecurityApplicable !== socialSecurity || component.trainingContributionApplicable !== training;
+                const concept = paymentConceptDefinition(frozenConfig.statutory, component.code);
+                const flags = statutoryFlags(component.code, frozenConfig);
+                return !concept || concept.type !== 'INCOME' || component.taxable !== flags.taxable ||
+                    component.incomeTaxTreatment !== flags.incomeTaxTreatment ||
+                    component.socialSecurityApplicable !== flags.socialSecurityApplicable ||
+                    component.trainingContributionApplicable !== flags.trainingContributionApplicable;
             })) {
                 throw new HrPayrollError('La clasificación de un ingreso no coincide con los catálogos legales congelados', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
             }
-            if (currentTaxDeductions.some(component => !frozenConfig.statutory.incomeTax.authorizedDeductionComponentCodes.includes(component.code))) {
+            if (currentTaxDeductions.some(component => {
+                const concept = paymentConceptDefinition(frozenConfig.statutory, component.code);
+                return !concept || concept.type !== 'DEDUCTION' || !concept.incomeTaxDeductible;
+            })) {
                 throw new HrPayrollError('Una deducción de IR ya no pertenece al catálogo legal congelado', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
             }
             const sumIncome = (predicate: (component: typeof currentIncome[number]) => boolean) => money(currentIncome.filter(predicate).reduce((sum, component) => sum.plus(component.amount), new Prisma.Decimal(0)));
@@ -1902,33 +1990,35 @@ export class PayrollRunService {
             if (type === 'INCOME' && ((payload.taxable === true && !incomeTaxTreatment) || (payload.taxable === false && payload.incomeTaxTreatment))) {
                 throw new HrPayrollError('Un ingreso gravable exige tratamiento fijo, variable u ocasional; uno exento no debe tener tratamiento', 409, 'HR_PAYROLL_INCOME_TAX_TREATMENT_REQUIRED');
             }
-            if (type === 'INCOME') {
-                const configuredIncomeTaxTreatment = incomeTaxTreatmentForCode(code, legalConfig);
-                const configuredSocialSecurity = legalConfig.statutory.inss.applicability === 'APPLIES' && legalConfig.statutory.inss.contributionComponentCodes.includes(code);
-                const configuredTrainingContribution = legalConfig.statutory.inatec.applicability === 'APPLIES' && legalConfig.statutory.inatec.contributionComponentCodes.includes(code);
-                if (Boolean(payload.taxable) !== Boolean(configuredIncomeTaxTreatment) || incomeTaxTreatment !== configuredIncomeTaxTreatment ||
-                    payload.socialSecurityApplicable !== configuredSocialSecurity || payload.trainingContributionApplicable !== configuredTrainingContribution) {
-                    throw new HrPayrollError('La clasificación manual no coincide con los catálogos de la configuración legal congelada', 409, 'HR_PAYROLL_COMPONENT_CLASSIFICATION_MISMATCH');
-                }
+            const configuredConcept = paymentConceptDefinition(legalConfig.statutory, code);
+            if (!configuredConcept) {
+                throw new HrPayrollError('El concepto no existe en el catálogo de pagos de la configuración legal congelada', 409, 'HR_PAYROLL_PAYMENT_CONCEPT_NOT_CONFIGURED');
+            }
+            const configuredFlags = statutoryFlags(code, legalConfig);
+            if (configuredConcept.type !== type || Boolean(payload.taxable) !== configuredFlags.taxable ||
+                incomeTaxTreatment !== configuredFlags.incomeTaxTreatment || payload.incomeTaxDeductible !== configuredFlags.incomeTaxDeductible ||
+                payload.socialSecurityApplicable !== configuredFlags.socialSecurityApplicable ||
+                payload.trainingContributionApplicable !== configuredFlags.trainingContributionApplicable) {
+                throw new HrPayrollError('La clasificación manual no coincide con el catálogo de pagos de la configuración legal congelada', 409, 'HR_PAYROLL_COMPONENT_CLASSIFICATION_MISMATCH');
             }
             if (kind === 'AGUINALDO' && payload.taxable === true) {
                 throw new HrPayrollError('El exceso gravable no se agrega a una corrida de aguinaldo; regístrelo en una corrida regular con tratamiento explícito', 409, 'HR_PAYROLL_AGUINALDO_TAXABLE_MANUAL_FORBIDDEN');
             }
-            if (payload.incomeTaxDeductible === true && (kind !== 'REGULAR' || !legalConfig.statutory.incomeTax.authorizedDeductionComponentCodes.includes(code))) {
+            if (payload.incomeTaxDeductible === true && (kind !== 'REGULAR' || configuredConcept.type !== 'DEDUCTION' || !configuredConcept.incomeTaxDeductible)) {
                 throw new HrPayrollError('La deducción no está autorizada por la configuración legal congelada de IR', 409, 'HR_PAYROLL_INCOME_TAX_DEDUCTION_NOT_AUTHORIZED');
             }
             const reference = type === 'DEDUCTION' && payload.incomeTaxDeductible
                 ? requiredText(payload.reference, 'reference', 500)
                 : optionalText(payload.reference, 500);
             const component = await tx.payrollComponent.create({ data: {
-                companyId, runId, userId, code, name: code,
+                companyId, runId, userId, code, name: configuredConcept.name,
                 type, source: 'MANUAL', amount,
                 taxable: type === 'INCOME' ? payload.taxable as boolean : false,
                 incomeTaxTreatment,
                 incomeTaxDeductible: type === 'DEDUCTION' ? payload.incomeTaxDeductible as boolean : false,
                 socialSecurityApplicable: type === 'INCOME' ? payload.socialSecurityApplicable as boolean : false,
                 trainingContributionApplicable: type === 'INCOME' ? payload.trainingContributionApplicable as boolean : false,
-                reason: requiredText(payload.reason, 'reason'), traceReference: reference, createdById: actorId,
+                reason: requiredText(payload.reason, 'reason'), traceReference: reference ?? configuredConcept.sourceReference, createdById: actorId,
             } });
             const revision = run.revision + 1;
             let employerContributions = run.employerContributions;

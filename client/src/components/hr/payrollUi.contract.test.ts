@@ -7,6 +7,8 @@ const mine = read('../../pages/hr/MyPayroll.tsx');
 const transition = read('./PayrollTransitionForm.tsx');
 const configuration = read('./PayrollRuleConfigurationPanel.tsx');
 const componentForm = read('./PayrollComponentForm.tsx');
+const conceptCatalog = read('./PayrollPaymentConceptCatalogEditor.tsx');
+const conceptDefaults = read('./payrollPaymentConceptDefaults.ts');
 const receipt = read('./PayrollReceiptBreakdown.tsx');
 const onlineNotice = read('./PayrollOnlineNotice.tsx');
 const reconciliation = read('./PayrollReconciliationPanel.tsx');
@@ -39,14 +41,16 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(management).toContain('getRuleConfigurations');
     expect(management).toContain('uploadRuleConfiguration');
     expect(management).toContain('reviewRuleConfiguration');
-    expect(configuration).toContain("schema: 'HR_PAYROLL_PARAMETRIC_V3'");
+    expect(configuration).toContain("schema: 'HR_PAYROLL_PARAMETRIC_V4'");
     expect(configuration).toContain('SIMPLIFIED_FIXED_QUOTA');
-    expect(configuration).toContain('no desactiva automáticamente el IR');
+    expect(configuration).toContain("setRegimeIncomeTaxApplicability('DOES_NOT_APPLY')");
+    expect(configuration).toContain('paymentConceptCatalog');
+    expect(conceptDefaults).toContain('VIATICOS_ALIMENTACION');
+    expect(conceptDefaults).toContain('REEMBOLSO_DEPRECIACION');
+    expect(conceptDefaults).toContain('incomeTaxTreatment: null');
+    expect(conceptDefaults).toContain('socialSecurityApplicable: false');
+    expect(conceptCatalog).toContain('El cálculo usa estas banderas congeladas');
     expect(configuration).toContain('Tabla progresiva anual');
-    expect(configuration).toContain('Conceptos ordinarios fijos');
-    expect(configuration).toContain('Conceptos ordinarios variables');
-    expect(configuration).toContain('Conceptos ocasionales');
-    expect(configuration).toContain('Deducciones autorizadas para renta neta');
     expect(configuration).toContain("occasionalInssDeductionTreatment: 'DEDUCT_FROM_OCCASIONAL_NET'");
     expect(configuration).not.toContain('DEDUCT_FROM_REGULAR_NET');
     expect(configuration).toContain('se deduce exclusivamente de la renta neta ocasional');
@@ -103,9 +107,10 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
 
   it('requires a fresh legal classification confirmation when manual classification changes', () => {
     expect(componentForm).toContain('classificationConfirmed: true');
-    expect(componentForm).toContain('if (!classificationConfirmed) return');
+    expect(componentForm).toContain('if (!classificationConfirmed || !selectedConcept) return');
     expect(componentForm).toMatch(/setCode\(event\.target\.value\);\s*setClassificationConfirmed\(false\);/);
-    expect(componentForm).toMatch(/setIncomeTaxDeductible\(event\.target\.checked\);\s*setClassificationConfirmed\(false\);/);
+    expect(componentForm).toContain('selectedConcept.socialSecurityApplicable');
+    expect(componentForm).toContain('las banderas no pueden modificarse');
     expect(componentForm).toContain('!classificationConfirmed');
   });
 

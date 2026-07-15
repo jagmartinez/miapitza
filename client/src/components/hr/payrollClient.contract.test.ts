@@ -89,7 +89,8 @@ describe('Phase 5 payroll API contract', () => {
     expect(source).toContain('getRuleConfigurations');
     expect(source).toContain('uploadRuleConfiguration');
     expect(source).toContain('reviewRuleConfiguration');
-    expect(types).toContain("schema: 'HR_PAYROLL_PARAMETRIC_V3'");
+    expect(types).toContain("schema: 'HR_PAYROLL_PARAMETRIC_V4'");
+    expect(types).toContain('paymentConceptCatalog: HrPayrollPaymentConceptDefinition[]');
     expect(types).toContain("incomeTaxTreatment?: 'REGULAR_FIXED' | 'REGULAR_VARIABLE' | 'OCCASIONAL'");
     expect(types).toContain("occasional: 'OCCASIONAL_INCREMENTAL'");
     expect(types).toContain("occasionalInssDeductionTreatment: 'DEDUCT_FROM_OCCASIONAL_NET'");

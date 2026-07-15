@@ -111,7 +111,7 @@ describe('HR payroll Art. 19 transactional lifecycle (integration)', () => {
         periodId = payrollPeriod.id;
 
         const configuration = {
-            schema: 'HR_PAYROLL_PARAMETRIC_V3', legallyValidated: true, currency: 'NIO',
+            schema: 'HR_PAYROLL_PARAMETRIC_V4', legallyValidated: true, currency: 'NIO',
             regular: {
                 minuteDivisors: { WEEKLY: '2400', BIWEEKLY: '4800', MONTHLY: '9600' },
                 overtimeMultiplier: '2', paidLeaveUnitMinutes: { DAYS: '480', HOURS: '60', MINUTES: '1' },
@@ -121,21 +121,19 @@ describe('HR payroll Art. 19 transactional lifecycle (integration)', () => {
                 prorationMode: 'NONE', eligibleSources: ['RULE'], roundingScale: 2,
             },
             statutory: {
-                companyTaxRegime: { code: 'GENERAL', sourceReference: 'Ley 822' },
+                companyTaxRegime: { code: 'GENERAL', sourceReference: 'Ley 822', incomeTaxApplicability: 'APPLIES' },
                 inss: {
                     applicability: 'APPLIES', sourceReference: 'INSS 2026', regime: 'INTEGRAL',
                     employeeRate: '0.07', employerRateBelowThreshold: '0.215', employerRateAtOrAboveThreshold: '0.225',
                     employerSizeThreshold: 50, minimumMonthlyContributionBase: '10000', minimumBaseProration: 'PER_PAY_PERIOD_SERVICE_RATIO',
                     annualPeriods: { WEEKLY: 52, BIWEEKLY: 24, MONTHLY: 12 },
-                    contributionComponentCodes: ['INGRESO_ORDINARIO_FIJO', 'INGRESO_ORDINARIO_VARIABLE', 'HORAS_EXTRA_APROBADAS', 'BONO_OCASIONAL'],
                 },
                 inatec: {
                     applicability: 'APPLIES', sourceReference: 'INATEC 2%', employerRate: '0.02',
-                    contributionComponentCodes: ['INGRESO_ORDINARIO_FIJO', 'INGRESO_ORDINARIO_VARIABLE', 'HORAS_EXTRA_APROBADAS', 'BONO_OCASIONAL'],
                 },
                 incomeTax: {
-                    applicability: 'APPLIES', sourceReference: 'Ley 822 art. 23; Decreto 01-2013 art. 19',
-                    regimeIndependenceAcknowledged: true,
+                    sourceReference: 'Ley 822 art. 23; Decreto 01-2013 art. 19',
+                    regimeApplicabilityAcknowledged: true,
                     calculationMethods: {
                         fixed: 'FIXED_PERIOD_PROJECTION', salaryChange: 'FIXED_SALARY_CHANGE',
                         variable: 'VARIABLE_ACCUMULATED', occasional: 'OCCASIONAL_INCREMENTAL',
@@ -143,10 +141,6 @@ describe('HR payroll Art. 19 transactional lifecycle (integration)', () => {
                     inssEmployeeContributionDeductible: true,
                     occasionalInssDeductionTreatment: 'DEDUCT_FROM_OCCASIONAL_NET', adjustmentMode: 'WITHHOLD_OR_REFUND',
                     annualPeriods: { WEEKLY: 52, BIWEEKLY: 24, MONTHLY: 12 },
-                    fixedTaxableComponentCodes: ['INGRESO_ORDINARIO_FIJO', 'PERMISO_PAGADO_APROBADO'],
-                    variableTaxableComponentCodes: ['INGRESO_ORDINARIO_VARIABLE', 'HORAS_EXTRA_APROBADAS'],
-                    occasionalTaxableComponentCodes: ['BONO_OCASIONAL', 'VACACIONES_PAGADAS', 'INCENTIVO_OCASIONAL'],
-                    authorizedDeductionComponentCodes: ['FONDO_PENSION_AUTORIZADO', 'APORTE_AHORRO_AUTORIZADO'],
                     brackets: [
                         { lowerBound: '0', upperBound: '100000', baseTax: '0', rate: '0', excessOver: '0' },
                         { lowerBound: '100000', upperBound: '200000', baseTax: '0', rate: '0.15', excessOver: '100000' },
@@ -155,6 +149,17 @@ describe('HR payroll Art. 19 transactional lifecycle (integration)', () => {
                         { lowerBound: '500000', upperBound: null, baseTax: '82500', rate: '0.30', excessOver: '500000' },
                     ],
                 },
+                paymentConceptCatalog: [
+                    { code: 'INGRESO_ORDINARIO_FIJO', name: 'Ingreso ordinario fijo', type: 'INCOME', socialSecurityApplicable: true, trainingContributionApplicable: true, incomeTaxTreatment: 'REGULAR_FIXED', incomeTaxDeductible: false, sourceReference: 'Regla laboral' },
+                    { code: 'PERMISO_PAGADO_APROBADO', name: 'Permiso pagado', type: 'INCOME', socialSecurityApplicable: true, trainingContributionApplicable: true, incomeTaxTreatment: 'REGULAR_FIXED', incomeTaxDeductible: false, sourceReference: 'Regla laboral' },
+                    { code: 'INGRESO_ORDINARIO_VARIABLE', name: 'Ingreso ordinario variable', type: 'INCOME', socialSecurityApplicable: true, trainingContributionApplicable: true, incomeTaxTreatment: 'REGULAR_VARIABLE', incomeTaxDeductible: false, sourceReference: 'Regla laboral' },
+                    { code: 'HORAS_EXTRA_APROBADAS', name: 'Horas extra', type: 'INCOME', socialSecurityApplicable: true, trainingContributionApplicable: true, incomeTaxTreatment: 'REGULAR_VARIABLE', incomeTaxDeductible: false, sourceReference: 'Regla laboral' },
+                    { code: 'BONO_OCASIONAL', name: 'Bono ocasional', type: 'INCOME', socialSecurityApplicable: true, trainingContributionApplicable: true, incomeTaxTreatment: 'OCCASIONAL', incomeTaxDeductible: false, sourceReference: 'Regla laboral' },
+                    { code: 'VIATICOS', name: 'Viáticos', type: 'INCOME', socialSecurityApplicable: false, trainingContributionApplicable: false, incomeTaxTreatment: null, incomeTaxDeductible: false, sourceReference: 'Política documentada' },
+                    { code: 'REEMBOLSO_DEPRECIACION', name: 'Reembolso depreciación', type: 'INCOME', socialSecurityApplicable: false, trainingContributionApplicable: false, incomeTaxTreatment: null, incomeTaxDeductible: false, sourceReference: 'Política documentada' },
+                    { code: 'FONDO_PENSION_AUTORIZADO', name: 'Fondo autorizado', type: 'DEDUCTION', socialSecurityApplicable: false, trainingContributionApplicable: false, incomeTaxTreatment: null, incomeTaxDeductible: true, sourceReference: 'Deducción autorizada' },
+                    { code: 'APORTE_AHORRO_AUTORIZADO', name: 'Ahorro autorizado', type: 'DEDUCTION', socialSecurityApplicable: false, trainingContributionApplicable: false, incomeTaxTreatment: null, incomeTaxDeductible: true, sourceReference: 'Deducción autorizada' },
+                ],
             },
         };
         const rule = await prisma.payrollRuleVersion.create({ data: {
@@ -293,11 +298,42 @@ describe('HR payroll Art. 19 transactional lifecycle (integration)', () => {
         });
         expect(blockingAnomalies).toEqual([]);
 
+        await expect(PayrollRunService.addComponent(companyId, actorIds[0], runId, 'REGULAR', {
+            userId: employeeUserId, code: 'VIATICOS', type: 'INCOME', inputAmount: '1000',
+            taxable: false, incomeTaxDeductible: false, socialSecurityApplicable: true,
+            trainingContributionApplicable: false, classificationConfirmed: true,
+            reason: 'Intento con clasificación alterada', reference: 'viatico:error',
+        }, `hr-art19-viatico-invalid-${suffix}`)).rejects.toMatchObject({ code: 'HR_PAYROLL_COMPONENT_CLASSIFICATION_MISMATCH' });
+
+        await PayrollRunService.addComponent(companyId, actorIds[0], runId, 'REGULAR', {
+            userId: employeeUserId, code: 'VIATICOS', type: 'INCOME', inputAmount: '1000',
+            taxable: false, incomeTaxDeductible: false, socialSecurityApplicable: false,
+            trainingContributionApplicable: false, classificationConfirmed: true,
+            reason: 'Viático documentado no sujeto', reference: 'viatico:documentado',
+        }, `hr-art19-viatico-${suffix}`);
+        await PayrollRunService.addComponent(companyId, actorIds[0], runId, 'REGULAR', {
+            userId: employeeUserId, code: 'REEMBOLSO_DEPRECIACION', type: 'INCOME', inputAmount: '500',
+            taxable: false, incomeTaxDeductible: false, socialSecurityApplicable: false,
+            trainingContributionApplicable: false, classificationConfirmed: true,
+            reason: 'Reembolso de depreciación documentado', reference: 'depreciacion:documentada',
+        }, `hr-art19-depreciacion-${suffix}`);
+        const excludedConcepts = await prisma.payrollComponent.findMany({
+            where: { runId, userId: employeeUserId, code: { in: ['VIATICOS', 'REEMBOLSO_DEPRECIACION'] } },
+            orderBy: { code: 'asc' },
+        });
+        expect(excludedConcepts).toHaveLength(2);
+        expect(excludedConcepts.every(component => component.socialSecurityApplicable === false && component.taxable === false)).toBe(true);
+        const recalculatedAfterExcludedPayments = await prisma.payrollStatutoryCalculation.findUniqueOrThrow({
+            where: { runId_calculationRevision_userId: { runId, calculationRevision: 3, userId: employeeUserId } },
+        });
+        expect(recalculatedAfterExcludedPayments.employeeInss.toFixed(2)).toBe('1400.00');
+        expect(recalculatedAfterExcludedPayments.currentIncomeTaxWithheld.toFixed(2)).toBe('1636.67');
+
         await PayrollRunService.transition(companyId, actorIds[0], runId, 'REGULAR', 'submit-review', {
-            expectedRevision: 1, confirmed: true, reason: 'Enviar a revisión',
+            expectedRevision: 3, confirmed: true, reason: 'Enviar a revisión',
         }, `hr-art19-review-${suffix}`);
         await PayrollRunService.transition(companyId, actorIds[1], runId, 'REGULAR', 'approve', {
-            expectedRevision: 2, confirmed: true, reason: 'Aprobar control dual',
+            expectedRevision: 4, confirmed: true, reason: 'Aprobar control dual',
         }, `hr-art19-approve-${suffix}`);
         const unresolvedEarlierPeriod = await prisma.payrollPeriod.create({ data: {
             companyId, code: `DIC-2025-PENDIENTE-${suffix}`, dateFrom: utc('2025-12-01'), dateTo: utc('2025-12-31'),
@@ -309,7 +345,7 @@ describe('HR payroll Art. 19 transactional lifecycle (integration)', () => {
             ruleVersionId: ruleId, revision: 0, lastReason: 'Vector DRAFT anterior sin universo congelado', createdById: actorIds[0],
         } });
         await expect(PayrollRunService.transition(companyId, actorIds[2], runId, 'REGULAR', 'pay', {
-            expectedRevision: 3, confirmed: true, reason: 'Intento con DRAFT anterior sin snapshot',
+            expectedRevision: 5, confirmed: true, reason: 'Intento con DRAFT anterior sin snapshot',
             paymentReference: `PAY-DRAFT-ORDER-${suffix}`, paymentDate: '2026-01-31', paymentMethod: 'TRANSFER',
             evidenceReference: `bank-draft-order:${suffix}`,
         }, `hr-art19-pay-draft-order-${suffix}`)).rejects.toMatchObject({ code: 'HR_PAYROLL_PAYMENT_ORDER_INVALID' });
@@ -333,7 +369,7 @@ describe('HR payroll Art. 19 transactional lifecycle (integration)', () => {
             summaryRevisions: [], contractSegments: [], compensationSegments: [], aguinaldoIncomeSegments: [],
         } });
         await expect(PayrollRunService.transition(companyId, actorIds[2], runId, 'REGULAR', 'pay', {
-            expectedRevision: 3, confirmed: true, reason: 'Intento fuera de orden',
+            expectedRevision: 5, confirmed: true, reason: 'Intento fuera de orden',
             paymentReference: `PAY-ORDER-${suffix}`, paymentDate: '2026-01-31', paymentMethod: 'TRANSFER',
             evidenceReference: `bank-order:${suffix}`,
         }, `hr-art19-pay-order-${suffix}`)).rejects.toMatchObject({ code: 'HR_PAYROLL_PAYMENT_ORDER_INVALID' });
@@ -342,19 +378,19 @@ describe('HR payroll Art. 19 transactional lifecycle (integration)', () => {
         await prisma.payrollPeriod.delete({ where: { id: laterPeriod.id } });
 
         await expect(PayrollRunService.transition(companyId, actorIds[2], runId, 'REGULAR', 'pay', {
-            expectedRevision: 3, confirmed: true, reason: 'Fecha fiscal incorrecta',
+            expectedRevision: 5, confirmed: true, reason: 'Fecha fiscal incorrecta',
             paymentReference: `PAY-BAD-${suffix}`, paymentDate: '2026-02-01', paymentMethod: 'TRANSFER',
             evidenceReference: `bank-bad:${suffix}`,
         }, `hr-art19-pay-bad-${suffix}`)).rejects.toMatchObject({ code: 'HR_PAYROLL_PAYMENT_DATE_MISMATCH' });
         await PayrollRunService.transition(companyId, actorIds[2], runId, 'REGULAR', 'pay', {
-            expectedRevision: 3, confirmed: true, reason: 'Pagar ciclo validado',
+            expectedRevision: 5, confirmed: true, reason: 'Pagar ciclo validado',
             paymentReference: `PAY-${suffix}`, paymentDate: '2026-01-31', paymentMethod: 'TRANSFER',
             evidenceReference: `bank:${suffix}`,
         }, `hr-art19-pay-${suffix}`);
 
         const paidReceipt = await prisma.payrollReceipt.findUniqueOrThrow({ where: { runId_userId: { runId, userId: employeeUserId } } });
         expect(paidReceipt.status).toBe('PUBLISHED');
-        expect(paidReceipt.netPay.toFixed(2)).toBe('16963.33');
+        expect(paidReceipt.netPay.toFixed(2)).toBe('18463.33');
 
         const febAttendance = await prisma.attendancePeriod.create({ data: {
             companyId, dateFrom: utc('2026-02-01'), dateTo: utc('2026-02-28'), timezone: 'America/Managua',
@@ -400,7 +436,7 @@ describe('HR payroll Art. 19 transactional lifecycle (integration)', () => {
         expect(await prisma.payrollAnomaly.count({ where: { runId: febRun.id, blocking: true, resolvedAt: null } })).toBe(0);
 
         await expect(PayrollRunService.transition(companyId, actorIds[3], runId, 'REGULAR', 'void', {
-            expectedRevision: 4, confirmed: true, reason: 'Intento de anular fuente con febrero activo',
+            expectedRevision: 6, confirmed: true, reason: 'Intento de anular fuente con febrero activo',
             reversalReference: `VOID-BLOCK-${suffix}`, reversalDate: '2026-02-01', reversalMethod: 'BANK_REVERSAL',
             evidenceReference: `bank-block:${suffix}`,
         }, `hr-art19-void-block-${suffix}`)).rejects.toMatchObject({ code: 'HR_PAYROLL_STATUTORY_SOURCE_IN_USE' });
@@ -409,7 +445,7 @@ describe('HR payroll Art. 19 transactional lifecycle (integration)', () => {
         }, `hr-art19-feb-void-${suffix}`);
 
         await PayrollRunService.transition(companyId, actorIds[3], runId, 'REGULAR', 'void', {
-            expectedRevision: 4, confirmed: true, reason: 'Reverso integral de control',
+            expectedRevision: 6, confirmed: true, reason: 'Reverso integral de control',
             reversalReference: `VOID-${suffix}`, reversalDate: '2026-02-01', reversalMethod: 'BANK_REVERSAL',
             evidenceReference: `bank-reversal:${suffix}`,
         }, `hr-art19-void-${suffix}`);
@@ -422,7 +458,7 @@ describe('HR payroll Art. 19 transactional lifecycle (integration)', () => {
         ]);
         expect(voidedRun.status).toBe('VOID');
         expect(voidedReceipt.status).toBe('VOID');
-        expect(reversals.length).toBeGreaterThanOrEqual(3);
+        expect(reversals.length).toBeGreaterThanOrEqual(5);
         const csv = exportResult.buffer.toString('utf8');
         expect(csv).toContain('statutoryMethodVersion');
         expect(csv).toContain('ART19_V3');

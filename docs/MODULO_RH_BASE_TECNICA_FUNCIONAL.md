@@ -224,7 +224,7 @@ El modo kiosco queda detrás de `HR_ATTENDANCE_KIOSK_ENABLED=false` hasta implem
 
 `PayrollRuleVersion` mantiene vigencia y metadatos. La configuración técnica vive en `PayrollRuleConfigurationRevision`, se hashea y no se devuelve como JSON en listados. Otro actor registra `PayrollRuleConfigurationReview` con `VALIDATED` o `REJECTED`.
 
-El esquema aceptado para nuevas corridas es `HR_PAYROLL_PARAMETRIC_V3`. Las configuraciones V1/V2 históricas pueden consultarse, pero fallan cerradas al intentar calcular una corrida nueva. V3 incluye:
+El esquema aceptado para cargas y activaciones nuevas es `HR_PAYROLL_PARAMETRIC_V4`; el motor de cálculo sigue versionado como `ART19_V3`. Las configuraciones V3 congeladas se normalizan sólo para lectura y contraflujos históricos. V4 incluye:
 
 - moneda ISO;
 - divisores por frecuencia `WEEKLY/BIWEEKLY/MONTHLY`;
@@ -232,14 +232,15 @@ El esquema aceptado para nuevas corridas es `HR_PAYROLL_PARAMETRIC_V3`. Las conf
 - conversión de unidades de permiso;
 - FX por moneda con tasa, versión y fuente;
 - método de aguinaldo histórico, lookback, divisor, prorrateo y fuentes elegibles.
-- régimen tributario empresarial efectivo y documentado, separado de las obligaciones laborales;
+- régimen tributario empresarial efectivo y documentado, con aplicabilidad de IR laboral congelada por régimen;
 - aplicabilidad, fuente y excepción documentada para INSS, INATEC e IR laboral;
 - régimen y tasas INSS laboral/patronal, umbral patronal y base mínima sectorial;
-- tasa INATEC y conceptos base;
-- tabla progresiva IR editable, períodos anuales, conceptos fijos, variables y ocasionales disjuntos, deducciones autorizadas y ajuste por sobre-retención;
+- tasa INATEC;
+- catálogo único de conceptos con tipo, nombre, INSS, INATEC, tratamiento IR, deducción autorizada y fuente;
+- tabla progresiva IR editable, períodos anuales y ajuste por sobre-retención;
 - métodos separados para salario fijo, cambio salarial, promedio mensual acumulado e incremento ocasional conforme al artículo 19.
 
-No hay tasas legales hardcodeadas en el cálculo. La UI propone una plantilla para transcripción, pero el servidor usa exclusivamente la revisión validada y congelada. Las revisiones son append-only; una modificación material exige una nueva versión `DRAFT`, otra carga y un nuevo dictamen independiente. La especificación vigente está en [RH_IR_ART19_V3_20260715.md](./RH_IR_ART19_V3_20260715.md); [RH_NOMINA_ESTATUTARIA_V2_20260715.md](./RH_NOMINA_ESTATUTARIA_V2_20260715.md) se conserva sólo como antecedente histórico.
+No hay tasas legales hardcodeadas en el cálculo. La UI propone una plantilla para transcripción, pero el servidor usa exclusivamente la revisión validada y congelada. Las revisiones son append-only; una modificación material exige una nueva versión `DRAFT`, otra carga y un nuevo dictamen independiente. La fórmula vigente está en [RH_IR_ART19_V3_20260715.md](./RH_IR_ART19_V3_20260715.md) y el régimen/catálogo V4 en [RH_REGIMEN_CATALOGO_PAGOS_V4_20260715.md](./RH_REGIMEN_CATALOGO_PAGOS_V4_20260715.md); [RH_NOMINA_ESTATUTARIA_V2_20260715.md](./RH_NOMINA_ESTATUTARIA_V2_20260715.md) se conserva sólo como antecedente histórico.
 
 ### Corrida regular
 
@@ -253,7 +254,7 @@ Estados:
 - `PayrollSnapshotLine` y `PayrollAttendanceDependency` congelan fuentes/revisiones.
 - `PayrollCoverageClaim` impide pagar dos veces a la misma persona por un rango superpuesto; `VOID` libera mediante `PayrollCoverageRelease` trazable.
 - Componentes manuales sólo se agregan en `CALCULATED`, para una persona existente en el snapshot y antes de revisión. La UI y el servicio comparten ese estado y reutilizan una misma clave idempotente ante un resultado de red ambiguo.
-- Todo componente manual declara expresamente si integra INSS, INATEC, renta gravable o deducción autorizada de IR; al guardarlo se recalculan obligaciones y totales.
+- Todo componente manual se selecciona del catálogo congelado; la UI no permite alterar sus banderas INSS/INATEC/IR y el servidor rechaza cualquier discrepancia antes de recalcular obligaciones y totales.
 - `PayrollStatutoryCalculation` conserva la base, histórico, proyección, tramo y ajuste de cada persona por revisión. `PayrollEmployerContribution` separa costo patronal del neto del colaborador.
 - Anomalías `BLOCKING` impiden review/approve/pay.
 

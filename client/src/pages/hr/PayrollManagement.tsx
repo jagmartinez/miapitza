@@ -40,6 +40,7 @@ import type {
   HrPayrollConfigurationReviewPayload,
   HrPayrollConfigurationUploadPayload,
   HrPayrollPeriod,
+  HrPayrollPaymentConceptDefinition,
   HrPayrollPeriodPayload,
   HrPayrollRulePayload,
   HrPayrollRuleConfigurationRevision,
@@ -111,6 +112,8 @@ export default function PayrollManagement() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState<HrPayrollRunDetail | null>(null);
+  const [selectedPaymentConcepts, setSelectedPaymentConcepts] = useState<HrPayrollPaymentConceptDefinition[]>([]);
+  const [selectedIncomeTaxApplicability, setSelectedIncomeTaxApplicability] = useState<'APPLIES' | 'DOES_NOT_APPLY' | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [createPanel, setCreatePanel] = useState<CreatePanel>(null);
   const componentOperationKey = useRef<string | null>(null);
@@ -164,7 +167,15 @@ export default function PayrollManagement() {
   const openWorkspace = async (run: HrPayrollRun) => {
     setWorkspaceLoading(true);
     try {
-      setSelected(await payrollClient.getRunWorkspace(run.kind, run.id));
+      const [workspace, revisions] = await Promise.all([
+        payrollClient.getRunWorkspace(run.kind, run.id),
+        payrollClient.getRuleConfigurations(run.ruleVersionId),
+      ]);
+      const configurationRevisionId = workspace.configurationRevisionId ?? workspace.ruleVersion?.activeConfigurationRevisionId;
+      const configuration = revisions.find((revision) => revision.id === configurationRevisionId)?.configuration;
+      setSelected(workspace);
+      setSelectedPaymentConcepts(configuration?.statutory.paymentConceptCatalog ?? []);
+      setSelectedIncomeTaxApplicability(configuration?.statutory.companyTaxRegime.incomeTaxApplicability ?? null);
     } catch (workspaceError) {
       showError(
         getPayrollErrorMessage(workspaceError, 'No fue posible cargar el detalle de la corrida.')
@@ -1020,6 +1031,8 @@ export default function PayrollManagement() {
           {createPanel?.kind === 'component' && selected && (
             <PayrollComponentForm
               users={lookups.users ?? []}
+              concepts={selectedPaymentConcepts}
+              incomeTaxApplicability={selectedIncomeTaxApplicability}
               online={online}
               saving={saving}
               onSubmit={saveComponent}

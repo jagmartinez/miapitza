@@ -5,6 +5,7 @@ export type StatutoryApplicability = 'APPLIES' | 'DOES_NOT_APPLY';
 export type StatutoryPayFrequency = 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY';
 export type IncomeTaxTreatment = 'REGULAR_FIXED' | 'REGULAR_VARIABLE' | 'OCCASIONAL';
 export type IncomeTaxCalculationMethod = 'FIXED_PERIOD_PROJECTION' | 'FIXED_SALARY_CHANGE' | 'VARIABLE_ACCUMULATED';
+export type PayrollPaymentConceptType = 'INCOME' | 'DEDUCTION';
 
 export interface ProgressiveTaxBracket {
     lowerBound: string;
@@ -20,10 +21,23 @@ interface StatutoryObligation {
     exceptionReason?: string;
 }
 
+export interface PayrollPaymentConceptDefinition {
+    code: string;
+    name: string;
+    type: PayrollPaymentConceptType;
+    socialSecurityApplicable: boolean;
+    trainingContributionApplicable: boolean;
+    incomeTaxTreatment: IncomeTaxTreatment | null;
+    incomeTaxDeductible: boolean;
+    sourceReference: string;
+}
+
 export interface PayrollStatutoryConfiguration {
     companyTaxRegime: {
         code: PayrollTaxRegime;
         sourceReference: string;
+        incomeTaxApplicability: StatutoryApplicability;
+        incomeTaxExceptionReason?: string;
     };
     inss: StatutoryObligation & {
         regime: 'INTEGRAL' | 'IVM_RP' | 'FACULTATIVE_INTEGRAL' | 'FACULTATIVE_IVM' | 'OTHER';
@@ -34,14 +48,13 @@ export interface PayrollStatutoryConfiguration {
         minimumMonthlyContributionBase: string;
         minimumBaseProration: 'PER_PAY_PERIOD_SERVICE_RATIO';
         annualPeriods: Record<StatutoryPayFrequency, number>;
-        contributionComponentCodes: string[];
     };
     inatec: StatutoryObligation & {
         employerRate: string;
-        contributionComponentCodes: string[];
     };
-    incomeTax: StatutoryObligation & {
-        regimeIndependenceAcknowledged: true;
+    incomeTax: {
+        sourceReference: string;
+        regimeApplicabilityAcknowledged: true;
         calculationMethods: {
             fixed: 'FIXED_PERIOD_PROJECTION';
             salaryChange: 'FIXED_SALARY_CHANGE';
@@ -52,12 +65,9 @@ export interface PayrollStatutoryConfiguration {
         occasionalInssDeductionTreatment: 'DEDUCT_FROM_OCCASIONAL_NET';
         adjustmentMode: 'WITHHOLD_OR_REFUND';
         annualPeriods: Record<StatutoryPayFrequency, number>;
-        fixedTaxableComponentCodes: string[];
-        variableTaxableComponentCodes: string[];
-        occasionalTaxableComponentCodes: string[];
-        authorizedDeductionComponentCodes: string[];
         brackets: ProgressiveTaxBracket[];
     };
+    paymentConceptCatalog: PayrollPaymentConceptDefinition[];
 }
 
 export interface StatutoryCalculationInput {
@@ -146,17 +156,41 @@ function isNonNegativeDecimal(value: unknown): value is string {
     return typeof value === 'string' && decimalPattern.test(value) && decimal(value).greaterThanOrEqualTo(0);
 }
 
-function validCodes(value: unknown): value is string[] {
-    return Array.isArray(value) && value.length > 0 && value.every(code => typeof code === 'string' && /^[A-Z0-9_]{2,64}$/.test(code));
-}
-
-function validOptionalCodes(value: unknown): value is string[] {
-    return Array.isArray(value) && value.every(code => typeof code === 'string' && /^[A-Z0-9_]{2,64}$/.test(code));
-}
-
 function validObligation(value: StatutoryObligation | undefined): boolean {
     if (!value || !['APPLIES', 'DOES_NOT_APPLY'].includes(value.applicability) || !value.sourceReference?.trim()) return false;
     return value.applicability === 'APPLIES' || Boolean(value.exceptionReason?.trim() && value.exceptionReason.trim().length >= 3);
+}
+
+function validPaymentConceptCatalog(value: unknown): value is PayrollPaymentConceptDefinition[] {
+    if (!Array.isArray(value) || value.length === 0) return false;
+    const codes = new Set<string>();
+    for (const concept of value as PayrollPaymentConceptDefinition[]) {
+        if (
+            !concept || !/^[A-Z0-9_]{2,64}$/.test(String(concept.code)) || codes.has(concept.code) ||
+            typeof concept.name !== 'string' || concept.name.trim().length < 2 || concept.name.trim().length > 160 ||
+            !['INCOME', 'DEDUCTION'].includes(concept.type) || typeof concept.socialSecurityApplicable !== 'boolean' ||
+            typeof concept.trainingContributionApplicable !== 'boolean' || typeof concept.incomeTaxDeductible !== 'boolean' ||
+            typeof concept.sourceReference !== 'string' || concept.sourceReference.trim().length < 3 ||
+            !(concept.incomeTaxTreatment === null || ['REGULAR_FIXED', 'REGULAR_VARIABLE', 'OCCASIONAL'].includes(String(concept.incomeTaxTreatment)))
+        ) return false;
+        if (concept.type === 'INCOME' && concept.incomeTaxDeductible) return false;
+        if (concept.type === 'DEDUCTION' && (
+            concept.socialSecurityApplicable || concept.trainingContributionApplicable || concept.incomeTaxTreatment !== null
+        )) return false;
+        codes.add(concept.code);
+    }
+    return true;
+}
+
+export function effectiveIncomeTaxApplicability(config: PayrollStatutoryConfiguration): StatutoryApplicability {
+    return config.companyTaxRegime.incomeTaxApplicability;
+}
+
+export function paymentConceptDefinition(
+    config: PayrollStatutoryConfiguration,
+    code: string,
+): PayrollPaymentConceptDefinition | null {
+    return config.paymentConceptCatalog.find(concept => concept.code === code) ?? null;
 }
 
 export function validateProgressiveTaxBrackets(brackets: ProgressiveTaxBracket[] | undefined): boolean {
@@ -181,7 +215,13 @@ export function validateProgressiveTaxBrackets(brackets: ProgressiveTaxBracket[]
 }
 
 export function validateStatutoryConfiguration(value: PayrollStatutoryConfiguration | undefined): boolean {
-    if (!value || !['GENERAL', 'SIMPLIFIED_FIXED_QUOTA', 'SPECIAL', 'EXEMPT', 'OTHER'].includes(value.companyTaxRegime?.code) || !value.companyTaxRegime?.sourceReference?.trim()) return false;
+    if (
+        !value || !['GENERAL', 'SIMPLIFIED_FIXED_QUOTA', 'SPECIAL', 'EXEMPT', 'OTHER'].includes(value.companyTaxRegime?.code) ||
+        !value.companyTaxRegime?.sourceReference?.trim() ||
+        !['APPLIES', 'DOES_NOT_APPLY'].includes(value.companyTaxRegime?.incomeTaxApplicability) ||
+        (value.companyTaxRegime.incomeTaxApplicability === 'DOES_NOT_APPLY' && !value.companyTaxRegime.incomeTaxExceptionReason?.trim()) ||
+        !validPaymentConceptCatalog(value.paymentConceptCatalog)
+    ) return false;
     const inss = value.inss;
     const inatec = value.inatec;
     const incomeTax = value.incomeTax;
@@ -190,28 +230,21 @@ export function validateStatutoryConfiguration(value: PayrollStatutoryConfigurat
         !isRate(inss.employeeRate) || !isRate(inss.employerRateBelowThreshold) || !isRate(inss.employerRateAtOrAboveThreshold) ||
         !Number.isInteger(inss.employerSizeThreshold) || inss.employerSizeThreshold < 1 ||
         !isNonNegativeDecimal(inss.minimumMonthlyContributionBase) || (inss.applicability === 'APPLIES' && !decimal(inss.minimumMonthlyContributionBase).greaterThan(0)) || inss.minimumBaseProration !== 'PER_PAY_PERIOD_SERVICE_RATIO' ||
-        !(['WEEKLY', 'BIWEEKLY', 'MONTHLY'] as const).every(frequency => Number.isInteger(inss.annualPeriods?.[frequency]) && inss.annualPeriods[frequency] >= 1 && inss.annualPeriods[frequency] <= 366) ||
-        !validCodes(inss.contributionComponentCodes)
+        !(['WEEKLY', 'BIWEEKLY', 'MONTHLY'] as const).every(frequency => Number.isInteger(inss.annualPeriods?.[frequency]) && inss.annualPeriods[frequency] >= 1 && inss.annualPeriods[frequency] <= 366)
     ) return false;
-    if (!validObligation(inatec) || !isRate(inatec.employerRate) || !validCodes(inatec.contributionComponentCodes)) return false;
-    const incomeTaxCodes = [
-        ...(incomeTax?.fixedTaxableComponentCodes ?? []),
-        ...(incomeTax?.variableTaxableComponentCodes ?? []),
-        ...(incomeTax?.occasionalTaxableComponentCodes ?? []),
-    ];
-    const allIncomeTaxCodes = [...incomeTaxCodes, ...(incomeTax?.authorizedDeductionComponentCodes ?? [])];
+    if (!validObligation(inatec) || !isRate(inatec.employerRate)) return false;
     if (
-        !validObligation(incomeTax) || incomeTax.regimeIndependenceAcknowledged !== true ||
+        !incomeTax?.sourceReference?.trim() || incomeTax.regimeApplicabilityAcknowledged !== true ||
         incomeTax.calculationMethods?.fixed !== 'FIXED_PERIOD_PROJECTION' || incomeTax.calculationMethods?.salaryChange !== 'FIXED_SALARY_CHANGE' ||
         incomeTax.calculationMethods?.variable !== 'VARIABLE_ACCUMULATED' || incomeTax.calculationMethods?.occasional !== 'OCCASIONAL_INCREMENTAL' ||
         incomeTax.inssEmployeeContributionDeductible !== true || incomeTax.occasionalInssDeductionTreatment !== 'DEDUCT_FROM_OCCASIONAL_NET' ||
         incomeTax.adjustmentMode !== 'WITHHOLD_OR_REFUND' ||
-        !validOptionalCodes(incomeTax.fixedTaxableComponentCodes) || !validOptionalCodes(incomeTax.variableTaxableComponentCodes) ||
-        !validOptionalCodes(incomeTax.occasionalTaxableComponentCodes) || !validOptionalCodes(incomeTax.authorizedDeductionComponentCodes) ||
-        incomeTaxCodes.length === 0 || new Set(allIncomeTaxCodes).size !== allIncomeTaxCodes.length ||
         !validateProgressiveTaxBrackets(incomeTax.brackets) ||
         !(['WEEKLY', 'BIWEEKLY', 'MONTHLY'] as const).every(frequency => Number.isInteger(incomeTax.annualPeriods?.[frequency]) && incomeTax.annualPeriods[frequency] >= 1 && incomeTax.annualPeriods[frequency] <= 366)
     ) return false;
+    if (inss.applicability === 'APPLIES' && !value.paymentConceptCatalog.some(concept => concept.type === 'INCOME' && concept.socialSecurityApplicable)) return false;
+    if (inatec.applicability === 'APPLIES' && !value.paymentConceptCatalog.some(concept => concept.type === 'INCOME' && concept.trainingContributionApplicable)) return false;
+    if (value.companyTaxRegime.incomeTaxApplicability === 'APPLIES' && !value.paymentConceptCatalog.some(concept => concept.type === 'INCOME' && concept.incomeTaxTreatment !== null)) return false;
     return true;
 }
 
@@ -223,6 +256,7 @@ export function progressiveIncomeTax(annualNetIncome: Prisma.Decimal.Value, brac
 }
 
 export function calculateStatutoryPayroll(config: PayrollStatutoryConfiguration, input: StatutoryCalculationInput): StatutoryCalculationResult {
+    const incomeTaxApplies = effectiveIncomeTaxApplicability(config) === 'APPLIES';
     const annualPeriods = config.incomeTax.annualPeriods[input.payFrequency];
     const elapsedPeriods = Math.min(annualPeriods, input.priorPeriods + 1);
     const elapsedFiscalMonths = input.elapsedFiscalMonths;
@@ -246,10 +280,10 @@ export function calculateStatutoryPayroll(config: PayrollStatutoryConfiguration,
     const employerInss = money(inssBase.times(employerInssRate));
     const inatecBase = config.inatec.applicability === 'APPLIES' ? money(input.inatecContributionBase) : new Prisma.Decimal(0);
     const employerInatec = config.inatec.applicability === 'APPLIES' ? money(inatecBase.times(config.inatec.employerRate)) : new Prisma.Decimal(0);
-    const fixedIncomeTaxGross = config.incomeTax.applicability === 'APPLIES' ? money(input.fixedIncomeTaxGross) : new Prisma.Decimal(0);
-    const variableIncomeTaxGross = config.incomeTax.applicability === 'APPLIES' ? money(input.variableIncomeTaxGross) : new Prisma.Decimal(0);
-    const occasionalIncomeTaxGross = config.incomeTax.applicability === 'APPLIES' ? money(input.occasionalIncomeTaxGross) : new Prisma.Decimal(0);
-    const otherIncomeTaxDeductions = config.incomeTax.applicability === 'APPLIES' ? money(input.otherIncomeTaxDeductions) : new Prisma.Decimal(0);
+    const fixedIncomeTaxGross = incomeTaxApplies ? money(input.fixedIncomeTaxGross) : new Prisma.Decimal(0);
+    const variableIncomeTaxGross = incomeTaxApplies ? money(input.variableIncomeTaxGross) : new Prisma.Decimal(0);
+    const occasionalIncomeTaxGross = incomeTaxApplies ? money(input.occasionalIncomeTaxGross) : new Prisma.Decimal(0);
+    const otherIncomeTaxDeductions = incomeTaxApplies ? money(input.otherIncomeTaxDeductions) : new Prisma.Decimal(0);
     const currentRegularIncomeTaxNet = money(Prisma.Decimal.max(0, fixedIncomeTaxGross.plus(variableIncomeTaxGross).minus(regularEmployeeInss).minus(otherIncomeTaxDeductions)));
     const currentOccasionalIncomeTaxNet = money(Prisma.Decimal.max(0, occasionalIncomeTaxGross.minus(occasionalEmployeeInss)));
     const currentIncomeTaxNet = money(currentRegularIncomeTaxNet.plus(currentOccasionalIncomeTaxNet));
@@ -267,7 +301,7 @@ export function calculateStatutoryPayroll(config: PayrollStatutoryConfiguration,
         fixedGrossIsPartial || regularNetWithoutFixedCompensation ||
         (!fixedCompensationChanged && regularNetChangedWithoutSalaryChange);
     if (
-        config.incomeTax.applicability === 'APPLIES' && hasVariableIncome &&
+        incomeTaxApplies && hasVariableIncome &&
         (!Number.isInteger(elapsedFiscalMonths) || elapsedFiscalMonths < 1 || elapsedFiscalMonths > 12)
     ) {
         throw new Error('elapsedFiscalMonths debe ser un conteo entero de meses fiscales entre uno y doce para el cálculo variable');
@@ -279,7 +313,7 @@ export function calculateStatutoryPayroll(config: PayrollStatutoryConfiguration,
 
     let annualProjection = new Prisma.Decimal(0);
     let regularIncomeTaxAdjustment = new Prisma.Decimal(0);
-    if (config.incomeTax.applicability === 'APPLIES') {
+    if (incomeTaxApplies) {
         if (incomeTaxMethod === 'VARIABLE_ACCUMULATED') {
             annualProjection = money(accumulatedIncomeTaxNet.dividedBy(elapsedFiscalMonths).times(12));
         } else if (incomeTaxMethod === 'FIXED_SALARY_CHANGE') {
@@ -294,13 +328,13 @@ export function calculateStatutoryPayroll(config: PayrollStatutoryConfiguration,
     const priorOccasionalIncomeTaxNet = money(Prisma.Decimal.max(0, new Prisma.Decimal(input.priorOccasionalIncomeTaxNet)));
     const priorOccasionalIncomeTaxWithheld = money(Prisma.Decimal.max(0, new Prisma.Decimal(input.priorOccasionalIncomeTaxWithheld)));
     const annualBeforeCurrentOccasionalBase = money(annualProjection.plus(priorOccasionalIncomeTaxNet));
-    const regularAnnualTaxResult = config.incomeTax.applicability === 'APPLIES'
+    const regularAnnualTaxResult = incomeTaxApplies
         ? progressiveIncomeTax(annualProjection, config.incomeTax.brackets)
         : { tax: new Prisma.Decimal(0), bracket: null };
-    const annualBeforeCurrentOccasionalResult = config.incomeTax.applicability === 'APPLIES'
+    const annualBeforeCurrentOccasionalResult = incomeTaxApplies
         ? progressiveIncomeTax(annualBeforeCurrentOccasionalBase, config.incomeTax.brackets)
         : { tax: new Prisma.Decimal(0), bracket: null };
-    if (config.incomeTax.applicability === 'APPLIES') {
+    if (incomeTaxApplies) {
         if (incomeTaxMethod === 'VARIABLE_ACCUMULATED') {
             const targetThroughCurrent = money(regularAnnualTaxResult.tax.dividedBy(12).times(elapsedFiscalMonths));
             regularIncomeTaxAdjustment = money(targetThroughCurrent.minus(priorRegularIncomeTaxWithheld));
@@ -314,7 +348,7 @@ export function calculateStatutoryPayroll(config: PayrollStatutoryConfiguration,
             regularIncomeTaxAdjustment = money(targetThroughCurrent.minus(priorRegularIncomeTaxWithheld));
         }
     }
-    const annualWithOccasionalResult = config.incomeTax.applicability === 'APPLIES'
+    const annualWithOccasionalResult = incomeTaxApplies
         ? progressiveIncomeTax(annualProjection.plus(priorOccasionalIncomeTaxNet).plus(currentOccasionalIncomeTaxNet), config.incomeTax.brackets)
         : { tax: new Prisma.Decimal(0), bracket: null };
     let occasionalIncomeTaxWithholding = money(Prisma.Decimal.max(0, annualWithOccasionalResult.tax.minus(annualBeforeCurrentOccasionalResult.tax)));
@@ -329,7 +363,7 @@ export function calculateStatutoryPayroll(config: PayrollStatutoryConfiguration,
     let effectiveAnnualIncomeTaxResult = annualWithOccasionalResult;
     if (input.employerRefundAllowed) {
         const actualAnnualIncomeTaxNet = money(accumulatedIncomeTaxNet.plus(priorOccasionalIncomeTaxNet).plus(currentOccasionalIncomeTaxNet));
-        effectiveAnnualIncomeTaxResult = config.incomeTax.applicability === 'APPLIES'
+        effectiveAnnualIncomeTaxResult = incomeTaxApplies
             ? progressiveIncomeTax(actualAnnualIncomeTaxNet, config.incomeTax.brackets)
             : { tax: new Prisma.Decimal(0), bracket: null };
         const annualLiquidationAdjustment = money(effectiveAnnualIncomeTaxResult.tax.minus(priorRegularIncomeTaxWithheld).minus(priorOccasionalIncomeTaxWithheld));

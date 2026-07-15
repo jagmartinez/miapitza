@@ -4,6 +4,7 @@ export type HrPayrollRuleStatus = 'DRAFT' | 'ACTIVE' | 'RETIRED';
 export type HrPayrollRunStatus = 'DRAFT' | 'CALCULATED' | 'REVIEW' | 'APPROVED' | 'PAID' | 'VOID';
 export type HrPayrollRunKind = 'REGULAR' | 'AGUINALDO';
 export type HrPayrollComponentType = 'INCOME' | 'DEDUCTION';
+export type HrPayrollIncomeTaxTreatment = 'REGULAR_FIXED' | 'REGULAR_VARIABLE' | 'OCCASIONAL';
 export type HrPayrollAnomalySeverity = 'INFO' | 'WARNING' | 'BLOCKING';
 export type HrPayrollAction =
   | 'CALCULATE'
@@ -50,7 +51,7 @@ export interface HrPayrollRuleVersion {
 }
 
 export interface HrPayrollLegalConfiguration {
-  schema: 'HR_PAYROLL_PARAMETRIC_V3';
+  schema: 'HR_PAYROLL_PARAMETRIC_V4';
   legallyValidated: true;
   currency: string;
   regular: {
@@ -70,6 +71,8 @@ export interface HrPayrollLegalConfiguration {
     companyTaxRegime: {
       code: 'GENERAL' | 'SIMPLIFIED_FIXED_QUOTA' | 'SPECIAL' | 'EXEMPT' | 'OTHER';
       sourceReference: string;
+      incomeTaxApplicability: 'APPLIES' | 'DOES_NOT_APPLY';
+      incomeTaxExceptionReason?: string;
     };
     inss: {
       applicability: 'APPLIES' | 'DOES_NOT_APPLY';
@@ -83,20 +86,16 @@ export interface HrPayrollLegalConfiguration {
       minimumMonthlyContributionBase: string;
       minimumBaseProration: 'PER_PAY_PERIOD_SERVICE_RATIO';
       annualPeriods: { WEEKLY: number; BIWEEKLY: number; MONTHLY: number };
-      contributionComponentCodes: string[];
     };
     inatec: {
       applicability: 'APPLIES' | 'DOES_NOT_APPLY';
       sourceReference: string;
       exceptionReason?: string;
       employerRate: string;
-      contributionComponentCodes: string[];
     };
     incomeTax: {
-      applicability: 'APPLIES' | 'DOES_NOT_APPLY';
       sourceReference: string;
-      exceptionReason?: string;
-      regimeIndependenceAcknowledged: true;
+      regimeApplicabilityAcknowledged: true;
       calculationMethods: {
         fixed: 'FIXED_PERIOD_PROJECTION';
         salaryChange: 'FIXED_SALARY_CHANGE';
@@ -107,13 +106,21 @@ export interface HrPayrollLegalConfiguration {
       occasionalInssDeductionTreatment: 'DEDUCT_FROM_OCCASIONAL_NET';
       adjustmentMode: 'WITHHOLD_OR_REFUND';
       annualPeriods: { WEEKLY: number; BIWEEKLY: number; MONTHLY: number };
-      fixedTaxableComponentCodes: string[];
-      variableTaxableComponentCodes: string[];
-      occasionalTaxableComponentCodes: string[];
-      authorizedDeductionComponentCodes: string[];
       brackets: Array<{ lowerBound: string; upperBound: string | null; baseTax: string; rate: string; excessOver: string }>;
     };
+    paymentConceptCatalog: HrPayrollPaymentConceptDefinition[];
   };
+}
+
+export interface HrPayrollPaymentConceptDefinition {
+  code: string;
+  name: string;
+  type: HrPayrollComponentType;
+  socialSecurityApplicable: boolean;
+  trainingContributionApplicable: boolean;
+  incomeTaxTreatment: HrPayrollIncomeTaxTreatment | null;
+  incomeTaxDeductible: boolean;
+  sourceReference: string;
 }
 
 export interface HrPayrollRuleConfigurationRevision {
@@ -121,6 +128,7 @@ export interface HrPayrollRuleConfigurationRevision {
   ruleVersionId: number;
   revision: number;
   configurationHash: string;
+  configuration: HrPayrollLegalConfiguration;
   sourceReference: string;
   evidenceReference: string;
   uploadReason: string;
@@ -337,6 +345,7 @@ export interface HrPayrollRun {
   periodId?: number | null;
   period?: HrPayrollPeriod | null;
   ruleVersionId: number;
+  configurationRevisionId?: number | null;
   ruleVersion?: HrPayrollRuleVersion | null;
   year?: number | null;
   cutoffDate?: string | null;

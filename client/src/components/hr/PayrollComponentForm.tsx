@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import Button from '../Button';
 import type { HrUserSummary } from '../../types/hr';
-import type { HrPayrollComponentPayload, HrPayrollComponentType } from '../../types/hr-payroll';
+import type { HrPayrollComponentPayload, HrPayrollPaymentConceptDefinition } from '../../types/hr-payroll';
 
 interface PayrollComponentFormProps {
   users: HrUserSummary[];
+  concepts: HrPayrollPaymentConceptDefinition[];
+  incomeTaxApplicability: 'APPLIES' | 'DOES_NOT_APPLY' | null;
   online: boolean;
   saving: boolean;
   onSubmit: (payload: HrPayrollComponentPayload) => Promise<void>;
@@ -13,6 +15,8 @@ interface PayrollComponentFormProps {
 
 export default function PayrollComponentForm({
   users,
+  concepts,
+  incomeTaxApplicability,
   online,
   saving,
   onSubmit,
@@ -20,33 +24,29 @@ export default function PayrollComponentForm({
 }: PayrollComponentFormProps) {
   const [userId, setUserId] = useState('');
   const [code, setCode] = useState('');
-  const [type, setType] = useState<HrPayrollComponentType>('INCOME');
   const [inputAmount, setInputAmount] = useState('');
-  const [taxable, setTaxable] = useState(false);
-  const [incomeTaxTreatment, setIncomeTaxTreatment] = useState<'' | 'REGULAR_FIXED' | 'REGULAR_VARIABLE' | 'OCCASIONAL'>('');
-  const [incomeTaxDeductible, setIncomeTaxDeductible] = useState(false);
-  const [socialSecurityApplicable, setSocialSecurityApplicable] = useState(false);
-  const [trainingContributionApplicable, setTrainingContributionApplicable] = useState(false);
   const [classificationConfirmed, setClassificationConfirmed] = useState(false);
   const [reason, setReason] = useState('');
   const [reference, setReference] = useState('');
 
+  const selectedConcept = concepts.find((concept) => concept.code === code) ?? null;
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!classificationConfirmed) return;
+    if (!classificationConfirmed || !selectedConcept) return;
     await onSubmit({
       userId: Number(userId),
-      code: code.trim().toUpperCase(),
-      type,
+      code: selectedConcept.code,
+      type: selectedConcept.type,
       inputAmount,
-      taxable: type === 'INCOME' ? taxable : false,
-      incomeTaxTreatment: type === 'INCOME' && taxable && incomeTaxTreatment ? incomeTaxTreatment : undefined,
-      incomeTaxDeductible: type === 'DEDUCTION' ? incomeTaxDeductible : false,
-      socialSecurityApplicable: type === 'INCOME' ? socialSecurityApplicable : false,
-      trainingContributionApplicable: type === 'INCOME' ? trainingContributionApplicable : false,
+      taxable: selectedConcept.type === 'INCOME' && selectedConcept.incomeTaxTreatment !== null,
+      incomeTaxTreatment: selectedConcept.incomeTaxTreatment ?? undefined,
+      incomeTaxDeductible: selectedConcept.incomeTaxDeductible,
+      socialSecurityApplicable: selectedConcept.socialSecurityApplicable,
+      trainingContributionApplicable: selectedConcept.trainingContributionApplicable,
       classificationConfirmed: true,
       reason: reason.trim(),
-      reference: reference.trim() || undefined,
+      reference: reference.trim() || selectedConcept.sourceReference,
     });
   };
 
@@ -64,31 +64,11 @@ export default function PayrollComponentForm({
         </select>
       </label>
       <label>
-        Tipo
-        <select
-          value={type}
-          onChange={(event) => {
-            setType(event.target.value as HrPayrollComponentType);
-            setTaxable(false);
-            setIncomeTaxTreatment('');
-            setClassificationConfirmed(false);
-          }}
-        >
-          <option value="INCOME">Ingreso</option>
-          <option value="DEDUCTION">Deducción</option>
+        Concepto configurado
+        <select value={code} onChange={(event) => { setCode(event.target.value); setClassificationConfirmed(false); }} required>
+          <option value="">Seleccionar…</option>
+          {concepts.map((concept) => <option key={concept.code} value={concept.code}>{concept.name} · {concept.code}</option>)}
         </select>
-      </label>
-      <label>
-        Código configurado
-        <input
-          value={code}
-          onChange={(event) => {
-            setCode(event.target.value);
-            setClassificationConfirmed(false);
-          }}
-          maxLength={50}
-          required
-        />
       </label>
       <label>
         Importe de entrada
@@ -102,26 +82,15 @@ export default function PayrollComponentForm({
           required
         />
       </label>
-      {type === 'INCOME' && <fieldset className="span-full hr-payroll-component-classification">
-        <legend>Tratamiento estatutario del ingreso</legend>
-        <label><input type="checkbox" checked={socialSecurityApplicable} onChange={(event) => { setSocialSecurityApplicable(event.target.checked); setClassificationConfirmed(false); }} /> Integra base INSS</label>
-        <label><input type="checkbox" checked={trainingContributionApplicable} onChange={(event) => { setTrainingContributionApplicable(event.target.checked); setClassificationConfirmed(false); }} /> Integra base INATEC</label>
-        <label><input type="checkbox" checked={taxable} onChange={(event) => { setTaxable(event.target.checked); setIncomeTaxTreatment(''); setClassificationConfirmed(false); }} /> Integra renta gravable de IR laboral</label>
-        {taxable && <label>
-          Tratamiento para el artículo 19
-          <select value={incomeTaxTreatment} onChange={(event) => { setIncomeTaxTreatment(event.target.value as typeof incomeTaxTreatment); setClassificationConfirmed(false); }} required>
-            <option value="">Seleccionar…</option>
-            <option value="REGULAR_FIXED">Ordinario fijo</option>
-            <option value="REGULAR_VARIABLE">Ordinario variable</option>
-            <option value="OCCASIONAL">Ocasional (bono, vacaciones o incentivo)</option>
-          </select>
-        </label>}
-        <label><input type="checkbox" checked={classificationConfirmed} onChange={(event) => setClassificationConfirmed(event.target.checked)} /> Confirmo que revisé la naturaleza legal del concepto y su soporte.</label>
-      </fieldset>}
-      {type === 'DEDUCTION' && <fieldset className="span-full hr-payroll-component-classification">
-        <legend>Tratamiento tributario de la deducción</legend>
-        <label><input type="checkbox" checked={incomeTaxDeductible} onChange={(event) => { setIncomeTaxDeductible(event.target.checked); setClassificationConfirmed(false); }} /> Es una deducción autorizada para determinar la renta neta de IR</label>
-        <label><input type="checkbox" checked={classificationConfirmed} onChange={(event) => setClassificationConfirmed(event.target.checked)} /> Confirmo que existe soporte legal y documental; préstamos y descuentos ordinarios no se marcan automáticamente.</label>
+      {selectedConcept && <fieldset className="span-full hr-payroll-component-classification">
+        <legend>Tratamiento congelado del catálogo</legend>
+        <span>Tipo: {selectedConcept.type === 'INCOME' ? 'Ingreso' : 'Deducción'}</span>
+        <span>INSS laboral: {selectedConcept.socialSecurityApplicable ? 'Aplica' : 'No aplica'}</span>
+        <span>INATEC: {selectedConcept.trainingContributionApplicable ? 'Aplica' : 'No aplica'}</span>
+        <span>IR laboral: {selectedConcept.incomeTaxTreatment ?? (selectedConcept.incomeTaxDeductible ? 'Deducción autorizada' : 'No aplica')}</span>
+        <span>IR por régimen empresarial: {incomeTaxApplicability === 'APPLIES' ? 'Se calcula' : incomeTaxApplicability === 'DOES_NOT_APPLY' ? 'No se calcula' : 'Sin configuración disponible'}</span>
+        <small>Fuente configurada: {selectedConcept.sourceReference}</small>
+        <label><input type="checkbox" checked={classificationConfirmed} onChange={(event) => setClassificationConfirmed(event.target.checked)} /> Confirmo que este es el concepto correcto; las banderas no pueden modificarse en la corrida.</label>
       </fieldset>}
       <label>
         Referencia de soporte
@@ -129,7 +98,7 @@ export default function PayrollComponentForm({
           value={reference}
           onChange={(event) => setReference(event.target.value)}
           maxLength={500}
-          required={type === 'DEDUCTION' && incomeTaxDeductible}
+          placeholder={selectedConcept?.sourceReference}
         />
       </label>
       <label className="span-full">
@@ -144,8 +113,7 @@ export default function PayrollComponentForm({
       </label>
       <p className="hr-payroll-help span-full">
         El importe es una entrada manual auditable. El servidor recalcula INSS, INATEC, IR y totales
-        desde la clasificación declarada; la UI no envía bruto, deducciones totales ni neto. El código y
-        las banderas deben coincidir exactamente con los catálogos de la regla legal congelada.
+        desde el catálogo congelado; la UI no permite alterar las banderas INSS o IR dentro de la corrida.
       </p>
       <div className="hr-payroll-form-actions span-full">
         <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
@@ -153,7 +121,7 @@ export default function PayrollComponentForm({
         </Button>
         <Button
           type="submit"
-          disabled={!online || saving || !userId || !code.trim() || !inputAmount || !reason.trim() || !classificationConfirmed || (type === 'INCOME' && taxable && !incomeTaxTreatment) || (type === 'DEDUCTION' && incomeTaxDeductible && !reference.trim())}
+          disabled={!online || saving || !userId || !selectedConcept || !inputAmount || !reason.trim() || !classificationConfirmed}
         >
           {saving ? 'Agregando…' : 'Agregar componente'}
         </Button>

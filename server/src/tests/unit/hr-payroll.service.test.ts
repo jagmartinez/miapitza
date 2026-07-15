@@ -17,23 +17,24 @@ import {
 } from '../../services/hr-payroll.service';
 import {
     calculateStatutoryPayroll,
+    effectiveIncomeTaxApplicability,
+    paymentConceptDefinition,
     progressiveIncomeTax,
     type PayrollStatutoryConfiguration,
     type StatutoryCalculationInput,
 } from '../../services/hr-payroll-statutory';
 
 const statutory: PayrollStatutoryConfiguration = {
-    companyTaxRegime: { code: 'GENERAL' as const, sourceReference: 'Ley 822' },
+    companyTaxRegime: { code: 'GENERAL' as const, sourceReference: 'Ley 822', incomeTaxApplicability: 'APPLIES' as const },
     inss: {
         applicability: 'APPLIES' as const, sourceReference: 'INSS 2026', regime: 'INTEGRAL' as const,
         employeeRate: '0.07', employerRateBelowThreshold: '0.215', employerRateAtOrAboveThreshold: '0.225',
         employerSizeThreshold: 50, minimumMonthlyContributionBase: '10000', minimumBaseProration: 'PER_PAY_PERIOD_SERVICE_RATIO' as const,
         annualPeriods: { WEEKLY: 52, BIWEEKLY: 24, MONTHLY: 12 },
-        contributionComponentCodes: ['INGRESO_ORDINARIO_FIJO', 'INGRESO_ORDINARIO_VARIABLE', 'HORAS_EXTRA_APROBADAS', 'BONO_OCASIONAL'],
     },
-    inatec: { applicability: 'APPLIES' as const, sourceReference: 'INATEC 2%', employerRate: '0.02', contributionComponentCodes: ['INGRESO_ORDINARIO_FIJO', 'INGRESO_ORDINARIO_VARIABLE', 'HORAS_EXTRA_APROBADAS', 'BONO_OCASIONAL'] },
+    inatec: { applicability: 'APPLIES' as const, sourceReference: 'INATEC 2%', employerRate: '0.02' },
     incomeTax: {
-        applicability: 'APPLIES' as const, sourceReference: 'Ley 822 art. 23 y Decreto 01-2013 art. 19', regimeIndependenceAcknowledged: true as const,
+        sourceReference: 'Ley 822 art. 23 y Decreto 01-2013 art. 19', regimeApplicabilityAcknowledged: true as const,
         calculationMethods: {
             fixed: 'FIXED_PERIOD_PROJECTION', salaryChange: 'FIXED_SALARY_CHANGE',
             variable: 'VARIABLE_ACCUMULATED', occasional: 'OCCASIONAL_INCREMENTAL',
@@ -42,10 +43,6 @@ const statutory: PayrollStatutoryConfiguration = {
         occasionalInssDeductionTreatment: 'DEDUCT_FROM_OCCASIONAL_NET' as const,
         adjustmentMode: 'WITHHOLD_OR_REFUND' as const,
         annualPeriods: { WEEKLY: 52, BIWEEKLY: 24, MONTHLY: 12 },
-        fixedTaxableComponentCodes: ['INGRESO_ORDINARIO_FIJO', 'PERMISO_PAGADO_APROBADO'],
-        variableTaxableComponentCodes: ['INGRESO_ORDINARIO_VARIABLE', 'HORAS_EXTRA_APROBADAS'],
-        occasionalTaxableComponentCodes: ['BONO_OCASIONAL', 'VACACIONES_PAGADAS', 'INCENTIVO_OCASIONAL'],
-        authorizedDeductionComponentCodes: ['FONDO_PENSION_AUTORIZADO', 'APORTE_AHORRO_AUTORIZADO'],
         brackets: [
             { lowerBound: '0', upperBound: '100000', baseTax: '0', rate: '0', excessOver: '0' },
             { lowerBound: '100000', upperBound: '200000', baseTax: '0', rate: '0.15', excessOver: '100000' },
@@ -54,6 +51,19 @@ const statutory: PayrollStatutoryConfiguration = {
             { lowerBound: '500000', upperBound: null, baseTax: '82500', rate: '0.30', excessOver: '500000' },
         ],
     },
+    paymentConceptCatalog: [
+        { code: 'INGRESO_ORDINARIO_FIJO', name: 'Ingreso ordinario fijo', type: 'INCOME', socialSecurityApplicable: true, trainingContributionApplicable: true, incomeTaxTreatment: 'REGULAR_FIXED', incomeTaxDeductible: false, sourceReference: 'Regla laboral' },
+        { code: 'PERMISO_PAGADO_APROBADO', name: 'Permiso pagado', type: 'INCOME', socialSecurityApplicable: true, trainingContributionApplicable: true, incomeTaxTreatment: 'REGULAR_FIXED', incomeTaxDeductible: false, sourceReference: 'Regla laboral' },
+        { code: 'INGRESO_ORDINARIO_VARIABLE', name: 'Ingreso ordinario variable', type: 'INCOME', socialSecurityApplicable: true, trainingContributionApplicable: true, incomeTaxTreatment: 'REGULAR_VARIABLE', incomeTaxDeductible: false, sourceReference: 'Regla laboral' },
+        { code: 'HORAS_EXTRA_APROBADAS', name: 'Horas extra', type: 'INCOME', socialSecurityApplicable: true, trainingContributionApplicable: true, incomeTaxTreatment: 'REGULAR_VARIABLE', incomeTaxDeductible: false, sourceReference: 'Regla laboral' },
+        { code: 'BONO_OCASIONAL', name: 'Bono ocasional', type: 'INCOME', socialSecurityApplicable: true, trainingContributionApplicable: true, incomeTaxTreatment: 'OCCASIONAL', incomeTaxDeductible: false, sourceReference: 'Regla laboral' },
+        { code: 'VACACIONES_PAGADAS', name: 'Vacaciones pagadas', type: 'INCOME', socialSecurityApplicable: false, trainingContributionApplicable: false, incomeTaxTreatment: 'OCCASIONAL', incomeTaxDeductible: false, sourceReference: 'Regla laboral' },
+        { code: 'INCENTIVO_OCASIONAL', name: 'Incentivo ocasional', type: 'INCOME', socialSecurityApplicable: false, trainingContributionApplicable: false, incomeTaxTreatment: 'OCCASIONAL', incomeTaxDeductible: false, sourceReference: 'Regla laboral' },
+        { code: 'VIATICOS', name: 'Viáticos', type: 'INCOME', socialSecurityApplicable: false, trainingContributionApplicable: false, incomeTaxTreatment: null, incomeTaxDeductible: false, sourceReference: 'Política documentada' },
+        { code: 'REEMBOLSO_DEPRECIACION', name: 'Reembolso depreciación', type: 'INCOME', socialSecurityApplicable: false, trainingContributionApplicable: false, incomeTaxTreatment: null, incomeTaxDeductible: false, sourceReference: 'Política documentada' },
+        { code: 'FONDO_PENSION_AUTORIZADO', name: 'Fondo autorizado', type: 'DEDUCTION', socialSecurityApplicable: false, trainingContributionApplicable: false, incomeTaxTreatment: null, incomeTaxDeductible: true, sourceReference: 'Deducción autorizada' },
+        { code: 'APORTE_AHORRO_AUTORIZADO', name: 'Ahorro autorizado', type: 'DEDUCTION', socialSecurityApplicable: false, trainingContributionApplicable: false, incomeTaxTreatment: null, incomeTaxDeductible: true, sourceReference: 'Deducción autorizada' },
+    ],
 };
 
 function statutoryInput(overrides: Partial<StatutoryCalculationInput> = {}): StatutoryCalculationInput {
@@ -70,7 +80,7 @@ function statutoryInput(overrides: Partial<StatutoryCalculationInput> = {}): Sta
 }
 
 const legalConfiguration = {
-    schema: 'HR_PAYROLL_PARAMETRIC_V3' as const, legallyValidated: true as const, currency: 'NIO',
+    schema: 'HR_PAYROLL_PARAMETRIC_V4' as const, legallyValidated: true as const, currency: 'NIO',
     regular: { minuteDivisors: { WEEKLY: '2400', BIWEEKLY: '4800', MONTHLY: '9600' }, overtimeMultiplier: '2', paidLeaveUnitMinutes: { DAYS: '480', HOURS: '60', MINUTES: '1' } },
     aguinaldo: { method: 'HISTORICAL_PAID_COMPONENTS' as const, lookbackDays: 365, incomeDivisor: '12', prorationMode: 'NONE' as const, eligibleSources: ['RULE'], roundingScale: 2 as const },
     statutory,
@@ -83,18 +93,53 @@ describe('HR payroll safety and state machine', () => {
     });
 
     it('accepts only an explicit, fully parameterized and legally validated configuration', () => {
-        expect(validateLegalConfiguration(legalConfiguration).currency).toBe('NIO');
+        const config = validateLegalConfiguration(legalConfiguration);
+        expect(config.currency).toBe('NIO');
+        expect(effectiveIncomeTaxApplicability(config.statutory)).toBe('APPLIES');
+        expect(paymentConceptDefinition(config.statutory, 'VIATICOS')).toEqual(expect.objectContaining({
+            socialSecurityApplicable: false,
+            incomeTaxTreatment: null,
+        }));
+        expect(paymentConceptDefinition(config.statutory, 'REEMBOLSO_DEPRECIACION')).toEqual(expect.objectContaining({
+            socialSecurityApplicable: false,
+            incomeTaxTreatment: null,
+        }));
     });
 
-    it('rejects ambiguous IR codes shared by two treatments', () => {
+    it('normalizes a frozen V3 configuration for historical reads while requiring V4 for new uploads', () => {
+        const legacyIncomeTax: Record<string, unknown> = {
+            ...statutory.incomeTax,
+            applicability: 'APPLIES',
+            regimeIndependenceAcknowledged: true,
+            fixedTaxableComponentCodes: ['INGRESO_ORDINARIO_FIJO', 'PERMISO_PAGADO_APROBADO'],
+            variableTaxableComponentCodes: ['INGRESO_ORDINARIO_VARIABLE', 'HORAS_EXTRA_APROBADAS'],
+            occasionalTaxableComponentCodes: ['BONO_OCASIONAL'],
+            authorizedDeductionComponentCodes: ['FONDO_PENSION_AUTORIZADO', 'APORTE_AHORRO_AUTORIZADO'],
+        };
+        delete legacyIncomeTax.regimeApplicabilityAcknowledged;
+        const legacyStatutory: Record<string, unknown> = {
+            ...statutory,
+            companyTaxRegime: { code: 'GENERAL', sourceReference: 'Ley 822' },
+            inss: { ...statutory.inss, contributionComponentCodes: ['INGRESO_ORDINARIO_FIJO', 'INGRESO_ORDINARIO_VARIABLE', 'HORAS_EXTRA_APROBADAS', 'BONO_OCASIONAL'] },
+            inatec: { ...statutory.inatec, contributionComponentCodes: ['INGRESO_ORDINARIO_FIJO', 'INGRESO_ORDINARIO_VARIABLE', 'HORAS_EXTRA_APROBADAS', 'BONO_OCASIONAL'] },
+            incomeTax: legacyIncomeTax,
+        };
+        delete legacyStatutory.paymentConceptCatalog;
+        const legacy = { ...legalConfiguration, schema: 'HR_PAYROLL_PARAMETRIC_V3', statutory: legacyStatutory };
+        const normalized = validateLegalConfiguration(legacy);
+        expect(normalized.schema).toBe('HR_PAYROLL_PARAMETRIC_V4');
+        expect(normalized.statutory.paymentConceptCatalog).toEqual(expect.arrayContaining([
+            expect.objectContaining({ code: 'INGRESO_ORDINARIO_FIJO', incomeTaxTreatment: 'REGULAR_FIXED' }),
+        ]));
+        expect(() => validateLegalConfiguration(legacy, { requireCurrentSchema: true })).toThrow('HR_PAYROLL_PARAMETRIC_V4');
+    });
+
+    it('rejects duplicate payment concept codes', () => {
         const ambiguous = {
             ...legalConfiguration,
             statutory: {
                 ...statutory,
-                incomeTax: {
-                    ...statutory.incomeTax,
-                    variableTaxableComponentCodes: [...statutory.incomeTax.variableTaxableComponentCodes, 'INGRESO_ORDINARIO_FIJO'],
-                },
+                paymentConceptCatalog: [...statutory.paymentConceptCatalog, { ...statutory.paymentConceptCatalog[0] }],
             },
         };
         expect(() => validateLegalConfiguration(ambiguous)).toThrow(HrPayrollError);
@@ -222,15 +267,16 @@ describe('HR payroll safety and state machine', () => {
         expect(result.annualProjection.toFixed(2)).toBe('60000.00');
     });
 
-    it('uses the 50-employee threshold and does not couple payroll IR to the business tax regime', () => {
-        const simplified = { ...statutory, companyTaxRegime: { code: 'SIMPLIFIED_FIXED_QUOTA' as const, sourceReference: 'Cuota fija' } };
+    it('uses the 50-employee threshold and disables labor IR when the configured simplified regime says it does not apply', () => {
+        const simplified = { ...statutory, companyTaxRegime: { code: 'SIMPLIFIED_FIXED_QUOTA' as const, sourceReference: 'Cuota fija', incomeTaxApplicability: 'DOES_NOT_APPLY' as const, incomeTaxExceptionReason: 'Regla validada para régimen simplificado' } };
         const result = calculateStatutoryPayroll(simplified, statutoryInput({
             inssContributionBase: '10000', regularInssContributionBase: '10000', inatecContributionBase: '10000',
             fixedIncomeTaxGross: '10000', currentFixedCompensationAmount: '10000', employerHeadcount: 50,
         }));
         expect(result.employerInssRate.toString()).toBe('0.225');
         expect(result.employerInss.toFixed(2)).toBe('2250.00');
-        expect(result.currentIncomeTaxWithholding.greaterThan(0)).toBe(true);
+        expect(result.currentIncomeTaxWithholding.toFixed(2)).toBe('0.00');
+        expect(result.annualIncomeTax.toFixed(2)).toBe('0.00');
     });
 
     it('applies every progressive bracket boundary and records, but does not auto-refund, a mid-year credit', () => {
@@ -645,7 +691,9 @@ describe('HR payroll persistence and route contract', () => {
     });
 
     it('materializes statutory bases, employer costs and immutable calculation traces', () => {
-        expect(service).toContain("schema: 'HR_PAYROLL_PARAMETRIC_V3'");
+        expect(service).toContain("schema: 'HR_PAYROLL_PARAMETRIC_V4'");
+        expect(service).toContain('paymentConceptDefinition');
+        expect(service).toContain('HR_PAYROLL_PAYMENT_CONCEPT_NOT_CONFIGURED');
         expect(service).toContain('calculateStatutoryPayroll');
         expect(service).toContain('priorStatutoryContext');
         expect(service).toContain('MISSING_INSS_NUMBER');
