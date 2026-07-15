@@ -34,13 +34,13 @@
   box-shadow: var(--shadow-sm);
 }
 
-.page-wrapper[class*='hr-'] :is(input, textarea):not([type='checkbox']):not([type='radio']) {
+.page-wrapper[class*='hr-'] :is(input, textarea):not([type='checkbox']):not([type='radio']):not(.react-select__input) {
   border-color: var(--color-border);
   background: var(--color-background);
   color: var(--color-text);
 }
 
-.page-wrapper[class*='hr-'] :is(input, textarea):not([type='checkbox']):not([type='radio']):focus-visible {
+.page-wrapper[class*='hr-'] :is(input, textarea):not([type='checkbox']):not([type='radio']):not(.react-select__input):focus-visible {
   border-color: var(--dialog-accent) !important;
   box-shadow: 0 0 0 3px var(--dialog-focus-ring) !important;
   outline: none;
@@ -67,6 +67,67 @@
 
 .dark .page-wrapper[class*='hr-'] {
   --hr-panel-muted: color-mix(in srgb, var(--color-background) 94%, var(--dialog-accent) 6%);
+}
+
+/* RH side panels follow the same visual grammar as Nueva Reservación. */
+.page-wrapper[class*='hr-'] .sidebar-panel {
+  --hr-modal-control-height: 42px;
+  background: var(--color-surface);
+}
+
+.page-wrapper[class*='hr-'] .sidebar-panel .sidebar-body {
+  background: color-mix(in srgb, var(--color-surface) 95%, var(--color-background) 5%);
+}
+
+.page-wrapper[class*='hr-'] .sidebar-panel :is(
+  .hr-workforce-form,
+  .hr-benefits-form,
+  .hr-payroll-form,
+  .hr-settings-sidebar-form,
+  .hr-secret-panel,
+  .hr-record-form
+) label:not(.hr-payroll-confirm):not(.hr-benefits-confirm) {
+  gap: var(--spacing-xs);
+  color: var(--color-neutral-500);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.page-wrapper[class*='hr-'] .sidebar-panel :is(
+  .hr-workforce-form,
+  .hr-benefits-form,
+  .hr-payroll-form,
+  .hr-settings-sidebar-form,
+  .hr-secret-panel,
+  .hr-record-form
+) :is(input, textarea):not([type='checkbox']):not([type='radio']):not(.react-select__input) {
+  min-height: var(--hr-modal-control-height);
+  padding: 10px 12px;
+  border: 1px solid var(--dialog-panel-border, var(--color-border));
+  border-radius: var(--radius-lg);
+  background: var(--color-background);
+  color: var(--color-text);
+  box-sizing: border-box;
+}
+
+.page-wrapper[class*='hr-'] .sidebar-panel :is(
+  .hr-form-actions,
+  .hr-benefits-form-actions,
+  .hr-payroll-form-actions,
+  .hr-settings-sidebar-actions
+) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-md);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--dialog-panel-border, var(--color-border));
+}
+
+.page-wrapper[class*='hr-'] .sidebar-panel .premium-modal-content {
+  background: color-mix(in srgb, var(--color-surface) 95%, var(--color-background) 5%);
 }
 
 @media (max-width: 768px) {

@@ -49,6 +49,7 @@ export default function Reservations() {
     const { confirm } = useConfirmDialog();
     const userRoleNames = getUserRoleNames(user);
     const canManageReservations = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'HOST'].includes(role));
+    const canChooseReservationBranch = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [reservations, setReservations] = useState<Reservation[]>([]);
     const [loading, setLoading] = useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -971,7 +972,7 @@ export default function Reservations() {
                                             .find((option) => option.value === formData.branchId) || null}
                                         onChange={(option: SingleValue<{ value: string; label: string }>) =>
                                             setFormData({ ...formData, branchId: option?.value || '' })}
-                                        isDisabled={Boolean(editingReservation) || Boolean(user?.branchId)}
+                                        isDisabled={Boolean(editingReservation) || (Boolean(user?.branchId) && !canChooseReservationBranch)}
                                         isSearchable
                                     />
 

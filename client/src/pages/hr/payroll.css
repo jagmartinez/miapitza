@@ -555,6 +555,25 @@
   gap: var(--spacing-md);
 }
 
+.hr-payroll-legal-empty {
+  display: grid;
+  justify-items: start;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-lg);
+  border: 1px dashed var(--dialog-panel-border, var(--color-border));
+  border-radius: var(--radius-lg);
+  background: var(--dialog-muted-bg, var(--color-background));
+  color: var(--color-text-secondary);
+}
+
+.hr-payroll-legal-empty strong {
+  color: var(--color-text);
+}
+
+.hr-payroll-legal-empty .btn {
+  margin-top: var(--spacing-sm);
+}
+
 .hr-payroll-tax-table { display: grid; gap: 0.5rem; }
 .hr-payroll-tax-table table { width: 100%; border-collapse: collapse; min-width: 760px; }
 .hr-payroll-tax-table th,

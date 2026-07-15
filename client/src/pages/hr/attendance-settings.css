@@ -26,6 +26,38 @@
   font-weight: 600;
 }
 
+.hr-attendance-settings-page :is(.hr-settings-fields, .hr-settings-action-form, .hr-settings-sidebar-form) label > :is(input, textarea):not([type='checkbox']),
+.hr-attendance-settings-page .hr-settings-scope label > input:not([type='checkbox']) {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--dialog-panel-border, var(--color-border));
+  border-radius: var(--radius-lg);
+  background: var(--color-background);
+  color: var(--color-text);
+  font: inherit;
+  box-sizing: border-box;
+  color-scheme: light;
+}
+
+.dark .hr-attendance-settings-page label > :is(input, textarea):not([type='checkbox']):not([type='radio']) {
+  color-scheme: dark;
+}
+
+.hr-attendance-settings-page input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.hr-attendance-settings-page input[type='number']::-webkit-inner-spin-button,
+.hr-attendance-settings-page input[type='number']::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
 .hr-settings-scope label {
   min-width: min(100%, 320px);
 }
@@ -359,6 +391,37 @@
   color: var(--color-text);
   font-weight: 700;
   text-align: right;
+}
+
+.hr-provider-explanation {
+  display: grid;
+  gap: 4px;
+  margin-bottom: var(--spacing-md);
+  padding: var(--spacing-md);
+  border: 1px solid var(--dialog-panel-border, var(--color-border));
+  border-radius: var(--radius-lg);
+  background: var(--dialog-muted-bg, var(--color-background));
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.hr-provider-explanation strong {
+  color: var(--color-text);
+}
+
+.hr-provider-status {
+  display: inline-flex;
+  justify-content: flex-end;
+  color: var(--color-text-secondary) !important;
+}
+
+.hr-provider-status.available {
+  color: var(--color-success) !important;
+}
+
+.hr-provider-status.unavailable {
+  color: var(--color-danger) !important;
 }
 
 .hr-settings-sidebar-actions {

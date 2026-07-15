@@ -55,6 +55,12 @@ function displayDateTime(value?: string | null): string {
   }).format(new Date(value));
 }
 
+function providerStatusLabel(status?: HrBiometricProviderHealth['status']): string {
+  if (status === 'AVAILABLE') return 'Conexión disponible';
+  if (status === 'UNAVAILABLE') return 'Conexión no disponible';
+  return 'Sin verificar';
+}
+
 function policyPayload(policy: HrAttendancePolicy, branchId?: number): HrAttendancePolicyPayload {
   return {
     branchId: branchId ?? null,
@@ -736,21 +742,25 @@ export default function AttendanceSettings() {
           </section>
 
           <div className="hr-settings-columns">
-            <section className="hr-settings-card" aria-labelledby="provider-health-title">
+            <section className="hr-settings-card hr-provider-card" aria-labelledby="provider-health-title">
               <header>
                 <div>
-                  <h2 id="provider-health-title">Proveedor biométrico</h2>
-                  <p>Health check del adaptador configurado; no prueba precisión ni cumplimiento del proveedor.</p>
+                  <h2 id="provider-health-title">Conexión biométrica</h2>
+                  <p>Comprueba si el servicio facial configurado en el servidor responde.</p>
                 </div>
                 <ScanFace size={22} />
               </header>
+              <div className="hr-provider-explanation" role="note">
+                <strong>¿Qué es el proveedor biométrico?</strong>
+                <span>Es el servicio que compara de forma segura la captura facial durante el marcaje. No se elige ni se cambia desde esta pantalla: aquí solo se verifica la conexión configurada por el administrador del servidor.</span>
+              </div>
               <dl className="hr-maintenance-result" aria-live="polite">
-                <div><dt>Estado</dt><dd>{providerHealthLoading ? 'Consultando…' : providerHealth?.status ?? 'Sin consultar'}</dd></div>
-                <div><dt>Adaptador</dt><dd>{providerHealth ? `${providerHealth.provider} · ${providerHealth.model}` : '—'}</dd></div>
+                <div><dt>Estado de conexión</dt><dd className={`hr-provider-status ${(providerHealth?.status ?? 'UNKNOWN').toLowerCase()}`}>{providerHealthLoading ? 'Verificando…' : providerStatusLabel(providerHealth?.status)}</dd></div>
+                <div><dt>Servicio configurado</dt><dd>{providerHealth ? `${providerHealth.provider} · ${providerHealth.model}` : '—'}</dd></div>
                 <div><dt>Revisado</dt><dd>{providerHealth ? displayDateTime(providerHealth.checkedAt) : '—'}</dd></div>
               </dl>
               {providerHealth?.detail && <p className="hr-form-help">{providerHealth.detail}</p>}
-              <Button variant="ghost" onClick={() => void loadProviderHealth()} disabled={!online || providerHealthLoading}><RefreshCw size={15} /> Revalidar proveedor</Button>
+              <Button variant="ghost" onClick={() => void loadProviderHealth()} disabled={!online || providerHealthLoading}><RefreshCw size={15} /> Verificar conexión</Button>
             </section>
             <section className="hr-settings-card" aria-labelledby="revoke-biometric-title">
               <header>

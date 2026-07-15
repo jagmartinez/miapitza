@@ -7,18 +7,26 @@
 }
 
 .tables-page--map {
-    width: 100%;
-    max-width: none;
+    /* The operational map is the one intentional full-bleed workspace. The
+       route shell centres regular views at 1700px, so break this canvas back
+       out to the viewport without changing that global contract. */
+    width: 100dvw !important;
+    max-width: none !important;
+    margin-inline: calc(50% - 50dvw) !important;
     height: 100dvh;
     min-height: 0;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    padding: 8px;
+    padding: 0;
     overflow: hidden;
 }
 
-.tables-page--map .table-map-shell { flex: 1; }
+.tables-page--map .table-map-shell {
+    flex: 1;
+    border-inline: 0;
+    border-radius: 0;
+}
 
 .table-map-utility-controls {
     display: inline-flex;
@@ -302,7 +310,7 @@
 
 /* Responsive */
 @media (max-width: 768px) {
-    .tables-page {
+    .tables-page:not(.tables-page--map) {
         padding: var(--spacing-md);
     }
 
@@ -364,7 +372,7 @@
 }
 
 @media (max-width: 480px) {
-    .tables-page {
+    .tables-page:not(.tables-page--map) {
         padding: var(--spacing-sm);
     }
 

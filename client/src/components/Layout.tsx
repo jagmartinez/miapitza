@@ -202,7 +202,7 @@ export default function Layout() {
                         <NavLink
                             key={item.to}
                             to={item.to}
-                            end={item.to === '/rh'}
+                            end={item.to === '/rh' || item.to === '/rh/asistencia'}
                             className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}
                             title={item.label}
                             onClick={onNavigate}

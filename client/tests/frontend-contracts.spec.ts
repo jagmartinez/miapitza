@@ -13,12 +13,12 @@ async function mockAuthenticatedAdmin(page: Page, options: { companyId: number; 
   }, { companyId: options.companyId, branchId: options.branchId, roleName: role });
 }
 
-test('global administrator can select a branch when creating a reservation', async ({ page }) => {
-  await mockAuthenticatedAdmin(page, { companyId: 7, branchId: null });
+test('administrator with an assigned branch can still select an authorized branch when creating a reservation', async ({ page }) => {
+  await mockAuthenticatedAdmin(page, { companyId: 7, branchId: 10 });
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     let data: unknown = [];
-    if (path.endsWith('/auth/me')) data = { id: 902, companyId: 7, branchId: null, roles: ['ADMIN'] };
+    if (path.endsWith('/auth/me')) data = { id: 902, companyId: 7, branchId: 10, roles: ['ADMIN'] };
     if (path.endsWith('/branches')) data = [
       { id: 10, name: 'Centro', status: 'ACTIVE' },
       { id: 11, name: 'Norte', status: 'ACTIVE' },
@@ -29,10 +29,16 @@ test('global administrator can select a branch when creating a reservation', asy
 
   await page.goto('/reservations');
   await page.getByRole('button', { name: /Nueva Reservaci/ }).click();
-  await page.getByRole('tab', { name: 'Reserva' }).click();
-  await expect(page.getByText('Sucursal', { exact: true })).toBeVisible();
+  const dialog = page.getByRole('dialog', { name: /Nueva Reservaci/ });
+  await dialog.getByRole('tab', { name: 'Reserva' }).click();
+  await expect(dialog.getByText('Sucursal', { exact: true })).toBeVisible();
   await expect(page.getByRole('combobox').filter({ has: page.locator('option') })).toHaveCount(0);
-  await expect(page.locator('.modal-tab-content').getByRole('combobox').first()).toBeVisible();
+  const branchSelect = dialog.getByRole('combobox').first();
+  await expect(branchSelect).toBeVisible();
+  await expect(branchSelect).toBeEnabled();
+  await branchSelect.click();
+  await dialog.getByRole('option', { name: 'Norte' }).click();
+  await expect(dialog.locator('.react-select__single-value')).toHaveText('Norte');
 });
 
 test('branch admin sees only the PedidosYa contract allowed by the server', async ({ page }) => {

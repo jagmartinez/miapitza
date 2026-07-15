@@ -14,11 +14,14 @@ export function getReactSelectThemeStyles<
     return {
         control: (base, state) => ({
             ...base,
-            backgroundColor: state.isFocused ? 'var(--color-surface)' : controlBg,
+            backgroundColor: state.isDisabled
+                ? 'color-mix(in srgb, var(--color-background) 82%, var(--color-surface))'
+                : state.isFocused ? 'var(--color-surface)' : controlBg,
             borderColor: state.isFocused ? accent : 'var(--color-border)',
             boxShadow: state.isFocused ? `0 0 0 3px ${focusRing}` : 'none',
             minHeight: 38,
-            cursor: 'pointer',
+            cursor: state.isDisabled ? 'not-allowed' : 'pointer',
+            opacity: state.isDisabled ? 0.62 : 1,
             '&:hover': {
                 borderColor: state.isFocused ? accent : 'var(--color-border)',
             },

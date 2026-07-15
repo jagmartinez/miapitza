@@ -414,7 +414,7 @@ export default function Schedules() {
             )}
             {!loading && !error && hasShifts && <ScheduleWeekView weekStart={weekStart} schedules={visibleSchedules} holidays={holidays} readOnly={mutationBusy || fromCache} onEdit={openEdit} onDelete={(shift, schedule) => void deleteShift(shift, schedule)} />}
 
-            <Sidebar isOpen={editorOpen} onClose={closeEditor} title={editingShift ? 'Editar turno' : 'Nuevo turno'} width="wide" closeOnBackdrop={!saving} closeOnEscape={!saving}>
+            <Sidebar isOpen={editorOpen} onClose={closeEditor} title={editingShift ? 'Editar turno' : 'Nuevo turno'} width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
                 <ScheduleShiftForm
                     weekStart={weekStart}
                     shift={editingShift}

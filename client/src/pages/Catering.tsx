@@ -888,7 +888,6 @@ export default function Catering() {
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
                 title={selectedEvent ? `Editar: ${selectedEvent.title}` : 'Nuevo Evento de Catering'}
-                width="wide"
             >
                 <div className="premium-modal-content catering-modal-content catering-event-modal-content">
                     <div className="modal-tabs" role="tablist" aria-label="Secciones del evento de catering">
@@ -948,13 +947,20 @@ export default function Catering() {
                         )}
                     </div>
 
+                    <form
+                        className="modal-form-new"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            void handleSave();
+                        }}
+                    >
                     <div className="modal-tab-content">
                         {activeTab === 'info' && (
                             <div className="catering-tab-panel catering-info-layout">
                                 <section className="modal-content-group catering-event-section catering-customer-section">
-                                    <div className="catering-section-heading">
-                                        <span><Users size={18} /></span>
-                                        <div><h3>Cliente</h3><p>Persona o empresa responsable de la contratación.</p></div>
+                                    <div className="modal-section-header">
+                                        <Users size={18} />
+                                        <h3>Información del cliente</h3>
                                     </div>
                                     <div className="modal-form-row">
                                         <div className="modal-input-group">
@@ -992,9 +998,9 @@ export default function Catering() {
                                 </section>
 
                                 <section className="modal-content-group catering-event-section catering-event-section-main">
-                                    <div className="catering-section-heading">
-                                        <span><Calendar size={18} /></span>
-                                        <div><h3>Evento</h3><p>Define dónde, cuándo y para cuántas personas.</p></div>
+                                    <div className="modal-section-header">
+                                        <Calendar size={18} />
+                                        <h3>Detalles del evento</h3>
                                     </div>
                                     <div className="modal-form-row">
                                         <Select
@@ -1098,9 +1104,9 @@ export default function Catering() {
                                 </section>
 
                                 <section className="modal-content-group catering-event-section catering-event-section-full">
-                                    <div className="catering-section-heading">
-                                        <span><MapPin size={18} /></span>
-                                        <div><h3>Logística y notas</h3><p>Agrega la dirección y cualquier indicación operativa.</p></div>
+                                    <div className="modal-section-header">
+                                        <MapPin size={18} />
+                                        <h3>Logística y notas</h3>
                                     </div>
                                     <div className="modal-input-group">
                                         <label htmlFor="catering-location">Ubicación</label>
@@ -1126,7 +1132,11 @@ export default function Catering() {
                         )}
 
                         {activeTab === 'services' && (
-                            <div className="catering-tab-panel">
+                            <div className="catering-tab-panel modal-content-group">
+                                <div className="modal-section-header">
+                                    <ConciergeBell size={18} />
+                                    <h3>Servicios del evento</h3>
+                                </div>
                                 <div className="catering-tab-toolbar single-control">
                                     <Select
                                         variant="modal"
@@ -1200,7 +1210,11 @@ export default function Catering() {
                         )}
 
                         {activeTab === 'menu' && (
-                            <div className="catering-tab-panel">
+                            <div className="catering-tab-panel modal-content-group">
+                                <div className="modal-section-header">
+                                    <Users size={18} />
+                                    <h3>Menú del evento</h3>
+                                </div>
                                 <div className="catering-tab-toolbar">
                                     <Select
                                         variant="modal"
@@ -1300,8 +1314,11 @@ export default function Catering() {
                         {activeTab === 'clauses' && (
                             <div className="catering-tab-panel">
                                 <div className="modal-content-group">
-                                    <h3 className="section-title-v2">Cláusulas del Contrato</h3>
-                                    <p style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', marginBottom: '16px' }}>
+                                    <div className="modal-section-header">
+                                        <FileText size={18} />
+                                        <h3>Cláusulas del contrato</h3>
+                                    </div>
+                                    <p className="catering-section-help">
                                         Defina los términos específicos para este evento de catering.
                                     </p>
 
@@ -1450,7 +1467,7 @@ export default function Catering() {
                                             isSearchable={false}
                                         />
                                         <div className="modal-input-group" style={{ marginBottom: 0 }}>
-                                            <Button onClick={handleAddPayment} disabled={!canManageCatering || addingPayment} style={{ height: '40px', padding: '0 20px', whiteSpace: 'nowrap' }}>
+                                            <Button type="button" onClick={handleAddPayment} disabled={!canManageCatering || addingPayment} style={{ height: '40px', padding: '0 20px', whiteSpace: 'nowrap' }}>
                                                 Agregar Pago
                                             </Button>
                                         </div>
@@ -1485,7 +1502,7 @@ export default function Catering() {
                                                 <span>
                                                     {p.status === 'REVERSED' ? `Revertido${p.reversalReason ? `: ${p.reversalReason}` : ''}` : (
                                                         canManageCatering
-                                                            ? <Button variant="secondary" onClick={() => handleReversePayment(p)}>Revertir</Button>
+                                                            ? <Button type="button" variant="secondary" onClick={() => handleReversePayment(p)}>Revertir</Button>
                                                             : 'Activo'
                                                     )}
                                                 </span>
@@ -1506,11 +1523,12 @@ export default function Catering() {
                         </div>
                         <Button type="button" variant="ghost" onClick={() => setIsSidebarOpen(false)}>Cancelar</Button>
                         {canManageCatering && (
-                            <Button type="button" onClick={handleSave} disabled={savingEvent}>
+                            <Button type="submit" disabled={savingEvent}>
                                 {savingEvent ? 'Guardando...' : selectedEvent ? 'Guardar Cambios' : 'Crear Evento'}
                             </Button>
                         )}
                     </div>
+                    </form>
                 </div>
             </Sidebar >
         </div >

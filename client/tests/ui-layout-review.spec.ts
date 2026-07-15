@@ -55,6 +55,43 @@ test('all representative routed views expose the 1700px cap', async ({ page }) =
   }
 });
 
+test('operational table map uses the complete viewport without lateral gutters', async ({ page }) => {
+  await mockApp(page);
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  await page.goto('/tables');
+
+  const map = page.locator('.tables-page--map');
+  await expect(map).toBeVisible();
+  const geometry = await map.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const styles = getComputedStyle(element);
+    return {
+      left: box.left,
+      right: box.right,
+      width: box.width,
+      paddingLeft: styles.paddingLeft,
+      paddingRight: styles.paddingRight,
+      viewportWidth: window.innerWidth,
+    };
+  });
+
+  expect(Math.abs(geometry.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.viewportWidth - geometry.right)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.viewportWidth - geometry.width)).toBeLessThanOrEqual(1);
+  expect(geometry.paddingLeft).toBe('0px');
+  expect(geometry.paddingRight).toBe('0px');
+});
+
+test('attendance settings activates only its exact navigation option', async ({ page }) => {
+  await mockApp(page);
+  await page.goto('/rh/asistencia/configuracion');
+
+  const activeItems = page.locator('.sidebar-nav .nav-item.active');
+  await expect(activeItems).toHaveCount(1);
+  await expect(activeItems).toHaveText('Configurar asistencia');
+  await expect(page.getByRole('link', { name: 'Asistencia', exact: true })).not.toHaveClass(/\bactive\b/);
+});
+
 test('menu modal has no nested card spacing or reserved right gutter', async ({ page }) => {
   await mockApp(page);
   await page.setViewportSize({ width: 1440, height: 1000 });

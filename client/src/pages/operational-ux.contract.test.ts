@@ -22,6 +22,21 @@ describe('operational UX contracts', () => {
         expect(dashboardStyles).toContain('margin: 0 auto');
     });
 
+    it('lets only the operational table map use the complete viewport', () => {
+        const tablesSource = read('./Tables.tsx');
+        const tablesStyles = read('./Tables.css');
+
+        expect(tablesSource).toContain("showMap ? 'tables-page--map' : 'tables-page--list'");
+        expect(tablesStyles).toContain('.tables-page--map {');
+        expect(tablesStyles).toContain('width: 100dvw !important');
+        expect(tablesStyles).toContain('margin-inline: calc(50% - 50dvw) !important');
+        expect(tablesStyles).toContain('padding: 0');
+        expect(tablesStyles).toContain('.tables-page--map .table-map-shell');
+        expect(tablesStyles).toContain('border-inline: 0');
+        expect(tablesStyles).toContain('border-radius: 0');
+        expect(tablesStyles).toContain('.tables-page:not(.tables-page--map)');
+    });
+
     it('keeps modal content flush without nested section cards or reserved scrollbar space', () => {
         const sharedStyles = read('../index.css');
         const modalStyles = read('../components/Modal.css');
@@ -48,11 +63,13 @@ describe('operational UX contracts', () => {
         expect(source).not.toContain('animate-slide-in');
         expect(source).toContain('modal-content-group catering-event-section');
         expect(source).toContain('catering-info-layout');
-        expect(source).toContain('width="wide"');
-        expect(styles).toContain('--catering-control-height: 46px');
+        expect(source).not.toContain('width="wide"');
+        expect(source).toContain('className="modal-form-new"');
+        expect(source).toContain('<Button type="submit" disabled={savingEvent}>');
+        expect(styles).not.toContain('--catering-control-height: 46px');
         expect(styles).toContain('.catering-event-section');
-        expect(styles).toContain('minmax(220px, .8fr) minmax(300px, 1.2fr) auto');
-        expect(styles).toContain('.catering-customer-section .modal-form-row');
+        expect(styles).toContain('minmax(180px, .7fr) minmax(260px, 1.3fr)');
+        expect(styles).not.toContain('.catering-section-heading');
     });
 
     it('supports selecting several categories in sales reports end to end', () => {

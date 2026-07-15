@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useId, useRef, useState } from 'react';
+import { ReactNode, useCallback, useId, useLayoutEffect, useRef, useState } from 'react';
 import Select, { CSSObjectWithLabel, GroupBase, Props as SelectProps } from 'react-select';
 import { getReactSelectThemeStyles, mergeReactSelectStyles } from '../utils/reactSelectTheme';
 import './Select.css';
@@ -80,14 +80,25 @@ export default function CustomSelect<
 }: CustomSelectProps<Option, IsMulti, Group>) {
     const generatedId = useId();
     const resolvedInputId = inputId ?? generatedId;
-    const combinedClassName = `select-group ${variant} ${className}`;
+    const combinedClassName = `select-group ${variant} ${props.isDisabled ? 'is-disabled' : ''} ${className}`.trim();
     const isModal = variant === 'modal';
     const anchorRef = useRef<HTMLDivElement>(null);
     const [dynamicMenuPlacement, setDynamicMenuPlacement] = useState<MenuPlacement>('auto');
+    const [dialogPortalTarget, setDialogPortalTarget] = useState<HTMLElement>();
+
+    useLayoutEffect(() => {
+        if (!isModal || menuPortalTarget !== undefined || typeof document === 'undefined') return;
+
+        const dialog = anchorRef.current?.closest('.sidebar-panel, .modal-container');
+        setDialogPortalTarget(dialog instanceof HTMLElement ? dialog : document.body);
+    }, [isModal, menuPortalTarget]);
 
     const resolvedMenuPosition = isModal ? (menuPosition ?? 'fixed') : menuPosition;
+    // Keep modal menus inside their dialog when possible. Besides preserving the
+    // focus trap and aria-modal boundary, the dialog itself is not clipped, so the
+    // menu can still escape the scrollable body. Explicit `null` remains supported.
     const resolvedMenuPortalTarget = isModal
-        ? (menuPortalTarget ?? (typeof document !== 'undefined' ? document.body : undefined))
+        ? (menuPortalTarget !== undefined ? menuPortalTarget : dialogPortalTarget)
         : menuPortalTarget;
 
     const themeStyles = getReactSelectThemeStyles<Option, IsMulti, Group>(variant);

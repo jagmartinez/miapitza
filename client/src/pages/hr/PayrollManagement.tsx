@@ -502,7 +502,7 @@ export default function PayrollManagement() {
     <div className="page-wrapper hr-payroll-page">
       <PageHeader
         title="Nómina y aguinaldo"
-        subtitle="Reglas versionadas, corridas, doble control, recibos y trazabilidad"
+        subtitle="Configura IR, INSS e INATEC por versión; luego ejecuta corridas con doble control y trazabilidad"
         icon={Calculator}
         actions={
           <div className="hr-payroll-header-actions">
@@ -514,7 +514,7 @@ export default function PayrollManagement() {
               <FilePlus2 size={17} /> Periodo
             </Button>
             <Button onClick={() => setCreatePanel({ kind: 'rule' })} disabled={!online}>
-              <Scale size={17} /> Regla
+              <Scale size={17} /> Nueva regla base
             </Button>
           </div>
         }
@@ -559,12 +559,24 @@ export default function PayrollManagement() {
               <div className="hr-payroll-section-heading">
                 <div>
                   <h2>
-                    <Scale size={20} /> Reglas y vigencias
+                    <Scale size={20} /> Configuración legal: IR, INSS e INATEC
                   </h2>
-                  <p>Metadatos y parámetros versionados; el cálculo autoritativo permanece en servidor.</p>
+                  <p>Abre una regla para administrar tasas, régimen, tramos de IR, fuentes y revisión por segundo actor. El cálculo autoritativo permanece en servidor.</p>
                 </div>
+                {rules.length > 0 && (
+                  <Button size="sm" variant="secondary" onClick={() => void openRuleConfiguration(rules.find((rule) => rule.status === 'ACTIVE') ?? rules[0])}>
+                    <Scale size={15} /> Configurar parámetros legales
+                  </Button>
+                )}
               </div>
               <div className="hr-payroll-records">
+                {rules.length === 0 && (
+                  <div className="hr-payroll-legal-empty">
+                    <strong>Aún no hay una regla de nómina.</strong>
+                    <span>Crea la regla base y después abre su configuración para registrar IR, INSS e INATEC con fuente y revisión dual.</span>
+                    <Button size="sm" onClick={() => setCreatePanel({ kind: 'rule' })} disabled={!online}>Crear regla base</Button>
+                  </div>
+                )}
                 {rules.map((rule) => (
                   <article key={rule.id}>
                     <div>
@@ -585,7 +597,7 @@ export default function PayrollManagement() {
                         variant="ghost"
                         onClick={() => void openRuleConfiguration(rule)}
                       >
-                        Parámetros
+                        Configurar IR, INSS e INATEC
                       </Button>
                       {rule.status === 'DRAFT' && (
                         <>

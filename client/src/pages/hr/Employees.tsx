@@ -399,7 +399,7 @@ export default function Employees() {
                 isOpen={editorOpen}
                 onClose={closeEditor}
                 title={editingEmployee ? `Editar: ${editingEmployee.legalName}` : 'Nuevo empleado'}
-                width="wide"
+                width="large"
                 closeOnBackdrop={!saving}
                 closeOnEscape={!saving}
             >
