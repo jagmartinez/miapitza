@@ -4,20 +4,22 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--dialog-overlay, rgba(15, 23, 42, 0.66));
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 1000;
-    backdrop-filter: blur(4px);
+    backdrop-filter: blur(8px) saturate(0.85);
+    padding: var(--spacing-lg);
 }
 
 .keypad-container {
     background: var(--color-surface);
     border-radius: var(--radius-xl);
     padding: var(--spacing-xl);
-    box-shadow: var(--shadow-xl);
-    width: 320px;
+    border: 1px solid var(--dialog-panel-border, var(--color-border));
+    box-shadow: var(--dialog-panel-shadow, var(--shadow-xl));
+    width: min(320px, 100%);
     animation: slideUp 0.2s ease-out;
 }
 
@@ -43,7 +45,7 @@
 .keypad-header h3 {
     font-size: var(--font-size-xl);
     font-weight: 600;
-    color: var(--color-neutral-800);
+    color: var(--color-text);
     margin: 0;
 }
 
@@ -54,21 +56,22 @@
     width: 32px;
     height: 32px;
     border-radius: var(--radius-md);
-    background: var(--color-neutral-100);
-    border: none;
-    color: var(--color-neutral-600);
+    background: var(--dialog-muted-bg, var(--color-background));
+    border: 1px solid var(--dialog-panel-border, var(--color-border));
+    color: var(--color-text-secondary);
     cursor: pointer;
     transition: all var(--transition-fast);
 }
 
 .keypad-close:hover {
-    background: var(--color-neutral-200);
-    color: var(--color-text);
+    background: var(--color-danger);
+    border-color: var(--color-danger);
+    color: white;
 }
 
 .keypad-display {
-    background: var(--color-neutral-50);
-    border: 2px solid var(--color-border);
+    background: var(--dialog-muted-bg, var(--color-background));
+    border: 1px solid var(--dialog-panel-border, var(--color-border));
     border-radius: var(--radius-lg);
     padding: var(--spacing-lg);
     text-align: center;
@@ -96,14 +99,14 @@
     border-radius: var(--radius-lg);
     font-size: var(--font-size-2xl);
     font-weight: 600;
-    color: var(--color-neutral-800);
+    color: var(--color-text);
     cursor: pointer;
     transition: all var(--transition-fast);
     min-height: 60px;
 }
 
 .keypad-btn:hover {
-    background: var(--color-neutral-50);
+    background: var(--dialog-muted-bg, var(--color-background));
     border-color: var(--color-primary);
     transform: scale(1.05);
 }
@@ -114,7 +117,7 @@
 
 .keypad-clear,
 .keypad-backspace {
-    background: var(--color-neutral-100);
+    background: var(--dialog-muted-bg, var(--color-background));
     color: var(--color-danger);
     font-weight: 700;
 }
@@ -140,4 +143,18 @@
 
 .keypad-confirm:active {
     transform: translateY(0);
+}
+
+.keypad-container button:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+    .keypad-container { padding: var(--spacing-lg); }
+    .keypad-btn { min-height: 52px; padding: var(--spacing-md); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .keypad-container { animation: none; }
 }

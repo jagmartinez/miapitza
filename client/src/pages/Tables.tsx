@@ -744,20 +744,26 @@ export default function Tables() {
                 <div className="premium-modal-content table-modal-content">
                     {/* Tabs Navigation */}
                     <div className="modal-tabs">
-                        <div
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'general'}
                             className={`modal-tab ${activeTab === 'general' ? 'active' : ''}`}
                             onClick={() => setActiveTab('general')}
                         >
                             <Grid3x3 size={18} />
                             <span>General</span>
-                        </div>
-                        <div
+                        </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'ubicacion'}
                             className={`modal-tab ${activeTab === 'ubicacion' ? 'active' : ''}`}
                             onClick={() => setActiveTab('ubicacion')}
                         >
                             <MapPin size={18} />
                             <span>Ubicación</span>
-                        </div>
+                        </button>
                     </div>
 
                     <form onSubmit={handleSubmit} className="modal-form-new">

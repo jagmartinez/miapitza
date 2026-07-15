@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Select from './Select';
+import Modal from './Modal';
 import api from '../services/api';
-import { X, Printer } from 'lucide-react';
+import { Printer } from 'lucide-react';
 import type { SingleValue } from 'react-select';
 import { escapeHtml } from '../utils/escapeHtml';
 import { resolveAssetUrl } from '../utils/assets';
 import '../index.css';
+import './TicketPrintModal.css';
 
 interface CustomerTicketData {
   header: {
@@ -327,16 +329,22 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
-        <div className="modal-header">
-          <h2>🎫 {type === 'kitchen' ? 'Ticket de Cocina' : 'Ticket de Cliente'}</h2>
-          <button className="close-btn" onClick={onClose}>
-            <X size={24} />
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={type === 'kitchen' ? 'Ticket de Cocina' : 'Ticket de Cliente'}
+      size="sm"
+      footer={(
+        <>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button type="button" className="btn btn-primary" onClick={handlePrint} disabled={loading || !ticketData || !!loadError}>
+            <Printer size={18} aria-hidden="true" /> Imprimir
           </button>
-        </div>
-
-        <div className="modal-body">
+        </>
+      )}
+    >
+      <div className="ticket-print-content">
+        <div className="ticket-print-body">
           {loadError && (
             <div style={{ color: 'var(--color-error, #d32f2f)', padding: '0.75rem', marginBottom: '1rem', borderRadius: '8px', background: 'rgba(211, 47, 47, 0.08)' }}>
               {loadError}
@@ -383,18 +391,8 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
             </>
           )}
         </div>
-
-        <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>
-            Cancelar
-          </button>
-          <button className="btn btn-primary" onClick={handlePrint} disabled={loading || !ticketData || !!loadError}>
-            <Printer size={18} />
-            Imprimir
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 };
 

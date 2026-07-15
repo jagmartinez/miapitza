@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { X } from 'lucide-react';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 import './NumericKeypad.css';
 
 interface NumericKeypadProps {
@@ -11,6 +12,8 @@ interface NumericKeypadProps {
 
 export default function NumericKeypad({ onConfirm, onClose, initialValue = 1, closeOnOverlayClick = false }: NumericKeypadProps) {
     const [display, setDisplay] = useState(initialValue.toString());
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const { titleId } = useDialogA11y(true, onClose, dialogRef);
 
     const handleNumber = (num: string) => {
         if (display === '0') {
@@ -53,38 +56,49 @@ export default function NumericKeypad({ onConfirm, onClose, initialValue = 1, cl
 
     return (
         <div className="keypad-overlay" onClick={closeOnOverlayClick ? onClose : undefined}>
-            <div className="keypad-container" onClick={(e) => e.stopPropagation()} onKeyDown={handleKeyPress}>
+            <div
+                ref={dialogRef}
+                className="keypad-container"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
+                tabIndex={-1}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={handleKeyPress}
+            >
                 <div className="keypad-header">
-                    <h3>Cantidad</h3>
-                    <button onClick={onClose} className="keypad-close">
-                        <X size={20} />
+                    <h3 id={titleId}>Cantidad</h3>
+                    <button type="button" onClick={onClose} className="keypad-close" aria-label="Cerrar selector de cantidad">
+                        <X size={20} aria-hidden="true" />
                     </button>
                 </div>
 
-                <div className="keypad-display">{display}</div>
+                <output className="keypad-display" aria-live="polite" aria-label={`Cantidad ${display}`}>{display}</output>
 
                 <div className="keypad-grid">
                     {[7, 8, 9, 4, 5, 6, 1, 2, 3].map(num => (
                         <button
                             key={num}
+                            type="button"
+                            aria-label={`Agregar ${num}`}
                             onClick={() => handleNumber(num.toString())}
                             className="keypad-btn"
                         >
                             {num}
                         </button>
                     ))}
-                    <button onClick={handleClear} className="keypad-btn keypad-clear">
+                    <button type="button" onClick={handleClear} className="keypad-btn keypad-clear" aria-label="Limpiar cantidad">
                         C
                     </button>
-                    <button onClick={() => handleNumber('0')} className="keypad-btn">
+                    <button type="button" onClick={() => handleNumber('0')} className="keypad-btn" aria-label="Agregar 0">
                         0
                     </button>
-                    <button onClick={handleBackspace} className="keypad-btn keypad-backspace">
+                    <button type="button" onClick={handleBackspace} className="keypad-btn keypad-backspace" aria-label="Borrar último dígito">
                         ⌫
                     </button>
                 </div>
 
-                <button onClick={handleConfirm} className="keypad-confirm">
+                <button type="button" onClick={handleConfirm} className="keypad-confirm">
                     Confirmar
                 </button>
             </div>

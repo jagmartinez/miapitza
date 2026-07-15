@@ -802,8 +802,8 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(4px);
+    background: var(--dialog-overlay, rgba(15, 23, 42, 0.66));
+    backdrop-filter: blur(8px) saturate(0.85);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -824,11 +824,12 @@
 .pos-shift-warning-modal {
     background: var(--color-surface);
     border-radius: var(--radius-xl);
-    padding: var(--spacing-2xl);
+    padding: var(--spacing-xl);
     max-width: 450px;
     width: 90%;
     text-align: center;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--dialog-panel-border, var(--color-border));
+    box-shadow: var(--dialog-panel-shadow, 0 25px 50px -12px rgba(0, 0, 0, 0.4));
     animation: slideIn 0.3s ease;
 }
 
@@ -873,7 +874,8 @@
 
 .shift-warning-details {
     background: var(--color-background);
-    border-radius: var(--radius-lg);
+    border: 1px solid var(--dialog-panel-border, var(--color-border));
+    border-radius: var(--radius-xl);
     padding: var(--spacing-md);
     margin-bottom: var(--spacing-lg);
     text-align: left;
@@ -935,8 +937,8 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(4px);
+    background: var(--dialog-overlay, rgba(15, 23, 42, 0.66));
+    backdrop-filter: blur(8px) saturate(0.85);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -953,7 +955,8 @@
     max-height: 85vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--dialog-panel-border, var(--color-border));
+    box-shadow: var(--dialog-panel-shadow, 0 25px 50px -12px rgba(0, 0, 0, 0.4));
     animation: slideIn 0.25s ease;
     overflow: hidden;
 }
@@ -964,7 +967,8 @@
     justify-content: space-between;
     gap: var(--spacing-md);
     padding: var(--spacing-lg);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--dialog-panel-border, var(--color-border));
+    background: var(--dialog-header-bg, var(--color-surface));
 }
 
 .pos-modifier-header h3 {
@@ -991,7 +995,15 @@
 }
 
 .pos-modifier-close:hover {
-    background: var(--color-neutral-200);
+    background: var(--color-danger);
+    border-color: var(--color-danger);
+    color: white;
+}
+
+.pos-modifier-close:focus-visible,
+.shift-warning-btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
 }
 
 .pos-modifier-body {

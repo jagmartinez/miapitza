@@ -1,37 +1,13 @@
 .table-selection-modal-content {
-    background: var(--color-surface);
-    border-radius: var(--radius-xl);
-    max-width: 850px;
-    width: 90%;
-    max-height: 85vh;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-    box-shadow: var(--shadow-xl);
-}
-
-.table-selection-modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--spacing-xl);
-    border-bottom: 2px solid var(--color-border);
-    position: sticky;
-    top: 0;
-    background: var(--color-surface);
-    z-index: 10;
-}
-
-.table-selection-modal-header h2 {
-    font-size: var(--font-size-2xl);
-    font-weight: 700;
-    color: var(--color-text);
-    margin: 0;
+    min-height: 0;
+    height: min(680px, 72vh);
 }
 
 .table-selection-modal-toolbar {
     padding: var(--spacing-md) var(--spacing-xl) var(--spacing-md);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--dialog-panel-border, var(--color-border));
     flex-shrink: 0;
 }
 
@@ -51,8 +27,8 @@
 .table-selection-search-input {
     width: 100%;
     padding: 10px 12px 10px 40px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
+    border: 1px solid var(--dialog-panel-border, var(--color-border));
+    border-radius: var(--radius-lg);
     font-size: 14px;
     color: var(--color-text);
     background: var(--color-background);
@@ -62,7 +38,7 @@
 .table-selection-search-input:focus {
     outline: none;
     border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    box-shadow: 0 0 0 3px var(--dialog-focus-ring, rgba(37, 99, 235, 0.1));
 }
 
 .table-selection-modal-body {
@@ -186,19 +162,7 @@
 
 @media (max-width: 768px) {
     .table-selection-modal-content {
-        width: 100%;
-        max-width: 100%;
-        max-height: 95vh;
-        max-height: 95dvh;
-        border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-    }
-
-    .table-selection-modal-header {
-        padding: var(--spacing-md) var(--spacing-lg);
-    }
-
-    .table-selection-modal-header h2 {
-        font-size: var(--font-size-lg);
+        height: min(720px, 76dvh);
     }
 
     .table-selection-modal-toolbar {

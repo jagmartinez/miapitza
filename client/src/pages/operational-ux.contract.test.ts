@@ -4,12 +4,18 @@ import { describe, expect, it } from 'vitest';
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 describe('operational UX contracts', () => {
-    it('keeps the main shell fluid and centers the dashboard at 1700px', () => {
+    it('keeps the main shell fluid and centers every routed view at 1700px', () => {
+        const layoutSource = read('../components/Layout.tsx');
         const layoutStyles = read('../components/Layout.css');
         const dashboardStyles = read('./Dashboard.css');
 
         expect(layoutStyles).toContain('.main-content {');
         expect(layoutStyles).toContain('max-width: none');
+        expect(layoutSource).toContain('<div className="main-content-inner">');
+        expect(layoutStyles).toContain('.main-content-inner {');
+        expect(layoutStyles).toContain('max-width: 1700px');
+        expect(layoutStyles).toContain('.main-content.workspace-content > .main-content-inner');
+        expect(layoutStyles).toContain('height: 100%');
         expect(dashboardStyles).toContain('max-width: 1700px');
         expect(dashboardStyles).toContain('margin: 0 auto');
     });

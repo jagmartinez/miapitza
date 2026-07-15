@@ -1469,12 +1469,12 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
             {/* Cash Shift Warning Modal */}
             {showShiftWarning && shiftStatus && (
-                <div className="pos-shift-warning-overlay">
+                <div className="pos-shift-warning-overlay" role="dialog" aria-modal="true" aria-labelledby="shift-warning-title">
                     <div className="pos-shift-warning-modal">
                         <div className="shift-warning-icon">
                             <AlertTriangle size={48} />
                         </div>
-                        <h2 className="shift-warning-title">
+                        <h2 id="shift-warning-title" className="shift-warning-title">
                             {shiftStatus.requiresClose ? 'Turno de Caja Pendiente' : 'Sin Turno de Caja'}
                         </h2>
                         <p className="shift-warning-message">
@@ -1590,14 +1590,14 @@ function ModifierSelectorModal({
 
     return (
         <div className="pos-modifier-overlay" onClick={onClose}>
-            <div className="pos-modifier-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="pos-modifier-modal" role="dialog" aria-modal="true" aria-labelledby="modifier-dialog-title" onClick={(e) => e.stopPropagation()}>
                 <div className="pos-modifier-header">
                     <div>
-                        <h3>{item.name}</h3>
+                        <h3 id="modifier-dialog-title">{item.name}</h3>
                         <span className="pos-modifier-subtitle">Personaliza tu producto</span>
                     </div>
-                    <button type="button" className="pos-modifier-close" onClick={onClose}>
-                        <X size={20} />
+                    <button type="button" className="pos-modifier-close" onClick={onClose} aria-label="Cerrar personalización">
+                        <X size={20} aria-hidden="true" />
                     </button>
                 </div>
 

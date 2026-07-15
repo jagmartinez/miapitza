@@ -281,7 +281,9 @@ export default function Layout() {
                     }
                 }}
             >
-                <Outlet />
+                <div className="main-content-inner">
+                    <Outlet />
+                </div>
                 <SyncStatus />
             </main>
 

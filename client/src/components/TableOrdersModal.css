@@ -4,8 +4,8 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
+    background: var(--dialog-overlay, rgba(15, 23, 42, 0.66));
+    backdrop-filter: blur(8px) saturate(0.85);
     display: flex;
     align-items: stretch;
     justify-content: flex-end;
@@ -20,7 +20,8 @@
     height: 100vh;
     display: flex;
     flex-direction: column;
-    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+    border-left: 1px solid var(--dialog-panel-border, var(--color-border));
+    box-shadow: var(--dialog-panel-shadow, -4px 0 20px rgba(0, 0, 0, 0.3));
     animation: slideInRight 0.3s ease-out;
 }
 
@@ -40,7 +41,8 @@
     justify-content: space-between;
     align-items: center;
     padding: var(--spacing-xl);
-    border-bottom: 2px solid var(--color-border);
+    border-bottom: 1px solid var(--dialog-panel-border, var(--color-border));
+    background: var(--dialog-header-bg, var(--color-surface));
 }
 
 .header-title h2 {
@@ -74,13 +76,18 @@
     color: white;
 }
 
+.close-btn-orders:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
 /* Summary Bar (Removed in favor of Tabs) */
 .orders-summary-bar {
     display: none;
 }
 
 /* Tabs Navigation (New) */
-.modal-tabs {
+.orders-modal .modal-tabs {
     display: flex;
     padding: var(--spacing-md) var(--spacing-xl);
     background: var(--color-background);
@@ -88,7 +95,7 @@
     gap: var(--spacing-sm);
 }
 
-.modal-tab {
+.orders-modal .modal-tab {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
@@ -103,24 +110,24 @@
     transition: all var(--transition-fast);
 }
 
-.modal-tab:hover {
+.orders-modal .modal-tab:hover {
     background: var(--color-background);
 }
 
-.modal-tab.active {
+.orders-modal .modal-tab.active {
     background: var(--color-primary);
     color: white;
     border-color: var(--color-primary);
     box-shadow: var(--shadow-sm);
 }
 
-.modal-tab svg {
+.orders-modal .modal-tab svg {
     width: 16px;
     height: 16px;
     opacity: 0.8;
 }
 
-.modal-tab.active svg {
+.orders-modal .modal-tab.active svg {
     opacity: 1;
 }
 
@@ -339,8 +346,8 @@
     display: flex;
     gap: var(--spacing-md);
     padding: var(--spacing-lg) var(--spacing-xl);
-    border-top: 2px solid var(--color-border);
-    background: var(--color-background);
+    border-top: 1px solid var(--dialog-panel-border, var(--color-border));
+    background: var(--dialog-muted-bg, var(--color-background));
 }
 
 .btn-modal-secondary,
@@ -823,7 +830,7 @@
 .orders-modal-footer {
     padding: 14px 22px;
     border-top-width: 1px;
-    background: var(--color-surface);
+    background: var(--dialog-muted-bg, var(--color-background));
 }
 
 .orders-modal-footer .btn-modal-primary { flex: 1.45; }
