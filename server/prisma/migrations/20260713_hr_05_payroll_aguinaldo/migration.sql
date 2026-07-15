@@ -71,7 +71,7 @@ CREATE TABLE `PayrollRun` (
   PRIMARY KEY (`id`), UNIQUE INDEX `PayrollRun_companyId_code_key` (`companyId`,`code`),
   INDEX `PayrollRun_companyId_kind_status_createdAt_idx` (`companyId`,`kind`,`status`,`createdAt`), INDEX `PayrollRun_periodId_idx` (`periodId`), INDEX `PayrollRun_ruleVersionId_idx` (`ruleVersionId`), INDEX `PayrollRun_configurationRevisionId_idx` (`configurationRevisionId`),
   CONSTRAINT `PayrollRun_companyId_fkey` FOREIGN KEY (`companyId`) REFERENCES `Company`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
-  CONSTRAINT `PayrollRun_periodId_fkey` FOREIGN KEY (`periodId`) REFERENCES `PayrollPeriod`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `PayrollRun_periodId_fkey` FOREIGN KEY (`periodId`) REFERENCES `PayrollPeriod`(`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `PayrollRun_ruleVersionId_fkey` FOREIGN KEY (`ruleVersionId`) REFERENCES `PayrollRuleVersion`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `PayrollRun_configurationRevisionId_fkey` FOREIGN KEY (`configurationRevisionId`) REFERENCES `PayrollRuleConfigurationRevision`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `PayrollRun_createdById_fkey` FOREIGN KEY (`createdById`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,

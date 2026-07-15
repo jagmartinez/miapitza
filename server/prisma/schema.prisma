@@ -1821,7 +1821,7 @@ model PayrollRun {
   updatedAt               DateTime         @updatedAt
 
   company                     Company                            @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  period                      PayrollPeriod?                     @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  period                      PayrollPeriod?                     @relation(fields: [periodId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   ruleVersion                 PayrollRuleVersion                 @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
   configurationRevision       PayrollRuleConfigurationRevision?  @relation(fields: [configurationRevisionId], references: [id], onDelete: Restrict)
   createdBy                   User                               @relation("PayrollRunCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)

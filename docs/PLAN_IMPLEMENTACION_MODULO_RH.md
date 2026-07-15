@@ -573,7 +573,7 @@ Estas decisiones no detienen la fundación; se mantienen configurables:
 | 2026-07-14 | 5 | Nómina y aguinaldo | Configuración legal dual-control e inmutable, snapshots, ledger histórico normalizado, cobertura, cálculo segmentado, pago evidenciado y reversión compensatoria; 22/22 pruebas F5 | Implementado; validación legal y DB pendientes |
 | 2026-07-14 | 6 | Viáticos, préstamos y deducciones | Estados, ledgers, autoservicio, moneda fail-closed e integración project/commit/reverse con nómina; 13/13 pruebas F6 | Implementado; evidencias seguras/DB pendientes |
 | 2026-07-14 | 7 | Hardening multiagente | Cerradas escalación de roles, PII de mutaciones, alcance Owner, empleados inactivos, publicación TOCTOU, permisos/marcaje y reintento ambiguo de gastos | Completado en código |
-| 2026-07-14 | 7 | Gates completos locales | Servidor 85 suites/470 pruebas; cliente 38 archivos/140 pruebas; Prisma válido; typecheck y build cliente aprobados | Completado antes del despliegue Railway |
+| 2026-07-14 | 7 | Gates completos locales | Servidor 85 suites/471 pruebas; cliente 38 archivos/140 pruebas; Prisma válido; typecheck y build cliente aprobados | Completado antes del despliegue Railway |
 | 2026-07-14 | 7 | Loop adversarial final | Corregidos cinco controles financieros iniciales, estado E2E de componentes manuales y congelamiento total de reglas validadas; dos reauditorías independientes reportaron 0 P0/P1 | Cerrado |
 
 ## 18. Entregables documentales finales

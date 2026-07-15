@@ -212,6 +212,12 @@ describe('HR payroll persistence and route contract', () => {
         expect(identifiers.filter(identifier => identifier.length > 64)).toEqual([]);
     });
 
+    it('keeps the PayrollRun shape check compatible with its MySQL foreign key', () => {
+        expect(migration).toContain('PayrollRun_shape_ck');
+        expect(migration).toMatch(/PayrollRun_periodId_fkey[^\n]+ON UPDATE RESTRICT/);
+        expect(schema).toMatch(/period\s+PayrollPeriod\?\s+@relation\([^\n]+onUpdate: Restrict\)/);
+    });
+
     it('sets no-store and removes internal trace from self DTOs', () => {
         expect(routes).toContain("Cache-Control', 'no-store");
         expect(service).toContain('trace: selfSafe ? []');

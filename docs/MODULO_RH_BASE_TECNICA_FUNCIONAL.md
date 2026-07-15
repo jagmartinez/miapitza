@@ -433,7 +433,7 @@ Gate consolidado final del 2026-07-14:
 
 - Prisma `format`, `generate` y `validate`: aprobados.
 - Typecheck servidor y cliente: aprobados.
-- Suite servidor: 85 suites, 470 pruebas aprobadas después del hardening financiero final y la validación de identificadores MySQL.
+- Suite servidor: 85 suites, 471 pruebas aprobadas después del hardening financiero final y las validaciones de compatibilidad MySQL.
 - Suite cliente: 38 archivos, 140 pruebas aprobadas después de integrar configuración legal, pago, reversión, estados E2E e idempotencia estable.
 - Build cliente: aprobado; warning no bloqueante por chunk grande de `react-pdf`.
 - F4 focal: 50/50.
