@@ -44,6 +44,11 @@
     background-color: var(--color-surface) !important;
 }
 
+.select-group.modal .react-select__control--is-focused {
+    border-color: var(--dialog-accent) !important;
+    box-shadow: 0 0 0 3px var(--dialog-focus-ring) !important;
+}
+
 .select-group .react-select__value-container {
     padding: 0 16px;
 }
@@ -119,7 +124,7 @@
 }
 
 .react-select__menu-portal .react-select__option--is-selected {
-    background-color: var(--color-primary) !important;
+    background-color: var(--select-accent, var(--color-primary)) !important;
     color: #ffffff !important;
 }
 

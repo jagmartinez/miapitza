@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { formatHrMoney } from '../../utils/hrFormat';
 import {
   AlertTriangle,
   Banknote,
@@ -100,7 +101,7 @@ function dateLabel(value?: string | null): string {
 }
 
 function money(currency: string, amount?: string | null): string {
-  return `${currency} ${amount ?? '0.00'}`;
+  return formatHrMoney(currency, amount);
 }
 
 export default function BenefitsManagement() {
@@ -641,8 +642,8 @@ export default function BenefitsManagement() {
                             <tr key={expense.id}>
                               <td>{dateLabel(expense.occurredOn)}</td>
                               <td>{expense.category}</td>
-                              <td>{money(expense.currency, expense.claimedAmount)}</td>
-                              <td>{money(expense.currency, expense.recognizedAmount)}</td>
+                              <td className="hr-amount-cell">{money(expense.currency, expense.claimedAmount)}</td>
+                              <td className="hr-amount-cell">{money(expense.currency, expense.recognizedAmount)}</td>
                               <td>
                                 {expense.evidence?.fileName ?? expense.receiptReference ?? '—'}
                               </td>
@@ -676,9 +677,9 @@ export default function BenefitsManagement() {
                             <tr key={installment.id}>
                               <td>{installment.number}</td>
                               <td>{dateLabel(installment.dueDate)}</td>
-                              <td>{money(selected.item.currency, installment.scheduledTotal)}</td>
-                              <td>{money(selected.item.currency, installment.paidAmount)}</td>
-                              <td>
+                              <td className="hr-amount-cell">{money(selected.item.currency, installment.scheduledTotal)}</td>
+                              <td className="hr-amount-cell">{money(selected.item.currency, installment.paidAmount)}</td>
+                              <td className="hr-amount-cell">
                                 {money(selected.item.currency, installment.outstandingAmount)}
                               </td>
                               <td>

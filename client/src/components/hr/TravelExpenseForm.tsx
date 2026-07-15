@@ -1,3 +1,5 @@
+import HrReactSelect from './HrReactSelect';
+import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
 import { FileCheck2 } from 'lucide-react';
 import Button from '../Button';
@@ -46,7 +48,7 @@ export default function TravelExpenseForm({
       </div>
       <label>
         Categoría
-        <select
+        <HrReactSelect
           value={form.category}
           onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
         >
@@ -54,7 +56,7 @@ export default function TravelExpenseForm({
           <option value="TRANSPORTE">Transporte</option>
           <option value="HOSPEDAJE">Hospedaje</option>
           <option value="OTRO">Otro</option>
-        </select>
+        </HrReactSelect>
       </label>
       <label>
         Fecha
@@ -69,24 +71,20 @@ export default function TravelExpenseForm({
       </label>
       <label>
         Moneda
-        <select
+        <HrReactSelect
           value={form.currency}
           onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value }))}
         >
           <option value="NIO">NIO</option>
           <option value="USD">USD</option>
-        </select>
+        </HrReactSelect>
       </label>
       <label>
         Monto reclamado
-        <input
-          type="number"
-          min="0.01"
-          step="0.01"
-          inputMode="decimal"
+        <HrMoneyInput
           value={form.claimedAmount}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, claimedAmount: event.target.value }))
+          onValueChange={(claimedAmount) =>
+            setForm((current) => ({ ...current, claimedAmount }))
           }
           required
         />

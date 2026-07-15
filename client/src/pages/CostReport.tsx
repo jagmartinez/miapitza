@@ -157,7 +157,7 @@ export default function CostReport() {
                     />
                 </div>
 
-                <div className="filter-field">
+                <div className="filter-field filter-field-category">
                     <Select
                         label={<><Tag size={12} /> Categoría</>}
                         options={[{ value: '', label: 'Todas las Categorías' }, ...categories.map((c) => ({ value: c.id.toString(), label: c.name }))]}

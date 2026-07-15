@@ -1,0 +1,26 @@
+.hr-react-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.hr-react-select .react-select__control {
+  min-height: 42px;
+}
+
+.hr-money-input,
+.hr-money,
+.hr-number,
+.hr-amount-cell {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.hr-money-input {
+  width: 100%;
+}
+
+.hr-money {
+  display: inline-block;
+  min-width: 7ch;
+  white-space: nowrap;
+}

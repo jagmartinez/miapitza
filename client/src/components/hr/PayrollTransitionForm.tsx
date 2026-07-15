@@ -1,3 +1,4 @@
+import HrReactSelect from './HrReactSelect';
 import { useState } from 'react';
 import { AlertTriangle, UsersRound } from 'lucide-react';
 import Button from '../Button';
@@ -124,12 +125,12 @@ export default function PayrollTransitionForm({
           </label>
           <label>
             Método
-            <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
+            <HrReactSelect value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
               <option value="TRANSFERENCIA">Transferencia</option>
               <option value="CHEQUE">Cheque</option>
               <option value="EFECTIVO">Efectivo</option>
               <option value="OTRO">Otro</option>
-            </select>
+            </HrReactSelect>
           </label>
           <label>
             Lote bancario o contable
@@ -153,12 +154,12 @@ export default function PayrollTransitionForm({
           </label>
           <label>
             Método de reversión
-            <select value={reversalMethod} onChange={(event) => setReversalMethod(event.target.value)}>
+            <HrReactSelect value={reversalMethod} onChange={(event) => setReversalMethod(event.target.value)}>
               <option value="TRANSFERENCIA_REVERSA">Transferencia reversa</option>
               <option value="ANULACION_CHEQUE">Anulación de cheque</option>
               <option value="DEVOLUCION_EFECTIVO">Devolución de efectivo</option>
               <option value="OTRO">Otro</option>
-            </select>
+            </HrReactSelect>
           </label>
           <label className="span-full">
             Evidencia de reversión

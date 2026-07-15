@@ -1,3 +1,5 @@
+import HrReactSelect from './HrReactSelect';
+import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
 import { MapPin, ShieldCheck } from 'lucide-react';
 import Button from '../Button';
@@ -51,7 +53,7 @@ export default function TravelRequestForm({
       {!selfService && (
         <label>
           Persona
-          <select
+          <HrReactSelect
             required
             value={form.userId ?? ''}
             onChange={(event) =>
@@ -64,12 +66,12 @@ export default function TravelRequestForm({
                 {user.name ?? user.username}
               </option>
             ))}
-          </select>
+          </HrReactSelect>
         </label>
       )}
       <label>
         Sucursal de origen
-        <select
+        <HrReactSelect
           value={form.branchId ?? ''}
           onChange={(event) =>
             setForm((current) => ({
@@ -84,7 +86,7 @@ export default function TravelRequestForm({
               {branch.name}
             </option>
           ))}
-        </select>
+        </HrReactSelect>
       </label>
       <label className="span-full">
         Destino
@@ -125,24 +127,20 @@ export default function TravelRequestForm({
       </label>
       <label>
         Moneda
-        <select
+        <HrReactSelect
           value={form.currency}
           onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value }))}
         >
           <option value="NIO">NIO — Córdoba</option>
           <option value="USD">USD — Dólar</option>
-        </select>
+        </HrReactSelect>
       </label>
       <label>
         Estimado solicitado
-        <input
-          type="number"
-          min="0"
-          step="0.01"
-          inputMode="decimal"
+        <HrMoneyInput
           value={form.requestedAmount}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, requestedAmount: event.target.value }))
+          onValueChange={(requestedAmount) =>
+            setForm((current) => ({ ...current, requestedAmount }))
           }
           required
         />

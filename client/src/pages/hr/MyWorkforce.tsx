@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { formatHrNumber } from '../../utils/hrFormat';
 import {
   AlertTriangle,
   Briefcase as BriefcaseBusiness,
@@ -518,11 +519,11 @@ export default function MyWorkforce() {
                         {balance.leaveType?.name ?? balance.periodLabel ?? `Saldo #${balance.id}`}
                       </strong>
                       <span>
-                        {balance.available} {balance.unit} disponibles
+                        {formatHrNumber(balance.available)} {balance.unit} disponibles
                       </span>
                       <small>
-                        Devengado {balance.accrued} · usado {balance.used} · pendiente{' '}
-                        {balance.pending}
+                        Devengado {formatHrNumber(balance.accrued)} · usado {formatHrNumber(balance.used)} · pendiente{' '}
+                        {formatHrNumber(balance.pending)}
                       </small>
                       <small>
                         Al {balance.asOf} · revisión {balance.sourceRevision ?? '—'}
@@ -547,7 +548,7 @@ export default function MyWorkforce() {
                     <article key={entry.id}>
                       <div>
                         <strong>
-                          {entry.type} · {entry.amount} {entry.unit}
+                          {entry.type} · {formatHrNumber(entry.amount)} {entry.unit}
                         </strong>
                         <span>{entry.reason}</span>
                         <small>

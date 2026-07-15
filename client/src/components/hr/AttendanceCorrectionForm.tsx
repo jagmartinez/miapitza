@@ -1,3 +1,4 @@
+import HrReactSelect from './HrReactSelect';
 import { useState } from 'react';
 import Button from '../Button';
 import type { HrNamedEntity, HrUserSummary } from '../../types/hr';
@@ -66,19 +67,19 @@ export default function AttendanceCorrectionForm({
       {users && (
         <label>
           Usuario
-          <select value={userId} onChange={(event) => setUserId(event.target.value)} required>
+          <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)} required>
             <option value="">Seleccionar…</option>
             {users.map((user) => (
               <option key={user.id} value={user.id}>
                 {user.name} · @{user.username}
               </option>
             ))}
-          </select>
+          </HrReactSelect>
         </label>
       )}
       <label>
         Tipo de corrección
-        <select value={type} onChange={(event) => setType(event.target.value as HrCorrectionType)}>
+        <HrReactSelect value={type} onChange={(event) => setType(event.target.value as HrCorrectionType)}>
           {TYPE_OPTIONS.filter(
             (option) => option.value !== 'ASSIGN_BRANCH' || branches !== undefined
           ).map((option) => (
@@ -86,12 +87,12 @@ export default function AttendanceCorrectionForm({
               {option.label}
             </option>
           ))}
-        </select>
+        </HrReactSelect>
       </label>
       {type === 'ADD_PUNCH' && (
         <label>
           Acción del marcaje
-          <select
+          <HrReactSelect
             value={requestedAction}
             onChange={(event) => setRequestedAction(event.target.value as HrAttendanceAction)}
           >
@@ -99,7 +100,7 @@ export default function AttendanceCorrectionForm({
             <option value="BREAK_START">Inicio de descanso</option>
             <option value="BREAK_END">Fin de descanso</option>
             <option value="CHECK_OUT">Salida</option>
-          </select>
+          </HrReactSelect>
         </label>
       )}
       <label>
@@ -128,7 +129,7 @@ export default function AttendanceCorrectionForm({
       {type === 'ASSIGN_BRANCH' && (
         <label>
           Sucursal solicitada
-          <select
+          <HrReactSelect
             value={requestedBranchId}
             onChange={(event) => setRequestedBranchId(event.target.value)}
             required
@@ -139,7 +140,7 @@ export default function AttendanceCorrectionForm({
                 {branch.name}
               </option>
             ))}
-          </select>
+          </HrReactSelect>
         </label>
       )}
       <label className="span-full">

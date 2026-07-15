@@ -1,3 +1,4 @@
+import HrReactSelect from './HrReactSelect';
 import { useState } from 'react';
 import Button from '../Button';
 import type {
@@ -61,7 +62,7 @@ export default function PayrollRunForm({
       {kind === 'REGULAR' ? (
         <label>
           Periodo
-          <select value={periodId} onChange={(event) => setPeriodId(event.target.value)} required>
+          <HrReactSelect value={periodId} onChange={(event) => setPeriodId(event.target.value)} required>
             <option value="">Seleccionar…</option>
             {periods
               .filter((period) => period.status !== 'VOID')
@@ -70,7 +71,7 @@ export default function PayrollRunForm({
                   {period.code} · {period.dateFrom} – {period.dateTo}
                 </option>
               ))}
-          </select>
+          </HrReactSelect>
         </label>
       ) : (
         <>
@@ -98,7 +99,7 @@ export default function PayrollRunForm({
       )}
       <label>
         Regla activa
-        <select
+        <HrReactSelect
           value={ruleVersionId}
           onChange={(event) => setRuleVersionId(event.target.value)}
           required
@@ -111,7 +112,7 @@ export default function PayrollRunForm({
                 {rule.name} · v{rule.version}
               </option>
             ))}
-        </select>
+        </HrReactSelect>
       </label>
       <label className="span-full">
         Razón de apertura

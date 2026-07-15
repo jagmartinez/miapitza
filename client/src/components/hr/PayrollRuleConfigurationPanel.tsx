@@ -1,3 +1,5 @@
+import HrReactSelect from './HrReactSelect';
+import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
 import { FileCheck2, ShieldCheck } from 'lucide-react';
 import Button from '../Button';
@@ -265,10 +267,10 @@ export default function PayrollRuleConfigurationPanel({
           </label>
           <label>
             Prorrateo
-            <select value={prorationMode} onChange={(event) => setProrationMode(event.target.value as typeof prorationMode)}>
+            <HrReactSelect value={prorationMode} onChange={(event) => setProrationMode(event.target.value as typeof prorationMode)}>
               <option value="SERVICE_DAYS_RATIO">Proporción por días de servicio</option>
               <option value="NONE">Sin prorrateo</option>
-            </select>
+            </HrReactSelect>
           </label>
           <label>
             Fuentes elegibles, separadas por coma
@@ -280,13 +282,13 @@ export default function PayrollRuleConfigurationPanel({
           </div>
           <label>
             Régimen tributario empresarial
-            <select value={companyTaxRegime} onChange={(event) => updateCompanyTaxRegime(event.target.value as typeof companyTaxRegime)}>
+            <HrReactSelect value={companyTaxRegime} onChange={(event) => updateCompanyTaxRegime(event.target.value as typeof companyTaxRegime)}>
               <option value="GENERAL">General</option>
               <option value="SIMPLIFIED_FIXED_QUOTA">Cuota fija / simplificado</option>
               <option value="SPECIAL">Especial</option>
               <option value="EXEMPT">Exento</option>
               <option value="OTHER">Otro</option>
-            </select>
+            </HrReactSelect>
           </label>
           <label>
             Fuente del régimen
@@ -294,28 +296,28 @@ export default function PayrollRuleConfigurationPanel({
           </label>
           <label>
             IR laboral según régimen
-            <select value={regimeIncomeTaxApplicability} onChange={(event) => { setRegimeIncomeTaxApplicability(event.target.value as typeof regimeIncomeTaxApplicability); setRegimeRuleConfirmed(false); }}>
+            <HrReactSelect value={regimeIncomeTaxApplicability} onChange={(event) => { setRegimeIncomeTaxApplicability(event.target.value as typeof regimeIncomeTaxApplicability); setRegimeRuleConfirmed(false); }}>
               <option value="APPLIES">Calcula IR laboral</option>
               <option value="DOES_NOT_APPLY">No calcula IR laboral</option>
-            </select>
+            </HrReactSelect>
           </label>
           {regimeIncomeTaxApplicability === 'DOES_NOT_APPLY' && <label className="span-full">Fundamento de no aplicación del IR por régimen<textarea value={regimeIncomeTaxException} onChange={(event) => { setRegimeIncomeTaxException(event.target.value); setRegimeRuleConfirmed(false); }} required /></label>}
 
           <PayrollPaymentConceptCatalogEditor concepts={paymentConceptCatalog} onChange={(concepts) => { setPaymentConceptCatalog(concepts); setRegimeRuleConfirmed(false); }} />
 
           <h4 className="span-full">INSS</h4>
-          <label>Aplicación<select value={inssApplicability} onChange={(event) => setInssApplicability(event.target.value as typeof inssApplicability)}><option value="APPLIES">Aplica</option><option value="DOES_NOT_APPLY">No aplica con excepción documentada</option></select></label>
-          <label>Régimen INSS<select value={inssRegime} onChange={(event) => setInssRegime(event.target.value as typeof inssRegime)}><option value="INTEGRAL">Integral</option><option value="IVM_RP">IVM-RP</option><option value="FACULTATIVE_INTEGRAL">Facultativo integral</option><option value="FACULTATIVE_IVM">Facultativo IVM</option><option value="OTHER">Otro</option></select></label>
+          <label>Aplicación<HrReactSelect value={inssApplicability} onChange={(event) => setInssApplicability(event.target.value as typeof inssApplicability)}><option value="APPLIES">Aplica</option><option value="DOES_NOT_APPLY">No aplica con excepción documentada</option></HrReactSelect></label>
+          <label>Régimen INSS<HrReactSelect value={inssRegime} onChange={(event) => setInssRegime(event.target.value as typeof inssRegime)}><option value="INTEGRAL">Integral</option><option value="IVM_RP">IVM-RP</option><option value="FACULTATIVE_INTEGRAL">Facultativo integral</option><option value="FACULTATIVE_IVM">Facultativo IVM</option><option value="OTHER">Otro</option></HrReactSelect></label>
           <label>Tasa laboral (0.07 = 7%)<input type="number" min="0" max="1" step="0.000001" value={inssEmployeeRate} onChange={(event) => setInssEmployeeRate(event.target.value)} required /></label>
           <label>Tasa patronal menor al umbral<input type="number" min="0" max="1" step="0.000001" value={inssEmployerBelow} onChange={(event) => setInssEmployerBelow(event.target.value)} required /></label>
           <label>Tasa patronal desde el umbral<input type="number" min="0" max="1" step="0.000001" value={inssEmployerAtOrAbove} onChange={(event) => setInssEmployerAtOrAbove(event.target.value)} required /></label>
           <label>Umbral de colaboradores<input type="number" min="1" step="1" value={inssThreshold} onChange={(event) => setInssThreshold(event.target.value)} required /></label>
-          <label>Base mínima mensual del sector<input type="number" min="0" step="0.01" value={inssMinimumBase} onChange={(event) => setInssMinimumBase(event.target.value)} required /></label>
+          <label>Base mínima mensual del sector<HrMoneyInput value={inssMinimumBase} onValueChange={setInssMinimumBase} required /></label>
           <label className="span-full">Fuente INSS<input value={inssReference} onChange={(event) => setInssReference(event.target.value)} maxLength={500} required /></label>
           {inssApplicability === 'DOES_NOT_APPLY' && <label className="span-full">Fundamento de excepción INSS<textarea value={inssException} onChange={(event) => setInssException(event.target.value)} required /></label>}
 
           <h4 className="span-full">INATEC</h4>
-          <label>Aplicación<select value={inatecApplicability} onChange={(event) => setInatecApplicability(event.target.value as typeof inatecApplicability)}><option value="APPLIES">Aplica</option><option value="DOES_NOT_APPLY">No aplica con excepción documentada</option></select></label>
+          <label>Aplicación<HrReactSelect value={inatecApplicability} onChange={(event) => setInatecApplicability(event.target.value as typeof inatecApplicability)}><option value="APPLIES">Aplica</option><option value="DOES_NOT_APPLY">No aplica con excepción documentada</option></HrReactSelect></label>
           <label>Tasa patronal (0.02 = 2%)<input type="number" min="0" max="1" step="0.000001" value={inatecRate} onChange={(event) => setInatecRate(event.target.value)} required /></label>
           <label className="span-full">Fuente INATEC<input value={inatecReference} onChange={(event) => setInatecReference(event.target.value)} maxLength={500} required /></label>
           {inatecApplicability === 'DOES_NOT_APPLY' && <label className="span-full">Fundamento de excepción INATEC<textarea value={inatecException} onChange={(event) => setInatecException(event.target.value)} required /></label>}
@@ -335,11 +337,11 @@ export default function PayrollRuleConfigurationPanel({
             <strong>Tabla progresiva anual</strong>
             <div className="table-scroll"><table><thead><tr><th>Desde</th><th>Hasta</th><th>Impuesto base</th><th>Tasa</th><th>Sobre exceso</th></tr></thead><tbody>
               {brackets.map((bracket, index) => <tr key={index}>
-                <td><input type="number" min="0" step="0.01" value={bracket.lowerBound} onChange={(event) => updateBracket(index, 'lowerBound', event.target.value)} required /></td>
-                <td>{index === brackets.length - 1 ? 'En adelante' : <input type="number" min="0" step="0.01" value={bracket.upperBound ?? ''} onChange={(event) => updateBracket(index, 'upperBound', event.target.value)} required />}</td>
-                <td><input type="number" min="0" step="0.01" value={bracket.baseTax} onChange={(event) => updateBracket(index, 'baseTax', event.target.value)} required /></td>
+                <td><HrMoneyInput value={bracket.lowerBound} onValueChange={(value) => updateBracket(index, 'lowerBound', value)} required /></td>
+                <td>{index === brackets.length - 1 ? 'En adelante' : <HrMoneyInput value={bracket.upperBound ?? ''} onValueChange={(value) => updateBracket(index, 'upperBound', value)} required />}</td>
+                <td><HrMoneyInput value={bracket.baseTax} onValueChange={(value) => updateBracket(index, 'baseTax', value)} required /></td>
                 <td><input type="number" min="0" max="1" step="0.000001" value={bracket.rate} onChange={(event) => updateBracket(index, 'rate', event.target.value)} required /></td>
-                <td><input type="number" min="0" step="0.01" value={bracket.excessOver} onChange={(event) => updateBracket(index, 'excessOver', event.target.value)} required /></td>
+                <td><HrMoneyInput value={bracket.excessOver} onValueChange={(value) => updateBracket(index, 'excessOver', value)} required /></td>
               </tr>)}
             </tbody></table></div>
           </div>

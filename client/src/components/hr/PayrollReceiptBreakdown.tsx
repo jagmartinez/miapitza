@@ -1,4 +1,5 @@
 import { Download, FileText } from 'lucide-react';
+import { formatHrMoney } from '../../utils/hrFormat';
 import Button from '../Button';
 import type { HrPayrollReceiptDetail } from '../../types/hr-payroll';
 import PayrollStatusPill from './PayrollStatusPill';
@@ -45,19 +46,19 @@ export default function PayrollReceiptBreakdown({
         <div>
           <dt>Ingresos brutos</dt>
           <dd>
-            {receipt.currency} {receipt.grossIncome}
+            {formatHrMoney(receipt.currency, receipt.grossIncome)}
           </dd>
         </div>
         <div>
           <dt>Deducciones</dt>
           <dd>
-            {receipt.currency} {receipt.totalDeductions}
+            {formatHrMoney(receipt.currency, receipt.totalDeductions)}
           </dd>
         </div>
         <div className="net">
           <dt>Neto pagado</dt>
           <dd>
-            {receipt.currency} {receipt.netPay}
+            {formatHrMoney(receipt.currency, receipt.netPay)}
           </dd>
         </div>
       </dl>
@@ -77,7 +78,7 @@ export default function PayrollReceiptBreakdown({
                     </small>
                   </dt>
                   <dd>
-                    {receipt.currency} {component.amount}
+                    {formatHrMoney(receipt.currency, component.amount)}
                   </dd>
                 </div>
               ))}
@@ -99,7 +100,7 @@ export default function PayrollReceiptBreakdown({
                     </small>
                   </dt>
                   <dd>
-                    {receipt.currency} {component.amount}
+                    {formatHrMoney(receipt.currency, component.amount)}
                   </dd>
                 </div>
               ))}

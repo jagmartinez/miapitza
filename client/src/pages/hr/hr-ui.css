@@ -1,0 +1,76 @@
+/* Shared RH surface: keeps every primary, secondary and modal view on the app design system. */
+.page-wrapper[class*='hr-'] {
+  --hr-panel-bg: var(--color-surface);
+  --hr-panel-muted: color-mix(in srgb, var(--color-background) 92%, var(--dialog-accent) 8%);
+  width: 100%;
+  max-width: 1700px;
+  min-width: 0;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+}
+
+.page-wrapper[class*='hr-'] > .page-header-bar {
+  margin-bottom: 0;
+}
+
+.page-wrapper[class*='hr-'] :is(
+  .hr-dashboard-alerts,
+  .hr-landing-panel,
+  .hr-panel,
+  .hr-workforce-panel,
+  .hr-attendance-panel,
+  .hr-settings-card,
+  .hr-benefits-list,
+  .hr-benefits-detail,
+  .hr-payroll-list,
+  .hr-payroll-workspace,
+  .hr-schedule-panel
+) {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--hr-panel-bg);
+  box-shadow: var(--shadow-sm);
+}
+
+.page-wrapper[class*='hr-'] :is(input, textarea):not([type='checkbox']):not([type='radio']) {
+  border-color: var(--color-border);
+  background: var(--color-background);
+  color: var(--color-text);
+}
+
+.page-wrapper[class*='hr-'] :is(input, textarea):not([type='checkbox']):not([type='radio']):focus-visible {
+  border-color: var(--dialog-accent) !important;
+  box-shadow: 0 0 0 3px var(--dialog-focus-ring) !important;
+  outline: none;
+}
+
+.page-wrapper[class*='hr-'] :is(.hr-payroll-totals, .hr-receipt-totals) dd,
+.page-wrapper[class*='hr-'] :is(.hr-payroll-component-list, .hr-benefits-list-amount) strong,
+.page-wrapper[class*='hr-'] :is(td, th).amount,
+.page-wrapper[class*='hr-'] :is(td, th).text-right {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.page-wrapper[class*='hr-'] .filters-toolbar,
+.page-wrapper[class*='hr-'] :is(.hr-workforce-filterbar, .hr-payroll-filterbar, .hr-benefits-filterbar) {
+  border-radius: var(--radius-xl);
+  background: var(--hr-panel-bg);
+}
+
+.page-wrapper[class*='hr-'] :is(.state-placeholder, .hr-benefits-empty, .hr-panel-empty) {
+  border-radius: var(--radius-xl);
+  background: var(--hr-panel-muted);
+}
+
+.dark .page-wrapper[class*='hr-'] {
+  --hr-panel-muted: color-mix(in srgb, var(--color-background) 94%, var(--dialog-accent) 6%);
+}
+
+@media (max-width: 768px) {
+  .page-wrapper[class*='hr-'] {
+    gap: var(--spacing-lg);
+  }
+}

@@ -1,3 +1,5 @@
+import HrReactSelect from './HrReactSelect';
+import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import Button from '../Button';
@@ -56,7 +58,7 @@ export default function DeductionForm({
       </div>
       <label>
         Persona
-        <select
+        <HrReactSelect
           required
           value={form.userId || ''}
           onChange={(event) =>
@@ -69,7 +71,7 @@ export default function DeductionForm({
               {user.name || user.username}
             </option>
           ))}
-        </select>
+        </HrReactSelect>
       </label>
       <label>
         Nombre
@@ -82,7 +84,7 @@ export default function DeductionForm({
       </label>
       <label>
         Frecuencia
-        <select
+        <HrReactSelect
           value={form.frequency}
           onChange={(event) =>
             setForm((current) => ({
@@ -93,42 +95,34 @@ export default function DeductionForm({
         >
           <option value="ONCE">Única</option>
           <option value="RECURRING">Recurrente</option>
-        </select>
+        </HrReactSelect>
       </label>
       <label>
         Moneda
-        <select
+        <HrReactSelect
           value={form.currency}
           onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value }))}
         >
           <option value="NIO">NIO — Córdoba</option>
           <option value="USD">USD — Dólar</option>
-        </select>
+        </HrReactSelect>
       </label>
       <label>
         Monto solicitado
-        <input
-          type="number"
-          min="0.01"
-          step="0.01"
-          inputMode="decimal"
+        <HrMoneyInput
           value={form.requestedAmount}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, requestedAmount: event.target.value }))
+          onValueChange={(requestedAmount) =>
+            setForm((current) => ({ ...current, requestedAmount }))
           }
           required
         />
       </label>
       <label>
         Límite por periodo
-        <input
-          type="number"
-          min="0.01"
-          step="0.01"
-          inputMode="decimal"
+        <HrMoneyInput
           value={form.perPeriodLimit ?? ''}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, perPeriodLimit: event.target.value }))
+          onValueChange={(perPeriodLimit) =>
+            setForm((current) => ({ ...current, perPeriodLimit: perPeriodLimit || undefined }))
           }
         />
       </label>

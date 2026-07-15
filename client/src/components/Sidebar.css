@@ -78,6 +78,7 @@
     overflow-wrap: anywhere;
     font-weight: 750;
     letter-spacing: -0.02em;
+    color: var(--dialog-title-color, var(--color-text));
 }
 
 .sidebar-close {
@@ -101,7 +102,7 @@
 }
 
 .sidebar-close:focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: 2px solid var(--dialog-accent, var(--color-primary));
     outline-offset: 2px;
 }
 

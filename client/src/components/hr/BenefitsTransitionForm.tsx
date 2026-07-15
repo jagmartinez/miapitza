@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import Button from '../Button';
+import HrMoneyInput from './HrMoneyInput';
 import type {
   HrBenefitsActionInput,
   HrDeductionAction,
@@ -114,13 +115,9 @@ export default function BenefitsTransitionForm({
       {asksAmount && (
         <label>
           {action === 'REGISTER_PAYMENT' ? 'Monto recibido' : 'Monto propuesto para aprobación'}
-          <input
-            type="number"
-            min="0.01"
-            step="0.01"
-            inputMode="decimal"
+          <HrMoneyInput
             value={proposedAmount}
-            onChange={(event) => setProposedAmount(event.target.value)}
+            onValueChange={setProposedAmount}
             required
           />
           <small>El servidor devolverá el monto aplicado y el saldo resultante.</small>

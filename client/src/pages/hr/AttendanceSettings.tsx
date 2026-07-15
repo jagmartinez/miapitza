@@ -1,3 +1,4 @@
+import HrReactSelect from '../../components/hr/HrReactSelect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
@@ -317,14 +318,14 @@ export default function AttendanceSettings() {
       <section className="hr-settings-scope" aria-label="Alcance de configuración">
         <label>
           Alcance de política y dispositivos
-          <select value={scope} onChange={(event) => setScope(event.target.value)}>
+          <HrReactSelect value={scope} onChange={(event) => setScope(event.target.value)}>
             <option value="">Toda la empresa</option>
             {lookups.branches.map((branch) => (
               <option key={branch.id} value={branch.id}>
                 {branch.name}
               </option>
             ))}
-          </select>
+          </HrReactSelect>
         </label>
         <p>
           {selectedBranch
@@ -447,7 +448,7 @@ export default function AttendanceSettings() {
               <div className="hr-settings-fields three-columns">
                 <label>
                   Incumplimiento de horario
-                  <select
+                  <HrReactSelect
                     value={policy.scheduleViolationMode}
                     onChange={(event) =>
                       updatePolicyField(
@@ -461,11 +462,11 @@ export default function AttendanceSettings() {
                         {mode.label}
                       </option>
                     ))}
-                  </select>
+                  </HrReactSelect>
                 </label>
                 <label>
                   Incumplimiento geocerca
-                  <select
+                  <HrReactSelect
                     value={policy.geofenceViolationMode}
                     onChange={(event) =>
                       updatePolicyField(
@@ -479,11 +480,11 @@ export default function AttendanceSettings() {
                         {mode.label}
                       </option>
                     ))}
-                  </select>
+                  </HrReactSelect>
                 </label>
                 <label>
                   Incumplimiento biométrico
-                  <select
+                  <HrReactSelect
                     value={policy.biometricViolationMode}
                     onChange={(event) =>
                       updatePolicyField(
@@ -497,11 +498,11 @@ export default function AttendanceSettings() {
                         {mode.label}
                       </option>
                     ))}
-                  </select>
+                  </HrReactSelect>
                 </label>
                 <label>
                   Marcaje sin turno
-                  <select
+                  <HrReactSelect
                     value={policy.unscheduledViolationMode}
                     onChange={(event) =>
                       updatePolicyField(
@@ -515,7 +516,7 @@ export default function AttendanceSettings() {
                         {mode.label}
                       </option>
                     ))}
-                  </select>
+                  </HrReactSelect>
                 </label>
               </div>
               <p className="hr-form-help">
@@ -767,7 +768,7 @@ export default function AttendanceSettings() {
               >
                 <label>
                   Usuario interno
-                  <select
+                  <HrReactSelect
                     value={biometricUserId}
                     onChange={(event) => {
                       setBiometricUserId(event.target.value);
@@ -781,7 +782,7 @@ export default function AttendanceSettings() {
                         {user.name} · {user.username}
                       </option>
                     ))}
-                  </select>
+                  </HrReactSelect>
                 </label>
                 <label>
                   Razón obligatoria
@@ -863,7 +864,7 @@ export default function AttendanceSettings() {
           </div>
           <label>
             Sucursal
-            <select
+            <HrReactSelect
               value={deviceForm.branchId}
               onChange={(event) =>
                 setDeviceForm((current) => ({ ...current, branchId: event.target.value }))
@@ -876,7 +877,7 @@ export default function AttendanceSettings() {
                   {branch.name}
                 </option>
               ))}
-            </select>
+            </HrReactSelect>
           </label>
           <label>
             Nombre descriptivo

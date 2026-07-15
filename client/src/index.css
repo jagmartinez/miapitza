@@ -100,11 +100,15 @@
   --modal-width-xl: 950px;
   /* Shared dialog foundation. PaymentModal intentionally owns its own tokens. */
   --dialog-overlay: rgba(15, 23, 42, 0.66);
-  --dialog-panel-border: color-mix(in srgb, var(--color-border) 82%, var(--color-primary) 18%);
+  --dialog-accent: #526f99;
+  --dialog-accent-hover: #405c86;
+  --dialog-accent-soft: #e7ecf3;
+  --dialog-title-color: var(--color-text);
+  --dialog-panel-border: color-mix(in srgb, var(--color-border) 84%, var(--dialog-accent) 16%);
   --dialog-panel-shadow: 0 28px 70px -24px rgb(15 23 42 / 0.58), 0 12px 28px -18px rgb(15 23 42 / 0.34);
-  --dialog-header-bg: linear-gradient(135deg, var(--color-surface) 0%, color-mix(in srgb, var(--color-surface) 88%, var(--color-primary) 12%) 100%);
-  --dialog-muted-bg: color-mix(in srgb, var(--color-background) 88%, var(--color-primary) 12%);
-  --dialog-focus-ring: color-mix(in srgb, var(--color-primary) 22%, transparent);
+  --dialog-header-bg: linear-gradient(135deg, var(--color-surface) 0%, color-mix(in srgb, var(--color-surface) 92%, var(--dialog-accent) 8%) 100%);
+  --dialog-muted-bg: color-mix(in srgb, var(--color-background) 93%, var(--dialog-accent) 7%);
+  --dialog-focus-ring: color-mix(in srgb, var(--dialog-accent) 20%, transparent);
 }
 
 /* Dark Mode Variables */
@@ -119,6 +123,9 @@
   --color-primary-light: #1e3a8a;
   --color-surface-hover: var(--color-neutral-700);
   --color-disabled-bg: var(--color-neutral-700);
+  --dialog-accent: #5f7da8;
+  --dialog-accent-hover: #7390b7;
+  --dialog-accent-soft: #263a56;
 
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
@@ -357,14 +364,14 @@ button.modal-tab {
 
 .modal-tab:hover {
   background: var(--color-surface);
-  border-color: var(--color-primary);
+  border-color: var(--dialog-accent);
 }
 
 .modal-tab.active {
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  background: var(--dialog-accent);
   color: white;
-  border-color: var(--color-primary);
-  box-shadow: 0 8px 18px -12px var(--color-primary-dark);
+  border-color: var(--dialog-accent);
+  box-shadow: 0 8px 18px -14px color-mix(in srgb, var(--dialog-accent) 72%, transparent);
 }
 
 .modal-tab svg {
@@ -422,12 +429,12 @@ button.modal-tab {
 }
 
 .modal-section-header svg {
-  color: var(--color-primary);
+  color: var(--dialog-accent);
   padding: 6px;
   width: 30px;
   height: 30px;
   border-radius: var(--radius-md);
-  background: var(--color-primary-light);
+  background: var(--dialog-accent-soft);
 }
 
 .modal-form-row {
@@ -475,7 +482,7 @@ button.modal-tab {
 
 .modal-standard-input:focus {
   outline: none;
-  border-color: var(--color-primary);
+  border-color: var(--dialog-accent);
   background: var(--color-surface);
   box-shadow: 0 0 0 3px var(--dialog-focus-ring);
 }
@@ -539,7 +546,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 
 .modal-textarea:focus {
   outline: none;
-  border-color: var(--color-primary);
+  border-color: var(--dialog-accent);
   background: var(--color-surface);
   box-shadow: 0 0 0 3px var(--dialog-focus-ring);
 }
@@ -570,9 +577,22 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 }
 
 .modal-chip.active {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
+  background: var(--dialog-accent);
+  border-color: var(--dialog-accent);
   color: white;
+}
+
+/* Dialog actions use a quieter steel-blue accent. PaymentModal is standalone. */
+.modal-container .btn-primary,
+.modal-sidebar .btn-primary,
+.sidebar-panel .btn-primary {
+  background-color: var(--dialog-accent);
+}
+
+.modal-container .btn-primary:hover:not(:disabled),
+.modal-sidebar .btn-primary:hover:not(:disabled),
+.sidebar-panel .btn-primary:hover:not(:disabled) {
+  background-color: var(--dialog-accent-hover);
 }
 
 /* Form Footer */
@@ -695,6 +715,12 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   flex-shrink: 0;
 }
 
+/* Compact selects used as header actions align with adjacent buttons. */
+.page-header-actions .report-view-select {
+  width: 240px;
+  min-width: 220px;
+}
+
 /* Back navigation button (e.g. "Volver a Reportería") */
 .back-link-btn {
   display: inline-flex;
@@ -736,8 +762,8 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
-  min-width: 180px;
-  flex: 0 1 200px;
+  min-width: 200px;
+  flex: 0 1 220px;
 }
 
 .filter-field.filter-field-wide {
@@ -748,6 +774,11 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 .filter-field.filter-field-narrow {
   flex: 0 1 140px;
   min-width: 120px;
+}
+
+.filter-field.filter-field-category {
+  flex-basis: 250px;
+  min-width: 240px;
 }
 
 .filter-field-label {

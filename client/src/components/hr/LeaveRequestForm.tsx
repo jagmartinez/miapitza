@@ -1,3 +1,4 @@
+import HrReactSelect from './HrReactSelect';
 import { useState } from 'react';
 import Button from '../Button';
 import type { HrUserSummary } from '../../types/hr';
@@ -53,19 +54,19 @@ export default function LeaveRequestForm({
       {users && (
         <label>
           Usuario
-          <select value={userId} onChange={(event) => setUserId(event.target.value)} required>
+          <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)} required>
             <option value="">Seleccionar…</option>
             {users.map((user) => (
               <option key={user.id} value={user.id}>
                 {user.name} · @{user.username}
               </option>
             ))}
-          </select>
+          </HrReactSelect>
         </label>
       )}
       <label>
         Tipo de ausencia
-        <select
+        <HrReactSelect
           value={leaveTypeId}
           onChange={(event) => setLeaveTypeId(event.target.value)}
           required
@@ -79,7 +80,7 @@ export default function LeaveRequestForm({
                 {type.paid ? ' · remunerada' : ''}
               </option>
             ))}
-        </select>
+        </HrReactSelect>
       </label>
       <label>
         Desde
@@ -105,14 +106,14 @@ export default function LeaveRequestForm({
       </label>
       <label>
         Fracción
-        <select
+        <HrReactSelect
           value={fraction}
           onChange={(event) => setFraction(event.target.value as HrLeaveFraction)}
         >
           <option value="FULL_DAY">Día completo</option>
           <option value="HALF_DAY">Medio día</option>
           <option value="HOURS">Rango de horas</option>
-        </select>
+        </HrReactSelect>
       </label>
       {(fraction === 'HOURS' || fraction === 'HALF_DAY') && (
         <>

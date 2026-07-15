@@ -1,3 +1,4 @@
+import HrReactSelect from './HrReactSelect';
 import { useState } from 'react';
 import Button from '../Button';
 import type { HrUserSummary } from '../../types/hr';
@@ -49,14 +50,14 @@ export default function OvertimeRequestForm({
       {users && (
         <label>
           Usuario
-          <select value={userId} onChange={(event) => setUserId(event.target.value)} required>
+          <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)} required>
             <option value="">Seleccionar…</option>
             {users.map((user) => (
               <option key={user.id} value={user.id}>
                 {user.name} · @{user.username}
               </option>
             ))}
-          </select>
+          </HrReactSelect>
         </label>
       )}
       <label>

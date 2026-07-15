@@ -1,3 +1,5 @@
+import HrReactSelect from './HrReactSelect';
+import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
 import Button from '../Button';
 import type { HrUserSummary } from '../../types/hr';
@@ -54,31 +56,27 @@ export default function PayrollComponentForm({
     <form className="hr-payroll-form" onSubmit={(event) => void submit(event)}>
       <label>
         Persona
-        <select value={userId} onChange={(event) => setUserId(event.target.value)} required>
+        <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)} required>
           <option value="">Seleccionar…</option>
           {users.map((user) => (
             <option key={user.id} value={user.id}>
               {user.name} · @{user.username}
             </option>
           ))}
-        </select>
+        </HrReactSelect>
       </label>
       <label>
         Concepto configurado
-        <select value={code} onChange={(event) => { setCode(event.target.value); setClassificationConfirmed(false); }} required>
+        <HrReactSelect value={code} onChange={(event) => { setCode(event.target.value); setClassificationConfirmed(false); }} required>
           <option value="">Seleccionar…</option>
           {concepts.map((concept) => <option key={concept.code} value={concept.code}>{concept.name} · {concept.code}</option>)}
-        </select>
+        </HrReactSelect>
       </label>
       <label>
         Importe de entrada
-        <input
-          type="number"
-          min="0"
-          step="0.01"
-          inputMode="decimal"
+        <HrMoneyInput
           value={inputAmount}
-          onChange={(event) => setInputAmount(event.target.value)}
+          onValueChange={setInputAmount}
           required
         />
       </label>

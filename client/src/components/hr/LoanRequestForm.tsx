@@ -1,3 +1,5 @@
+import HrReactSelect from './HrReactSelect';
+import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import Button from '../Button';
@@ -41,7 +43,7 @@ export default function LoanRequestForm({
       {!selfService && (
         <label className="span-full">
           Persona solicitante
-          <select
+          <HrReactSelect
             required
             value={form.userId ?? ''}
             onChange={(event) =>
@@ -54,29 +56,25 @@ export default function LoanRequestForm({
                 {user.name || user.username}
               </option>
             ))}
-          </select>
+          </HrReactSelect>
         </label>
       )}
       <label>
         Moneda
-        <select
+        <HrReactSelect
           value={form.currency}
           onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value }))}
         >
           <option value="NIO">NIO — Córdoba</option>
           <option value="USD">USD — Dólar</option>
-        </select>
+        </HrReactSelect>
       </label>
       <label>
         Monto solicitado
-        <input
-          type="number"
-          min="0.01"
-          step="0.01"
-          inputMode="decimal"
+        <HrMoneyInput
           value={form.requestedAmount}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, requestedAmount: event.target.value }))
+          onValueChange={(requestedAmount) =>
+            setForm((current) => ({ ...current, requestedAmount }))
           }
           required
         />

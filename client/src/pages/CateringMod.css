@@ -1824,118 +1824,8 @@
     overflow: hidden;
 }
 
-.catering-event-intro {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 14px;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--color-border);
-    background:
-        radial-gradient(circle at 90% 0%, color-mix(in srgb, var(--color-primary) 14%, transparent), transparent 42%),
-        var(--color-background);
-}
-
-.catering-event-intro-icon {
-    width: 48px;
-    height: 48px;
-    display: grid;
-    place-items: center;
-    border: 1px solid color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
-    color: var(--color-primary);
-}
-
-.catering-event-intro-copy { min-width: 0; }
-.catering-event-intro-copy > span {
-    color: var(--color-primary);
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-}
-
-.catering-event-intro-copy h3 {
-    overflow: hidden;
-    margin: 3px 0 2px;
-    color: var(--color-text);
-    font-size: 18px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.catering-event-intro-copy p {
-    margin: 0;
-    color: var(--color-text-secondary);
-    font-size: 12px;
-}
-
-.catering-event-intro-stats {
-    display: flex;
-    gap: 8px;
-}
-
-.catering-event-intro-stats > span {
-    min-width: 96px;
-    display: grid;
-    gap: 2px;
-    padding: 8px 10px;
-    border: 1px solid var(--color-border);
-    border-radius: 10px;
-    background: var(--color-surface);
-}
-
-.catering-event-intro-stats small {
-    color: var(--color-text-tertiary);
-    font-size: 9px;
-    font-weight: 750;
-    letter-spacing: .04em;
-    text-transform: uppercase;
-}
-
-.catering-event-intro-stats strong {
-    overflow: hidden;
-    color: var(--color-text);
-    font-size: 12px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .catering-event-modal-content > .modal-tabs {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 7px;
-    padding: 10px 20px;
-    border-bottom: 1px solid var(--color-border);
-    background: var(--color-surface);
-}
-
-.catering-event-modal-content > .modal-tabs .modal-tab {
-    position: relative;
-    min-width: 0;
-    min-height: 42px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    padding: 8px 10px;
-    border: 1px solid transparent;
-    border-radius: 10px;
-    background: transparent;
-    color: var(--color-text-secondary);
-    font-weight: 700;
-}
-
-.catering-event-modal-content > .modal-tabs .modal-tab:hover {
-    background: var(--color-background);
-    color: var(--color-text);
-}
-
-.catering-event-modal-content > .modal-tabs .modal-tab.active {
-    border-color: color-mix(in srgb, var(--color-primary) 46%, var(--color-border));
-    background: color-mix(in srgb, var(--color-primary) 12%, var(--color-background));
-    color: var(--color-primary);
+    padding-inline: 20px;
 }
 
 .catering-event-modal-content > .modal-tabs .modal-tab b {
@@ -1944,7 +1834,7 @@
     display: grid;
     place-items: center;
     border-radius: 999px;
-    background: var(--color-primary);
+    background: var(--dialog-accent);
     color: white;
     font-size: 9px;
 }
@@ -1969,11 +1859,11 @@
 .catering-event-section {
     min-width: 0;
     margin: 0;
-    padding: 16px;
-    border: 1px solid var(--color-border);
-    border-radius: 14px;
-    background: var(--color-surface);
-    box-shadow: 0 8px 22px rgb(2 6 23 / 8%);
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
 }
 
 .catering-event-section-full { grid-column: 1 / -1; }
@@ -1994,8 +1884,8 @@
     flex: 0 0 auto;
     place-items: center;
     border-radius: 10px;
-    background: color-mix(in srgb, var(--color-primary) 12%, var(--color-background));
-    color: var(--color-primary);
+    background: var(--dialog-accent-soft);
+    color: var(--dialog-accent);
 }
 
 .catering-section-heading h3 {
@@ -2044,19 +1934,12 @@
 }
 
 @media (max-width: 900px) {
-    .catering-event-intro { grid-template-columns: auto minmax(0, 1fr); }
-    .catering-event-intro-stats { grid-column: 1 / -1; }
-    .catering-event-intro-stats > span { flex: 1; }
     .catering-info-layout { grid-template-columns: 1fr; }
     .catering-customer-section .modal-form-row { grid-template-columns: 1fr; }
     .catering-event-section-full { grid-column: auto; }
 }
 
 @media (max-width: 600px) {
-    .catering-event-intro { padding: 13px 16px; }
-    .catering-event-intro-copy p { display: none; }
-    .catering-event-intro-stats { overflow-x: auto; }
-    .catering-event-intro-stats > span { min-width: 104px; }
     .catering-event-modal-content > .modal-tabs { display: flex; padding-inline: 16px; }
     .catering-event-modal-content > .modal-tabs .modal-tab { flex: 0 0 auto; }
     .catering-event-modal-content > .modal-tab-content { padding: 14px 16px 20px; }

@@ -8,17 +8,19 @@ export function getReactSelectThemeStyles<
     Group extends GroupBase<Option> = GroupBase<Option>
 >(variant: SelectVariant = 'standard'): StylesConfig<Option, IsMulti, Group> {
     const controlBg = variant === 'modal' ? 'var(--color-background)' : 'var(--color-surface)';
+    const accent = variant === 'modal' ? 'var(--dialog-accent)' : 'var(--color-primary)';
+    const focusRing = variant === 'modal' ? 'var(--dialog-focus-ring)' : 'rgba(37, 99, 235, 0.1)';
 
     return {
         control: (base, state) => ({
             ...base,
             backgroundColor: state.isFocused ? 'var(--color-surface)' : controlBg,
-            borderColor: state.isFocused ? 'var(--color-primary)' : 'var(--color-border)',
-            boxShadow: state.isFocused ? '0 0 0 3px rgba(37, 99, 235, 0.1)' : 'none',
+            borderColor: state.isFocused ? accent : 'var(--color-border)',
+            boxShadow: state.isFocused ? `0 0 0 3px ${focusRing}` : 'none',
             minHeight: 38,
             cursor: 'pointer',
             '&:hover': {
-                borderColor: state.isFocused ? 'var(--color-primary)' : 'var(--color-border)',
+                borderColor: state.isFocused ? accent : 'var(--color-border)',
             },
         }),
         menu: (base) => ({
@@ -38,7 +40,7 @@ export function getReactSelectThemeStyles<
         option: (base, state) => ({
             ...base,
             backgroundColor: state.isSelected
-                ? 'var(--color-primary)'
+                ? accent
                 : state.isFocused
                     ? 'var(--color-surface-hover)'
                     : 'transparent',

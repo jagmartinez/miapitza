@@ -1,3 +1,5 @@
+import HrReactSelect from '../../components/hr/HrReactSelect';
+import { formatHrMoney } from '../../utils/hrFormat';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -521,14 +523,14 @@ export default function PayrollManagement() {
       <div className="hr-payroll-filterbar">
         <label>
           Estado
-          <select value={status} onChange={(event) => setStatus(event.target.value)}>
+          <HrReactSelect value={status} onChange={(event) => setStatus(event.target.value)}>
             <option value="">Todos</option>
             {['DRAFT', 'CALCULATED', 'REVIEW', 'APPROVED', 'PAID', 'VOID'].map((value) => (
               <option key={value} value={value}>
                 {value}
               </option>
             ))}
-          </select>
+          </HrReactSelect>
         </label>
         <Button variant="ghost" onClick={() => void load()}>
           <RefreshCw size={16} /> Actualizar
@@ -701,19 +703,19 @@ export default function PayrollManagement() {
                     <div>
                       <dt>Ingresos brutos</dt>
                       <dd>
-                        {selected.totals.currency} {selected.totals.grossIncome}
+                        {formatHrMoney(selected.totals.currency, selected.totals.grossIncome)}
                       </dd>
                     </div>
                     <div>
                       <dt>Deducciones</dt>
                       <dd>
-                        {selected.totals.currency} {selected.totals.totalDeductions}
+                        {formatHrMoney(selected.totals.currency, selected.totals.totalDeductions)}
                       </dd>
                     </div>
                     <div className="net">
                       <dt>Neto</dt>
                       <dd>
-                        {selected.totals.currency} {selected.totals.netPay}
+                        {formatHrMoney(selected.totals.currency, selected.totals.netPay)}
                       </dd>
                     </div>
                     <div>
@@ -784,8 +786,8 @@ export default function PayrollManagement() {
                     )}
                     {selected.employerContributions.length > 0 && <div className="hr-payroll-records">
                       {selected.employerContributions.map((item) => <article key={item.id}>
-                        <div><strong>{item.name} · {item.user?.name ?? `Usuario #${item.userId}`}</strong><small>Base {item.baseAmount} · tasa {(Number(item.rate) * 100).toFixed(2)}% · {item.traceReference}</small></div>
-                        <strong>{item.amount}</strong>
+                        <div><strong>{item.name} · {item.user?.name ?? `Usuario #${item.userId}`}</strong><small>Base {formatHrMoney(selected.totals?.currency, item.baseAmount)} · tasa {(Number(item.rate) * 100).toFixed(2)}% · {item.traceReference}</small></div>
+                        <strong className="hr-money">{formatHrMoney(selected.totals?.currency, item.amount)}</strong>
                       </article>)}
                     </div>}
                   </section>
@@ -846,7 +848,7 @@ export default function PayrollManagement() {
                               </span>
                               <small>{item.traceReference ?? 'Sin referencia adicional'}</small>
                             </div>
-                            <strong>{item.amount}</strong>
+                            <strong className="hr-money">{formatHrMoney(selected.totals?.currency, item.amount)}</strong>
                           </article>
                         ))}
                       </div>
@@ -883,7 +885,7 @@ export default function PayrollManagement() {
                             <div>
                               <strong>{receipt.periodLabel}</strong>
                               <span>
-                                {receipt.currency} {receipt.netPay} neto
+                                {formatHrMoney(receipt.currency, receipt.netPay)} neto
                               </span>
                               <small>{receipt.status}</small>
                             </div>

@@ -1,3 +1,5 @@
+import HrReactSelect from '../../components/hr/HrReactSelect';
+import { formatHrNumber } from '../../utils/hrFormat';
 import { useCallback, useEffect, useState } from 'react';
 import {
   AlertTriangle,
@@ -305,14 +307,14 @@ export default function LeaveManagement() {
         </label>
         <label>
           Usuario
-          <select value={userId} onChange={(event) => setUserId(event.target.value)}>
+          <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)}>
             <option value="">Todos</option>
             {users.map((user) => (
               <option key={user.id} value={user.id}>
                 {user.name}
               </option>
             ))}
-          </select>
+          </HrReactSelect>
         </label>
         <Button variant="ghost" onClick={() => void load()}>
           <RefreshCw size={16} /> Actualizar
@@ -484,11 +486,11 @@ export default function LeaveManagement() {
                     <article key={balance.id}>
                       <strong>{balance.user?.name ?? `Usuario #${balance.userId}`}</strong>
                       <span>
-                        Disponible: {balance.available} {balance.unit}
+                        Disponible: {formatHrNumber(balance.available)} {balance.unit}
                       </span>
                       <small>
-                        Devengado {balance.accrued} · usado {balance.used} · pendiente{' '}
-                        {balance.pending}
+                        Devengado {formatHrNumber(balance.accrued)} · usado {formatHrNumber(balance.used)} · pendiente{' '}
+                        {formatHrNumber(balance.pending)}
                       </small>
                       <small>
                         Al {balance.asOf} · revisión {balance.sourceRevision ?? '—'}
@@ -513,7 +515,7 @@ export default function LeaveManagement() {
                     <article key={entry.id}>
                       <div>
                         <strong>
-                          {entry.type} · {entry.amount} {entry.unit}
+                          {entry.type} · {formatHrNumber(entry.amount)} {entry.unit}
                         </strong>
                         <span>{entry.reason}</span>
                         <small>
@@ -587,7 +589,7 @@ export default function LeaveManagement() {
               </label>
               <label>
                 Unidad
-                <select
+                <HrReactSelect
                   value={typeForm.unit}
                   onChange={(event) =>
                     setTypeForm((current) => ({
@@ -599,7 +601,7 @@ export default function LeaveManagement() {
                   <option value="DAYS">Días</option>
                   <option value="HOURS">Horas</option>
                   <option value="MINUTES">Minutos</option>
-                </select>
+                </HrReactSelect>
               </label>
               <label className="span-full">
                 Descripción
@@ -673,7 +675,7 @@ export default function LeaveManagement() {
             <form className="hr-workforce-form" onSubmit={(event) => void saveAdjustment(event)}>
               <label>
                 Usuario
-                <select
+                <HrReactSelect
                   value={adjustment.userId}
                   onChange={(event) =>
                     setAdjustment((current) => ({
@@ -690,11 +692,11 @@ export default function LeaveManagement() {
                       {user.name}
                     </option>
                   ))}
-                </select>
+                </HrReactSelect>
               </label>
               <label>
                 Saldo objetivo
-                <select
+                <HrReactSelect
                   value={adjustment.balanceId}
                   onChange={(event) => {
                     const balance = balances.find((item) => String(item.id) === event.target.value);
@@ -713,7 +715,7 @@ export default function LeaveManagement() {
                         {balance.periodLabel ?? `Saldo #${balance.id}`} · {balance.unit}
                       </option>
                     ))}
-                </select>
+                </HrReactSelect>
               </label>
               <label>
                 Fecha efectiva
@@ -740,7 +742,7 @@ export default function LeaveManagement() {
               </label>
               <label>
                 Unidad
-                <select
+                <HrReactSelect
                   value={adjustment.unit}
                   onChange={(event) =>
                     setAdjustment((current) => ({
@@ -752,7 +754,7 @@ export default function LeaveManagement() {
                   <option value="DAYS">Días</option>
                   <option value="HOURS">Horas</option>
                   <option value="MINUTES">Minutos</option>
-                </select>
+                </HrReactSelect>
               </label>
               <label>
                 Referencia
@@ -820,13 +822,13 @@ export default function LeaveManagement() {
           {requestAction?.kind === 'decide' && (
             <label>
               Decisión
-              <select
+              <HrReactSelect
                 value={decision}
                 onChange={(event) => setDecision(event.target.value as HrDecision)}
               >
                 <option value="APPROVED">Aprobar</option>
                 <option value="REJECTED">Rechazar</option>
-              </select>
+              </HrReactSelect>
             </label>
           )}
           <label className="span-full">

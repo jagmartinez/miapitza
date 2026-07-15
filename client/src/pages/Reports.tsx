@@ -581,8 +581,8 @@ function ReportDetail({ reportId }: { reportId: string }) {
                 <div className="page-header-actions">
                     {groupedReports.length > 1 && (
                         <Select
-                            label="Vista"
-                            className="filter-field-wide"
+                            aria-label="Vista del reporte"
+                            className="report-view-select"
                             value={{
                                 value: reportId,
                                 label: groupedReports.find((r) => r.id === reportId)?.name || reportId
@@ -640,7 +640,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
                 )}
 
                 {hasCategoryFilter(reportId) && (
-                    <div className="filter-field">
+                    <div className="filter-field filter-field-category">
                         {hasMultiCategoryFilter(reportId) ? (
                             <Select<FilterOption, true>
                                 className="report-category-multi"

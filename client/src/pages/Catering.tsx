@@ -891,20 +891,6 @@ export default function Catering() {
                 width="wide"
             >
                 <div className="premium-modal-content catering-modal-content catering-event-modal-content">
-                    <section className="catering-event-intro" aria-label="Resumen del evento">
-                        <span className="catering-event-intro-icon" aria-hidden="true"><CalendarDays size={24} /></span>
-                        <div className="catering-event-intro-copy">
-                            <span>{selectedEvent ? 'Edición del evento' : 'Planificación guiada'}</span>
-                            <h3>{formData.title.trim() || 'Configura el nuevo evento'}</h3>
-                            <p>Completa los datos principales y luego arma servicios, menú y condiciones.</p>
-                        </div>
-                        <div className="catering-event-intro-stats">
-                            <span><small>Fecha</small><strong>{formData.date || 'Por definir'}</strong></span>
-                            <span><small>Invitados</small><strong>{formData.peopleCount || 0}</strong></span>
-                            <span><small>Total</small><strong>{formatMoney(calculateTabTotals())}</strong></span>
-                        </div>
-                    </section>
-
                     <div className="modal-tabs" role="tablist" aria-label="Secciones del evento de catering">
                         <button
                             type="button"
@@ -964,8 +950,8 @@ export default function Catering() {
 
                     <div className="modal-tab-content">
                         {activeTab === 'info' && (
-                            <div className="animate-slide-in catering-info-layout">
-                                <section className="modal-section catering-event-section catering-customer-section">
+                            <div className="catering-tab-panel catering-info-layout">
+                                <section className="modal-content-group catering-event-section catering-customer-section">
                                     <div className="catering-section-heading">
                                         <span><Users size={18} /></span>
                                         <div><h3>Cliente</h3><p>Persona o empresa responsable de la contratación.</p></div>
@@ -1005,7 +991,7 @@ export default function Catering() {
                                     </div>
                                 </section>
 
-                                <section className="modal-section catering-event-section catering-event-section-main">
+                                <section className="modal-content-group catering-event-section catering-event-section-main">
                                     <div className="catering-section-heading">
                                         <span><Calendar size={18} /></span>
                                         <div><h3>Evento</h3><p>Define dónde, cuándo y para cuántas personas.</p></div>
@@ -1111,7 +1097,7 @@ export default function Catering() {
                                     </div>
                                 </section>
 
-                                <section className="modal-section catering-event-section catering-event-section-full">
+                                <section className="modal-content-group catering-event-section catering-event-section-full">
                                     <div className="catering-section-heading">
                                         <span><MapPin size={18} /></span>
                                         <div><h3>Logística y notas</h3><p>Agrega la dirección y cualquier indicación operativa.</p></div>
@@ -1140,7 +1126,7 @@ export default function Catering() {
                         )}
 
                         {activeTab === 'services' && (
-                            <div className="animate-slide-in">
+                            <div className="catering-tab-panel">
                                 <div className="catering-tab-toolbar single-control">
                                     <Select
                                         variant="modal"
@@ -1214,7 +1200,7 @@ export default function Catering() {
                         )}
 
                         {activeTab === 'menu' && (
-                            <div className="animate-slide-in">
+                            <div className="catering-tab-panel">
                                 <div className="catering-tab-toolbar">
                                     <Select
                                         variant="modal"
@@ -1312,8 +1298,8 @@ export default function Catering() {
                         )}
 
                         {activeTab === 'clauses' && (
-                            <div className="animate-slide-in">
-                                <div className="modal-section">
+                            <div className="catering-tab-panel">
+                                <div className="modal-content-group">
                                     <h3 className="section-title-v2">Cláusulas del Contrato</h3>
                                     <p style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', marginBottom: '16px' }}>
                                         Defina los términos específicos para este evento de catering.
@@ -1401,7 +1387,7 @@ export default function Catering() {
                         )}
 
                         {activeTab === 'financial' && selectedEvent && (
-                            <div className="animate-slide-in">
+                            <div className="catering-tab-panel">
                                 <div className="financial-container">
                                     <div className="financial-secondary-row">
                                         <div className="summary-box-plain">

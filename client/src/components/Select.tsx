@@ -98,6 +98,7 @@ export default function CustomSelect<
             ...mergedStyles,
             menuPortal: (base: CSSObjectWithLabel, state: unknown) => ({
                 ...base,
+                '--select-accent': 'var(--dialog-accent)',
                 zIndex: MODAL_MENU_Z_INDEX,
                 ...(mergedStyles?.menuPortal ? mergedStyles.menuPortal(base, state as never) : {})
             }),

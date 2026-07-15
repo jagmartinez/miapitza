@@ -1,3 +1,5 @@
+import HrReactSelect from '../../components/hr/HrReactSelect';
+import { formatHrMoney } from '../../utils/hrFormat';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Download, FileText, Gift, RefreshCw, WalletCards } from 'lucide-react';
 import Button from '../../components/Button';
@@ -105,14 +107,14 @@ export default function MyPayroll() {
       <div className="hr-payroll-filterbar" aria-label="Filtros de recibos">
         <label>
           Tipo
-          <select
+          <HrReactSelect
             value={kind}
             onChange={(event) => setKind(event.target.value as '' | HrPayrollRunKind)}
           >
             <option value="">Todos</option>
             <option value="REGULAR">Nómina ordinaria</option>
             <option value="AGUINALDO">Aguinaldo</option>
-          </select>
+          </HrReactSelect>
         </label>
         <label>
           Año
@@ -188,7 +190,7 @@ export default function MyPayroll() {
                     </span>
                     <span className="hr-my-receipt-amount">
                       <strong>
-                        {receipt.currency} {receipt.netPay}
+                        {formatHrMoney(receipt.currency, receipt.netPay)}
                       </strong>
                       <PayrollStatusPill status={receipt.status} />
                     </span>

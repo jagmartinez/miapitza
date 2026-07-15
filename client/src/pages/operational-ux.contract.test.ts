@@ -40,11 +40,13 @@ describe('operational UX contracts', () => {
         expect(modalSection).not.toContain('box-shadow:');
     });
 
-    it('keeps the catering event editor structured as one guided workspace', () => {
+    it('keeps the catering event editor flat and aligned with the shared modal workspace', () => {
         const source = read('./Catering.tsx');
         const styles = read('./CateringMod.css');
 
-        expect(source).toContain('catering-event-intro');
+        expect(source).not.toContain('catering-event-intro');
+        expect(source).not.toContain('animate-slide-in');
+        expect(source).toContain('modal-content-group catering-event-section');
         expect(source).toContain('catering-info-layout');
         expect(source).toContain('width="wide"');
         expect(styles).toContain('--catering-control-height: 46px');
