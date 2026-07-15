@@ -10,7 +10,7 @@ import Sidebar from '../components/Sidebar';
 import {
   Plus, Utensils, Trash2, Image as ImageIcon,
   Info, PieChart, ImagePlus, DollarSign, Edit2,
-  SlidersHorizontal, Package
+  SlidersHorizontal, Package, Eye, Layers, Building2, Tag
 } from 'lucide-react';
 import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
@@ -32,6 +32,7 @@ import ImageViewer from '../components/ImageViewer';
 import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
 import { effectiveUnitCost } from '../utils/productCost';
 import './Menu.css';
+import './Inventory.css';
 
 interface CategoryRow {
   id: number;
@@ -87,6 +88,13 @@ function errMsg(error: unknown, fallback: string): string {
   return fallback;
 }
 
+type MenuItemDetail = Omit<MenuItem, 'recipes'> & {
+  recipes: MenuRecipe[];
+  totalCost?: number | string;
+  margin?: number | string;
+  branch?: { id: number; name: string; code?: string | null } | null;
+};
+
 function fallbackProductUnit(product?: Pick<Product, 'unit'> & Partial<Pick<Product, 'baseUnitId'>>): ProductAllowedUnit[] {
   if (!product?.unit) return [];
   return [{
@@ -124,6 +132,11 @@ export default function Menu() {
   // Sidebar State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [viewingItem, setViewingItem] = useState<MenuItemDetail | null>(null);
+  const [viewingBranchPrices, setViewingBranchPrices] = useState<BranchPriceRow[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -429,6 +442,45 @@ export default function Menu() {
     setIsSidebarOpen(true);
   };
 
+  const handleOpenDetail = async (item: MenuItem) => {
+    setDetailOpen(true);
+    setViewingItem(null);
+    setViewingBranchPrices([]);
+    setDetailError(null);
+    setDetailLoading(true);
+
+    try {
+      const detailResponse = await menuAPI.getById(item.id);
+      const [imagesResult, pricingResult] = await Promise.allSettled([
+        menuAPI.getImages(item.id),
+        canSetBranchPrices
+          ? branchPricingAPI.getMenuItemMatrix(item.id)
+          : Promise.resolve(null),
+      ]);
+
+      const detail = detailResponse.data.data as MenuItemDetail;
+      const loadedImages = imagesResult.status === 'fulfilled'
+        ? ((imagesResult.value.data.data || []) as MenuImageRecord[])
+        : (item.images || []);
+      const loadedBranchPrices = pricingResult.status === 'fulfilled' && pricingResult.value
+        ? ((pricingResult.value.data.data?.branchPrices || []) as BranchPriceRow[])
+        : [];
+
+      setViewingItem({
+        ...detail,
+        brand: detail.brand ?? item.brand,
+        category: detail.category ?? item.category,
+        images: loadedImages,
+      });
+      setViewingBranchPrices(loadedBranchPrices);
+    } catch (error) {
+      console.error('Error loading menu item detail:', error);
+      setDetailError(errMsg(error, 'No se pudo cargar el detalle del plato'));
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
   const handleSaveBranchPrice = async (branchId: number) => {
     if (!canSetBranchPrices) return;
     if (!editingItem) return;
@@ -700,7 +752,7 @@ export default function Menu() {
 
   if (loading) return <div className="menu-loading">Sincronizando Menú...</div>;
 
-  const handleImageClick = (item: MenuItem, index: number) => {
+  const handleImageClick = (item: Pick<MenuItem, 'name' | 'images'>, index: number) => {
     const images = item.images?.map(img => img.imageUrl) || [];
     if (images.length > 0) {
       setViewerImages(images);
@@ -860,11 +912,23 @@ export default function Menu() {
                   <button
                     type="button"
                     className="catalog-action-btn"
+                    onClick={() => void handleOpenDetail(item)}
+                    title="Ver detalle"
+                    aria-label={`Ver detalle de ${item.name}`}
+                  >
+                    <Eye size={16} />
+                  </button>
+                  {canMutateMenu && (
+                  <button
+                    type="button"
+                    className="catalog-action-btn"
                     onClick={() => handleOpenSidebar(item)}
-                    title="Ver / Editar"
+                    title="Editar"
+                    aria-label={`Editar ${item.name}`}
                   >
                     <Edit2 size={16} />
                   </button>
+                  )}
                   {canMutateMenu && (
                     <button
                       type="button"
@@ -888,7 +952,7 @@ export default function Menu() {
             <MenuItemCard
               key={item.id}
               item={item}
-              onClick={() => handleOpenSidebar(item)}
+              onClick={() => void handleOpenDetail(item)}
               onEdit={() => handleOpenSidebar(item)}
               onDelete={() => handleDelete(item.id)}
               onImageClick={handleImageClick}
@@ -903,6 +967,157 @@ export default function Menu() {
           <p>No hay platos que coincidan con los filtros</p>
         </div>
       )}
+
+      <Sidebar
+        isOpen={detailOpen}
+        onClose={() => { setDetailOpen(false); setViewingItem(null); setDetailError(null); }}
+        title="Detalle del Plato"
+        width="large"
+        footer={viewingItem ? (
+          <div className="inventory-detail-footer">
+            <Button type="button" variant="ghost" onClick={() => setDetailOpen(false)}>
+              Cerrar
+            </Button>
+            {canMutateMenu && (
+              <Button
+                type="button"
+                onClick={() => {
+                  const item = viewingItem;
+                  setDetailOpen(false);
+                  void handleOpenSidebar(item as unknown as MenuItem);
+                }}
+              >
+                <Edit2 size={16} /> Editar plato
+              </Button>
+            )}
+          </div>
+        ) : undefined}
+      >
+        {detailLoading && <div className="inventory-loading">Cargando detalle del plato...</div>}
+        {!detailLoading && detailError && (
+          <div className="state-placeholder" role="alert">
+            <Utensils size={42} />
+            <p className="state-error">{detailError}</p>
+            <Button variant="ghost" onClick={() => setDetailOpen(false)}>Cerrar</Button>
+          </div>
+        )}
+        {!detailLoading && viewingItem && (() => {
+          const price = Number(viewingItem.price) || 0;
+          const totalCost = Number(viewingItem.totalCost) || 0;
+          const margin = Number(viewingItem.margin ?? price - totalCost) || 0;
+          const marginPercent = price > 0 ? (margin / price) * 100 : 0;
+          const branchName = viewingItem.branch?.name
+            ?? branches.find((branch) => branch.id === viewingItem.branchId)?.name
+            ?? 'Todas las sucursales';
+
+          return (
+            <div className="inventory-detail menu-item-detail" data-testid="menu-item-detail">
+              <div className="inventory-detail-hero">
+                <div className="inventory-detail-hero-main">
+                  <div className="inventory-detail-icon" aria-hidden="true"><Utensils size={28} /></div>
+                  <div className="inventory-detail-identity">
+                    <span className="inventory-detail-eyebrow">Ficha del catálogo</span>
+                    <h3>{viewingItem.name}</h3>
+                    <div className="inventory-detail-meta">
+                      <span className="inventory-detail-badge sku">{viewingItem.category?.name ?? 'Sin categoría'}</span>
+                      <div className="inventory-detail-status-row">
+                        <span className={`inventory-detail-badge ${viewingItem.active ? 'active' : 'inactive'}`}>
+                          {viewingItem.active ? 'Activo' : 'Inactivo'}
+                        </span>
+                        <span className="inventory-detail-badge ok">{viewingItem.recipes?.length ?? 0} componentes</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="inventory-detail-stock-summary menu-item-price-summary">
+                  <span>Precio de venta</span>
+                  <strong>{formatMoney(price)}</strong>
+                  <div className="inventory-detail-stock-track" aria-hidden="true"><span style={{ width: `${Math.max(0, Math.min(100, marginPercent))}%` }} /></div>
+                  <small>Margen estimado {marginPercent.toFixed(1)}%</small>
+                </div>
+              </div>
+
+              <section className="inventory-detail-section">
+                <div className="modal-section-header"><Package size={18} /><h3>Perfil del plato</h3></div>
+                <div className="inventory-detail-profile-grid">
+                  <div className="inventory-detail-profile-item"><Tag size={18} /><div><span>Categoría</span><strong>{viewingItem.category?.name ?? 'Sin categoría'}</strong></div></div>
+                  <div className="inventory-detail-profile-item"><Building2 size={18} /><div><span>Sucursal</span><strong>{branchName}</strong></div></div>
+                  <div className="inventory-detail-profile-item"><Layers size={18} /><div><span>Marca</span><strong>{viewingItem.brand?.name ?? 'Común'}</strong></div></div>
+                  <div className="inventory-detail-profile-item"><ImageIcon size={18} /><div><span>Galería</span><strong>{viewingItem.images?.length ?? 0} imágenes</strong></div></div>
+                </div>
+              </section>
+
+              <section className="inventory-detail-section">
+                <div className="modal-section-header"><DollarSign size={18} /><h3>Precio, costo y margen</h3></div>
+                <div className="inventory-detail-finance">
+                  <div className="inventory-detail-effective-cost">
+                    <div><span>Costo estimado de receta</span><strong>{formatMoney(totalCost)}</strong></div>
+                    <span className="inventory-detail-cost-source">Calculado en servidor</span>
+                  </div>
+                  <dl className="inventory-detail-finance-breakdown">
+                    <div><dt>Precio de venta</dt><dd>{formatMoney(price)}</dd></div>
+                    <div><dt>Utilidad estimada</dt><dd>{formatMoney(margin)}</dd></div>
+                    <div><dt>Margen</dt><dd>{marginPercent.toFixed(1)}%</dd></div>
+                  </dl>
+                  <p className="inventory-detail-finance-note">Los costos utilizan la receta y el costo efectivo vigente de cada insumo.</p>
+                </div>
+              </section>
+
+              <section className="inventory-detail-section">
+                <div className="modal-section-header"><Layers size={18} /><h3>Componentes de la receta</h3></div>
+                {viewingItem.recipes?.length ? (
+                  <div className="menu-detail-component-list">
+                    {viewingItem.recipes.map((component, index) => {
+                      const unit = component.unit || component.unitOfMeasure?.abbreviation || component.product.unit || '';
+                      const referenceCost = effectiveUnitCost(component.product.currentAverageCost, component.product.cost);
+                      return (
+                        <article key={component.id} className="menu-detail-component">
+                          <span className="menu-detail-component-index">{index + 1}</span>
+                          <div><strong>{component.product.name}</strong><span>Insumo #{component.product.id}</span></div>
+                          <div className="menu-detail-number"><span>Cantidad</span><strong>{Number(component.quantity).toLocaleString('es-NI', { maximumFractionDigits: 6 })} {unit}</strong></div>
+                          <div className="menu-detail-number"><span>Costo unitario ref.</span><strong>{formatMoney(referenceCost)}</strong></div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : <p className="inventory-detail-observation">Este plato no tiene componentes de receta registrados.</p>}
+              </section>
+
+              {viewingBranchPrices.length > 0 && (
+                <section className="inventory-detail-section">
+                  <div className="modal-section-header"><Building2 size={18} /><h3>Precios por sucursal</h3></div>
+                  <div className="menu-detail-price-grid">
+                    {viewingBranchPrices.map((row) => (
+                      <div key={row.branchId}>
+                        <span>{branches.find((branch) => branch.id === row.branchId)?.name ?? `Sucursal #${row.branchId}`}</span>
+                        <strong>{formatMoney(Number(row.price))}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {Boolean(viewingItem.images?.length) && (
+                <section className="inventory-detail-section">
+                  <div className="modal-section-header"><ImageIcon size={18} /><h3>Galería</h3></div>
+                  <div className="menu-detail-gallery">
+                    {viewingItem.images?.map((image, index) => (
+                      <button key={image.id} type="button" onClick={() => handleImageClick(viewingItem, index)} aria-label={`Abrir imagen ${index + 1} de ${viewingItem.name}`}>
+                        <img src={image.imageUrl} alt={`${viewingItem.name} ${index + 1}`} />
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              <section className="inventory-detail-section">
+                <div className="modal-section-header"><Info size={18} /><h3>Descripción</h3></div>
+                <p className="inventory-detail-observation">{viewingItem.description || 'Este plato no tiene descripción adicional.'}</p>
+              </section>
+            </div>
+          );
+        })()}
+      </Sidebar>
 
       {/* REDESIGNED MODAL WITH TABS */}
       <Sidebar

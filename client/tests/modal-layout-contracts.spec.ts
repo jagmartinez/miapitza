@@ -34,14 +34,19 @@ test('new catering event keeps auxiliary actions aligned and footer explicit', a
   await page.getByRole('button', { name: 'Nuevo Evento' }).click();
   const dialog = page.getByRole('dialog', { name: 'Nuevo Evento de Catering' });
   await expect(dialog).toBeVisible();
-  await expect(dialog).toHaveCSS('width', '650px');
+  await expect(dialog).toHaveCSS('width', '750px');
   await expect(dialog.locator('form.modal-form-new')).toBeVisible();
   await dialog.getByRole('tab', { name: 'Menú' }).click();
 
   await expect(dialog.getByRole('heading', { name: 'Menú del evento' })).toBeVisible();
   const stockButton = dialog.getByRole('button', { name: 'Verificar inventario' });
   await expect(stockButton).toBeVisible();
-  await expect(stockButton).toHaveCSS('white-space', 'nowrap');
+  await expect(stockButton).toHaveCSS('width', '42px');
+  const menuSelect = dialog.locator('.catering-tab-toolbar .react-select__control').last();
+  const [selectBox, buttonBox] = await Promise.all([menuSelect.boundingBox(), stockButton.boundingBox()]);
+  expect(selectBox).not.toBeNull();
+  expect(buttonBox).not.toBeNull();
+  expect(Math.abs((selectBox!.y + selectBox!.height) - (buttonBox!.y + buttonBox!.height))).toBeLessThanOrEqual(1);
   await expect(dialog.getByText('Menú pendiente')).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Crear Evento' })).toBeVisible();
   await expect(dialog.locator('.modal-footer')).toBeVisible();

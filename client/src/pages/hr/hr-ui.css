@@ -79,6 +79,12 @@
   background: color-mix(in srgb, var(--color-surface) 95%, var(--color-background) 5%);
 }
 
+/* Sidebar already owns the content inset; legacy RH wrappers must not add a second gutter. */
+.page-wrapper[class*='hr-'] .sidebar-panel .sidebar-body > .hr-sidebar-body,
+.page-wrapper[class*='hr-'] .sidebar-panel .sidebar-body > .hr-payroll-sidebar {
+  padding: 0;
+}
+
 .page-wrapper[class*='hr-'] .sidebar-panel :is(
   .hr-workforce-form,
   .hr-benefits-form,

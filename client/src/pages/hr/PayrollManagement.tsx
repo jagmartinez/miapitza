@@ -1,6 +1,7 @@
 import HrReactSelect from '../../components/hr/HrReactSelect';
 import { formatHrMoney } from '../../utils/hrFormat';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   Calculator,
@@ -20,7 +21,6 @@ import Sidebar from '../../components/Sidebar';
 import PayrollComponentForm from '../../components/hr/PayrollComponentForm';
 import PayrollOnlineNotice from '../../components/hr/PayrollOnlineNotice';
 import PayrollReconciliationPanel from '../../components/hr/PayrollReconciliationPanel';
-import PayrollRuleConfigurationPanel from '../../components/hr/PayrollRuleConfigurationPanel';
 import PayrollRuleForm from '../../components/hr/PayrollRuleForm';
 import PayrollRunForm from '../../components/hr/PayrollRunForm';
 import PayrollStatusPill from '../../components/hr/PayrollStatusPill';
@@ -39,13 +39,10 @@ import type {
   HrAguinaldoRunPayload,
   HrPayrollAction,
   HrPayrollComponentPayload,
-  HrPayrollConfigurationReviewPayload,
-  HrPayrollConfigurationUploadPayload,
   HrPayrollPeriod,
   HrPayrollPaymentConceptDefinition,
   HrPayrollPeriodPayload,
   HrPayrollRulePayload,
-  HrPayrollRuleConfigurationRevision,
   HrPayrollRuleVersion,
   HrPayrollRun,
   HrPayrollRunDetail,
@@ -101,6 +98,7 @@ function periodDefaults(): HrPayrollPeriodPayload {
 }
 
 export default function PayrollManagement() {
+  const navigate = useNavigate();
   const online = usePayrollOnline();
   const { confirm } = useConfirmDialog();
   const { success: showSuccess, error: showError } = useAppToast();
@@ -125,9 +123,6 @@ export default function PayrollManagement() {
     action: HrPayrollAction;
   } | null>(null);
   const [ruleAction, setRuleAction] = useState<RuleAction>(null);
-  const [configurationRule, setConfigurationRule] = useState<HrPayrollRuleVersion | null>(null);
-  const [configurationRevisions, setConfigurationRevisions] = useState<HrPayrollRuleConfigurationRevision[]>([]);
-  const [configurationLoading, setConfigurationLoading] = useState(false);
   const [ruleReason, setRuleReason] = useState('');
   const [ruleConfirmed, setRuleConfirmed] = useState(false);
   const [periodForm, setPeriodForm] = useState<HrPayrollPeriodPayload>(periodDefaults());
@@ -353,65 +348,6 @@ export default function PayrollManagement() {
     }
   };
 
-  const openRuleConfiguration = async (rule: HrPayrollRuleVersion) => {
-    setConfigurationRule(rule);
-    setConfigurationRevisions([]);
-    setConfigurationLoading(true);
-    try {
-      setConfigurationRevisions(await payrollClient.getRuleConfigurations(rule.id));
-    } catch (loadError) {
-      showError(getPayrollErrorMessage(loadError, 'No fue posible cargar el control legal.'));
-    } finally {
-      setConfigurationLoading(false);
-    }
-  };
-
-  const reloadRuleConfiguration = async (ruleId: number) => {
-    const [ruleResult, revisions] = await Promise.all([
-      payrollClient.getRules({ limit: 100 }),
-      payrollClient.getRuleConfigurations(ruleId),
-    ]);
-    setRules(ruleResult.items);
-    setConfigurationRevisions(revisions);
-    setConfigurationRule(ruleResult.items.find((rule) => rule.id === ruleId) ?? null);
-  };
-
-  const uploadRuleConfiguration = async (payload: HrPayrollConfigurationUploadPayload) => {
-    if (!configurationRule) return;
-    setSaving(true);
-    try {
-      await payrollClient.uploadRuleConfiguration(
-        configurationRule.id,
-        payload,
-        createPayrollIdempotencyKey()
-      );
-      showSuccess('Configuración congelada; requiere revisión por una identidad distinta.');
-      await reloadRuleConfiguration(configurationRule.id);
-    } catch (mutationError) {
-      showError(getPayrollErrorMessage(mutationError, 'No fue posible cargar la configuración.'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const reviewRuleConfiguration = async (payload: HrPayrollConfigurationReviewPayload) => {
-    if (!configurationRule) return;
-    setSaving(true);
-    try {
-      await payrollClient.reviewRuleConfiguration(
-        configurationRule.id,
-        payload,
-        createPayrollIdempotencyKey()
-      );
-      showSuccess(payload.decision === 'VALIDATED' ? 'Configuración validada.' : 'Configuración rechazada.');
-      await reloadRuleConfiguration(configurationRule.id);
-    } catch (mutationError) {
-      showError(getPayrollErrorMessage(mutationError, 'No fue posible registrar el dictamen.'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const exportRun = async (format: 'csv' | 'xlsx') => {
     if (!selected) return;
     setDownloading(true);
@@ -564,7 +500,7 @@ export default function PayrollManagement() {
                   <p>Abre una regla para administrar tasas, régimen, tramos de IR, fuentes y revisión por segundo actor. El cálculo autoritativo permanece en servidor.</p>
                 </div>
                 {rules.length > 0 && (
-                  <Button size="sm" variant="secondary" onClick={() => void openRuleConfiguration(rules.find((rule) => rule.status === 'ACTIVE') ?? rules[0])}>
+                  <Button size="sm" variant="secondary" onClick={() => navigate(`/rh/nomina/configuracion-legal?ruleId=${(rules.find((rule) => rule.status === 'ACTIVE') ?? rules[0]).id}`)}>
                     <Scale size={15} /> Configurar parámetros legales
                   </Button>
                 )}
@@ -595,7 +531,7 @@ export default function PayrollManagement() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => void openRuleConfiguration(rule)}
+                        onClick={() => navigate(`/rh/nomina/configuracion-legal?ruleId=${rule.id}`)}
                       >
                         Configurar IR, INSS e INATEC
                       </Button>
@@ -940,7 +876,7 @@ export default function PayrollManagement() {
                   ? 'Nueva corrida de aguinaldo'
                   : 'Nueva corrida de nómina'
         }
-        width="wide"
+        width="large"
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
@@ -1068,7 +1004,7 @@ export default function PayrollManagement() {
           }
         }}
         title={transition ? ACTION_LABELS[transition.action] : 'Transición'}
-        width="wide"
+        width="large"
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
@@ -1094,7 +1030,7 @@ export default function PayrollManagement() {
         isOpen={Boolean(ruleAction)}
         onClose={() => !saving && setRuleAction(null)}
         title={ruleAction?.action === 'activate' ? 'Activar regla' : 'Retirar regla'}
-        width="wide"
+        width="large"
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
@@ -1138,34 +1074,6 @@ export default function PayrollManagement() {
         </form>
       </Sidebar>
 
-      <Sidebar
-        isOpen={Boolean(configurationRule)}
-        onClose={() => {
-          if (!saving) {
-            setConfigurationRule(null);
-            setConfigurationRevisions([]);
-          }
-        }}
-        title={configurationRule ? `Control legal · ${configurationRule.name} v${configurationRule.version}` : 'Control legal'}
-        width="wide"
-        closeOnBackdrop={!saving}
-        closeOnEscape={!saving}
-      >
-        {configurationRule && (
-          <div className="hr-payroll-sidebar">
-            <PayrollOnlineNotice online={online} compact />
-            <PayrollRuleConfigurationPanel
-              rule={configurationRule}
-              revisions={configurationRevisions}
-              loading={configurationLoading}
-              saving={saving}
-              online={online}
-              onUpload={uploadRuleConfiguration}
-              onReview={reviewRuleConfiguration}
-            />
-          </div>
-        )}
-      </Sidebar>
     </div>
   );
 }

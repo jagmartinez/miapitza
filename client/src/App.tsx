@@ -98,6 +98,7 @@ const AttendanceManagement = lazy(() => import('./pages/hr/AttendanceManagement'
 const LeaveManagement = lazy(() => import('./pages/hr/LeaveManagement'));
 const MyWorkforce = lazy(() => import('./pages/hr/MyWorkforce'));
 const PayrollManagement = lazy(() => import('./pages/hr/PayrollManagement'));
+const PayrollLegalSettings = lazy(() => import('./pages/hr/PayrollLegalSettings'));
 const MyPayroll = lazy(() => import('./pages/hr/MyPayroll'));
 const BenefitsManagement = lazy(() => import('./pages/hr/BenefitsManagement'));
 const MyBenefits = lazy(() => import('./pages/hr/MyBenefits'));
@@ -144,6 +145,7 @@ function App() {
                                 <Route path="/rh/jornadas" element={<RoleGuard roles={HR_OWNER}><AttendanceManagement /></RoleGuard>} />
                                 <Route path="/rh/ausencias" element={<RoleGuard roles={HR_OWNER}><LeaveManagement /></RoleGuard>} />
                                 <Route path="/rh/nomina" element={<RoleGuard roles={HR_OWNER}><PayrollManagement /></RoleGuard>} />
+                                <Route path="/rh/nomina/configuracion-legal" element={<RoleGuard roles={HR_OWNER}><PayrollLegalSettings /></RoleGuard>} />
                                 <Route path="/rh/prestaciones" element={<RoleGuard roles={HR_OWNER}><BenefitsManagement /></RoleGuard>} />
 
                                 {/* Operations – role-restricted */}

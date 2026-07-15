@@ -579,7 +579,7 @@ export default function MyWorkforce() {
               ? 'Solicitar horas extra'
               : 'Solicitar permiso o vacaciones'
         }
-        width="wide"
+        width="large"
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
@@ -623,7 +623,7 @@ export default function MyWorkforce() {
         isOpen={Boolean(cancelPanel)}
         onClose={() => !saving && setCancelPanel(null)}
         title="Cancelar solicitud"
-        width="wide"
+        width="large"
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >

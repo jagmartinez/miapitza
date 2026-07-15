@@ -888,6 +888,7 @@ export default function Catering() {
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
                 title={selectedEvent ? `Editar: ${selectedEvent.title}` : 'Nuevo Evento de Catering'}
+                width="medium"
             >
                 <div className="premium-modal-content catering-modal-content catering-event-modal-content">
                     <div className="modal-tabs" role="tablist" aria-label="Secciones del evento de catering">
@@ -1244,9 +1245,15 @@ export default function Catering() {
                                         isClearable
                                         isSearchable
                                     />
-                                    <Button type="button" variant="ghost" className="catering-stock-check" onClick={checkAvailability}>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        className="catering-stock-check"
+                                        onClick={checkAvailability}
+                                        aria-label="Verificar inventario"
+                                        title="Verificar inventario"
+                                    >
                                         <AlertCircle size={18} />
-                                        <span>Verificar inventario</span>
                                     </Button>
                                 </div>
 

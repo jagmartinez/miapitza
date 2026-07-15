@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const management = read('../../pages/hr/PayrollManagement.tsx');
+const legalSettings = read('../../pages/hr/PayrollLegalSettings.tsx');
 const mine = read('../../pages/hr/MyPayroll.tsx');
 const transition = read('./PayrollTransitionForm.tsx');
 const configuration = read('./PayrollRuleConfigurationPanel.tsx');
@@ -38,9 +39,9 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
   });
 
   it('exposes the append-only legal configuration and second-actor review flow', () => {
-    expect(management).toContain('getRuleConfigurations');
-    expect(management).toContain('uploadRuleConfiguration');
-    expect(management).toContain('reviewRuleConfiguration');
+    expect(legalSettings).toContain('getRuleConfigurations');
+    expect(legalSettings).toContain('uploadRuleConfiguration');
+    expect(legalSettings).toContain('reviewRuleConfiguration');
     expect(configuration).toContain("schema: 'HR_PAYROLL_PARAMETRIC_V4'");
     expect(configuration).toContain('SIMPLIFIED_FIXED_QUOTA');
     expect(configuration).toContain("setRegimeIncomeTaxApplicability('DOES_NOT_APPLY')");

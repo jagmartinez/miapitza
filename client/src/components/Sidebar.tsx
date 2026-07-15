@@ -8,7 +8,7 @@ interface SidebarProps {
     onClose: () => void;
     title: string;
     children: ReactNode;
-    width?: 'normal' | 'large' | 'wide' | 'full';
+    width?: 'normal' | 'medium' | 'large' | 'wide' | 'full';
     closeOnBackdrop?: boolean;
     closeOnEscape?: boolean;
     description?: ReactNode;

@@ -48,7 +48,8 @@ describe('Phase 2 HR schedule navigation contract', () => {
         expect(layoutSource).toContain("{ to: '/rh/horarios', icon: Calendar, label: 'Horarios', roles: HR_OWNER }");
         expect(layoutSource).toContain("{ to: '/rh/mi-portal/horario', icon: Calendar, label: 'Mi horario', internalOnly: true }");
         expect(layoutSource).toContain("{ to: '/rh/mi-portal/gestion', icon: Briefcase, label: 'Mi gestión RH', internalOnly: true }");
-        expect(layoutSource).toContain("end={item.to === '/rh' || item.to === '/rh/asistencia'}");
+        expect(layoutSource).toContain("item.to === '/rh/asistencia'");
+        expect(layoutSource).toContain("item.to === '/rh/nomina'");
     });
 });
 
@@ -69,7 +70,8 @@ describe('Phase 3 attendance navigation contract', () => {
         expect(layoutSource).toContain("{ to: '/rh', icon: Briefcase, label: 'Panel RH', roles: HR_OWNER }");
         expect(layoutSource).toContain("{ to: '/rh/asistencia', icon: ClipboardList, label: 'Asistencia', roles: HR_OWNER }");
         expect(layoutSource).toContain("{ to: '/rh/asistencia/configuracion', icon: SlidersHorizontal, label: 'Configurar asistencia', roles: HR_OWNER }");
-        expect(layoutSource).toContain("end={item.to === '/rh' || item.to === '/rh/asistencia'}");
+        expect(layoutSource).toContain("item.to === '/rh/asistencia'");
+        expect(layoutSource).toContain("item.to === '/rh/nomina'");
         expect(layoutSource).toContain("{ to: '/rh/marcaje', icon: MapPin, label: 'Marcaje', internalOnly: true }");
         expect(layoutSource).toContain("{ to: '/rh/biometria', icon: UserRoundCheck, label: 'Mi biometría', internalOnly: true }");
         expect(layoutSource).not.toContain("label: 'Marcaje', roles:");

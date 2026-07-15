@@ -750,7 +750,7 @@ export default function BenefitsManagement() {
                 ? 'Nueva deducción'
                 : 'Registrar gasto'
         }
-        width="wide"
+        width="large"
       >
         {createPanel === 'TRAVEL' && (
           <TravelRequestForm
@@ -796,7 +796,7 @@ export default function BenefitsManagement() {
         isOpen={Boolean(transition)}
         onClose={() => !saving && setTransition(null)}
         title="Confirmar transición"
-        width="wide"
+        width="large"
       >
         {transition && (
           <BenefitsTransitionForm

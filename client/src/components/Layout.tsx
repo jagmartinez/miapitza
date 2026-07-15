@@ -49,6 +49,7 @@ import {
     UserRoundCheck,
     SlidersHorizontal,
     BadgeDollarSign,
+    Landmark,
     type LucideIcon
 } from 'lucide-react';
 import { getUserAccentColor, getUserRoleNames } from '../utils/authz';
@@ -132,6 +133,7 @@ const NAV_SECTIONS: NavSection[] = [
             { to: '/rh/jornadas', icon: ClipboardList, label: 'Jornadas y extras', roles: HR_OWNER },
             { to: '/rh/ausencias', icon: Calendar, label: 'Permisos y vacaciones', roles: HR_OWNER },
             { to: '/rh/nomina', icon: Wallet, label: 'Nómina y aguinaldo', roles: HR_OWNER },
+            { to: '/rh/nomina/configuracion-legal', icon: Landmark, label: 'IR, INSS e INATEC', roles: HR_OWNER },
             { to: '/rh/prestaciones', icon: BadgeDollarSign, label: 'Viáticos, préstamos y deducciones', roles: HR_OWNER },
             { to: '/rh/mi-portal/horario', icon: Calendar, label: 'Mi horario', internalOnly: true },
             { to: '/rh/marcaje', icon: MapPin, label: 'Marcaje', internalOnly: true },
@@ -202,7 +204,7 @@ export default function Layout() {
                         <NavLink
                             key={item.to}
                             to={item.to}
-                            end={item.to === '/rh' || item.to === '/rh/asistencia'}
+                            end={item.to === '/rh' || item.to === '/rh/asistencia' || item.to === '/rh/nomina'}
                             className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}
                             title={item.label}
                             onClick={onNavigate}

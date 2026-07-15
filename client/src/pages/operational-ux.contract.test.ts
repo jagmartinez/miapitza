@@ -64,12 +64,24 @@ describe('operational UX contracts', () => {
         expect(source).toContain('modal-content-group catering-event-section');
         expect(source).toContain('catering-info-layout');
         expect(source).not.toContain('width="wide"');
+        expect(source).toContain('width="medium"');
+        expect(source).toContain('aria-label="Verificar inventario"');
         expect(source).toContain('className="modal-form-new"');
         expect(source).toContain('<Button type="submit" disabled={savingEvent}>');
         expect(styles).not.toContain('--catering-control-height: 46px');
         expect(styles).toContain('.catering-event-section');
         expect(styles).toContain('minmax(180px, .7fr) minmax(260px, 1.3fr)');
         expect(styles).not.toContain('.catering-section-heading');
+    });
+
+    it('keeps menu view and edit as separate actions with recipe-style detail', () => {
+        const source = read('./Menu.tsx');
+
+        expect(source).toContain('title="Detalle del Plato"');
+        expect(source).toContain('data-testid="menu-item-detail"');
+        expect(source).toContain('inventory-detail-hero');
+        expect(source).toContain('handleOpenDetail(item)');
+        expect(source).not.toContain('title="Ver / Editar"');
     });
 
     it('supports selecting several categories in sales reports end to end', () => {

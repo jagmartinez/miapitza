@@ -40,6 +40,11 @@
     width: 1050px;
 }
 
+.sidebar-panel.sidebar-medium {
+    right: -750px;
+    width: 750px;
+}
+
 .sidebar-panel.sidebar-large {
     right: -800px;
     width: 800px;
@@ -199,6 +204,7 @@
 
     .sidebar-panel,
     .sidebar-panel.sidebar-wide,
+    .sidebar-panel.sidebar-medium,
     .sidebar-panel.sidebar-large,
     .sidebar-panel.sidebar-full,
     .sidebar-panel.sidebar-normal {

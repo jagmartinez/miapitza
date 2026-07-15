@@ -584,7 +584,7 @@ export default function MyBenefits() {
               ? 'Solicitar préstamo'
               : 'Registrar gasto'
         }
-        width="wide"
+        width="large"
       >
         {panel === 'TRAVEL' && (
           <TravelRequestForm
@@ -621,7 +621,7 @@ export default function MyBenefits() {
         isOpen={Boolean(transition)}
         onClose={() => !saving && setTransition(null)}
         title="Confirmar acción"
-        width="wide"
+        width="large"
       >
         {transition && (
           <BenefitsTransitionForm

@@ -570,7 +570,7 @@ export default function AttendanceManagement() {
               ? 'Solicitud de horas extra'
               : 'Nuevo periodo'
         }
-        width="wide"
+        width="large"
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
@@ -663,7 +663,7 @@ export default function AttendanceManagement() {
               ? 'Reabrir periodo'
               : 'Registrar decisión'
         }
-        width="wide"
+        width="large"
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >

@@ -1063,7 +1063,7 @@
 
 .catering-tab-toolbar {
     display: grid;
-    grid-template-columns: minmax(180px, .7fr) minmax(260px, 1.3fr);
+    grid-template-columns: minmax(180px, .7fr) minmax(260px, 1.3fr) 42px;
     align-items: end;
     gap: var(--spacing-md);
     margin-bottom: var(--spacing-lg);
@@ -1074,11 +1074,12 @@
 }
 
 .catering-stock-check {
-    grid-column: 1 / -1;
-    justify-self: end;
-    min-height: 40px;
-    padding-inline: var(--spacing-lg);
-    white-space: nowrap;
+    width: 42px;
+    min-width: 42px;
+    min-height: 42px;
+    padding: 0;
+    align-self: end;
+    justify-self: stretch;
 }
 
 .catering-empty-items {
@@ -1422,9 +1423,8 @@
     }
 
     .catering-stock-check {
-        grid-column: auto;
-        justify-self: stretch;
-        width: 100%;
+        width: 42px;
+        justify-self: start;
     }
 
     .catering-modal-footer {

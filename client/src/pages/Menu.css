@@ -2003,3 +2003,145 @@
   gap: 8px;
   margin-top: 14px;
 }
+
+/* Read-only catalog detail reuses the same information hierarchy as Detalle de la Receta. */
+.menu-item-detail .inventory-detail-finance-breakdown {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.menu-detail-component-list {
+  display: grid;
+  gap: 8px;
+}
+
+.menu-detail-component {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) minmax(120px, auto) minmax(130px, auto);
+  align-items: center;
+  gap: 12px;
+  padding: 11px 13px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+
+.menu-detail-component-index {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.menu-detail-component > div,
+.menu-detail-number {
+  min-width: 0;
+}
+
+.menu-detail-component > div > span,
+.menu-detail-price-grid span {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
+.menu-detail-component strong {
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.menu-detail-number {
+  text-align: right;
+}
+
+.menu-detail-price-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.menu-detail-price-grid > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+
+.menu-detail-price-grid span {
+  margin: 0;
+}
+
+.menu-detail-price-grid strong {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.menu-detail-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.menu-detail-gallery button {
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-background);
+  cursor: zoom-in;
+}
+
+.menu-detail-gallery img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--transition-fast);
+}
+
+.menu-detail-gallery button:hover img {
+  transform: scale(1.04);
+}
+
+.dark .menu-item-detail .inventory-detail-badge.active,
+.dark .menu-item-detail .inventory-detail-badge.ok {
+  border-color: color-mix(in srgb, #22c55e 48%, var(--color-border));
+  background: color-mix(in srgb, #22c55e 14%, var(--color-surface));
+  color: #86efac;
+}
+
+.dark .menu-item-detail .inventory-detail-badge.inactive {
+  border-color: color-mix(in srgb, #ef4444 48%, var(--color-border));
+  background: color-mix(in srgb, #ef4444 12%, var(--color-surface));
+  color: #fca5a5;
+}
+
+@media (max-width: 680px) {
+  .menu-detail-component {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .menu-detail-number {
+    grid-column: 2;
+    text-align: left;
+  }
+
+  .menu-detail-price-grid,
+  .menu-item-detail .inventory-detail-finance-breakdown {
+    grid-template-columns: 1fr;
+  }
+
+  .menu-detail-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

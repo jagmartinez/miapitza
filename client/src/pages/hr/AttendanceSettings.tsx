@@ -159,8 +159,6 @@ export default function AttendanceSettings() {
     }
   }, []);
 
-  useEffect(() => { void loadProviderHealth(); }, [loadProviderHealth]);
-
   const updatePolicyField = <K extends keyof HrAttendancePolicy>(
     field: K,
     value: HrAttendancePolicy[K]
@@ -862,7 +860,7 @@ export default function AttendanceSettings() {
         isOpen={devicePanelOpen}
         onClose={() => !saving && setDevicePanelOpen(false)}
         title="Crear credencial de dispositivo"
-        width="wide"
+        width="large"
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
@@ -928,7 +926,7 @@ export default function AttendanceSettings() {
         isOpen={Boolean(credential)}
         onClose={() => setCredential(null)}
         title="Clave mostrada una sola vez"
-        width="wide"
+        width="large"
         closeOnBackdrop={false}
       >
         {credential && (

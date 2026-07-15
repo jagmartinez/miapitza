@@ -192,33 +192,72 @@ export default function AttendanceReview() {
             )}
             {!loading && !error && totalPages > 1 && <Pagination page={page} totalPages={totalPages} totalItems={total} pageSize={25} onPageChange={setPage} />}
 
-            <Sidebar isOpen={Boolean(selected)} onClose={() => !saving && setSelected(null)} title="Revisar incidencia" width="wide" closeOnBackdrop={!saving} closeOnEscape={!saving}>
-                {selected && <form className="modal-form-new" onSubmit={review}><div className="modal-tab-content"><div className="hr-review-summary"><strong>{selected.user?.name ?? `Usuario #${selected.userId}`}</strong><span>{ATTENDANCE_ACTION_LABELS[selected.action]} · {displayDate(selected.occurredAt)}</span><p>{selected.message ?? selected.reasonCode ?? 'Sin explicación adicional.'}</p></div><div className="hr-review-decisions" role="radiogroup" aria-label="Decisión de revisión"><label className={reviewForm.decision === 'APPROVED' ? 'selected' : ''}><input type="radio" name="review-decision" checked={reviewForm.decision === 'APPROVED'} onChange={() => setReviewForm((current) => ({ ...current, decision: 'APPROVED' }))} /><CheckCircle2 size={18} /> Aprobar</label><label className={reviewForm.decision === 'REJECTED' ? 'selected danger' : 'danger'}><input type="radio" name="review-decision" checked={reviewForm.decision === 'REJECTED'} onChange={() => setReviewForm((current) => ({ ...current, decision: 'REJECTED' }))} /><XCircle size={18} /> Rechazar</label></div><div className="modal-input-group"><label htmlFor="attendance-review-reason">Razón de la decisión</label><textarea id="attendance-review-reason" className="modal-textarea" rows={5} maxLength={500} value={reviewForm.reason} onChange={(event) => setReviewForm((current) => ({ ...current, reason: event.target.value }))} required /></div></div><div className="modal-footer"><Button type="button" variant="ghost" onClick={() => setSelected(null)} disabled={saving}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Registrar decisión'}</Button></div></form>}
+            <Sidebar isOpen={Boolean(selected)} onClose={() => !saving && setSelected(null)} title="Revisar incidencia" width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
+                {selected && (
+                    <div className="premium-modal-content hr-attendance-modal-content">
+                        <div className="modal-tabs" role="tablist" aria-label="Sección de revisión">
+                            <button type="button" role="tab" aria-selected="true" className="modal-tab active"><ClipboardCheck size={18} /><span>Decisión</span></button>
+                        </div>
+                        <form className="modal-form-new" onSubmit={review}>
+                            <div className="modal-tab-content">
+                                <div className="modal-content-group">
+                                    <div className="modal-section-header"><ClipboardCheck size={18} /><h3>Evento observado</h3></div>
+                                    <div className="hr-review-summary"><strong>{selected.user?.name ?? `Usuario #${selected.userId}`}</strong><span>{ATTENDANCE_ACTION_LABELS[selected.action]} · {displayDate(selected.occurredAt)}</span><p>{selected.message ?? selected.reasonCode ?? 'Sin explicación adicional.'}</p></div>
+                                </div>
+                                <div className="modal-content-group">
+                                    <div className="modal-section-header"><CheckCircle2 size={18} /><h3>Resolución supervisada</h3></div>
+                                    <div className="hr-review-decisions" role="radiogroup" aria-label="Decisión de revisión"><label className={reviewForm.decision === 'APPROVED' ? 'selected' : ''}><input type="radio" name="review-decision" checked={reviewForm.decision === 'APPROVED'} onChange={() => setReviewForm((current) => ({ ...current, decision: 'APPROVED' }))} /><CheckCircle2 size={18} /> Aprobar</label><label className={reviewForm.decision === 'REJECTED' ? 'selected danger' : 'danger'}><input type="radio" name="review-decision" checked={reviewForm.decision === 'REJECTED'} onChange={() => setReviewForm((current) => ({ ...current, decision: 'REJECTED' }))} /><XCircle size={18} /> Rechazar</label></div>
+                                    <div className="modal-input-group"><label className="modal-input-label" htmlFor="attendance-review-reason">Razón de la decisión</label><textarea id="attendance-review-reason" className="modal-textarea" rows={5} maxLength={500} value={reviewForm.reason} onChange={(event) => setReviewForm((current) => ({ ...current, reason: event.target.value }))} required /></div>
+                                </div>
+                            </div>
+                            <div className="modal-footer"><Button type="button" variant="ghost" onClick={() => setSelected(null)} disabled={saving}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Registrar decisión'}</Button></div>
+                        </form>
+                    </div>
+                )}
             </Sidebar>
 
-            <Sidebar isOpen={manualOpen} onClose={() => !saving && setManualOpen(false)} title="Marcaje manual supervisado" width="wide" closeOnBackdrop={!saving} closeOnEscape={!saving}>
-                <div className="modal-tab-content">
-                    <Select<Option>
-                        variant="modal"
-                        label="Evento a compensar (opcional)"
-                        options={targetOptions}
-                        value={targetOptions.find((option) => option.value === manual.targetEventId)}
-                        onChange={(option: SingleValue<Option>) => {
-                            const target = events.find((item) => String(item.id) === option?.value);
-                            setManual((current) => ({
-                                ...current,
-                                targetEventId: option?.value ?? '',
-                                ...(target ? {
-                                    userId: String(target.userId),
-                                    branchId: String(target.branchId ?? ''),
-                                    action: target.action,
-                                } : {}),
-                            }));
-                        }}
-                        isSearchable
-                    />
+            <Sidebar isOpen={manualOpen} onClose={() => !saving && setManualOpen(false)} title="Marcaje manual supervisado" width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
+                <div className="premium-modal-content hr-attendance-modal-content">
+                    <div className="modal-tabs" role="tablist" aria-label="Sección de marcaje manual">
+                        <button type="button" role="tab" aria-selected="true" className="modal-tab active"><Plus size={18} /><span>Marcaje</span></button>
+                    </div>
+                    <form className="modal-form-new" onSubmit={createManual}>
+                        <div className="modal-tab-content">
+                            <div className="hr-attendance-alert warning"><AlertTriangle size={18} /><span>Este fallback no simula biometría ni GPS: crea un evento manual identificado, con actor y razón para auditoría.</span></div>
+                            <div className="modal-content-group">
+                                <div className="modal-section-header"><ClipboardCheck size={18} /><h3>Origen y colaborador</h3></div>
+                                <Select<Option>
+                                    variant="modal"
+                                    label="Evento a compensar (opcional)"
+                                    options={targetOptions}
+                                    value={targetOptions.find((option) => option.value === manual.targetEventId)}
+                                    onChange={(option: SingleValue<Option>) => {
+                                        const target = events.find((item) => String(item.id) === option?.value);
+                                        setManual((current) => ({
+                                            ...current,
+                                            targetEventId: option?.value ?? '',
+                                            ...(target ? { userId: String(target.userId), branchId: String(target.branchId ?? ''), action: target.action } : {}),
+                                        }));
+                                    }}
+                                    isSearchable
+                                />
+                                <div className="modal-form-row">
+                                    <Select<Option> variant="modal" label="Usuario" options={userOptions.filter((option) => option.value)} value={userOptions.find((option) => option.value === manual.userId)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, userId: option?.value ?? '' }))} isSearchable />
+                                    <Select<Option> variant="modal" label="Sucursal" options={branchOptions.filter((option) => option.value)} value={branchOptions.find((option) => option.value === manual.branchId)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, branchId: option?.value ?? '' }))} isSearchable />
+                                </div>
+                            </div>
+                            <div className="modal-content-group">
+                                <div className="modal-section-header"><Plus size={18} /><h3>Acción y justificación</h3></div>
+                                <div className="modal-form-row">
+                                    <Select<Option> variant="modal" label="Acción" options={ACTION_OPTIONS.filter((option) => option.value)} value={ACTION_OPTIONS.find((option) => option.value === manual.action)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, action: (option?.value ?? 'CHECK_IN') as HrAttendanceAction }))} />
+                                    <div className="modal-input-group"><label className="modal-input-label" htmlFor="attendance-manual-at">Fecha y hora real</label><input id="attendance-manual-at" className="modal-standard-input" type="datetime-local" value={manual.occurredAt} onChange={(event) => setManual((current) => ({ ...current, occurredAt: event.target.value }))} required /></div>
+                                </div>
+                                <div className="modal-input-group"><label className="modal-input-label" htmlFor="attendance-manual-reason">Razón del fallback</label><textarea id="attendance-manual-reason" className="modal-textarea" rows={5} maxLength={500} value={manual.reason} onChange={(event) => setManual((current) => ({ ...current, reason: event.target.value }))} required /></div>
+                            </div>
+                        </div>
+                        <div className="modal-footer"><Button type="button" variant="ghost" onClick={() => setManualOpen(false)} disabled={saving}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? 'Registrando…' : 'Registrar marcaje manual'}</Button></div>
+                    </form>
                 </div>
-                <form className="modal-form-new" onSubmit={createManual}><div className="modal-tab-content"><div className="hr-attendance-alert warning"><AlertTriangle size={18} /><span>Este fallback no simula biometría ni GPS: crea un evento manual identificado, con actor y razón para auditoría.</span></div><Select<Option> variant="modal" label="Usuario" options={userOptions.filter((option) => option.value)} value={userOptions.find((option) => option.value === manual.userId)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, userId: option?.value ?? '' }))} isSearchable /><Select<Option> variant="modal" label="Sucursal" options={branchOptions.filter((option) => option.value)} value={branchOptions.find((option) => option.value === manual.branchId)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, branchId: option?.value ?? '' }))} isSearchable /><Select<Option> variant="modal" label="Acción" options={ACTION_OPTIONS.filter((option) => option.value)} value={ACTION_OPTIONS.find((option) => option.value === manual.action)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, action: (option?.value ?? 'CHECK_IN') as HrAttendanceAction }))} /><div className="modal-input-group"><label htmlFor="attendance-manual-at">Fecha y hora real</label><input id="attendance-manual-at" className="modal-standard-input" type="datetime-local" value={manual.occurredAt} onChange={(event) => setManual((current) => ({ ...current, occurredAt: event.target.value }))} required /></div><div className="modal-input-group"><label htmlFor="attendance-manual-reason">Razón del fallback</label><textarea id="attendance-manual-reason" className="modal-textarea" rows={5} maxLength={500} value={manual.reason} onChange={(event) => setManual((current) => ({ ...current, reason: event.target.value }))} required /></div></div><div className="modal-footer"><Button type="button" variant="ghost" onClick={() => setManualOpen(false)} disabled={saving}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? 'Registrando…' : 'Registrar marcaje manual'}</Button></div></form>
             </Sidebar>
         </div>
     );

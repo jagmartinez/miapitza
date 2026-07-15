@@ -25,6 +25,56 @@ async function mockApp(page: Page) {
     let data: unknown = [];
     if (path.endsWith('/auth/me')) data = user;
     if (path.endsWith('/settings')) data = { currency_symbol: 'C$' };
+    if (path.endsWith('/menu-items')) {
+      data = [{
+        id: 1,
+        name: 'Plato QA',
+        description: 'Detalle verificable',
+        price: 250,
+        categoryId: 3,
+        branchId: null,
+        brandId: null,
+        category: { id: 3, name: 'Especialidades' },
+        recipes: [],
+        images: [],
+        active: true,
+      }];
+    }
+    if (path.endsWith('/menu-items/1')) {
+      data = {
+        id: 1,
+        name: 'Plato QA',
+        description: 'Detalle verificable',
+        price: 250,
+        totalCost: 75,
+        margin: 175,
+        categoryId: 3,
+        branchId: null,
+        brandId: null,
+        category: { id: 3, name: 'Especialidades' },
+        recipes: [{ id: 9, menuItemId: 1, productId: 4, quantity: 2, unit: 'lb', product: { id: 4, name: 'Ingrediente QA', unit: 'lb', cost: 30 } }],
+        active: true,
+      };
+    }
+    if (path.endsWith('/menu-items/1/images')) data = [];
+    if (path.endsWith('/advanced/pricing/1')) data = { branchPrices: [] };
+    if (path.endsWith('/v1/hr/payroll/rules')) {
+      data = [{
+        id: 81,
+        name: 'Regla legal QA',
+        version: 1,
+        status: 'DRAFT',
+        effectiveFrom: '2026-01-01',
+        effectiveTo: null,
+        sourceReference: 'Normativa QA',
+        description: 'Control legal',
+        configurationSummary: null,
+        activeConfigurationRevisionId: null,
+        revision: 1,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }];
+    }
+    if (path.endsWith('/v1/hr/payroll/rules/81/configuration-revisions')) data = [];
     if (path.endsWith('/v1/hr/dashboard')) {
       data = {
         employees: { total: 0, active: 0, suspended: 0, onLeave: 0, inactive: 0, internalAccounts: 0 },
@@ -127,6 +177,20 @@ test('menu modal has no nested card spacing or reserved right gutter', async ({ 
   expect(Math.abs(geometry.viewportWidth - geometry.panelRight)).toBeLessThanOrEqual(1);
 });
 
+test('menu view action opens a read-only recipe-style detail instead of the editor', async ({ page }) => {
+  await mockApp(page);
+  await page.goto('/menu');
+
+  await page.getByRole('button', { name: 'Ver detalle de Plato QA' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Detalle del Plato' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[data-testid="menu-item-detail"]')).toBeVisible();
+  await expect(dialog.getByText('Ficha del catálogo')).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: 'Componentes de la receta' })).toBeVisible();
+  await expect(dialog.getByText('Ingrediente QA')).toBeVisible();
+  await expect(dialog.locator('form')).toHaveCount(0);
+});
+
 test('shared dialogs use the muted accent palette in dark mode', async ({ page }) => {
   await mockApp(page);
   await page.goto('/reservations');
@@ -197,4 +261,28 @@ test('RH primary and secondary views share the 1700px layout and React Select co
 
   await page.goto('/rh/nomina');
   await expect(page.locator('.hr-react-select .react-select__control').first()).toBeVisible();
+});
+
+test('legal payroll settings is an independent RH view with one active navigation item', async ({ page }) => {
+  await mockApp(page);
+  await page.goto('/rh/nomina/configuracion-legal');
+
+  await expect(page.getByRole('heading', { name: 'IR laboral, INSS e INATEC' })).toBeVisible();
+  await expect(page.locator('.sidebar-nav .nav-item.active')).toHaveCount(1);
+  await expect(page.locator('.sidebar-nav .nav-item.active')).toHaveText('IR, INSS e INATEC');
+  await expect(page.getByText('Regla legal QA', { exact: false }).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Configuración paramétrica', exact: true })).toBeVisible();
+});
+
+test('manual attendance punch uses one compact canonical modal body', async ({ page }) => {
+  await mockApp(page);
+  await page.goto('/rh/asistencia');
+
+  await page.getByRole('button', { name: 'Marcaje manual' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Marcaje manual supervisado' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveCSS('width', '800px');
+  await expect(dialog.locator('.premium-modal-content')).toHaveCount(1);
+  await expect(dialog.locator('.modal-tab-content')).toHaveCount(1);
+  await expect(dialog.getByRole('button', { name: 'Registrar marcaje manual' })).toBeVisible();
 });

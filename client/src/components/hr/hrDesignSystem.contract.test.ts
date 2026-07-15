@@ -24,6 +24,8 @@ const shiftForm = readFileSync(new URL('./ScheduleShiftForm.tsx', import.meta.ur
 const attendanceSettings = readFileSync(new URL('../../pages/hr/AttendanceSettings.tsx', import.meta.url), 'utf8');
 const attendanceStyles = readFileSync(new URL('../../pages/hr/attendance-settings.css', import.meta.url), 'utf8');
 const payroll = readFileSync(new URL('../../pages/hr/PayrollManagement.tsx', import.meta.url), 'utf8');
+const payrollLegal = readFileSync(new URL('../../pages/hr/PayrollLegalSettings.tsx', import.meta.url), 'utf8');
+const attendanceReview = readFileSync(new URL('../../pages/hr/AttendanceReview.tsx', import.meta.url), 'utf8');
 
 describe('RH and Catering UI design-system contract', () => {
   it('keeps RH views inside the shared 1700px content boundary', () => {
@@ -40,7 +42,8 @@ describe('RH and Catering UI design-system contract', () => {
   });
 
   it('keeps attendance and its settings from being active at the same time', () => {
-    expect(layout).toContain("end={item.to === '/rh' || item.to === '/rh/asistencia'}");
+    expect(layout).toContain("item.to === '/rh/asistencia'");
+    expect(layout).toContain("item.to === '/rh/nomina'");
   });
 
   it('uses compact premium shells for employee and shift editors', () => {
@@ -60,7 +63,16 @@ describe('RH and Catering UI design-system contract', () => {
   it('exposes the statutory payroll configuration with explicit labels', () => {
     expect(payroll).toContain('Configurar IR, INSS e INATEC');
     expect(payroll).toContain('Configuración legal: IR, INSS e INATEC');
-    expect(payroll).toContain('openRuleConfiguration');
+    expect(payroll).toContain('/rh/nomina/configuracion-legal?ruleId=');
+    expect(payrollLegal).toContain('IR laboral, INSS e INATEC');
+    expect(payrollLegal).toContain('<PayrollRuleConfigurationPanel');
+  });
+
+  it('keeps every RH sidebar compact and the manual punch in one canonical body', () => {
+    expect(hrSource).not.toContain('width="wide"');
+    expect(attendanceReview).toContain('premium-modal-content hr-attendance-modal-content');
+    expect(attendanceReview.match(/title="Marcaje manual supervisado"/g)).toHaveLength(1);
+    expect(attendanceReview).not.toContain('<div className="modal-tab-content">\n                    <Select<Option>');
   });
 
   it('normalizes monetary input while presenting thousands separators and right alignment', () => {

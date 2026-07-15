@@ -546,7 +546,7 @@ export default function LeaveManagement() {
               ? 'Tipo de ausencia'
               : 'Ajuste de vacaciones'
         }
-        width="wide"
+        width="large"
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
@@ -810,7 +810,7 @@ export default function LeaveManagement() {
         isOpen={Boolean(requestAction)}
         onClose={() => !saving && setRequestAction(null)}
         title={requestAction?.kind === 'cancel' ? 'Cancelar solicitud' : 'Decidir solicitud'}
-        width="wide"
+        width="large"
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
