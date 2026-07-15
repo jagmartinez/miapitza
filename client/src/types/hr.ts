@@ -180,11 +180,18 @@ export interface HrEmployeePayload {
     userId?: number;
     employeeCode: string;
     legalName: string;
+    preferredName?: string | null;
     employmentType?: string | null;
+    documentType?: string | null;
     documentNumber?: string | null;
+    socialSecurityNumber?: string | null;
+    taxId?: string | null;
     workEmail?: string | null;
     workPhone?: string | null;
     address?: string | null;
+    emergencyContactName?: string | null;
+    emergencyContactPhone?: string | null;
+    emergencyContactRelationship?: string | null;
     notes?: string | null;
     hireDate: string;
     departmentId?: number | null;

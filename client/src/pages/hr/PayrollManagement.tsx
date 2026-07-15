@@ -242,7 +242,7 @@ export default function PayrollManagement() {
         payload,
         idempotencyKey
       );
-      showSuccess('Componente de entrada agregado; recalcula antes de revisar.');
+      showSuccess('Componente agregado; INSS, INATEC, IR y totales fueron recalculados.');
       componentOperationKey.current = null;
       setCreatePanel(null);
       await refreshWorkspace(selected);
@@ -736,6 +736,29 @@ export default function PayrollManagement() {
                         ))}
                       </div>
                     )}
+                  </section>
+                  <section>
+                    <div className="hr-payroll-subheading">
+                      <h3>Traza INSS, INATEC e IR</h3>
+                      <span>Revisión {selected.revision}</span>
+                    </div>
+                    {selected.statutoryCalculations.length === 0 ? <p>Sin cálculo estatutario para esta corrida.</p> : (
+                      <div className="hr-payroll-records">
+                        {selected.statutoryCalculations.map((item) => <article key={item.id}>
+                          <div>
+                            <strong>{item.user?.name ?? `Usuario #${item.userId}`} · {item.companyTaxRegime}</strong>
+                            <span>INSS laboral {item.employeeInss} · IR retenido {item.currentIncomeTaxWithheld} · devolución IR {item.incomeTaxRefund}</span>
+                            <small>Base INSS {item.inssBase} · otras deducciones IR {item.otherIncomeTaxDeductions} · renta neta acumulada {item.accumulatedIncomeTaxNet} · proyección anual {item.annualProjection} · período {item.elapsedPeriods}/{item.annualPeriods}</small>
+                          </div>
+                        </article>)}
+                      </div>
+                    )}
+                    {selected.employerContributions.length > 0 && <div className="hr-payroll-records">
+                      {selected.employerContributions.map((item) => <article key={item.id}>
+                        <div><strong>{item.name} · {item.user?.name ?? `Usuario #${item.userId}`}</strong><small>Base {item.baseAmount} · tasa {(Number(item.rate) * 100).toFixed(2)}% · {item.traceReference}</small></div>
+                        <strong>{item.amount}</strong>
+                      </article>)}
+                    </div>}
                   </section>
                   <section>
                     <div className="hr-payroll-subheading">

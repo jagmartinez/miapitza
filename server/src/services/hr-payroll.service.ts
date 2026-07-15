@@ -6,6 +6,12 @@ import prisma from '../utils/prisma';
 import { isValidTimeZone } from '../utils/timezone';
 import { AuditLogService } from './audit-log.service';
 import { commitBenefitDeductions, projectBenefitDeductions, reverseBenefitDeductions } from './hr-benefits.service';
+import {
+    calculateStatutoryPayroll,
+    type PayrollStatutoryConfiguration,
+    type StatutoryPayFrequency,
+    validateStatutoryConfiguration,
+} from './hr-payroll-statutory';
 
 type Db = Prisma.TransactionClient | typeof prisma;
 type JsonObject = Record<string, unknown>;
@@ -80,7 +86,7 @@ function nonNegativeMoney(value: unknown, field: string): Prisma.Decimal {
 }
 
 export type LegalConfiguration = {
-    schema: 'HR_PAYROLL_PARAMETRIC_V1';
+    schema: 'HR_PAYROLL_PARAMETRIC_V2';
     legallyValidated: true;
     currency: string;
     regular: {
@@ -97,6 +103,7 @@ export type LegalConfiguration = {
         eligibleSources: string[];
         roundingScale: 2;
     };
+    statutory: PayrollStatutoryConfiguration;
 };
 
 function positiveDecimalText(value: unknown): value is string {
@@ -108,7 +115,7 @@ export function validateLegalConfiguration(value: unknown): LegalConfiguration {
     const config = value as Partial<LegalConfiguration> | null;
     const divisors = config?.regular?.minuteDivisors;
     if (
-        !config || config.schema !== 'HR_PAYROLL_PARAMETRIC_V1' || config.legallyValidated !== true ||
+        !config || config.schema !== 'HR_PAYROLL_PARAMETRIC_V2' || config.legallyValidated !== true ||
         typeof config.currency !== 'string' || !/^[A-Z]{3}$/.test(config.currency) ||
         !divisors || !positiveDecimalText(divisors.WEEKLY) || !positiveDecimalText(divisors.BIWEEKLY) ||
         !positiveDecimalText(divisors.MONTHLY) || !positiveDecimalText(config.regular?.overtimeMultiplier) ||
@@ -122,6 +129,7 @@ export function validateLegalConfiguration(value: unknown): LegalConfiguration {
         config.aguinaldo?.eligibleSources.some(source => typeof source !== 'string' || !source.trim()) ||
         config.aguinaldo?.roundingScale !== 2 || !Number.isInteger(config.aguinaldo?.lookbackDays) ||
         Number(config.aguinaldo?.lookbackDays) < 1 || Number(config.aguinaldo?.lookbackDays) > 731 ||
+        !validateStatutoryConfiguration(config.statutory) ||
         (config.fxRates !== undefined && Object.entries(config.fxRates).some(([currency, rate]) =>
             !/^[A-Z]{3}$/.test(currency) || !positiveDecimalText(rate?.rate) || !rate?.version?.trim() || !rate?.sourceReference?.trim()))
     ) {
@@ -135,7 +143,7 @@ export function validateLegalConfiguration(value: unknown): LegalConfiguration {
 }
 
 function configurationSummary(config: LegalConfiguration, hash: string): string {
-    return `Esquema ${config.schema}; moneda ${config.currency}; aguinaldo ${config.aguinaldo.method}; fuente histórica ${config.aguinaldo.lookbackDays} días; hash ${hash.slice(0, 12)}`;
+    return `Esquema ${config.schema}; régimen ${config.statutory.companyTaxRegime.code}; moneda ${config.currency}; INSS ${config.statutory.inss.applicability}; INATEC ${config.statutory.inatec.applicability}; IR laboral ${config.statutory.incomeTax.applicability}; hash ${hash.slice(0, 12)}`;
 }
 
 function convertCurrency(amount: Prisma.Decimal, from: string, config: LegalConfiguration): { amount: Prisma.Decimal; trace: JsonObject } {
@@ -561,6 +569,203 @@ export function compensationMinuteRate(item: { compensationType: string; amount:
     return item.compensationType === 'HOURLY' ? item.amount.dividedBy(60) : item.amount.dividedBy(config.regular.minuteDivisors[item.payFrequency]);
 }
 
+function statutoryFlags(code: string, config: LegalConfiguration) {
+    return {
+        taxable: config.statutory.incomeTax.applicability === 'APPLIES' && config.statutory.incomeTax.taxableComponentCodes.includes(code),
+        incomeTaxDeductible: false,
+        socialSecurityApplicable: config.statutory.inss.applicability === 'APPLIES' && config.statutory.inss.contributionComponentCodes.includes(code),
+        trainingContributionApplicable: config.statutory.inatec.applicability === 'APPLIES' && config.statutory.inatec.contributionComponentCodes.includes(code),
+    };
+}
+
+async function employerHeadcountAt(tx: Prisma.TransactionClient, companyId: number, from: Date, to: Date) {
+    return tx.employee.count({ where: {
+        companyId, hireDate: { lte: to },
+        OR: [{ terminationDate: null }, { terminationDate: { gte: from } }],
+        status: { notIn: ['TERMINATED', 'INACTIVE'] }, user: { accountType: 'INTERNAL' },
+    } });
+}
+
+async function priorStatutoryContext(tx: Prisma.TransactionClient, input: {
+    companyId: number;
+    runId: number;
+    userId: number;
+    periodFrom: Date;
+}) {
+    const yearStart = new Date(Date.UTC(input.periodFrom.getUTCFullYear(), 0, 1));
+    const candidates = await tx.payrollRun.findMany({
+        where: {
+            companyId: input.companyId, id: { not: input.runId }, kind: 'REGULAR',
+            period: { dateFrom: { gte: yearStart }, dateTo: { lt: input.periodFrom } },
+            snapshots: { some: { userId: input.userId } },
+        },
+        include: {
+            period: { select: { id: true, code: true, dateFrom: true, dateTo: true } },
+            reversals: { select: { id: true } },
+            statutoryCalculations: {
+                where: { userId: input.userId },
+                select: { calculationRevision: true },
+            },
+            components: {
+                where: { userId: input.userId },
+                include: { reversal: { select: { id: true, amount: true } } },
+                orderBy: { id: 'asc' },
+            },
+        },
+        orderBy: { id: 'asc' },
+    });
+    const fingerprint = hashPayload(candidates.map(run => ({
+        id: run.id, revision: run.revision, calculationRevision: run.calculationRevision,
+        status: run.status, periodId: run.periodId, periodFrom: run.period ? dateKey(run.period.dateFrom) : null,
+        periodTo: run.period ? dateKey(run.period.dateTo) : null, reversed: run.reversals.length > 0,
+        statutoryCalculationRevisions: run.statutoryCalculations.map(item => item.calculationRevision).sort((a, b) => a - b),
+        components: run.components.map(component => ({
+            id: component.id, code: component.code, type: component.type, source: component.source,
+            amount: component.amount.toFixed(2), taxable: component.taxable,
+            incomeTaxDeductible: component.incomeTaxDeductible,
+            socialSecurityApplicable: component.socialSecurityApplicable,
+            trainingContributionApplicable: component.trainingContributionApplicable,
+            reversed: Boolean(component.reversal),
+        })),
+    })));
+    const eligible = candidates.filter(run => run.status === 'PAID' && run.reversals.length === 0);
+    const incompleteRuns = eligible.filter(run =>
+        !run.calculationRevision ||
+        !run.statutoryCalculations.some(item => item.calculationRevision === run.calculationRevision) ||
+        run.components.some(component => !component.reversal && (
+            (component.type === 'INCOME' && (
+                component.taxable === null ||
+                component.socialSecurityApplicable === null ||
+                component.trainingContributionApplicable === null
+            )) ||
+            (component.type === 'DEDUCTION' && component.source !== 'STATUTORY' && component.incomeTaxDeductible === null)
+        )),
+    );
+    let taxableGross = new Prisma.Decimal(0);
+    let authorizedTaxDeductions = new Prisma.Decimal(0);
+    let incomeTaxWithheld = new Prisma.Decimal(0);
+    let incomeTaxRefunded = new Prisma.Decimal(0);
+    for (const run of eligible) for (const component of run.components.filter(item => !item.reversal)) {
+        if (component.type === 'INCOME' && component.taxable === true) taxableGross = taxableGross.plus(component.amount);
+        if (component.type === 'DEDUCTION' && (component.incomeTaxDeductible === true || component.code === 'INSS_LABORAL')) authorizedTaxDeductions = authorizedTaxDeductions.plus(component.amount);
+        if (component.type === 'DEDUCTION' && component.code === 'IR_LABORAL') incomeTaxWithheld = incomeTaxWithheld.plus(component.amount);
+        if (component.type === 'INCOME' && component.code === 'IR_LABORAL_DEVOLUCION') incomeTaxRefunded = incomeTaxRefunded.plus(component.amount);
+    }
+    return {
+        priorPeriods: eligible.length,
+        priorIncomeTaxNet: money(Prisma.Decimal.max(0, taxableGross.minus(authorizedTaxDeductions))),
+        priorIncomeTaxWithheld: money(Prisma.Decimal.max(0, incomeTaxWithheld.minus(incomeTaxRefunded))),
+        historyFingerprint: fingerprint,
+        historyComplete: incompleteRuns.length === 0,
+        incompleteRunCodes: incompleteRuns.map(run => run.period?.code || `run:${run.id}`),
+    };
+}
+
+function snapshotServiceRatio(snapshot: { sourceTrace: Prisma.JsonValue; coverageFrom: Date; coverageTo: Date }, period: { dateFrom: Date; dateTo: Date }) {
+    const trace = snapshot.sourceTrace && typeof snapshot.sourceTrace === 'object' && !Array.isArray(snapshot.sourceTrace)
+        ? snapshot.sourceTrace as Record<string, unknown> : {};
+    const serviceFrom = typeof trace.serviceFrom === 'string' ? new Date(`${trace.serviceFrom}T00:00:00.000Z`) : snapshot.coverageFrom;
+    const serviceTo = typeof trace.serviceTo === 'string' ? new Date(`${trace.serviceTo}T00:00:00.000Z`) : snapshot.coverageTo;
+    return Prisma.Decimal.min(1, new Prisma.Decimal(Math.max(0, dateDays(maxDate(period.dateFrom, serviceFrom), minDate(period.dateTo, serviceTo)))).dividedBy(dateDays(period.dateFrom, period.dateTo)));
+}
+
+async function applyStatutoryForUser(tx: Prisma.TransactionClient, input: {
+    companyId: number;
+    runId: number;
+    userId: number;
+    employeeId: number;
+    calculationRevision: number;
+    employerHeadcount: number;
+    configurationRevisionId: number;
+    config: LegalConfiguration;
+    period: { dateFrom: Date; dateTo: Date };
+    snapshot: { sourceTrace: Prisma.JsonValue; coverageFrom: Date; coverageTo: Date; payFrequency: string | null };
+}) {
+    await tx.payrollComponent.deleteMany({ where: { companyId: input.companyId, runId: input.runId, userId: input.userId, source: 'STATUTORY' } });
+    await tx.payrollAnomaly.deleteMany({ where: { companyId: input.companyId, runId: input.runId, userId: input.userId, code: { in: ['UNCLASSIFIED_MANUAL_INCOME', 'MISSING_STATUTORY_PAY_FREQUENCY', 'INSS_MINIMUM_BASE_APPLIED', 'INCOMPLETE_PRIOR_STATUTORY_HISTORY'] }, resolvedAt: null } });
+    if (!['WEEKLY', 'BIWEEKLY', 'MONTHLY'].includes(String(input.snapshot.payFrequency))) {
+        await addAnomaly(tx, { companyId: input.companyId, runId: input.runId, employeeId: input.employeeId, userId: input.userId, code: 'MISSING_STATUTORY_PAY_FREQUENCY', message: 'No existe frecuencia de pago congelada para el cálculo estatutario' });
+        return;
+    }
+    const incomeComponents = await tx.payrollComponent.findMany({ where: {
+        companyId: input.companyId, runId: input.runId, userId: input.userId, type: 'INCOME', source: { not: 'STATUTORY' }, reversal: null,
+    }, orderBy: { id: 'asc' } });
+    const manualComponents = await tx.payrollComponent.findMany({ where: { companyId: input.companyId, runId: input.runId, userId: input.userId, source: 'MANUAL', reversal: null }, orderBy: { id: 'asc' } });
+    const unclassified = manualComponents.filter(component => component.incomeTaxDeductible === null || (component.type === 'INCOME' && (
+        component.taxable === null || component.socialSecurityApplicable === null || component.trainingContributionApplicable === null
+    )));
+    if (unclassified.length) await addAnomaly(tx, {
+        companyId: input.companyId, runId: input.runId, employeeId: input.employeeId, userId: input.userId,
+        code: 'UNCLASSIFIED_MANUAL_INCOME', message: `Los componentes manuales ${unclassified.map(item => item.id).join(', ')} no declaran su tratamiento INSS, INATEC e IR`,
+    });
+    const sum = (predicate: (component: typeof incomeComponents[number]) => boolean) => money(incomeComponents.filter(predicate).reduce((total, component) => total.plus(component.amount), new Prisma.Decimal(0)));
+    const currentInssBase = sum(component => component.socialSecurityApplicable === true);
+    const currentInatecBase = sum(component => component.trainingContributionApplicable === true);
+    const currentIncomeTaxGross = sum(component => component.taxable === true);
+    const otherIncomeTaxDeductions = money((await tx.payrollComponent.findMany({ where: {
+        companyId: input.companyId, runId: input.runId, userId: input.userId, type: 'DEDUCTION', source: { not: 'STATUTORY' }, incomeTaxDeductible: true, reversal: null,
+    } })).reduce((total, component) => total.plus(component.amount), new Prisma.Decimal(0)));
+    const prior = await priorStatutoryContext(tx, { companyId: input.companyId, runId: input.runId, userId: input.userId, periodFrom: input.period.dateFrom });
+    if (!prior.historyComplete) await addAnomaly(tx, {
+        companyId: input.companyId, runId: input.runId, employeeId: input.employeeId, userId: input.userId,
+        code: 'INCOMPLETE_PRIOR_STATUTORY_HISTORY',
+        message: `Las planillas pagadas ${prior.incompleteRunCodes.join(', ')} no tienen clasificación y traza estatutaria V2 completas; concilie y haga backfill antes de aprobar`,
+    });
+    const result = calculateStatutoryPayroll(input.config.statutory, {
+        inssContributionBase: currentInssBase, inatecContributionBase: currentInatecBase,
+        incomeTaxGross: currentIncomeTaxGross, otherIncomeTaxDeductions, priorIncomeTaxNet: prior.priorIncomeTaxNet,
+        priorIncomeTaxWithheld: prior.priorIncomeTaxWithheld, priorPeriods: prior.priorPeriods,
+        payFrequency: input.snapshot.payFrequency as StatutoryPayFrequency,
+        employerHeadcount: input.employerHeadcount, serviceRatio: snapshotServiceRatio(input.snapshot, input.period),
+    });
+    if (result.inssBase.greaterThan(currentInssBase)) await addAnomaly(tx, {
+        companyId: input.companyId, runId: input.runId, employeeId: input.employeeId, userId: input.userId,
+        code: 'INSS_MINIMUM_BASE_APPLIED', message: `La base cotizable fue elevada de ${currentInssBase.toFixed(2)} a ${result.inssBase.toFixed(2)} por el mínimo sectorial configurado; valide jornada y período incompleto`,
+    });
+    const statutoryTrace = await tx.payrollStatutoryCalculation.create({ data: {
+        companyId: input.companyId, runId: input.runId, userId: input.userId, calculationRevision: input.calculationRevision,
+        configurationRevisionId: input.configurationRevisionId, companyTaxRegime: input.config.statutory.companyTaxRegime.code,
+        payFrequency: input.snapshot.payFrequency!, employerHeadcount: input.employerHeadcount,
+        inssBase: result.inssBase, employeeInss: result.employeeInss, employerInssRate: result.employerInssRate,
+        employerInss: result.employerInss, inatecBase: result.inatecBase, employerInatec: result.employerInatec,
+        currentIncomeTaxNet: result.currentIncomeTaxNet, otherIncomeTaxDeductions: result.otherIncomeTaxDeductions, priorIncomeTaxNet: prior.priorIncomeTaxNet,
+        accumulatedIncomeTaxNet: result.accumulatedIncomeTaxNet, elapsedPeriods: result.elapsedPeriods, annualPeriods: result.annualPeriods,
+        annualProjection: result.annualProjection, annualIncomeTax: result.annualIncomeTax,
+        priorIncomeTaxWithheld: result.priorIncomeTaxWithheld, currentIncomeTaxWithheld: result.currentIncomeTaxWithholding,
+        incomeTaxRefund: result.incomeTaxRefund, bracketSnapshot: result.bracket ? result.bracket as unknown as Prisma.InputJsonValue : Prisma.JsonNull,
+        historyFingerprint: prior.historyFingerprint,
+    } });
+    const traceReference = `statutory:${statutoryTrace.id};config:${input.configurationRevisionId};revision:${input.calculationRevision}`;
+    if (result.employeeInss.greaterThan(0)) await tx.payrollComponent.create({ data: {
+        companyId: input.companyId, runId: input.runId, userId: input.userId, code: 'INSS_LABORAL', name: 'INSS laboral',
+        type: 'DEDUCTION', source: 'STATUTORY', amount: result.employeeInss, taxable: false,
+        incomeTaxDeductible: true,
+        socialSecurityApplicable: false, trainingContributionApplicable: false, traceReference,
+    } });
+    if (result.currentIncomeTaxWithholding.greaterThan(0)) await tx.payrollComponent.create({ data: {
+        companyId: input.companyId, runId: input.runId, userId: input.userId, code: 'IR_LABORAL', name: 'IR de rentas del trabajo',
+        type: 'DEDUCTION', source: 'STATUTORY', amount: result.currentIncomeTaxWithholding, taxable: false,
+        incomeTaxDeductible: false,
+        socialSecurityApplicable: false, trainingContributionApplicable: false, traceReference,
+    } });
+    if (result.incomeTaxRefund.greaterThan(0)) await tx.payrollComponent.create({ data: {
+        companyId: input.companyId, runId: input.runId, userId: input.userId, code: 'IR_LABORAL_DEVOLUCION', name: 'Ajuste a favor de IR laboral',
+        type: 'INCOME', source: 'STATUTORY', amount: result.incomeTaxRefund, taxable: false,
+        incomeTaxDeductible: false,
+        socialSecurityApplicable: false, trainingContributionApplicable: false, traceReference,
+    } });
+    if (result.employerInss.greaterThan(0)) await tx.payrollEmployerContribution.create({ data: {
+        companyId: input.companyId, runId: input.runId, userId: input.userId, calculationRevision: input.calculationRevision,
+        code: 'INSS_PATRONAL', name: 'INSS patronal', baseAmount: result.inssBase,
+        rate: result.employerInssRate, amount: result.employerInss, traceReference,
+    } });
+    if (result.employerInatec.greaterThan(0)) await tx.payrollEmployerContribution.create({ data: {
+        companyId: input.companyId, runId: input.runId, userId: input.userId, calculationRevision: input.calculationRevision,
+        code: 'INATEC_PATRONAL', name: 'Aporte INATEC', baseAmount: result.inatecBase,
+        rate: new Prisma.Decimal(input.config.statutory.inatec.employerRate), amount: result.employerInatec, traceReference,
+    } });
+}
+
 async function calculate(tx: Prisma.TransactionClient, companyId: number, runId: number, actorId: number, kind: PayrollRunKind, reason: string) {
     const run = await tx.payrollRun.findFirst({ where: { id: runId, companyId, kind }, include: { period: true } });
     if (!run || !['DRAFT', 'CALCULATED'].includes(run.status)) throw new HrPayrollError('La corrida no admite cálculo', 409, 'HR_PAYROLL_RUN_IMMUTABLE');
@@ -647,10 +852,42 @@ async function calculate(tx: Prisma.TransactionClient, companyId: number, runId:
             aguinaldoIncomeSegments: historicalSegments as Prisma.InputJsonValue,
             sourceTrace: { hireDate: dateKey(employee.hireDate), terminationDate: employee.terminationDate ? dateKey(employee.terminationDate) : null, serviceFrom: dateKey(serviceFrom), serviceTo: dateKey(serviceTo), configurationRevisionId: configurationRevision.id, configurationHash: configurationRevision.configurationHash, approvedLeaves: leaves.map(item => ({ id: item.id, from: dateKey(item.startDate), to: dateKey(item.endDate), paid: item.leaveType.paid, amount: item.requestedAmount.toString(), unit: item.balanceUnit })), frozen: true },
         } });
-        if (ordinary.greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: kind === 'AGUINALDO' ? 'AGUINALDO_HISTORICO' : 'INGRESO_ORDINARIO', name: kind === 'AGUINALDO' ? 'Aguinaldo histórico parametrizado' : 'Ingreso ordinario segmentado', type: 'INCOME', source: 'RULE', amount: money(ordinary), traceReference: `snapshot:user:${employee.userId};config:${configurationRevision.id}` } });
-        if (overtime.greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: 'HORAS_EXTRA_APROBADAS', name: 'Horas extra aprobadas', type: 'INCOME', source: 'OVERTIME', amount: money(overtime), traceReference: `snapshot:user:${employee.userId}` } });
-        if (paidLeave.greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: 'PERMISO_PAGADO_APROBADO', name: 'Permiso pagado aprobado', type: 'INCOME', source: 'LEAVE', amount: money(paidLeave), traceReference: `snapshot:user:${employee.userId}` } });
+        const ordinaryCode = kind === 'AGUINALDO' ? 'AGUINALDO_HISTORICO' : 'INGRESO_ORDINARIO';
+        const ordinaryFlags = kind === 'REGULAR' ? statutoryFlags(ordinaryCode, config) : { taxable: false, incomeTaxDeductible: false, socialSecurityApplicable: false, trainingContributionApplicable: false };
+        if (ordinary.greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: ordinaryCode, name: kind === 'AGUINALDO' ? 'Aguinaldo histórico parametrizado' : 'Ingreso ordinario segmentado', type: 'INCOME', source: 'RULE', amount: money(ordinary), ...ordinaryFlags, traceReference: `snapshot:user:${employee.userId};config:${configurationRevision.id}` } });
+        if (overtime.greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: 'HORAS_EXTRA_APROBADAS', name: 'Horas extra aprobadas', type: 'INCOME', source: 'OVERTIME', amount: money(overtime), ...statutoryFlags('HORAS_EXTRA_APROBADAS', config), traceReference: `snapshot:user:${employee.userId}` } });
+        if (paidLeave.greaterThan(0)) await tx.payrollComponent.create({ data: { companyId, runId, userId: employee.userId, code: 'PERMISO_PAGADO_APROBADO', name: 'Permiso pagado aprobado', type: 'INCOME', source: 'LEAVE', amount: money(paidLeave), ...statutoryFlags('PERMISO_PAGADO_APROBADO', config), traceReference: `snapshot:user:${employee.userId}` } });
         if (kind === 'REGULAR') await projectBenefitDeductions(tx, { companyId, runId, userId: employee.userId, currency: config.currency, cutoff });
+    }
+    let employerContributions = new Prisma.Decimal(0);
+    if (kind === 'REGULAR') {
+        const employerHeadcount = await employerHeadcountAt(tx, companyId, run.period!.dateFrom, run.period!.dateTo);
+        const snapshots = await tx.payrollSnapshotLine.findMany({ where: { companyId, runId }, orderBy: { userId: 'asc' } });
+        for (const snapshot of snapshots) {
+            const employee = employees.find(item => item.id === snapshot.employeeId)!;
+            if (['CONTRACTOR', 'INTERN'].includes(employee.employmentType)) await addAnomaly(tx, {
+                companyId, runId, employeeId: employee.id, userId: employee.userId,
+                code: 'NON_STANDARD_EMPLOYMENT_STATUTORY_REVIEW',
+                message: `La relación ${employee.employmentType} requiere confirmar que corresponde a rentas del trabajo y seguridad social antes de usar el tratamiento laboral`,
+            });
+            if (config.statutory.inss.applicability === 'APPLIES' && !employee.socialSecurityNumber?.trim()) await addAnomaly(tx, {
+                companyId, runId, employeeId: employee.id, userId: employee.userId, code: 'MISSING_INSS_NUMBER',
+                message: 'El colaborador no tiene número INSS para una obligación configurada como aplicable',
+            });
+            if (config.statutory.incomeTax.applicability === 'APPLIES' && !employee.taxId?.trim() && !employee.documentNumber?.trim()) await addAnomaly(tx, {
+                companyId, runId, employeeId: employee.id, userId: employee.userId, code: 'MISSING_TAX_IDENTIFICATION',
+                message: 'El colaborador no tiene RUC ni identificación para la planilla de rentas del trabajo',
+            });
+            await applyStatutoryForUser(tx, {
+                companyId, runId, userId: snapshot.userId, employeeId: snapshot.employeeId,
+                calculationRevision, employerHeadcount, configurationRevisionId: configurationRevision.id,
+                config, period: run.period!, snapshot,
+            });
+        }
+        const employerAggregate = await tx.payrollEmployerContribution.aggregate({
+            where: { companyId, runId, calculationRevision }, _sum: { amount: true },
+        });
+        employerContributions = money(employerAggregate._sum.amount ?? 0);
     }
     if (attendancePeriod) {
         const summaryFingerprint = hashPayload(dependencyRevisions.sort((a, b) => a.id - b.id));
@@ -662,13 +899,14 @@ async function calculate(tx: Prisma.TransactionClient, companyId: number, runId:
     const aggregate = await tx.payrollComponent.groupBy({ by: ['type'], where: { companyId, runId }, _sum: { amount: true } }); const gross = money(aggregate.find(item => item.type === 'INCOME')?._sum.amount ?? 0); const deductions = money(aggregate.find(item => item.type === 'DEDUCTION')?._sum.amount ?? 0); const net = money(gross.minus(deductions));
     if (net.isNegative()) await addAnomaly(tx, { companyId, runId, code: 'NEGATIVE_NET_PAY', message: 'El neto no puede ser negativo' });
     const revision = calculationRevision;
-    await tx.payrollRun.update({ where: { id: runId }, data: { status: 'CALCULATED', revision, calculationRevision: revision, configurationRevisionId: configurationRevision.id, currency: config.currency, grossIncome: gross, totalDeductions: deductions, netPay: net, employeeCount: employees.length, calculatedById: actorId, calculatedAt: new Date(), lastReason: reason } });
+    await tx.payrollRun.update({ where: { id: runId }, data: { status: 'CALCULATED', revision, calculationRevision: revision, configurationRevisionId: configurationRevision.id, currency: config.currency, grossIncome: gross, totalDeductions: deductions, employerContributions, netPay: net, employeeCount: snapshotUsers.size, calculatedById: actorId, calculatedAt: new Date(), lastReason: reason } });
     await trace(tx, { companyId, runId, event: run.status === 'DRAFT' ? 'CALCULATE' : 'RECALCULATE', actorId, reason, fromStatus: run.status, toStatus: 'CALCULATED', revision, metadata: { configurationRevisionId: configurationRevision.id, configurationHash: configurationRevision.configurationHash } });
 }
 
 async function revalidateFrozenSources(tx: Prisma.TransactionClient, companyId: number, runId: number) {
-    const run = await tx.payrollRun.findFirst({ where: { id: runId, companyId }, include: { configurationRevision: { include: { review: true } }, attendanceDependencies: true, snapshots: true } });
+    const run = await tx.payrollRun.findFirst({ where: { id: runId, companyId }, include: { configurationRevision: { include: { review: true } }, period: true, attendanceDependencies: true, snapshots: true, statutoryCalculations: true } });
     if (!run?.configurationRevision || run.configurationRevision.review?.decision !== 'VALIDATED') throw new HrPayrollError('La configuración congelada dejó de estar VALIDATED', 409, 'HR_PAYROLL_SOURCE_STALE');
+    const frozenConfig = validateLegalConfiguration(run.configurationRevision.configuration);
     for (const dependency of run.attendanceDependencies) {
         const period = await tx.attendancePeriod.findFirst({ where: { id: dependency.attendancePeriodId, companyId } });
         if (!period || period.revision !== dependency.capturedPeriodRevision || period.status !== 'CLOSED' || !period.payrollEligible) throw new HrPayrollError('El período de asistencia cambió o fue reabierto; recalcule', 409, 'HR_PAYROLL_SOURCE_STALE');
@@ -703,6 +941,53 @@ async function revalidateFrozenSources(tx: Prisma.TransactionClient, companyId: 
                 current: { runRevision: dependency.sourceRun.revision, runStatus: dependency.sourceRun.status, runCurrency: dependency.sourceRun.currency, componentAmount: dependency.sourceComponent.amount, receiptStatus: dependency.sourceReceipt.status, componentReversed: Boolean(dependency.sourceComponent.reversal), runReversed: dependency.sourceRun.reversals.length > 0 },
             });
         }
+    }
+    if (run.kind === 'REGULAR') {
+        if (!run.period || !run.calculationRevision) throw new HrPayrollError('La corrida regular no conserva período o revisión de cálculo', 409, 'HR_PAYROLL_SOURCE_STALE');
+        const currentStatutory = run.statutoryCalculations.filter(item => item.calculationRevision === run.calculationRevision);
+        if (currentStatutory.length !== run.snapshots.length) throw new HrPayrollError('La traza estatutaria no coincide con el snapshot de colaboradores', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
+        const currentHeadcount = await employerHeadcountAt(tx, companyId, run.period.dateFrom, run.period.dateTo);
+        for (const calculation of currentStatutory) {
+            if (calculation.configurationRevisionId !== run.configurationRevisionId || calculation.companyTaxRegime !== frozenConfig.statutory.companyTaxRegime.code || calculation.employerHeadcount !== currentHeadcount) {
+                throw new HrPayrollError('La configuración o el universo patronal cambió después del cálculo', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
+            }
+            const prior = await priorStatutoryContext(tx, { companyId, runId, userId: calculation.userId, periodFrom: run.period.dateFrom });
+            if (!prior.historyComplete) {
+                throw new HrPayrollError(`El histórico ${prior.incompleteRunCodes.join(', ')} no tiene trazabilidad estatutaria completa; ejecute backfill y recalcule`, 409, 'HR_PAYROLL_STATUTORY_HISTORY_INCOMPLETE');
+            }
+            if (prior.historyFingerprint !== calculation.historyFingerprint || !prior.priorIncomeTaxNet.equals(calculation.priorIncomeTaxNet) || !prior.priorIncomeTaxWithheld.equals(calculation.priorIncomeTaxWithheld)) {
+                throw new HrPayrollError('El histórico acumulado de IR cambió después del cálculo; recalcule', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
+            }
+            const snapshot = run.snapshots.find(item => item.userId === calculation.userId);
+            if (!snapshot || !['WEEKLY', 'BIWEEKLY', 'MONTHLY'].includes(String(snapshot.payFrequency))) throw new HrPayrollError('La frecuencia congelada del cálculo estatutario no está disponible', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
+            const currentIncome = await tx.payrollComponent.findMany({ where: { companyId, runId, userId: calculation.userId, type: 'INCOME', source: { not: 'STATUTORY' }, reversal: null } });
+            const currentTaxDeductions = await tx.payrollComponent.findMany({ where: { companyId, runId, userId: calculation.userId, type: 'DEDUCTION', source: { not: 'STATUTORY' }, incomeTaxDeductible: true, reversal: null } });
+            const sumIncome = (predicate: (component: typeof currentIncome[number]) => boolean) => money(currentIncome.filter(predicate).reduce((sum, component) => sum.plus(component.amount), new Prisma.Decimal(0)));
+            const recomputed = calculateStatutoryPayroll(frozenConfig.statutory, {
+                inssContributionBase: sumIncome(component => component.socialSecurityApplicable === true),
+                inatecContributionBase: sumIncome(component => component.trainingContributionApplicable === true),
+                incomeTaxGross: sumIncome(component => component.taxable === true),
+                otherIncomeTaxDeductions: money(currentTaxDeductions.reduce((sum, component) => sum.plus(component.amount), new Prisma.Decimal(0))),
+                priorIncomeTaxNet: prior.priorIncomeTaxNet, priorIncomeTaxWithheld: prior.priorIncomeTaxWithheld,
+                priorPeriods: prior.priorPeriods, payFrequency: snapshot.payFrequency as StatutoryPayFrequency,
+                employerHeadcount: currentHeadcount, serviceRatio: snapshotServiceRatio(snapshot, run.period),
+            });
+            const traceMatches = calculation.inssBase.equals(recomputed.inssBase) && calculation.employeeInss.equals(recomputed.employeeInss) &&
+                calculation.employerInssRate.equals(recomputed.employerInssRate) && calculation.employerInss.equals(recomputed.employerInss) &&
+                calculation.inatecBase.equals(recomputed.inatecBase) && calculation.employerInatec.equals(recomputed.employerInatec) &&
+                calculation.currentIncomeTaxNet.equals(recomputed.currentIncomeTaxNet) && calculation.otherIncomeTaxDeductions.equals(recomputed.otherIncomeTaxDeductions) && calculation.accumulatedIncomeTaxNet.equals(recomputed.accumulatedIncomeTaxNet) &&
+                calculation.annualProjection.equals(recomputed.annualProjection) && calculation.annualIncomeTax.equals(recomputed.annualIncomeTax) &&
+                calculation.currentIncomeTaxWithheld.equals(recomputed.currentIncomeTaxWithholding) && calculation.incomeTaxRefund.equals(recomputed.incomeTaxRefund) &&
+                calculation.elapsedPeriods === recomputed.elapsedPeriods && calculation.annualPeriods === recomputed.annualPeriods;
+            if (!traceMatches) throw new HrPayrollError('La traza estatutaria ya no reproduce sus bases y parámetros congelados', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
+            const statutoryComponents = await tx.payrollComponent.findMany({ where: { companyId, runId, userId: calculation.userId, source: 'STATUTORY', reversal: null } });
+            const componentAmount = (code: string, type: 'INCOME' | 'DEDUCTION') => money(statutoryComponents.filter(component => component.code === code && component.type === type).reduce((sum, component) => sum.plus(component.amount), new Prisma.Decimal(0)));
+            if (!componentAmount('INSS_LABORAL', 'DEDUCTION').equals(recomputed.employeeInss) || !componentAmount('IR_LABORAL', 'DEDUCTION').equals(recomputed.currentIncomeTaxWithholding) || !componentAmount('IR_LABORAL_DEVOLUCION', 'INCOME').equals(recomputed.incomeTaxRefund)) {
+                throw new HrPayrollError('Las deducciones estatutarias no coinciden con su traza reproducible', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
+            }
+        }
+        const contributions = await tx.payrollEmployerContribution.aggregate({ where: { companyId, runId, calculationRevision: run.calculationRevision }, _sum: { amount: true } });
+        if (!money(contributions._sum.amount ?? 0).equals(run.employerContributions)) throw new HrPayrollError('Los aportes patronales no reconcilian con la corrida', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
     }
     const activeClaims = await tx.payrollCoverageClaim.count({ where: { companyId, runId, release: null } });
     if (activeClaims !== run.snapshots.length) throw new HrPayrollError('Las exclusiones de cobertura no coinciden con el snapshot', 409, 'HR_PAYROLL_COVERAGE_STALE');
@@ -739,6 +1024,7 @@ export class PayrollRunService {
     ) {
         const expectedGrossIncome = nonNegativeMoney(payload.expectedGrossIncome, 'expectedGrossIncome');
         const expectedTotalDeductions = nonNegativeMoney(payload.expectedTotalDeductions, 'expectedTotalDeductions');
+        const expectedEmployerContributions = nonNegativeMoney(payload.expectedEmployerContributions, 'expectedEmployerContributions');
         const expectedNetPay = nonNegativeMoney(payload.expectedNetPay, 'expectedNetPay');
         const expectedEmployeeCount = Number(payload.expectedEmployeeCount);
         if (!Number.isInteger(expectedEmployeeCount) || expectedEmployeeCount < 0) {
@@ -752,6 +1038,7 @@ export class PayrollRunService {
                 configurationRevision: { include: { review: true } },
                 snapshots: { select: { userId: true } },
                 components: { include: { reversal: { select: { id: true } } } },
+                employerContributionLines: true,
                 anomalies: { where: { blocking: true, resolvedAt: null }, select: { id: true, code: true } },
                 coverageClaims: { include: { release: { select: { id: true } } } },
                 receipts: { select: { userId: true, status: true, grossIncome: true, totalDeductions: true, netPay: true } },
@@ -765,6 +1052,7 @@ export class PayrollRunService {
         const activeComponents = run.components.filter(component => !component.reversal);
         const calculatedGross = money(activeComponents.filter(component => component.type === 'INCOME').reduce((sum, component) => sum.plus(component.amount), new Prisma.Decimal(0)));
         const calculatedDeductions = money(activeComponents.filter(component => component.type === 'DEDUCTION').reduce((sum, component) => sum.plus(component.amount), new Prisma.Decimal(0)));
+        const calculatedEmployerContributions = money(run.employerContributionLines.filter(item => item.calculationRevision === run.calculationRevision).reduce((sum, item) => sum.plus(item.amount), new Prisma.Decimal(0)));
         const calculatedNet = money(calculatedGross.minus(calculatedDeductions));
         const snapshotUsers = new Set(run.snapshots.map(snapshot => snapshot.userId));
         const activeClaims = run.coverageClaims.filter(claim => !claim.release);
@@ -773,9 +1061,11 @@ export class PayrollRunService {
         const coverageValid = activeClaims.length === run.snapshots.length && snapshotUsers.size === claimUsers.size && [...snapshotUsers].every(userId => claimUsers.has(userId));
         const perEmployee = [...snapshotUsers].map(userId => {
             const components = activeComponents.filter(component => component.userId === userId);
+            const employerLines = run.employerContributionLines.filter(line => line.calculationRevision === run.calculationRevision && line.userId === userId);
             const gross = money(components.filter(component => component.type === 'INCOME').reduce((sum, component) => sum.plus(component.amount), new Prisma.Decimal(0)));
             const deductions = money(components.filter(component => component.type === 'DEDUCTION').reduce((sum, component) => sum.plus(component.amount), new Prisma.Decimal(0)));
-            return { userId, grossIncome: gross.toFixed(2), totalDeductions: deductions.toFixed(2), netPay: money(gross.minus(deductions)).toFixed(2) };
+            const employerContributions = money(employerLines.reduce((sum, line) => sum.plus(line.amount), new Prisma.Decimal(0)));
+            return { userId, grossIncome: gross.toFixed(2), totalDeductions: deductions.toFixed(2), employerContributions: employerContributions.toFixed(2), netPay: money(gross.minus(deductions)).toFixed(2) };
         });
         let frozenSourcesFresh = true;
         let frozenSourceDetail = 'Fuentes congeladas vigentes';
@@ -800,6 +1090,7 @@ export class PayrollRunService {
         const checks = [
             check('RUN_GROSS_MATCHES_COMPONENTS', 'Bruto de corrida contra componentes', run.grossIncome.equals(calculatedGross), run.grossIncome.toFixed(2), calculatedGross.toFixed(2)),
             check('RUN_DEDUCTIONS_MATCH_COMPONENTS', 'Deducciones de corrida contra componentes', run.totalDeductions.equals(calculatedDeductions), run.totalDeductions.toFixed(2), calculatedDeductions.toFixed(2)),
+            check('RUN_EMPLOYER_CONTRIBUTIONS_MATCH', 'Aportes patronales contra detalle estatutario', run.employerContributions.equals(calculatedEmployerContributions), run.employerContributions.toFixed(2), calculatedEmployerContributions.toFixed(2)),
             check('RUN_NET_MATCHES_COMPONENTS', 'Neto de corrida contra componentes', run.netPay.equals(calculatedNet), run.netPay.toFixed(2), calculatedNet.toFixed(2)),
             check('RUN_EMPLOYEE_COUNT_MATCHES_SNAPSHOT', 'Cantidad de personas contra snapshot', run.employeeCount === run.snapshots.length && snapshotUsers.size === run.snapshots.length, run.employeeCount, run.snapshots.length),
             check('COMPONENT_SUBJECTS_IN_SNAPSHOT', 'Sujetos de componentes dentro del snapshot', componentUsersValid, 'todos incluidos', componentUsersValid ? 'todos incluidos' : 'existen sujetos ajenos'),
@@ -811,21 +1102,22 @@ export class PayrollRunService {
             check('PUBLISHED_RECEIPTS_RECONCILE', 'Recibos publicados contra corrida pagada', receiptsValid, receiptsRequired ? run.snapshots.length : 'no requerido antes de pago', run.receipts.length),
             check('EXTERNAL_GROSS_MATCH', 'Bruto contra control paralelo externo', calculatedGross.equals(expectedGrossIncome), expectedGrossIncome.toFixed(2), calculatedGross.toFixed(2)),
             check('EXTERNAL_DEDUCTIONS_MATCH', 'Deducciones contra control paralelo externo', calculatedDeductions.equals(expectedTotalDeductions), expectedTotalDeductions.toFixed(2), calculatedDeductions.toFixed(2)),
+            check('EXTERNAL_EMPLOYER_CONTRIBUTIONS_MATCH', 'Aportes patronales contra control paralelo externo', calculatedEmployerContributions.equals(expectedEmployerContributions), expectedEmployerContributions.toFixed(2), calculatedEmployerContributions.toFixed(2)),
             check('EXTERNAL_NET_MATCH', 'Neto contra control paralelo externo', calculatedNet.equals(expectedNetPay), expectedNetPay.toFixed(2), calculatedNet.toFixed(2)),
             check('EXTERNAL_EMPLOYEE_COUNT_MATCH', 'Personas contra control paralelo externo', run.snapshots.length === expectedEmployeeCount, expectedEmployeeCount, run.snapshots.length),
         ];
         const reconciliationHash = hashPayload({
             companyId, runId: id, kind, runRevision: run.revision, calculationRevision: run.calculationRevision,
             controlSource, evidenceReference,
-            expected: { grossIncome: expectedGrossIncome.toFixed(2), totalDeductions: expectedTotalDeductions.toFixed(2), netPay: expectedNetPay.toFixed(2), employeeCount: expectedEmployeeCount },
-            actual: { grossIncome: calculatedGross.toFixed(2), totalDeductions: calculatedDeductions.toFixed(2), netPay: calculatedNet.toFixed(2), employeeCount: run.snapshots.length },
+            expected: { grossIncome: expectedGrossIncome.toFixed(2), totalDeductions: expectedTotalDeductions.toFixed(2), employerContributions: expectedEmployerContributions.toFixed(2), netPay: expectedNetPay.toFixed(2), employeeCount: expectedEmployeeCount },
+            actual: { grossIncome: calculatedGross.toFixed(2), totalDeductions: calculatedDeductions.toFixed(2), employerContributions: calculatedEmployerContributions.toFixed(2), netPay: calculatedNet.toFixed(2), employeeCount: run.snapshots.length },
             checks: checks.map(item => ({ code: item.code, passed: item.passed })),
         });
         const result = {
             run: { id: run.id, code: run.code, kind: run.kind, status: run.status, revision: run.revision, calculationRevision: run.calculationRevision, currency: run.currency },
             control: { source: controlSource, evidenceReference },
-            expected: { grossIncome: expectedGrossIncome.toFixed(2), totalDeductions: expectedTotalDeductions.toFixed(2), netPay: expectedNetPay.toFixed(2), employeeCount: expectedEmployeeCount },
-            actual: { grossIncome: calculatedGross.toFixed(2), totalDeductions: calculatedDeductions.toFixed(2), netPay: calculatedNet.toFixed(2), employeeCount: run.snapshots.length },
+            expected: { grossIncome: expectedGrossIncome.toFixed(2), totalDeductions: expectedTotalDeductions.toFixed(2), employerContributions: expectedEmployerContributions.toFixed(2), netPay: expectedNetPay.toFixed(2), employeeCount: expectedEmployeeCount },
+            actual: { grossIncome: calculatedGross.toFixed(2), totalDeductions: calculatedDeductions.toFixed(2), employerContributions: calculatedEmployerContributions.toFixed(2), netPay: calculatedNet.toFixed(2), employeeCount: run.snapshots.length },
             checks,
             perEmployee,
             readyForParallelSignoff: checks.every(item => item.passed),
@@ -930,7 +1222,8 @@ export class PayrollRunService {
                 if (action === 'void') {
                     await tx.payrollRunReversal.create({ data: {
                         companyId, runId: id, actorId, reason: input.reason, originalStatus: run.status,
-                        reversedGrossIncome: run.grossIncome.negated(), reversedDeductions: run.totalDeductions.negated(), reversedNetPay: run.netPay.negated(),
+                        reversedGrossIncome: run.grossIncome.negated(), reversedDeductions: run.totalDeductions.negated(),
+                        reversedEmployerContributions: run.employerContributions.negated(), reversedNetPay: run.netPay.negated(),
                         reversalReference: paidReversal?.reversalReference, reversalDate: paidReversal?.reversalDate,
                         reversalMethod: paidReversal?.reversalMethod, evidenceReference: paidReversal?.evidenceReference,
                     } });
@@ -970,6 +1263,26 @@ export class PayrollRunService {
     static components(companyId: number, runId: number, kind: PayrollRunKind) { return this.scopedList(companyId, runId, kind, 'payrollComponent'); }
     static receipts(companyId: number, runId: number, kind: PayrollRunKind) { return this.scopedList(companyId, runId, kind, 'payrollReceipt'); }
 
+    static async employerContributionLines(companyId: number, runId: number, kind: PayrollRunKind) {
+        const run = await prisma.payrollRun.findFirst({ where: { id: runId, companyId, kind }, select: { calculationRevision: true } });
+        if (!run) throw new HrPayrollError('Corrida no encontrada', 404);
+        if (!run.calculationRevision) return [];
+        return serialize(await prisma.payrollEmployerContribution.findMany({
+            where: { companyId, runId, calculationRevision: run.calculationRevision },
+            include: { user: { select: userSelect } }, orderBy: [{ userId: 'asc' }, { code: 'asc' }],
+        }));
+    }
+
+    static async statutoryCalculations(companyId: number, runId: number, kind: PayrollRunKind) {
+        const run = await prisma.payrollRun.findFirst({ where: { id: runId, companyId, kind }, select: { calculationRevision: true } });
+        if (!run) throw new HrPayrollError('Corrida no encontrada', 404);
+        if (!run.calculationRevision) return [];
+        return serialize(await prisma.payrollStatutoryCalculation.findMany({
+            where: { companyId, runId, calculationRevision: run.calculationRevision },
+            include: { user: { select: userSelect } }, orderBy: { userId: 'asc' },
+        }));
+    }
+
     private static async scopedList(companyId: number, runId: number, kind: PayrollRunKind, model: 'payrollAnomaly' | 'payrollSnapshotLine' | 'payrollComponent' | 'payrollReceipt') {
         if (!await prisma.payrollRun.findFirst({ where: { id: runId, companyId, kind }, select: { id: true } })) throw new HrPayrollError('Corrida no encontrada', 404);
         if (model === 'payrollAnomaly') {
@@ -991,32 +1304,55 @@ export class PayrollRunService {
 
     static async addComponent(companyId: number, actorId: number, runId: number, kind: PayrollRunKind, payload: InputMap, key: string) {
         return idempotent(companyId, key, `PAYROLL_COMPONENT_CREATE:${runId}`, { actorId, payload }, async tx => {
-            const run = await tx.payrollRun.findFirst({ where: { id: runId, companyId, kind } });
+            const run = await tx.payrollRun.findFirst({ where: { id: runId, companyId, kind }, include: { period: true, configurationRevision: true } });
             if (!run) throw new HrPayrollError('Corrida no encontrada', 404);
             if (run.status !== 'CALCULATED') throw new HrPayrollError('Los componentes manuales requieren snapshot CALCULATED y sólo se admiten antes de revisión', 409, 'HR_PAYROLL_RUN_IMMUTABLE');
             const userId = positiveId(payload.userId, 'userId');
-            const user = await tx.user.findFirst({ where: { id: userId, companyId, accountType: 'INTERNAL', employee: { isNot: null } } });
-            if (!user) throw new HrPayrollError('El usuario interno no pertenece a la empresa', 404);
+            const user = await tx.user.findFirst({ where: { id: userId, companyId, accountType: 'INTERNAL', employee: { isNot: null } }, include: { employee: true } });
+            if (!user?.employee) throw new HrPayrollError('El usuario interno no pertenece a la empresa', 404);
             if (!await tx.payrollSnapshotLine.findFirst({ where: { companyId, runId, userId }, select: { id: true } })) throw new HrPayrollError('El sujeto no pertenece al snapshot congelado', 409, 'HR_PAYROLL_COMPONENT_SUBJECT_INVALID');
             const amount = nonNegativeMoney(payload.inputAmount, 'inputAmount');
+            const type = payload.type === 'DEDUCTION' ? 'DEDUCTION' : payload.type === 'INCOME' ? 'INCOME' : (() => { throw new HrPayrollError('type no es válido'); })();
+            if (typeof payload.incomeTaxDeductible !== 'boolean' || (type === 'INCOME' && [payload.taxable, payload.socialSecurityApplicable, payload.trainingContributionApplicable].some(value => typeof value !== 'boolean'))) {
+                throw new HrPayrollError('Todo componente manual debe clasificar explícitamente su tratamiento de IR, INSS e INATEC', 409, 'HR_PAYROLL_COMPONENT_CLASSIFICATION_REQUIRED');
+            }
+            const reference = type === 'DEDUCTION' && payload.incomeTaxDeductible
+                ? requiredText(payload.reference, 'reference', 500)
+                : optionalText(payload.reference, 500);
             const component = await tx.payrollComponent.create({ data: {
                 companyId, runId, userId, code: requiredText(payload.code, 'code', 64), name: requiredText(payload.code, 'code', 64),
-                type: payload.type === 'DEDUCTION' ? 'DEDUCTION' : payload.type === 'INCOME' ? 'INCOME' : (() => { throw new HrPayrollError('type no es válido'); })(),
-                source: 'MANUAL', amount, reason: requiredText(payload.reason, 'reason'), traceReference: optionalText(payload.reference, 500), createdById: actorId,
+                type, source: 'MANUAL', amount,
+                taxable: type === 'INCOME' ? payload.taxable as boolean : false,
+                incomeTaxDeductible: type === 'DEDUCTION' ? payload.incomeTaxDeductible as boolean : false,
+                socialSecurityApplicable: type === 'INCOME' ? payload.socialSecurityApplicable as boolean : false,
+                trainingContributionApplicable: type === 'INCOME' ? payload.trainingContributionApplicable as boolean : false,
+                reason: requiredText(payload.reason, 'reason'), traceReference: reference, createdById: actorId,
             } });
-            let revision = run.revision;
-            if (run.status === 'CALCULATED') {
-                const aggregate = await tx.payrollComponent.groupBy({ by: ['type'], where: { runId, companyId }, _sum: { amount: true } });
-                const gross = money(aggregate.find(item => item.type === 'INCOME')?._sum.amount ?? 0);
-                const deductions = money(aggregate.find(item => item.type === 'DEDUCTION')?._sum.amount ?? 0);
-                const net = money(gross.minus(deductions));
-                if (net.isNegative()) await addAnomaly(tx, { companyId, runId, userId, code: 'NEGATIVE_NET_PAY', message: 'El componente deja un neto negativo; ajuste y recalcule' });
-                revision += 1;
-                const updated = await tx.payrollRun.updateMany({ where: { id: runId, companyId, revision: run.revision, status: 'CALCULATED' }, data: {
-                    grossIncome: gross, totalDeductions: deductions, netPay: net, revision,
-                } });
-                if (updated.count !== 1) throw new HrPayrollError('La corrida cambió concurrentemente', 409, 'HR_PAYROLL_REVISION_CONFLICT');
+            const revision = run.revision + 1;
+            let employerContributions = run.employerContributions;
+            if (kind === 'REGULAR') {
+                if (!run.period || !run.configurationRevision) throw new HrPayrollError('La corrida no conserva período o configuración estatutaria', 409, 'HR_PAYROLL_SOURCE_STALE');
+                const config = validateLegalConfiguration(run.configurationRevision.configuration);
+                const employerHeadcount = await employerHeadcountAt(tx, companyId, run.period.dateFrom, run.period.dateTo);
+                const allSnapshots = await tx.payrollSnapshotLine.findMany({ where: { companyId, runId }, orderBy: { userId: 'asc' } });
+                for (const frozen of allSnapshots) await applyStatutoryForUser(tx, {
+                    companyId, runId, userId: frozen.userId, employeeId: frozen.employeeId, calculationRevision: revision,
+                    employerHeadcount, configurationRevisionId: run.configurationRevision.id,
+                    config, period: run.period, snapshot: frozen,
+                });
+                const employerAggregate = await tx.payrollEmployerContribution.aggregate({ where: { companyId, runId, calculationRevision: revision }, _sum: { amount: true } });
+                employerContributions = money(employerAggregate._sum.amount ?? 0);
             }
+            const aggregate = await tx.payrollComponent.groupBy({ by: ['type'], where: { runId, companyId }, _sum: { amount: true } });
+            const gross = money(aggregate.find(item => item.type === 'INCOME')?._sum.amount ?? 0);
+            const deductions = money(aggregate.find(item => item.type === 'DEDUCTION')?._sum.amount ?? 0);
+            const net = money(gross.minus(deductions));
+            await tx.payrollAnomaly.deleteMany({ where: { companyId, runId, userId, code: 'NEGATIVE_NET_PAY', resolvedAt: null } });
+            if (net.isNegative()) await addAnomaly(tx, { companyId, runId, userId, code: 'NEGATIVE_NET_PAY', message: 'El componente deja un neto negativo; ajuste y recalcule' });
+            const updated = await tx.payrollRun.updateMany({ where: { id: runId, companyId, revision: run.revision, status: 'CALCULATED' }, data: {
+                grossIncome: gross, totalDeductions: deductions, employerContributions, netPay: net, revision, calculationRevision: revision,
+            } });
+            if (updated.count !== 1) throw new HrPayrollError('La corrida cambió concurrentemente', 409, 'HR_PAYROLL_REVISION_CONFLICT');
             await trace(tx, { companyId, runId, event: 'ADD_MANUAL_COMPONENT', actorId, reason: component.reason!, revision, metadata: { componentId: component.id, userId, amount: amount.toFixed(2) } });
             return serialize(component);
         });
@@ -1026,13 +1362,19 @@ export class PayrollRunService {
         const run = await loadRun(companyId, runId, kind);
         const snapshots = await prisma.payrollSnapshotLine.findMany({ where: { companyId, runId }, include: { user: { select: userSelect }, employee: { select: { employeeCode: true, legalName: true } } }, orderBy: { userId: 'asc' } });
         const components = await prisma.payrollComponent.findMany({ where: { companyId, runId } });
+        const employerLines = run.calculationRevision ? await prisma.payrollEmployerContribution.findMany({ where: { companyId, runId, calculationRevision: run.calculationRevision } }) : [];
         const rows = snapshots.map(item => {
             const mine = components.filter(component => component.userId === item.userId);
+            const mineEmployer = employerLines.filter(line => line.userId === item.userId);
             const grossIncome = money(mine.filter(component => component.type === 'INCOME').reduce((sum, component) => sum.plus(component.amount), new Prisma.Decimal(0)));
             const totalDeductions = money(mine.filter(component => component.type === 'DEDUCTION').reduce((sum, component) => sum.plus(component.amount), new Prisma.Decimal(0)));
+            const amountFor = (code: string) => money(mine.filter(component => component.code === code).reduce((sum, component) => sum.plus(component.amount), new Prisma.Decimal(0))).toFixed(2);
+            const employerAmountFor = (code: string) => money(mineEmployer.filter(line => line.code === code).reduce((sum, line) => sum.plus(line.amount), new Prisma.Decimal(0))).toFixed(2);
             return {
                 code: run.code, employeeCode: item.employee.employeeCode, legalName: item.employee.legalName, userId: item.userId,
-                grossIncome: grossIncome.toFixed(2), totalDeductions: totalDeductions.toFixed(2), netPay: grossIncome.minus(totalDeductions).toFixed(2),
+                grossIncome: grossIncome.toFixed(2), employeeInss: amountFor('INSS_LABORAL'), incomeTax: amountFor('IR_LABORAL'), incomeTaxRefund: amountFor('IR_LABORAL_DEVOLUCION'),
+                totalDeductions: totalDeductions.toFixed(2), employerInss: employerAmountFor('INSS_PATRONAL'), employerInatec: employerAmountFor('INATEC_PATRONAL'),
+                employerContributions: money(mineEmployer.reduce((sum, line) => sum.plus(line.amount), new Prisma.Decimal(0))).toFixed(2), netPay: grossIncome.minus(totalDeductions).toFixed(2),
                 currency: item.currency, status: run.status,
             };
         });

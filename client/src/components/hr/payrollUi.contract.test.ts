@@ -35,7 +35,10 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(management).toContain('getRuleConfigurations');
     expect(management).toContain('uploadRuleConfiguration');
     expect(management).toContain('reviewRuleConfiguration');
-    expect(configuration).toContain("schema: 'HR_PAYROLL_PARAMETRIC_V1'");
+    expect(configuration).toContain("schema: 'HR_PAYROLL_PARAMETRIC_V2'");
+    expect(configuration).toContain('SIMPLIFIED_FIXED_QUOTA');
+    expect(configuration).toContain('no desactiva automáticamente el IR');
+    expect(configuration).toContain('Tabla progresiva anual');
     expect(configuration).toContain("revision.status === 'UPLOADED'");
     expect(configuration).toContain("review(revision, 'VALIDATED')");
     expect(configuration).toContain('otra identidad revise la carga');
@@ -45,6 +48,7 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(management).toContain('PayrollReconciliationPanel');
     expect(reconciliation).toContain('reconcileParallelControl');
     expect(reconciliation).toContain('No se aplica tolerancia ni fallback');
+    expect(reconciliation).toContain('expectedEmployerContributions');
     expect(reconciliation).toContain('no afirma validación legal ni certificación productiva');
   });
 
@@ -53,6 +57,7 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(management).toContain("renderRuns('Aguinaldo'");
     expect(management).toContain('createAguinaldoRun');
     expect(management).toContain('Snapshot de fuentes');
+    expect(management).toContain('Traza INSS, INATEC e IR');
     expect(management).toContain('Recibos y exportación');
   });
 

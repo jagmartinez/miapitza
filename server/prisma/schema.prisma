@@ -123,6 +123,8 @@ model Company {
   payrollCoverageClaims           PayrollCoverageClaim[]
   payrollCoverageReleases         PayrollCoverageRelease[]
   payrollComponentReversals       PayrollComponentReversal[]
+  payrollEmployerContributions    PayrollEmployerContribution[]
+  payrollStatutoryCalculations    PayrollStatutoryCalculation[]
   payrollPayments                 PayrollPaymentRecord[]
   travelRequests                  HrTravelRequest[]
   travelExpenses                  HrTravelExpense[]
@@ -167,7 +169,7 @@ model Branch {
   updatedAt            DateTime     @updatedAt
 
   // Relations
-  company                        Company                    @relation(fields: [companyId], references: [id])
+  company                        Company                     @relation(fields: [companyId], references: [id])
   users                          User[]
   allowedUsers                   UserBranch[]
   tables                         Table[]
@@ -252,29 +254,29 @@ model CreditNoteSequence {
 }
 
 model FiscalCreditNote {
-  id                   Int                            @id @default(autoincrement())
-  companyId            Int
-  branchId             Int
-  orderId              Int                            @unique
-  number               String                         @unique @db.VarChar(80)
-  series               String                         @db.VarChar(20)
-  sequenceNumber       Int
-  status               FiscalCreditNoteStatus         @default(ISSUED)
+  id                    Int                            @id @default(autoincrement())
+  companyId             Int
+  branchId              Int
+  orderId               Int                            @unique
+  number                String                         @unique @db.VarChar(80)
+  series                String                         @db.VarChar(20)
+  sequenceNumber        Int
+  status                FiscalCreditNoteStatus         @default(ISSUED)
   originalInvoiceNumber String                         @db.VarChar(191)
-  reason               String                         @db.VarChar(500)
-  jurisdiction         String                         @db.VarChar(32)
-  idempotencyKey       String                         @db.VarChar(191)
-  requestHash          String                         @db.VarChar(64)
-  subtotal             Decimal                        @db.Decimal(10, 2)
-  tax                  Decimal                        @db.Decimal(10, 2)
-  tipAmount            Decimal                        @db.Decimal(10, 2)
-  total                Decimal                        @db.Decimal(10, 2)
-  inventoryDisposition CreditNoteInventoryDisposition
-  wasteWarehouseId     Int?
-  snapshot             Json
-  issuedAt             DateTime                       @default(now())
-  issuedById           Int
-  createdAt            DateTime                       @default(now())
+  reason                String                         @db.VarChar(500)
+  jurisdiction          String                         @db.VarChar(32)
+  idempotencyKey        String                         @db.VarChar(191)
+  requestHash           String                         @db.VarChar(64)
+  subtotal              Decimal                        @db.Decimal(10, 2)
+  tax                   Decimal                        @db.Decimal(10, 2)
+  tipAmount             Decimal                        @db.Decimal(10, 2)
+  total                 Decimal                        @db.Decimal(10, 2)
+  inventoryDisposition  CreditNoteInventoryDisposition
+  wasteWarehouseId      Int?
+  snapshot              Json
+  issuedAt              DateTime                       @default(now())
+  issuedById            Int
+  createdAt             DateTime                       @default(now())
 
   company        Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
   branch         Branch     @relation(fields: [branchId], references: [id], onDelete: Restrict)
@@ -436,6 +438,8 @@ model User {
   payrollRuleConfigurationsReviewed PayrollRuleConfigurationReview[]   @relation("PayrollRuleConfigurationReviewer")
   payrollCoverageReleasesCreated    PayrollCoverageRelease[]           @relation("PayrollCoverageReleaseActor")
   payrollComponentReversalsCreated  PayrollComponentReversal[]         @relation("PayrollComponentReversalActor")
+  payrollEmployerContributions      PayrollEmployerContribution[]      @relation("PayrollEmployerContributionSubject")
+  payrollStatutoryCalculations      PayrollStatutoryCalculation[]      @relation("PayrollStatutoryCalculationSubject")
   payrollPaymentsCreated            PayrollPaymentRecord[]             @relation("PayrollPaymentActor")
   payrollCoverageClaims             PayrollCoverageClaim[]
   travelRequests                    HrTravelRequest[]                  @relation("HrTravelSubject")
@@ -1818,12 +1822,13 @@ model PayrollRuleConfigurationRevision {
   uploadedById      Int
   uploadedAt        DateTime @default(now())
 
-  company       Company                         @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  rule          PayrollRuleVersion              @relation("PayrollRuleConfigurationHistory", fields: [ruleVersionId], references: [id], onDelete: Restrict)
-  activeForRule PayrollRuleVersion?             @relation("PayrollRuleActiveConfiguration")
-  uploadedBy    User                            @relation("PayrollRuleConfigurationUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
-  review        PayrollRuleConfigurationReview?
-  runs          PayrollRun[]
+  company               Company                         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  rule                  PayrollRuleVersion              @relation("PayrollRuleConfigurationHistory", fields: [ruleVersionId], references: [id], onDelete: Restrict)
+  activeForRule         PayrollRuleVersion?             @relation("PayrollRuleActiveConfiguration")
+  uploadedBy            User                            @relation("PayrollRuleConfigurationUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  review                PayrollRuleConfigurationReview?
+  runs                  PayrollRun[]
+  statutoryCalculations PayrollStatutoryCalculation[]
 
   @@unique([ruleVersionId, revision])
   @@unique([ruleVersionId, configurationHash], map: "PayrollRuleConfig_rule_hash_key")
@@ -1947,6 +1952,8 @@ model PayrollRun {
   coverageReleases            PayrollCoverageRelease[]
   payment                     PayrollPaymentRecord?
   componentReversals          PayrollComponentReversal[]
+  employerContributionLines   PayrollEmployerContribution[]
+  statutoryCalculations       PayrollStatutoryCalculation[]
   aguinaldoTargetDependencies PayrollAguinaldoSourceDependency[] @relation("PayrollAguinaldoTargetRun")
   aguinaldoSourceDependencies PayrollAguinaldoSourceDependency[] @relation("PayrollAguinaldoSourceRun")
 
@@ -2100,21 +2107,24 @@ model PayrollSnapshotLine {
 }
 
 model PayrollComponent {
-  id             Int                  @id @default(autoincrement())
-  companyId      Int
-  runId          Int
-  receiptId      Int?
-  userId         Int
-  code           String               @db.VarChar(64)
-  name           String               @db.VarChar(160)
-  type           PayrollComponentType
-  source         String               @db.VarChar(32)
-  amount         Decimal              @db.Decimal(18, 2)
-  taxable        Boolean?
-  traceReference String?              @db.VarChar(500)
-  reason         String?              @db.Text
-  createdById    Int?
-  createdAt      DateTime             @default(now())
+  id                             Int                  @id @default(autoincrement())
+  companyId                      Int
+  runId                          Int
+  receiptId                      Int?
+  userId                         Int
+  code                           String               @db.VarChar(64)
+  name                           String               @db.VarChar(160)
+  type                           PayrollComponentType
+  source                         String               @db.VarChar(32)
+  amount                         Decimal              @db.Decimal(18, 2)
+  taxable                        Boolean?
+  incomeTaxDeductible            Boolean?
+  socialSecurityApplicable       Boolean?
+  trainingContributionApplicable Boolean?
+  traceReference                 String?              @db.VarChar(500)
+  reason                         String?              @db.Text
+  createdById                    Int?
+  createdAt                      DateTime             @default(now())
 
   company                     Company                            @relation(fields: [companyId], references: [id], onDelete: Restrict)
   run                         PayrollRun                         @relation(fields: [runId], references: [id], onDelete: Restrict)
@@ -2126,6 +2136,69 @@ model PayrollComponent {
 
   @@index([companyId, runId, userId])
   @@index([receiptId])
+}
+
+model PayrollEmployerContribution {
+  id                  Int      @id @default(autoincrement())
+  companyId           Int
+  runId               Int
+  userId              Int
+  calculationRevision Int
+  code                String   @db.VarChar(64)
+  name                String   @db.VarChar(160)
+  baseAmount          Decimal  @db.Decimal(18, 2)
+  rate                Decimal  @db.Decimal(10, 6)
+  amount              Decimal  @db.Decimal(18, 2)
+  traceReference      String?  @db.VarChar(500)
+  createdAt           DateTime @default(now())
+
+  company Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  run     PayrollRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+  user    User       @relation("PayrollEmployerContributionSubject", fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([runId, calculationRevision, userId, code], map: "PayrollEmployerContribution_run_rev_user_code_key")
+  @@index([companyId, runId, userId])
+}
+
+model PayrollStatutoryCalculation {
+  id                       Int      @id @default(autoincrement())
+  companyId                Int
+  runId                    Int
+  userId                   Int
+  calculationRevision      Int
+  configurationRevisionId  Int
+  companyTaxRegime         String   @db.VarChar(40)
+  payFrequency             String   @db.VarChar(32)
+  employerHeadcount        Int
+  inssBase                 Decimal  @db.Decimal(18, 2)
+  employeeInss             Decimal  @db.Decimal(18, 2)
+  employerInssRate         Decimal  @db.Decimal(10, 6)
+  employerInss             Decimal  @db.Decimal(18, 2)
+  inatecBase               Decimal  @db.Decimal(18, 2)
+  employerInatec           Decimal  @db.Decimal(18, 2)
+  currentIncomeTaxNet      Decimal  @db.Decimal(18, 2)
+  otherIncomeTaxDeductions Decimal  @db.Decimal(18, 2)
+  priorIncomeTaxNet        Decimal  @db.Decimal(18, 2)
+  accumulatedIncomeTaxNet  Decimal  @db.Decimal(18, 2)
+  elapsedPeriods           Int
+  annualPeriods            Int
+  annualProjection         Decimal  @db.Decimal(18, 2)
+  annualIncomeTax          Decimal  @db.Decimal(18, 2)
+  priorIncomeTaxWithheld   Decimal  @db.Decimal(18, 2)
+  currentIncomeTaxWithheld Decimal  @db.Decimal(18, 2)
+  incomeTaxRefund          Decimal  @db.Decimal(18, 2)
+  bracketSnapshot          Json?
+  historyFingerprint       String   @db.Char(64)
+  createdAt                DateTime @default(now())
+
+  company               Company                          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  run                   PayrollRun                       @relation(fields: [runId], references: [id], onDelete: Restrict)
+  user                  User                             @relation("PayrollStatutoryCalculationSubject", fields: [userId], references: [id], onDelete: Restrict)
+  configurationRevision PayrollRuleConfigurationRevision @relation(fields: [configurationRevisionId], references: [id], onDelete: Restrict)
+
+  @@unique([runId, calculationRevision, userId], map: "PayrollStatutoryCalculation_run_rev_user_key")
+  @@index([companyId, userId, createdAt])
+  @@index([configurationRevisionId])
 }
 
 model PayrollComponentReversal {
@@ -2215,20 +2288,21 @@ enum PayrollReceiptStatus {
 }
 
 model PayrollRunReversal {
-  id                  Int       @id @default(autoincrement())
-  companyId           Int
-  runId               Int
-  actorId             Int
-  reason              String    @db.Text
-  reversedGrossIncome Decimal   @db.Decimal(18, 2)
-  reversedDeductions  Decimal   @db.Decimal(18, 2)
-  reversedNetPay      Decimal   @db.Decimal(18, 2)
-  originalStatus      String    @db.VarChar(32)
-  reversalReference   String?   @db.VarChar(160)
-  reversalDate        DateTime? @db.Date
-  reversalMethod      String?   @db.VarChar(80)
-  evidenceReference   String?   @db.VarChar(500)
-  createdAt           DateTime  @default(now())
+  id                            Int       @id @default(autoincrement())
+  companyId                     Int
+  runId                         Int
+  actorId                       Int
+  reason                        String    @db.Text
+  reversedGrossIncome           Decimal   @db.Decimal(18, 2)
+  reversedDeductions            Decimal   @db.Decimal(18, 2)
+  reversedEmployerContributions Decimal   @default(0) @db.Decimal(18, 2)
+  reversedNetPay                Decimal   @db.Decimal(18, 2)
+  originalStatus                String    @db.VarChar(32)
+  reversalReference             String?   @db.VarChar(160)
+  reversalDate                  DateTime? @db.Date
+  reversalMethod                String?   @db.VarChar(80)
+  evidenceReference             String?   @db.VarChar(500)
+  createdAt                     DateTime  @default(now())
 
   company Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
   run     PayrollRun @relation(fields: [runId], references: [id], onDelete: Restrict)
@@ -3078,14 +3152,14 @@ model Warehouse {
   name      String // Main, Kitchen, Bar
   code      String
 
-  company          Company             @relation(fields: [companyId], references: [id])
-  branch           Branch?             @relation(fields: [branchId], references: [id])
-  stocks           Stock[]
-  movements        InventoryMovement[]
-  inventoryBatches InventoryBatch[]
-  pedidosYaConfigs PedidosYaConfig[]
-  ProductionOrder  ProductionOrder[]
-  fiscalCreditNotes FiscalCreditNote[]
+  company                    Company                     @relation(fields: [companyId], references: [id])
+  branch                     Branch?                     @relation(fields: [branchId], references: [id])
+  stocks                     Stock[]
+  movements                  InventoryMovement[]
+  inventoryBatches           InventoryBatch[]
+  pedidosYaConfigs           PedidosYaConfig[]
+  ProductionOrder            ProductionOrder[]
+  fiscalCreditNotes          FiscalCreditNote[]
   fiscalInvoiceCancellations FiscalInvoiceCancellation[]
 
   @@unique([companyId, code])
@@ -3384,11 +3458,11 @@ model Order {
   kitchenStartedBy  User?        @relation("OrderKitchenStartedBy", fields: [kitchenStartedById], references: [id], onDelete: SetNull)
   kitchenReleasedBy User?        @relation("OrderKitchenReleasedBy", fields: [kitchenReleasedById], references: [id], onDelete: SetNull)
 
-  items                OrderItem[]
-  payments             Payment[]
-  pedidosYaSyncs       PedidosYaOrderSync[]
-  kitchenNotifications KitchenNotification[]
-  fiscalCreditNote     FiscalCreditNote?
+  items                     OrderItem[]
+  payments                  Payment[]
+  pedidosYaSyncs            PedidosYaOrderSync[]
+  kitchenNotifications      KitchenNotification[]
+  fiscalCreditNote          FiscalCreditNote?
   fiscalInvoiceCancellation FiscalInvoiceCancellation?
 
   @@index([companyId, branchId])
@@ -3539,7 +3613,7 @@ model Payment {
   reversedAt      DateTime?
   reversedById    Int?
   reversalReason  String?
-  refundReference String?           @db.VarChar(191)
+  refundReference String?            @db.VarChar(191)
 
   order         Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
   paymentMethod PaymentMethod @relation(fields: [paymentMethodId], references: [id])

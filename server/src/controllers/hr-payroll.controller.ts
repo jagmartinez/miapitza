@@ -60,7 +60,17 @@ export class HrPayrollController {
     static async createRun(req: Request, res: Response, next: NextFunction) { try { owner(req); res.status(201).json({ success: true, data: await PayrollRunService.createRegular(req.user!.companyId, req.user!.userId, req.body, key(req)) }); } catch (e) { handle(e, res, next); } }
     static async createAguinaldo(req: Request, res: Response, next: NextFunction) { try { owner(req); res.status(201).json({ success: true, data: await PayrollRunService.createAguinaldo(req.user!.companyId, req.user!.userId, req.body, key(req)) }); } catch (e) { handle(e, res, next); } }
     static transition(action: string) { return async (req: Request, res: Response, next: NextFunction) => { try { owner(req); res.json({ success: true, data: await PayrollRunService.transition(req.user!.companyId, req.user!.userId, id(req), kind(req), action, req.body, key(req)) }); } catch (e) { handle(e, res, next); } }; }
-    static listPart(part: 'anomalies' | 'snapshots' | 'components' | 'receipts') { return async (req: Request, res: Response, next: NextFunction) => { try { owner(req); const method = part === 'snapshots' ? PayrollRunService.snapshots : PayrollRunService[part]; res.json({ success: true, data: await method.call(PayrollRunService, req.user!.companyId, id(req), kind(req)) }); } catch (e) { handle(e, res, next); } }; }
+    static listPart(part: 'anomalies' | 'snapshots' | 'components' | 'receipts' | 'employerContributionLines' | 'statutoryCalculations') { return async (req: Request, res: Response, next: NextFunction) => { try {
+        owner(req);
+        const companyId = req.user!.companyId; const runId = id(req); const runKind = kind(req);
+        const data = part === 'anomalies' ? await PayrollRunService.anomalies(companyId, runId, runKind)
+            : part === 'snapshots' ? await PayrollRunService.snapshots(companyId, runId, runKind)
+                : part === 'components' ? await PayrollRunService.components(companyId, runId, runKind)
+                    : part === 'receipts' ? await PayrollRunService.receipts(companyId, runId, runKind)
+                        : part === 'employerContributionLines' ? await PayrollRunService.employerContributionLines(companyId, runId, runKind)
+                            : await PayrollRunService.statutoryCalculations(companyId, runId, runKind);
+        res.json({ success: true, data });
+    } catch (e) { handle(e, res, next); } }; }
     static async addComponent(req: Request, res: Response, next: NextFunction) { try { owner(req); res.status(201).json({ success: true, data: await PayrollRunService.addComponent(req.user!.companyId, req.user!.userId, id(req), kind(req), req.body, key(req)) }); } catch (e) { handle(e, res, next); } }
     static async export(req: Request, res: Response, next: NextFunction) { try { owner(req); const format = req.query.format === 'xlsx' ? 'xlsx' : 'csv'; await binary(res, await PayrollRunService.export(req.user!.companyId, id(req), kind(req), format)); } catch (e) { handle(e, res, next); } }
     static async runReceiptPdf(req: Request, res: Response, next: NextFunction) { try { owner(req); await PayrollRunService.get(req.user!.companyId, id(req), kind(req)); await binary(res, await PayrollReceiptService.pdf(req.user!.companyId, Number(req.params.receiptId), { runId: id(req) })); } catch (e) { handle(e, res, next); } }

@@ -12,28 +12,103 @@ import {
     paidReversalInput,
     validateLegalConfiguration,
 } from '../../services/hr-payroll.service';
+import { calculateStatutoryPayroll, progressiveIncomeTax } from '../../services/hr-payroll-statutory';
+
+const statutory = {
+    companyTaxRegime: { code: 'GENERAL' as const, sourceReference: 'Ley 822' },
+    inss: {
+        applicability: 'APPLIES' as const, sourceReference: 'INSS 2026', regime: 'INTEGRAL' as const,
+        employeeRate: '0.07', employerRateBelowThreshold: '0.215', employerRateAtOrAboveThreshold: '0.225',
+        employerSizeThreshold: 50, minimumMonthlyContributionBase: '10000', minimumBaseProration: 'PER_PAY_PERIOD_SERVICE_RATIO' as const,
+        contributionComponentCodes: ['INGRESO_ORDINARIO', 'HORAS_EXTRA_APROBADAS'],
+    },
+    inatec: { applicability: 'APPLIES' as const, sourceReference: 'INATEC 2%', employerRate: '0.02', contributionComponentCodes: ['INGRESO_ORDINARIO', 'HORAS_EXTRA_APROBADAS'] },
+    incomeTax: {
+        applicability: 'APPLIES' as const, sourceReference: 'Ley 822 y Reglamento', regimeIndependenceAcknowledged: true as const,
+        calculationMethod: 'VARIABLE_ACCUMULATED' as const, inssEmployeeContributionDeductible: true as const, adjustmentMode: 'WITHHOLD_OR_REFUND' as const,
+        annualPeriods: { WEEKLY: 52, BIWEEKLY: 24, MONTHLY: 12 }, taxableComponentCodes: ['INGRESO_ORDINARIO', 'HORAS_EXTRA_APROBADAS'],
+        brackets: [
+            { lowerBound: '0', upperBound: '100000', baseTax: '0', rate: '0', excessOver: '0' },
+            { lowerBound: '100000', upperBound: '200000', baseTax: '0', rate: '0.15', excessOver: '100000' },
+            { lowerBound: '200000', upperBound: '350000', baseTax: '15000', rate: '0.20', excessOver: '200000' },
+            { lowerBound: '350000', upperBound: '500000', baseTax: '45000', rate: '0.25', excessOver: '350000' },
+            { lowerBound: '500000', upperBound: null, baseTax: '82500', rate: '0.30', excessOver: '500000' },
+        ],
+    },
+};
+
+const legalConfiguration = {
+    schema: 'HR_PAYROLL_PARAMETRIC_V2' as const, legallyValidated: true as const, currency: 'NIO',
+    regular: { minuteDivisors: { WEEKLY: '2400', BIWEEKLY: '4800', MONTHLY: '9600' }, overtimeMultiplier: '2', paidLeaveUnitMinutes: { DAYS: '480', HOURS: '60', MINUTES: '1' } },
+    aguinaldo: { method: 'HISTORICAL_PAID_COMPONENTS' as const, lookbackDays: 365, incomeDivisor: '12', prorationMode: 'NONE' as const, eligibleSources: ['RULE'], roundingScale: 2 as const },
+    statutory,
+};
 
 describe('HR payroll safety and state machine', () => {
     it('fails closed when a legal configuration is absent or incomplete', () => {
         expect(() => validateLegalConfiguration(null)).toThrow('configuración legal validada');
-        expect(() => validateLegalConfiguration({ schema: 'HR_PAYROLL_PARAMETRIC_V1', legallyValidated: true })).toThrow(HrPayrollError);
+        expect(() => validateLegalConfiguration({ schema: 'HR_PAYROLL_PARAMETRIC_V2', legallyValidated: true })).toThrow(HrPayrollError);
     });
 
     it('accepts only an explicit, fully parameterized and legally validated configuration', () => {
-        expect(validateLegalConfiguration({
-            schema: 'HR_PAYROLL_PARAMETRIC_V1', legallyValidated: true, currency: 'NIO',
-            regular: {
-                minuteDivisors: { WEEKLY: '2880', BIWEEKLY: '5760', MONTHLY: '12000' }, overtimeMultiplier: '2.0',
-                paidLeaveUnitMinutes: { DAYS: '480', HOURS: '60', MINUTES: '1' },
-            },
-            aguinaldo: { method: 'HISTORICAL_PAID_COMPONENTS', lookbackDays: 365, incomeDivisor: '12', prorationMode: 'SERVICE_DAYS_RATIO', eligibleSources: ['RULE', 'OVERTIME', 'LEAVE'], roundingScale: 2 },
-        }).currency).toBe('NIO');
+        expect(validateLegalConfiguration(legalConfiguration).currency).toBe('NIO');
     });
 
     it('treats HOURLY as amount per hour and SALARY through validated divisors', () => {
-        const config = validateLegalConfiguration({ schema: 'HR_PAYROLL_PARAMETRIC_V1', legallyValidated: true, currency: 'NIO', regular: { minuteDivisors: { WEEKLY: '2400', BIWEEKLY: '4800', MONTHLY: '9600' }, overtimeMultiplier: '2', paidLeaveUnitMinutes: { DAYS: '480', HOURS: '60', MINUTES: '1' } }, aguinaldo: { method: 'HISTORICAL_PAID_COMPONENTS', lookbackDays: 365, incomeDivisor: '12', prorationMode: 'NONE', eligibleSources: ['RULE'], roundingScale: 2 } });
+        const config = validateLegalConfiguration(legalConfiguration);
         expect(compensationMinuteRate({ compensationType: 'HOURLY', amount: new Prisma.Decimal('120'), payFrequency: 'WEEKLY' }, config).toString()).toBe('2');
         expect(compensationMinuteRate({ compensationType: 'SALARY', amount: new Prisma.Decimal('2400'), payFrequency: 'WEEKLY' }, config).toString()).toBe('1');
+    });
+
+    it('calculates INSS, INATEC and progressive IR with auditable decimal results', () => {
+        const result = calculateStatutoryPayroll(statutory, {
+            inssContributionBase: '10000', inatecContributionBase: '10000', incomeTaxGross: '10000', otherIncomeTaxDeductions: '0',
+            priorIncomeTaxNet: '0', priorIncomeTaxWithheld: '0', priorPeriods: 0,
+            payFrequency: 'MONTHLY', employerHeadcount: 49, serviceRatio: '1',
+        });
+        expect(result.employeeInss.toFixed(2)).toBe('700.00');
+        expect(result.employerInss.toFixed(2)).toBe('2150.00');
+        expect(result.employerInatec.toFixed(2)).toBe('200.00');
+        expect(result.annualProjection.toFixed(2)).toBe('111600.00');
+        expect(result.currentIncomeTaxWithholding.toFixed(2)).toBe('145.00');
+    });
+
+    it('uses the 50-employee threshold and does not couple payroll IR to the business tax regime', () => {
+        const simplified = { ...statutory, companyTaxRegime: { code: 'SIMPLIFIED_FIXED_QUOTA' as const, sourceReference: 'Cuota fija' } };
+        const result = calculateStatutoryPayroll(simplified, {
+            inssContributionBase: '10000', inatecContributionBase: '10000', incomeTaxGross: '10000', otherIncomeTaxDeductions: '0',
+            priorIncomeTaxNet: '0', priorIncomeTaxWithheld: '0', priorPeriods: 0,
+            payFrequency: 'MONTHLY', employerHeadcount: 50, serviceRatio: '1',
+        });
+        expect(result.employerInssRate.toString()).toBe('0.225');
+        expect(result.employerInss.toFixed(2)).toBe('2250.00');
+        expect(result.currentIncomeTaxWithholding.greaterThan(0)).toBe(true);
+    });
+
+    it('applies every progressive bracket boundary and emits a refund adjustment when over-withheld', () => {
+        expect(progressiveIncomeTax('100000', statutory.incomeTax.brackets).tax.toFixed(2)).toBe('0.00');
+        expect(progressiveIncomeTax('200000', statutory.incomeTax.brackets).tax.toFixed(2)).toBe('15000.00');
+        expect(progressiveIncomeTax('350000', statutory.incomeTax.brackets).tax.toFixed(2)).toBe('45000.00');
+        expect(progressiveIncomeTax('500000', statutory.incomeTax.brackets).tax.toFixed(2)).toBe('82500.00');
+        const result = calculateStatutoryPayroll(statutory, {
+            inssContributionBase: '10000', inatecContributionBase: '10000', incomeTaxGross: '10000', otherIncomeTaxDeductions: '0',
+            priorIncomeTaxNet: '9300', priorIncomeTaxWithheld: '1000', priorPeriods: 1,
+            payFrequency: 'MONTHLY', employerHeadcount: 10, serviceRatio: '1',
+        });
+        expect(result.currentIncomeTaxWithholding.toFixed(2)).toBe('0.00');
+        expect(result.incomeTaxRefund.greaterThan(0)).toBe(true);
+    });
+
+    it('deducts only explicitly authorized non-INSS deductions from the IR base', () => {
+        const result = calculateStatutoryPayroll(statutory, {
+            inssContributionBase: '20000', inatecContributionBase: '20000', incomeTaxGross: '20000', otherIncomeTaxDeductions: '1000',
+            priorIncomeTaxNet: '0', priorIncomeTaxWithheld: '0', priorPeriods: 0,
+            payFrequency: 'MONTHLY', employerHeadcount: 10, serviceRatio: '1',
+        });
+        expect(result.employeeInss.toFixed(2)).toBe('1400.00');
+        expect(result.otherIncomeTaxDeductions.toFixed(2)).toBe('1000.00');
+        expect(result.currentIncomeTaxNet.toFixed(2)).toBe('17600.00');
+        expect(result.currentIncomeTaxWithholding.toFixed(2)).toBe('1436.67');
     });
 
     it('exposes only valid actions for each immutable lifecycle state', () => {
@@ -95,7 +170,9 @@ describe('HR payroll persistence and route contract', () => {
     const schema = fs.readFileSync(path.join(root, 'prisma/schema.prisma'), 'utf8');
     const migration = fs.readFileSync(path.join(root, 'prisma/migrations/20260713_hr_05_payroll_aguinaldo/migration.sql'), 'utf8');
     const rollback = fs.readFileSync(path.join(root, 'prisma/migrations/20260713_hr_05_payroll_aguinaldo/rollback.sql'), 'utf8');
+    const statutoryMigration = fs.readFileSync(path.join(root, 'prisma/migrations/20260715_hr_statutory_payroll_v2/migration.sql'), 'utf8');
     const workforce = fs.readFileSync(path.join(root, 'src/services/hr-workforce.service.ts'), 'utf8');
+    const benefits = fs.readFileSync(path.join(root, 'src/services/hr-benefits.service.ts'), 'utf8');
 
     it('matches the frontend endpoints and separates read/manage/approve/self permissions', () => {
         for (const endpoint of ['/rules', '/periods', '/runs', '/aguinaldo/runs', '/me/receipts']) expect(routes).toContain(endpoint);
@@ -195,6 +272,35 @@ describe('HR payroll persistence and route contract', () => {
         expect(schema).toContain('model PayrollPaymentRecord');
     });
 
+    it('materializes statutory bases, employer costs and immutable calculation traces', () => {
+        expect(service).toContain("schema: 'HR_PAYROLL_PARAMETRIC_V2'");
+        expect(service).toContain('calculateStatutoryPayroll');
+        expect(service).toContain('priorStatutoryContext');
+        expect(service).toContain('MISSING_INSS_NUMBER');
+        expect(service).toContain('MISSING_TAX_IDENTIFICATION');
+        expect(service).toContain('UNCLASSIFIED_MANUAL_INCOME');
+        expect(service).toContain('INCOMPLETE_PRIOR_STATUTORY_HISTORY');
+        expect(service).toContain('HR_PAYROLL_STATUTORY_HISTORY_INCOMPLETE');
+        expect(service).toContain('NON_STANDARD_EMPLOYMENT_STATUTORY_REVIEW');
+        expect(service).toContain("requiredText(payload.reference, 'reference', 500)");
+        expect(benefits).toContain('incomeTaxDeductible: false');
+        expect(schema).toContain('model PayrollEmployerContribution');
+        expect(schema).toContain('model PayrollStatutoryCalculation');
+        expect(schema).toContain('socialSecurityApplicable');
+        expect(schema).toContain('trainingContributionApplicable');
+        expect(routes).toContain('/employer-contributions');
+        expect(routes).toContain('/statutory-calculations');
+        expect(statutoryMigration).toContain('PayrollStatutoryCalculation_no_update');
+        expect(statutoryMigration).toContain('PayrollEmployerContribution_no_delete');
+    });
+
+    it('reverses and reconciles employer contributions instead of leaving an orphaned payroll cost', () => {
+        expect(service).toContain('reversedEmployerContributions: run.employerContributions.negated()');
+        expect(service).toContain('RUN_EMPLOYER_CONTRIBUTIONS_MATCH');
+        expect(service).toContain('EXTERNAL_EMPLOYER_CONTRIBUTIONS_MATCH');
+        expect(routes).toContain('expectedEmployerContributions');
+    });
+
     it('keeps reversals and permission rollback safe and append-only', () => {
         expect(schema).toContain('model PayrollComponentReversal');
         expect(migration).toContain('PayrollComponentReversal_no_update');
@@ -208,7 +314,7 @@ describe('HR payroll persistence and route contract', () => {
     });
 
     it('keeps every payroll migration identifier within the MySQL 64-character limit', () => {
-        const identifiers = [...migration.matchAll(/`([^`]+)`/g)].map(match => match[1]);
+        const identifiers = [...`${migration}\n${statutoryMigration}`.matchAll(/`([^`]+)`/g)].map(match => match[1]);
         expect(identifiers.filter(identifier => identifier.length > 64)).toEqual([]);
     });
 

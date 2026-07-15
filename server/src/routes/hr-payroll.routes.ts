@@ -73,10 +73,11 @@ router.post('/aguinaldo/runs', ownerManage, allowHrBodyFields(['year', 'cutoffDa
 function runContract(prefix: '/runs' | '/aguinaldo/runs') {
     router.get(`${prefix}/:id`, ownerRead, validate({ params: idParam }), HrPayrollController.run);
     router.post(`${prefix}/:id/reconciliation`, ownerRead,
-        allowHrBodyFields(['expectedGrossIncome', 'expectedTotalDeductions', 'expectedNetPay', 'expectedEmployeeCount', 'controlSource', 'evidenceReference']),
+        allowHrBodyFields(['expectedGrossIncome', 'expectedTotalDeductions', 'expectedEmployerContributions', 'expectedNetPay', 'expectedEmployeeCount', 'controlSource', 'evidenceReference']),
         validate({ params: idParam, body: {
             expectedGrossIncome: { type: 'string', required: true, pattern: /^\d+(?:\.\d{1,2})?$/ },
             expectedTotalDeductions: { type: 'string', required: true, pattern: /^\d+(?:\.\d{1,2})?$/ },
+            expectedEmployerContributions: { type: 'string', required: true, pattern: /^\d+(?:\.\d{1,2})?$/ },
             expectedNetPay: { type: 'string', required: true, pattern: /^\d+(?:\.\d{1,2})?$/ },
             expectedEmployeeCount: { type: 'number', required: true, integer: true, min: 0 },
             controlSource: { type: 'string', required: true, min: 3, max: 160 },
@@ -97,9 +98,12 @@ function runContract(prefix: '/runs' | '/aguinaldo/runs') {
     router.get(`${prefix}/:id/anomalies`, ownerRead, validate({ params: idParam }), HrPayrollController.listPart('anomalies'));
     router.get(`${prefix}/:id/snapshot`, ownerRead, validate({ params: idParam }), HrPayrollController.listPart('snapshots'));
     router.get(`${prefix}/:id/components`, ownerRead, validate({ params: idParam }), HrPayrollController.listPart('components'));
-    router.post(`${prefix}/:id/components`, ownerManage, allowHrBodyFields(['userId', 'code', 'type', 'inputAmount', 'reason', 'reference']), validate({ params: idParam, body: {
+    router.get(`${prefix}/:id/employer-contributions`, ownerRead, validate({ params: idParam }), HrPayrollController.listPart('employerContributionLines'));
+    router.get(`${prefix}/:id/statutory-calculations`, ownerRead, validate({ params: idParam }), HrPayrollController.listPart('statutoryCalculations'));
+    router.post(`${prefix}/:id/components`, ownerManage, allowHrBodyFields(['userId', 'code', 'type', 'inputAmount', 'taxable', 'incomeTaxDeductible', 'socialSecurityApplicable', 'trainingContributionApplicable', 'reason', 'reference']), validate({ params: idParam, body: {
         userId: { type: 'number', required: true, integer: true, min: 1 }, code: { type: 'string', required: true, min: 1, max: 64 },
         type: { type: 'string', required: true, enum: ['INCOME', 'DEDUCTION'] }, inputAmount: { type: 'string', required: true, pattern: /^\d+(?:\.\d{1,2})?$/ },
+        taxable: { type: 'boolean' }, incomeTaxDeductible: { type: 'boolean', required: true }, socialSecurityApplicable: { type: 'boolean' }, trainingContributionApplicable: { type: 'boolean' },
         reason: { type: 'string', required: true, min: 3, max: 2000 }, reference: { type: 'string', max: 500 },
     } }), HrPayrollController.addComponent);
     router.get(`${prefix}/:id/receipts`, ownerRead, validate({ params: idParam }), HrPayrollController.listPart('receipts'));

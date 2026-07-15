@@ -1,8 +1,8 @@
 # Módulo RH — Base técnica, funcional y operativa
 
 **Repositorio:** `C:\restaurant`
-**Corte de consolidación:** 2026-07-14
-**Estado:** núcleo F1–F6 desplegado en Railway; activación biométrica, legal y operativa sujeta a los gates de este documento.
+**Corte de consolidación:** 2026-07-15
+**Estado:** núcleo F1–F6 existente; la nómina estatutaria V2 tiene candidata técnica en la rama `codex/rh-nomina-estatutaria`, sin despliegue. La activación biométrica, legal y operativa sigue sujeta a los gates de este documento.
 **Plan vivo:** `docs/PLAN_IMPLEMENTACION_MODULO_RH.md`.
 
 ## 1. Propósito y alcance real
@@ -224,7 +224,7 @@ El modo kiosco queda detrás de `HR_ATTENDANCE_KIOSK_ENABLED=false` hasta implem
 
 `PayrollRuleVersion` mantiene vigencia y metadatos. La configuración técnica vive en `PayrollRuleConfigurationRevision`, se hashea y no se devuelve como JSON en listados. Otro actor registra `PayrollRuleConfigurationReview` con `VALIDATED` o `REJECTED`.
 
-El esquema aceptado es `HR_PAYROLL_PARAMETRIC_V1` e incluye:
+El esquema aceptado para nuevas corridas es `HR_PAYROLL_PARAMETRIC_V2`. Una configuración V1 histórica puede consultarse, pero falla cerrada al intentar calcular una corrida nueva. V2 incluye:
 
 - moneda ISO;
 - divisores por frecuencia `WEEKLY/BIWEEKLY/MONTHLY`;
@@ -232,8 +232,13 @@ El esquema aceptado es `HR_PAYROLL_PARAMETRIC_V1` e incluye:
 - conversión de unidades de permiso;
 - FX por moneda con tasa, versión y fuente;
 - método de aguinaldo histórico, lookback, divisor, prorrateo y fuentes elegibles.
+- régimen tributario empresarial efectivo y documentado, separado de las obligaciones laborales;
+- aplicabilidad, fuente y excepción documentada para INSS, INATEC e IR laboral;
+- régimen y tasas INSS laboral/patronal, umbral patronal y base mínima sectorial;
+- tasa INATEC y conceptos base;
+- tabla progresiva IR editable, períodos anuales, conceptos gravables, deducciones autorizadas y ajuste por sobre-retención.
 
-No hay tasas legales hardcodeadas. Las revisiones de configuración son append-only y sus metadatos quedan congelados al validarse; una modificación material exige crear una nueva versión `DRAFT`, cargar otra revisión y obtener un nuevo dictamen independiente.
+No hay tasas legales hardcodeadas en el cálculo. La UI propone una plantilla para transcripción, pero el servidor usa exclusivamente la revisión validada y congelada. Las revisiones son append-only; una modificación material exige una nueva versión `DRAFT`, otra carga y un nuevo dictamen independiente. La especificación completa está en [RH_NOMINA_ESTATUTARIA_V2_20260715.md](./RH_NOMINA_ESTATUTARIA_V2_20260715.md).
 
 ### Corrida regular
 
@@ -247,6 +252,8 @@ Estados:
 - `PayrollSnapshotLine` y `PayrollAttendanceDependency` congelan fuentes/revisiones.
 - `PayrollCoverageClaim` impide pagar dos veces a la misma persona por un rango superpuesto; `VOID` libera mediante `PayrollCoverageRelease` trazable.
 - Componentes manuales sólo se agregan en `CALCULATED`, para una persona existente en el snapshot y antes de revisión. La UI y el servicio comparten ese estado y reutilizan una misma clave idempotente ante un resultado de red ambiguo.
+- Todo componente manual declara expresamente si integra INSS, INATEC, renta gravable o deducción autorizada de IR; al guardarlo se recalculan obligaciones y totales.
+- `PayrollStatutoryCalculation` conserva la base, histórico, proyección, tramo y ajuste de cada persona por revisión. `PayrollEmployerContribution` separa costo patronal del neto del colaborador.
 - Anomalías `BLOCKING` impiden review/approve/pay.
 
 ### Aguinaldo

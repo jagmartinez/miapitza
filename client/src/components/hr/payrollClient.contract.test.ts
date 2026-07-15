@@ -89,7 +89,7 @@ describe('Phase 5 payroll API contract', () => {
     expect(source).toContain('getRuleConfigurations');
     expect(source).toContain('uploadRuleConfiguration');
     expect(source).toContain('reviewRuleConfiguration');
-    expect(types).toContain("schema: 'HR_PAYROLL_PARAMETRIC_V1'");
+    expect(types).toContain("schema: 'HR_PAYROLL_PARAMETRIC_V2'");
     expect(types).toContain("decision: 'VALIDATED' | 'REJECTED'");
   });
 });

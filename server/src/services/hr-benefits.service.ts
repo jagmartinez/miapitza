@@ -609,7 +609,12 @@ export async function projectBenefitDeductions(tx: Prisma.TransactionClient, inp
         if (available.isZero()) continue;
         const desired = Prisma.Decimal.min(version.applicableAmount, version.perPeriodLimit ?? version.applicableAmount, deduction.remainingAmount ?? version.applicableAmount);
         const amount = Prisma.Decimal.min(desired, available); if (amount.lessThanOrEqualTo(0)) continue;
-        await tx.payrollComponent.create({ data: { companyId: input.companyId, runId: input.runId, userId: input.userId, code: `BENEFICIO_DED_${deduction.id}`, name: version.name, type: 'DEDUCTION', source: 'BENEFIT_DEDUCTION', amount, reason: version.reason, traceReference: `deduction:${deduction.id};version:${version.id};revision:${deduction.revision}` } });
+        await tx.payrollComponent.create({ data: {
+            companyId: input.companyId, runId: input.runId, userId: input.userId,
+            code: `BENEFICIO_DED_${deduction.id}`, name: version.name, type: 'DEDUCTION', source: 'BENEFIT_DEDUCTION', amount,
+            taxable: false, incomeTaxDeductible: false, socialSecurityApplicable: false, trainingContributionApplicable: false,
+            reason: version.reason, traceReference: `deduction:${deduction.id};version:${version.id};revision:${deduction.revision}`,
+        } });
         available = available.minus(amount);
     }
 }

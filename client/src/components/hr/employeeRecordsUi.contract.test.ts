@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 const read = (relative: string) => fs.readFileSync(path.resolve(__dirname, relative), 'utf8');
 const detail = read('../../pages/hr/EmployeeDetail.tsx');
 const panel = read('./EmployeeRecordPanel.tsx');
+const form = read('./EmployeeForm.tsx');
 const client = read('./hrClient.ts');
 
 describe('employee employment-record UI contract', () => {
@@ -28,5 +29,12 @@ describe('employee employment-record UI contract', () => {
     expect(panel).toContain('El servidor valida firma, tamaño y SHA-256');
     expect(client).toContain('/documents/${document.id}/download');
     expect(client).toContain('/documents/${documentId}/revoke');
+  });
+
+  it('captures the statutory identifiers and emergency data required before payroll', () => {
+    for (const field of ['socialSecurityNumber', 'taxId', 'documentType', 'preferredName', 'emergencyContactName', 'emergencyContactPhone', 'emergencyContactRelationship']) {
+      expect(form).toContain(field);
+    }
+    expect(form).toContain('Obligatorio para calcular una corrida');
   });
 });

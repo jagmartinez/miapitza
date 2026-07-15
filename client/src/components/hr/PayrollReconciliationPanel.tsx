@@ -5,7 +5,7 @@ import { getPayrollErrorMessage, payrollClient } from './payrollClient';
 import type { HrPayrollReconciliationPayload, HrPayrollReconciliationReport, HrPayrollRun } from '../../types/hr-payroll';
 
 const EMPTY: HrPayrollReconciliationPayload = {
-  expectedGrossIncome: '', expectedTotalDeductions: '', expectedNetPay: '', expectedEmployeeCount: 0,
+  expectedGrossIncome: '', expectedTotalDeductions: '', expectedEmployerContributions: '', expectedNetPay: '', expectedEmployeeCount: 0,
   controlSource: '', evidenceReference: '',
 };
 
@@ -34,6 +34,7 @@ export default function PayrollReconciliationPanel({ run }: { run: HrPayrollRun 
       }}>
         <label>Bruto externo<input inputMode="decimal" pattern="\d+(\.\d{1,2})?" value={form.expectedGrossIncome} onChange={event => set('expectedGrossIncome', event.target.value)} required /></label>
         <label>Deducciones externas<input inputMode="decimal" pattern="\d+(\.\d{1,2})?" value={form.expectedTotalDeductions} onChange={event => set('expectedTotalDeductions', event.target.value)} required /></label>
+        <label>Aportes patronales externos<input inputMode="decimal" pattern="\d+(\.\d{1,2})?" value={form.expectedEmployerContributions} onChange={event => set('expectedEmployerContributions', event.target.value)} required /></label>
         <label>Neto externo<input inputMode="decimal" pattern="\d+(\.\d{1,2})?" value={form.expectedNetPay} onChange={event => set('expectedNetPay', event.target.value)} required /></label>
         <label>Personas externas<input type="number" min={0} step={1} value={form.expectedEmployeeCount} onChange={event => set('expectedEmployeeCount', Number(event.target.value))} required /></label>
         <label>Fuente del control<input value={form.controlSource} minLength={3} maxLength={160} onChange={event => set('controlSource', event.target.value)} placeholder="Hoja o sistema independiente" required /></label>
