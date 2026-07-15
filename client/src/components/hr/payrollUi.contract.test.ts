@@ -6,6 +6,7 @@ const management = read('../../pages/hr/PayrollManagement.tsx');
 const mine = read('../../pages/hr/MyPayroll.tsx');
 const transition = read('./PayrollTransitionForm.tsx');
 const configuration = read('./PayrollRuleConfigurationPanel.tsx');
+const componentForm = read('./PayrollComponentForm.tsx');
 const receipt = read('./PayrollReceiptBreakdown.tsx');
 const onlineNotice = read('./PayrollOnlineNotice.tsx');
 const reconciliation = read('./PayrollReconciliationPanel.tsx');
@@ -29,16 +30,26 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(transition).toContain('Doble control');
     expect(transition).toContain('paymentReference');
     expect(transition).toContain('evidenceReference');
+    expect(transition).toContain("run.kind === 'REGULAR' ? run.period?.payDate : run.cutoffDate");
+    expect(transition).toContain('value={paymentDate} readOnly required');
+    expect(transition).not.toContain('setPaymentDate');
   });
 
   it('exposes the append-only legal configuration and second-actor review flow', () => {
     expect(management).toContain('getRuleConfigurations');
     expect(management).toContain('uploadRuleConfiguration');
     expect(management).toContain('reviewRuleConfiguration');
-    expect(configuration).toContain("schema: 'HR_PAYROLL_PARAMETRIC_V2'");
+    expect(configuration).toContain("schema: 'HR_PAYROLL_PARAMETRIC_V3'");
     expect(configuration).toContain('SIMPLIFIED_FIXED_QUOTA');
     expect(configuration).toContain('no desactiva automáticamente el IR');
     expect(configuration).toContain('Tabla progresiva anual');
+    expect(configuration).toContain('Conceptos ordinarios fijos');
+    expect(configuration).toContain('Conceptos ordinarios variables');
+    expect(configuration).toContain('Conceptos ocasionales');
+    expect(configuration).toContain('Deducciones autorizadas para renta neta');
+    expect(configuration).toContain("occasionalInssDeductionTreatment: 'DEDUCT_FROM_OCCASIONAL_NET'");
+    expect(configuration).not.toContain('DEDUCT_FROM_REGULAR_NET');
+    expect(configuration).toContain('se deduce exclusivamente de la renta neta ocasional');
     expect(configuration).toContain("revision.status === 'UPLOADED'");
     expect(configuration).toContain("review(revision, 'VALIDATED')");
     expect(configuration).toContain('otra identidad revise la carga');
@@ -88,6 +99,20 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(management).toContain('const componentOperationKey = useRef<string | null>(null)');
     expect(management).toContain('componentOperationKey.current ?? createPayrollIdempotencyKey()');
     expect(management).toContain('componentOperationKey.current = idempotencyKey');
+  });
+
+  it('requires a fresh legal classification confirmation when manual classification changes', () => {
+    expect(componentForm).toContain('classificationConfirmed: true');
+    expect(componentForm).toContain('if (!classificationConfirmed) return');
+    expect(componentForm).toMatch(/setCode\(event\.target\.value\);\s*setClassificationConfirmed\(false\);/);
+    expect(componentForm).toMatch(/setIncomeTaxDeductible\(event\.target\.checked\);\s*setClassificationConfirmed\(false\);/);
+    expect(componentForm).toContain('!classificationConfirmed');
+  });
+
+  it('renders the complete immutable Art. 19 calculation trace', () => {
+    for (const field of ['configurationRevisionId', 'fixedCompensationAmount', 'elapsedFiscalMonths', 'bracketSnapshot', 'historyFingerprint', 'createdAt']) {
+      expect(management).toContain(`item.${field}`);
+    }
   });
 
   it('also reuses the idempotency key for ambiguous payroll transition retries', () => {

@@ -59,16 +59,19 @@ export default function PayrollRuleConfigurationPanel({
   const [inssEmployerAtOrAbove, setInssEmployerAtOrAbove] = useState('0.225');
   const [inssThreshold, setInssThreshold] = useState('50');
   const [inssMinimumBase, setInssMinimumBase] = useState('');
-  const [inssCodes, setInssCodes] = useState('INGRESO_ORDINARIO,HORAS_EXTRA_APROBADAS,PERMISO_PAGADO_APROBADO');
+  const [inssCodes, setInssCodes] = useState('INGRESO_ORDINARIO_FIJO,INGRESO_ORDINARIO_VARIABLE,HORAS_EXTRA_APROBADAS,PERMISO_PAGADO_APROBADO');
   const [inssReference, setInssReference] = useState('https://inss-princ.inss.gob.ni/index.php/tramites-37/10-afiliaciones/13-regimenes-de-afiliacion');
   const [inssException, setInssException] = useState('');
   const [inatecApplicability, setInatecApplicability] = useState<'APPLIES' | 'DOES_NOT_APPLY'>('APPLIES');
   const [inatecRate, setInatecRate] = useState('0.02');
-  const [inatecCodes, setInatecCodes] = useState('INGRESO_ORDINARIO,HORAS_EXTRA_APROBADAS,PERMISO_PAGADO_APROBADO');
+  const [inatecCodes, setInatecCodes] = useState('INGRESO_ORDINARIO_FIJO,INGRESO_ORDINARIO_VARIABLE,HORAS_EXTRA_APROBADAS,PERMISO_PAGADO_APROBADO');
   const [inatecReference, setInatecReference] = useState('https://www.tecnacional.edu.ni/acerca/');
   const [inatecException, setInatecException] = useState('');
   const [incomeTaxApplicability, setIncomeTaxApplicability] = useState<'APPLIES' | 'DOES_NOT_APPLY'>('APPLIES');
-  const [incomeTaxCodes, setIncomeTaxCodes] = useState('INGRESO_ORDINARIO,HORAS_EXTRA_APROBADAS,PERMISO_PAGADO_APROBADO');
+  const [fixedIncomeTaxCodes, setFixedIncomeTaxCodes] = useState('INGRESO_ORDINARIO_FIJO,PERMISO_PAGADO_APROBADO');
+  const [variableIncomeTaxCodes, setVariableIncomeTaxCodes] = useState('INGRESO_ORDINARIO_VARIABLE,HORAS_EXTRA_APROBADAS');
+  const [occasionalIncomeTaxCodes, setOccasionalIncomeTaxCodes] = useState('BONO_OCASIONAL,VACACIONES_PAGADAS,INCENTIVO_OCASIONAL');
+  const [authorizedDeductionCodes, setAuthorizedDeductionCodes] = useState('FONDO_PENSION_AUTORIZADO,APORTE_AHORRO_AUTORIZADO');
   const [incomeTaxReference, setIncomeTaxReference] = useState('https://legislacion.asamblea.gob.ni/SILEG/Gacetas.nsf/15a7e7ceb5efa9c6062576eb0060b321/9c520cbf65bf930606257aec005d6802/$FILE/2013-01-15-%20Decreto%20Ejecutivo%20No.%2001-2013,%20Reglamento%20de%20la%20Ley%20No.%20822,%20Ley%20de%20concertaci%C3%B3n%20tributaria.pdf');
   const [incomeTaxException, setIncomeTaxException] = useState('');
   const [periodsWeekly, setPeriodsWeekly] = useState('52');
@@ -86,6 +89,8 @@ export default function PayrollRuleConfigurationPanel({
   const decimals = [weekly, biweekly, monthly, overtime, leaveDay, leaveHour, leaveMinute, incomeDivisor];
   const obligationReady = (applicability: 'APPLIES' | 'DOES_NOT_APPLY', reference: string, exception: string) =>
     reference.trim().length >= 3 && (applicability === 'APPLIES' || exception.trim().length >= 3);
+  const incomeTaxCodes = [...codes(fixedIncomeTaxCodes), ...codes(variableIncomeTaxCodes), ...codes(occasionalIncomeTaxCodes)];
+  const allIncomeTaxCodes = [...incomeTaxCodes, ...codes(authorizedDeductionCodes)];
   const statutoryReady =
     taxRegimeReference.trim().length >= 3 &&
     obligationReady(inssApplicability, inssReference, inssException) &&
@@ -94,7 +99,7 @@ export default function PayrollRuleConfigurationPanel({
     rate(inssEmployeeRate) && rate(inssEmployerBelow) && rate(inssEmployerAtOrAbove) &&
     Number.isInteger(Number(inssThreshold)) && Number(inssThreshold) >= 1 &&
     decimal.test(inssMinimumBase) && (inssApplicability === 'DOES_NOT_APPLY' || Number(inssMinimumBase) > 0) &&
-    rate(inatecRate) && codes(inssCodes).length > 0 && codes(inatecCodes).length > 0 && codes(incomeTaxCodes).length > 0 &&
+    rate(inatecRate) && codes(inssCodes).length > 0 && codes(inatecCodes).length > 0 && incomeTaxCodes.length > 0 && new Set(allIncomeTaxCodes).size === allIncomeTaxCodes.length &&
     [periodsWeekly, periodsBiweekly, periodsMonthly].every((value) => Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 366) &&
     brackets.every((bracket, index) => decimal.test(bracket.lowerBound) && decimal.test(bracket.baseTax) && rate(bracket.rate) && decimal.test(bracket.excessOver) && (index === brackets.length - 1 ? bracket.upperBound === null : Boolean(bracket.upperBound && decimal.test(bracket.upperBound)))) &&
     irIndependenceConfirmed;
@@ -115,7 +120,7 @@ export default function PayrollRuleConfigurationPanel({
     if (!uploadReady) return;
     await onUpload({
       configuration: {
-        schema: 'HR_PAYROLL_PARAMETRIC_V2',
+        schema: 'HR_PAYROLL_PARAMETRIC_V3',
         legallyValidated: true,
         currency,
         regular: {
@@ -138,6 +143,7 @@ export default function PayrollRuleConfigurationPanel({
             regime: inssRegime, employeeRate: inssEmployeeRate, employerRateBelowThreshold: inssEmployerBelow,
             employerRateAtOrAboveThreshold: inssEmployerAtOrAbove, employerSizeThreshold: Number(inssThreshold),
             minimumMonthlyContributionBase: inssMinimumBase, minimumBaseProration: 'PER_PAY_PERIOD_SERVICE_RATIO',
+            annualPeriods: { WEEKLY: Number(periodsWeekly), BIWEEKLY: Number(periodsBiweekly), MONTHLY: Number(periodsMonthly) },
             contributionComponentCodes: codes(inssCodes),
           },
           inatec: {
@@ -146,9 +152,15 @@ export default function PayrollRuleConfigurationPanel({
           },
           incomeTax: {
             applicability: incomeTaxApplicability, sourceReference: incomeTaxReference.trim(), exceptionReason: incomeTaxApplicability === 'DOES_NOT_APPLY' ? incomeTaxException.trim() : undefined,
-            regimeIndependenceAcknowledged: true, calculationMethod: 'VARIABLE_ACCUMULATED', inssEmployeeContributionDeductible: true,
+            regimeIndependenceAcknowledged: true,
+            calculationMethods: {
+              fixed: 'FIXED_PERIOD_PROJECTION', salaryChange: 'FIXED_SALARY_CHANGE',
+              variable: 'VARIABLE_ACCUMULATED', occasional: 'OCCASIONAL_INCREMENTAL',
+            },
+            inssEmployeeContributionDeductible: true, occasionalInssDeductionTreatment: 'DEDUCT_FROM_OCCASIONAL_NET',
             adjustmentMode: 'WITHHOLD_OR_REFUND', annualPeriods: { WEEKLY: Number(periodsWeekly), BIWEEKLY: Number(periodsBiweekly), MONTHLY: Number(periodsMonthly) },
-            taxableComponentCodes: codes(incomeTaxCodes), brackets,
+            fixedTaxableComponentCodes: codes(fixedIncomeTaxCodes), variableTaxableComponentCodes: codes(variableIncomeTaxCodes),
+            occasionalTaxableComponentCodes: codes(occasionalIncomeTaxCodes), authorizedDeductionComponentCodes: codes(authorizedDeductionCodes), brackets,
           },
         },
       },
@@ -285,7 +297,16 @@ export default function PayrollRuleConfigurationPanel({
           <label>Períodos anuales semanales<input type="number" min="1" max="366" value={periodsWeekly} onChange={(event) => setPeriodsWeekly(event.target.value)} required /></label>
           <label>Períodos anuales quincenales<input type="number" min="1" max="366" value={periodsBiweekly} onChange={(event) => setPeriodsBiweekly(event.target.value)} required /></label>
           <label>Períodos anuales mensuales<input type="number" min="1" max="366" value={periodsMonthly} onChange={(event) => setPeriodsMonthly(event.target.value)} required /></label>
-          <label className="span-full">Conceptos gravables IR<input value={incomeTaxCodes} onChange={(event) => setIncomeTaxCodes(event.target.value)} maxLength={1000} required /></label>
+          <div className="hr-payroll-warning span-full" role="note">
+            El artículo 19 exige tratamientos distintos: el salario fijo se proyecta por período, los ingresos variables usan promedio acumulado y los pagos ocasionales retienen el incremento completo de IR. Un código no puede pertenecer a más de un grupo.
+          </div>
+          <label className="span-full">Conceptos ordinarios fijos<input value={fixedIncomeTaxCodes} onChange={(event) => setFixedIncomeTaxCodes(event.target.value)} maxLength={1000} /></label>
+          <label className="span-full">Conceptos ordinarios variables<input value={variableIncomeTaxCodes} onChange={(event) => setVariableIncomeTaxCodes(event.target.value)} maxLength={1000} /></label>
+          <label className="span-full">Conceptos ocasionales<input value={occasionalIncomeTaxCodes} onChange={(event) => setOccasionalIncomeTaxCodes(event.target.value)} maxLength={1000} /></label>
+          <label className="span-full">Deducciones autorizadas para renta neta<input value={authorizedDeductionCodes} onChange={(event) => setAuthorizedDeductionCodes(event.target.value)} maxLength={1000} /></label>
+          <div className="hr-payroll-warning span-full" role="note">
+            El INSS atribuible a un pago ocasional se deduce exclusivamente de la renta neta ocasional.
+          </div>
           <label className="span-full">Fuente de metodología IR<input value={incomeTaxReference} onChange={(event) => setIncomeTaxReference(event.target.value)} maxLength={500} required /></label>
           {incomeTaxApplicability === 'DOES_NOT_APPLY' && <label className="span-full">Fundamento de excepción IR laboral<textarea value={incomeTaxException} onChange={(event) => setIncomeTaxException(event.target.value)} required /></label>}
           <div className="span-full hr-payroll-tax-table">

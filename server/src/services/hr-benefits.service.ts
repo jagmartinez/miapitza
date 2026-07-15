@@ -612,7 +612,7 @@ export async function projectBenefitDeductions(tx: Prisma.TransactionClient, inp
         await tx.payrollComponent.create({ data: {
             companyId: input.companyId, runId: input.runId, userId: input.userId,
             code: `BENEFICIO_DED_${deduction.id}`, name: version.name, type: 'DEDUCTION', source: 'BENEFIT_DEDUCTION', amount,
-            taxable: false, incomeTaxDeductible: false, socialSecurityApplicable: false, trainingContributionApplicable: false,
+            taxable: false, incomeTaxTreatment: null, incomeTaxDeductible: false, socialSecurityApplicable: false, trainingContributionApplicable: false,
             reason: version.reason, traceReference: `deduction:${deduction.id};version:${version.id};revision:${deduction.revision}`,
         } });
         available = available.minus(amount);

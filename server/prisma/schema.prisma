@@ -2118,6 +2118,7 @@ model PayrollComponent {
   source                         String               @db.VarChar(32)
   amount                         Decimal              @db.Decimal(18, 2)
   taxable                        Boolean?
+  incomeTaxTreatment             String?              @db.VarChar(32)
   incomeTaxDeductible            Boolean?
   socialSecurityApplicable       Boolean?
   trainingContributionApplicable Boolean?
@@ -2161,35 +2162,55 @@ model PayrollEmployerContribution {
 }
 
 model PayrollStatutoryCalculation {
-  id                       Int      @id @default(autoincrement())
-  companyId                Int
-  runId                    Int
-  userId                   Int
-  calculationRevision      Int
-  configurationRevisionId  Int
-  companyTaxRegime         String   @db.VarChar(40)
-  payFrequency             String   @db.VarChar(32)
-  employerHeadcount        Int
-  inssBase                 Decimal  @db.Decimal(18, 2)
-  employeeInss             Decimal  @db.Decimal(18, 2)
-  employerInssRate         Decimal  @db.Decimal(10, 6)
-  employerInss             Decimal  @db.Decimal(18, 2)
-  inatecBase               Decimal  @db.Decimal(18, 2)
-  employerInatec           Decimal  @db.Decimal(18, 2)
-  currentIncomeTaxNet      Decimal  @db.Decimal(18, 2)
-  otherIncomeTaxDeductions Decimal  @db.Decimal(18, 2)
-  priorIncomeTaxNet        Decimal  @db.Decimal(18, 2)
-  accumulatedIncomeTaxNet  Decimal  @db.Decimal(18, 2)
-  elapsedPeriods           Int
-  annualPeriods            Int
-  annualProjection         Decimal  @db.Decimal(18, 2)
-  annualIncomeTax          Decimal  @db.Decimal(18, 2)
-  priorIncomeTaxWithheld   Decimal  @db.Decimal(18, 2)
-  currentIncomeTaxWithheld Decimal  @db.Decimal(18, 2)
-  incomeTaxRefund          Decimal  @db.Decimal(18, 2)
-  bracketSnapshot          Json?
-  historyFingerprint       String   @db.Char(64)
-  createdAt                DateTime @default(now())
+  id                               Int      @id @default(autoincrement())
+  companyId                        Int
+  runId                            Int
+  userId                           Int
+  calculationRevision              Int
+  configurationRevisionId          Int
+  companyTaxRegime                 String   @db.VarChar(40)
+  methodVersion                    String   @default("LEGACY_UNCLASSIFIED") @db.VarChar(32)
+  incomeTaxMethod                  String   @default("LEGACY_UNCLASSIFIED") @db.VarChar(40)
+  payFrequency                     String   @db.VarChar(32)
+  employerHeadcount                Int
+  inssBase                         Decimal  @db.Decimal(18, 2)
+  employeeInss                     Decimal  @db.Decimal(18, 2)
+  regularEmployeeInss              Decimal  @default(0) @db.Decimal(18, 2)
+  occasionalEmployeeInss           Decimal  @default(0) @db.Decimal(18, 2)
+  employerInssRate                 Decimal  @db.Decimal(10, 6)
+  employerInss                     Decimal  @db.Decimal(18, 2)
+  inatecBase                       Decimal  @db.Decimal(18, 2)
+  employerInatec                   Decimal  @db.Decimal(18, 2)
+  fixedIncomeTaxGross              Decimal  @default(0) @db.Decimal(18, 2)
+  variableIncomeTaxGross           Decimal  @default(0) @db.Decimal(18, 2)
+  occasionalIncomeTaxGross         Decimal  @default(0) @db.Decimal(18, 2)
+  fixedCompensationAmount          Decimal  @default(0) @db.Decimal(18, 2)
+  currentRegularIncomeTaxNet       Decimal  @default(0) @db.Decimal(18, 2)
+  currentOccasionalIncomeTaxNet    Decimal  @default(0) @db.Decimal(18, 2)
+  currentIncomeTaxNet              Decimal  @db.Decimal(18, 2)
+  otherIncomeTaxDeductions         Decimal  @db.Decimal(18, 2)
+  priorIncomeTaxNet                Decimal  @db.Decimal(18, 2)
+  priorOccasionalIncomeTaxNet      Decimal  @default(0) @db.Decimal(18, 2)
+  priorHadVariableIncome           Boolean  @default(false)
+  accumulatedIncomeTaxNet          Decimal  @db.Decimal(18, 2)
+  elapsedPeriods                   Int
+  elapsedFiscalMonths              Int      @default(0)
+  annualPeriods                    Int
+  annualProjection                 Decimal  @db.Decimal(18, 2)
+  regularAnnualIncomeTax           Decimal  @default(0) @db.Decimal(18, 2)
+  annualIncomeTaxWithOccasional    Decimal  @default(0) @db.Decimal(18, 2)
+  annualIncomeTax                  Decimal  @db.Decimal(18, 2)
+  priorRegularIncomeTaxWithheld    Decimal  @default(0) @db.Decimal(18, 2)
+  priorOccasionalIncomeTaxWithheld Decimal  @default(0) @db.Decimal(18, 2)
+  priorIncomeTaxWithheld           Decimal  @db.Decimal(18, 2)
+  regularIncomeTaxWithheld         Decimal  @default(0) @db.Decimal(18, 2)
+  occasionalIncomeTaxWithheld      Decimal  @default(0) @db.Decimal(18, 2)
+  currentIncomeTaxWithheld         Decimal  @db.Decimal(18, 2)
+  incomeTaxRefund                  Decimal  @db.Decimal(18, 2)
+  incomeTaxCreditBalance           Decimal  @default(0) @db.Decimal(18, 2)
+  bracketSnapshot                  Json?
+  historyFingerprint               String   @db.Char(64)
+  createdAt                        DateTime @default(now())
 
   company               Company                          @relation(fields: [companyId], references: [id], onDelete: Restrict)
   run                   PayrollRun                       @relation(fields: [runId], references: [id], onDelete: Restrict)

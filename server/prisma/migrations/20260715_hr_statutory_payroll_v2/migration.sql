@@ -69,32 +69,22 @@ CREATE TABLE `PayrollStatutoryCalculation` (
   PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-DELIMITER $$
 CREATE TRIGGER `PayrollEmployerContribution_no_update`
 BEFORE UPDATE ON `PayrollEmployerContribution`
 FOR EACH ROW
-BEGIN
-  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'PayrollEmployerContribution is append-only';
-END$$
+SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'PayrollEmployerContribution is append-only';
 
 CREATE TRIGGER `PayrollEmployerContribution_no_delete`
 BEFORE DELETE ON `PayrollEmployerContribution`
 FOR EACH ROW
-BEGIN
-  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'PayrollEmployerContribution is append-only';
-END$$
+SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'PayrollEmployerContribution is append-only';
 
 CREATE TRIGGER `PayrollStatutoryCalculation_no_update`
 BEFORE UPDATE ON `PayrollStatutoryCalculation`
 FOR EACH ROW
-BEGIN
-  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'PayrollStatutoryCalculation is append-only';
-END$$
+SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'PayrollStatutoryCalculation is append-only';
 
 CREATE TRIGGER `PayrollStatutoryCalculation_no_delete`
 BEFORE DELETE ON `PayrollStatutoryCalculation`
 FOR EACH ROW
-BEGIN
-  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'PayrollStatutoryCalculation is append-only';
-END$$
-DELIMITER ;
+SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'PayrollStatutoryCalculation is append-only';

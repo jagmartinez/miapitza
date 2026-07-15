@@ -48,6 +48,7 @@ import type {
   HrPayrollRunDetail,
   HrPayrollRunKind,
   HrPayrollRunPayload,
+  HrPayrollStatutoryCalculation,
   HrPayrollTransitionPayload,
 } from '../../types/hr-payroll';
 import './payroll.css';
@@ -68,6 +69,18 @@ const ACTION_LABELS: Record<HrPayrollAction, string> = {
   MARK_PAID: 'Marcar pagada',
   VOID: 'Anular',
 };
+
+const INCOME_TAX_METHOD_LABELS: Record<string, string> = {
+  FIXED_PERIOD_PROJECTION: 'salario fijo proyectado',
+  FIXED_SALARY_CHANGE: 'cambio de salario fijo',
+  VARIABLE_ACCUMULATED: 'promedio variable acumulado',
+};
+
+function TaxBracketTrace({ item }: { item: HrPayrollStatutoryCalculation }) {
+  const bracket = item.bracketSnapshot?.effective ?? item.bracketSnapshot?.withCurrentOccasional ?? item.bracketSnapshot?.regular;
+  if (!bracket) return null;
+  return <small>Tramo IR efectivo: desde {bracket.lowerBound} hasta {bracket.upperBound ?? 'en adelante'} · base {bracket.baseTax} · tasa {(Number(bracket.rate) * 100).toFixed(2)}% · exceso {bracket.excessOver}</small>;
+}
 
 type CreatePanel =
   | { kind: 'rule'; rule?: HrPayrollRuleVersion }
@@ -747,8 +760,13 @@ export default function PayrollManagement() {
                         {selected.statutoryCalculations.map((item) => <article key={item.id}>
                           <div>
                             <strong>{item.user?.name ?? `Usuario #${item.userId}`} · {item.companyTaxRegime}</strong>
-                            <span>INSS laboral {item.employeeInss} · IR retenido {item.currentIncomeTaxWithheld} · devolución IR {item.incomeTaxRefund}</span>
-                            <small>Base INSS {item.inssBase} · otras deducciones IR {item.otherIncomeTaxDeductions} · renta neta acumulada {item.accumulatedIncomeTaxNet} · proyección anual {item.annualProjection} · período {item.elapsedPeriods}/{item.annualPeriods}</small>
+                            <span>Método IR: {INCOME_TAX_METHOD_LABELS[item.incomeTaxMethod] ?? item.incomeTaxMethod} · versión {item.methodVersion}</span>
+                            <span>INSS laboral {item.employeeInss} · IR ordinario {item.regularIncomeTaxWithheld} · IR ocasional {item.occasionalIncomeTaxWithheld} · total retenido {item.currentIncomeTaxWithheld}</span>
+                            <small>Bruto fijo {item.fixedIncomeTaxGross} · variable {item.variableIncomeTaxGross} · ocasional {item.occasionalIncomeTaxGross} · compensación fija {item.fixedCompensationAmount} · renta neta ordinaria acumulada {item.accumulatedIncomeTaxNet} · proyección anual {item.annualProjection}</small>
+                            <small>Período de pago {item.elapsedPeriods}/{item.annualPeriods} · meses fiscales transcurridos {item.elapsedFiscalMonths}/12 · configuración legal #{item.configurationRevisionId} · creado {item.createdAt}</small>
+                            <TaxBracketTrace item={item} />
+                            <small>Huella del histórico: {item.historyFingerprint}</small>
+                            {(Number(item.incomeTaxCreditBalance) > 0 || Number(item.incomeTaxRefund) > 0) && <small>Crédito calculado {item.incomeTaxCreditBalance} · devolución patronal aplicada {item.incomeTaxRefund}</small>}
                           </div>
                         </article>)}
                       </div>

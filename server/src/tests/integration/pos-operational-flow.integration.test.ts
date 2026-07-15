@@ -14,6 +14,19 @@ describe('POS operational flow', () => {
     const companyId = 990;
     const branchId = 990;
     const username = 'pos_flow_admin';
+    const requiredPermissionNames = [
+        'orders.view',
+        'orders.create',
+        'orders.edit',
+        'orders.cancel',
+        'orders.deliver',
+        'kds.manage',
+        'invoices.issue',
+        'invoices.view',
+        'payments.process',
+        'payments.reverse',
+        'bills.split'
+    ] as const;
     let token: string;
     let userId: number;
     let tableId: number;
@@ -29,23 +42,30 @@ describe('POS operational flow', () => {
     let reservationId: number;
 
     beforeAll(async () => {
-        const role = await prisma.role.findFirst({ where: { name: 'ADMIN', companyId: null } })
-            ?? await prisma.role.create({ data: { name: 'ADMIN', description: 'Integration admin' } });
-        const invoicePermissions = await Promise.all(['invoices.issue', 'invoices.view'].map((name) =>
+        await prisma.company.upsert({
+            where: { id: companyId },
+            update: { active: true },
+            create: { id: companyId, name: 'POS Flow Integration', active: true }
+        });
+        const requiredPermissions = await Promise.all(requiredPermissionNames.map((name) =>
             prisma.permission.upsert({
                 where: { name },
                 update: {},
                 create: { name, description: `POS integration ${name}` }
             })
         ));
-        await prisma.role.update({
-            where: { id: role.id },
-            data: { permissions: { connect: invoicePermissions.map(({ id }) => ({ id })) } }
-        });
-        await prisma.company.upsert({
-            where: { id: companyId },
-            update: { active: true },
-            create: { id: companyId, name: 'POS Flow Integration', active: true }
+        const role = await prisma.role.upsert({
+            where: { companyId_name: { companyId, name: 'ADMIN' } },
+            update: {
+                description: 'POS integration administrator',
+                permissions: { set: requiredPermissions.map(({ id }) => ({ id })) }
+            },
+            create: {
+                companyId,
+                name: 'ADMIN',
+                description: 'POS integration administrator',
+                permissions: { connect: requiredPermissions.map(({ id }) => ({ id })) }
+            }
         });
         await prisma.branch.upsert({
             where: { id: branchId },
@@ -135,6 +155,7 @@ describe('POS operational flow', () => {
         await prisma.auditLog.deleteMany({ where: { companyId } });
         await prisma.setting.deleteMany({ where: { companyId } });
         await prisma.user.deleteMany({ where: { id: userId } });
+        await prisma.role.deleteMany({ where: { companyId, name: 'ADMIN' } });
         await prisma.branch.deleteMany({ where: { id: branchId } });
         await prisma.company.deleteMany({ where: { id: companyId } });
     });

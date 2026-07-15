@@ -36,7 +36,9 @@ export default function PayrollTransitionForm({
   const [reason, setReason] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [paymentReference, setPaymentReference] = useState('');
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [paymentDate] = useState(() =>
+    (run.kind === 'REGULAR' ? run.period?.payDate : run.cutoffDate)?.slice(0, 10) ?? ''
+  );
   const [paymentMethod, setPaymentMethod] = useState('TRANSFERENCIA');
   const [batchReference, setBatchReference] = useState('');
   const [evidenceReference, setEvidenceReference] = useState('');
@@ -117,8 +119,8 @@ export default function PayrollTransitionForm({
             <input value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} maxLength={160} required />
           </label>
           <label>
-            Fecha efectiva
-            <input type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} required />
+            Fecha fiscal congelada
+            <input type="date" value={paymentDate} readOnly required />
           </label>
           <label>
             Método

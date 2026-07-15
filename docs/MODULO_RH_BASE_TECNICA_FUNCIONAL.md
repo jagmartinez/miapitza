@@ -224,7 +224,7 @@ El modo kiosco queda detrás de `HR_ATTENDANCE_KIOSK_ENABLED=false` hasta implem
 
 `PayrollRuleVersion` mantiene vigencia y metadatos. La configuración técnica vive en `PayrollRuleConfigurationRevision`, se hashea y no se devuelve como JSON en listados. Otro actor registra `PayrollRuleConfigurationReview` con `VALIDATED` o `REJECTED`.
 
-El esquema aceptado para nuevas corridas es `HR_PAYROLL_PARAMETRIC_V2`. Una configuración V1 histórica puede consultarse, pero falla cerrada al intentar calcular una corrida nueva. V2 incluye:
+El esquema aceptado para nuevas corridas es `HR_PAYROLL_PARAMETRIC_V3`. Las configuraciones V1/V2 históricas pueden consultarse, pero fallan cerradas al intentar calcular una corrida nueva. V3 incluye:
 
 - moneda ISO;
 - divisores por frecuencia `WEEKLY/BIWEEKLY/MONTHLY`;
@@ -236,9 +236,10 @@ El esquema aceptado para nuevas corridas es `HR_PAYROLL_PARAMETRIC_V2`. Una conf
 - aplicabilidad, fuente y excepción documentada para INSS, INATEC e IR laboral;
 - régimen y tasas INSS laboral/patronal, umbral patronal y base mínima sectorial;
 - tasa INATEC y conceptos base;
-- tabla progresiva IR editable, períodos anuales, conceptos gravables, deducciones autorizadas y ajuste por sobre-retención.
+- tabla progresiva IR editable, períodos anuales, conceptos fijos, variables y ocasionales disjuntos, deducciones autorizadas y ajuste por sobre-retención;
+- métodos separados para salario fijo, cambio salarial, promedio mensual acumulado e incremento ocasional conforme al artículo 19.
 
-No hay tasas legales hardcodeadas en el cálculo. La UI propone una plantilla para transcripción, pero el servidor usa exclusivamente la revisión validada y congelada. Las revisiones son append-only; una modificación material exige una nueva versión `DRAFT`, otra carga y un nuevo dictamen independiente. La especificación completa está en [RH_NOMINA_ESTATUTARIA_V2_20260715.md](./RH_NOMINA_ESTATUTARIA_V2_20260715.md).
+No hay tasas legales hardcodeadas en el cálculo. La UI propone una plantilla para transcripción, pero el servidor usa exclusivamente la revisión validada y congelada. Las revisiones son append-only; una modificación material exige una nueva versión `DRAFT`, otra carga y un nuevo dictamen independiente. La especificación vigente está en [RH_IR_ART19_V3_20260715.md](./RH_IR_ART19_V3_20260715.md); [RH_NOMINA_ESTATUTARIA_V2_20260715.md](./RH_NOMINA_ESTATUTARIA_V2_20260715.md) se conserva sólo como antecedente histórico.
 
 ### Corrida regular
 
@@ -247,7 +248,7 @@ Estados:
 `DRAFT -> CALCULATED -> REVIEW -> APPROVED -> PAID -> VOID`
 
 - `HOURLY` interpreta compensación como importe por hora.
-- `SALARY` usa el divisor versionado de su frecuencia.
+- `SALARY` conserva el monto contractual cuando la evidencia muestra jornada programada completa, usa el divisor versionado para prorrateos y nunca mezcla horas extra aprobadas dentro de minutos ordinarios.
 - Contrato, compensación, ingreso/baja, asistencia cerrada, extras y permisos se segmentan por vigencia.
 - `PayrollSnapshotLine` y `PayrollAttendanceDependency` congelan fuentes/revisiones.
 - `PayrollCoverageClaim` impide pagar dos veces a la misma persona por un rango superpuesto; `VOID` libera mediante `PayrollCoverageRelease` trazable.

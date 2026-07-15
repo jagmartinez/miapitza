@@ -1,5 +1,7 @@
 # Base de revisión — RH y nómina estatutaria V2
 
+> Documento histórico. La metodología de IR V2 fue sustituida por la implementación Art. 19 V3 descrita en `RH_IR_ART19_V3_20260715.md`. No debe usarse como especificación vigente del cálculo.
+
 Fecha de corte técnico: 2026-07-15
 
 País y moneda objetivo: Nicaragua, NIO

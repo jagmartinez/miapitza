@@ -50,7 +50,7 @@ export interface HrPayrollRuleVersion {
 }
 
 export interface HrPayrollLegalConfiguration {
-  schema: 'HR_PAYROLL_PARAMETRIC_V2';
+  schema: 'HR_PAYROLL_PARAMETRIC_V3';
   legallyValidated: true;
   currency: string;
   regular: {
@@ -82,6 +82,7 @@ export interface HrPayrollLegalConfiguration {
       employerSizeThreshold: number;
       minimumMonthlyContributionBase: string;
       minimumBaseProration: 'PER_PAY_PERIOD_SERVICE_RATIO';
+      annualPeriods: { WEEKLY: number; BIWEEKLY: number; MONTHLY: number };
       contributionComponentCodes: string[];
     };
     inatec: {
@@ -96,11 +97,20 @@ export interface HrPayrollLegalConfiguration {
       sourceReference: string;
       exceptionReason?: string;
       regimeIndependenceAcknowledged: true;
-      calculationMethod: 'VARIABLE_ACCUMULATED';
+      calculationMethods: {
+        fixed: 'FIXED_PERIOD_PROJECTION';
+        salaryChange: 'FIXED_SALARY_CHANGE';
+        variable: 'VARIABLE_ACCUMULATED';
+        occasional: 'OCCASIONAL_INCREMENTAL';
+      };
       inssEmployeeContributionDeductible: true;
+      occasionalInssDeductionTreatment: 'DEDUCT_FROM_OCCASIONAL_NET';
       adjustmentMode: 'WITHHOLD_OR_REFUND';
       annualPeriods: { WEEKLY: number; BIWEEKLY: number; MONTHLY: number };
-      taxableComponentCodes: string[];
+      fixedTaxableComponentCodes: string[];
+      variableTaxableComponentCodes: string[];
+      occasionalTaxableComponentCodes: string[];
+      authorizedDeductionComponentCodes: string[];
       brackets: Array<{ lowerBound: string; upperBound: string | null; baseTax: string; rate: string; excessOver: string }>;
     };
   };
@@ -208,6 +218,7 @@ export interface HrPayrollComponent {
   source: 'RULE' | 'ATTENDANCE' | 'OVERTIME' | 'LEAVE' | 'MANUAL' | 'LOAN' | string;
   amount: string;
   taxable?: boolean | null;
+  incomeTaxTreatment?: 'REGULAR_FIXED' | 'REGULAR_VARIABLE' | 'OCCASIONAL' | null;
   incomeTaxDeductible?: boolean | null;
   socialSecurityApplicable?: boolean | null;
   trainingContributionApplicable?: boolean | null;
@@ -221,9 +232,11 @@ export interface HrPayrollComponentPayload {
   type: HrPayrollComponentType;
   inputAmount: string;
   taxable?: boolean;
+  incomeTaxTreatment?: 'REGULAR_FIXED' | 'REGULAR_VARIABLE' | 'OCCASIONAL';
   incomeTaxDeductible: boolean;
   socialSecurityApplicable?: boolean;
   trainingContributionApplicable?: boolean;
+  classificationConfirmed: true;
   reason: string;
   reference?: string;
 }
@@ -248,26 +261,63 @@ export interface HrPayrollStatutoryCalculation {
   userId: number;
   user?: HrUserSummary | null;
   calculationRevision: number;
+  configurationRevisionId: number;
   companyTaxRegime: string;
+  methodVersion: string;
+  incomeTaxMethod: 'FIXED_PERIOD_PROJECTION' | 'FIXED_SALARY_CHANGE' | 'VARIABLE_ACCUMULATED' | string;
   payFrequency: string;
   employerHeadcount: number;
   inssBase: string;
   employeeInss: string;
+  regularEmployeeInss: string;
+  occasionalEmployeeInss: string;
   employerInssRate: string;
   employerInss: string;
   inatecBase: string;
   employerInatec: string;
+  fixedIncomeTaxGross: string;
+  variableIncomeTaxGross: string;
+  occasionalIncomeTaxGross: string;
+  fixedCompensationAmount: string;
+  currentRegularIncomeTaxNet: string;
+  currentOccasionalIncomeTaxNet: string;
   currentIncomeTaxNet: string;
   otherIncomeTaxDeductions: string;
   priorIncomeTaxNet: string;
+  priorOccasionalIncomeTaxNet: string;
+  priorHadVariableIncome: boolean;
   accumulatedIncomeTaxNet: string;
   elapsedPeriods: number;
+  elapsedFiscalMonths: number;
   annualPeriods: number;
   annualProjection: string;
+  regularAnnualIncomeTax: string;
+  annualIncomeTaxWithOccasional: string;
   annualIncomeTax: string;
+  priorRegularIncomeTaxWithheld: string;
+  priorOccasionalIncomeTaxWithheld: string;
   priorIncomeTaxWithheld: string;
+  regularIncomeTaxWithheld: string;
+  occasionalIncomeTaxWithheld: string;
   currentIncomeTaxWithheld: string;
   incomeTaxRefund: string;
+  incomeTaxCreditBalance: string;
+  bracketSnapshot: {
+    regular: HrPayrollIncomeTaxBracket | null;
+    beforeCurrentOccasional: HrPayrollIncomeTaxBracket | null;
+    withCurrentOccasional: HrPayrollIncomeTaxBracket | null;
+    effective: HrPayrollIncomeTaxBracket | null;
+  } | null;
+  historyFingerprint: string;
+  createdAt: string;
+}
+
+export interface HrPayrollIncomeTaxBracket {
+  lowerBound: string;
+  upperBound: string | null;
+  baseTax: string;
+  rate: string;
+  excessOver: string;
 }
 
 export interface HrPayrollRunTotals {

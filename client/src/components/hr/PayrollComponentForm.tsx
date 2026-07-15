@@ -23,6 +23,7 @@ export default function PayrollComponentForm({
   const [type, setType] = useState<HrPayrollComponentType>('INCOME');
   const [inputAmount, setInputAmount] = useState('');
   const [taxable, setTaxable] = useState(false);
+  const [incomeTaxTreatment, setIncomeTaxTreatment] = useState<'' | 'REGULAR_FIXED' | 'REGULAR_VARIABLE' | 'OCCASIONAL'>('');
   const [incomeTaxDeductible, setIncomeTaxDeductible] = useState(false);
   const [socialSecurityApplicable, setSocialSecurityApplicable] = useState(false);
   const [trainingContributionApplicable, setTrainingContributionApplicable] = useState(false);
@@ -32,15 +33,18 @@ export default function PayrollComponentForm({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!classificationConfirmed) return;
     await onSubmit({
       userId: Number(userId),
       code: code.trim().toUpperCase(),
       type,
       inputAmount,
       taxable: type === 'INCOME' ? taxable : false,
+      incomeTaxTreatment: type === 'INCOME' && taxable && incomeTaxTreatment ? incomeTaxTreatment : undefined,
       incomeTaxDeductible: type === 'DEDUCTION' ? incomeTaxDeductible : false,
       socialSecurityApplicable: type === 'INCOME' ? socialSecurityApplicable : false,
       trainingContributionApplicable: type === 'INCOME' ? trainingContributionApplicable : false,
+      classificationConfirmed: true,
       reason: reason.trim(),
       reference: reference.trim() || undefined,
     });
@@ -63,7 +67,12 @@ export default function PayrollComponentForm({
         Tipo
         <select
           value={type}
-          onChange={(event) => { setType(event.target.value as HrPayrollComponentType); setClassificationConfirmed(false); }}
+          onChange={(event) => {
+            setType(event.target.value as HrPayrollComponentType);
+            setTaxable(false);
+            setIncomeTaxTreatment('');
+            setClassificationConfirmed(false);
+          }}
         >
           <option value="INCOME">Ingreso</option>
           <option value="DEDUCTION">Deducción</option>
@@ -73,7 +82,10 @@ export default function PayrollComponentForm({
         Código configurado
         <input
           value={code}
-          onChange={(event) => setCode(event.target.value)}
+          onChange={(event) => {
+            setCode(event.target.value);
+            setClassificationConfirmed(false);
+          }}
           maxLength={50}
           required
         />
@@ -92,14 +104,23 @@ export default function PayrollComponentForm({
       </label>
       {type === 'INCOME' && <fieldset className="span-full hr-payroll-component-classification">
         <legend>Tratamiento estatutario del ingreso</legend>
-        <label><input type="checkbox" checked={socialSecurityApplicable} onChange={(event) => setSocialSecurityApplicable(event.target.checked)} /> Integra base INSS</label>
-        <label><input type="checkbox" checked={trainingContributionApplicable} onChange={(event) => setTrainingContributionApplicable(event.target.checked)} /> Integra base INATEC</label>
-        <label><input type="checkbox" checked={taxable} onChange={(event) => setTaxable(event.target.checked)} /> Integra renta gravable de IR laboral</label>
+        <label><input type="checkbox" checked={socialSecurityApplicable} onChange={(event) => { setSocialSecurityApplicable(event.target.checked); setClassificationConfirmed(false); }} /> Integra base INSS</label>
+        <label><input type="checkbox" checked={trainingContributionApplicable} onChange={(event) => { setTrainingContributionApplicable(event.target.checked); setClassificationConfirmed(false); }} /> Integra base INATEC</label>
+        <label><input type="checkbox" checked={taxable} onChange={(event) => { setTaxable(event.target.checked); setIncomeTaxTreatment(''); setClassificationConfirmed(false); }} /> Integra renta gravable de IR laboral</label>
+        {taxable && <label>
+          Tratamiento para el artículo 19
+          <select value={incomeTaxTreatment} onChange={(event) => { setIncomeTaxTreatment(event.target.value as typeof incomeTaxTreatment); setClassificationConfirmed(false); }} required>
+            <option value="">Seleccionar…</option>
+            <option value="REGULAR_FIXED">Ordinario fijo</option>
+            <option value="REGULAR_VARIABLE">Ordinario variable</option>
+            <option value="OCCASIONAL">Ocasional (bono, vacaciones o incentivo)</option>
+          </select>
+        </label>}
         <label><input type="checkbox" checked={classificationConfirmed} onChange={(event) => setClassificationConfirmed(event.target.checked)} /> Confirmo que revisé la naturaleza legal del concepto y su soporte.</label>
       </fieldset>}
       {type === 'DEDUCTION' && <fieldset className="span-full hr-payroll-component-classification">
         <legend>Tratamiento tributario de la deducción</legend>
-        <label><input type="checkbox" checked={incomeTaxDeductible} onChange={(event) => setIncomeTaxDeductible(event.target.checked)} /> Es una deducción autorizada para determinar la renta neta de IR</label>
+        <label><input type="checkbox" checked={incomeTaxDeductible} onChange={(event) => { setIncomeTaxDeductible(event.target.checked); setClassificationConfirmed(false); }} /> Es una deducción autorizada para determinar la renta neta de IR</label>
         <label><input type="checkbox" checked={classificationConfirmed} onChange={(event) => setClassificationConfirmed(event.target.checked)} /> Confirmo que existe soporte legal y documental; préstamos y descuentos ordinarios no se marcan automáticamente.</label>
       </fieldset>}
       <label>
@@ -123,7 +144,8 @@ export default function PayrollComponentForm({
       </label>
       <p className="hr-payroll-help span-full">
         El importe es una entrada manual auditable. El servidor recalcula INSS, INATEC, IR y totales
-        desde la clasificación declarada; la UI no envía bruto, deducciones totales ni neto.
+        desde la clasificación declarada; la UI no envía bruto, deducciones totales ni neto. El código y
+        las banderas deben coincidir exactamente con los catálogos de la regla legal congelada.
       </p>
       <div className="hr-payroll-form-actions span-full">
         <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
@@ -131,7 +153,7 @@ export default function PayrollComponentForm({
         </Button>
         <Button
           type="submit"
-          disabled={!online || saving || !userId || !code.trim() || !inputAmount || !reason.trim() || !classificationConfirmed || (type === 'DEDUCTION' && incomeTaxDeductible && !reference.trim())}
+          disabled={!online || saving || !userId || !code.trim() || !inputAmount || !reason.trim() || !classificationConfirmed || (type === 'INCOME' && taxable && !incomeTaxTreatment) || (type === 'DEDUCTION' && incomeTaxDeductible && !reference.trim())}
         >
           {saving ? 'Agregando…' : 'Agregar componente'}
         </Button>
