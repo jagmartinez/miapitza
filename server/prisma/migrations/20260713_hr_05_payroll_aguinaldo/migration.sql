@@ -10,7 +10,7 @@ CREATE TABLE `PayrollRuleVersion` (
   `validatedAt` DATETIME(3) NULL, `activatedAt` DATETIME(3) NULL, `retiredAt` DATETIME(3) NULL,
   `activeConfigurationRevisionId` INTEGER NULL, `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), `updatedAt` DATETIME(3) NOT NULL,
   PRIMARY KEY (`id`), UNIQUE INDEX `PayrollRuleVersion_companyId_name_version_key` (`companyId`,`name`,`version`),
-  INDEX `PayrollRuleVersion_companyId_status_effectiveFrom_effectiveTo_idx` (`companyId`,`status`,`effectiveFrom`,`effectiveTo`),
+  INDEX `PayrollRuleVersion_company_status_dates_idx` (`companyId`,`status`,`effectiveFrom`,`effectiveTo`),
   CONSTRAINT `PayrollRuleVersion_companyId_fkey` FOREIGN KEY (`companyId`) REFERENCES `Company`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `PayrollRuleVersion_createdById_fkey` FOREIGN KEY (`createdById`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `PayrollRuleVersion_validatedById_fkey` FOREIGN KEY (`validatedById`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE
@@ -22,7 +22,7 @@ CREATE TABLE `PayrollRuleConfigurationRevision` (
   `evidenceReference` VARCHAR(500) NOT NULL, `uploadReason` TEXT NOT NULL, `uploadedById` INTEGER NOT NULL,
   `uploadedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), PRIMARY KEY (`id`),
   UNIQUE INDEX `PayrollRuleConfigurationRevision_ruleVersionId_revision_key` (`ruleVersionId`,`revision`),
-  UNIQUE INDEX `PayrollRuleConfigurationRevision_ruleVersionId_configurationHash_key` (`ruleVersionId`,`configurationHash`),
+  UNIQUE INDEX `PayrollRuleConfig_rule_hash_key` (`ruleVersionId`,`configurationHash`),
   INDEX `PayrollRuleConfigurationRevision_companyId_uploadedAt_idx` (`companyId`,`uploadedAt`),
   CONSTRAINT `PayrollRuleConfigurationRevision_companyId_fkey` FOREIGN KEY (`companyId`) REFERENCES `Company`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `PayrollRuleConfigurationRevision_ruleVersionId_fkey` FOREIGN KEY (`ruleVersionId`) REFERENCES `PayrollRuleVersion`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
@@ -202,7 +202,7 @@ CREATE TABLE `PayrollCoverageClaim` (
   `kind` ENUM('REGULAR','AGUINALDO') NOT NULL, `coverageFrom` DATE NOT NULL, `coverageTo` DATE NOT NULL, `coverageKey` CHAR(64) NOT NULL,
   `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), PRIMARY KEY (`id`),
   UNIQUE INDEX `PayrollCoverageClaim_runId_userId_kind_coverageKey_key` (`runId`,`userId`,`kind`,`coverageKey`),
-  INDEX `PayrollCoverageClaim_companyId_userId_kind_coverageFrom_coverageTo_idx` (`companyId`,`userId`,`kind`,`coverageFrom`,`coverageTo`),
+  INDEX `PayrollCoverageClaim_company_user_kind_dates_idx` (`companyId`,`userId`,`kind`,`coverageFrom`,`coverageTo`),
   CONSTRAINT `PayrollCoverageClaim_companyId_fkey` FOREIGN KEY (`companyId`) REFERENCES `Company`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `PayrollCoverageClaim_runId_fkey` FOREIGN KEY (`runId`) REFERENCES `PayrollRun`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `PayrollCoverageClaim_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE

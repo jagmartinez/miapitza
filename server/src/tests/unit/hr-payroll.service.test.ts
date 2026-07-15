@@ -207,6 +207,11 @@ describe('HR payroll persistence and route contract', () => {
         expect(rollback).not.toContain('DELETE pr FROM `_PermissionToRole`');
     });
 
+    it('keeps every payroll migration identifier within the MySQL 64-character limit', () => {
+        const identifiers = [...migration.matchAll(/`([^`]+)`/g)].map(match => match[1]);
+        expect(identifiers.filter(identifier => identifier.length > 64)).toEqual([]);
+    });
+
     it('sets no-store and removes internal trace from self DTOs', () => {
         expect(routes).toContain("Cache-Control', 'no-store");
         expect(service).toContain('trace: selfSafe ? []');

@@ -1698,7 +1698,7 @@ model PayrollRuleVersion {
   activeConfigurationRevision PayrollRuleConfigurationRevision?  @relation("PayrollRuleActiveConfiguration", fields: [activeConfigurationRevisionId], references: [id], onDelete: Restrict)
 
   @@unique([companyId, name, version])
-  @@index([companyId, status, effectiveFrom, effectiveTo])
+  @@index([companyId, status, effectiveFrom, effectiveTo], map: "PayrollRuleVersion_company_status_dates_idx")
 }
 
 model PayrollRuleConfigurationRevision {
@@ -1722,7 +1722,7 @@ model PayrollRuleConfigurationRevision {
   runs          PayrollRun[]
 
   @@unique([ruleVersionId, revision])
-  @@unique([ruleVersionId, configurationHash])
+  @@unique([ruleVersionId, configurationHash], map: "PayrollRuleConfig_rule_hash_key")
   @@index([companyId, uploadedAt])
 }
 
@@ -1919,7 +1919,7 @@ model PayrollCoverageClaim {
   release PayrollCoverageRelease?
 
   @@unique([runId, userId, kind, coverageKey])
-  @@index([companyId, userId, kind, coverageFrom, coverageTo])
+  @@index([companyId, userId, kind, coverageFrom, coverageTo], map: "PayrollCoverageClaim_company_user_kind_dates_idx")
 }
 
 model PayrollCoverageRelease {
