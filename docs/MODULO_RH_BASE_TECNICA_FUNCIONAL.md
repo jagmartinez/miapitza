@@ -2,7 +2,7 @@
 
 **Repositorio:** `C:\restaurant`
 **Corte de consolidación:** 2026-07-14
-**Estado:** núcleo F1–F6 implementado y validado localmente; no habilitado para producción.
+**Estado:** núcleo F1–F6 desplegado en Railway; activación biométrica, legal y operativa sujeta a los gates de este documento.
 **Plan vivo:** `docs/PLAN_IMPLEMENTACION_MODULO_RH.md`.
 
 ## 1. Propósito y alcance real
@@ -400,7 +400,9 @@ Orden obligatorio:
 
 Cada carpeta contiene `migration.sql` y `rollback.sql`. Los rollbacks eliminan datos RH y son sólo una herramienta de emergencia: exportar evidencia y verificar dependencias antes de usarlos.
 
-No se aplicaron estas migraciones en producción ni en una base clon durante esta implementación. El baseline fue actualizado estáticamente, pero no sustituye el ensayo MySQL.
+Las seis migraciones RH se aplicaron en Railway MySQL el 2026-07-14. El primer despliegue detectó nombres de índices superiores al límite de MySQL y el segundo una incompatibilidad entre el `CHECK` de `PayrollRun` y `ON UPDATE CASCADE`; ambos quedaron contenidos por `migrate deploy` y el healthcheck. Los objetos parciales y vacíos de F5 se eliminaron con su rollback específico, la migración se marcó `rolled back` y el tercer intento aplicó F5/F6 correctamente. `prisma migrate status` confirmó las 35 migraciones al día.
+
+Esto no sustituye el ensayo de restore/rollback sobre un clon. No se exportó una copia de la base productiva fuera de Railway; antes de operar nómina debe confirmarse y probarse la política de respaldos nativos del entorno.
 
 Procedimiento mínimo:
 
@@ -440,11 +442,14 @@ Gate consolidado final del 2026-07-14:
 - F5 focal final: 22/22; focal conjunta previa F4/F5/F6: 48/48.
 - F6 focal con moneda: 13/13.
 - Dos reauditorías independientes y read-only cerraron con cero hallazgos P0/P1 residuales.
-- No se ejecutaron migraciones, integración MySQL ni Playwright con cámara/GPS reales.
+- Railway API: deployment `a4771d1d-971b-48d3-bd6a-89cc1617a603`, commit `acbd271`, estado `SUCCESS`.
+- Railway web: deployment `0cd0ce8e-bab8-4c97-8c04-ebed5af3580b`, estado `SUCCESS`.
+- Smoke público: API `/health` respondió `200 ok`; SPA respondió `200` y publicó su raíz React.
+- No se ejecutaron Playwright con cámara/GPS reales, piloto biométrico ni reconciliación legal de nómina.
 
-## 17. Gates pendientes antes de producción
+## 17. Gates pendientes antes de activación operativa
 
-1. Migración y rollback sobre clon MySQL restaurado.
+1. Confirmar backup nativo Railway, restaurarlo en un clon y ensayar rollback/forward-fix.
 2. Pruebas de integración con constraints/triggers reales.
 3. Validación firmada de reglas legales, fiscales, contables y política de redondeo.
 4. Proveedor facial productivo, credenciales, evaluación de sesgo/precisión, privacidad y piloto.

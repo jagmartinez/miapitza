@@ -2,7 +2,7 @@
 
 **Proyecto:** Restaurant System / Mi Restaurante
 **Fecha base:** 2026-07-13
-**Estado general:** NÚCLEO F1–F6 CONSOLIDADO LOCALMENTE — GATES DE PRODUCCIÓN PENDIENTES
+**Estado general:** NÚCLEO F1–F6 DESPLEGADO EN RAILWAY — GATES DE ACTIVACIÓN OPERATIVA PENDIENTES
 **Responsable funcional:** Owner de la empresa
 **Fuente de verdad del avance:** este documento
 
@@ -375,11 +375,11 @@ Antes de habilitar una corrida productiva se requiere acta de validación por la
 - [ ] Resolver email opcional para usuarios sin correo, conservando unicidad/login y sin placeholders ficticios; diferido por su impacto transversal en autenticación y recuperación.
 - [~] Crear organización, empleado, adscripción, contrato, compensación y documentos: modelos completos y CRUD base de empleado/catálogos; contratos, compensaciones y documentos aún requieren API/UI propia.
 - [x] Añadir campos geográficos, versión de geocerca y activación de asistencia a `Branch`.
-- [~] Migración SQL aditiva y rollback creados/validados estáticamente; baseline, ejecución en MySQL `_test` y ensayo de rollback pendientes.
+- [~] Migraciones aditivas aplicadas en Railway MySQL y rollbacks disponibles; restore/rollback sobre clon aislado sigue pendiente.
 - [x] Servicios/controladores/rutas/allowlists/validaciones/permisos/auditoría de la fundación.
 - [~] Conversión `EXTERNAL -> INTERNAL` transaccional implementada; la reversión conserva el vínculo histórico y queda bloqueada hasta diseñar baja/recontratación sin romper evidencia.
 - [x] UI Personal, expediente, usuarios interno/externo y Sucursales con alta geográfica atómica/geocerca versionada.
-- [~] Unitarias RH, typecheck, lint, Vitest y builds aprobados; integración MySQL y E2E de navegador pendientes.
+- [~] Unitarias RH, typecheck, lint, Vitest, builds y migración productiva aprobados; integración transaccional MySQL y E2E de navegador pendientes.
 
 **Aceptación:** Owner crea/edita/desactiva empleado ligado a usuario; externo no puede tener empleado; no hay fuga tenant; sucursal guarda coordenadas válidas y no habilita asistencia incompleta.
 
@@ -391,7 +391,7 @@ Antes de habilitar una corrida productiva se requiere acta de validación por la
 - [x] API por usuario/sucursal/puesto/semana, más plantillas, feriados, intercambios y autoservicio.
 - [x] Calendario Owner y `Mi horario` responsive/accesible, con alternativa móvil, estados parciales y protección offline.
 - [~] Acuse de recepción implementado; notificación push/in-app de nueva versión queda pendiente de una infraestructura de notificaciones RH persistente.
-- [~] Pruebas unitarias de solape, turno nocturno, DST inexistente/duplicado, multi-sucursal, publicación concurrente, swaps efectivos/obsoletos, scope, contrato y carreras UI aprobadas; aplicación/rollback MySQL y E2E de navegador siguen pendientes.
+- [~] Pruebas unitarias de solape, turno nocturno, DST inexistente/duplicado, multi-sucursal, publicación concurrente, swaps efectivos/obsoletos, scope, contrato y carreras UI aprobadas; migración productiva aplicada, ensayo de rollback y E2E de navegador pendientes.
 
 **Aceptación:** Owner publica una semana sin conflictos; el usuario sólo ve su horario vigente; cada turno conserva sucursal/puesto/versión.
 
@@ -451,7 +451,7 @@ Antes de habilitar una corrida productiva se requiere acta de validación por la
 
 ### Fase 7 — End-to-end, hardening y entrega
 
-- [~] Unit tests, Vitest, typecheck y build completos; integración MySQL y Playwright pendientes.
+- [~] Unit tests, Vitest, typecheck, build y despliegue Railway completos; integración MySQL de flujo real y Playwright pendientes.
 - [x] Auditoría adversarial estática/unitaria multiempresa, biométrica, geográfica, laboral, RBAC y financiera con remediación P1.
 - [ ] Pruebas responsive/accesibilidad/teclado y permisos de navegador.
 - [ ] Ensayo de migración, backup, restore y rollback.
@@ -570,11 +570,12 @@ Estas decisiones no detienen la fundación; se mantienen configurables:
 | 2026-07-13 | 3 | Validación técnica de servidor | Prisma format/generate/validate, typecheck, build, ESLint y 9 suites/50 pruebas RH | Completado |
 | 2026-07-13 | 4 | Jornadas, extras, ausencias, vacaciones y autoservicio | Hito intermedio de vistas cliente; completado por la consolidación del 2026-07-14 | Superado |
 | 2026-07-14 | 4 | Consolidación de jornadas y permisos | Resúmenes derivados, períodos, incidencias, correcciones, extras, permisos fraccionados, vacaciones y bloqueos de fuente; 50/50 pruebas focales | Implementado; DB/E2E pendiente |
-| 2026-07-14 | 5 | Nómina y aguinaldo | Configuración legal dual-control e inmutable, snapshots, ledger histórico normalizado, cobertura, cálculo segmentado, pago evidenciado y reversión compensatoria; 22/22 pruebas F5 | Implementado; validación legal y DB pendientes |
-| 2026-07-14 | 6 | Viáticos, préstamos y deducciones | Estados, ledgers, autoservicio, moneda fail-closed e integración project/commit/reverse con nómina; 13/13 pruebas F6 | Implementado; evidencias seguras/DB pendientes |
+| 2026-07-14 | 5 | Nómina y aguinaldo | Configuración legal dual-control e inmutable, snapshots, ledger histórico normalizado, cobertura, cálculo segmentado, pago evidenciado y reversión compensatoria; 22/22 pruebas F5 | Desplegado; validación legal/piloto pendientes |
+| 2026-07-14 | 6 | Viáticos, préstamos y deducciones | Estados, ledgers, autoservicio, moneda fail-closed e integración project/commit/reverse con nómina; 13/13 pruebas F6 | Desplegado; repositorio seguro de evidencias pendiente |
 | 2026-07-14 | 7 | Hardening multiagente | Cerradas escalación de roles, PII de mutaciones, alcance Owner, empleados inactivos, publicación TOCTOU, permisos/marcaje y reintento ambiguo de gastos | Completado en código |
 | 2026-07-14 | 7 | Gates completos locales | Servidor 85 suites/471 pruebas; cliente 38 archivos/140 pruebas; Prisma válido; typecheck y build cliente aprobados | Completado antes del despliegue Railway |
 | 2026-07-14 | 7 | Loop adversarial final | Corregidos cinco controles financieros iniciales, estado E2E de componentes manuales y congelamiento total de reglas validadas; dos reauditorías independientes reportaron 0 P0/P1 | Cerrado |
+| 2026-07-14 | 7 | Despliegue Railway | Commits `24cb0f7`, `bbc77c7` y `acbd271`; seis migraciones RH aplicadas, 35/35 al día; API y web `SUCCESS`; smoke HTTPS 200 | Completado |
 
 ## 18. Entregables documentales finales
 
