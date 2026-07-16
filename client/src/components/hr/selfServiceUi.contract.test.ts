@@ -8,21 +8,25 @@ const schedule = read('../../pages/hr/MySchedule.tsx');
 const workforce = read('../../pages/hr/MyWorkforce.tsx');
 const payroll = read('../../pages/hr/MyPayroll.tsx');
 const benefits = read('../../pages/hr/MyBenefits.tsx');
+const timeClock = read('../../pages/hr/TimeClock.tsx');
+const biometrics = read('../../pages/hr/Biometrics.tsx');
 const profile = read('../../pages/Profile.tsx');
 const navigation = read('./MyHrNav.tsx');
 const layout = read('../Layout.tsx');
 
 describe('employee self-service UX contract', () => {
   it('keeps contextual navigation on every personal HR section', () => {
-    [landing, schedule, workforce, payroll, benefits].forEach((source) => {
+    [landing, schedule, workforce, payroll, benefits, timeClock, biometrics, profile].forEach((source) => {
       expect(source).toContain('<MyHrNav />');
     });
     [
-      '/rh/mi-portal',
+      '/profile?tab=hr',
       '/rh/mi-portal/horario',
       '/rh/mi-portal/gestion',
       '/rh/mi-portal/nomina',
       '/rh/mi-portal/prestaciones',
+      '/rh/marcaje',
+      '/rh/biometria',
     ].forEach((route) => expect(navigation).toContain(route));
     expect(navigation).toContain('aria-label="Secciones de mi portal RH"');
   });
@@ -55,6 +59,7 @@ describe('employee self-service UX contract', () => {
     expect(profile).toContain('to="/rh/mi-portal/nomina"');
     expect(profile).toContain('to="/rh/mi-portal/gestion?tab=OVERTIME"');
     expect(profile).toContain('to="/rh/mi-portal/gestion?tab=LEAVE"');
+    expect(profile).toContain('to="/rh/biometria"');
   });
 
   it('usa el mismo saldo semántico de vacaciones y enfoca enlaces profundos', () => {
@@ -76,5 +81,7 @@ describe('employee self-service UX contract', () => {
     expect(workforce).toContain('En espera');
     expect(workforce).toContain('Aprobadas');
     expect(workforce).toContain('Denegadas');
+    expect(workforce).toContain('Promise.allSettled');
+    expect(workforce).toContain('partialWarning');
   });
 });

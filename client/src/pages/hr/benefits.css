@@ -32,13 +32,56 @@
 
 .hr-benefits-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.25fr) auto;
+  grid-template-columns: minmax(420px, 1fr) minmax(230px, 0.35fr) minmax(180px, 0.25fr) auto;
   align-items: end;
   gap: var(--spacing-md);
   padding: var(--spacing-md);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
+}
+
+.hr-benefits-search > span {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.hr-benefits-search > span > svg {
+  position: absolute;
+  left: .75rem;
+  color: var(--color-text-tertiary);
+  pointer-events: none;
+}
+
+.hr-benefits-search input { padding-left: 2.35rem; }
+
+.hr-benefits-admin-register {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.hr-benefits-admin-register > .hr-benefits-admin-board {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 100%;
+}
+
+.hr-benefits-admin-register > .hr-benefits-workspace.is-empty { display: none; }
+.hr-benefits-admin-register > .hr-benefits-workspace.is-visible {
+  display: block;
+  width: 100%;
+  margin-top: 0;
+  box-shadow: var(--shadow-sm);
+}
+
+.hr-benefits-workspace-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
 }
 .hr-benefits-toolbar.self {
   grid-template-columns: minmax(0, 1fr) auto;
@@ -488,6 +531,8 @@
 }
 
 @media (max-width: 1100px) {
+  .hr-benefits-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hr-benefits-tabs { grid-column: 1 / -1; }
   .hr-benefits-layout {
     grid-template-columns: minmax(250px, 0.8fr) minmax(0, 1.3fr);
   }

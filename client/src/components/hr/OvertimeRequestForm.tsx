@@ -1,6 +1,8 @@
 import HrReactSelect from './HrReactSelect';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import { Clock3 } from 'lucide-react';
 import Button from '../Button';
+import HrModalFormShell from './HrModalFormShell';
 import type { HrUserSummary } from '../../types/hr';
 import type { HrOvertimeRequestPayload } from '../../types/hr-workforce';
 
@@ -14,6 +16,7 @@ interface OvertimeRequestFormProps {
   saving: boolean;
   onSubmit: (payload: HrOvertimeRequestPayload) => Promise<void>;
   onCancel?: () => void;
+  notice?: ReactNode;
 }
 
 export default function OvertimeRequestForm({
@@ -26,6 +29,7 @@ export default function OvertimeRequestForm({
   saving,
   onSubmit,
   onCancel,
+  notice,
 }: OvertimeRequestFormProps) {
   const [userId, setUserId] = useState(initialUserId ? String(initialUserId) : '');
   const [date, setDate] = useState(initialDate);
@@ -46,7 +50,21 @@ export default function OvertimeRequestForm({
   };
 
   return (
-    <form className="hr-workforce-form" onSubmit={(event) => void submit(event)}>
+    <HrModalFormShell
+      ariaLabel="Sección de solicitud de horas extra"
+      tabLabel="Horas extra"
+      sectionTitle="Fecha, minutos y justificación"
+      icon={<Clock3 size={18} aria-hidden="true" />}
+      formClassName="hr-workforce-form"
+      notice={notice}
+      onSubmit={(event) => void submit(event)}
+      footer={
+        <>
+          {onCancel && <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>}
+          <Button type="submit" disabled={!online || saving || !date || Number(requestedMinutes) <= 0 || !reason.trim() || Boolean(users && !userId)}>{saving ? 'Enviando…' : 'Solicitar horas extra'}</Button>
+        </>
+      }
+    >
       {users && (
         <label>
           Usuario
@@ -96,26 +114,6 @@ export default function OvertimeRequestForm({
           aprobación ni cálculo legal.
         </p>
       )}
-      <div className="hr-form-actions span-full">
-        {onCancel && (
-          <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
-            Cancelar
-          </Button>
-        )}
-        <Button
-          type="submit"
-          disabled={
-            !online ||
-            saving ||
-            !date ||
-            Number(requestedMinutes) <= 0 ||
-            !reason.trim() ||
-            Boolean(users && !userId)
-          }
-        >
-          {saving ? 'Enviando…' : 'Solicitar horas extra'}
-        </Button>
-      </div>
-    </form>
+    </HrModalFormShell>
   );
 }

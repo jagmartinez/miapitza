@@ -2,14 +2,19 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     ArrowLeft,
+    BadgeCheck,
     Briefcase,
     Building2,
+    CalendarDays,
     FileText,
     FileLock2,
     Landmark,
     Link,
+    Mail,
     MapPin,
+    Phone,
     RefreshCw,
+    ShieldCheck,
     UserRound,
 } from 'lucide-react';
 import Button from '../../components/Button';
@@ -20,6 +25,7 @@ import EmployeeRecordPanel from '../../components/hr/EmployeeRecordPanel';
 import { getHrErrorMessage, hrClient } from '../../components/hr/hrClient';
 import type { HrEmployee } from '../../types/hr';
 import './hr.css';
+import './hr-admin-operations.css';
 
 type DetailTab = 'data' | 'relationship' | 'user' | 'assignment' | 'contracts' | 'compensation' | 'documents';
 const DETAIL_TABS: DetailTab[] = ['data', 'relationship', 'user', 'assignment', 'contracts', 'compensation', 'documents'];
@@ -34,6 +40,49 @@ function displayDate(value?: string | null): string {
 
 function value(value?: string | null): string {
     return value?.trim() || '—';
+}
+
+function initials(name: string): string {
+    return name
+        .trim()
+        .split(/\s+/)
+        .slice(0, 2)
+        .map((part) => part.charAt(0).toUpperCase())
+        .join('') || 'RH';
+}
+
+function DetailGroup({
+    title,
+    description,
+    icon,
+    children,
+}: {
+    title: string;
+    description: string;
+    icon: React.ReactNode;
+    children: React.ReactNode;
+}) {
+    return (
+        <section className="hr-detail-group">
+            <header>
+                <span className="hr-detail-group-icon">{icon}</span>
+                <div>
+                    <h2>{title}</h2>
+                    <p>{description}</p>
+                </div>
+            </header>
+            <dl className="hr-detail-list">{children}</dl>
+        </section>
+    );
+}
+
+function DetailItem({ label, children, wide = false }: { label: string; children: React.ReactNode; wide?: boolean }) {
+    return (
+        <div className={wide ? 'hr-detail-item hr-detail-item-wide' : 'hr-detail-item'}>
+            <dt>{label}</dt>
+            <dd>{children}</dd>
+        </div>
+    );
 }
 
 export default function EmployeeDetail() {
@@ -96,17 +145,16 @@ export default function EmployeeDetail() {
     );
 
     return (
-        <div className="page-wrapper hr-employee-detail-page">
+        <div className="page-wrapper inventory-page hr-employee-detail-page hr-admin-catalog-page">
             <PageHeader
-                title={employee?.legalName ?? 'Expediente laboral'}
-                subtitle={employee ? `Código ${employee.employeeCode}` : undefined}
+                title="Expediente del colaborador"
+                subtitle="Identidad, relación laboral, asignaciones y documentos en un solo lugar"
                 icon={UserRound}
                 backButton={
                     <button type="button" className="back-link-btn" onClick={() => navigate('/rh/personal')}>
                         <ArrowLeft size={16} /> Volver a personal
                     </button>
                 }
-                actions={employee ? <HrStatusPill status={employee.status} /> : undefined}
             />
 
             {loading && <LoadingSpinner text="Cargando expediente…" />}
@@ -121,7 +169,36 @@ export default function EmployeeDetail() {
 
             {!loading && !error && employee && (
                 <>
-                    <div className="page-tabs" role="tablist" aria-label="Secciones del expediente">
+                    <section className="hr-employee-profile-card" aria-label="Resumen del expediente">
+                        <div className="hr-employee-avatar" aria-hidden="true">{initials(employee.legalName)}</div>
+                        <div className="hr-employee-profile-main">
+                            <span className="hr-employee-eyebrow">Expediente {employee.employeeCode}</span>
+                            <h2>{employee.legalName}</h2>
+                            <p>
+                                {employee.jobPosition?.name ?? 'Puesto sin asignar'}
+                                <span aria-hidden="true">·</span>
+                                {employee.department?.name ?? 'Departamento sin asignar'}
+                            </p>
+                            <div className="hr-employee-profile-contact">
+                                <span><Mail size={14} aria-hidden="true" />{value(employee.workEmail)}</span>
+                                <span><Phone size={14} aria-hidden="true" />{value(employee.workPhone)}</span>
+                                <span><MapPin size={14} aria-hidden="true" />{employee.primaryBranch?.name ?? 'Sucursal sin asignar'}</span>
+                            </div>
+                        </div>
+                        <div className="hr-employee-profile-status">
+                            <HrStatusPill status={employee.status} />
+                            <small>Actualizado {displayDate(employee.updatedAt)}</small>
+                        </div>
+                    </section>
+
+                    <section className="hr-employee-facts" aria-label="Datos laborales clave">
+                        <div><CalendarDays size={19} /><span>Ingreso</span><strong>{displayDate(employee.hireDate)}</strong></div>
+                        <div><Briefcase size={19} /><span>Relación</span><strong>{value(employee.employmentType).replace(/_/g, ' ')}</strong></div>
+                        <div><Building2 size={19} /><span>Sucursal principal</span><strong>{employee.primaryBranch?.name ?? 'Sin asignar'}</strong></div>
+                        <div><BadgeCheck size={19} /><span>Cuenta vinculada</span><strong>{employee.user ? `@${employee.user.username}` : 'Sin usuario'}</strong></div>
+                    </section>
+
+                    <div className="page-tabs hr-employee-tabs" role="tablist" aria-label="Secciones del expediente">
                         {tab('data', 'Datos', <UserRound size={17} />)}
                         {tab('relationship', 'Relación', <Briefcase size={17} />)}
                         {tab('user', 'Usuario', <Link size={17} />)}
@@ -133,40 +210,61 @@ export default function EmployeeDetail() {
 
                     <section
                         id={`hr-detail-panel-${activeTab}`}
-                        className="hr-detail-panel"
+                        className="hr-detail-panel pr-table-card"
                         role="tabpanel"
                         aria-labelledby={`hr-detail-tab-${activeTab}`}
                     >
                         {activeTab === 'data' && (
-                            <div className="hr-detail-grid">
-                                <div><span>Nombre legal</span><strong>{employee.legalName}</strong></div>
-                                <div><span>Identificación</span><strong>{value(employee.documentNumber)}</strong></div>
-                                <div><span>Correo laboral</span><strong>{value(employee.workEmail)}</strong></div>
-                                <div><span>Teléfono laboral</span><strong>{value(employee.workPhone)}</strong></div>
-                                <div className="hr-detail-wide"><span>Dirección</span><strong>{value(employee.address)}</strong></div>
-                                <div className="hr-detail-wide"><span>Notas</span><strong>{value(employee.notes)}</strong></div>
+                            <div className="hr-detail-sections">
+                                <DetailGroup title="Identificación" description="Datos legales y fiscales del colaborador" icon={<ShieldCheck size={18} />}>
+                                    <DetailItem label="Nombre legal">{employee.legalName}</DetailItem>
+                                    <DetailItem label="Nombre preferido">{value(employee.preferredName)}</DetailItem>
+                                    <DetailItem label="Tipo de documento">{value(employee.documentType)}</DetailItem>
+                                    <DetailItem label="Número de documento">{value(employee.documentNumber)}</DetailItem>
+                                    <DetailItem label="Número INSS">{value(employee.socialSecurityNumber)}</DetailItem>
+                                    <DetailItem label="RUC / identificación fiscal">{value(employee.taxId)}</DetailItem>
+                                </DetailGroup>
+                                <DetailGroup title="Contacto" description="Canales laborales y ubicación registrada" icon={<UserRound size={18} />}>
+                                    <DetailItem label="Correo laboral">{value(employee.workEmail)}</DetailItem>
+                                    <DetailItem label="Teléfono laboral">{value(employee.workPhone)}</DetailItem>
+                                    <DetailItem label="Correo personal">{value(employee.email)}</DetailItem>
+                                    <DetailItem label="Teléfono personal">{value(employee.phone)}</DetailItem>
+                                    <DetailItem label="Dirección" wide>{value(employee.address)}</DetailItem>
+                                </DetailGroup>
+                                <DetailGroup title="Contacto de emergencia" description="Persona a contactar ante una incidencia" icon={<Phone size={18} />}>
+                                    <DetailItem label="Nombre">{value(employee.emergencyContactName)}</DetailItem>
+                                    <DetailItem label="Teléfono">{value(employee.emergencyContactPhone)}</DetailItem>
+                                    <DetailItem label="Relación">{value(employee.emergencyContactRelationship)}</DetailItem>
+                                    <DetailItem label="Notas internas" wide>{value(employee.notes)}</DetailItem>
+                                </DetailGroup>
                             </div>
                         )}
 
                         {activeTab === 'relationship' && (
-                            <div className="hr-detail-grid">
-                                <div><span>Fecha de ingreso</span><strong>{displayDate(employee.hireDate)}</strong></div>
-                                <div><span>Tipo de empleo</span><strong>{value(employee.employmentType).replace(/_/g, ' ')}</strong></div>
-                                <div><span>Departamento</span><strong>{employee.department?.name ?? 'Sin asignar'}</strong></div>
-                                <div><span>Puesto</span><strong>{employee.jobPosition?.name ?? 'Sin asignar'}</strong></div>
-                                <div><span>Centro de costo</span><strong>{employee.costCenter?.name ?? 'Sin asignar'}</strong></div>
-                                <div><span>Fecha de terminación</span><strong>{displayDate(employee.terminationDate)}</strong></div>
+                            <div className="hr-detail-sections">
+                                <DetailGroup title="Relación laboral" description="Vigencia y estructura organizacional" icon={<Briefcase size={18} />}>
+                                    <DetailItem label="Fecha de ingreso">{displayDate(employee.hireDate)}</DetailItem>
+                                    <DetailItem label="Tipo de empleo">{value(employee.employmentType).replace(/_/g, ' ')}</DetailItem>
+                                    <DetailItem label="Departamento">{employee.department?.name ?? 'Sin asignar'}</DetailItem>
+                                    <DetailItem label="Puesto">{employee.jobPosition?.name ?? 'Sin asignar'}</DetailItem>
+                                    <DetailItem label="Centro de costo">{employee.costCenter?.name ?? 'Sin asignar'}</DetailItem>
+                                    <DetailItem label="Supervisor">{employee.supervisor?.legalName ?? 'Sin asignar'}</DetailItem>
+                                    <DetailItem label="Fecha de terminación">{displayDate(employee.terminationDate)}</DetailItem>
+                                    <DetailItem label="Contrato vigente">{employee.currentContract?.contractType?.replace(/_/g, ' ') ?? 'Sin contrato vigente'}</DetailItem>
+                                </DetailGroup>
                             </div>
                         )}
 
                         {activeTab === 'user' && (
                             employee.user ? (
-                                <div className="hr-detail-grid">
-                                    <div><span>Nombre</span><strong>{employee.user.name}</strong></div>
-                                    <div><span>Usuario</span><strong>@{employee.user.username}</strong></div>
-                                    <div><span>Correo</span><strong>{value(employee.user.email)}</strong></div>
-                                    <div><span>Tipo de cuenta</span><strong>{employee.user.accountType ?? 'INTERNAL'}</strong></div>
-                                    <div><span>Estado de cuenta</span><strong>{value(employee.user.status)}</strong></div>
+                                <div className="hr-detail-sections">
+                                    <DetailGroup title="Acceso al sistema" description="Cuenta vinculada con el expediente laboral" icon={<Link size={18} />}>
+                                        <DetailItem label="Nombre">{employee.user.name}</DetailItem>
+                                        <DetailItem label="Usuario">@{employee.user.username}</DetailItem>
+                                        <DetailItem label="Correo">{value(employee.user.email)}</DetailItem>
+                                        <DetailItem label="Tipo de cuenta">{employee.user.accountType ?? 'INTERNAL'}</DetailItem>
+                                        <DetailItem label="Estado de cuenta">{value(employee.user.status)}</DetailItem>
+                                    </DetailGroup>
                                 </div>
                             ) : (
                                 <div className="hr-panel-empty"><Link size={32} /><p>El expediente no devolvió un usuario vinculado.</p></div>
@@ -175,9 +273,9 @@ export default function EmployeeDetail() {
 
                         {activeTab === 'assignment' && (
                             employee.branchAssignments && employee.branchAssignments.length > 0 ? (
-                                <div className="hr-assignment-list">
+                                <div className="hr-assignment-list" role="list">
                                     {employee.branchAssignments.map((assignment) => (
-                                        <article key={assignment.id ?? assignment.branchId}>
+                                        <article key={assignment.id ?? assignment.branchId} role="listitem">
                                             <Building2 size={20} aria-hidden="true" />
                                             <div>
                                                 <strong>{assignment.branch?.name ?? `Sucursal ${assignment.branchId}`}</strong>

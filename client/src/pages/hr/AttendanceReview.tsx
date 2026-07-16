@@ -7,6 +7,7 @@ import PageHeader from '../../components/PageHeader';
 import Pagination from '../../components/Pagination';
 import Select from '../../components/Select';
 import Sidebar from '../../components/Sidebar';
+import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import { attendanceClient, createAttendanceIdempotencyKey, getAttendanceErrorMessage } from '../../components/hr/attendanceClient';
 import { ATTENDANCE_ACTION_LABELS, ATTENDANCE_DECISION_LABELS } from '../../components/hr/attendanceRules';
 import { hrClient } from '../../components/hr/hrClient';
@@ -21,6 +22,7 @@ import type {
 } from '../../types/hr-attendance';
 import './attendance.css';
 import './admin-tables.css';
+import './hr-admin-operations.css';
 import '../Inventory.css';
 
 type Option = { value: string; label: string };
@@ -109,6 +111,8 @@ export default function AttendanceReview() {
                 label: `#${event.id} · ${event.user?.name ?? `Usuario ${event.userId}`} · ${ATTENDANCE_ACTION_LABELS[event.action]} · ${displayDate(event.occurredAt)}`,
             })),
     ], [events]);
+    const pageReviewRequired = events.filter((event) => event.decision === 'REVIEW_REQUIRED' && !event.reviewedAt).length;
+    const pageAccepted = events.filter((event) => event.decision === 'ACCEPTED').length;
 
     const openReview = (event: HrAttendanceEvent) => {
         if (event.decision !== 'REVIEW_REQUIRED' || event.reviewedAt) return;
@@ -176,6 +180,12 @@ export default function AttendanceReview() {
                 <div className="filter-field"><Select<Option> label="Resultado" options={DECISION_OPTIONS} value={DECISION_OPTIONS.find((option) => option.value === decision)} onChange={(option: SingleValue<Option>) => setDecision(option?.value ?? '')} /></div>
             </div>
 
+            {!loading && !error && <section className="hr-admin-kpis" aria-label="Resumen de eventos filtrados">
+                <div><span>Eventos encontrados</span><strong>{total}</strong><small>En el rango y alcance actual</small></div>
+                <div><span>Requieren decisión</span><strong>{pageReviewRequired}</strong><small>Visibles en esta página</small></div>
+                <div><span>Aceptados</span><strong>{pageAccepted}</strong><small>Visibles en esta página</small></div>
+            </section>}
+
             {loading && <LoadingSpinner text="Cargando eventos…" />}
             {!loading && error && <div className="state-placeholder" role="alert"><AlertTriangle size={44} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadEvents()}><RefreshCw size={16} /> Reintentar</Button></div>}
             {!loading && !error && (
@@ -205,70 +215,40 @@ export default function AttendanceReview() {
 
             <Sidebar isOpen={Boolean(selected)} onClose={() => !saving && setSelected(null)} title="Revisar incidencia" width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
                 {selected && (
-                    <div className="premium-modal-content hr-attendance-modal-content">
-                        <div className="modal-tabs" role="tablist" aria-label="Sección de revisión">
-                            <button type="button" role="tab" id="attendance-review-tab" aria-controls="attendance-review-panel" aria-selected="true" className="modal-tab active"><ClipboardCheck size={18} /><span>Decisión</span></button>
-                        </div>
-                        <form className="modal-form-new" onSubmit={review}>
-                            <div className="modal-tab-content" role="tabpanel" id="attendance-review-panel" aria-labelledby="attendance-review-tab">
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header"><ClipboardCheck size={18} /><h3>Evento observado</h3></div>
-                                    <div className="hr-review-summary"><strong>{selected.user?.name ?? `Usuario #${selected.userId}`}</strong><span>{ATTENDANCE_ACTION_LABELS[selected.action]} · {displayDate(selected.occurredAt)}</span><p>{selected.message ?? selected.reasonCode ?? 'Sin explicación adicional.'}</p></div>
-                                </div>
-                                <div className="modal-content-group">
-                                    <div className="modal-section-header"><CheckCircle2 size={18} /><h3>Resolución supervisada</h3></div>
-                                    <div className="hr-review-decisions" role="radiogroup" aria-label="Decisión de revisión"><label className={reviewForm.decision === 'APPROVED' ? 'selected' : ''}><input type="radio" name="review-decision" checked={reviewForm.decision === 'APPROVED'} onChange={() => setReviewForm((current) => ({ ...current, decision: 'APPROVED' }))} /><CheckCircle2 size={18} /> Aprobar</label><label className={reviewForm.decision === 'REJECTED' ? 'selected danger' : 'danger'}><input type="radio" name="review-decision" checked={reviewForm.decision === 'REJECTED'} onChange={() => setReviewForm((current) => ({ ...current, decision: 'REJECTED' }))} /><XCircle size={18} /> Rechazar</label></div>
-                                    <div className="modal-input-group"><label className="modal-input-label" htmlFor="attendance-review-reason">Razón de la decisión</label><textarea id="attendance-review-reason" className="modal-textarea" rows={5} maxLength={500} value={reviewForm.reason} onChange={(event) => setReviewForm((current) => ({ ...current, reason: event.target.value }))} required /></div>
-                                </div>
-                            </div>
-                            <div className="modal-footer"><Button type="button" variant="ghost" onClick={() => setSelected(null)} disabled={saving}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Registrar decisión'}</Button></div>
-                        </form>
-                    </div>
+                    <HrModalFormShell
+                        ariaLabel="Sección de revisión"
+                        tabLabel="Decisión"
+                        sectionTitle="Evento observado y resolución"
+                        icon={<ClipboardCheck size={18} aria-hidden="true" />}
+                        formClassName="hr-attendance-review-form"
+                        onSubmit={review}
+                        footer={<><Button type="button" variant="ghost" onClick={() => setSelected(null)} disabled={saving}>Cancelar</Button><Button type="submit" disabled={saving || !reviewForm.reason.trim()}>{saving ? 'Guardando…' : 'Registrar decisión'}</Button></>}
+                    >
+                        <div className="hr-review-summary span-full"><strong>{selected.user?.name ?? `Usuario #${selected.userId}`}</strong><span>{ATTENDANCE_ACTION_LABELS[selected.action]} · {displayDate(selected.occurredAt)}</span><p>{selected.message ?? selected.reasonCode ?? 'Sin explicación adicional.'}</p></div>
+                        <div className="hr-review-decisions span-full" role="radiogroup" aria-label="Decisión de revisión"><label className={`hr-inline-choice ${reviewForm.decision === 'APPROVED' ? 'selected' : ''}`}><input type="radio" name="review-decision" checked={reviewForm.decision === 'APPROVED'} onChange={() => setReviewForm((current) => ({ ...current, decision: 'APPROVED' }))} /><CheckCircle2 size={18} /> Aprobar</label><label className={`hr-inline-choice danger ${reviewForm.decision === 'REJECTED' ? 'selected' : ''}`}><input type="radio" name="review-decision" checked={reviewForm.decision === 'REJECTED'} onChange={() => setReviewForm((current) => ({ ...current, decision: 'REJECTED' }))} /><XCircle size={18} /> Rechazar</label></div>
+                        <label className="span-full" htmlFor="attendance-review-reason">Razón de la decisión<textarea id="attendance-review-reason" rows={5} maxLength={500} value={reviewForm.reason} onChange={(event) => setReviewForm((current) => ({ ...current, reason: event.target.value }))} required /></label>
+                    </HrModalFormShell>
                 )}
             </Sidebar>
 
             <Sidebar isOpen={manualOpen} onClose={() => !saving && setManualOpen(false)} title="Marcaje manual supervisado" width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
-                <div className="premium-modal-content hr-attendance-modal-content">
-                    <div className="modal-tabs" role="tablist" aria-label="Sección de marcaje manual">
-                        <button type="button" role="tab" id="attendance-manual-tab" aria-controls="attendance-manual-panel" aria-selected="true" className="modal-tab active"><Plus size={18} /><span>Marcaje</span></button>
-                    </div>
-                    <form className="modal-form-new" onSubmit={createManual}>
-                        <div className="modal-tab-content" role="tabpanel" id="attendance-manual-panel" aria-labelledby="attendance-manual-tab">
-                            <div className="hr-attendance-alert warning"><AlertTriangle size={18} /><span>Este fallback no simula biometría ni GPS: crea un evento manual identificado, con actor y razón para auditoría.</span></div>
-                            <div className="modal-content-group">
-                                <div className="modal-section-header"><ClipboardCheck size={18} /><h3>Origen y colaborador</h3></div>
-                                <Select<Option>
-                                    variant="modal"
-                                    label="Evento a compensar (opcional)"
-                                    options={targetOptions}
-                                    value={targetOptions.find((option) => option.value === manual.targetEventId)}
-                                    onChange={(option: SingleValue<Option>) => {
-                                        const target = events.find((item) => String(item.id) === option?.value);
-                                        setManual((current) => ({
-                                            ...current,
-                                            targetEventId: option?.value ?? '',
-                                            ...(target ? { userId: String(target.userId), branchId: String(target.branchId ?? ''), action: target.action } : {}),
-                                        }));
-                                    }}
-                                    isSearchable
-                                />
-                                <div className="modal-form-row">
-                                    <Select<Option> variant="modal" label="Usuario" options={userOptions.filter((option) => option.value)} value={userOptions.find((option) => option.value === manual.userId)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, userId: option?.value ?? '' }))} isSearchable />
-                                    <Select<Option> variant="modal" label="Sucursal" options={branchOptions.filter((option) => option.value)} value={branchOptions.find((option) => option.value === manual.branchId)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, branchId: option?.value ?? '' }))} isSearchable />
-                                </div>
-                            </div>
-                            <div className="modal-content-group">
-                                <div className="modal-section-header"><Plus size={18} /><h3>Acción y justificación</h3></div>
-                                <div className="modal-form-row">
-                                    <Select<Option> variant="modal" label="Acción" options={ACTION_OPTIONS.filter((option) => option.value)} value={ACTION_OPTIONS.find((option) => option.value === manual.action)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, action: (option?.value ?? 'CHECK_IN') as HrAttendanceAction }))} />
-                                    <div className="modal-input-group"><label className="modal-input-label" htmlFor="attendance-manual-at">Fecha y hora real</label><input id="attendance-manual-at" className="modal-standard-input" type="datetime-local" value={manual.occurredAt} onChange={(event) => setManual((current) => ({ ...current, occurredAt: event.target.value }))} required /></div>
-                                </div>
-                                <div className="modal-input-group"><label className="modal-input-label" htmlFor="attendance-manual-reason">Razón del fallback</label><textarea id="attendance-manual-reason" className="modal-textarea" rows={5} maxLength={500} value={manual.reason} onChange={(event) => setManual((current) => ({ ...current, reason: event.target.value }))} required /></div>
-                            </div>
-                        </div>
-                        <div className="modal-footer"><Button type="button" variant="ghost" onClick={() => setManualOpen(false)} disabled={saving}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? 'Registrando…' : 'Registrar marcaje manual'}</Button></div>
-                    </form>
-                </div>
+                <HrModalFormShell
+                    ariaLabel="Sección de marcaje manual"
+                    tabLabel="Marcaje"
+                    sectionTitle="Origen, colaborador y justificación"
+                    icon={<Plus size={18} aria-hidden="true" />}
+                    formClassName="hr-attendance-manual-form"
+                    notice={<div className="hr-attendance-alert warning"><AlertTriangle size={18} /><span>Este fallback no simula biometría ni GPS: crea un evento manual identificado, con actor y razón para auditoría.</span></div>}
+                    onSubmit={createManual}
+                    footer={<><Button type="button" variant="ghost" onClick={() => setManualOpen(false)} disabled={saving}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? 'Registrando…' : 'Registrar marcaje manual'}</Button></>}
+                >
+                    <div className="span-full"><Select<Option> variant="modal" label="Evento a compensar (opcional)" options={targetOptions} value={targetOptions.find((option) => option.value === manual.targetEventId)} onChange={(option: SingleValue<Option>) => { const target = events.find((item) => String(item.id) === option?.value); setManual((current) => ({ ...current, targetEventId: option?.value ?? '', ...(target ? { userId: String(target.userId), branchId: String(target.branchId ?? ''), action: target.action } : {}) })); }} isSearchable /></div>
+                    <Select<Option> variant="modal" label="Usuario" options={userOptions.filter((option) => option.value)} value={userOptions.find((option) => option.value === manual.userId)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, userId: option?.value ?? '' }))} isSearchable />
+                    <Select<Option> variant="modal" label="Sucursal" options={branchOptions.filter((option) => option.value)} value={branchOptions.find((option) => option.value === manual.branchId)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, branchId: option?.value ?? '' }))} isSearchable />
+                    <Select<Option> variant="modal" label="Acción" options={ACTION_OPTIONS.filter((option) => option.value)} value={ACTION_OPTIONS.find((option) => option.value === manual.action)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, action: (option?.value ?? 'CHECK_IN') as HrAttendanceAction }))} />
+                    <label htmlFor="attendance-manual-at">Fecha y hora real<input id="attendance-manual-at" type="datetime-local" value={manual.occurredAt} onChange={(event) => setManual((current) => ({ ...current, occurredAt: event.target.value }))} required /></label>
+                    <label className="span-full" htmlFor="attendance-manual-reason">Razón del fallback<textarea id="attendance-manual-reason" rows={5} maxLength={500} value={manual.reason} onChange={(event) => setManual((current) => ({ ...current, reason: event.target.value }))} required /></label>
+                </HrModalFormShell>
             </Sidebar>
         </div>
     );

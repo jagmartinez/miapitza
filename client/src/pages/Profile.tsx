@@ -8,6 +8,7 @@ import { useCurrency } from '../hooks/useCurrency';
 import { usersAPI, reportsAPI, authAPI } from '../services/api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import Button from '../components/Button';
+import MyHrNav from '../components/hr/MyHrNav';
 import Select from '../components/Select';
 import type { SingleValue } from 'react-select';
 import {
@@ -15,7 +16,7 @@ import {
     Calendar, TrendingUp, Shield, Smartphone, Monitor, LogOut,
     ShoppingBag, CreditCard, Star, Languages,
     Moon, Sun, Bell, Settings,
-    Briefcase as BriefcaseBusiness, CalendarClock, ChevronRight, MapPin, FileText, WalletCards,
+    Briefcase as BriefcaseBusiness, CalendarClock, ChevronRight, Fingerprint, MapPin, FileText, WalletCards,
     type LucideIcon
 } from 'lucide-react';
 import type { User as AppUser } from '../types';
@@ -186,6 +187,13 @@ export default function Profile() {
     const hasEmployeeContext = user?.accountType === 'INTERNAL' && Boolean(user.employeeId);
     const canManageEmployeeLinks = roleLower.includes('admin') || roleLower.includes('human') || roleLower.includes('rh');
     const vacationBalance = selectVacationBalance(myWorkforce?.vacationBalances);
+    const myPendingRequests = myWorkforce
+        ? [...myWorkforce.corrections, ...myWorkforce.overtimeRequests, ...myWorkforce.leaveRequests]
+            .filter(item => item.status === 'DRAFT' || item.status === 'PENDING').length
+        : null;
+    const myApprovedOvertimeMinutes = myWorkforce?.overtimeRequests
+        .filter(item => item.status === 'APPROVED')
+        .reduce((total, item) => total + (item.approvedMinutes ?? 0), 0) ?? null;
 
     const tabs: { id: ProfileTab; icon: LucideIcon; label: string }[] = [
         { id: 'info', icon: User, label: 'Información' },
@@ -231,12 +239,15 @@ export default function Profile() {
                     </div>
                 </div>
 
-                <nav className="profile-nav">
+                <nav className="profile-nav" role="tablist" aria-label="Secciones de mi perfil">
                     {tabs.map(t => (
                         <button
                             key={t.id}
                             className={`profile-nav-item ${activeTab === t.id ? 'active' : ''}`}
                             onClick={() => selectTab(t.id)}
+                            role="tab"
+                            aria-selected={activeTab === t.id}
+                            aria-controls="profile-active-panel"
                         >
                             <t.icon size={18} />
                             {t.label}
@@ -247,7 +258,7 @@ export default function Profile() {
 
             {/* ── Right Content ── */}
             <div className="profile-content">
-                <div className="profile-content-card">
+                <div className="profile-content-card" id="profile-active-panel" role="tabpanel" aria-label={tabs.find(tab => tab.id === activeTab)?.label}>
 
                     {/* INFO */}
                     {activeTab === 'info' && (
@@ -296,6 +307,7 @@ export default function Profile() {
                     {/* EMPLOYEE SELF-SERVICE */}
                     {activeTab === 'hr' && (
                         <div className="profile-tab-fade">
+                            {hasEmployeeContext && <MyHrNav />}
                             {!hasEmployeeContext ? (
                                 <section className="profile-hr-unlinked" aria-labelledby="profile-hr-unlinked-title">
                                     <span className="profile-hr-unlinked-icon"><BriefcaseBusiness size={28} aria-hidden="true" /></span>
@@ -315,18 +327,22 @@ export default function Profile() {
                                     </div>
                                 </section>
                             ) : <>
-                            <div className="profile-hr-heading">
+                            <div className="profile-hr-hero">
                                 <div>
-                                    <h3 className="profile-section-title"><BriefcaseBusiness size={20} /> Mi información RH</h3>
-                                    <p>Consulta tu jornada, solicitudes, pagos y beneficios personales.</p>
+                                    <p className="profile-hr-kicker">EXPEDIENTE PERSONAL</p>
+                                    <h3><BriefcaseBusiness size={22} /> Mi información laboral</h3>
+                                    <p>Consulta tu jornada, registra marcajes y gestiona solicitudes, pagos y beneficios desde un solo lugar.</p>
                                 </div>
+                                <Link to="/rh/marcaje" className="profile-hr-main-link"><MapPin size={17} /> Ir a marcaje <ChevronRight size={17} aria-hidden="true" /></Link>
                             </div>
                             <dl className="profile-hr-identity">
                                 <div><dt>Empleado</dt><dd>{user?.employee?.employeeCode ?? user?.employee?.employeeNumber ?? `#${user?.employeeId}`}</dd></div>
-                                <div><dt>Estado</dt><dd>{user?.employee?.status ?? 'Vinculado'}</dd></div>
-                                <div><dt>Sucursal</dt><dd>{fullUserData?.branch?.name || user?.branch?.name || 'Sin asignar'}</dd></div>
                                 <div className="profile-hr-vacation-balance"><dt>Saldo de vacaciones</dt><dd>{myHrLoading ? 'Cargando…' : vacationBalance ? `${formatHrNumber(vacationBalance.available)} ${vacationBalance.unit.toLowerCase()}` : 'Sin saldo disponible'}</dd></div>
+                                <div><dt>Solicitudes en espera</dt><dd>{myHrLoading ? '…' : myPendingRequests ?? '—'}</dd></div>
+                                <div><dt>Horas extra aprobadas</dt><dd>{myHrLoading ? '…' : myApprovedOvertimeMinutes != null ? `${formatHrNumber(myApprovedOvertimeMinutes)} min` : '—'}</dd></div>
                             </dl>
+                            <div className="profile-hr-context"><span><strong>{user?.employee?.status ?? 'Vinculado'}</strong> Estado laboral</span><span><strong>{fullUserData?.branch?.name || user?.branch?.name || 'Sin asignar'}</strong> Sucursal</span></div>
+                            <div className="profile-hr-section-heading"><div><h4>Accesos de Mi RH</h4><p>Abre cada sección para consultar datos emitidos por el servidor o iniciar una gestión.</p></div></div>
                             <div className="profile-hr-grid">
                                 <Link to="/rh/mi-portal/horario"><CalendarClock size={22} /><span><strong>Horario</strong><small>Calendario y turnos publicados</small></span><ChevronRight size={17} /></Link>
                                 <Link to="/rh/marcaje"><MapPin size={22} /><span><strong>Marcajes</strong><small>Entrada, descansos y salida</small></span><ChevronRight size={17} /></Link>
@@ -334,6 +350,7 @@ export default function Profile() {
                                 <Link to="/rh/mi-portal/gestion?tab=LEAVE"><Calendar size={22} /><span><strong>Vacaciones y permisos</strong><small>Crea solicitudes y revisa sus estados</small></span><ChevronRight size={17} /></Link>
                                 <Link to="/rh/mi-portal/nomina"><FileText size={22} /><span><strong>Recibos de pago</strong><small>Ingresos, deducciones y colillas</small></span><ChevronRight size={17} /></Link>
                                 <Link to="/rh/mi-portal/prestaciones"><WalletCards size={22} /><span><strong>Beneficios</strong><small>Viáticos, préstamos y deducciones</small></span><ChevronRight size={17} /></Link>
+                                <Link to="/rh/biometria"><Fingerprint size={22} /><span><strong>Mi biometría</strong><small>Consentimiento, enrolamiento y revocación</small></span><ChevronRight size={17} /></Link>
                             </div>
                             </>}
                         </div>

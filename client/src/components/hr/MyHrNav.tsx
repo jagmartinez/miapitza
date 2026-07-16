@@ -1,6 +1,8 @@
 import {
   Briefcase,
   CalendarDays,
+  Clock3,
+  Fingerprint,
   Home,
   FileText,
   WalletCards,
@@ -9,11 +11,13 @@ import { NavLink } from 'react-router-dom';
 import './my-hr-nav.css';
 
 const ITEMS = [
-  { to: '/rh/mi-portal', label: 'Resumen', icon: Home, end: true },
+  { to: '/profile?tab=hr', label: 'Resumen', icon: Home, end: true },
   { to: '/rh/mi-portal/horario', label: 'Horario', icon: CalendarDays },
   { to: '/rh/mi-portal/gestion', label: 'Solicitudes', icon: Briefcase },
   { to: '/rh/mi-portal/nomina', label: 'Recibos', icon: FileText },
   { to: '/rh/mi-portal/prestaciones', label: 'Beneficios', icon: WalletCards },
+  { to: '/rh/marcaje', label: 'Marcaje', icon: Clock3 },
+  { to: '/rh/biometria', label: 'Mi biometría', icon: Fingerprint },
 ] as const;
 
 /** Persistent, contextual navigation shared by every employee self-service view. */

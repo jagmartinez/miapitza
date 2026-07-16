@@ -14,6 +14,9 @@ describe('employee employment-record UI contract', () => {
     expect(detail).toContain("tab('compensation', 'Compensación'");
     expect(detail).toContain("tab('documents', 'Documentos'");
     expect(detail).toContain('EmployeeRecordPanel');
+    expect(detail).toContain('hr-employee-profile-card');
+    expect(detail).toContain('hr-employee-facts');
+    expect(detail).toContain('<DetailGroup');
   });
 
   it('keeps contractual transitions and compensation append-only through server endpoints', () => {

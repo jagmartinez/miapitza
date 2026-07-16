@@ -16,6 +16,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
 import Sidebar from '../../components/Sidebar';
 import MyHrNav from '../../components/hr/MyHrNav';
+import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import AttendanceCorrectionForm from '../../components/hr/AttendanceCorrectionForm';
 import LeaveRequestForm from '../../components/hr/LeaveRequestForm';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
@@ -83,6 +84,7 @@ export default function MyWorkforce() {
   const [leaveTypes, setLeaveTypes] = useState<HrLeaveType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [partialWarning, setPartialWarning] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [panel, setPanel] = useState<Panel>(null);
   const [cancelPanel, setCancelPanel] = useState<CancelPanel>(null);
@@ -91,16 +93,28 @@ export default function MyWorkforce() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setPartialWarning(null);
     try {
       const filters = { dateFrom, dateTo, limit: 100 };
-      const [summaryResult, workforceResult, typesResult] = await Promise.all([
+      const [summaryResult, workforceResult, typesResult] = await Promise.allSettled([
         workforceClient.getMyAttendanceSummary(filters),
         workforceClient.getMyWorkforce(filters),
         workforceClient.getLeaveTypes(),
       ]);
-      setSummaries(summaryResult.items);
-      setWorkforce(workforceResult);
-      setLeaveTypes(typesResult);
+      if (workforceResult.status === 'rejected') throw workforceResult.reason;
+      setWorkforce(workforceResult.value);
+      if (summaryResult.status === 'fulfilled') {
+        setSummaries(summaryResult.value.items);
+      } else {
+        setSummaries([]);
+        setPartialWarning(getWorkforceErrorMessage(summaryResult.reason, 'Los resúmenes de asistencia no están disponibles para este rango. Las solicitudes y saldos sí pueden consultarse.'));
+      }
+      if (typesResult.status === 'fulfilled') {
+        setLeaveTypes(typesResult.value);
+      } else {
+        setLeaveTypes([]);
+        setPartialWarning((current) => current ?? 'No fue posible cargar los tipos de permiso. Puedes consultar tu información, pero la creación de solicitudes está temporalmente deshabilitada.');
+      }
     } catch (loadError) {
       setSummaries([]);
       setWorkforce(EMPTY_WORKFORCE);
@@ -238,7 +252,7 @@ export default function MyWorkforce() {
             >
               <FilePenLine size={16} /> Corrección
             </Button>
-            <Button onClick={() => setPanel({ kind: 'leave' })} disabled={!online}>
+            <Button onClick={() => setPanel({ kind: 'leave' })} disabled={!online || leaveTypes.length === 0} title={leaveTypes.length === 0 ? 'Los tipos de permiso no están disponibles' : undefined}>
               <CalendarPlus size={16} /> Permiso
             </Button>
           </div>
@@ -246,6 +260,15 @@ export default function MyWorkforce() {
       />
       <MyHrNav />
       <OnlineOnlyNotice online={online} />
+      {partialWarning && (
+        <div className="hr-workforce-partial-warning" role="status">
+          <AlertTriangle size={18} aria-hidden="true" />
+          <span>{partialWarning}</span>
+          <Button size="sm" variant="ghost" onClick={() => void load()}>
+            <RefreshCw size={15} /> Reintentar sección
+          </Button>
+        </div>
+      )}
       <section className="hr-workforce-filters">
         <label>
           Desde
@@ -617,8 +640,6 @@ export default function MyWorkforce() {
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
-        <div className="hr-sidebar-body">
-          <OnlineOnlyNotice online={online} compact />
           {panel?.kind === 'correction' && (
             <AttendanceCorrectionForm
               dailySummaryId={panel.summary?.id ?? panel.incident?.dailySummaryId ?? undefined}
@@ -626,6 +647,7 @@ export default function MyWorkforce() {
               timezone={panel.summary?.timezone ?? workforce.timezone}
               online={online}
               saving={saving}
+              notice={<OnlineOnlyNotice online={online} compact />}
               onSubmit={createCorrection}
               onCancel={() => setPanel(null)}
             />
@@ -637,6 +659,7 @@ export default function MyWorkforce() {
               candidateMinutes={panel.summary?.candidateOvertimeMinutes}
               online={online}
               saving={saving}
+              notice={<OnlineOnlyNotice online={online} compact />}
               onSubmit={createOvertime}
               onCancel={() => setPanel(null)}
             />
@@ -646,11 +669,11 @@ export default function MyWorkforce() {
               leaveTypes={leaveTypes}
               online={online}
               saving={saving}
+              notice={<OnlineOnlyNotice online={online} compact />}
               onSubmit={createLeave}
               onCancel={() => setPanel(null)}
             />
           )}
-        </div>
       </Sidebar>
 
       <Sidebar
@@ -661,11 +684,25 @@ export default function MyWorkforce() {
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
-        <form
-          className="hr-workforce-form hr-sidebar-body"
+        <HrModalFormShell
+          ariaLabel="Cancelación de solicitud"
+          tabLabel="Confirmación"
+          sectionTitle="Motivo de cancelación"
+          icon={<AlertTriangle size={18} aria-hidden="true" />}
+          formClassName="hr-workforce-form"
+          notice={<OnlineOnlyNotice online={online} compact />}
           onSubmit={(event) => void cancel(event)}
+          footer={
+            <>
+              <Button type="button" variant="ghost" onClick={() => setCancelPanel(null)}>
+                Volver
+              </Button>
+              <Button type="submit" variant="danger" disabled={!online || saving || !cancelReason.trim()}>
+                {saving ? 'Cancelando…' : 'Confirmar cancelación'}
+              </Button>
+            </>
+          }
         >
-          <OnlineOnlyNotice online={online} compact />
           <label className="span-full">
             Razón de cancelación
             <textarea
@@ -676,19 +713,7 @@ export default function MyWorkforce() {
               required
             />
           </label>
-          <div className="hr-form-actions span-full">
-            <Button type="button" variant="ghost" onClick={() => setCancelPanel(null)}>
-              Volver
-            </Button>
-            <Button
-              type="submit"
-              variant="danger"
-              disabled={!online || saving || !cancelReason.trim()}
-            >
-              {saving ? 'Cancelando…' : 'Confirmar cancelación'}
-            </Button>
-          </div>
-        </form>
+        </HrModalFormShell>
       </Sidebar>
     </div>
   );

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Fingerprint, RefreshCw, ShieldAlert, Trash2 } from 'lucide-react';
+import { CheckCircle2, Fingerprint, RefreshCw, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
+import MyHrNav from '../../components/hr/MyHrNav';
 import CameraCapture from '../../components/hr/CameraCapture';
 import { attendanceClient, getAttendanceErrorMessage } from '../../components/hr/attendanceClient';
 import { isChallengeExpired } from '../../components/hr/attendanceRules';
@@ -105,22 +106,31 @@ export default function Biometrics() {
     return (
         <div className="page-wrapper hr-biometrics-page">
             <PageHeader title="Mi biometría" subtitle="Consentimiento, enrolamiento y revocación" icon={Fingerprint} />
+            <MyHrNav />
             {loading && <LoadingSpinner text="Cargando estado biométrico…" />}
             {!loading && error && !profile && <div className="state-placeholder" role="alert"><ShieldAlert size={44} aria-hidden="true" /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void load()}><RefreshCw size={16} /> Reintentar</Button></div>}
 
             {!loading && profile && policy && (
                 <>
-                    <section className="hr-biometric-status">
-                        <Fingerprint size={34} aria-hidden="true" />
-                        <div><span>Estado</span><strong>{profile.status === 'ACTIVE' ? 'Activo' : profile.status === 'NOT_ENROLLED' ? 'No enrolado' : profile.status === 'REVOKED' ? 'Revocado' : 'Pendiente'}</strong>{profile.enrolledAt && <small>Enrolado: {new Intl.DateTimeFormat('es-NI', { dateStyle: 'medium' }).format(new Date(profile.enrolledAt))}</small>}{profile.retentionExpiresAt && <small>Retención hasta: {new Intl.DateTimeFormat('es-NI', { dateStyle: 'medium' }).format(new Date(profile.retentionExpiresAt))}</small>}{profile.purgeRequestedAt && <small>Eliminación externa solicitada: {new Intl.DateTimeFormat('es-NI', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(profile.purgeRequestedAt))}</small>}</div>
+                    <section className={`hr-biometric-status status-${profile.status.toLowerCase()}`}>
+                        <span className="hr-biometric-status-icon"><Fingerprint size={30} aria-hidden="true" /></span>
+                        <div><span>ESTADO DE MI PERFIL BIOMÉTRICO</span><strong>{profile.status === 'ACTIVE' ? 'Activo y disponible para marcaje' : profile.status === 'NOT_ENROLLED' ? 'Enrolamiento pendiente' : profile.status === 'REVOKED' ? 'Consentimiento revocado' : 'Pendiente de revisión'}</strong><small>{profile.status === 'ACTIVE' ? 'Tu plantilla puede utilizarse para la verificación 1:1 exigida por la política.' : 'Completa el enrolamiento para habilitar marcajes que requieren verificación facial.'}</small></div>
                         {profile.status === 'ACTIVE' && <Button variant="danger" onClick={() => void revoke()} disabled={saving}><Trash2 size={17} /> Revocar</Button>}
                     </section>
 
+                    <section className="hr-biometric-metadata" aria-label="Datos de privacidad biométrica">
+                        <div><ShieldCheck size={18} aria-hidden="true" /><span>Consentimiento</span><strong>Versión {policy.biometricConsentVersion}</strong></div>
+                        <div><CheckCircle2 size={18} aria-hidden="true" /><span>Enrolamiento</span><strong>{profile.enrolledAt ? new Intl.DateTimeFormat('es-NI', { dateStyle: 'medium' }).format(new Date(profile.enrolledAt)) : 'No completado'}</strong></div>
+                        <div><ShieldAlert size={18} aria-hidden="true" /><span>Retención</span><strong>{profile.retentionExpiresAt ? `Hasta ${new Intl.DateTimeFormat('es-NI', { dateStyle: 'medium' }).format(new Date(profile.retentionExpiresAt))}` : 'Según política vigente'}</strong></div>
+                    </section>
+
                     <section className="hr-biometric-notice" aria-labelledby="hr-biometric-notice-title">
-                        <h2 id="hr-biometric-notice-title">Privacidad y alcance</h2>
+                        <span className="hr-section-kicker">CONTROL Y PRIVACIDAD</span><h2 id="hr-biometric-notice-title">Antes de administrar tu biometría</h2>
                         <ul><li>La comparación facial es 1:1 y ocurre en el servidor; el navegador no identifica personas.</li><li>La biometría no es infalible. Un resultado incierto debe enviarse a revisión o fallback supervisado.</li><li>La captura de esta pantalla vive sólo durante el intento y no se guarda en almacenamiento local.</li></ul>
                         {policy.biometricRetentionNotice && <p>{policy.biometricRetentionNotice}</p>}
                     </section>
+
+                    {error && !challenge && <div className="hr-attendance-alert danger" role="alert"><ShieldAlert size={18} aria-hidden="true" /><span>{error}</span><Button size="sm" variant="ghost" onClick={() => { setError(null); void beginEnrollment(); }}>Reintentar</Button></div>}
 
                     {!challenge && profile.status !== 'ACTIVE' && <Button onClick={() => void beginEnrollment()} disabled={saving}>{saving ? 'Creando reto…' : 'Iniciar enrolamiento'}</Button>}
 

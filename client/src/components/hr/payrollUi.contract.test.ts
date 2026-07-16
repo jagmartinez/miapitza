@@ -36,6 +36,9 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(transition).toContain('Doble control');
     expect(transition).toContain('paymentReference');
     expect(transition).toContain('evidenceReference');
+    expect(transition).toContain('<HrModalFormShell');
+    expect(componentForm).toContain('<HrModalFormShell');
+    expect(management).not.toContain('<div className="hr-payroll-sidebar"><PayrollOnlineNotice');
     expect(transition).toContain("run.kind === 'REGULAR' ? run.period?.payDate : run.cutoffDate");
     expect(transition).toContain('value={paymentDate} readOnly required');
     expect(transition).not.toContain('setPaymentDate');
@@ -102,6 +105,27 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(operation).toContain('Pago por colaborador');
     expect(operation).toContain('Traza de INSS e IR');
     expect(operation).toContain('Reportes y colillas');
+  });
+
+  it('keeps the collaborator search and expanded detail usable and accessible', () => {
+    expect(operation).toContain('payroll-operation-search-control');
+    expect(operation).toContain('id="payroll-employee-search"');
+    expect(operation).toContain('aria-live="polite"');
+    expect(operation).toContain('aria-controls={`payroll-employee-detail-${row.userId}`}');
+    expect(operation).toContain('payroll-operation-employee-summary');
+    expect(operation).toContain('Disponible para el colaborador en Mi RH');
+    expect(operationCss).toContain('.payroll-operation-search-control:focus-within');
+    expect(operationCss).toContain('.payroll-operation-employee-summary');
+  });
+
+  it('presents legal versions with readable dates, explicit icons and a selected-rule toolbar', () => {
+    expect(legalSettings).toContain('formatLegalDate');
+    expect(legalSettings).toContain('hr-legal-rule-toolbar');
+    expect(legalSettings).toContain('hr-legal-table-action');
+    expect(legalSettings).toContain('<Eye size={15}');
+    expect(legalSettings).toContain('<Copy size={15}');
+    expect(legalCss).toContain('.hr-legal-rule-toolbar');
+    expect(legalCss).toContain('.hr-legal-table-action.btn');
   });
 
   it('uses self-only endpoints for employee receipts and exposes published breakdowns', () => {

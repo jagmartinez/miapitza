@@ -36,6 +36,21 @@
   margin-bottom: var(--spacing-md);
 }
 
+.hr-workforce-partial-warning {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border: 1px solid rgba(245, 158, 11, 0.38);
+  border-radius: var(--radius-lg);
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.hr-workforce-partial-warning > svg { flex: 0 0 auto; color: var(--color-warning); }
+.hr-workforce-partial-warning > span { flex: 1; }
+
 .hr-workforce-filters {
   display: grid;
   grid-template-columns: repeat(3, minmax(170px, 1fr)) auto;
@@ -432,6 +447,9 @@
   .hr-summary-card footer > div {
     justify-content: stretch;
   }
+
+  .hr-workforce-partial-warning { align-items: stretch; flex-wrap: wrap; }
+  .hr-workforce-partial-warning > span { flex-basis: calc(100% - 30px); }
 
   .hr-record-actions .btn,
   .hr-header-actions .btn,

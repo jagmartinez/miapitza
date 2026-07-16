@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import Button from '../Button';
 import HrMoneyInput from './HrMoneyInput';
+import HrModalFormShell from './HrModalFormShell';
 import type {
   HrBenefitsActionInput,
   HrDeductionAction,
@@ -87,9 +88,8 @@ export default function BenefitsTransitionForm({
     });
   };
 
-  return (
-    <form className="hr-benefits-form" onSubmit={(event) => void submit(event)}>
-      <div className={`hr-benefits-warning span-full ${sensitive ? 'danger' : ''}`} role="note">
+  const notice = (
+      <div className={`hr-benefits-warning ${sensitive ? 'danger' : ''}`} role="note">
         <AlertTriangle size={20} aria-hidden="true" />
         <span>
           {action === 'REVERSE'
@@ -103,6 +103,32 @@ export default function BenefitsTransitionForm({
                   : 'La transición será validada contra estado, revisión y permisos vigentes.'}
         </span>
       </div>
+  );
+
+  return (
+    <HrModalFormShell
+      ariaLabel="Confirmación de beneficio"
+      tabLabel="Revisión"
+      sectionTitle={`${LABELS[action]} ${code}`}
+      icon={<ShieldCheck size={18} aria-hidden="true" />}
+      formClassName="hr-benefits-form"
+      notice={notice}
+      onSubmit={(event) => void submit(event)}
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
+            Volver
+          </Button>
+          <Button
+            type="submit"
+            variant={sensitive ? 'danger' : 'primary'}
+            disabled={!online || saving || !confirmed || !reason.trim() || (asksAmount && !proposedAmount) || (asksReference && !operationReference.trim())}
+          >
+            {saving ? 'Registrando…' : LABELS[action]}
+          </Button>
+        </>
+      }
+    >
       <label>
         Fecha efectiva
         <input
@@ -179,25 +205,6 @@ export default function BenefitsTransitionForm({
           sobre {code} y revisé el detalle financiero.
         </span>
       </label>
-      <div className="hr-benefits-form-actions span-full">
-        <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
-          Volver
-        </Button>
-        <Button
-          type="submit"
-          variant={sensitive ? 'danger' : 'primary'}
-          disabled={
-            !online ||
-            saving ||
-            !confirmed ||
-            !reason.trim() ||
-            (asksAmount && !proposedAmount) ||
-            (asksReference && !operationReference.trim())
-          }
-        >
-          {saving ? 'Registrando…' : LABELS[action]}
-        </Button>
-      </div>
-    </form>
+    </HrModalFormShell>
   );
 }

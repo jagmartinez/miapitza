@@ -422,7 +422,7 @@ export default function PayrollManagement() {
       )}
 
       <Sidebar isOpen={Boolean(createPanel)} onClose={() => { if (!saving) { if (createPanel?.kind === 'component') componentOperationKey.current = null; setCreatePanel(null); } }} title={createPanel?.kind === 'rule' ? 'Nueva regla base' : createPanel?.kind === 'period' ? 'Nuevo periodo de nómina' : createPanel?.kind === 'component' ? 'Ingreso o deducción' : createPanel?.runKind === 'AGUINALDO' ? 'Crear aguinaldo' : 'Crear corrida de nómina'} width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
-        {createPanel?.kind === 'component' && selected && <div className="hr-payroll-sidebar"><PayrollOnlineNotice online={online} compact /><PayrollComponentForm users={lookups.users ?? []} concepts={selectedPaymentConcepts} incomeTaxApplicability={selectedIncomeTaxApplicability} online={online} saving={saving} onSubmit={saveComponent} onCancel={() => { componentOperationKey.current = null; setCreatePanel(null); }} /></div>}
+        {createPanel?.kind === 'component' && selected && <PayrollComponentForm users={lookups.users ?? []} concepts={selectedPaymentConcepts} incomeTaxApplicability={selectedIncomeTaxApplicability} online={online} saving={saving} onSubmit={saveComponent} onCancel={() => { componentOperationKey.current = null; setCreatePanel(null); }} />}
         {createPanel?.kind === 'rule' && <PayrollRuleForm initial={createPanel.rule} online={online} saving={saving} notice={<PayrollOnlineNotice online={online} compact />} onSubmit={saveRule} onCancel={() => setCreatePanel(null)} />}
         {createPanel?.kind === 'period' && (
           <HrModalFormShell ariaLabel="Crear periodo de nómina" tabLabel="1. Periodo" sectionTitle="Define las fechas que se pagarán" icon={<FilePlus2 size={18} />} formClassName="hr-payroll-form" notice={<PayrollOnlineNotice online={online} compact />} onSubmit={(event) => void savePeriod(event)} footer={<><Button type="button" variant="ghost" onClick={() => setCreatePanel(null)}>Cancelar</Button><Button type="submit" disabled={!online || saving || !periodForm.code.trim() || !periodForm.reason.trim()}>{saving ? 'Creando…' : 'Crear y continuar'}</Button></>}>
@@ -437,7 +437,7 @@ export default function PayrollManagement() {
       </Sidebar>
 
       <Sidebar isOpen={Boolean(transition)} onClose={() => { if (!saving) { transitionOperationKey.current = null; setTransition(null); } }} title={transition ? ACTION_LABELS[transition.action] : 'Acción de nómina'} width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
-        {transition && <div className="hr-payroll-sidebar"><PayrollOnlineNotice online={online} compact /><PayrollTransitionForm run={transition.run} action={transition.action} online={online} saving={saving} onSubmit={saveTransition} onCancel={() => { transitionOperationKey.current = null; setTransition(null); }} /></div>}
+        {transition && <PayrollTransitionForm run={transition.run} action={transition.action} online={online} saving={saving} onSubmit={saveTransition} onCancel={() => { transitionOperationKey.current = null; setTransition(null); }} />}
       </Sidebar>
     </div>
   );

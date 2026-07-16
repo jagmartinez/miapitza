@@ -45,6 +45,7 @@ import type {
 } from '../../types/hr-workforce';
 import './workforce.css';
 import './admin-tables.css';
+import './hr-admin-operations.css';
 import '../Inventory.css';
 
 const EMPTY_LOOKUPS: HrOrganizationCatalogs = {
@@ -302,7 +303,7 @@ export default function LeaveManagement() {
   };
 
   return (
-    <div className="page-wrapper inventory-page hr-workforce-page hr-admin-catalog-page">
+    <div className="page-wrapper inventory-page hr-workforce-page hr-leave-management-page hr-admin-catalog-page">
       <PageHeader
         className="inventory-header-new"
         title="Permisos y vacaciones"
@@ -320,7 +321,7 @@ export default function LeaveManagement() {
         }
       />
       <OnlineOnlyNotice online={online} />
-      <section className="hr-workforce-filters inventory-filters-row">
+      <section className="hr-workforce-filters inventory-filters-row" aria-label="Filtros de permisos y vacaciones">
         <label>
           Desde
           <input
@@ -353,6 +354,12 @@ export default function LeaveManagement() {
           <RefreshCw size={16} /> Actualizar
         </Button>
       </section>
+
+      {!loading && !error && <section className="hr-admin-kpis" aria-label="Resumen operativo de permisos y vacaciones">
+        <div><span>Solicitudes pendientes</span><strong>{requests.filter((item) => item.status === 'PENDING').length}</strong><small>Esperando decisión</small></div>
+        <div><span>Ausencias aprobadas</span><strong>{calendar.length}</strong><small>Dentro del rango consultado</small></div>
+        <div><span>Empleados con saldo</span><strong>{new Set(balances.map((item) => item.userId)).size}</strong><small>Vacaciones controladas</small></div>
+      </section>}
 
       {loading && <LoadingSpinner text="Cargando permisos y vacaciones…" />}
       {!loading && error && (
@@ -718,11 +725,21 @@ export default function LeaveManagement() {
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
-        <form
-          className="hr-workforce-form hr-sidebar-body"
+        <HrModalFormShell
+          ariaLabel="Sección de resolución de solicitud"
+          tabLabel={requestAction?.kind === 'cancel' ? 'Cancelación' : 'Decisión'}
+          sectionTitle="Resolución y justificación"
+          icon={requestAction?.kind === 'cancel' ? <XCircle size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+          formClassName="hr-workforce-form"
+          notice={<OnlineOnlyNotice online={online} compact />}
           onSubmit={(event) => void saveRequestAction(event)}
+          footer={
+            <>
+              <Button type="button" variant="ghost" onClick={() => setRequestAction(null)}>Volver</Button>
+              <Button type="submit" disabled={!online || saving || !actionReason.trim()}>{saving ? 'Registrando…' : 'Confirmar'}</Button>
+            </>
+          }
         >
-          <OnlineOnlyNotice online={online} compact />
           {requestAction?.kind === 'decide' && (
             <label>
               Decisión
@@ -749,15 +766,7 @@ export default function LeaveManagement() {
             La decisión no se infiere al guardar ni al enviar; queda registrada como una transición
             separada.
           </p>
-          <div className="hr-form-actions span-full">
-            <Button type="button" variant="ghost" onClick={() => setRequestAction(null)}>
-              Volver
-            </Button>
-            <Button type="submit" disabled={!online || saving || !actionReason.trim()}>
-              {saving ? 'Registrando…' : 'Confirmar'}
-            </Button>
-          </div>
-        </form>
+        </HrModalFormShell>
       </Sidebar>
     </div>
   );

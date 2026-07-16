@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatHrMoney } from '../../utils/hrFormat';
 import {
   AlertTriangle,
@@ -9,7 +9,9 @@ import {
   Plus,
   RefreshCw,
   Route,
+  Search,
   ShieldCheck,
+  X,
 } from 'lucide-react';
 import Button from '../../components/Button';
 import HrReactSelect from '../../components/hr/HrReactSelect';
@@ -151,6 +153,7 @@ export default function BenefitsManagement() {
   const [loans, setLoans] = useState<HrLoan[]>([]);
   const [deductions, setDeductions] = useState<HrDeduction[]>([]);
   const [status, setStatus] = useState('');
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -367,13 +370,27 @@ export default function BenefitsManagement() {
   };
 
   const cards = tab === 'TRAVEL' ? travel : tab === 'LOAN' ? loans : deductions;
-  const pagedCards = cards.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE);
+  const filteredCards = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase('es-NI');
+    if (!term) return cards;
+    return cards.filter((entry) => {
+      const item = entry as HrTravelRequest | HrLoan | HrDeduction;
+      const detail = tab === 'TRAVEL'
+        ? `${(item as HrTravelRequest).destination} ${(item as HrTravelRequest).departureDate}`
+        : tab === 'LOAN'
+          ? (item as HrLoan).purpose
+          : `${(item as HrDeduction).name} ${(item as HrDeduction).effectiveFrom}`;
+      return `${item.code} ${item.user?.name ?? ''} ${detail}`.toLocaleLowerCase('es-NI').includes(term);
+    });
+  }, [cards, search, tab]);
+  const pagedCards = filteredCards.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE);
   useEffect(() => {
-    setTablePage((page) => Math.min(page, Math.max(1, Math.ceil(cards.length / PAGE_SIZE))));
-  }, [cards.length]);
+    setTablePage((page) => Math.min(page, Math.max(1, Math.ceil(filteredCards.length / PAGE_SIZE))));
+  }, [filteredCards.length]);
   const internalUsers = (organization.users ?? []).filter(
     (user) => user.accountType === 'INTERNAL' && Boolean(user.employeeId ?? user.employee?.id)
   );
+  const activePanelId = `benefits-panel-${tab.toLowerCase()}`;
 
   if (tab === 'GOVERNANCE') {
     return (
@@ -402,6 +419,7 @@ export default function BenefitsManagement() {
                 key={value}
                 role="tab"
                 aria-selected={tab === value}
+                aria-controls={`benefits-panel-${value.toLowerCase()}`}
                 onClick={() => {
                   setTab(value);
                   setStatus('');
@@ -413,7 +431,7 @@ export default function BenefitsManagement() {
             ))}
           </div>
         </div>
-        <section role="tabpanel" aria-label="Liquidaciones y políticas">
+        <section id={activePanelId} role="tabpanel" aria-label="Liquidaciones y políticas">
           <BenefitsGovernance embedded />
         </section>
       </div>
@@ -450,6 +468,7 @@ export default function BenefitsManagement() {
           <button
             role="tab"
             aria-selected={tab === 'TRAVEL'}
+            aria-controls="benefits-panel-travel"
             onClick={() => {
               setTab('TRAVEL');
               setStatus('');
@@ -461,6 +480,7 @@ export default function BenefitsManagement() {
           <button
             role="tab"
             aria-selected={tab === 'LOAN'}
+            aria-controls="benefits-panel-loan"
             onClick={() => {
               setTab('LOAN');
               setStatus('');
@@ -472,6 +492,7 @@ export default function BenefitsManagement() {
           <button
             role="tab"
             aria-selected={tab === 'DEDUCTION'}
+            aria-controls="benefits-panel-deduction"
             onClick={() => {
               setTab('DEDUCTION');
               setStatus('');
@@ -483,6 +504,7 @@ export default function BenefitsManagement() {
           <button
             role="tab"
             aria-selected={false}
+            aria-controls="benefits-panel-governance"
             onClick={() => {
               setTab('GOVERNANCE');
               setStatus('');
@@ -492,6 +514,18 @@ export default function BenefitsManagement() {
             <ShieldCheck size={17} /> Liquidaciones y políticas
           </button>
         </div>
+        <label className="hr-benefits-search">
+          Buscar
+          <span>
+            <Search size={16} aria-hidden="true" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Código, empleado o detalle"
+            />
+          </span>
+        </label>
         <label>
           Estado
           <HrReactSelect value={status} onChange={(event) => setStatus(event.target.value)}>
@@ -519,7 +553,7 @@ export default function BenefitsManagement() {
       )}
       {!loading && !error && (
         <>
-          <div className="hr-benefits-layout hr-benefits-admin-layout">
+          <div className="hr-benefits-admin-register" id={activePanelId} role="tabpanel" aria-label={tab === 'TRAVEL' ? 'Viáticos' : tab === 'LOAN' ? 'Préstamos' : 'Deducciones'}>
             <section
               className="hr-admin-board pr-table-card hr-benefits-admin-board"
               aria-label={`Bandeja de ${tab === 'TRAVEL' ? 'viáticos' : tab === 'LOAN' ? 'préstamos' : 'deducciones'}`}
@@ -528,32 +562,33 @@ export default function BenefitsManagement() {
                 <table className="hr-admin-table inventory-table">
                   <caption>
                     {tab === 'TRAVEL' ? 'Viáticos' : tab === 'LOAN' ? 'Préstamos' : 'Deducciones'}:{' '}
-                    {cards.length} registro(s)
+                    {filteredCards.length} registro(s)
                   </caption>
                   <thead>
                     <tr>
-                      <th>Código</th>
-                      <th>Empleado</th>
-                      <th>
+                      <th scope="col">Código</th>
+                      <th scope="col">Empleado</th>
+                      <th scope="col">
                         {tab === 'TRAVEL'
                           ? 'Destino y fechas'
                           : tab === 'LOAN'
                             ? 'Motivo'
                             : 'Deducción y vigencia'}
                       </th>
-                      <th>{tab === 'LOAN' ? 'Saldo' : 'Importe'}</th>
-                      <th>Estado</th>
-                      <th>Siguiente paso</th>
-                      <th className="hr-admin-actions-col">Acción</th>
+                      <th scope="col">{tab === 'LOAN' ? 'Saldo' : 'Importe'}</th>
+                      <th scope="col">Estado</th>
+                      <th scope="col">Siguiente paso</th>
+                      <th scope="col" className="hr-admin-actions-col">Acción</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {cards.length === 0 ? (
+                    {filteredCards.length === 0 ? (
                       <tr>
                         <td colSpan={7}>
                           <div className="hr-admin-empty">
-                            <strong>No hay registros para este estado</strong>
-                            <span>Cambia el estado o crea un nuevo registro.</span>
+                            <strong>{search ? 'No hay coincidencias' : 'No hay registros para este estado'}</strong>
+                            <span>{search ? 'Prueba otro código, empleado o detalle.' : 'Cambia el estado o crea un nuevo registro.'}</span>
+                            {search && <Button size="sm" variant="ghost" onClick={() => setSearch('')}>Limpiar búsqueda</Button>}
                             {status && (
                               <Button size="sm" variant="ghost" onClick={() => setStatus('')}>
                                 Mostrar todos
@@ -656,8 +691,8 @@ export default function BenefitsManagement() {
               </div>
               <Pagination
                 page={tablePage}
-                totalPages={Math.max(1, Math.ceil(cards.length / PAGE_SIZE))}
-                totalItems={cards.length}
+                totalPages={Math.max(1, Math.ceil(filteredCards.length / PAGE_SIZE))}
+                totalItems={filteredCards.length}
                 pageSize={PAGE_SIZE}
                 onPageChange={setTablePage}
                 alwaysShow
@@ -684,7 +719,7 @@ export default function BenefitsManagement() {
                       <h2>{selected.item.code}</h2>
                       <p>{selected.item.user?.name ?? `Usuario #${selected.item.userId}`}</p>
                     </div>
-                    <BenefitsStatusPill status={selected.item.status} />
+                    <div className="hr-benefits-workspace-controls"><BenefitsStatusPill status={selected.item.status} /><Button size="sm" variant="ghost" onClick={() => setSelected(null)} aria-label="Cerrar detalle" title="Cerrar detalle"><X size={16} /></Button></div>
                   </div>
                   <div className="hr-benefits-metrics">
                     {selected.resource === 'TRAVEL' && (
@@ -842,12 +877,12 @@ export default function BenefitsManagement() {
                         <table>
                           <thead>
                             <tr>
-                              <th>Fecha</th>
-                              <th>Categoría</th>
-                              <th>Reclamado</th>
-                              <th>Reconocido</th>
-                              <th>Soporte</th>
-                              <th>Estado</th>
+                              <th scope="col">Fecha</th>
+                              <th scope="col">Categoría</th>
+                              <th scope="col">Reclamado</th>
+                              <th scope="col">Reconocido</th>
+                              <th scope="col">Soporte</th>
+                              <th scope="col">Estado</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -881,12 +916,12 @@ export default function BenefitsManagement() {
                         <table>
                           <thead>
                             <tr>
-                              <th>#</th>
-                              <th>Vence</th>
-                              <th>Programado</th>
-                              <th>Pagado</th>
-                              <th>Saldo cuota</th>
-                              <th>Estado</th>
+                              <th scope="col">#</th>
+                              <th scope="col">Vence</th>
+                              <th scope="col">Programado</th>
+                              <th scope="col">Pagado</th>
+                              <th scope="col">Saldo cuota</th>
+                              <th scope="col">Estado</th>
                             </tr>
                           </thead>
                           <tbody>

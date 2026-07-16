@@ -18,6 +18,7 @@ import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
 import Sidebar from '../../components/Sidebar';
+import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import { attendanceClient, getAttendanceErrorMessage } from '../../components/hr/attendanceClient';
 import {
@@ -863,9 +864,22 @@ export default function AttendanceSettings() {
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
-        <form className="hr-settings-sidebar-form" onSubmit={(event) => void createDevice(event)}>
-          <OnlineOnlyNotice online={online} compact />
-          <div className="hr-kiosk-gate">
+        <HrModalFormShell
+          ariaLabel="Sección de credencial de dispositivo"
+          tabLabel="Dispositivo"
+          sectionTitle="Sucursal e identidad operativa"
+          icon={<TabletSmartphone size={18} aria-hidden="true" />}
+          formClassName="hr-settings-sidebar-form"
+          notice={<OnlineOnlyNotice online={online} compact />}
+          onSubmit={(event) => void createDevice(event)}
+          footer={
+            <>
+              <Button type="button" variant="ghost" onClick={() => setDevicePanelOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={!online || saving}>{saving ? 'Creando…' : 'Crear y mostrar clave'}</Button>
+            </>
+          }
+        >
+          <div className="hr-kiosk-gate span-full">
             <AlertTriangle size={18} />
             <span>La credencial no habilita un kiosco ni sustituye un cliente protegido.</span>
           </div>
@@ -910,15 +924,7 @@ export default function AttendanceSettings() {
               required
             />
           </label>
-          <div className="hr-settings-sidebar-actions">
-            <Button type="button" variant="ghost" onClick={() => setDevicePanelOpen(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={!online || saving}>
-              {saving ? 'Creando…' : 'Crear y mostrar clave'}
-            </Button>
-          </div>
-        </form>
+        </HrModalFormShell>
       </Sidebar>
 
       <Sidebar
@@ -927,43 +933,38 @@ export default function AttendanceSettings() {
         title="Clave mostrada una sola vez"
         width="large"
         closeOnBackdrop={false}
+        closeOnEscape={false}
       >
         {credential && (
-          <div className="hr-secret-panel">
-            <div className="hr-attendance-alert warning">
-              <KeyRound size={19} />
-              <span>
-                Guarda la clave ahora en el mecanismo seguro del cliente administrado. Al cerrar se
-                elimina de esta memoria de pantalla y el servidor no volverá a entregarla.
-              </span>
+          <div className="premium-modal-content hr-flow-modal-content hr-attendance-sensitive-modal">
+            <div className="modal-tabs" role="tablist" aria-label="Sección de clave efímera">
+              <button type="button" role="tab" id="attendance-credential-tab" aria-controls="attendance-credential-panel" aria-selected="true" className="modal-tab active"><KeyRound size={18} aria-hidden="true" /><span>Clave efímera</span></button>
             </div>
-            <dl>
-              <div>
-                <dt>Dispositivo</dt>
-                <dd>{credential.name}</dd>
-              </div>
-              <div>
-                <dt>ID público</dt>
-                <dd>{credential.id}</dd>
-              </div>
-              <div>
-                <dt>Código</dt>
-                <dd>{credential.code}</dd>
-              </div>
-            </dl>
-            <label>
-              Clave secreta
-              <code className="hr-device-secret">{credential.key}</code>
-            </label>
-            <div className="hr-kiosk-gate">
-              <LockKeyhole size={18} />
-              <span>
-                La clave por sí sola no significa que el kiosco esté desplegado o habilitado.
-              </span>
+            <div className="modal-tab-content" id="attendance-credential-panel" role="tabpanel" aria-labelledby="attendance-credential-tab" tabIndex={0}>
+              <section className="modal-content-group hr-secret-panel">
+                <div className="modal-section-header"><KeyRound size={18} aria-hidden="true" /><h3>Custodia inmediata de la credencial</h3></div>
+                <div className="hr-attendance-alert warning">
+                  <KeyRound size={19} />
+                  <span>Guarda la clave ahora en el mecanismo seguro del cliente administrado. Al cerrar se elimina de esta memoria de pantalla y el servidor no volverá a entregarla.</span>
+                </div>
+                <dl>
+                  <div><dt>Dispositivo</dt><dd>{credential.name}</dd></div>
+                  <div><dt>ID público</dt><dd>{credential.id}</dd></div>
+                  <div><dt>Código</dt><dd>{credential.code}</dd></div>
+                </dl>
+                <label>
+                  Clave secreta
+                  <code className="hr-device-secret">{credential.key}</code>
+                </label>
+                <div className="hr-kiosk-gate">
+                  <LockKeyhole size={18} />
+                  <span>La clave por sí sola no significa que el kiosco esté desplegado o habilitado.</span>
+                </div>
+              </section>
             </div>
-            <Button fullWidth onClick={() => setCredential(null)}>
-              Ya guardé la clave; cerrar definitivamente
-            </Button>
+            <div className="modal-footer">
+              <Button onClick={() => setCredential(null)}>Ya guardé la clave; cerrar definitivamente</Button>
+            </div>
           </div>
         )}
       </Sidebar>
@@ -972,34 +973,34 @@ export default function AttendanceSettings() {
         isOpen={Boolean(deviceToRevoke)}
         onClose={() => !saving && setDeviceToRevoke(null)}
         title="Revocar dispositivo"
+        width="large"
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
         {deviceToRevoke && (
-          <div className="hr-secret-panel">
-            <div className="hr-attendance-alert danger">
+          <HrModalFormShell
+            ariaLabel="Sección de revocación de dispositivo"
+            tabLabel="Revocación"
+            sectionTitle="Confirmación de seguridad"
+            icon={<Ban size={18} aria-hidden="true" />}
+            formClassName="hr-settings-sidebar-form"
+            notice={<OnlineOnlyNotice online={online} compact />}
+            onSubmit={(event) => { event.preventDefault(); void revokeDevice(); }}
+            footer={
+              <>
+                <Button type="button" variant="ghost" onClick={() => setDeviceToRevoke(null)} disabled={saving}>Cancelar</Button>
+                <Button type="submit" variant="danger" disabled={!online || saving}>{saving ? 'Revocando…' : 'Confirmar revocación'}</Button>
+              </>
+            }
+          >
+            <div className="hr-attendance-alert danger span-full">
               <Ban size={19} />
-              <span>
-                {deviceToRevoke.name} ({deviceToRevoke.code}) dejará de autenticar solicitudes.
-              </span>
+              <span>{deviceToRevoke.name} ({deviceToRevoke.code}) dejará de autenticar solicitudes.</span>
             </div>
-            <p className="hr-form-help">
-              Para volver a provisionar el equipo tendrás que crear otra credencial y custodiar su
-              nueva clave.
+            <p className="hr-form-help span-full">
+              Para volver a provisionar el equipo tendrás que crear otra credencial y custodiar su nueva clave.
             </p>
-            <div className="hr-settings-sidebar-actions">
-              <Button variant="ghost" onClick={() => setDeviceToRevoke(null)} disabled={saving}>
-                Cancelar
-              </Button>
-              <Button
-                variant="danger"
-                onClick={() => void revokeDevice()}
-                disabled={!online || saving}
-              >
-                {saving ? 'Revocando…' : 'Confirmar revocación'}
-              </Button>
-            </div>
-          </div>
+          </HrModalFormShell>
         )}
       </Sidebar>
     </div>

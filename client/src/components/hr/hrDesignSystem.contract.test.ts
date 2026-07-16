@@ -26,6 +26,8 @@ const attendanceStyles = readFileSync(new URL('../../pages/hr/attendance-setting
 const payroll = readFileSync(new URL('../../pages/hr/PayrollManagement.tsx', import.meta.url), 'utf8');
 const payrollLegal = readFileSync(new URL('../../pages/hr/PayrollLegalSettings.tsx', import.meta.url), 'utf8');
 const attendanceReview = readFileSync(new URL('../../pages/hr/AttendanceReview.tsx', import.meta.url), 'utf8');
+const modalShell = readFileSync(new URL('./HrModalFormShell.tsx', import.meta.url), 'utf8');
+const modalStyles = readFileSync(new URL('./HrControls.css', import.meta.url), 'utf8');
 
 describe('RH and Catering UI design-system contract', () => {
   it('keeps RH views inside the shared 1700px content boundary', () => {
@@ -70,9 +72,18 @@ describe('RH and Catering UI design-system contract', () => {
 
   it('keeps every RH sidebar compact and the manual punch in one canonical body', () => {
     expect(hrSource).not.toContain('width="wide"');
-    expect(attendanceReview).toContain('premium-modal-content hr-attendance-modal-content');
+    expect(attendanceReview).toContain('<HrModalFormShell');
+    expect(attendanceReview).toContain('formClassName="hr-attendance-manual-form"');
     expect(attendanceReview.match(/title="Marcaje manual supervisado"/g)).toHaveLength(1);
     expect(attendanceReview).not.toContain('<div className="modal-tab-content">\n                    <Select<Option>');
+  });
+
+  it('uses one accessible typography and spacing contract for RH modal forms', () => {
+    expect(modalShell).toContain('aria-controls={panelId}');
+    expect(modalShell).toContain('role="tabpanel"');
+    expect(modalStyles).toContain('font-family: inherit');
+    expect(modalStyles).toContain('font-size: 14px');
+    expect(modalStyles).toContain('min-height: 42px');
   });
 
   it('normalizes monetary input while presenting thousands separators and right alignment', () => {

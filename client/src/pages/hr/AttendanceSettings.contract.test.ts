@@ -27,4 +27,12 @@ describe('Owner attendance settings safety contract', () => {
     expect(source).toContain('attendanceClient.runBiometricMaintenance');
     expect(source).toContain('la versión anterior se conserva en el historial');
   });
+
+  it('keeps device credential sidebars on the canonical RH modal contract', () => {
+    expect(source.match(/<HrModalFormShell/g)).toHaveLength(2);
+    expect(source).toContain('premium-modal-content hr-flow-modal-content hr-attendance-sensitive-modal');
+    expect(source).toContain('closeOnBackdrop={false}');
+    expect(source).toContain('closeOnEscape={false}');
+    expect(source).toContain('Ya guardé la clave; cerrar definitivamente');
+  });
 });

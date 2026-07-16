@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  CalendarDays,
   Copy,
   Eye,
   Landmark,
@@ -40,6 +41,14 @@ import './payroll.css';
 import './payroll-legal.css';
 import './admin-tables.css';
 import '../Inventory.css';
+
+function formatLegalDate(value?: string | null) {
+  if (!value) return 'Sin fecha fin';
+  const date = new Date(value.length === 10 ? `${value}T12:00:00` : value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat('es-NI', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
+}
 
 export default function PayrollLegalSettings() {
   const online = usePayrollOnline();
@@ -238,11 +247,23 @@ export default function PayrollLegalSettings() {
         <section className="hr-legal-purpose" aria-labelledby="legal-purpose-title"><div className="hr-legal-purpose-icon"><ShieldCheck size={24} aria-hidden="true" /></div><div><span className="hr-legal-eyebrow">Qué controla esta pantalla</span><h2 id="legal-purpose-title">Una versión legal es la receta que usa cada nómina</h2><p>Toma el perfil fiscal de Empresa y define tasas, bases, tramos y conceptos sujetos a cada obligación. Sólo afecta cálculos cuando queda <strong>validada</strong>, <strong>activa</strong> y dentro de su vigencia.</p></div></section>
 
         <section className="hr-legal-version-list pr-table-card" aria-labelledby="legal-version-list-title">
-          <div className="hr-legal-tax-table-heading"><div><h2 id="legal-version-list-title">Versiones legales</h2><small>Abre una fila para consultar. Para cambiar una versión activa, clónala como borrador.</small></div></div>
-          <div className="hr-legal-readonly-table-wrap hr-admin-table-wrap"><table className="hr-admin-table inventory-table"><thead><tr><th scope="col">Versión</th><th scope="col">Vigencia</th><th scope="col">Estado</th><th scope="col">Configuración</th><th scope="col" className="hr-admin-actions-col">Acciones</th></tr></thead><tbody>{rules.map((rule) => <tr key={rule.id} className={String(rule.id) === selectedRuleId ? 'is-selected' : undefined}><th scope="row"><strong>{rule.name}</strong><small>v{rule.version}</small></th><td>{rule.effectiveFrom}<small>hasta {rule.effectiveTo ?? 'sin fecha fin'}</small></td><td><PayrollStatusPill status={rule.status} /></td><td>{rule.configurationSummary ? 'Configurada' : 'Pendiente'}<small>{rule.configurationSummary || 'Sin revisión validada'}</small></td><td className="hr-admin-actions-col"><div className="table-actions"><Button className="table-action-btn" type="button" size="sm" variant="ghost" title={`Abrir ${rule.name}`} aria-label={`Abrir ${rule.name}`} onClick={() => { setSelectedRuleId(String(rule.id)); setSearchParams({ ruleId: String(rule.id) }, { replace: true }); }}><Eye size={16} /></Button>{rule.activeConfigurationRevisionId && <Button className="table-action-btn" type="button" size="sm" variant="ghost" title={`Clonar ${rule.name} para editar`} aria-label={`Clonar ${rule.name} para editar`} disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(rule); setCreateOpen(true); }}><Copy size={16} /></Button>}</div></td></tr>)}</tbody></table></div>
+          <div className="hr-legal-version-table-toolbar">
+            <div><span className="hr-legal-eyebrow">Registro legal</span><h2 id="legal-version-list-title">Versiones legales</h2><small>Abre una fila para consultar. Para modificar una versión activa, clónala como borrador.</small></div>
+            <span className="hr-legal-version-count">{rules.length} versión(es)</span>
+          </div>
+          <div className="hr-legal-readonly-table-wrap hr-admin-table-wrap"><table className="hr-admin-table inventory-table"><thead><tr><th scope="col">Versión</th><th scope="col">Vigencia</th><th scope="col">Estado</th><th scope="col">Configuración</th><th scope="col" className="hr-admin-actions-col">Acciones</th></tr></thead><tbody>{rules.map((rule) => {
+            const isSelected = String(rule.id) === selectedRuleId;
+            return <tr key={rule.id} className={isSelected ? 'is-selected' : undefined} aria-current={isSelected ? 'true' : undefined}>
+              <th scope="row"><strong>{rule.name}</strong><small>Versión {rule.version}</small></th>
+              <td><div className="hr-legal-date-range"><CalendarDays size={16} aria-hidden="true" /><div><strong>{formatLegalDate(rule.effectiveFrom)}</strong><small>Hasta {formatLegalDate(rule.effectiveTo).toLocaleLowerCase()}</small></div></div></td>
+              <td><PayrollStatusPill status={rule.status} /></td>
+              <td><strong>{rule.configurationSummary ? 'Configurada' : 'Pendiente'}</strong><small>{rule.configurationSummary || 'Sin revisión validada'}</small></td>
+              <td className="hr-admin-actions-col"><div className="hr-legal-row-actions"><Button className="hr-legal-table-action" type="button" size="sm" variant={isSelected ? 'secondary' : 'ghost'} aria-label={`Abrir ${rule.name}`} onClick={() => { setSelectedRuleId(String(rule.id)); setSearchParams({ ruleId: String(rule.id) }, { replace: true }); }}><Eye size={15} aria-hidden="true" /> {isSelected ? 'Abierta' : 'Abrir'}</Button>{rule.activeConfigurationRevisionId && <Button className="hr-legal-table-action" type="button" size="sm" variant="ghost" aria-label={`Clonar ${rule.name} para editar`} disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(rule); setCreateOpen(true); }}><Copy size={15} aria-hidden="true" /> Clonar</Button>}</div></td>
+            </tr>;
+          })}</tbody></table></div>
         </section>
 
-        <section className="hr-legal-rule-toolbar" aria-label="Versión legal seleccionada"><div><span className="hr-legal-eyebrow">Versión abierta</span><strong>{selectedRule.name} · v{selectedRule.version}</strong></div><div className="hr-legal-rule-meta"><PayrollStatusPill status={selectedRule.status} /><span>{selectedRule.effectiveFrom} – {selectedRule.effectiveTo ?? 'sin fecha fin'}</span><small>Fuente: {selectedRule.sourceReference}</small>{selectedRule.activeConfigurationRevisionId && <Button type="button" size="sm" variant="ghost" disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(selectedRule); setCreateOpen(true); }}><Copy size={15} /> Clonar para editar</Button>}</div></section>
+        <section className="hr-legal-rule-toolbar" aria-label="Versión legal seleccionada"><div className="hr-legal-rule-title"><span className="hr-legal-eyebrow">Versión abierta</span><strong>{selectedRule.name} · v{selectedRule.version}</strong><small>Esta es la versión cuyo detalle y parámetros se muestran abajo.</small></div><div className="hr-legal-rule-meta"><PayrollStatusPill status={selectedRule.status} /><span><CalendarDays size={15} aria-hidden="true" /> {formatLegalDate(selectedRule.effectiveFrom)} – {formatLegalDate(selectedRule.effectiveTo).toLocaleLowerCase()}</span><small>Fuente: {selectedRule.sourceReference}</small>{selectedRule.activeConfigurationRevisionId && <Button type="button" size="sm" variant="ghost" disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(selectedRule); setCreateOpen(true); }}><Copy size={15} /> Clonar para editar</Button>}</div></section>
 
         {!selectedProfileIsCurrent && <div className="hr-legal-profile-warning" role="alert"><AlertTriangle size={20} /><div><strong>El perfil fiscal de Empresa cambió después de validar esta versión.</strong><p>La versión activa conserva su copia histórica. Clónala para crear un borrador con el régimen y la retención vigentes.</p></div><Button type="button" size="sm" disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(selectedRule); setCreateOpen(true); }}><Copy size={15} /> Clonar ahora</Button></div>}
 

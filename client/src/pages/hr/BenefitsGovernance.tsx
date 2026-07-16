@@ -492,7 +492,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               width="large"
             >
               <section
-                className="governance-form governance-sidebar-form"
+                className="premium-modal-content governance-form governance-sidebar-form"
                 aria-label="Nueva liquidación"
               >
                 <h3>1. Datos y base conciliada</h3>
@@ -881,7 +881,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
               }
               width="large"
             >
-              <section className="governance-form governance-sidebar-form">
+              <section className="premium-modal-content governance-form governance-sidebar-form">
                 <h3>{editingPolicy ? 'Ajustar versión borrador' : 'Configurar nueva versión'}</h3>
                 <div className="governance-grid">
                   <label>
@@ -1254,7 +1254,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
       >
         {editingSettlement && draftSettlement && (
           <section
-            className="governance-form governance-sidebar-form"
+            className="premium-modal-content governance-form governance-sidebar-form"
             aria-label="Editar liquidación borrador"
           >
             <p className="governance-help">
@@ -1520,7 +1520,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
         width="large"
       >
         {selectedSettlement && (
-          <div className="governance-detail">
+          <div className="premium-modal-content governance-detail">
             <div className="governance-detail-head">
               <div>
                 <strong>{selectedSettlement.employee.legalName}</strong>
@@ -1670,7 +1670,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
         width="large"
       >
         {policyToActivate && (
-          <div className="governance-detail">
+          <div className="premium-modal-content governance-detail">
             <p>
               La versión <strong>v{policyToActivate.version}</strong> entrará en vigencia el{' '}
               <strong>{policyToActivate.effectiveFrom.slice(0, 10)}</strong>. La política publicada

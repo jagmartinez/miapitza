@@ -3,6 +3,7 @@ import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
 import { FileCheck2 } from 'lucide-react';
 import Button from '../Button';
+import HrModalFormShell from './HrModalFormShell';
 import type { HrTravelExpensePayload } from '../../types/hr-benefits';
 
 interface TravelExpenseFormProps {
@@ -37,15 +38,36 @@ export default function TravelExpenseForm({
     });
   };
 
-  return (
-    <form className="hr-benefits-form" onSubmit={(event) => void submit(event)}>
-      <div className="hr-benefits-warning span-full" role="note">
+  const notice = (
+      <div className="hr-benefits-warning" role="note">
         <FileCheck2 size={19} aria-hidden="true" />
         <span>
           Este formulario registra metadatos. Los archivos se cargan por el flujo seguro de
           evidencias y se referencian por identificador.
         </span>
       </div>
+  );
+
+  return (
+    <HrModalFormShell
+      ariaLabel="Registro de gasto"
+      tabLabel="Soporte"
+      sectionTitle="Detalle y evidencia del gasto"
+      icon={<FileCheck2 size={18} aria-hidden="true" />}
+      formClassName="hr-benefits-form"
+      notice={notice}
+      onSubmit={(event) => void submit(event)}
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={!online || saving || !confirmed}>
+            {saving ? 'Registrando…' : 'Registrar gasto'}
+          </Button>
+        </>
+      }
+    >
       <label>
         Categoría
         <HrReactSelect
@@ -138,14 +160,6 @@ export default function TravelExpenseForm({
         />
         <span>Confirmo que el gasto y su referencia coinciden con el soporte.</span>
       </label>
-      <div className="hr-benefits-form-actions span-full">
-        <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
-          Cancelar
-        </Button>
-        <Button type="submit" disabled={!online || saving || !confirmed}>
-          {saving ? 'Registrando…' : 'Registrar gasto'}
-        </Button>
-      </div>
-    </form>
+    </HrModalFormShell>
   );
 }

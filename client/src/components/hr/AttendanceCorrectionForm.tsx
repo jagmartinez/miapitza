@@ -1,6 +1,8 @@
 import HrReactSelect from './HrReactSelect';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import { Pencil } from 'lucide-react';
 import Button from '../Button';
+import HrModalFormShell from './HrModalFormShell';
 import type { HrNamedEntity, HrUserSummary } from '../../types/hr';
 import type { HrAttendanceCorrectionPayload, HrCorrectionType } from '../../types/hr-workforce';
 import type { HrAttendanceAction } from '../../types/hr-attendance';
@@ -24,6 +26,7 @@ interface AttendanceCorrectionFormProps {
   saving: boolean;
   onSubmit: (payload: HrAttendanceCorrectionPayload) => Promise<void>;
   onCancel?: () => void;
+  notice?: ReactNode;
 }
 
 export default function AttendanceCorrectionForm({
@@ -37,6 +40,7 @@ export default function AttendanceCorrectionForm({
   saving,
   onSubmit,
   onCancel,
+  notice,
 }: AttendanceCorrectionFormProps) {
   const [userId, setUserId] = useState(initialUserId ? String(initialUserId) : '');
   const [type, setType] = useState<HrCorrectionType>('ADD_PUNCH');
@@ -63,7 +67,21 @@ export default function AttendanceCorrectionForm({
   };
 
   return (
-    <form className="hr-workforce-form" onSubmit={(event) => void submit(event)}>
+    <HrModalFormShell
+      ariaLabel="Sección de corrección de asistencia"
+      tabLabel="Corrección"
+      sectionTitle="Marcaje, cambio solicitado y evidencia"
+      icon={<Pencil size={18} aria-hidden="true" />}
+      formClassName="hr-workforce-form"
+      notice={notice}
+      onSubmit={(event) => void submit(event)}
+      footer={
+        <>
+          {onCancel && <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>}
+          <Button type="submit" disabled={!online || saving || !reason.trim() || Boolean(users && !userId)}>{saving ? 'Enviando…' : 'Solicitar corrección'}</Button>
+        </>
+      }
+    >
       {users && (
         <label>
           Usuario
@@ -157,19 +175,6 @@ export default function AttendanceCorrectionForm({
         La solicitud no reescribe historial: el servidor crea una corrección compensatoria con
         actor, versión y trazabilidad.
       </p>
-      <div className="hr-form-actions span-full">
-        {onCancel && (
-          <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
-            Cancelar
-          </Button>
-        )}
-        <Button
-          type="submit"
-          disabled={!online || saving || !reason.trim() || Boolean(users && !userId)}
-        >
-          {saving ? 'Enviando…' : 'Solicitar corrección'}
-        </Button>
-      </div>
-    </form>
+    </HrModalFormShell>
   );
 }

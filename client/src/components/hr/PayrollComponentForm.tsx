@@ -1,6 +1,9 @@
 import HrReactSelect from './HrReactSelect';
 import HrMoneyInput from './HrMoneyInput';
+import HrModalFormShell from './HrModalFormShell';
+import PayrollOnlineNotice from './PayrollOnlineNotice';
 import { useState } from 'react';
+import { CircleDollarSign } from 'lucide-react';
 import Button from '../Button';
 import type { HrUserSummary } from '../../types/hr';
 import type { HrPayrollComponentPayload, HrPayrollPaymentConceptDefinition } from '../../types/hr-payroll';
@@ -53,7 +56,26 @@ export default function PayrollComponentForm({
   };
 
   return (
-    <form className="hr-payroll-form" onSubmit={(event) => void submit(event)}>
+    <HrModalFormShell
+      ariaLabel="Agregar concepto a la corrida"
+      tabLabel="Concepto"
+      sectionTitle="Colaborador, importe y clasificación legal"
+      icon={<CircleDollarSign size={18} aria-hidden="true" />}
+      formClassName="hr-payroll-form"
+      notice={<PayrollOnlineNotice online={online} compact />}
+      onSubmit={(event) => void submit(event)}
+      footer={<>
+        <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
+          Cancelar
+        </Button>
+        <Button
+          type="submit"
+          disabled={!online || saving || !userId || !selectedConcept || !inputAmount || !reason.trim() || !classificationConfirmed}
+        >
+          {saving ? 'Agregando…' : 'Agregar componente'}
+        </Button>
+      </>}
+    >
       <label>
         Persona
         <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)} required>
@@ -113,17 +135,6 @@ export default function PayrollComponentForm({
         El importe es una entrada manual auditable. El servidor recalcula INSS, INATEC, IR y totales
         desde el catálogo congelado; la UI no permite alterar las banderas INSS o IR dentro de la corrida.
       </p>
-      <div className="hr-payroll-form-actions span-full">
-        <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
-          Cancelar
-        </Button>
-        <Button
-          type="submit"
-          disabled={!online || saving || !userId || !selectedConcept || !inputAmount || !reason.trim() || !classificationConfirmed}
-        >
-          {saving ? 'Agregando…' : 'Agregar componente'}
-        </Button>
-      </div>
-    </form>
+    </HrModalFormShell>
   );
 }

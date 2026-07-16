@@ -1,0 +1,462 @@
+/* Administrative RH workspaces follow the same density and table-first
+   composition used by Production Recipes. Kept separate from workforce.css
+   and attendance.css because those sheets also serve employee self-service. */
+
+.hr-employee-detail-page,
+.hr-attendance-review-page,
+.hr-attendance-management-page,
+.hr-leave-management-page {
+  min-width: 0;
+}
+
+/* Employee file */
+.hr-employee-profile-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--spacing-lg);
+  padding: clamp(1.1rem, 2vw, 1.55rem);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 24%, var(--color-border));
+  border-radius: var(--radius-xl);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 11%, var(--color-surface)), var(--color-surface) 56%);
+  box-shadow: var(--shadow-sm);
+}
+
+.hr-employee-avatar {
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 42%, transparent);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--color-primary) 16%, var(--color-surface));
+  color: var(--color-primary);
+  font-size: var(--font-size-2xl);
+  font-weight: 850;
+  letter-spacing: -0.03em;
+}
+
+.hr-employee-profile-main {
+  min-width: 0;
+}
+
+.hr-employee-eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--color-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hr-employee-profile-main h2 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: clamp(1.35rem, 2vw, 1.8rem);
+  letter-spacing: -0.025em;
+}
+
+.hr-employee-profile-main > p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 5px 0 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.hr-employee-profile-contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 16px;
+  margin-top: var(--spacing-md);
+}
+
+.hr-employee-profile-contact span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.hr-employee-profile-contact svg {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+}
+
+.hr-employee-profile-status {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  color: var(--color-text-secondary);
+  text-align: right;
+}
+
+.hr-employee-profile-status small {
+  font-size: var(--font-size-xs);
+}
+
+.hr-employee-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--spacing-md);
+}
+
+.hr-employee-facts > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 10px;
+  min-width: 0;
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.hr-employee-facts svg {
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: var(--color-primary);
+}
+
+.hr-employee-facts span {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.hr-employee-facts strong {
+  min-width: 0;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.hr-employee-tabs {
+  gap: 4px;
+  padding: 7px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.hr-employee-tabs .page-tab {
+  min-height: 40px;
+  border-radius: var(--radius-md);
+}
+
+.hr-employee-tabs .page-tab.active {
+  border-color: transparent;
+  background: var(--color-neutral-700);
+  color: white;
+}
+
+.hr-employee-detail-page .hr-detail-panel {
+  min-height: 310px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.hr-detail-sections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-lg);
+  padding: var(--spacing-lg);
+}
+
+.hr-detail-group {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-background);
+}
+
+.hr-detail-group:only-child,
+.hr-detail-group:nth-child(3):last-child {
+  grid-column: 1 / -1;
+}
+
+.hr-detail-group > header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-surface) 90%, var(--color-primary) 10%);
+}
+
+.hr-detail-group-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  color: var(--color-primary);
+}
+
+.hr-detail-group h2,
+.hr-detail-group p {
+  margin: 0;
+}
+
+.hr-detail-group h2 {
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+}
+
+.hr-detail-group p {
+  margin-top: 3px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.hr-detail-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.hr-detail-item {
+  min-width: 0;
+  padding: 13px var(--spacing-md);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.hr-detail-item:nth-child(odd) {
+  border-right: 1px solid var(--color-border);
+}
+
+.hr-detail-item-wide {
+  grid-column: 1 / -1;
+  border-right: 0 !important;
+}
+
+.hr-detail-item dt {
+  margin: 0 0 4px;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.hr-detail-item dd {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: 650;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* Admin attendance and leave workspaces */
+.hr-admin-catalog-page.hr-attendance-review-page .hr-attendance-filters.inventory-filters-row,
+.hr-admin-catalog-page.hr-attendance-management-page .hr-workforce-filters.inventory-filters-row,
+.hr-admin-catalog-page.hr-leave-management-page .hr-workforce-filters.inventory-filters-row {
+  margin-bottom: 0;
+}
+
+.hr-attendance-review-page .hr-attendance-filters.inventory-filters-row {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(145px, 1fr));
+  align-items: end;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+}
+
+.hr-attendance-review-page .hr-attendance-filters .filter-field {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+
+.hr-attendance-management-page .hr-workforce-filters.inventory-filters-row,
+.hr-leave-management-page .hr-workforce-filters.inventory-filters-row {
+  display: grid;
+  align-items: end;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+}
+
+.hr-attendance-management-page .hr-workforce-filters.inventory-filters-row {
+  grid-template-columns: minmax(150px, 0.8fr) repeat(2, minmax(190px, 1.25fr)) auto;
+}
+
+.hr-leave-management-page .hr-workforce-filters.inventory-filters-row {
+  grid-template-columns: repeat(2, minmax(160px, 0.8fr)) minmax(220px, 1.4fr) auto;
+}
+
+.hr-attendance-management-page .hr-workforce-filters > .btn,
+.hr-leave-management-page .hr-workforce-filters > .btn {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.hr-admin-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-md);
+}
+
+.hr-admin-kpis > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px var(--spacing-md);
+  min-width: 0;
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.hr-admin-kpis span,
+.hr-admin-kpis small {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.hr-admin-kpis span {
+  font-weight: 750;
+}
+
+.hr-admin-kpis strong {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: var(--color-text);
+  font-size: var(--font-size-2xl);
+  font-variant-numeric: tabular-nums;
+}
+
+.hr-admin-catalog-page :is(.hr-admin-board, .pr-table-card) {
+  width: 100%;
+}
+
+.hr-admin-catalog-page .hr-admin-tabs {
+  padding: 7px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.hr-admin-catalog-page .hr-admin-tabs button {
+  min-height: 40px;
+}
+
+.hr-admin-catalog-page .hr-admin-table caption {
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: var(--font-size-base);
+}
+
+.hr-admin-catalog-page .hr-admin-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.hr-admin-catalog-page .hr-admin-table tbody th {
+  padding: 13px 14px;
+  border-top: 1px solid var(--color-border);
+  font-size: var(--font-size-sm);
+  text-align: left;
+}
+
+.hr-admin-catalog-page .hr-admin-row-actions,
+.hr-admin-catalog-page .table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+@media (max-width: 1250px) {
+  .hr-attendance-review-page .hr-attendance-filters.inventory-filters-row {
+    grid-template-columns: repeat(3, minmax(170px, 1fr));
+  }
+
+  .hr-employee-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 920px) {
+  .hr-employee-profile-card {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .hr-employee-profile-status {
+    grid-column: 1 / -1;
+    align-items: center;
+    flex-direction: row;
+    justify-content: space-between;
+    text-align: left;
+  }
+
+  .hr-detail-sections,
+  .hr-attendance-management-page .hr-workforce-filters.inventory-filters-row,
+  .hr-leave-management-page .hr-workforce-filters.inventory-filters-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hr-detail-group:nth-child(3):last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 680px) {
+  .hr-employee-profile-card {
+    grid-template-columns: 1fr;
+  }
+
+  .hr-employee-avatar {
+    width: 62px;
+    height: 62px;
+    border-radius: 18px;
+  }
+
+  .hr-employee-profile-status {
+    grid-column: auto;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .hr-employee-facts,
+  .hr-admin-kpis,
+  .hr-detail-sections,
+  .hr-attendance-review-page .hr-attendance-filters.inventory-filters-row,
+  .hr-attendance-management-page .hr-workforce-filters.inventory-filters-row,
+  .hr-leave-management-page .hr-workforce-filters.inventory-filters-row {
+    grid-template-columns: 1fr;
+  }
+
+  .hr-detail-group,
+  .hr-detail-group:only-child,
+  .hr-detail-group:nth-child(3):last-child {
+    grid-column: auto;
+  }
+
+  .hr-detail-list {
+    grid-template-columns: 1fr;
+  }
+
+  .hr-detail-item,
+  .hr-detail-item-wide {
+    grid-column: auto;
+    border-right: 0;
+  }
+
+  .hr-attendance-management-page .hr-workforce-filters > .btn,
+  .hr-leave-management-page .hr-workforce-filters > .btn {
+    width: 100%;
+  }
+}

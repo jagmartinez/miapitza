@@ -43,6 +43,7 @@ import type {
 } from '../../types/hr-workforce';
 import './workforce.css';
 import './admin-tables.css';
+import './hr-admin-operations.css';
 import '../Inventory.css';
 
 const EMPTY_LOOKUPS: HrOrganizationCatalogs = {
@@ -267,7 +268,7 @@ export default function AttendanceManagement() {
   useEffect(() => { setTablePage((page) => Math.min(page, Math.max(1, Math.ceil(activeTableCount / PAGE_SIZE)))); }, [activeTableCount]);
 
   return (
-    <div className="page-wrapper inventory-page hr-workforce-page hr-admin-catalog-page">
+    <div className="page-wrapper inventory-page hr-workforce-page hr-attendance-management-page hr-admin-catalog-page">
       <PageHeader
         className="inventory-header-new"
         title="Control diario de asistencia"
@@ -318,6 +319,12 @@ export default function AttendanceManagement() {
           <RefreshCw size={16} /> Actualizar
         </Button>
       </section>
+
+      {!loading && !error && <section className="hr-admin-kpis" aria-label="Resumen operativo de asistencia">
+        <div><span>Jornadas visibles</span><strong>{summaries.length}</strong><small>Empleados en el filtro actual</small></div>
+        <div><span>Incidencias abiertas</span><strong>{incidents.filter((item) => item.status === 'OPEN').length}</strong><small>Requieren corrección o revisión</small></div>
+        <div><span>Decisiones pendientes</span><strong>{corrections.filter((item) => item.status === 'PENDING').length + overtime.filter((item) => item.status === 'PENDING').length}</strong><small>Correcciones y horas extra</small></div>
+      </section>}
 
       {loading && <LoadingSpinner text="Cargando control diario…" />}
       {!loading && error && (
@@ -438,8 +445,7 @@ export default function AttendanceManagement() {
         closeOnEscape={!saving}
       >
         {createPanel?.kind !== 'period' && (
-          <div className="hr-sidebar-body">
-            <OnlineOnlyNotice online={online} compact />
+          <>
             {createPanel?.kind === 'correction' && (
               <AttendanceCorrectionForm
                 users={users}
@@ -452,6 +458,7 @@ export default function AttendanceManagement() {
                 timezone={createPanel.summary?.timezone}
                 online={online}
                 saving={saving}
+                notice={<OnlineOnlyNotice online={online} compact />}
                 onSubmit={createCorrection}
                 onCancel={() => setCreatePanel(null)}
               />
@@ -465,11 +472,12 @@ export default function AttendanceManagement() {
                 candidateMinutes={createPanel.summary?.candidateOvertimeMinutes}
                 online={online}
                 saving={saving}
+                notice={<OnlineOnlyNotice online={online} compact />}
                 onSubmit={createOvertime}
                 onCancel={() => setCreatePanel(null)}
               />
             )}
-          </div>
+          </>
         )}
         {createPanel?.kind === 'period' && (
           <HrModalFormShell
@@ -542,11 +550,21 @@ export default function AttendanceManagement() {
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
-        <form
-          className="hr-workforce-form hr-sidebar-body"
+        <HrModalFormShell
+          ariaLabel="Sección de decisión de asistencia"
+          tabLabel={decisionPanel?.kind === 'close' ? 'Cierre' : decisionPanel?.kind === 'reopen' ? 'Reapertura' : 'Decisión'}
+          sectionTitle="Resolución y justificación"
+          icon={decisionPanel?.kind === 'close' ? <LockKeyhole size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+          formClassName="hr-workforce-form"
+          notice={<OnlineOnlyNotice online={online} compact />}
           onSubmit={(event) => void submitDecision(event)}
+          footer={
+            <>
+              <Button type="button" variant="ghost" onClick={() => setDecisionPanel(null)} disabled={saving}>Cancelar</Button>
+              <Button type="submit" variant={decisionPanel?.kind === 'close' ? 'danger' : 'primary'} disabled={!online || saving || !reason.trim()}>{saving ? 'Registrando…' : 'Confirmar con auditoría'}</Button>
+            </>
+          }
         >
-          <OnlineOnlyNotice online={online} compact />
           {decisionPanel?.kind === 'close' || decisionPanel?.kind === 'reopen' ? (
             <div className="hr-sensitive-warning span-full" role="alert">
               <AlertTriangle size={20} />
@@ -591,24 +609,7 @@ export default function AttendanceManagement() {
               required
             />
           </label>
-          <div className="hr-form-actions span-full">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setDecisionPanel(null)}
-              disabled={saving}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              variant={decisionPanel?.kind === 'close' ? 'danger' : 'primary'}
-              disabled={!online || saving || !reason.trim()}
-            >
-              {saving ? 'Registrando…' : 'Confirmar con auditoría'}
-            </Button>
-          </div>
-        </form>
+        </HrModalFormShell>
       </Sidebar>
     </div>
   );

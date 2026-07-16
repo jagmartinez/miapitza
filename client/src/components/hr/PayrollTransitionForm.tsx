@@ -1,4 +1,6 @@
 import HrReactSelect from './HrReactSelect';
+import HrModalFormShell from './HrModalFormShell';
+import PayrollOnlineNotice from './PayrollOnlineNotice';
 import { useState } from 'react';
 import { AlertTriangle, UsersRound } from 'lucide-react';
 import Button from '../Button';
@@ -77,7 +79,31 @@ export default function PayrollTransitionForm({
   const sensitive = action === 'APPROVE' || action === 'MARK_PAID' || action === 'VOID';
 
   return (
-    <form className="hr-payroll-form" onSubmit={(event) => void submit(event)}>
+    <HrModalFormShell
+      ariaLabel={`Acción de nómina: ${LABELS[action]}`}
+      tabLabel={LABELS[action]}
+      sectionTitle={`${LABELS[action]} · ${run.code}`}
+      icon={<UsersRound size={18} aria-hidden="true" />}
+      formClassName="hr-payroll-form"
+      notice={<PayrollOnlineNotice online={online} compact />}
+      onSubmit={(event) => void submit(event)}
+      footer={<>
+        <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
+          Volver
+        </Button>
+        <Button
+          type="submit"
+          variant={sensitive ? 'danger' : 'primary'}
+          disabled={
+            !online || saving || !confirmed || !reason.trim() ||
+            (action === 'MARK_PAID' && (!paymentReference.trim() || !paymentDate || !paymentMethod || !evidenceReference.trim())) ||
+            (action === 'VOID' && run.status === 'PAID' && (!reversalReference.trim() || !reversalDate || !reversalMethod || !evidenceReference.trim()))
+          }
+        >
+          {saving ? 'Registrando…' : LABELS[action]}
+        </Button>
+      </>}
+    >
       <div className={`hr-payroll-warning span-full ${sensitive ? 'danger' : ''}`} role="note">
         <AlertTriangle size={20} aria-hidden="true" />
         <span>
@@ -178,22 +204,6 @@ export default function PayrollTransitionForm({
           revisé anomalías, snapshot y componentes.
         </span>
       </label>
-      <div className="hr-payroll-form-actions span-full">
-        <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
-          Volver
-        </Button>
-        <Button
-          type="submit"
-          variant={sensitive ? 'danger' : 'primary'}
-          disabled={
-            !online || saving || !confirmed || !reason.trim() ||
-            (action === 'MARK_PAID' && (!paymentReference.trim() || !paymentDate || !paymentMethod || !evidenceReference.trim())) ||
-            (action === 'VOID' && run.status === 'PAID' && (!reversalReference.trim() || !reversalDate || !reversalMethod || !evidenceReference.trim()))
-          }
-        >
-          {saving ? 'Registrando…' : LABELS[action]}
-        </Button>
-      </div>
-    </form>
+    </HrModalFormShell>
   );
 }

@@ -3,12 +3,20 @@ import {
   AlertTriangle,
   Check,
   ChevronDown,
+  CircleDollarSign,
+  Clock3,
   Download,
   FileSpreadsheet,
   Info,
+  Minus,
   Plus,
+  Receipt,
   RefreshCw,
+  Search,
+  ShieldCheck,
+  UserRound,
   UsersRound,
+  X,
 } from 'lucide-react';
 import Button from '../Button';
 import { formatHrMoney } from '../../utils/hrFormat';
@@ -224,15 +232,27 @@ export default function PayrollOperationWorkspace({
             {run.status === 'CALCULATED' && <Button size="sm" variant="secondary" onClick={onAddComponent} disabled={!online || busy}><Plus size={15} /> Agregar ingreso o deducción</Button>}
           </div>
           <div className="payroll-operation-table-tools">
-            <label>
-              <span className="sr-only">Buscar colaborador</span>
-              <input type="search" placeholder="Buscar colaborador…" value={query} onChange={(event) => setQuery(event.target.value)} />
-            </label>
+            <div className="payroll-operation-employee-search">
+              <label htmlFor="payroll-employee-search">Buscar colaborador</label>
+              <div className="payroll-operation-search-control">
+                <Search size={17} aria-hidden="true" />
+                <input
+                  id="payroll-employee-search"
+                  type="search"
+                  placeholder="Nombre del colaborador"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  autoComplete="off"
+                />
+                {query && <button type="button" onClick={() => setQuery('')} aria-label="Limpiar búsqueda"><X size={15} /></button>}
+              </div>
+              <small aria-live="polite">{filteredRows.length} de {rows.length} colaborador(es)</small>
+            </div>
             <label className="payroll-operation-check"><input type="checkbox" checked={onlyIncidents} onChange={(event) => setOnlyIncidents(event.target.checked)} /> Solo con incidencias</label>
           </div>
           <div className="payroll-operation-table-wrap">
             <table className="payroll-operation-table">
-              <thead><tr><th>Colaborador</th><th>Ingresos</th><th>INSS laboral</th><th>IR laboral</th><th>Deducciones</th><th>Neto</th><th>Incidencias</th><th><span className="sr-only">Acciones</span></th></tr></thead>
+              <thead><tr><th scope="col">Colaborador</th><th scope="col">Ingresos</th><th scope="col">INSS laboral</th><th scope="col">IR laboral</th><th scope="col">Deducciones</th><th scope="col">Neto</th><th scope="col">Incidencias</th><th scope="col"><span className="sr-only">Acciones</span></th></tr></thead>
               <tbody>
                 {filteredRows.map((row) => {
                   const expanded = expandedUserId === row.userId;
@@ -246,15 +266,41 @@ export default function PayrollOperationWorkspace({
                         <td data-label="Deducciones">{formatHrMoney(currency, row.deductions)}</td>
                         <td data-label="Neto"><strong>{formatHrMoney(currency, row.net)}</strong></td>
                         <td data-label="Incidencias">{row.anomalies.length ? <span className="payroll-operation-incident">{row.anomalies.length}</span> : <span className="payroll-operation-ok"><Check size={14} /> Sin incidencias</span>}</td>
-                        <td><div className="payroll-employee-actions"><Button size="sm" variant="ghost" aria-expanded={expanded} aria-label={`${expanded ? 'Cerrar' : 'Ver'} detalle de ${row.name}`} onClick={() => setExpandedUserId(expanded ? null : row.userId)}>Detalle <ChevronDown size={15} /></Button>{row.receipt && <Button size="sm" variant="ghost" onClick={() => onDownloadReceipt(row.receipt!.id)} disabled={!online || busy} title={`Descargar colilla de ${row.name}`}><Download size={14} /><span className="sr-only">Descargar colilla de {row.name}</span></Button>}</div></td>
+                        <td><div className="payroll-employee-actions"><Button className="payroll-operation-detail-trigger" size="sm" variant="ghost" aria-expanded={expanded} aria-controls={`payroll-employee-detail-${row.userId}`} aria-label={`${expanded ? 'Cerrar' : 'Ver'} detalle de ${row.name}`} onClick={() => setExpandedUserId(expanded ? null : row.userId)}>Detalle <ChevronDown className={expanded ? 'is-open' : undefined} size={15} /></Button>{row.receipt && <Button size="sm" variant="ghost" onClick={() => onDownloadReceipt(row.receipt!.id)} disabled={!online || busy} title={`Descargar colilla de ${row.name}`}><Download size={14} /><span className="sr-only">Descargar colilla de {row.name}</span></Button>}</div></td>
                       </tr>
                       {expanded && (
                         <tr className="payroll-operation-detail-row"><td colSpan={8}>
-                          <div className="payroll-operation-employee-detail">
-                            <section><h4>Ingresos</h4>{row.components.filter((item) => item.type === 'INCOME').map((item) => <Line key={item.id} label={item.name} note={item.source} amount={formatHrMoney(currency, item.amount)} />)}{!row.components.some((item) => item.type === 'INCOME') && <p>Sin ingresos calculados.</p>}</section>
-                            <section><h4>Deducciones</h4>{row.components.filter((item) => item.type === 'DEDUCTION').map((item) => <Line key={item.id} label={item.name} note={item.code} amount={formatHrMoney(currency, item.amount)} />)}{!row.components.some((item) => item.type === 'DEDUCTION') && <p>Sin deducciones.</p>}</section>
-                            <section><h4>Control e incidencias</h4><p>{row.overtimeMinutes} min de horas extra aprobadas.</p>{row.anomalies.map((item) => <div key={item.id} className={`payroll-operation-anomaly ${item.blocking ? 'blocking' : ''}`}><strong>{item.code}</strong><span>{item.message}</span></div>)}{row.anomalies.length === 0 && <p>Sin incidencias para este colaborador.</p>}</section>
-                            <section className="payroll-operation-payslip"><h4>Colilla de pago</h4>{row.receipt ? <><strong className="payroll-operation-payslip-net">Neto pagado: {formatHrMoney(row.receipt.currency, row.receipt.netPay)}</strong><p>Publicada para el empleado.</p><Button size="sm" variant="secondary" onClick={() => onDownloadReceipt(row.receipt!.id)} disabled={!online || busy}><Download size={14} /> Descargar colilla PDF</Button></> : <p>Se genera automáticamente cuando se registra el pago de la corrida.</p>}</section>
+                          <div id={`payroll-employee-detail-${row.userId}`} className="payroll-operation-employee-detail">
+                            <header className="payroll-operation-employee-summary">
+                              <div className="payroll-operation-employee-avatar" aria-hidden="true"><UserRound size={22} /></div>
+                              <div><span className="payroll-operation-eyebrow">Detalle individual</span><h4>{row.name}</h4><p>{row.branch ?? 'Sucursal no asignada'} · colaborador #{row.userId}</p></div>
+                              <dl>
+                                <div><dt>Ingresos</dt><dd>{formatHrMoney(currency, row.gross)}</dd></div>
+                                <div><dt>Deducciones</dt><dd>{formatHrMoney(currency, row.deductions)}</dd></div>
+                                <div className="net"><dt>Neto</dt><dd>{formatHrMoney(currency, row.net)}</dd></div>
+                              </dl>
+                            </header>
+                            <section>
+                              <div className="payroll-operation-detail-heading"><CircleDollarSign size={18} aria-hidden="true" /><div><h4>Ingresos</h4><small>{row.components.filter((item) => item.type === 'INCOME').length} concepto(s)</small></div></div>
+                              {row.components.filter((item) => item.type === 'INCOME').map((item) => <Line key={item.id} label={item.name} note={item.source} amount={formatHrMoney(currency, item.amount)} />)}
+                              {!row.components.some((item) => item.type === 'INCOME') && <p className="payroll-operation-detail-empty">Sin ingresos calculados.</p>}
+                              <footer><span>Total ingresos</span><strong>{formatHrMoney(currency, row.gross)}</strong></footer>
+                            </section>
+                            <section>
+                              <div className="payroll-operation-detail-heading"><Minus size={18} aria-hidden="true" /><div><h4>Deducciones</h4><small>{row.components.filter((item) => item.type === 'DEDUCTION').length} concepto(s)</small></div></div>
+                              {row.components.filter((item) => item.type === 'DEDUCTION').map((item) => <Line key={item.id} label={item.name} note={item.code} amount={formatHrMoney(currency, item.amount)} />)}
+                              {!row.components.some((item) => item.type === 'DEDUCTION') && <p className="payroll-operation-detail-empty">Sin deducciones.</p>}
+                              <footer><span>Total deducciones</span><strong>{formatHrMoney(currency, row.deductions)}</strong></footer>
+                            </section>
+                            <section>
+                              <div className="payroll-operation-detail-heading"><Clock3 size={18} aria-hidden="true" /><div><h4>Control e incidencias</h4><small>{row.overtimeMinutes} min extra aprobados</small></div></div>
+                              {row.anomalies.map((item) => <div key={item.id} className={`payroll-operation-anomaly ${item.blocking ? 'blocking' : ''}`}><strong>{item.code}</strong><span>{item.message}</span></div>)}
+                              {row.anomalies.length === 0 && <div className="payroll-operation-detail-ok"><ShieldCheck size={17} /><span>Sin incidencias para este colaborador.</span></div>}
+                            </section>
+                            <section className="payroll-operation-payslip">
+                              <div className="payroll-operation-detail-heading"><Receipt size={18} aria-hidden="true" /><div><h4>Colilla de pago</h4><small>{row.receipt ? 'Documento publicado' : 'Pendiente de publicación'}</small></div></div>
+                              {row.receipt ? <><strong className="payroll-operation-payslip-net">Neto pagado: {formatHrMoney(row.receipt.currency, row.receipt.netPay)}</strong><p>Disponible para el colaborador en Mi RH.</p><Button size="sm" variant="secondary" onClick={() => onDownloadReceipt(row.receipt!.id)} disabled={!online || busy}><Download size={14} /> Descargar colilla PDF</Button></> : <p>Se genera automáticamente cuando se registra el pago de la corrida.</p>}
+                            </section>
                             {row.statutory && <details className="payroll-operation-statutory"><summary>Traza de INSS e IR</summary><div><Line label="Base INSS" note={`Configuración #${row.statutory.configurationRevisionId}`} amount={formatHrMoney(currency, row.statutory.inssBase)} /><Line label="INSS laboral" note={`Método ${row.statutory.methodVersion}`} amount={formatHrMoney(currency, row.statutory.employeeInss)} /><Line label="Proyección anual IR" note={`${row.statutory.elapsedFiscalMonths}/12 meses fiscales`} amount={formatHrMoney(currency, row.statutory.annualProjection)} /><Line label="IR retenido" note={row.statutory.incomeTaxMethod} amount={formatHrMoney(currency, row.statutory.currentIncomeTaxWithheld)} /><p>Tramo efectivo: {row.statutory.bracketSnapshot?.effective ? `${row.statutory.bracketSnapshot.effective.lowerBound} a ${row.statutory.bracketSnapshot.effective.upperBound ?? 'en adelante'} · tasa ${(Number(row.statutory.bracketSnapshot.effective.rate) * 100).toFixed(2)}%` : 'sin retención aplicable'}.</p><small>Histórico {row.statutory.historyFingerprint} · cálculo {formatDateTime(row.statutory.createdAt)}</small><span className="sr-only">Compensación fija {row.statutory.fixedCompensationAmount}</span></div></details>}
                           </div>
                         </td></tr>

@@ -1,5 +1,6 @@
 .my-hr-nav {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(116px, 1fr));
   gap: 0.35rem;
   margin: 0 0 var(--spacing-lg);
   padding: 0.35rem;
@@ -12,7 +13,6 @@
 
 .my-hr-nav a {
   display: inline-flex;
-  flex: 1 0 auto;
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
@@ -43,12 +43,13 @@
 
 @media (max-width: 640px) {
   .my-hr-nav {
+    display: flex;
     margin-inline: calc(var(--spacing-sm) * -1);
     border-radius: 0;
   }
 
   .my-hr-nav a {
-    flex-basis: auto;
+    flex: 0 0 auto;
     min-width: max-content;
   }
 }

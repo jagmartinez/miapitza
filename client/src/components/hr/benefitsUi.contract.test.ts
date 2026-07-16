@@ -10,6 +10,7 @@ const transition = readFileSync(new URL('./BenefitsTransitionForm.tsx', import.m
 const travel = readFileSync(new URL('./TravelRequestForm.tsx', import.meta.url), 'utf8');
 const loan = readFileSync(new URL('./LoanRequestForm.tsx', import.meta.url), 'utf8');
 const deduction = readFileSync(new URL('./DeductionForm.tsx', import.meta.url), 'utf8');
+const expense = readFileSync(new URL('./TravelExpenseForm.tsx', import.meta.url), 'utf8');
 const governance = readFileSync(
   new URL('../../pages/hr/BenefitsGovernance.tsx', import.meta.url),
   'utf8'
@@ -31,6 +32,9 @@ describe('Phase 6 benefits UI contract', () => {
     expect(owner).toContain('createBenefitsIdempotencyKey()');
     expect(owner).toContain('STATUS_OPTIONS[tab].map');
     expect(owner).toContain('className="hr-admin-table inventory-table"');
+    expect(owner).toContain('className="hr-benefits-admin-register"');
+    expect(owner).toContain('placeholder="Código, empleado o detalle"');
+    expect(owner).toContain('filteredCards');
     expect(owner).toContain('Ver y gestionar');
     expect(owner).not.toContain('className="hr-benefits-list"');
     expect(owner).toContain('collectAllPages');
@@ -66,6 +70,14 @@ describe('Phase 6 benefits UI contract', () => {
     expect(transition).toContain('se validan en servidor');
     expect(loan).toContain('calendario final y sus cuotas se calculan en el servidor');
     expect(deduction).toMatch(/El servidor decide monto\s+aplicable/);
+  });
+
+  it('uses the canonical RH modal shell for financial forms and governance panels', () => {
+    [transition, travel, loan, deduction, expense].forEach((source) => {
+      expect(source).toContain('HrModalFormShell');
+    });
+    expect(governance).toContain('premium-modal-content governance-form governance-sidebar-form');
+    expect(governance).toContain('premium-modal-content governance-detail');
   });
 
   it('keeps one idempotency key across ambiguous expense retries', () => {
