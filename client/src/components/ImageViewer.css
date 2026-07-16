@@ -52,8 +52,9 @@
 }
 
 .viewer-close-btn:hover {
-    background: var(--color-danger);
-    border-color: var(--color-danger);
+    background: color-mix(in srgb, var(--dialog-accent) 30%, rgba(15, 23, 42, 0.9));
+    border-color: var(--dialog-accent);
+    color: #ffffff;
 }
 
 .viewer-close-btn:focus-visible,

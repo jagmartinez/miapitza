@@ -123,6 +123,18 @@ async function mockApp(page: Page, activeUser = user) {
         },
       ];
     }
+    if (path.endsWith('/v1/hr/payroll/company-tax-profile')) {
+      data = {
+        companyId: 1,
+        companyName: 'Empresa QA',
+        taxRegime: 'GENERAL',
+        incomeTaxWithholding: true,
+        sourceReference: 'Perfil fiscal QA',
+        incomeTaxException: null,
+        ready: true,
+        updatedAt: '2026-07-16T00:00:00.000Z',
+      };
+    }
     if (path.endsWith('/v1/hr/payroll/periods')) {
       data = [{
         id: 71,
@@ -334,7 +346,7 @@ test('menu view action opens a read-only recipe-style detail instead of the edit
   await expect(dialog.locator('form')).toHaveCount(0);
 });
 
-test('shared dialogs use the muted accent palette in dark mode', async ({ page }) => {
+test('shared dialogs continue the login blue accent palette in dark mode', async ({ page }) => {
   await mockApp(page);
   await page.goto('/reservations');
   await page.getByRole('button', { name: 'Nueva Reservación' }).click();
@@ -347,16 +359,16 @@ test('shared dialogs use the muted accent palette in dark mode', async ({ page }
   );
   await expect(dialog.getByRole('tab', { name: 'Cliente' })).toHaveCSS(
     'background-color',
-    'rgb(95, 125, 168)'
+    'rgb(59, 130, 246)'
   );
   await expect(dialog.getByRole('button', { name: 'Crear Reservación' })).toHaveCSS(
     'background-color',
-    'rgb(95, 125, 168)'
+    'rgb(59, 130, 246)'
   );
 
   const customerName = dialog.getByLabel('Nombre del Cliente');
   await customerName.focus();
-  await expect(customerName).toHaveCSS('border-color', 'rgb(95, 125, 168)');
+  await expect(customerName).toHaveCSS('border-color', 'rgb(59, 130, 246)');
 });
 
 test('report header select aligns with Excel and category filters have room', async ({ page }) => {
@@ -492,20 +504,21 @@ test('employee portal and Profile expose a cohesive RH self-service entry point'
   await mockApp(page);
   await page.goto('/rh/mi-portal');
 
-  await expect(page.getByRole('heading', { name: 'Mi portal RH' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Mi perfil' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Secciones de mi portal RH' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Solicitudes y asistencia Vacaciones, permisos, correcciones de marcaje y horas extra en un solo lugar.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Mi información laboral' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Mi biometría Consentimiento, enrolamiento y revocación' })).toBeVisible();
 
   await page.goto('/profile');
-  await page.getByRole('button', { name: 'Mi RH' }).click();
-  await expect(page.getByRole('heading', { name: 'Mi información RH' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Abrir portal RH' })).toBeVisible();
+  await page.getByRole('tab', { name: 'Mi RH' }).click();
+  await expect(page.getByRole('heading', { name: 'Mi información laboral' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Ir a marcaje' })).toBeVisible();
 });
 
 test('Profile explains missing employee linkage instead of hiding Mi RH', async ({ page }) => {
   await mockApp(page, { ...user, accountType: 'EXTERNAL', employeeId: undefined, employee: undefined });
   await page.goto('/profile');
-  await page.getByRole('button', { name: 'Mi RH' }).click();
+  await page.getByRole('tab', { name: 'Mi RH' }).click();
   await expect(page.getByRole('heading', { name: 'Esta cuenta todavía no está vinculada a un empleado' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Vincular en Personal' })).toBeVisible();
 });
@@ -601,7 +614,7 @@ test('every HR creation flow uses the canonical modal shell', async ({ page }) =
   await expectCanonical('Ajuste de vacaciones');
 
   await page.goto('/rh/nomina');
-  await page.getByRole('button', { name: 'Gestionar periodos' }).click();
+  await page.getByRole('button', { name: 'Periodos' }).click();
   await expectCanonical('Nuevo periodo de nómina');
   await page.getByRole('button', { name: 'Crear corrida de nómina' }).click();
   await expectCanonical('Crear corrida de nómina');
@@ -610,16 +623,16 @@ test('every HR creation flow uses the canonical modal shell', async ({ page }) =
   await expectCanonical('Crear aguinaldo');
 
   await page.goto('/rh/nomina/configuracion-legal');
-  await page.getByRole('button', { name: 'Nueva versión legal' }).click();
+  await page.getByRole('button', { name: 'Nueva versión' }).click();
   await expectCanonical('Nueva versión legal de nómina');
 
   await page.goto('/rh/prestaciones');
-  await page.getByRole('button', { name: 'Viático' }).click();
+  await page.locator('.hr-benefits-header-actions').getByRole('button', { name: 'Nuevo viático', exact: true }).click();
   await expectCanonical('Nuevo viático');
   await page.getByRole('tab', { name: 'Préstamos 0' }).click();
-  await page.getByRole('button', { name: 'Préstamo' }).click();
+  await page.locator('.hr-benefits-header-actions').getByRole('button', { name: 'Nuevo préstamo', exact: true }).click();
   await expectCanonical('Nueva solicitud de préstamo');
   await page.getByRole('tab', { name: 'Deducciones 0' }).click();
-  await page.getByRole('button', { name: 'Deducción' }).click();
+  await page.locator('.hr-benefits-header-actions').getByRole('button', { name: 'Nueva deducción', exact: true }).click();
   await expectCanonical('Nueva deducción');
 });

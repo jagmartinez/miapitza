@@ -40,6 +40,7 @@ import type {
   HrTravelRequestPayload,
 } from '../../types/hr-benefits';
 import './benefits.css';
+import './admin-tables.css';
 
 type Tab = 'TRAVEL' | 'LOAN' | 'DEDUCTION';
 type Selected =
@@ -221,12 +222,18 @@ export default function MyBenefits() {
   };
 
   const items = tab === 'TRAVEL' ? travel : tab === 'LOAN' ? loans : deductions;
+  const actionableCount = items.filter((entry) => entry.allowedActions.length > 0).length;
+  const closedCount = items.filter((entry) =>
+    ['SETTLED', 'PAID', 'CLOSED', 'COMPLETED', 'CANCELLED', 'REJECTED'].includes(entry.status)
+  ).length;
+  const activePanelId = `my-benefits-panel-${tab.toLowerCase()}`;
 
   return (
-    <div className="page-wrapper hr-benefits-page hr-my-benefits-page">
+    <div className="page-wrapper hr-benefits-page hr-my-benefits-page hr-operation-page">
       <PageHeader
+        className="hr-operation-header"
         title="Mis viáticos y beneficios"
-        subtitle="Solicitudes, saldos, cuotas y deducciones publicadas"
+        subtitle="Consulta solicitudes, saldos, cuotas y deducciones con su estado oficial"
         icon={WalletCards}
         actions={
           tab !== 'DEDUCTION' ? (
@@ -238,11 +245,20 @@ export default function MyBenefits() {
       />
       <MyHrNav />
       <BenefitsOnlineNotice online={online} />
-      <div className="hr-benefits-toolbar self">
+      {!loading && !error && (
+        <section className="hr-operation-kpis" aria-label="Resumen de mis beneficios">
+          <article><WalletCards size={19} aria-hidden="true" /><span>Registros visibles</span><strong>{items.length}</strong><small>{tab === 'TRAVEL' ? 'Viáticos' : tab === 'LOAN' ? 'Préstamos' : 'Deducciones'}</small></article>
+          <article className={actionableCount > 0 ? 'is-warning' : undefined}><RefreshCw size={19} aria-hidden="true" /><span>Con siguiente paso</span><strong>{actionableCount}</strong><small>Acciones permitidas por el servidor</small></article>
+          <article><FileMinus2 size={19} aria-hidden="true" /><span>Finalizados</span><strong>{closedCount}</strong><small>Incluye cancelados o rechazados</small></article>
+        </section>
+      )}
+      <div className="hr-benefits-toolbar self hr-operation-toolbar">
         <div className="hr-benefits-tabs" role="tablist" aria-label="Mis beneficios">
           <button
             type="button"
             role="tab"
+            id="my-benefits-tab-travel"
+            aria-controls="my-benefits-panel-travel"
             aria-selected={tab === 'TRAVEL'}
             onClick={() => {
               setTab('TRAVEL');
@@ -254,6 +270,8 @@ export default function MyBenefits() {
           <button
             type="button"
             role="tab"
+            id="my-benefits-tab-loan"
+            aria-controls="my-benefits-panel-loan"
             aria-selected={tab === 'LOAN'}
             onClick={() => {
               setTab('LOAN');
@@ -265,6 +283,8 @@ export default function MyBenefits() {
           <button
             type="button"
             role="tab"
+            id="my-benefits-tab-deduction"
+            aria-controls="my-benefits-panel-deduction"
             aria-selected={tab === 'DEDUCTION'}
             onClick={() => {
               setTab('DEDUCTION');
@@ -289,7 +309,7 @@ export default function MyBenefits() {
         </div>
       )}
       {!loading && !error && (
-        <div className="hr-benefits-layout">
+        <div className="hr-benefits-layout" id={activePanelId} role="tabpanel" aria-labelledby={`my-benefits-tab-${tab.toLowerCase()}`} tabIndex={0}>
           <section className="hr-benefits-list" aria-label="Mis registros">
             {items.length === 0 ? (
               <div className="hr-benefits-empty">

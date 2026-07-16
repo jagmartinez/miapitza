@@ -303,9 +303,9 @@ export default function LeaveManagement() {
   };
 
   return (
-    <div className="page-wrapper inventory-page hr-workforce-page hr-leave-management-page hr-admin-catalog-page">
+    <div className="page-wrapper inventory-page hr-workforce-page hr-leave-management-page hr-admin-catalog-page hr-operation-page">
       <PageHeader
-        className="inventory-header-new"
+        className="inventory-header-new hr-operation-header"
         title="Permisos y vacaciones"
         subtitle="Aprueba solicitudes, consulta ausencias del equipo y controla los días disponibles"
         icon={CalendarDays}
@@ -314,6 +314,9 @@ export default function LeaveManagement() {
             <Button variant="secondary" onClick={() => openType()} disabled={!online}>
               <SlidersHorizontal size={17} /> Tipo
             </Button>
+            <Button variant="secondary" onClick={() => setPanel('adjustment')} disabled={!online}>
+              <SlidersHorizontal size={17} /> Ajustar
+            </Button>
             <Button onClick={() => setPanel('request')} disabled={!online}>
               <Plus size={17} /> Solicitud
             </Button>
@@ -321,7 +324,7 @@ export default function LeaveManagement() {
         }
       />
       <OnlineOnlyNotice online={online} />
-      <section className="hr-workforce-filters inventory-filters-row" aria-label="Filtros de permisos y vacaciones">
+      <section className="hr-workforce-filters inventory-filters-row hr-operation-toolbar" aria-label="Filtros de permisos y vacaciones">
         <label>
           Desde
           <input
@@ -355,10 +358,10 @@ export default function LeaveManagement() {
         </Button>
       </section>
 
-      {!loading && !error && <section className="hr-admin-kpis" aria-label="Resumen operativo de permisos y vacaciones">
-        <div><span>Solicitudes pendientes</span><strong>{requests.filter((item) => item.status === 'PENDING').length}</strong><small>Esperando decisión</small></div>
-        <div><span>Ausencias aprobadas</span><strong>{calendar.length}</strong><small>Dentro del rango consultado</small></div>
-        <div><span>Empleados con saldo</span><strong>{new Set(balances.map((item) => item.userId)).size}</strong><small>Vacaciones controladas</small></div>
+      {!loading && !error && <section className="hr-admin-kpis hr-operation-kpis" aria-label="Resumen operativo de permisos y vacaciones">
+        <article className={requests.some((item) => item.status === 'PENDING') ? 'is-warning' : undefined}><ListChecks size={19} aria-hidden="true" /><span>Solicitudes pendientes</span><strong>{requests.filter((item) => item.status === 'PENDING').length}</strong><small>Esperando decisión</small></article>
+        <article className="is-success"><CalendarDays size={19} aria-hidden="true" /><span>Ausencias aprobadas</span><strong>{calendar.length}</strong><small>Dentro del rango consultado</small></article>
+        <article><SlidersHorizontal size={19} aria-hidden="true" /><span>Empleados con saldo</span><strong>{new Set(balances.map((item) => item.userId)).size}</strong><small>Vacaciones controladas</small></article>
       </section>}
 
       {loading && <LoadingSpinner text="Cargando permisos y vacaciones…" />}
@@ -390,7 +393,7 @@ export default function LeaveManagement() {
               <table className="hr-admin-table inventory-table">
                 <caption>Solicitudes de permisos y vacaciones</caption>
                 <thead><tr><th scope="col">Empleado</th><th scope="col">Tipo</th><th scope="col">Fechas</th><th scope="col">Duración</th><th scope="col">Motivo</th><th scope="col">Estado</th><th scope="col" className="hr-admin-actions-col">Acciones</th></tr></thead>
-                <tbody>{requests.length === 0 ? <tr><td colSpan={7}><div className="hr-admin-empty"><strong>No hay solicitudes en este periodo</strong><span>Puedes registrar una solicitud en nombre de un empleado.</span><Button size="sm" onClick={() => setPanel('request')} disabled={!online}><Plus size={15} /> Nueva solicitud</Button></div></td></tr> : pageSlice(requests).map((item) => <tr key={item.id} className={focusedRequestId === item.id ? 'is-selected' : ''}><td><strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong></td><td>{item.leaveType?.name ?? `Tipo #${item.leaveTypeId}`}</td><td>{dateLabel(item.startDate)}<small>{item.endDate !== item.startDate ? `hasta ${dateLabel(item.endDate)}` : 'Un día'}</small></td><td>{fractionLabel(item.fraction)}{item.requestedAmount != null && <small>{formatHrNumber(item.requestedAmount)} {item.balanceUnit ?? ''}</small>}</td><td>{item.reason}</td><td><WorkforceStatusPill status={item.status} /></td><td className="hr-admin-actions-col"><div className="hr-admin-row-actions table-actions">{item.status === 'DRAFT' && <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void submitDraft(item)} disabled={!online || saving} title="Enviar solicitud" aria-label={`Enviar solicitud de ${item.user?.name ?? item.userId}`}><Send size={16} /></Button>}{item.status === 'PENDING' && <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openRequestAction(item, 'decide')} disabled={!online} title="Revisar solicitud" aria-label={`Revisar solicitud de ${item.user?.name ?? item.userId}`}><Eye size={16} /></Button>}{(item.status === 'DRAFT' || item.status === 'PENDING') && <Button className="table-action-btn danger" size="sm" variant="ghost" onClick={() => openRequestAction(item, 'cancel')} disabled={!online} title="Cancelar solicitud" aria-label={`Cancelar solicitud de ${item.user?.name ?? item.userId}`}><XCircle size={16} /></Button>}{!['DRAFT', 'PENDING'].includes(item.status) && <span className="hr-admin-muted">Finalizada</span>}</div></td></tr>)}</tbody>
+                <tbody>{requests.length === 0 ? <tr><td colSpan={7}><div className="hr-admin-empty"><strong>No hay solicitudes en este periodo</strong><span>Puedes registrar una solicitud en nombre de un empleado.</span><Button size="sm" onClick={() => setPanel('request')} disabled={!online} aria-label="Crear ausencia"><Plus size={15} /> Nueva solicitud</Button></div></td></tr> : pageSlice(requests).map((item) => <tr key={item.id} className={focusedRequestId === item.id ? 'is-selected' : ''}><td><strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong></td><td>{item.leaveType?.name ?? `Tipo #${item.leaveTypeId}`}</td><td>{dateLabel(item.startDate)}<small>{item.endDate !== item.startDate ? `hasta ${dateLabel(item.endDate)}` : 'Un día'}</small></td><td>{fractionLabel(item.fraction)}{item.requestedAmount != null && <small>{formatHrNumber(item.requestedAmount)} {item.balanceUnit ?? ''}</small>}</td><td>{item.reason}</td><td><WorkforceStatusPill status={item.status} /></td><td className="hr-admin-actions-col"><div className="hr-admin-row-actions table-actions">{item.status === 'DRAFT' && <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => void submitDraft(item)} disabled={!online || saving} title="Enviar solicitud" aria-label={`Enviar solicitud de ${item.user?.name ?? item.userId}`}><Send size={16} /></Button>}{item.status === 'PENDING' && <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openRequestAction(item, 'decide')} disabled={!online} title="Revisar solicitud" aria-label={`Revisar solicitud de ${item.user?.name ?? item.userId}`}><Eye size={16} /></Button>}{(item.status === 'DRAFT' || item.status === 'PENDING') && <Button className="table-action-btn danger" size="sm" variant="ghost" onClick={() => openRequestAction(item, 'cancel')} disabled={!online} title="Cancelar solicitud" aria-label={`Cancelar solicitud de ${item.user?.name ?? item.userId}`}><XCircle size={16} /></Button>}{!['DRAFT', 'PENDING'].includes(item.status) && <span className="hr-admin-muted">Finalizada</span>}</div></td></tr>)}</tbody>
               </table>
             )}
 

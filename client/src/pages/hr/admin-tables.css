@@ -237,6 +237,130 @@
   margin-top: var(--spacing-lg);
 }
 
+/* Shared operational grammar for the RH surfaces requested to follow
+   Inventory: task header, compact control bar, useful counters and one clear
+   working tray. Every selector is opt-in to avoid changing unrelated pages. */
+.hr-operation-page {
+  width: 100%;
+  max-width: 1700px;
+  min-width: 0;
+  margin-inline: auto;
+}
+
+.hr-operation-page > .hr-operation-header { margin-bottom: 0; }
+
+.hr-operation-page .hr-operation-header .header-subtitle {
+  max-width: 760px;
+  line-height: 1.55;
+}
+
+.hr-operation-page .hr-operation-toolbar {
+  margin-block: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.hr-operation-page .hr-operation-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--spacing-md);
+  margin: 0;
+}
+
+.hr-operation-page .hr-operation-kpis > :is(article, div) {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  gap: 3px 12px;
+  min-width: 0;
+  min-height: 86px;
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: inset 3px 0 color-mix(in srgb, var(--color-primary) 68%, transparent);
+}
+
+.hr-operation-page .hr-operation-kpis > :is(article, div) > svg {
+  grid-row: 1 / span 2;
+  align-self: center;
+  width: 38px;
+  height: 38px;
+  padding: 9px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 13%, var(--color-background));
+  color: var(--color-primary);
+}
+
+.hr-operation-page .hr-operation-kpis > :is(article, div) > span {
+  align-self: end;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 750;
+}
+
+.hr-operation-page .hr-operation-kpis > :is(article, div) > strong {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: var(--color-text);
+  font-size: clamp(1.25rem, 2vw, 1.75rem);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.hr-operation-page .hr-operation-kpis > :is(article, div) > small {
+  grid-column: 2;
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.hr-operation-page .hr-operation-kpis > .is-warning { box-shadow: inset 3px 0 var(--color-warning); }
+.hr-operation-page .hr-operation-kpis > .is-warning > svg { background: color-mix(in srgb, var(--color-warning) 13%, var(--color-background)); color: var(--color-warning); }
+.hr-operation-page .hr-operation-kpis > .is-danger { box-shadow: inset 3px 0 var(--color-danger); }
+.hr-operation-page .hr-operation-kpis > .is-danger > svg { background: color-mix(in srgb, var(--color-danger) 12%, var(--color-background)); color: var(--color-danger); }
+.hr-operation-page .hr-operation-kpis > .is-success { box-shadow: inset 3px 0 var(--color-success); }
+.hr-operation-page .hr-operation-kpis > .is-success > svg { background: color-mix(in srgb, var(--color-success) 12%, var(--color-background)); color: var(--color-success); }
+
+.hr-operation-tabs button {
+  display: inline-flex;
+  flex: 1 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  min-height: 44px;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 750;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hr-operation-tabs button:hover { background: var(--color-background); color: var(--color-text); }
+.hr-operation-tabs button[aria-selected='true'] { background: var(--color-neutral-700); color: white; }
+.hr-operation-tabs button > span { min-width: 22px; padding: 2px 7px; border-radius: var(--radius-full); background: var(--color-background); color: var(--color-text); font-size: 11px; line-height: 1.35; text-align: center; }
+
+.hr-operation-tabs button:focus-visible,
+.hr-operation-page .hr-admin-tabs button:focus-visible,
+.hr-operation-page .hr-benefits-tabs button:focus-visible,
+.hr-operation-page [role='tabpanel']:focus-visible,
+.hr-operation-panel:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-primary) 38%, transparent);
+  outline-offset: 2px;
+}
+
+.hr-operation-panel { display: flex; min-width: 0; flex-direction: column; gap: var(--spacing-lg); }
+
 @media (max-width: 760px) {
   .hr-admin-catalog-page.inventory-page {
     padding: 0;
@@ -267,4 +391,10 @@
   .hr-admin-tabs button {
     min-height: 42px;
   }
+
+  .hr-operation-page .hr-operation-kpis { grid-template-columns: 1fr; }
+
+  .hr-operation-page .hr-operation-header .page-header-actions,
+  .hr-operation-page .hr-operation-header .page-header-actions > *,
+  .hr-operation-page .hr-operation-header .btn { width: 100%; }
 }

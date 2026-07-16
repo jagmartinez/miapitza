@@ -1,5 +1,6 @@
 import { ReactNode, useRef } from 'react';
-import { X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { LayoutPanelTop, PanelRightOpen, X } from 'lucide-react';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import './Modal.css';
 
@@ -37,23 +38,30 @@ export default function Modal({
         ? `modal-sidebar modal-${size}`
         : `modal-container modal-${size}`;
 
-    return (
+    const HeadingIcon = variant === 'sidebar' ? PanelRightOpen : LayoutPanelTop;
+
+    return createPortal(
         <div
+            ref={containerRef}
             className={`modal-overlay ${variant === 'sidebar' ? 'modal-overlay-sidebar' : ''}`}
-            onClick={closeOnBackdrop ? onClose : undefined}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            aria-describedby={description ? descriptionId : undefined}
+            tabIndex={-1}
+            onClick={closeOnBackdrop ? (event) => {
+                if (event.target === event.currentTarget) onClose();
+            } : undefined}
         >
             <div
-                ref={containerRef}
                 className={containerClass}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby={titleId}
-                aria-describedby={description ? descriptionId : undefined}
-                tabIndex={-1}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="modal-header">
-                    <h2 id={titleId}>{title}</h2>
+                    <div className="modal-heading">
+                        <span className="modal-heading-icon" aria-hidden="true"><HeadingIcon size={20} /></span>
+                        <h2 id={titleId}>{title}</h2>
+                    </div>
                     <button type="button" className="modal-close" onClick={onClose} aria-label={`Cerrar ${title}`}>
                         <X size={24} aria-hidden="true" />
                     </button>
@@ -64,6 +72,7 @@ export default function Modal({
                 </div>
                 {footer && <div className="modal-actions">{footer}</div>}
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }

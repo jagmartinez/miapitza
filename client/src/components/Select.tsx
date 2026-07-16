@@ -17,23 +17,14 @@ function computeModalMenuPlacement(
     const rect = anchorEl.getBoundingClientRect();
     let obstructionBottom = window.innerHeight;
 
-    document.querySelectorAll('.sidebar-panel').forEach((sidebar) => {
-        const sidebarRect = sidebar.getBoundingClientRect();
-        if (rect.left < sidebarRect.left || rect.right > sidebarRect.right) return;
+    const dialog = anchorEl.closest<HTMLElement>('[role="dialog"]');
+    if (dialog) {
+        obstructionBottom = Math.min(obstructionBottom, dialog.getBoundingClientRect().bottom);
+    }
 
-        const footer = sidebar.querySelector('.modal-footer');
-        if (footer) {
-            const footerRect = footer.getBoundingClientRect();
-            if (footerRect.top > rect.top) {
-                obstructionBottom = Math.min(obstructionBottom, footerRect.top);
-            }
-            return;
-        }
-
-        obstructionBottom = Math.min(obstructionBottom, sidebarRect.bottom);
-    });
-
-    document.querySelectorAll('.modal-container .modal-footer, .modal-form-new > .modal-footer').forEach((footer) => {
+    dialog?.querySelectorAll(
+        '.sidebar-actions, .modal-actions, .payment-dialog-footer, .modal-footer'
+    ).forEach((footer) => {
         const footerRect = footer.getBoundingClientRect();
         if (footerRect.top > rect.top) {
             obstructionBottom = Math.min(obstructionBottom, footerRect.top);
@@ -89,7 +80,7 @@ export default function CustomSelect<
     useLayoutEffect(() => {
         if (!isModal || menuPortalTarget !== undefined || typeof document === 'undefined') return;
 
-        const dialog = anchorRef.current?.closest('.sidebar-panel, .modal-container');
+        const dialog = anchorRef.current?.closest('[role="dialog"]');
         setDialogPortalTarget(dialog instanceof HTMLElement ? dialog : document.body);
     }, [isModal, menuPortalTarget]);
 

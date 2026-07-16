@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { SingleValue } from 'react-select';
 import {
     Briefcase,
+    BadgeCheck,
     Building2,
     Edit2,
     Eye,
@@ -11,6 +12,7 @@ import {
     Search,
     UserMinus,
     UsersRound,
+    WalletCards,
 } from 'lucide-react';
 import Button from '../../components/Button';
 import CatalogTable, { type CatalogColumn } from '../../components/CatalogTable';
@@ -32,9 +34,11 @@ import type {
     HrEmploymentStatus,
     HrNamedEntity,
     HrOrganizationCatalogs,
+    HrPayFrequency,
     HrUserSummary,
 } from '../../types/hr';
 import { useDebounce } from '../../utils/useDebounce';
+import { formatHrMoney } from '../../utils/hrFormat';
 import './hr.css';
 
 type Option = { value: string; label: string };
@@ -76,6 +80,24 @@ function displayDate(value?: string | null): string {
 
 function primaryBranch(employee: HrEmployee): HrNamedEntity | null {
     return employee.branchAssignments?.find((assignment) => assignment.isPrimary)?.branch ?? null;
+}
+
+function currentCompensation(employee: HrEmployee) {
+    return employee.compensation?.[0] ?? null;
+}
+
+function payFrequencyText(value: HrPayFrequency): string {
+    return ({
+        WEEKLY: 'Semanal',
+        BIWEEKLY: 'Quincenal',
+        FORTNIGHTLY: 'Catorcenal',
+        MONTHLY: 'Mensual',
+    })[value];
+}
+
+function identificationText(employee: HrEmployee): string {
+    if (employee.documentNumber === undefined) return 'Acceso restringido';
+    return employee.documentNumber || 'Sin registrar';
 }
 
 export default function Employees() {
@@ -185,7 +207,7 @@ export default function Employees() {
                 showSuccess('Empleado actualizado correctamente.');
             } else {
                 await hrClient.createEmployee(payload);
-                showSuccess('Empleado creado y usuario vinculado correctamente.');
+                showSuccess('Empleado, usuario y compensación inicial creados en una sola operación.');
             }
             setEditorOpen(false);
             setEditingEmployee(null);
@@ -239,7 +261,32 @@ export default function Employees() {
                 ? <div className="catalog-cell-stack"><span className="cell-title">@{employee.user.username}</span><span className="cell-sub">Interno</span></div>
                 : '—',
         },
+        {
+            key: 'identification',
+            header: 'Identificación',
+            render: (employee) => (
+                <div className="catalog-cell-stack">
+                    <span className="cell-title">{identificationText(employee)}</span>
+                    <span className="cell-sub">{employee.documentNumber === undefined ? 'Dato protegido' : employee.documentType || 'Tipo no definido'}</span>
+                </div>
+            ),
+        },
         { key: 'position', header: 'Puesto', render: (employee) => employee.jobPosition?.name ?? 'Sin puesto' },
+        {
+            key: 'compensation',
+            header: 'Compensación vigente',
+            render: (employee) => {
+                const compensation = currentCompensation(employee);
+                if (employee.compensation === undefined) return <span className="cell-sub">Acceso restringido</span>;
+                if (!compensation) return <span className="cell-sub">Sin compensación vigente</span>;
+                return (
+                    <div className="catalog-cell-stack hr-employee-compensation-cell">
+                        <span className="cell-title">{formatHrMoney(compensation.currency, compensation.amount)}</span>
+                        <span className="cell-sub">{compensation.compensationType === 'SALARY' ? 'Salario' : 'Por hora'} · {payFrequencyText(compensation.payFrequency)}</span>
+                    </div>
+                );
+            },
+        },
         { key: 'branch', header: 'Sucursal principal', render: (employee) => primaryBranch(employee)?.name ?? 'Sin asignar' },
         { key: 'hireDate', header: 'Ingreso', render: (employee) => displayDate(employee.hireDate) },
         { key: 'status', header: 'Estado', render: (employee) => <HrStatusPill status={employee.status} /> },
@@ -263,7 +310,7 @@ export default function Employees() {
         <div className="page-wrapper hr-employees-page">
             <PageHeader
                 title="Gestión de Personal"
-                subtitle="Expedientes laborales vinculados a usuarios internos"
+                subtitle="Expedientes, identificación autorizada y compensación vigente"
                 icon={UsersRound}
                 actions={
                     <>
@@ -379,6 +426,18 @@ export default function Employees() {
                                     <span className="entity-card-meta-item"><Briefcase size={15} /> {employee.jobPosition?.name ?? 'Sin puesto'}</span>
                                     <span className="entity-card-meta-item"><Building2 size={15} /> {primaryBranch(employee)?.name ?? 'Sin sucursal'}</span>
                                     <span className="entity-card-meta-item"><UsersRound size={15} /> {employee.user ? `@${employee.user.username}` : 'Sin usuario'}</span>
+                                    <span className="entity-card-meta-item"><BadgeCheck size={15} /> {identificationText(employee)}</span>
+                                </div>
+                                <div className="hr-employee-card-compensation">
+                                    <WalletCards size={17} aria-hidden="true" />
+                                    <div>
+                                        <span>Compensación vigente</span>
+                                        {employee.compensation === undefined
+                                            ? <strong>Acceso restringido</strong>
+                                            : currentCompensation(employee)
+                                                ? <><strong>{formatHrMoney(currentCompensation(employee)!.currency, currentCompensation(employee)!.amount)}</strong><small>{currentCompensation(employee)!.compensationType === 'SALARY' ? 'Salario' : 'Por hora'} · {payFrequencyText(currentCompensation(employee)!.payFrequency)}</small></>
+                                                : <strong>Sin compensación vigente</strong>}
+                                    </div>
                                 </div>
                             </div>
                             <div className="entity-card-actions">

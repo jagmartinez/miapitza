@@ -781,6 +781,7 @@ enum CompensationType {
 enum PayFrequency {
   WEEKLY
   BIWEEKLY
+  FORTNIGHTLY
   MONTHLY
 }
 

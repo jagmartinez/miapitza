@@ -381,7 +381,7 @@ export class HrCompensationService {
         const compensationType = requiredText(input.compensationType, 'compensationType', 20);
         const payFrequency = requiredText(input.payFrequency, 'payFrequency', 20);
         if (!['SALARY', 'HOURLY'].includes(compensationType)) throw new HrDomainError('compensationType inválido');
-        if (!['WEEKLY', 'BIWEEKLY', 'MONTHLY'].includes(payFrequency)) throw new HrDomainError('payFrequency inválido');
+        if (!['WEEKLY', 'BIWEEKLY', 'FORTNIGHTLY', 'MONTHLY'].includes(payFrequency)) throw new HrDomainError('payFrequency inválido');
         const amountText = requiredText(input.amount, 'amount', 40);
         if (!/^\d+(?:\.\d{1,2})?$/.test(amountText) || !new Prisma.Decimal(amountText).greaterThan(0)) throw new HrDomainError('amount debe ser positivo con máximo dos decimales');
         const currency = requiredText(input.currency ?? 'NIO', 'currency', 3).toUpperCase();

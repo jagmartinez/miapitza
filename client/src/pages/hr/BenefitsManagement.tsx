@@ -384,6 +384,10 @@ export default function BenefitsManagement() {
     });
   }, [cards, search, tab]);
   const pagedCards = filteredCards.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE);
+  const actionableCount = filteredCards.filter((entry) => entry.allowedActions.length > 0).length;
+  const closedCount = filteredCards.filter((entry) =>
+    ['SETTLED', 'PAID', 'CLOSED', 'COMPLETED', 'CANCELLED', 'REJECTED'].includes(entry.status)
+  ).length;
   useEffect(() => {
     setTablePage((page) => Math.min(page, Math.max(1, Math.ceil(filteredCards.length / PAGE_SIZE))));
   }, [filteredCards.length]);
@@ -394,14 +398,14 @@ export default function BenefitsManagement() {
 
   if (tab === 'GOVERNANCE') {
     return (
-      <div className="page-wrapper inventory-page hr-benefits-page hr-admin-catalog-page">
+      <div className="page-wrapper inventory-page hr-benefits-page hr-admin-catalog-page hr-operation-page">
         <PageHeader
-          className="inventory-header-new"
+          className="inventory-header-new hr-operation-header"
           title="Beneficios y liquidaciones"
           subtitle="Opera viáticos, préstamos, deducciones, políticas y cierres laborales desde una sola vista."
           icon={WalletCards}
         />
-        <div className="hr-benefits-toolbar inventory-filters-row">
+        <div className="hr-benefits-toolbar inventory-filters-row hr-operation-toolbar">
           <div
             className="hr-benefits-tabs inventory-status-filters"
             role="tablist"
@@ -439,9 +443,9 @@ export default function BenefitsManagement() {
   }
 
   return (
-    <div className="page-wrapper inventory-page hr-benefits-page hr-admin-catalog-page">
+    <div className="page-wrapper inventory-page hr-benefits-page hr-admin-catalog-page hr-operation-page">
       <PageHeader
-        className="inventory-header-new"
+        className="inventory-header-new hr-operation-header"
         title="Viáticos, préstamos y deducciones"
         subtitle="Aprueba solicitudes, registra pagos y controla lo que se descontará en nómina"
         icon={WalletCards}
@@ -459,7 +463,7 @@ export default function BenefitsManagement() {
         }
       />
       <BenefitsOnlineNotice online={online} />
-      <div className="hr-benefits-toolbar inventory-filters-row">
+      <div className="hr-benefits-toolbar inventory-filters-row hr-operation-toolbar">
         <div
           className="hr-benefits-tabs inventory-status-filters"
           role="tablist"
@@ -541,6 +545,13 @@ export default function BenefitsManagement() {
           <RefreshCw size={16} /> Actualizar
         </Button>
       </div>
+      {!loading && !error && (
+        <section className="hr-operation-kpis" aria-label="Resumen de la bandeja financiera">
+          <article><WalletCards size={19} aria-hidden="true" /><span>Registros visibles</span><strong>{filteredCards.length}</strong><small>Según estado y búsqueda</small></article>
+          <article className={actionableCount > 0 ? 'is-warning' : undefined}><Eye size={19} aria-hidden="true" /><span>Con siguiente paso</span><strong>{actionableCount}</strong><small>Acciones habilitadas por el servidor</small></article>
+          <article><ShieldCheck size={19} aria-hidden="true" /><span>Finalizados</span><strong>{closedCount}</strong><small>Incluye cierres, rechazos y cancelaciones</small></article>
+        </section>
+      )}
       {loading && <LoadingSpinner text="Cargando beneficios financieros…" />}
       {!loading && error && (
         <div className="state-placeholder" role="alert">

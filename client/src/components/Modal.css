@@ -15,7 +15,8 @@
 }
 
 .modal-container {
-    background-color: var(--color-surface);
+    position: relative;
+    background-color: var(--dialog-panel-bg, var(--color-surface));
     border-radius: var(--radius-xl);
     border: 1px solid var(--dialog-panel-border, var(--color-border));
     box-shadow: var(--dialog-panel-shadow, var(--shadow-xl));
@@ -25,6 +26,17 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+}
+
+.modal-container::before,
+.modal-sidebar::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 3;
+    height: 2px;
+    background: linear-gradient(90deg, var(--dialog-accent), color-mix(in srgb, var(--dialog-accent) 22%, transparent) 70%, transparent);
+    pointer-events: none;
 }
 
 @keyframes modalSlideIn {
@@ -58,16 +70,36 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--spacing-xl);
+    min-height: 76px;
+    padding: var(--spacing-lg) var(--spacing-xl);
     border-bottom: 1px solid var(--dialog-panel-border, var(--color-border));
     background: var(--dialog-header-bg, var(--color-surface));
     flex: 0 0 auto;
     gap: var(--spacing-md);
 }
 
+.modal-heading {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    min-width: 0;
+}
+
+.modal-heading-icon {
+    display: grid;
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--dialog-accent) 42%, var(--dialog-panel-border));
+    border-radius: var(--radius-lg);
+    background: var(--dialog-accent-soft);
+    color: var(--dialog-accent);
+}
+
 .modal-header h2 {
     margin: 0;
-    font-size: var(--font-size-2xl);
+    font-size: clamp(var(--font-size-lg), 2vw, var(--font-size-xl));
     min-width: 0;
     overflow-wrap: anywhere;
     font-weight: 750;
@@ -82,7 +114,8 @@
     align-items: center;
     justify-content: center;
     border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--color-surface) 80%, transparent);
+    flex: 0 0 auto;
+    background: color-mix(in srgb, var(--dialog-panel-bg, var(--color-surface)) 82%, transparent);
     border: 1px solid var(--dialog-panel-border, var(--color-border));
     color: var(--color-text-secondary);
     cursor: pointer;
@@ -90,9 +123,9 @@
 }
 
 .modal-close:hover {
-    background-color: var(--color-danger);
-    border-color: var(--color-danger);
-    color: white;
+    background-color: var(--dialog-accent-soft);
+    border-color: color-mix(in srgb, var(--dialog-accent) 55%, var(--dialog-panel-border));
+    color: var(--dialog-accent);
 }
 
 .modal-close:focus-visible {
@@ -105,7 +138,7 @@
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    background: color-mix(in srgb, var(--color-surface) 96%, var(--color-background) 4%);
+    background: var(--dialog-content-bg, color-mix(in srgb, var(--color-surface) 96%, var(--color-background) 4%));
 }
 
 .modal-description {
@@ -166,7 +199,8 @@
 }
 
 .modal-sidebar {
-    background-color: var(--color-surface);
+    position: relative;
+    background-color: var(--dialog-panel-bg, var(--color-surface));
     height: 100% !important;
     max-height: 100vh;
     border-radius: 0 !important;
@@ -269,6 +303,7 @@
     }
 
     .modal-header {
+        min-height: 68px;
         padding: var(--spacing-md) var(--spacing-lg);
         position: sticky;
         top: 0;
@@ -323,6 +358,11 @@
 }
 
 @media (max-width: 480px) {
+    .modal-heading-icon {
+        width: 36px;
+        height: 36px;
+    }
+
     .modal-header {
         padding: var(--spacing-sm) var(--spacing-md);
     }

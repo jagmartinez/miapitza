@@ -34,7 +34,7 @@ const statutory: PayrollStatutoryConfiguration = {
         applicability: 'APPLIES' as const, sourceReference: 'INSS 2026', regime: 'INTEGRAL' as const,
         employeeRate: '0.07', employerRateBelowThreshold: '0.215', employerRateAtOrAboveThreshold: '0.225',
         employerSizeThreshold: 50, minimumMonthlyContributionBase: '10000', minimumBaseProration: 'PER_PAY_PERIOD_SERVICE_RATIO' as const,
-        annualPeriods: { WEEKLY: 52, BIWEEKLY: 24, MONTHLY: 12 },
+        annualPeriods: { WEEKLY: 52, BIWEEKLY: 24, FORTNIGHTLY: 26, MONTHLY: 12 },
     },
     inatec: { applicability: 'APPLIES' as const, sourceReference: 'INATEC 2%', employerRate: '0.02' },
     incomeTax: {
@@ -46,7 +46,7 @@ const statutory: PayrollStatutoryConfiguration = {
         inssEmployeeContributionDeductible: true as const,
         occasionalInssDeductionTreatment: 'DEDUCT_FROM_OCCASIONAL_NET' as const,
         adjustmentMode: 'WITHHOLD_OR_REFUND' as const,
-        annualPeriods: { WEEKLY: 52, BIWEEKLY: 24, MONTHLY: 12 },
+        annualPeriods: { WEEKLY: 52, BIWEEKLY: 24, FORTNIGHTLY: 26, MONTHLY: 12 },
         brackets: [
             { lowerBound: '0', upperBound: '100000', baseTax: '0', rate: '0', excessOver: '0' },
             { lowerBound: '100000', upperBound: '200000', baseTax: '0', rate: '0.15', excessOver: '100000' },
@@ -85,7 +85,7 @@ function statutoryInput(overrides: Partial<StatutoryCalculationInput> = {}): Sta
 
 const legalConfiguration = {
     schema: 'HR_PAYROLL_PARAMETRIC_V4' as const, legallyValidated: true as const, currency: 'NIO',
-    regular: { minuteDivisors: { WEEKLY: '2400', BIWEEKLY: '4800', MONTHLY: '9600' }, overtimeMultiplier: '2', paidLeaveUnitMinutes: { DAYS: '480', HOURS: '60', MINUTES: '1' } },
+    regular: { minuteDivisors: { WEEKLY: '2400', BIWEEKLY: '4800', FORTNIGHTLY: '4800', MONTHLY: '9600' }, overtimeMultiplier: '2', paidLeaveUnitMinutes: { DAYS: '480', HOURS: '60', MINUTES: '1' } },
     aguinaldo: { method: 'HISTORICAL_PAID_COMPONENTS' as const, lookbackDays: 365, incomeDivisor: '12', prorationMode: 'NONE' as const, eligibleSources: ['RULE'], roundingScale: 2 as const },
     statutory,
 };
@@ -99,6 +99,8 @@ describe('HR payroll safety and state machine', () => {
     it('accepts only an explicit, fully parameterized and legally validated configuration', () => {
         const config = validateLegalConfiguration(legalConfiguration);
         expect(config.currency).toBe('NIO');
+        expect(config.statutory.incomeTax.annualPeriods.BIWEEKLY).toBe(24);
+        expect(config.statutory.incomeTax.annualPeriods.FORTNIGHTLY).toBe(26);
         expect(effectiveIncomeTaxApplicability(config.statutory)).toBe('APPLIES');
         expect(paymentConceptDefinition(config.statutory, 'VIATICOS')).toEqual(expect.objectContaining({
             socialSecurityApplicable: false,
@@ -186,6 +188,33 @@ describe('HR payroll safety and state machine', () => {
         expect(paymentConceptDefinition(normalized.statutory, 'FONDO_PENSION_AUTORIZADO')?.incomeTaxTreatment).toBeNull();
         expect(() => validateLegalConfiguration(deprecated, { requireCurrentSchema: true })).toThrow('configuración legal validada');
     });
+
+    it('adds the catorcenal parameters only when reading frozen V4 history', () => {
+        const oldV4 = {
+            ...legalConfiguration,
+            regular: {
+                ...legalConfiguration.regular,
+                minuteDivisors: { WEEKLY: '2400', BIWEEKLY: '4800', MONTHLY: '9600' },
+            },
+            statutory: {
+                ...statutory,
+                inss: {
+                    ...statutory.inss,
+                    annualPeriods: { WEEKLY: 52, BIWEEKLY: 24, MONTHLY: 12 },
+                },
+                incomeTax: {
+                    ...statutory.incomeTax,
+                    annualPeriods: { WEEKLY: 52, BIWEEKLY: 24, MONTHLY: 12 },
+                },
+            },
+        };
+
+        const normalized = validateLegalConfiguration(oldV4);
+        expect(normalized.regular.minuteDivisors.FORTNIGHTLY).toBe('4800');
+        expect(normalized.statutory.inss.annualPeriods.FORTNIGHTLY).toBe(26);
+        expect(normalized.statutory.incomeTax.annualPeriods.FORTNIGHTLY).toBe(26);
+        expect(() => validateLegalConfiguration(oldV4, { requireCurrentSchema: true })).toThrow('configuración legal validada');
+    });
     it('rejects duplicate payment concept codes', () => {
         const ambiguous = {
             ...legalConfiguration,
@@ -212,6 +241,7 @@ describe('HR payroll safety and state machine', () => {
         const config = validateLegalConfiguration(legalConfiguration);
         expect(compensationMinuteRate({ compensationType: 'HOURLY', amount: new Prisma.Decimal('120'), payFrequency: 'WEEKLY' }, config).toString()).toBe('2');
         expect(compensationMinuteRate({ compensationType: 'SALARY', amount: new Prisma.Decimal('2400'), payFrequency: 'WEEKLY' }, config).toString()).toBe('1');
+        expect(compensationMinuteRate({ compensationType: 'SALARY', amount: new Prisma.Decimal('4800'), payFrequency: 'FORTNIGHTLY' }, config).toString()).toBe('1');
     });
 
     it('keeps a full-attendance salary fixed and excludes approved overtime from ordinary minutes', () => {

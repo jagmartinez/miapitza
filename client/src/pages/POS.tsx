@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { SingleValue } from 'react-select';
 import { useAuth } from '../hooks/useAuth';
 import { tablesAPI, menuAPI, ordersAPI, settingsAPI, cashShiftsAPI, promotionsAPI, categoriesAPI, menuBrandsAPI, warehousesAPI, invoicesAPI } from '../services/api';
 import { offlineManager } from '../services/offlineManager';
@@ -19,6 +20,9 @@ import TableSelectionModal from '../components/TableSelectionModal';
 import OrderCart from '../components/OrderCart';
 import PaymentModal from '../components/PaymentModal';
 import NumericKeypad from '../components/NumericKeypad';
+import Modal from '../components/Modal';
+import Button from '../components/Button';
+import Select from '../components/Select';
 import POSProductCard from '../components/POSProductCard';
 import { LoadingOverlay } from '../components/LoadingSpinner';
 import { Send, CreditCard, Printer, X, Search, Grid3x3, AlertTriangle, ChevronLeft, Check } from 'lucide-react';
@@ -38,6 +42,8 @@ interface SelectedModifier {
     name: string;
     price: number;
 }
+
+type WarehouseOption = { value: number; label: string };
 
 interface CartItem {
     // Stable per-line id: several lines can share the same menuItemId when they
@@ -154,6 +160,10 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const [branchWarehouses, setBranchWarehouses] = useState<Warehouse[]>([]);
     const [warehouseAction, setWarehouseAction] = useState<'DELIVER' | 'CANCEL' | null>(null);
     const [operationalWarehouseId, setOperationalWarehouseId] = useState<number | null>(null);
+    const warehouseOptions = useMemo<WarehouseOption[]>(() => branchWarehouses.map((warehouse) => ({
+        value: warehouse.id,
+        label: `${warehouse.name} (${warehouse.code})`,
+    })), [branchWarehouses]);
     const [pendingCancelReason, setPendingCancelReason] = useState<string | undefined>();
     const waiterAccentColor = getUserAccentColor(activeTableOrder?.user || user);
 
@@ -336,6 +346,9 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     // Keyboard shortcuts
     useEffect(() => {
         const handleKeyPress = (e: KeyboardEvent) => {
+            const eventTarget = e.target instanceof HTMLElement ? e.target : null;
+            if (eventTarget?.closest('[role="dialog"], [role="alertdialog"]')) return;
+
             if (e.ctrlKey && e.key === 'f') {
                 e.preventDefault();
                 searchInputRef.current?.focus();
@@ -1350,13 +1363,15 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             )}
 
             {showFiscalCustomer && (
-                <div className="pos-shift-warning-overlay" role="dialog" aria-modal="true" aria-labelledby="fiscal-customer-title">
-                    <div className="pos-shift-warning-modal" style={{ maxWidth: '620px' }}>
-                        <h2 id="fiscal-customer-title" className="shift-warning-title">Datos fiscales del cliente</h2>
-                        <p className="shift-warning-message">
-                            Déjalos vacíos para consumidor final. Si registras identificación tributaria, nombre, tipo e identificación son obligatorios y quedarán congelados al emitir.
-                        </p>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.75rem', width: '100%' }}>
+                <Modal
+                    isOpen
+                    onClose={() => setShowFiscalCustomer(false)}
+                    title="Datos fiscales del cliente"
+                    size="lg"
+                    description="Déjalos vacíos para consumidor final. Si registras identificación tributaria, nombre, tipo e identificación son obligatorios y quedarán congelados al emitir."
+                    footer={<Button type="button" onClick={() => setShowFiscalCustomer(false)}>Aceptar</Button>}
+                >
+                        <div className="pos-fiscal-grid">
                             <label>
                                 Nombre o razón social
                                 <input className="input" value={customerName} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setCustomerName(event.target.value)} />
@@ -1373,11 +1388,11 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                 Teléfono
                                 <input className="input" value={fiscalCustomer.phone} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, phone: event.target.value }))} />
                             </label>
-                            <label style={{ gridColumn: '1 / -1' }}>
+                            <label className="pos-fiscal-span-full">
                                 Dirección fiscal
                                 <textarea className="input" rows={2} value={fiscalCustomer.fiscalAddress} maxLength={1000} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, fiscalAddress: event.target.value }))} />
                             </label>
-                            <label style={{ gridColumn: '1 / -1' }}>
+                            <label className="pos-fiscal-span-full">
                                 Correo
                                 <input className="input" type="email" value={fiscalCustomer.email} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, email: event.target.value }))} />
                             </label>
@@ -1385,11 +1400,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                         {activeTableOrder?.invoiceNumber && (
                             <p className="shift-warning-note">La factura ya fue emitida; estos datos son de solo lectura.</p>
                         )}
-                        <div className="shift-warning-actions">
-                            <button className="shift-warning-btn primary" onClick={() => setShowFiscalCustomer(false)}>Aceptar</button>
-                        </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {showKeypad && (
@@ -1401,56 +1412,43 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             )}
 
             {warehouseAction && (
-                <div className="pos-shift-warning-overlay" role="dialog" aria-modal="true" aria-labelledby="warehouse-action-title">
-                    <div className="pos-shift-warning-modal">
-                        <div className="shift-warning-icon">
-                            <AlertTriangle size={48} />
-                        </div>
-                        <h2 id="warehouse-action-title" className="shift-warning-title">
-                            {warehouseAction === 'DELIVER' ? 'Bodega de entrega' : 'Bodega para registrar merma'}
-                        </h2>
-                        <p className="shift-warning-message">
-                            {warehouseAction === 'DELIVER'
-                                ? 'Selecciona la bodega de esta sucursal de la que se descontará el inventario.'
-                                : 'La orden ya fue enviada a cocina. Selecciona la bodega donde se registrará el desperdicio.'}
-                        </p>
-                        <select
-                            aria-label="Bodega operativa"
-                            value={operationalWarehouseId ?? ''}
-                            onChange={(event) => setOperationalWarehouseId(event.target.value ? Number(event.target.value) : null)}
-                            style={{ width: '100%', minHeight: '44px', margin: '0.75rem 0', borderRadius: '8px', padding: '0.6rem' }}
-                        >
-                            <option value="">Seleccionar bodega...</option>
-                            {branchWarehouses.map((warehouse) => (
-                                <option key={warehouse.id} value={warehouse.id}>
-                                    {warehouse.name} ({warehouse.code})
-                                </option>
-                            ))}
-                        </select>
+                <Modal
+                    isOpen
+                    onClose={() => {
+                        setWarehouseAction(null);
+                        setOperationalWarehouseId(null);
+                        setPendingCancelReason(undefined);
+                    }}
+                    title={warehouseAction === 'DELIVER' ? 'Bodega de entrega' : 'Bodega para registrar merma'}
+                    size="sm"
+                    description={warehouseAction === 'DELIVER'
+                        ? 'Selecciona la bodega de esta sucursal de la que se descontará el inventario.'
+                        : 'La orden ya fue enviada a cocina. Selecciona la bodega donde se registrará el desperdicio.'}
+                    footer={(
+                        <>
+                            <Button type="button" variant="ghost" onClick={() => {
+                                setWarehouseAction(null);
+                                setOperationalWarehouseId(null);
+                                setPendingCancelReason(undefined);
+                            }}>Volver</Button>
+                            <Button type="button" disabled={!operationalWarehouseId} onClick={() => void handleWarehouseAction()}>Confirmar</Button>
+                        </>
+                    )}
+                >
+                        <div className="pos-dialog-icon warning" aria-hidden="true"><AlertTriangle size={28} /></div>
+                        <Select<WarehouseOption>
+                            variant="modal"
+                            label="Bodega operativa"
+                            placeholder="Seleccionar bodega…"
+                            options={warehouseOptions}
+                            value={warehouseOptions.find((option) => option.value === operationalWarehouseId) ?? null}
+                            onChange={(option: SingleValue<WarehouseOption>) => setOperationalWarehouseId(option?.value ?? null)}
+                            isSearchable={warehouseOptions.length > 6}
+                        />
                         {branchWarehouses.length === 0 && (
                             <p className="shift-warning-note">No hay una bodega tipo sucursal configurada para completar esta operación.</p>
                         )}
-                        <div className="shift-warning-actions">
-                            <button
-                                className="shift-warning-btn primary"
-                                disabled={!operationalWarehouseId}
-                                onClick={() => void handleWarehouseAction()}
-                            >
-                                Confirmar
-                            </button>
-                            <button
-                                className="shift-warning-btn"
-                                onClick={() => {
-                                    setWarehouseAction(null);
-                                    setOperationalWarehouseId(null);
-                                    setPendingCancelReason(undefined);
-                                }}
-                            >
-                                Volver
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                </Modal>
             )}
 
             {modifierItem && (
@@ -1469,42 +1467,30 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
             {/* Cash Shift Warning Modal */}
             {showShiftWarning && shiftStatus && (
-                <div className="pos-shift-warning-overlay" role="dialog" aria-modal="true" aria-labelledby="shift-warning-title">
-                    <div className="pos-shift-warning-modal">
-                        <div className="shift-warning-icon">
-                            <AlertTriangle size={48} />
-                        </div>
-                        <h2 id="shift-warning-title" className="shift-warning-title">
-                            {shiftStatus.requiresClose ? 'Turno de Caja Pendiente' : 'Sin Turno de Caja'}
-                        </h2>
-                        <p className="shift-warning-message">
-                            {canManageShift
-                                ? shiftStatus.message
-                                : 'No hay un turno de caja activo. Solicita al cajero o administrador que abra un turno para procesar pagos.'}
-                        </p>
+                <Modal
+                    isOpen
+                    onClose={() => setShowShiftWarning(false)}
+                    title={shiftStatus.requiresClose ? 'Turno de caja pendiente' : 'Sin turno de caja'}
+                    size="sm"
+                    closeOnBackdrop={false}
+                    description={canManageShift
+                        ? shiftStatus.message
+                        : 'No hay un turno de caja activo. Solicita al cajero o administrador que abra un turno para procesar pagos.'}
+                    footer={canManageShift ? (
+                        <Button type="button" onClick={() => navigate('/cash-registers')}>
+                            {shiftStatus.requiresClose ? 'Ir a cerrar turno' : 'Ir a abrir turno'}
+                        </Button>
+                    ) : (
+                        <Button type="button" onClick={() => setShowShiftWarning(false)}>Entendido</Button>
+                    )}
+                >
+                        <div className="pos-dialog-icon warning" aria-hidden="true"><AlertTriangle size={28} /></div>
                         {shiftStatus.requiresClose && shiftStatus.shift && (
                             <div className="shift-warning-details">
                                 <p><strong>Caja:</strong> {shiftStatus.shift.cashRegister?.name}</p>
                                 <p><strong>Abierto:</strong> {new Date(shiftStatus.shift.startDate).toLocaleString('es-NI')}</p>
                             </div>
                         )}
-                        <div className="shift-warning-actions">
-                            {canManageShift ? (
-                                <button
-                                    className="shift-warning-btn primary"
-                                    onClick={() => navigate('/cash-registers')}
-                                >
-                                    {shiftStatus.requiresClose ? 'Ir a Cerrar Turno' : 'Ir a Abrir Turno'}
-                                </button>
-                            ) : (
-                                <button
-                                    className="shift-warning-btn primary"
-                                    onClick={() => setShowShiftWarning(false)}
-                                >
-                                    Entendido
-                                </button>
-                            )}
-                        </div>
                         <p className="shift-warning-note">
                             {canManageShift
                                 ? 'Aviso: Debe tener un turno activo válido para efectuar ventas.'
@@ -1512,8 +1498,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                     ? 'Aviso: Puedes crear órdenes y enviarlas a cocina. Los cobros los registra cajería y requieren turno activo.'
                                     : 'Aviso: Los cobros los registra cajería y requieren turno de caja activo.'}
                         </p>
-                    </div>
-                </div>
+                </Modal>
             )}
         </div>
     );
@@ -1589,18 +1574,23 @@ function ModifierSelectorModal({
     };
 
     return (
-        <div className="pos-modifier-overlay" onClick={onClose}>
-            <div className="pos-modifier-modal" role="dialog" aria-modal="true" aria-labelledby="modifier-dialog-title" onClick={(e) => e.stopPropagation()}>
-                <div className="pos-modifier-header">
-                    <div>
-                        <h3 id="modifier-dialog-title">{item.name}</h3>
-                        <span className="pos-modifier-subtitle">Personaliza tu producto</span>
+        <Modal
+            isOpen
+            onClose={onClose}
+            title={item.name}
+            size="md"
+            description="Personaliza el producto y revisa el subtotal antes de agregarlo."
+            footer={(
+                <>
+                    <div className="pos-modifier-subtotal">
+                        <span>Subtotal</span>
+                        <strong>{currencySymbol}{subtotal.toFixed(2)}</strong>
                     </div>
-                    <button type="button" className="pos-modifier-close" onClick={onClose} aria-label="Cerrar personalización">
-                        <X size={20} aria-hidden="true" />
-                    </button>
-                </div>
-
+                    <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
+                    <Button type="button" onClick={() => onConfirm(selectedOptions)} disabled={loading || !isValid}>Agregar</Button>
+                </>
+            )}
+        >
                 <div className="pos-modifier-body">
                     {loading ? (
                         <div className="pos-modifier-empty">Cargando modificadores...</div>
@@ -1645,22 +1635,6 @@ function ModifierSelectorModal({
                         })
                     )}
                 </div>
-
-                <div className="pos-modifier-footer">
-                    <div className="pos-modifier-subtotal">
-                        <span>Subtotal</span>
-                        <strong>{currencySymbol}{subtotal.toFixed(2)}</strong>
-                    </div>
-                    <button
-                        type="button"
-                        className="pos-modifier-add-btn"
-                        onClick={() => onConfirm(selectedOptions)}
-                        disabled={loading || !isValid}
-                    >
-                        Agregar
-                    </button>
-                </div>
-            </div>
-        </div>
+        </Modal>
     );
 }

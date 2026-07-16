@@ -6,6 +6,7 @@ export type HrEmploymentStatus =
     | 'TERMINATED';
 
 export type HrAccountType = 'INTERNAL' | 'EXTERNAL';
+export type HrPayFrequency = 'WEEKLY' | 'BIWEEKLY' | 'FORTNIGHTLY' | 'MONTHLY';
 
 export interface HrNamedEntity {
     id: number;
@@ -74,7 +75,7 @@ export interface HrCompensationRecord {
     employeeId: number;
     contractId?: number | null;
     compensationType: 'SALARY' | 'HOURLY';
-    payFrequency: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY';
+    payFrequency: HrPayFrequency;
     amount: string;
     currency: string;
     effectiveFrom: string;
@@ -134,6 +135,8 @@ export interface HrEmployee {
     primaryBranch?: HrNamedEntity | null;
     branchAssignments?: HrBranchAssignment[];
     currentContract?: HrContractSummary | null;
+    /** Present only when the caller may read sensitive employee compensation. */
+    compensation?: HrCompensationRecord[];
     createdAt?: string;
     updatedAt?: string;
 }
@@ -199,6 +202,14 @@ export interface HrEmployeePayload {
     costCenterId?: number | null;
     branchIds?: number[];
     primaryBranchId?: number | null;
+    /** Required only for creation; compensation changes remain append-only afterwards. */
+    initialCompensation?: {
+        compensationType: 'SALARY' | 'HOURLY';
+        payFrequency: HrPayFrequency;
+        amount: string;
+        currency: string;
+        reason: string;
+    };
 }
 
 export interface HrDashboardData {

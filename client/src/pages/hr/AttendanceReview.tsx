@@ -8,6 +8,8 @@ import Pagination from '../../components/Pagination';
 import Select from '../../components/Select';
 import Sidebar from '../../components/Sidebar';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
+import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
+import useWorkforceOnline from '../../components/hr/useWorkforceOnline';
 import { attendanceClient, createAttendanceIdempotencyKey, getAttendanceErrorMessage } from '../../components/hr/attendanceClient';
 import { ATTENDANCE_ACTION_LABELS, ATTENDANCE_DECISION_LABELS } from '../../components/hr/attendanceRules';
 import { hrClient } from '../../components/hr/hrClient';
@@ -42,6 +44,7 @@ function displayDate(value: string): string {
 }
 
 export default function AttendanceReview() {
+    const online = useWorkforceOnline();
     const { success: showSuccess, error: showError } = useAppToast();
     const [lookups, setLookups] = useState<HrOrganizationCatalogs>(EMPTY_LOOKUPS);
     const [events, setEvents] = useState<HrAttendanceEvent[]>([]);
@@ -113,6 +116,7 @@ export default function AttendanceReview() {
     ], [events]);
     const pageReviewRequired = events.filter((event) => event.decision === 'REVIEW_REQUIRED' && !event.reviewedAt).length;
     const pageAccepted = events.filter((event) => event.decision === 'ACCEPTED').length;
+    const pageRejected = events.filter((event) => event.decision === 'REJECTED').length;
 
     const openReview = (event: HrAttendanceEvent) => {
         if (event.decision !== 'REVIEW_REQUIRED' || event.reviewedAt) return;
@@ -122,6 +126,10 @@ export default function AttendanceReview() {
 
     const review = async (event: React.FormEvent) => {
         event.preventDefault();
+        if (!online) {
+            showError('Conéctate para registrar una decisión de asistencia.');
+            return;
+        }
         if (!selected || !reviewForm.reason.trim()) {
             showError('La decisión de revisión requiere una razón.');
             return;
@@ -141,6 +149,10 @@ export default function AttendanceReview() {
 
     const createManual = async (event: React.FormEvent) => {
         event.preventDefault();
+        if (!online) {
+            showError('Conéctate para registrar un marcaje manual.');
+            return;
+        }
         if (!manual.userId || !manual.branchId || !manual.occurredAt || !manual.reason.trim()) {
             showError('Usuario, sucursal, fecha/hora y razón son obligatorios.');
             return;
@@ -168,10 +180,11 @@ export default function AttendanceReview() {
     };
 
     return (
-        <div className="page-wrapper inventory-page hr-attendance-review-page hr-admin-catalog-page">
-            <PageHeader className="inventory-header-new" title="Revisión de asistencia" subtitle="Eventos, incidencias y fallback manual auditable" icon={ClipboardCheck} actions={<Button onClick={() => setManualOpen(true)}><Plus size={18} /> Marcaje manual</Button>} />
+        <div className="page-wrapper inventory-page hr-attendance-review-page hr-admin-catalog-page hr-operation-page">
+            <PageHeader className="inventory-header-new hr-operation-header" title="Revisión de asistencia" subtitle="Resuelve incidencias y registra marcajes manuales sin perder trazabilidad" icon={ClipboardCheck} actions={<Button onClick={() => setManualOpen(true)} disabled={!online}><Plus size={18} /> Marcaje manual</Button>} />
+            <OnlineOnlyNotice online={online} />
 
-            <div className="filters-toolbar hr-attendance-filters inventory-filters-row">
+            <div className="filters-toolbar hr-attendance-filters inventory-filters-row hr-operation-toolbar">
                 <div className="filter-field"><label className="filter-field-label" htmlFor="attendance-from">Desde</label><input id="attendance-from" className="filter-input" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></div>
                 <div className="filter-field"><label className="filter-field-label" htmlFor="attendance-to">Hasta</label><input id="attendance-to" className="filter-input" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div>
                 <div className="filter-field"><Select<Option> label="Sucursal" options={branchOptions} value={branchOptions.find((option) => option.value === branchId)} onChange={(option: SingleValue<Option>) => setBranchId(option?.value ?? '')} isSearchable /></div>
@@ -180,10 +193,11 @@ export default function AttendanceReview() {
                 <div className="filter-field"><Select<Option> label="Resultado" options={DECISION_OPTIONS} value={DECISION_OPTIONS.find((option) => option.value === decision)} onChange={(option: SingleValue<Option>) => setDecision(option?.value ?? '')} /></div>
             </div>
 
-            {!loading && !error && <section className="hr-admin-kpis" aria-label="Resumen de eventos filtrados">
-                <div><span>Eventos encontrados</span><strong>{total}</strong><small>En el rango y alcance actual</small></div>
-                <div><span>Requieren decisión</span><strong>{pageReviewRequired}</strong><small>Visibles en esta página</small></div>
-                <div><span>Aceptados</span><strong>{pageAccepted}</strong><small>Visibles en esta página</small></div>
+            {!loading && !error && <section className="hr-admin-kpis hr-operation-kpis" aria-label="Resumen de eventos filtrados">
+                <article><ClipboardCheck size={19} aria-hidden="true" /><span>Eventos encontrados</span><strong>{total}</strong><small>En el rango y alcance actual</small></article>
+                <article className={pageReviewRequired > 0 ? 'is-warning' : undefined}><AlertTriangle size={19} aria-hidden="true" /><span>Requieren decisión</span><strong>{pageReviewRequired}</strong><small>Visibles en esta página</small></article>
+                <article className="is-success"><CheckCircle2 size={19} aria-hidden="true" /><span>Aceptados</span><strong>{pageAccepted}</strong><small>Visibles en esta página</small></article>
+                <article className={pageRejected > 0 ? 'is-danger' : undefined}><XCircle size={19} aria-hidden="true" /><span>Rechazados</span><strong>{pageRejected}</strong><small>Contraflujos visibles</small></article>
             </section>}
 
             {loading && <LoadingSpinner text="Cargando eventos…" />}
@@ -203,7 +217,7 @@ export default function AttendanceReview() {
                                         <td><time dateTime={attendanceEvent.occurredAt}>{displayDate(attendanceEvent.occurredAt)}</time></td>
                                         <td><strong>{ATTENDANCE_DECISION_LABELS[attendanceEvent.decision]}</strong>{attendanceEvent.reviewedAt && <small>Revisado {displayDate(attendanceEvent.reviewedAt)}</small>}</td>
                                         <td>{attendanceEvent.reasonCode ? <code>{attendanceEvent.reasonCode}</code> : 'Sin código'}{attendanceEvent.locationAccuracyM != null && <small>Precisión ±{Math.round(attendanceEvent.locationAccuracyM)} m</small>}</td>
-                                        <td className="hr-admin-actions-col"><div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openReview(attendanceEvent)} disabled={attendanceEvent.decision !== 'REVIEW_REQUIRED' || Boolean(attendanceEvent.reviewedAt)} title={attendanceEvent.reviewedAt ? 'Evento ya revisado' : 'Revisar evento'} aria-label={`Revisar evento de ${attendanceEvent.user?.name ?? attendanceEvent.userId}`}><Eye size={16} /></Button></div></td>
+                                        <td className="hr-admin-actions-col"><div className="table-actions"><Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openReview(attendanceEvent)} disabled={!online || attendanceEvent.decision !== 'REVIEW_REQUIRED' || Boolean(attendanceEvent.reviewedAt)} title={!online ? 'Conéctate para revisar' : attendanceEvent.reviewedAt ? 'Evento ya revisado' : 'Revisar evento'} aria-label={`Revisar evento de ${attendanceEvent.user?.name ?? attendanceEvent.userId}`}><Eye size={16} /></Button></div></td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -222,7 +236,7 @@ export default function AttendanceReview() {
                         icon={<ClipboardCheck size={18} aria-hidden="true" />}
                         formClassName="hr-attendance-review-form"
                         onSubmit={review}
-                        footer={<><Button type="button" variant="ghost" onClick={() => setSelected(null)} disabled={saving}>Cancelar</Button><Button type="submit" disabled={saving || !reviewForm.reason.trim()}>{saving ? 'Guardando…' : 'Registrar decisión'}</Button></>}
+                        footer={<><Button type="button" variant="ghost" onClick={() => setSelected(null)} disabled={saving}>Cancelar</Button><Button type="submit" disabled={!online || saving || !reviewForm.reason.trim()}>{saving ? 'Guardando…' : 'Registrar decisión'}</Button></>}
                     >
                         <div className="hr-review-summary span-full"><strong>{selected.user?.name ?? `Usuario #${selected.userId}`}</strong><span>{ATTENDANCE_ACTION_LABELS[selected.action]} · {displayDate(selected.occurredAt)}</span><p>{selected.message ?? selected.reasonCode ?? 'Sin explicación adicional.'}</p></div>
                         <div className="hr-review-decisions span-full" role="radiogroup" aria-label="Decisión de revisión"><label className={`hr-inline-choice ${reviewForm.decision === 'APPROVED' ? 'selected' : ''}`}><input type="radio" name="review-decision" checked={reviewForm.decision === 'APPROVED'} onChange={() => setReviewForm((current) => ({ ...current, decision: 'APPROVED' }))} /><CheckCircle2 size={18} /> Aprobar</label><label className={`hr-inline-choice danger ${reviewForm.decision === 'REJECTED' ? 'selected' : ''}`}><input type="radio" name="review-decision" checked={reviewForm.decision === 'REJECTED'} onChange={() => setReviewForm((current) => ({ ...current, decision: 'REJECTED' }))} /><XCircle size={18} /> Rechazar</label></div>
@@ -240,7 +254,7 @@ export default function AttendanceReview() {
                     formClassName="hr-attendance-manual-form"
                     notice={<div className="hr-attendance-alert warning"><AlertTriangle size={18} /><span>Este fallback no simula biometría ni GPS: crea un evento manual identificado, con actor y razón para auditoría.</span></div>}
                     onSubmit={createManual}
-                    footer={<><Button type="button" variant="ghost" onClick={() => setManualOpen(false)} disabled={saving}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? 'Registrando…' : 'Registrar marcaje manual'}</Button></>}
+                    footer={<><Button type="button" variant="ghost" onClick={() => setManualOpen(false)} disabled={saving}>Cancelar</Button><Button type="submit" disabled={!online || saving}>{saving ? 'Registrando…' : 'Registrar marcaje manual'}</Button></>}
                 >
                     <div className="span-full"><Select<Option> variant="modal" label="Evento a compensar (opcional)" options={targetOptions} value={targetOptions.find((option) => option.value === manual.targetEventId)} onChange={(option: SingleValue<Option>) => { const target = events.find((item) => String(item.id) === option?.value); setManual((current) => ({ ...current, targetEventId: option?.value ?? '', ...(target ? { userId: String(target.userId), branchId: String(target.branchId ?? ''), action: target.action } : {}) })); }} isSearchable /></div>
                     <Select<Option> variant="modal" label="Usuario" options={userOptions.filter((option) => option.value)} value={userOptions.find((option) => option.value === manual.userId)} onChange={(option: SingleValue<Option>) => setManual((current) => ({ ...current, userId: option?.value ?? '' }))} isSearchable />

@@ -98,17 +98,20 @@
   --modal-width-md: 650px;
   --modal-width-lg: 850px;
   --modal-width-xl: 950px;
-  /* Shared dialog foundation. PaymentModal intentionally owns its own tokens. */
-  --dialog-overlay: rgba(15, 23, 42, 0.66);
-  --dialog-accent: #526f99;
-  --dialog-accent-hover: #405c86;
-  --dialog-accent-soft: #e7ecf3;
+  /* Shared dialog foundation. The same blue/depth language starts at login. */
+  --dialog-overlay: rgba(2, 6, 23, 0.72);
+  --dialog-accent: #2563eb;
+  --dialog-accent-hover: #1d4ed8;
+  --dialog-accent-soft: #e8f0ff;
   --dialog-title-color: var(--color-text);
-  --dialog-panel-border: color-mix(in srgb, var(--color-border) 84%, var(--dialog-accent) 16%);
-  --dialog-panel-shadow: 0 28px 70px -24px rgb(15 23 42 / 0.58), 0 12px 28px -18px rgb(15 23 42 / 0.34);
-  --dialog-header-bg: linear-gradient(135deg, var(--color-surface) 0%, color-mix(in srgb, var(--color-surface) 92%, var(--dialog-accent) 8%) 100%);
-  --dialog-muted-bg: color-mix(in srgb, var(--color-background) 93%, var(--dialog-accent) 7%);
-  --dialog-focus-ring: color-mix(in srgb, var(--dialog-accent) 20%, transparent);
+  --dialog-panel-bg: var(--color-surface);
+  --dialog-content-bg: color-mix(in srgb, var(--color-surface) 94%, var(--color-background) 6%);
+  --dialog-field-bg: color-mix(in srgb, var(--color-background) 86%, var(--color-surface) 14%);
+  --dialog-panel-border: color-mix(in srgb, var(--color-border) 76%, var(--dialog-accent) 24%);
+  --dialog-panel-shadow: 0 34px 90px -30px rgb(2 6 23 / 0.7), 0 16px 40px -24px rgb(15 23 42 / 0.42);
+  --dialog-header-bg: linear-gradient(135deg, var(--dialog-panel-bg) 0%, color-mix(in srgb, var(--dialog-panel-bg) 90%, var(--dialog-accent) 10%) 100%);
+  --dialog-muted-bg: color-mix(in srgb, var(--dialog-content-bg) 92%, var(--dialog-accent) 8%);
+  --dialog-focus-ring: color-mix(in srgb, var(--dialog-accent) 24%, transparent);
 }
 
 /* Dark Mode Variables */
@@ -123,9 +126,17 @@
   --color-primary-light: #1e3a8a;
   --color-surface-hover: var(--color-neutral-700);
   --color-disabled-bg: var(--color-neutral-700);
-  --dialog-accent: #5f7da8;
-  --dialog-accent-hover: #7390b7;
-  --dialog-accent-soft: #263a56;
+  --dialog-overlay: rgba(2, 6, 23, 0.82);
+  --dialog-accent: #3b82f6;
+  --dialog-accent-hover: #60a5fa;
+  --dialog-accent-soft: #172b4d;
+  --dialog-panel-bg: #111c30;
+  --dialog-content-bg: #0d1728;
+  --dialog-field-bg: #0a1322;
+  --dialog-panel-border: #2b3d59;
+  --dialog-header-bg: linear-gradient(135deg, #111c30 0%, #152747 100%);
+  --dialog-muted-bg: #0b1628;
+  --dialog-focus-ring: rgb(59 130 246 / 0.24);
 
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
@@ -308,13 +319,14 @@ a {
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  background: var(--dialog-content-bg);
 }
 
 /* Tabs Navigation */
 .modal-tabs {
   display: flex;
   padding: var(--spacing-md) var(--spacing-xl);
-  background: var(--dialog-muted-bg);
+  background: color-mix(in srgb, var(--dialog-muted-bg) 88%, var(--dialog-panel-bg) 12%);
   border-bottom: 1px solid var(--dialog-panel-border);
   gap: var(--spacing-sm);
   position: sticky;
@@ -351,7 +363,7 @@ button.modal-tab {
   gap: var(--spacing-sm);
   padding: 8px 16px;
   border: 1px solid var(--dialog-panel-border);
-  background: var(--color-surface);
+  background: var(--dialog-panel-bg);
   color: var(--color-text-secondary);
   font-weight: 600;
   font-size: var(--font-size-sm);
@@ -363,7 +375,7 @@ button.modal-tab {
 }
 
 .modal-tab:hover {
-  background: var(--color-surface);
+  background: color-mix(in srgb, var(--dialog-panel-bg) 88%, var(--dialog-accent) 12%);
   border-color: var(--dialog-accent);
 }
 
@@ -395,7 +407,7 @@ button.modal-tab {
   flex: 1;
   overflow-y: auto;
   padding: var(--spacing-xl);
-  background: color-mix(in srgb, var(--color-surface) 95%, var(--color-background) 5%);
+  background: var(--dialog-content-bg);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-lg);
@@ -464,7 +476,7 @@ button.modal-tab {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  color: var(--color-neutral-500);
+  color: var(--color-text-secondary);
   letter-spacing: 0.5px;
 }
 
@@ -475,7 +487,7 @@ button.modal-tab {
   border-radius: var(--radius-lg);
   font-size: 14px;
   color: var(--color-text);
-  background: var(--color-background);
+  background: var(--dialog-field-bg);
   transition: all var(--transition-fast);
   box-sizing: border-box;
 }
@@ -483,7 +495,7 @@ button.modal-tab {
 .modal-standard-input:focus {
   outline: none;
   border-color: var(--dialog-accent);
-  background: var(--color-surface);
+  background: var(--dialog-panel-bg);
   box-shadow: 0 0 0 3px var(--dialog-focus-ring);
 }
 
@@ -537,7 +549,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   border-radius: var(--radius-lg);
   font-size: 14px;
   color: var(--color-text);
-  background: var(--color-background);
+  background: var(--dialog-field-bg);
   transition: all var(--transition-fast);
   resize: vertical;
   min-height: 104px;
@@ -547,7 +559,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 .modal-textarea:focus {
   outline: none;
   border-color: var(--dialog-accent);
-  background: var(--color-surface);
+  background: var(--dialog-panel-bg);
   box-shadow: 0 0 0 3px var(--dialog-focus-ring);
 }
 

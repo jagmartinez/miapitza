@@ -4,8 +4,8 @@ import {
     useMemo,
     useRef,
     useState,
-    type RefObject,
 } from 'react';
+import { createPortal } from 'react-dom';
 import type { SingleValue } from 'react-select';
 import {
     Banknote,
@@ -144,7 +144,7 @@ export default function PaymentModal({
     const close = useCallback(() => {
         if (!loading) onClose();
     }, [loading, onClose]);
-    const { titleId } = useDialogA11y(isOpen, close, dialogRef as RefObject<HTMLElement | null>, {
+    const { titleId } = useDialogA11y(isOpen, close, dialogRef, {
         closeOnEscape: !loading,
     });
 
@@ -605,20 +605,29 @@ export default function PaymentModal({
         </label>
     );
 
-    return (
-        <div className="payment-overlay" onClick={busy ? undefined : close}>
+    return createPortal(
+        <div
+            ref={dialogRef}
+            className="payment-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            tabIndex={-1}
+            onClick={busy ? undefined : (event) => {
+                if (event.target === event.currentTarget) close();
+            }}
+        >
             <section
-                ref={dialogRef}
                 className={`payment-dialog payment-dialog-${mode}`}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby={titleId}
                 onClick={(event) => event.stopPropagation()}
             >
                 <header className="payment-dialog-header">
-                    <div>
-                        <span className="payment-eyebrow">Cobro de orden</span>
-                        <h2 id={titleId}>Procesar pago</h2>
+                    <div className="payment-dialog-heading">
+                        <span className="payment-dialog-icon" aria-hidden="true"><CreditCard size={20} /></span>
+                        <div>
+                            <span className="payment-eyebrow">Cobro de orden</span>
+                            <h2 id={titleId}>Procesar pago</h2>
+                        </div>
                     </div>
                     <button type="button" className="payment-close" onClick={close} disabled={busy} aria-label="Cerrar pago">
                         <X size={22} />
@@ -838,7 +847,8 @@ export default function PaymentModal({
                     </div>
                 </footer>
             </section>
-        </div>
+        </div>,
+        document.body,
     );
 }
 

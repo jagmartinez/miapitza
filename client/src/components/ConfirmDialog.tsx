@@ -1,5 +1,6 @@
 import { useRef } from 'react';
-import { X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
 import Button from './Button';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import './ConfirmDialog.css';
@@ -30,7 +31,9 @@ export default function ConfirmDialog({
 
     if (!isOpen) return null;
 
-    return (
+    const VariantIcon = variant === 'danger' ? AlertCircle : variant === 'warning' ? AlertTriangle : Info;
+
+    return createPortal(
         <div className="confirm-dialog-overlay" onClick={onCancel}>
             <div
                 ref={dialogRef}
@@ -43,7 +46,10 @@ export default function ConfirmDialog({
                 onClick={event => event.stopPropagation()}
             >
                 <div className="confirm-dialog-header">
-                    <h3 id={titleId} className="confirm-dialog-title">{title}</h3>
+                    <div className={`confirm-dialog-heading confirm-dialog-heading-${variant}`}>
+                        <span className="confirm-dialog-icon" aria-hidden="true"><VariantIcon size={20} /></span>
+                        <h3 id={titleId} className="confirm-dialog-title">{title}</h3>
+                    </div>
                     <button type="button" className="confirm-dialog-close" onClick={onCancel} aria-label="Cerrar">
                         <X size={20} aria-hidden="true" />
                     </button>
@@ -64,6 +70,7 @@ export default function ConfirmDialog({
                     </Button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }

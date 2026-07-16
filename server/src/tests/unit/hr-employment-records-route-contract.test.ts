@@ -22,4 +22,13 @@ describe('HR employment records route contract', () => {
         expect(routes).toContain("router.get('/documents/storage/health'");
         expect(routes).toContain("router.post('/documents/retention/run'");
     });
+
+    it('requires atomic onboarding compensation and keeps later salary writes append-only', () => {
+        expect(routes).toContain("'initialCompensation'");
+        expect(routes).toContain('initialCompensation: {');
+        expect(routes).toContain("required: true, enum: ['WEEKLY', 'BIWEEKLY', 'FORTNIGHTLY', 'MONTHLY']");
+        expect(routes).toContain("field !== 'initialCompensation'");
+        expect(routes).toContain("router.post('/employees/:id/compensations'");
+        expect(routes).not.toContain("router.put('/employees/:id/compensations'");
+    });
 });

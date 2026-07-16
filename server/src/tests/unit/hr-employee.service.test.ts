@@ -6,7 +6,7 @@ import { HrEmployeeService } from '../../services/hr.service';
 describe('HrEmployeeService tenant and account invariants', () => {
     afterEach(() => { jest.restoreAllMocks(); });
 
-    it('creates the Employee, marks the User INTERNAL and audits in one transaction', async () => {
+    it('creates the Employee, initial compensation and INTERNAL user in one audited transaction', async () => {
         jest.spyOn(prisma.user, 'findFirst').mockResolvedValue({
             id: 21, name: 'Ana Pérez', employee: null,
         } as never);
@@ -14,6 +14,7 @@ describe('HrEmployeeService tenant and account invariants', () => {
             user: { update: jest.fn().mockResolvedValue({ id: 21 } as never) },
             employee: { create: jest.fn().mockResolvedValue({ id: 8, employeeCode: 'EMP-21' } as never) },
             employeeBranchAssignment: { createMany: jest.fn() },
+            compensationHistory: { create: jest.fn().mockResolvedValue({ id: 51 } as never) },
             auditLog: { create: jest.fn().mockResolvedValue({ id: 1 } as never) },
         };
         jest.spyOn(prisma, '$transaction').mockImplementation(
@@ -28,17 +29,40 @@ describe('HrEmployeeService tenant and account invariants', () => {
             employeeCode: 'emp-21',
             legalName: 'Ana Pérez',
             hireDate: '2026-07-13',
+            initialCompensation: {
+                compensationType: 'SALARY', payFrequency: 'BIWEEKLY', amount: '12500.00',
+                currency: 'NIO', reason: 'Oferta laboral aprobada',
+            },
         }, 3);
 
         expect(tx.user.update).toHaveBeenCalledWith({ where: { id: 21 }, data: { accountType: 'INTERNAL' } });
         expect(tx.employee.create).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({ companyId: 4, userId: 21, employeeCode: 'EMP-21' }),
         }));
-        expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
+        expect(tx.compensationHistory.create).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                companyId: 4, employeeId: 8, changedById: 3, payFrequency: 'BIWEEKLY',
+                amount: expect.objectContaining({}), effectiveFrom: new Date('2026-07-13T00:00:00.000Z'),
+            }),
+        }));
+        expect(tx.auditLog.create).toHaveBeenCalledTimes(2);
         expect(result).toEqual(expect.objectContaining({ id: 8, companyId: 4 }));
         const returnedSelect = employeeFind.mock.calls[0][0]?.select as Record<string, unknown>;
         expect(returnedSelect).not.toHaveProperty('documentNumber');
         expect(returnedSelect).not.toHaveProperty('socialSecurityNumber');
+    });
+
+    it('rejects onboarding without an initial compensation before opening the transaction', async () => {
+        jest.spyOn(prisma.user, 'findFirst').mockResolvedValue({
+            id: 21, name: 'Ana Pérez', employee: null,
+        } as never);
+        const transaction = jest.spyOn(prisma, '$transaction');
+
+        await expect(HrEmployeeService.create(4, {
+            userId: 21, employeeCode: 'EMP-21', legalName: 'Ana Pérez', hireDate: '2026-07-13',
+        }, 3)).rejects.toThrow('compensación inicial');
+
+        expect(transaction).not.toHaveBeenCalled();
     });
 
     it('rejects a user outside the authoritative tenant', async () => {
@@ -112,6 +136,31 @@ describe('HrEmployeeService tenant and account invariants', () => {
         expect(select).not.toHaveProperty('address');
         expect(select).not.toHaveProperty('notes');
         expect((select.user as { select: Record<string, unknown> }).select).not.toHaveProperty('email');
+    });
+
+    it('returns identification and only the compensation effective today to authorized readers', async () => {
+        const findMany = jest.spyOn(prisma.employee, 'findMany').mockResolvedValue([] as never);
+        jest.spyOn(prisma.employee, 'count').mockResolvedValue(0);
+        jest.spyOn(prisma, '$transaction').mockResolvedValue([[], 0] as never);
+
+        await HrEmployeeService.list(4, { page: 1, limit: 25 }, { sensitive: true });
+
+        const select = findMany.mock.calls[0][0]?.select as Record<string, unknown> & {
+            compensation?: {
+                take?: number;
+                where?: { effectiveFrom?: { lte?: Date }; OR?: Array<{ effectiveTo: unknown }> };
+            };
+        };
+        expect(select.documentType).toBe(true);
+        expect(select.documentNumber).toBe(true);
+        expect(select).not.toHaveProperty('socialSecurityNumber');
+        expect(select.compensation).toEqual(expect.objectContaining({
+            take: 1,
+            where: expect.objectContaining({
+                effectiveFrom: { lte: expect.any(Date) },
+                OR: [{ effectiveTo: null }, { effectiveTo: { gte: expect.any(Date) } }],
+            }),
+        }));
     });
 
     it('does not resolve an employee from another company or branch', async () => {

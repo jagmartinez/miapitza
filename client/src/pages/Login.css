@@ -1,8 +1,8 @@
 .login-page {
-    --login-bg: #070b14;
-    --login-panel: #0d1422;
-    --login-panel-soft: #111b2d;
-    --login-border: rgba(148, 163, 184, 0.16);
+    --login-bg: #0f172a;
+    --login-panel: #1e293b;
+    --login-panel-soft: #243249;
+    --login-border: #334155;
     --login-text: #f8fafc;
     --login-muted: #94a3b8;
     --login-blue: #3b82f6;
@@ -13,8 +13,8 @@
     overflow: hidden;
     isolation: isolate;
     background:
-        radial-gradient(circle at 6% 8%, rgba(37, 99, 235, 0.15), transparent 30%),
-        radial-gradient(circle at 96% 95%, rgba(59, 130, 246, 0.1), transparent 28%),
+        radial-gradient(circle at 4% 6%, rgba(37, 99, 235, 0.2), transparent 34%),
+        radial-gradient(circle at 96% 92%, rgba(59, 130, 246, 0.12), transparent 30%),
         var(--login-bg);
     color: var(--login-text);
 }
@@ -24,7 +24,7 @@
     position: absolute;
     inset: 0;
     z-index: -2;
-    opacity: 0.35;
+    opacity: 0.28;
     background-image:
         linear-gradient(rgba(148, 163, 184, 0.035) 1px, transparent 1px),
         linear-gradient(90deg, rgba(148, 163, 184, 0.035) 1px, transparent 1px);
@@ -58,7 +58,7 @@
 .login-shell {
     display: grid;
     grid-template-columns: minmax(0, 1.08fr) minmax(430px, 0.92fr);
-    width: min(100%, 1440px);
+    width: min(100%, 1700px);
     min-height: 100vh;
     min-height: 100dvh;
     margin: 0 auto;
@@ -90,7 +90,7 @@
     height: 48px;
     flex: 0 0 auto;
     border: 1px solid rgba(96, 165, 250, 0.35);
-    border-radius: 14px;
+    border-radius: 12px;
     background: linear-gradient(145deg, rgba(59, 130, 246, 0.28), rgba(37, 99, 235, 0.1));
     color: #bfdbfe;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 30px rgba(37, 99, 235, 0.15);
@@ -219,11 +219,11 @@
     width: min(100%, 470px);
     padding: clamp(28px, 4vw, 42px);
     border: 1px solid var(--login-border);
-    border-radius: 24px;
-    background: linear-gradient(145deg, rgba(17, 27, 45, 0.9), rgba(11, 18, 31, 0.96));
+    border-radius: 16px;
+    background: linear-gradient(145deg, rgba(36, 50, 73, 0.96), rgba(30, 41, 59, 0.98));
     box-shadow:
-        0 28px 80px rgba(0, 0, 0, 0.42),
-        inset 0 1px 0 rgba(255, 255, 255, 0.035);
+        0 28px 72px rgba(2, 6, 23, 0.34),
+        inset 0 1px 0 rgba(255, 255, 255, 0.045);
 }
 
 .login-header {
@@ -241,7 +241,7 @@
     width: 44px;
     height: 44px;
     border: 1px solid rgba(96, 165, 250, 0.2);
-    border-radius: 13px;
+    border-radius: 10px;
     background: rgba(37, 99, 235, 0.1);
     color: var(--login-blue-bright);
 }
@@ -323,9 +323,9 @@
     min-height: 50px;
     padding: 12px 15px 12px 45px;
     border: 1px solid rgba(148, 163, 184, 0.18);
-    border-radius: 12px;
+    border-radius: 8px;
     outline: none;
-    background: rgba(4, 9, 18, 0.62);
+    background: rgba(15, 23, 42, 0.82);
     color: var(--login-text);
     caret-color: var(--login-blue-bright);
     font-size: 0.9rem;
@@ -342,7 +342,7 @@
 
 .login-input-wrap:focus-within input {
     border-color: rgba(96, 165, 250, 0.7);
-    background: rgba(6, 13, 25, 0.85);
+    background: rgba(15, 23, 42, 0.98);
     box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.11);
 }
 
@@ -384,7 +384,7 @@
 .login-field--2fa {
     padding: 14px;
     border: 1px solid rgba(96, 165, 250, 0.14);
-    border-radius: 14px;
+    border-radius: 10px;
     background: rgba(37, 99, 235, 0.045);
     animation: loginSlideDown 220ms ease-out;
 }
@@ -408,7 +408,7 @@
     margin-top: 4px;
     padding: 12px 18px;
     border: 1px solid rgba(147, 197, 253, 0.18);
-    border-radius: 12px;
+    border-radius: 8px;
     background: linear-gradient(135deg, #2563eb, #1d4ed8);
     color: white;
     box-shadow: 0 12px 26px rgba(29, 78, 216, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.18);
@@ -552,6 +552,7 @@
         min-height: 100dvh;
         padding: 28px 20px;
         border-left: 0;
+        background: transparent;
     }
 
     .login-access {
@@ -582,7 +583,7 @@
 
     .login-card {
         padding: 25px 20px;
-        border-radius: 19px;
+        border-radius: 14px;
     }
 
     .login-header {

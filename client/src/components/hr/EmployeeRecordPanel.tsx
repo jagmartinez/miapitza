@@ -6,7 +6,7 @@ import { Download, FileLock2, Plus, RefreshCw, ShieldAlert } from 'lucide-react'
 import Button from '../Button';
 import LoadingSpinner from '../LoadingSpinner';
 import { getHrErrorMessage, hrClient } from './hrClient';
-import type { HrCompensationRecord, HrEmployeeDocument, HrEmploymentContract } from '../../types/hr';
+import type { HrCompensationRecord, HrEmployeeDocument, HrEmploymentContract, HrPayFrequency } from '../../types/hr';
 
 export type EmployeeRecordMode = 'contracts' | 'compensation' | 'documents';
 
@@ -19,6 +19,15 @@ function dateText(value?: string | null): string {
     return value ? value.slice(0, 10) : 'Abierto';
 }
 
+function frequencyText(value: HrPayFrequency): string {
+    return ({
+        WEEKLY: 'Semanal · 52 períodos/año',
+        BIWEEKLY: 'Quincenal · 24 períodos/año',
+        FORTNIGHTLY: 'Catorcenal · 26 períodos/año',
+        MONTHLY: 'Mensual · 12 períodos/año',
+    })[value];
+}
+
 export default function EmployeeRecordPanel({ employeeId, mode }: { employeeId: number; mode: EmployeeRecordMode }) {
     const [contracts, setContracts] = useState<HrEmploymentContract[]>([]);
     const [compensations, setCompensations] = useState<HrCompensationRecord[]>([]);
@@ -29,7 +38,7 @@ export default function EmployeeRecordPanel({ employeeId, mode }: { employeeId: 
     const [message, setMessage] = useState<string | null>(null);
     const [contractForm, setContractForm] = useState({ contractNumber: '', employmentType: 'FULL_TIME', startDate: today(), endDate: '', notes: '' });
     const [transitionForm, setTransitionForm] = useState({ contractId: '', action: 'ACTIVATE' as 'ACTIVATE' | 'TERMINATE' | 'EXPIRE', signedAt: '', endDate: today(), reason: '' });
-    const [compensationForm, setCompensationForm] = useState({ contractId: '', compensationType: 'SALARY' as 'SALARY' | 'HOURLY', payFrequency: 'MONTHLY' as 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY', amount: '', currency: 'NIO', effectiveFrom: today(), reason: '' });
+    const [compensationForm, setCompensationForm] = useState({ contractId: '', compensationType: 'SALARY' as 'SALARY' | 'HOURLY', payFrequency: 'MONTHLY' as HrPayFrequency, amount: '', currency: 'NIO', effectiveFrom: today(), reason: '' });
     const [documentForm, setDocumentForm] = useState<{ documentType: string; expiresAt: string; file: File | null }>({ documentType: '', expiresAt: '', file: null });
     const [revocationReason, setRevocationReason] = useState('');
 
@@ -126,14 +135,14 @@ export default function EmployeeRecordPanel({ employeeId, mode }: { employeeId: 
                         <h3><Plus size={17} /> Versionar compensación</h3>
                         <label>Contrato<HrReactSelect value={compensationForm.contractId} onChange={(event) => setCompensationForm(current => ({ ...current, contractId: event.target.value }))}><option value="">Sin vínculo</option>{contracts.map(contract => <option key={contract.id} value={contract.id}>{contract.contractNumber} · {contract.status}</option>)}</HrReactSelect></label>
                         <label>Tipo<HrReactSelect value={compensationForm.compensationType} onChange={(event) => setCompensationForm(current => ({ ...current, compensationType: event.target.value as typeof current.compensationType }))}><option value="SALARY">Salario</option><option value="HOURLY">Por hora</option></HrReactSelect></label>
-                        <label>Frecuencia<HrReactSelect value={compensationForm.payFrequency} onChange={(event) => setCompensationForm(current => ({ ...current, payFrequency: event.target.value as typeof current.payFrequency }))}><option value="WEEKLY">Semanal</option><option value="BIWEEKLY">Quincenal</option><option value="MONTHLY">Mensual</option></HrReactSelect></label>
+                        <label>Frecuencia<HrReactSelect value={compensationForm.payFrequency} onChange={(event) => setCompensationForm(current => ({ ...current, payFrequency: event.target.value as typeof current.payFrequency }))}><option value="WEEKLY">Semanal · 52 períodos/año</option><option value="BIWEEKLY">Quincenal · 24 períodos/año</option><option value="FORTNIGHTLY">Catorcenal · 26 períodos/año</option><option value="MONTHLY">Mensual · 12 períodos/año</option></HrReactSelect></label>
                         <label>Monto<HrMoneyInput value={compensationForm.amount} onValueChange={(amount) => setCompensationForm(current => ({ ...current, amount }))} required /></label>
-                        <label>Moneda<input value={compensationForm.currency} onChange={(event) => setCompensationForm(current => ({ ...current, currency: event.target.value.toUpperCase() }))} pattern="[A-Z]{3}" maxLength={3} required /></label>
+                        <label>Moneda<HrReactSelect value={compensationForm.currency} onChange={(event) => setCompensationForm(current => ({ ...current, currency: event.target.value }))}><option value="NIO">NIO · Córdoba</option><option value="USD">USD · Dólar</option></HrReactSelect></label>
                         <label>Vigente desde<input type="date" value={compensationForm.effectiveFrom} onChange={(event) => setCompensationForm(current => ({ ...current, effectiveFrom: event.target.value }))} required /></label>
                         <label className="span-full">Razón<input value={compensationForm.reason} onChange={(event) => setCompensationForm(current => ({ ...current, reason: event.target.value }))} required minLength={3} maxLength={500} /></label>
                         <Button type="submit" disabled={saving}>Guardar nueva versión</Button>
                     </form>
-                    <RecordList empty="Sin historial de compensación.">{compensations.map(item => <article key={item.id}><div><strong className="hr-money">{formatHrMoney(item.currency, item.amount)} · {item.compensationType}</strong><span>{item.payFrequency} · {dateText(item.effectiveFrom)} a {dateText(item.effectiveTo)}</span><small>{item.reason} · por {item.changedBy?.name ?? 'usuario registrado'}</small></div><b>{item.effectiveTo ? 'HISTÓRICA' : 'VIGENTE'}</b></article>)}</RecordList>
+                    <RecordList empty="Sin historial de compensación.">{compensations.map(item => <article key={item.id}><div><strong className="hr-money">{formatHrMoney(item.currency, item.amount)} · {item.compensationType === 'SALARY' ? 'Salario' : 'Tarifa por hora'}</strong><span>{frequencyText(item.payFrequency)} · {dateText(item.effectiveFrom)} a {dateText(item.effectiveTo)}</span><small>{item.reason} · por {item.changedBy?.name ?? 'usuario registrado'}</small></div><b>{item.effectiveTo ? 'HISTÓRICA' : 'VIGENTE'}</b></article>)}</RecordList>
                 </>
             )}
 

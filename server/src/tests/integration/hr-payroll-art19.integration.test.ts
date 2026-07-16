@@ -113,7 +113,7 @@ describe('HR payroll Art. 19 transactional lifecycle (integration)', () => {
         const configuration = {
             schema: 'HR_PAYROLL_PARAMETRIC_V4', legallyValidated: true, currency: 'NIO',
             regular: {
-                minuteDivisors: { WEEKLY: '2400', BIWEEKLY: '4800', MONTHLY: '9600' },
+                minuteDivisors: { WEEKLY: '2400', BIWEEKLY: '4800', FORTNIGHTLY: '4800', MONTHLY: '9600' },
                 overtimeMultiplier: '2', paidLeaveUnitMinutes: { DAYS: '480', HOURS: '60', MINUTES: '1' },
             },
             aguinaldo: {
@@ -126,7 +126,7 @@ describe('HR payroll Art. 19 transactional lifecycle (integration)', () => {
                     applicability: 'APPLIES', sourceReference: 'INSS 2026', regime: 'INTEGRAL',
                     employeeRate: '0.07', employerRateBelowThreshold: '0.215', employerRateAtOrAboveThreshold: '0.225',
                     employerSizeThreshold: 50, minimumMonthlyContributionBase: '10000', minimumBaseProration: 'PER_PAY_PERIOD_SERVICE_RATIO',
-                    annualPeriods: { WEEKLY: 52, BIWEEKLY: 24, MONTHLY: 12 },
+                    annualPeriods: { WEEKLY: 52, BIWEEKLY: 24, FORTNIGHTLY: 26, MONTHLY: 12 },
                 },
                 inatec: {
                     applicability: 'APPLIES', sourceReference: 'INATEC 2%', employerRate: '0.02',
@@ -140,7 +140,7 @@ describe('HR payroll Art. 19 transactional lifecycle (integration)', () => {
                     },
                     inssEmployeeContributionDeductible: true,
                     occasionalInssDeductionTreatment: 'DEDUCT_FROM_OCCASIONAL_NET', adjustmentMode: 'WITHHOLD_OR_REFUND',
-                    annualPeriods: { WEEKLY: 52, BIWEEKLY: 24, MONTHLY: 12 },
+                    annualPeriods: { WEEKLY: 52, BIWEEKLY: 24, FORTNIGHTLY: 26, MONTHLY: 12 },
                     brackets: [
                         { lowerBound: '0', upperBound: '100000', baseTax: '0', rate: '0', excessOver: '0' },
                         { lowerBound: '100000', upperBound: '200000', baseTax: '0', rate: '0.15', excessOver: '100000' },

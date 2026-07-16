@@ -336,8 +336,10 @@ export async function validateLoanTerms(
     compensation.payFrequency === 'WEEKLY'
       ? compensation.amount.mul(52).div(12)
       : compensation.payFrequency === 'BIWEEKLY'
-        ? compensation.amount.mul(26).div(12)
-        : compensation.amount;
+        ? compensation.amount.mul(24).div(12)
+        : compensation.payFrequency === 'FORTNIGHTLY'
+          ? compensation.amount.mul(26).div(12)
+          : compensation.amount;
   const ratio = requested.div(installments).div(monthly).mul(100);
   if (ratio.greaterThan(policy.loanMaxPaymentPercent))
     throw new HrBenefitsError(
@@ -699,8 +701,10 @@ export class HrEmploymentSettlementService {
         compensation.payFrequency === 'WEEKLY'
           ? compensation.amount.mul(52).div(12)
           : compensation.payFrequency === 'BIWEEKLY'
-            ? compensation.amount.mul(26).div(12)
-            : compensation.amount;
+            ? compensation.amount.mul(24).div(12)
+            : compensation.payFrequency === 'FORTNIGHTLY'
+              ? compensation.amount.mul(26).div(12)
+              : compensation.amount;
     const unpaidDays = Number(payload.unpaidSalaryDays ?? 0);
     if (monthly.greaterThan(0) && unpaidDays > 0)
       suggestedLines.push({

@@ -12,6 +12,22 @@
     max-width: 1500px;
 }
 
+.hr-time-clock-page.hr-operation-page { max-width: 1700px; }
+
+.hr-time-clock-workspace {
+    display: grid;
+    grid-template-columns: minmax(320px, .88fr) minmax(420px, 1.12fr);
+    align-items: start;
+    gap: var(--spacing-lg);
+    min-width: 0;
+}
+
+.hr-time-clock-workspace > .hr-today-summary,
+.hr-time-clock-action-panel > :is(.hr-punch-actions, .hr-punch-evidence, .hr-punch-result, .hr-biometric-required) { margin: 0; }
+
+.hr-time-clock-action-panel { min-width: 0; }
+.hr-time-clock-action-panel > :is(.hr-punch-actions, .hr-punch-evidence, .hr-punch-result, .hr-biometric-required) { min-height: 100%; box-shadow: var(--shadow-sm); }
+
 .hr-time-clock-page > .my-hr-nav,
 .hr-biometrics-page > .my-hr-nav { margin-bottom: 0; }
 
@@ -466,6 +482,10 @@
 .hr-review-decisions label.selected { border-color: var(--color-success); color: var(--color-success); }
 .hr-review-decisions label.selected.danger { border-color: var(--color-danger); color: var(--color-danger); }
 .hr-review-decisions input { accent-color: currentColor; }
+
+@media (max-width: 1080px) {
+    .hr-time-clock-workspace { grid-template-columns: 1fr; }
+}
 
 @media (max-width: 768px) {
     .hr-punch-action-grid,

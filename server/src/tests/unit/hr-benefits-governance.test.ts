@@ -174,4 +174,11 @@ describe('HR benefits governance', () => {
     expect(benefitsSource).toContain('HR_LOAN_APPROVAL_AMOUNT_LIMIT');
     expect(benefitsSource).toContain('validateLoanTerms');
   });
+
+  it('does not conflate quincenal with catorcenal in monthly benefit bases', () => {
+    expect(source).toContain("compensation.payFrequency === 'BIWEEKLY'");
+    expect(source).toContain('compensation.amount.mul(24).div(12)');
+    expect(source).toContain("compensation.payFrequency === 'FORTNIGHTLY'");
+    expect(source).toContain('compensation.amount.mul(26).div(12)');
+  });
 });

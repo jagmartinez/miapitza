@@ -268,9 +268,9 @@ export default function AttendanceManagement() {
   useEffect(() => { setTablePage((page) => Math.min(page, Math.max(1, Math.ceil(activeTableCount / PAGE_SIZE)))); }, [activeTableCount]);
 
   return (
-    <div className="page-wrapper inventory-page hr-workforce-page hr-attendance-management-page hr-admin-catalog-page">
+    <div className="page-wrapper inventory-page hr-workforce-page hr-attendance-management-page hr-admin-catalog-page hr-operation-page">
       <PageHeader
-        className="inventory-header-new"
+        className="inventory-header-new hr-operation-header"
         title="Control diario de asistencia"
         subtitle="Revisa quién trabajó, resuelve incidencias y aprueba horas extra antes de cerrar el periodo"
         icon={CalendarClock}
@@ -288,7 +288,7 @@ export default function AttendanceManagement() {
       />
       <OnlineOnlyNotice online={online} />
 
-      <section className="hr-workforce-filters inventory-filters-row" aria-label="Filtros del resumen diario">
+      <section className="hr-workforce-filters inventory-filters-row hr-operation-toolbar" aria-label="Filtros del resumen diario">
         <label>
           Fecha
           <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
@@ -320,10 +320,10 @@ export default function AttendanceManagement() {
         </Button>
       </section>
 
-      {!loading && !error && <section className="hr-admin-kpis" aria-label="Resumen operativo de asistencia">
-        <div><span>Jornadas visibles</span><strong>{summaries.length}</strong><small>Empleados en el filtro actual</small></div>
-        <div><span>Incidencias abiertas</span><strong>{incidents.filter((item) => item.status === 'OPEN').length}</strong><small>Requieren corrección o revisión</small></div>
-        <div><span>Decisiones pendientes</span><strong>{corrections.filter((item) => item.status === 'PENDING').length + overtime.filter((item) => item.status === 'PENDING').length}</strong><small>Correcciones y horas extra</small></div>
+      {!loading && !error && <section className="hr-admin-kpis hr-operation-kpis" aria-label="Resumen operativo de asistencia">
+        <article><CalendarClock size={19} aria-hidden="true" /><span>Jornadas visibles</span><strong>{summaries.length}</strong><small>Empleados en el filtro actual</small></article>
+        <article className={incidents.some((item) => item.status === 'OPEN') ? 'is-danger' : 'is-success'}><AlertTriangle size={19} aria-hidden="true" /><span>Incidencias abiertas</span><strong>{incidents.filter((item) => item.status === 'OPEN').length}</strong><small>Requieren corrección o revisión</small></article>
+        <article className={corrections.some((item) => item.status === 'PENDING') || overtime.some((item) => item.status === 'PENDING') ? 'is-warning' : undefined}><Clock3 size={19} aria-hidden="true" /><span>Decisiones pendientes</span><strong>{corrections.filter((item) => item.status === 'PENDING').length + overtime.filter((item) => item.status === 'PENDING').length}</strong><small>Correcciones y horas extra</small></article>
       </section>}
 
       {loading && <LoadingSpinner text="Cargando control diario…" />}

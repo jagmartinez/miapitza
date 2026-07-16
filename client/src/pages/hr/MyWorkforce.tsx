@@ -41,6 +41,7 @@ import type {
   HrOvertimeRequestPayload,
 } from '../../types/hr-workforce';
 import './workforce.css';
+import './admin-tables.css';
 
 function initialRange(): { dateFrom: string; dateTo: string } {
   const end = new Date();
@@ -71,9 +72,11 @@ type CancelPanel =
   | { kind: 'overtime'; item: HrOvertimeRequest }
   | { kind: 'leave'; item: HrLeaveRequest }
   | null;
+type WorkforceWorkspace = 'ATTENDANCE' | 'REQUESTS' | 'BALANCES';
 
 export default function MyWorkforce() {
   const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab')?.toUpperCase();
   const online = useWorkforceOnline();
   const { success: showSuccess, error: showError } = useAppToast();
   const range = initialRange();
@@ -89,6 +92,7 @@ export default function MyWorkforce() {
   const [panel, setPanel] = useState<Panel>(null);
   const [cancelPanel, setCancelPanel] = useState<CancelPanel>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkforceWorkspace>(requestedTab === 'OVERTIME' || requestedTab === 'LEAVE' ? 'REQUESTS' : 'ATTENDANCE');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -131,15 +135,18 @@ export default function MyWorkforce() {
     void load();
   }, [load]);
 
-  const requestedTab = searchParams.get('tab')?.toUpperCase();
   useEffect(() => {
-    if (loading || (requestedTab !== 'OVERTIME' && requestedTab !== 'LEAVE')) return;
+    if (requestedTab === 'OVERTIME' || requestedTab === 'LEAVE') setActiveWorkspace('REQUESTS');
+  }, [requestedTab]);
+
+  useEffect(() => {
+    if (loading || activeWorkspace !== 'REQUESTS' || (requestedTab !== 'OVERTIME' && requestedTab !== 'LEAVE')) return;
     const targetId = requestedTab === 'OVERTIME' ? 'mis-horas-extra' : 'mis-permisos';
     const target = document.getElementById(targetId);
     if (!target) return;
     target.focus({ preventScroll: true });
     target.scrollIntoView({ block: 'start', behavior: 'smooth' });
-  }, [loading, requestedTab]);
+  }, [activeWorkspace, loading, requestedTab]);
 
   const createCorrection = async (payload: HrAttendanceCorrectionPayload) => {
     setSaving(true);
@@ -235,13 +242,14 @@ export default function MyWorkforce() {
   ];
   const pendingCount = workflowItems.filter((item) => item.status === 'DRAFT' || item.status === 'PENDING').length;
   const approvedCount = workflowItems.filter((item) => item.status === 'APPROVED' || item.status === 'APPLIED').length;
-  const rejectedCount = workflowItems.filter((item) => item.status === 'REJECTED').length;
+  const rejectedCount = workflowItems.filter((item) => item.status === 'REJECTED' || item.status === 'CANCELLED').length;
 
   return (
-    <div className="page-wrapper hr-workforce-page">
+    <div className="page-wrapper hr-workforce-page hr-operation-page">
       <PageHeader
+        className="hr-operation-header"
         title="Mi gestión laboral"
-        subtitle="Asistencia, solicitudes, vacaciones y trazabilidad"
+        subtitle="Revisa tu asistencia y gestiona solicitudes, saldos y trazabilidad en una sola bandeja"
         icon={BriefcaseBusiness}
         actions={
           <div className="hr-header-actions">
@@ -269,7 +277,7 @@ export default function MyWorkforce() {
           </Button>
         </div>
       )}
-      <section className="hr-workforce-filters">
+      <section className="hr-workforce-filters hr-operation-toolbar">
         <label>
           Desde
           <input
@@ -314,17 +322,18 @@ export default function MyWorkforce() {
       )}
       {!loading && !error && (
         <>
-          <nav className="hr-workforce-jump-nav" aria-label="Contenido de mi gestión laboral">
-            <a href="#mi-asistencia"><Clock3 size={17} /> Asistencia</a>
-            <a href="#mis-horas-extra" className={requestedTab === 'OVERTIME' ? 'is-active' : undefined} aria-current={requestedTab === 'OVERTIME' ? 'location' : undefined}><Clock3 size={17} /> Horas extra</a>
-            <a href="#mis-permisos" className={requestedTab === 'LEAVE' ? 'is-active' : undefined} aria-current={requestedTab === 'LEAVE' ? 'location' : undefined}><FilePenLine size={17} /> Permisos</a>
-            <a href="#mis-vacaciones"><WalletCards size={17} /> Vacaciones</a>
+          <nav className="hr-workforce-jump-nav hr-operation-tabs" role="tablist" aria-label="Bandejas de mi gestión laboral">
+            <button type="button" role="tab" id="my-workforce-tab-attendance" aria-controls="my-workforce-panel-attendance" aria-selected={activeWorkspace === 'ATTENDANCE'} onClick={() => setActiveWorkspace('ATTENDANCE')}><Clock3 size={17} /> Asistencia <span>{summaries.length + workforce.incidents.length}</span></button>
+            <button type="button" role="tab" id="my-workforce-tab-requests" aria-controls="my-workforce-panel-requests" aria-selected={activeWorkspace === 'REQUESTS'} onClick={() => setActiveWorkspace('REQUESTS')}><FilePenLine size={17} /> Solicitudes <span>{workforce.overtimeRequests.length + workforce.leaveRequests.length}</span></button>
+            <button type="button" role="tab" id="my-workforce-tab-balances" aria-controls="my-workforce-panel-balances" aria-selected={activeWorkspace === 'BALANCES'} onClick={() => setActiveWorkspace('BALANCES')}><WalletCards size={17} /> Vacaciones <span>{workforce.vacationBalances.length}</span></button>
           </nav>
-          <section className="hr-workflow-overview" aria-label="Estado de mis solicitudes">
-            <div><span>En espera</span><strong>{pendingCount}</strong><small>Borradores o pendientes</small></div>
-            <div><span>Aprobadas</span><strong>{approvedCount}</strong><small>Aprobadas o aplicadas</small></div>
-            <div><span>Denegadas</span><strong>{rejectedCount}</strong><small>Solicitudes rechazadas</small></div>
+          <section className="hr-workflow-overview hr-operation-kpis" aria-label="Estado de mis solicitudes">
+            <article className={pendingCount > 0 ? 'is-warning' : undefined}><Clock3 size={19} aria-hidden="true" /><span>En espera</span><strong>{pendingCount}</strong><small>Borradores o pendientes</small></article>
+            <article className="is-success"><BriefcaseBusiness size={19} aria-hidden="true" /><span>Aprobadas</span><strong>{approvedCount}</strong><small>Aprobadas o aplicadas</small></article>
+            <article className={rejectedCount > 0 ? 'is-danger' : undefined}><AlertTriangle size={19} aria-hidden="true" /><span>Rechazadas o canceladas</span><strong>{rejectedCount}</strong><small>Contraflujos conservados en historial</small></article>
           </section>
+          {activeWorkspace === 'ATTENDANCE' && (
+          <div id="my-workforce-panel-attendance" className="hr-operation-panel" role="tabpanel" aria-labelledby="my-workforce-tab-attendance" tabIndex={0}>
           <section id="mi-asistencia" className="hr-workforce-section hr-workforce-anchor">
             <div className="hr-section-heading">
               <div>
@@ -468,6 +477,11 @@ export default function MyWorkforce() {
             </section>
           </div>
 
+          </div>
+          )}
+
+          {activeWorkspace === 'REQUESTS' && (
+          <div id="my-workforce-panel-requests" className="hr-operation-panel" role="tabpanel" aria-labelledby="my-workforce-tab-requests" tabIndex={0}>
           <div className="hr-workforce-columns">
             <section id="mis-horas-extra" className="hr-workforce-section hr-workforce-anchor" tabIndex={-1} aria-labelledby="mis-horas-extra-title">
               <div className="hr-section-heading">
@@ -556,6 +570,11 @@ export default function MyWorkforce() {
             </section>
           </div>
 
+          </div>
+          )}
+
+          {activeWorkspace === 'BALANCES' && (
+          <div id="my-workforce-panel-balances" className="hr-operation-panel" role="tabpanel" aria-labelledby="my-workforce-tab-balances" tabIndex={0}>
           <div className="hr-workforce-columns">
             <section id="mis-vacaciones" className="hr-workforce-section hr-workforce-anchor">
               <div className="hr-section-heading">
@@ -623,6 +642,8 @@ export default function MyWorkforce() {
               )}
             </section>
           </div>
+          </div>
+          )}
         </>
       )}
 

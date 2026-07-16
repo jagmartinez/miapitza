@@ -66,7 +66,7 @@ export interface HrPayrollLegalConfiguration {
   legallyValidated: true;
   currency: string;
   regular: {
-    minuteDivisors: { WEEKLY: string; BIWEEKLY: string; MONTHLY: string };
+    minuteDivisors: { WEEKLY: string; BIWEEKLY: string; FORTNIGHTLY: string; MONTHLY: string };
     overtimeMultiplier: string;
     paidLeaveUnitMinutes: { DAYS: string; HOURS: string; MINUTES: string };
   };
@@ -96,7 +96,7 @@ export interface HrPayrollLegalConfiguration {
       employerSizeThreshold: number;
       minimumMonthlyContributionBase: string;
       minimumBaseProration: 'PER_PAY_PERIOD_SERVICE_RATIO';
-      annualPeriods: { WEEKLY: number; BIWEEKLY: number; MONTHLY: number };
+      annualPeriods: { WEEKLY: number; BIWEEKLY: number; FORTNIGHTLY: number; MONTHLY: number };
     };
     inatec: {
       applicability: 'APPLIES' | 'DOES_NOT_APPLY';
@@ -116,7 +116,7 @@ export interface HrPayrollLegalConfiguration {
       inssEmployeeContributionDeductible: true;
       occasionalInssDeductionTreatment: 'DEDUCT_FROM_OCCASIONAL_NET';
       adjustmentMode: 'WITHHOLD_OR_REFUND';
-      annualPeriods: { WEEKLY: number; BIWEEKLY: number; MONTHLY: number };
+      annualPeriods: { WEEKLY: number; BIWEEKLY: number; FORTNIGHTLY: number; MONTHLY: number };
       brackets: Array<{ lowerBound: string; upperBound: string | null; baseTax: string; rate: string; excessOver: string }>;
     };
     paymentConceptCatalog: HrPayrollPaymentConceptDefinition[];

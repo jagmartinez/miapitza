@@ -5,8 +5,8 @@
     display: grid;
     place-items: center;
     padding: 24px;
-    background: color-mix(in srgb, #020617 78%, transparent);
-    backdrop-filter: blur(6px);
+    background: var(--dialog-overlay, color-mix(in srgb, #020617 82%, transparent));
+    backdrop-filter: blur(10px) saturate(.86);
 }
 
 .payment-dialog {
@@ -18,12 +18,23 @@
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
     overflow: hidden;
-    border: 1px solid var(--payment-line);
+    position: relative;
+    border: 1px solid var(--dialog-panel-border, var(--payment-line));
     border-radius: 20px;
-    background: var(--color-surface, #172033);
+    background: var(--dialog-panel-bg, var(--color-surface, #172033));
     color: var(--color-text, #f8fafc);
-    box-shadow: 0 24px 80px rgb(2 6 23 / 52%);
+    box-shadow: var(--dialog-panel-shadow, 0 24px 80px rgb(2 6 23 / 52%));
     animation: payment-enter 180ms ease-out;
+}
+
+.payment-dialog::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 3;
+    height: 2px;
+    background: linear-gradient(90deg, var(--dialog-accent), color-mix(in srgb, var(--dialog-accent) 22%, transparent) 70%, transparent);
+    pointer-events: none;
 }
 
 .payment-dialog button,
@@ -44,6 +55,26 @@
     gap: 16px;
     padding: 18px 22px;
     border-bottom: 1px solid var(--payment-line);
+    background: var(--dialog-header-bg, transparent);
+}
+
+.payment-dialog-heading {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.payment-dialog-icon {
+    display: grid;
+    flex: 0 0 auto;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--dialog-accent) 42%, var(--dialog-panel-border));
+    border-radius: 12px;
+    background: var(--dialog-accent-soft);
+    color: var(--dialog-accent);
 }
 
 .payment-dialog-header h2,
@@ -76,14 +107,15 @@
     place-items: center;
     border: 1px solid var(--payment-line);
     border-radius: 12px;
-    background: var(--color-background, #0f172a);
+    background: var(--dialog-muted-bg, var(--color-background, #0f172a));
     color: var(--payment-muted);
     cursor: pointer;
 }
 
 .payment-close:hover:not(:disabled) {
-    border-color: var(--color-danger, #ef4444);
-    color: var(--color-danger, #ef4444);
+    border-color: color-mix(in srgb, var(--dialog-accent) 55%, var(--payment-line));
+    background: var(--dialog-accent-soft);
+    color: var(--dialog-accent);
 }
 
 .payment-mode-tabs {

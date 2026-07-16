@@ -1,0 +1,558 @@
+.hr-biometrics-page {
+    --biometric-accent-soft: color-mix(in srgb, var(--color-primary) 11%, var(--color-surface));
+    gap: 1rem;
+    width: 100%;
+    max-width: 1700px;
+}
+
+.hr-biometric-workspace {
+    display: grid;
+    gap: 1rem;
+}
+
+.hr-biometric-hero,
+.hr-biometric-flow,
+.hr-biometric-privacy,
+.hr-biometric-facts > div,
+.hr-biometric-revocation-note {
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+}
+
+.hr-biometric-hero {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    overflow: hidden;
+    padding: clamp(1.25rem, 2.4vw, 2rem);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-sm);
+}
+
+.hr-biometric-hero::after {
+    content: '';
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: 34%;
+    pointer-events: none;
+    background: radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--color-primary) 16%, transparent), transparent 68%);
+}
+
+.hr-biometric-hero.status-active {
+    border-color: color-mix(in srgb, var(--color-success) 38%, var(--color-border));
+}
+
+.hr-biometric-hero.status-revoked {
+    border-color: color-mix(in srgb, var(--color-warning) 35%, var(--color-border));
+}
+
+.hr-biometric-hero__identity,
+.hr-biometric-hero__actions,
+.hr-biometric-title-row {
+    display: flex;
+    align-items: center;
+}
+
+.hr-biometric-hero__identity {
+    min-width: 0;
+    gap: 1rem;
+}
+
+.hr-biometric-hero__icon,
+.hr-biometric-privacy__icon {
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-border));
+    background: var(--biometric-accent-soft);
+    color: var(--color-primary);
+}
+
+.hr-biometric-hero__icon {
+    width: 58px;
+    height: 58px;
+    border-radius: .9rem;
+}
+
+.status-active .hr-biometric-hero__icon {
+    border-color: color-mix(in srgb, var(--color-success) 35%, var(--color-border));
+    background: color-mix(in srgb, var(--color-success) 12%, var(--color-surface));
+    color: var(--color-success);
+}
+
+.status-revoked .hr-biometric-hero__icon {
+    border-color: color-mix(in srgb, var(--color-warning) 35%, var(--color-border));
+    background: color-mix(in srgb, var(--color-warning) 12%, var(--color-surface));
+    color: var(--color-warning);
+}
+
+.hr-biometric-title-row {
+    flex-wrap: wrap;
+    gap: .65rem;
+}
+
+.hr-biometric-title-row h2,
+.hr-biometric-section-heading h2,
+.hr-biometric-privacy h2,
+.hr-biometric-start-panel h3,
+.hr-biometric-hero p,
+.hr-biometric-section-heading p,
+.hr-biometric-start-panel p,
+.hr-biometric-policy-note p,
+.hr-biometric-liveness p {
+    margin: 0;
+}
+
+.hr-biometric-title-row h2 {
+    font-size: clamp(1.2rem, 2vw, 1.6rem);
+}
+
+.hr-biometric-hero p {
+    max-width: 720px;
+    margin-top: .35rem;
+    color: var(--color-text-secondary);
+    line-height: 1.55;
+}
+
+.hr-biometric-hero__actions {
+    position: relative;
+    z-index: 1;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: .5rem;
+}
+
+.hr-biometric-eyebrow {
+    display: block;
+    margin-bottom: .28rem;
+    color: var(--color-primary);
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+}
+
+.hr-biometric-status-pill,
+.hr-biometric-challenge-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .32rem .62rem;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+    border-radius: 999px;
+    background: var(--biometric-accent-soft);
+    color: var(--color-primary);
+    font-size: .72rem;
+    font-weight: 750;
+}
+
+.status-active .hr-biometric-status-pill {
+    border-color: color-mix(in srgb, var(--color-success) 35%, var(--color-border));
+    background: color-mix(in srgb, var(--color-success) 10%, var(--color-surface));
+    color: var(--color-success);
+}
+
+.status-revoked .hr-biometric-status-pill {
+    border-color: color-mix(in srgb, var(--color-warning) 35%, var(--color-border));
+    background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface));
+    color: var(--color-warning);
+}
+
+.hr-biometric-facts {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .75rem;
+}
+
+.hr-biometric-facts > div {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: .15rem .65rem;
+    min-width: 0;
+    padding: 1rem;
+    border-radius: .75rem;
+}
+
+.hr-biometric-facts svg {
+    grid-row: 1 / span 2;
+    color: var(--color-primary);
+}
+
+.hr-biometric-facts span {
+    color: var(--color-text-secondary);
+    font-size: .72rem;
+}
+
+.hr-biometric-facts strong {
+    overflow-wrap: anywhere;
+    font-size: .9rem;
+}
+
+.hr-biometric-revocation-note,
+.hr-biometric-inline-error,
+.hr-biometric-unavailable,
+.hr-biometric-alternative {
+    display: flex;
+    align-items: flex-start;
+    gap: .65rem;
+}
+
+.hr-biometric-revocation-note {
+    padding: .9rem 1rem;
+    border-color: color-mix(in srgb, var(--color-warning) 32%, var(--color-border));
+    border-radius: .75rem;
+    background: color-mix(in srgb, var(--color-warning) 7%, var(--color-surface));
+    color: var(--color-warning);
+}
+
+.hr-biometric-revocation-note div {
+    display: grid;
+    gap: .12rem;
+}
+
+.hr-biometric-revocation-note span {
+    color: var(--color-text-secondary);
+    font-size: .82rem;
+}
+
+.hr-biometric-main-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.65fr) minmax(300px, .75fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+.hr-biometric-flow,
+.hr-biometric-privacy {
+    border-radius: 1rem;
+}
+
+.hr-biometric-flow {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.hr-biometric-section-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.25rem 1.25rem 1rem;
+}
+
+.hr-biometric-section-heading h2,
+.hr-biometric-privacy h2 {
+    font-size: 1.08rem;
+}
+
+.hr-biometric-section-heading p {
+    margin-top: .3rem;
+    color: var(--color-text-secondary);
+    font-size: .84rem;
+    line-height: 1.55;
+}
+
+.hr-biometric-steps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: 0;
+    padding: 0 1.25rem 1.25rem;
+    list-style: none;
+}
+
+.hr-biometric-steps li {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    align-items: center;
+    gap: .45rem;
+    min-width: 0;
+    padding: .85rem .75rem;
+    border: 1px solid var(--color-border);
+    border-right-width: 0;
+    background: var(--color-background);
+    color: var(--color-text-secondary);
+}
+
+.hr-biometric-steps li:first-child { border-radius: .7rem 0 0 .7rem; }
+.hr-biometric-steps li:last-child { border-right-width: 1px; border-radius: 0 .7rem .7rem 0; }
+
+.hr-biometric-steps li.current {
+    border-color: color-mix(in srgb, var(--color-primary) 50%, var(--color-border));
+    border-right-width: 1px;
+    background: var(--biometric-accent-soft);
+    color: var(--color-primary);
+}
+
+.hr-biometric-steps li.current + li { border-left-width: 0; }
+.hr-biometric-steps li.complete { color: var(--color-success); }
+
+.hr-biometric-step-number {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    place-items: center;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    font-size: .72rem;
+    font-weight: 800;
+}
+
+.hr-biometric-steps strong,
+.hr-biometric-steps small {
+    display: block;
+    min-width: 0;
+}
+
+.hr-biometric-steps strong {
+    color: var(--color-text);
+    font-size: .8rem;
+}
+
+.hr-biometric-steps small {
+    margin-top: .1rem;
+    color: var(--color-text-secondary);
+    font-size: .68rem;
+    line-height: 1.25;
+}
+
+.hr-biometric-start-panel,
+.hr-biometric-capture-panel {
+    border-top: 1px solid var(--color-border);
+    background: color-mix(in srgb, var(--color-background) 75%, var(--color-surface));
+}
+
+.hr-biometric-start-panel {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding: 1.25rem;
+}
+
+.hr-biometric-start-panel h3 { font-size: .98rem; }
+.hr-biometric-start-panel p {
+    max-width: 620px;
+    margin-top: .25rem;
+    color: var(--color-text-secondary);
+    font-size: .84rem;
+}
+
+.hr-biometric-unavailable {
+    flex-basis: 100%;
+    margin: 0;
+    padding: .65rem .8rem;
+    border-radius: .55rem;
+    background: color-mix(in srgb, var(--color-warning) 9%, var(--color-surface));
+    color: var(--color-warning) !important;
+}
+
+.hr-biometric-capture-panel {
+    display: grid;
+    gap: 1rem;
+    padding: 1.25rem;
+}
+
+.hr-biometric-capture-panel .hr-camera-capture {
+    margin: 0;
+    border-radius: .85rem;
+    background: var(--color-surface);
+}
+
+.hr-biometric-liveness {
+    display: flex;
+    align-items: flex-start;
+    gap: .7rem;
+    padding: .85rem;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+    border-radius: .7rem;
+    background: var(--biometric-accent-soft);
+}
+
+.hr-biometric-liveness > svg { flex: 0 0 auto; color: var(--color-primary); }
+.hr-biometric-liveness p { margin-top: .2rem; color: var(--color-text-secondary); font-size: .82rem; }
+
+.hr-biometric-consent {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: flex-start;
+    gap: .65rem;
+    padding: .9rem;
+    border: 1px solid var(--color-border);
+    border-radius: .7rem;
+    background: var(--color-surface);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    line-height: 1.5;
+}
+
+.hr-biometric-consent.checked {
+    border-color: color-mix(in srgb, var(--color-success) 42%, var(--color-border));
+    background: color-mix(in srgb, var(--color-success) 7%, var(--color-surface));
+}
+
+.hr-biometric-consent input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.hr-biometric-consent > span:first-of-type {
+    display: grid;
+    width: 22px;
+    height: 22px;
+    place-items: center;
+    border: 1px solid var(--color-border);
+    border-radius: .35rem;
+    color: transparent;
+}
+
+.hr-biometric-consent.checked > span:first-of-type {
+    border-color: var(--color-success);
+    background: var(--color-success);
+    color: white;
+}
+
+.hr-biometric-consent:focus-within {
+    outline: 3px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
+    outline-offset: 2px;
+}
+
+.hr-biometric-inline-error {
+    padding: .8rem .9rem;
+    border: 1px solid color-mix(in srgb, var(--color-danger) 42%, var(--color-border));
+    border-radius: .7rem;
+    background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+    color: var(--color-danger);
+}
+
+.hr-biometric-inline-error span { flex: 1; }
+
+.hr-biometric-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .6rem;
+}
+
+.hr-biometric-expiry {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    margin: -.35rem 0 0;
+    color: var(--color-text-secondary);
+    font-size: .74rem;
+}
+
+.hr-biometric-privacy {
+    position: sticky;
+    top: 1rem;
+    padding: 1.25rem;
+}
+
+.hr-biometric-privacy__icon {
+    width: 45px;
+    height: 45px;
+    margin-bottom: 1rem;
+    border-radius: .75rem;
+}
+
+.hr-biometric-privacy ul {
+    display: grid;
+    gap: .85rem;
+    margin: 1.1rem 0;
+    padding: 0;
+    list-style: none;
+}
+
+.hr-biometric-privacy li {
+    display: flex;
+    align-items: flex-start;
+    gap: .6rem;
+    color: var(--color-text-secondary);
+    font-size: .82rem;
+    line-height: 1.5;
+}
+
+.hr-biometric-privacy li svg {
+    flex: 0 0 auto;
+    margin-top: .1rem;
+    color: var(--color-success);
+}
+
+.hr-biometric-policy-note,
+.hr-biometric-alternative {
+    padding: .8rem;
+    border-radius: .65rem;
+    background: var(--color-background);
+}
+
+.hr-biometric-policy-note strong { font-size: .78rem; }
+.hr-biometric-policy-note p,
+.hr-biometric-alternative {
+    margin-top: .2rem;
+    color: var(--color-text-secondary);
+    font-size: .76rem;
+    line-height: 1.5;
+}
+
+.hr-biometric-alternative {
+    margin-top: .7rem;
+}
+
+.hr-biometric-alternative svg { flex: 0 0 auto; color: var(--color-primary); }
+
+.hr-biometric-load-error {
+    min-height: 320px;
+    border: 1px dashed var(--color-border);
+    border-radius: 1rem;
+    background: var(--color-surface);
+}
+
+.hr-biometric-load-error h2 { font-size: 1.1rem; }
+
+@media (max-width: 1050px) {
+    .hr-biometric-main-grid { grid-template-columns: 1fr; }
+    .hr-biometric-privacy { position: static; }
+}
+
+@media (max-width: 760px) {
+    .hr-biometric-hero { align-items: flex-start; flex-direction: column; }
+    .hr-biometric-hero__actions { width: 100%; justify-content: flex-start; }
+    .hr-biometric-facts { grid-template-columns: 1fr; }
+    .hr-biometric-section-heading { flex-direction: column; }
+    .hr-biometric-steps { grid-template-columns: 1fr; }
+    .hr-biometric-steps li,
+    .hr-biometric-steps li.current { border-width: 1px 1px 0; }
+    .hr-biometric-steps li:first-child { border-radius: .7rem .7rem 0 0; }
+    .hr-biometric-steps li:last-child { border-width: 1px; border-radius: 0 0 .7rem .7rem; }
+    .hr-biometric-steps li.current + li { border-left-width: 1px; }
+}
+
+@media (max-width: 520px) {
+    .hr-biometric-hero,
+    .hr-biometric-flow,
+    .hr-biometric-privacy { border-radius: .8rem; }
+    .hr-biometric-hero__identity { align-items: flex-start; }
+    .hr-biometric-hero__icon { width: 48px; height: 48px; }
+    .hr-biometric-hero__actions,
+    .hr-biometric-hero__actions .btn,
+    .hr-biometric-start-panel .btn,
+    .hr-biometric-actions,
+    .hr-biometric-actions .btn { width: 100%; }
+    .hr-biometric-actions { align-items: stretch; flex-direction: column-reverse; }
+    .hr-biometric-start-panel { align-items: stretch; flex-direction: column; }
+    .hr-biometric-consent { grid-template-columns: auto minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hr-biometrics-page * { scroll-behavior: auto !important; transition: none !important; }
+}

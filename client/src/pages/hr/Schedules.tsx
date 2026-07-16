@@ -9,6 +9,8 @@ import {
     RefreshCw,
     Send,
     AlertTriangle,
+    Clock3,
+    UserRound,
 } from 'lucide-react';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -64,6 +66,15 @@ function filteredSchedules(schedules: HrWeeklySchedule[], branchId: string, user
             (!jobPositionId || String(shift.jobPositionId) === jobPositionId)
         ),
     }));
+}
+
+function shiftMinutes(shift: HrScheduleShift): number {
+    const [startHour, startMinute] = shift.startTime.slice(0, 5).split(':').map(Number);
+    const [endHour, endMinute] = shift.endTime.slice(0, 5).split(':').map(Number);
+    const start = startHour * 60 + startMinute;
+    let end = endHour * 60 + endMinute;
+    if (end <= start) end += 24 * 60;
+    return Math.max(0, end - start - (shift.breakMinutes ?? 0));
 }
 
 export default function Schedules() {
@@ -180,6 +191,18 @@ export default function Schedules() {
         [branchId, draftSchedule, jobPositionId, publishedSchedule, userId]
     );
     const hasShifts = visibleSchedules.some((schedule) => schedule.shifts.length > 0);
+    const scheduleMetrics = useMemo(() => {
+        const shifts = visibleSchedules.flatMap((schedule) => schedule.shifts);
+        const employees = new Set(shifts.map((shift) => shift.userId));
+        const coveredDays = new Set(shifts.map((shift) => shift.date));
+        const totalMinutes = shifts.reduce((total, shift) => total + shiftMinutes(shift), 0);
+        return {
+            shifts: shifts.length,
+            employees: employees.size,
+            hours: totalMinutes / 60,
+            coveredDays: coveredDays.size,
+        };
+    }, [visibleSchedules]);
 
     const openCreate = () => {
         if (mutationBusy || fromCache) return;
@@ -361,6 +384,15 @@ export default function Schedules() {
                 <div className="filter-spacer" />
                 <div className="filter-actions"><Button variant="ghost" disabled={mutationBusy} onClick={() => { setBranchId(''); setUserId(''); setJobPositionId(''); }}>Limpiar</Button></div>
             </div>
+
+            {!loading && !error && (
+                <section className="hr-schedule-kpis" aria-label="Resumen de cobertura semanal">
+                    <article><span className="hr-schedule-kpi-icon"><UserRound size={18} aria-hidden="true" /></span><div><small>Colaboradores</small><strong>{scheduleMetrics.employees}</strong><p>con turnos visibles</p></div></article>
+                    <article><span className="hr-schedule-kpi-icon"><CalendarDays size={18} aria-hidden="true" /></span><div><small>Turnos</small><strong>{scheduleMetrics.shifts}</strong><p>en la semana</p></div></article>
+                    <article><span className="hr-schedule-kpi-icon"><Clock3 size={18} aria-hidden="true" /></span><div><small>Horas programadas</small><strong>{scheduleMetrics.hours.toLocaleString('es-NI', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</strong><p>descontando descansos</p></div></article>
+                    <article><span className="hr-schedule-kpi-icon"><CalendarDays size={18} aria-hidden="true" /></span><div><small>Días con cobertura</small><strong>{scheduleMetrics.coveredDays}/7</strong><p>{scheduleMetrics.coveredDays === 7 ? 'semana cubierta' : `${7 - scheduleMetrics.coveredDays} sin turnos`}</p></div></article>
+                </section>
+            )}
 
             {lookupsError && (
                 <div className="hr-schedule-alert danger" role="alert">

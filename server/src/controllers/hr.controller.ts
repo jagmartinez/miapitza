@@ -95,6 +95,9 @@ export class HrController {
                 branchId,
                 page: positiveQueryId(req.query.page),
                 limit: positiveQueryId(req.query.limit),
+            }, {
+                sensitive: req.user!.permissions.includes('hr.employee.sensitive.view') || req.user!.role === 'SUPERADMIN',
+                timeZone: req.user!.timezone,
             });
             res.json({ success: true, data: result.data, pagination: result.pagination });
         } catch (error) {

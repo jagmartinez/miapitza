@@ -15,10 +15,20 @@ export class HrDomainError extends Error {
 const EMPLOYEE_STATUSES = ['ACTIVE', 'ON_LEAVE', 'INACTIVE', 'SUSPENDED', 'TERMINATED'] as const;
 const EMPLOYMENT_TYPES = ['FULL_TIME', 'PART_TIME', 'TEMPORARY', 'CONTRACTOR', 'INTERN'] as const;
 const ACCOUNT_TYPES = ['INTERNAL', 'EXTERNAL'] as const;
+const PAY_FREQUENCIES = ['WEEKLY', 'BIWEEKLY', 'FORTNIGHTLY', 'MONTHLY'] as const;
 
 type EmployeeStatusValue = typeof EMPLOYEE_STATUSES[number];
 type EmploymentTypeValue = typeof EMPLOYMENT_TYPES[number];
 type AccountTypeValue = typeof ACCOUNT_TYPES[number];
+type PayFrequencyValue = typeof PAY_FREQUENCIES[number];
+
+export interface EmployeeInitialCompensationInput {
+    compensationType?: 'SALARY' | 'HOURLY';
+    payFrequency?: PayFrequencyValue;
+    amount?: string;
+    currency?: string;
+    reason?: string;
+}
 
 export interface EmployeeWriteInput {
     userId?: number;
@@ -45,6 +55,7 @@ export interface EmployeeWriteInput {
     notes?: string | null;
     branchIds?: number[];
     primaryBranchId?: number | null;
+    initialCompensation?: EmployeeInitialCompensationInput;
 }
 
 const employeeRelationsSelect = {
@@ -65,9 +76,9 @@ const employeeRelationsSelect = {
     },
 } satisfies Pick<Prisma.EmployeeSelect, 'user' | 'department' | 'jobPosition' | 'costCenter' | 'supervisor' | 'branchAssignments'>;
 
-// List endpoints deliberately omit identification, social-security, tax,
-// address, emergency-contact and notes fields. Those fields are only returned
-// by the sensitive-detail endpoint.
+// The base list deliberately omits sensitive PII. A separate projection adds
+// only identification and current compensation after the controller confirms
+// hr.employee.sensitive.view; the remaining sensitive fields stay detail-only.
 const employeeListSelect = {
     id: true,
     companyId: true,
@@ -113,6 +124,37 @@ const employeeSensitiveSelect = {
     },
 } satisfies Prisma.EmployeeSelect;
 
+const currentCompensationSelect = {
+    id: true,
+    employeeId: true,
+    contractId: true,
+    compensationType: true,
+    payFrequency: true,
+    amount: true,
+    currency: true,
+    effectiveFrom: true,
+    effectiveTo: true,
+    reason: true,
+    createdAt: true,
+} satisfies Prisma.CompensationHistorySelect;
+
+function employeeAuthorizedListSelect(at: Date) {
+    return {
+        ...employeeListSelect,
+        documentType: true,
+        documentNumber: true,
+        compensation: {
+            where: {
+                effectiveFrom: { lte: at },
+                OR: [{ effectiveTo: null }, { effectiveTo: { gte: at } }],
+            },
+            select: currentCompensationSelect,
+            orderBy: [{ effectiveFrom: 'desc' as const }, { id: 'desc' as const }],
+            take: 1,
+        },
+    } satisfies Prisma.EmployeeSelect;
+}
+
 function todayDate(timeZone = 'America/Managua'): Date {
     return parseDateOnly(zonedDateKey(new Date(), timeZone), 'fecha actual');
 }
@@ -144,6 +186,36 @@ function requiredText(value: unknown, field: string, max = 191): string {
     const normalized = nullableText(value, field, max);
     if (!normalized) throw new HrDomainError(`${field} es requerido`);
     return normalized;
+}
+
+function initialCompensation(value: unknown): Required<EmployeeInitialCompensationInput> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new HrDomainError('La compensación inicial es requerida para crear el expediente');
+    }
+    const input = value as Record<string, unknown>;
+    const compensationType = requiredText(input.compensationType, 'initialCompensation.compensationType', 20);
+    const payFrequency = requiredText(input.payFrequency, 'initialCompensation.payFrequency', 20);
+    if (!['SALARY', 'HOURLY'].includes(compensationType)) {
+        throw new HrDomainError('initialCompensation.compensationType inválido');
+    }
+    if (!PAY_FREQUENCIES.includes(payFrequency as PayFrequencyValue)) {
+        throw new HrDomainError('initialCompensation.payFrequency inválido');
+    }
+    const amount = requiredText(input.amount, 'initialCompensation.amount', 40);
+    if (!/^\d+(?:\.\d{1,2})?$/.test(amount) || !new Prisma.Decimal(amount).greaterThan(0)) {
+        throw new HrDomainError('initialCompensation.amount debe ser positivo con máximo dos decimales');
+    }
+    const currency = requiredText(input.currency ?? 'NIO', 'initialCompensation.currency', 3).toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) {
+        throw new HrDomainError('initialCompensation.currency debe ser ISO 4217 de tres letras');
+    }
+    return {
+        compensationType: compensationType as Required<EmployeeInitialCompensationInput>['compensationType'],
+        payFrequency: payFrequency as PayFrequencyValue,
+        amount,
+        currency,
+        reason: requiredText(input.reason, 'initialCompensation.reason', 500),
+    };
 }
 
 function positiveInt(value: unknown, field: string): number {
@@ -242,7 +314,7 @@ export class HrEmployeeService {
         branchId?: number;
         page?: number;
         limit?: number;
-    }) {
+    }, options: { sensitive?: boolean; timeZone?: string } = {}) {
         const page = Math.max(1, filters.page || 1);
         const limit = Math.min(100, Math.max(1, filters.limit || 25));
         const where: Prisma.EmployeeWhereInput = { companyId };
@@ -271,11 +343,15 @@ export class HrEmployeeService {
                 { preferredName: { contains: search } },
                 { user: { name: { contains: search } } },
                 { user: { username: { contains: search } } },
+                ...(options.sensitive ? [{ documentNumber: { contains: search } }] : []),
             ];
         }
+        const select = options.sensitive
+            ? employeeAuthorizedListSelect(todayDate(options.timeZone))
+            : employeeListSelect;
         const [data, total] = await prisma.$transaction([
             prisma.employee.findMany({
-                where, select: employeeListSelect,
+                where, select,
                 orderBy: [{ status: 'asc' }, { legalName: 'asc' }],
                 skip: (page - 1) * limit, take: limit,
             }),
@@ -367,6 +443,7 @@ export class HrEmployeeService {
         const { branchIds, primaryBranchId } = await this.validateReferences(companyId, input);
         const employmentType = input.employmentType || 'FULL_TIME';
         if (!EMPLOYMENT_TYPES.includes(employmentType)) throw new HrDomainError('Tipo de empleo inválido');
+        const compensation = initialCompensation(input.initialCompensation);
 
         const created = await prisma.$transaction(async (tx) => {
             await tx.user.update({ where: { id: userId }, data: { accountType: 'INTERNAL' } });
@@ -401,9 +478,38 @@ export class HrEmployeeService {
                     })),
                 });
             }
+            const compensationRecord = await tx.compensationHistory.create({
+                data: {
+                    companyId,
+                    employeeId: employee.id,
+                    changedById: actorUserId,
+                    compensationType: compensation.compensationType,
+                    payFrequency: compensation.payFrequency,
+                    amount: new Prisma.Decimal(compensation.amount),
+                    currency: compensation.currency,
+                    effectiveFrom: hireDate,
+                    reason: compensation.reason,
+                },
+            });
             await AuditLogService.log({
                 companyId, userId: actorUserId, entityType: 'Employee', entityId: employee.id,
                 action: 'CREATE', details: { employeeCode, linkedUserId: userId, branchIds: branchIds || [] },
+            }, tx);
+            await AuditLogService.log({
+                companyId,
+                userId: actorUserId,
+                entityType: 'CompensationHistory',
+                entityId: compensationRecord.id,
+                action: 'CREATE',
+                details: {
+                    employeeId: employee.id,
+                    effectiveFrom: hireDate.toISOString().slice(0, 10),
+                    compensationType: compensation.compensationType,
+                    payFrequency: compensation.payFrequency,
+                    currency: compensation.currency,
+                    priorEntryId: null,
+                    operation: 'EMPLOYEE_ONBOARDING',
+                },
             }, tx);
             return employee;
         });

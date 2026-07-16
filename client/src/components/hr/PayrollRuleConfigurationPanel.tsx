@@ -122,6 +122,7 @@ export default function PayrollRuleConfigurationPanel({
   const [currency, setCurrency] = useState(seed?.currency ?? 'NIO');
   const [weekly, setWeekly] = useState(seed?.regular.minuteDivisors.WEEKLY ?? '2400');
   const [biweekly, setBiweekly] = useState(seed?.regular.minuteDivisors.BIWEEKLY ?? '4800');
+  const [fortnightly, setFortnightly] = useState(seed?.regular.minuteDivisors.FORTNIGHTLY ?? '4800');
   const [monthly, setMonthly] = useState(seed?.regular.minuteDivisors.MONTHLY ?? '9600');
   const [overtime, setOvertime] = useState(seed?.regular.overtimeMultiplier ?? '2');
   const [leaveDay, setLeaveDay] = useState(seed?.regular.paidLeaveUnitMinutes.DAYS ?? '480');
@@ -157,6 +158,7 @@ export default function PayrollRuleConfigurationPanel({
   const [incomeTaxReference, setIncomeTaxReference] = useState(seedStatutory?.incomeTax.sourceReference ?? 'Ley 822 art. 23 y Decreto 01-2013 art. 19');
   const [periodsWeekly, setPeriodsWeekly] = useState(String(seedStatutory?.incomeTax.annualPeriods.WEEKLY ?? 52));
   const [periodsBiweekly, setPeriodsBiweekly] = useState(String(seedStatutory?.incomeTax.annualPeriods.BIWEEKLY ?? 24));
+  const [periodsFortnightly, setPeriodsFortnightly] = useState(String(seedStatutory?.incomeTax.annualPeriods.FORTNIGHTLY ?? 26));
   const [periodsMonthly, setPeriodsMonthly] = useState(String(seedStatutory?.incomeTax.annualPeriods.MONTHLY ?? 12));
   const [brackets, setBrackets] = useState<Bracket[]>(() => (seedStatutory?.incomeTax.brackets ?? DEFAULT_BRACKETS).map((bracket) => ({ ...bracket })));
   const [regimeRuleConfirmed, setRegimeRuleConfirmed] = useState(false);
@@ -181,13 +183,13 @@ export default function PayrollRuleConfigurationPanel({
     const issues: string[] = [];
     const obligationReady = (applicability: 'APPLIES' | 'DOES_NOT_APPLY', reference: string, exception: string) =>
       reference.trim().length >= 3 && (applicability === 'APPLIES' || exception.trim().length >= 3);
-    const operationalDecimals = [weekly, biweekly, monthly, overtime, leaveDay, leaveHour, leaveMinute, incomeDivisor];
+    const operationalDecimals = [weekly, biweekly, fortnightly, monthly, overtime, leaveDay, leaveHour, leaveMinute, incomeDivisor];
     if (!/^[A-Z]{3}$/.test(currency) || operationalDecimals.some((value) => !DECIMAL.test(value) || Number(value) <= 0)) issues.push('Completa los parámetros operativos de nómina y aguinaldo.');
     if (!Number.isInteger(Number(lookbackDays)) || Number(lookbackDays) < 1 || Number(lookbackDays) > 731 || !eligibleSources.split(',').some((value) => value.trim())) issues.push('Revisa el período y las fuentes elegibles del aguinaldo.');
     if (!companyTaxProfile.ready || !taxRegimeReference.trim() || (regimeIncomeTaxApplicability === 'DOES_NOT_APPLY' && regimeIncomeTaxException.trim().length < 3)) issues.push('Completa y confirma el perfil fiscal desde Empresas antes de guardar esta versión.');
     if (!obligationReady(inssApplicability, inssReference, inssException) || ![inssEmployeeRate, inssEmployerBelow, inssEmployerAtOrAbove].every(validPercent) || !Number.isInteger(Number(inssThreshold)) || Number(inssThreshold) < 1 || !DECIMAL.test(inssMinimumBase) || (inssApplicability === 'APPLIES' && Number(inssMinimumBase) <= 0)) issues.push('Revisa tasas, umbral, base mínima y fuente del INSS.');
     if (!obligationReady(inatecApplicability, inatecReference, inatecException) || !validPercent(inatecRate)) issues.push('Revisa la tasa, aplicabilidad y fuente del INATEC.');
-    if (!incomeTaxReference.trim() || !bracketTableIsValid(brackets) || [periodsWeekly, periodsBiweekly, periodsMonthly].some((value) => !Number.isInteger(Number(value)) || Number(value) < 1 || Number(value) > 366)) issues.push('La tabla progresiva del IR debe ser continua y cuadrar impuesto base, tasa y exceso.');
+    if (!incomeTaxReference.trim() || !bracketTableIsValid(brackets) || [periodsWeekly, periodsBiweekly, periodsFortnightly, periodsMonthly].some((value) => !Number.isInteger(Number(value)) || Number(value) < 1 || Number(value) > 366)) issues.push('La tabla progresiva del IR debe ser continua y cuadrar impuesto base, tasa y exceso.');
     if (!conceptCatalogReady) issues.push('Cada concepto de pago necesita código único, clasificación y fuente.');
     if (inssApplicability === 'APPLIES' && !paymentConceptCatalog.some((concept) => concept.active && concept.type === 'INCOME' && concept.socialSecurityApplicable)) issues.push('Marca al menos un ingreso activo como sujeto a INSS.');
     if (inatecApplicability === 'APPLIES' && !paymentConceptCatalog.some((concept) => concept.active && concept.type === 'INCOME' && concept.trainingContributionApplicable)) issues.push('Marca al menos un ingreso activo como base de INATEC.');
@@ -195,7 +197,7 @@ export default function PayrollRuleConfigurationPanel({
     if (sourceReference.trim().length < 3 || evidenceReference.trim().length < 3 || uploadReason.trim().length < 3) issues.push('Agrega fuente general, evidencia y motivo de la revisión.');
     if (!regimeRuleConfirmed || !sourceConfirmed) issues.push('Faltan las dos confirmaciones finales.');
     return issues;
-  }, [brackets, companyTaxProfile.ready, conceptCatalogReady, currency, eligibleSources, evidenceReference, incomeDivisor, incomeTaxReference, inatecApplicability, inatecException, inatecRate, inatecReference, inssApplicability, inssEmployeeRate, inssEmployerAtOrAbove, inssEmployerBelow, inssException, inssMinimumBase, inssReference, inssThreshold, leaveDay, leaveHour, leaveMinute, lookbackDays, monthly, overtime, paymentConceptCatalog, periodsBiweekly, periodsMonthly, periodsWeekly, regimeIncomeTaxApplicability, regimeIncomeTaxException, regimeRuleConfirmed, sourceConfirmed, sourceReference, taxRegimeReference, uploadReason, weekly, biweekly]);
+  }, [brackets, companyTaxProfile.ready, conceptCatalogReady, currency, eligibleSources, evidenceReference, fortnightly, incomeDivisor, incomeTaxReference, inatecApplicability, inatecException, inatecRate, inatecReference, inssApplicability, inssEmployeeRate, inssEmployerAtOrAbove, inssEmployerBelow, inssException, inssMinimumBase, inssReference, inssThreshold, leaveDay, leaveHour, leaveMinute, lookbackDays, monthly, overtime, paymentConceptCatalog, periodsBiweekly, periodsFortnightly, periodsMonthly, periodsWeekly, regimeIncomeTaxApplicability, regimeIncomeTaxException, regimeRuleConfirmed, sourceConfirmed, sourceReference, taxRegimeReference, uploadReason, weekly, biweekly]);
 
   const uploadReady = validationIssues.length === 0;
   const editable = rule.status === 'DRAFT' && !rule.activeConfigurationRevisionId;
@@ -212,7 +214,7 @@ export default function PayrollRuleConfigurationPanel({
         legallyValidated: true,
         currency,
         regular: {
-          minuteDivisors: { WEEKLY: weekly, BIWEEKLY: biweekly, MONTHLY: monthly },
+          minuteDivisors: { WEEKLY: weekly, BIWEEKLY: biweekly, FORTNIGHTLY: fortnightly, MONTHLY: monthly },
           overtimeMultiplier: overtime,
           paidLeaveUnitMinutes: { DAYS: leaveDay, HOURS: leaveHour, MINUTES: leaveMinute },
         },
@@ -242,7 +244,7 @@ export default function PayrollRuleConfigurationPanel({
             employerSizeThreshold: Number(inssThreshold),
             minimumMonthlyContributionBase: inssMinimumBase,
             minimumBaseProration: 'PER_PAY_PERIOD_SERVICE_RATIO',
-            annualPeriods: { WEEKLY: Number(periodsWeekly), BIWEEKLY: Number(periodsBiweekly), MONTHLY: Number(periodsMonthly) },
+            annualPeriods: { WEEKLY: Number(periodsWeekly), BIWEEKLY: Number(periodsBiweekly), FORTNIGHTLY: Number(periodsFortnightly), MONTHLY: Number(periodsMonthly) },
           },
           inatec: {
             applicability: inatecApplicability,
@@ -262,7 +264,7 @@ export default function PayrollRuleConfigurationPanel({
             inssEmployeeContributionDeductible: true,
             occasionalInssDeductionTreatment: 'DEDUCT_FROM_OCCASIONAL_NET',
             adjustmentMode: 'WITHHOLD_OR_REFUND',
-            annualPeriods: { WEEKLY: Number(periodsWeekly), BIWEEKLY: Number(periodsBiweekly), MONTHLY: Number(periodsMonthly) },
+            annualPeriods: { WEEKLY: Number(periodsWeekly), BIWEEKLY: Number(periodsBiweekly), FORTNIGHTLY: Number(periodsFortnightly), MONTHLY: Number(periodsMonthly) },
             brackets,
           },
           paymentConceptCatalog,
@@ -361,6 +363,7 @@ export default function PayrollRuleConfigurationPanel({
             <div className="hr-legal-field-grid hr-legal-period-grid">
               <label>Semanal · períodos/año<input type="number" min="1" max="366" value={periodsWeekly} onChange={(event) => setPeriodsWeekly(event.target.value)} /></label>
               <label>Quincenal · períodos/año<input type="number" min="1" max="366" value={periodsBiweekly} onChange={(event) => setPeriodsBiweekly(event.target.value)} /></label>
+              <label>Catorcenal · períodos/año<input type="number" min="1" max="366" value={periodsFortnightly} onChange={(event) => setPeriodsFortnightly(event.target.value)} /></label>
               <label>Mensual · períodos/año<input type="number" min="1" max="366" value={periodsMonthly} onChange={(event) => setPeriodsMonthly(event.target.value)} /></label>
               <label className="span-full">Fuente de la metodología IR<input value={incomeTaxReference} onChange={(event) => setIncomeTaxReference(event.target.value)} maxLength={500} required /></label>
             </div>
@@ -398,6 +401,7 @@ export default function PayrollRuleConfigurationPanel({
                 <label>Multiplicador de hora extra<input type="number" min="0.0001" step="0.0001" value={overtime} onChange={(event) => setOvertime(event.target.value)} /><small>2 representa pago doble.</small></label>
                 <label>Divisor semanal (minutos)<input type="number" min="0.0001" step="0.0001" value={weekly} onChange={(event) => setWeekly(event.target.value)} /></label>
                 <label>Divisor quincenal (minutos)<input type="number" min="0.0001" step="0.0001" value={biweekly} onChange={(event) => setBiweekly(event.target.value)} /></label>
+                <label>Divisor catorcenal (minutos)<input type="number" min="0.0001" step="0.0001" value={fortnightly} onChange={(event) => setFortnightly(event.target.value)} /></label>
                 <label>Divisor mensual (minutos)<input type="number" min="0.0001" step="0.0001" value={monthly} onChange={(event) => setMonthly(event.target.value)} /></label>
               </div></fieldset>
               <fieldset><legend>Permisos pagados</legend><div className="hr-legal-field-grid">
@@ -484,7 +488,7 @@ function ReadOnlyConfiguration({ configuration, revision }: { configuration: HrP
     <section aria-labelledby="readonly-ir-title">
       <header><span className="hr-legal-section-icon"><Percent size={20} /></span><div><span className="hr-legal-step-label">Retención</span><h3 id="readonly-ir-title">Tramos anuales de IR laboral</h3><p>La nómina proyecta el ingreso neto gravable anual y aplica el tramo correspondiente.</p></div></header>
       <div className="hr-legal-readonly-table-wrap"><table><thead><tr><th>Tramo</th><th>Desde</th><th>Hasta</th><th>Impuesto base</th><th>Tasa sobre exceso</th></tr></thead><tbody>{statutory.incomeTax.brackets.map((bracket, index) => <tr key={`${bracket.lowerBound}-${index}`}><td>{index + 1}</td><td>{money(bracket.lowerBound)}</td><td>{bracket.upperBound === null ? 'En adelante' : money(bracket.upperBound)}</td><td>{money(bracket.baseTax)}</td><td>{pct(bracket.rate)} sobre {money(bracket.excessOver)}</td></tr>)}</tbody></table></div>
-      <p className="hr-legal-readonly-source">Fuente: {statutory.incomeTax.sourceReference} · Periodos: semanal {statutory.incomeTax.annualPeriods.WEEKLY}, quincenal {statutory.incomeTax.annualPeriods.BIWEEKLY}, mensual {statutory.incomeTax.annualPeriods.MONTHLY}.</p>
+      <p className="hr-legal-readonly-source">Fuente: {statutory.incomeTax.sourceReference} · Periodos: semanal {statutory.incomeTax.annualPeriods.WEEKLY}, quincenal {statutory.incomeTax.annualPeriods.BIWEEKLY}, catorcenal {statutory.incomeTax.annualPeriods.FORTNIGHTLY}, mensual {statutory.incomeTax.annualPeriods.MONTHLY}.</p>
     </section>
 
     <section aria-labelledby="readonly-concepts-title">

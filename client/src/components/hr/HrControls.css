@@ -29,7 +29,7 @@
 .hr-flow-modal-content {
   width: 100%;
   height: 100%;
-  background: color-mix(in srgb, var(--color-surface) 95%, var(--color-background) 5%);
+  background: var(--dialog-content-bg, color-mix(in srgb, var(--color-surface) 95%, var(--color-background) 5%));
   color: var(--color-text);
   font-family: inherit;
   font-size: var(--font-size-sm);
@@ -97,7 +97,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
-  color: var(--color-neutral-500);
+  color: var(--color-text-secondary);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -111,7 +111,7 @@
   padding: 10px 12px;
   border: 1px solid var(--dialog-panel-border, var(--color-border));
   border-radius: var(--radius-lg);
-  background: var(--color-background);
+  background: var(--dialog-field-bg, var(--color-background));
   color: var(--color-text);
   font-size: 14px;
   line-height: 1.35;

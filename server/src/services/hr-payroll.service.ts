@@ -95,7 +95,7 @@ export type LegalConfiguration = {
     legallyValidated: true;
     currency: string;
     regular: {
-        minuteDivisors: Record<'WEEKLY' | 'BIWEEKLY' | 'MONTHLY', string>;
+        minuteDivisors: Record<'WEEKLY' | 'BIWEEKLY' | 'FORTNIGHTLY' | 'MONTHLY', string>;
         overtimeMultiplier: string;
         paidLeaveUnitMinutes: Record<'DAYS' | 'HOURS' | 'MINUTES', string>;
     };
@@ -129,8 +129,14 @@ type LegacyV3StatutoryConfiguration = Omit<PayrollStatutoryConfiguration, 'compa
 function normalizeDeprecatedV4Aliases(value: unknown): unknown {
     const config = value as JsonObject | null;
     if (!config || config.schema !== 'HR_PAYROLL_PARAMETRIC_V4') return value;
+    const regular = config.regular as JsonObject | undefined;
+    const minuteDivisors = regular?.minuteDivisors as JsonObject | undefined;
     const aguinaldo = config.aguinaldo as JsonObject | undefined;
     const statutory = config.statutory as JsonObject | undefined;
+    const inss = statutory?.inss as JsonObject | undefined;
+    const inssAnnualPeriods = inss?.annualPeriods as JsonObject | undefined;
+    const incomeTax = statutory?.incomeTax as JsonObject | undefined;
+    const incomeTaxAnnualPeriods = incomeTax?.annualPeriods as JsonObject | undefined;
     const catalog = statutory?.paymentConceptCatalog;
     const deprecatedProration = aguinaldo?.prorationMode === 'SERVICE_DAYS';
     const conceptsWithoutState = Array.isArray(catalog) && catalog.some(item => typeof (item as JsonObject | null)?.active !== 'boolean');
@@ -138,15 +144,38 @@ function normalizeDeprecatedV4Aliases(value: unknown): unknown {
         const treatment = (item as JsonObject | null)?.incomeTaxTreatment;
         return treatment === 'EXEMPT' || treatment === 'NONE';
     });
-    if (!deprecatedProration && !deprecatedTreatments && !conceptsWithoutState) return value;
+    const missingFortnightly = minuteDivisors?.FORTNIGHTLY === undefined ||
+        inssAnnualPeriods?.FORTNIGHTLY === undefined || incomeTaxAnnualPeriods?.FORTNIGHTLY === undefined;
+    if (!deprecatedProration && !deprecatedTreatments && !conceptsWithoutState && !missingFortnightly) return value;
     return {
         ...config,
+        regular: regular ? {
+            ...regular,
+            minuteDivisors: minuteDivisors ? {
+                ...minuteDivisors,
+                FORTNIGHTLY: minuteDivisors.FORTNIGHTLY ?? minuteDivisors.BIWEEKLY ?? '4800',
+            } : minuteDivisors,
+        } : regular,
         aguinaldo: aguinaldo ? {
             ...aguinaldo,
             prorationMode: deprecatedProration ? 'SERVICE_DAYS_RATIO' : aguinaldo.prorationMode,
         } : aguinaldo,
         statutory: statutory ? {
             ...statutory,
+            inss: inss ? {
+                ...inss,
+                annualPeriods: inssAnnualPeriods ? {
+                    ...inssAnnualPeriods,
+                    FORTNIGHTLY: inssAnnualPeriods.FORTNIGHTLY ?? 26,
+                } : inssAnnualPeriods,
+            } : inss,
+            incomeTax: incomeTax ? {
+                ...incomeTax,
+                annualPeriods: incomeTaxAnnualPeriods ? {
+                    ...incomeTaxAnnualPeriods,
+                    FORTNIGHTLY: incomeTaxAnnualPeriods.FORTNIGHTLY ?? 26,
+                } : incomeTaxAnnualPeriods,
+            } : incomeTax,
             paymentConceptCatalog: Array.isArray(catalog) ? catalog.map(item => {
                 const concept = item as JsonObject;
                 return {
@@ -207,7 +236,7 @@ function normalizeLegacyConfiguration(value: unknown, allowDeprecatedV4Aliases =
     delete incomeTax.variableTaxableComponentCodes;
     delete incomeTax.occasionalTaxableComponentCodes;
     delete incomeTax.authorizedDeductionComponentCodes;
-    return {
+    return normalizeDeprecatedV4Aliases({
         ...legacy,
         schema: 'HR_PAYROLL_PARAMETRIC_V4',
         statutory: {
@@ -221,7 +250,7 @@ function normalizeLegacyConfiguration(value: unknown, allowDeprecatedV4Aliases =
             incomeTax,
             paymentConceptCatalog,
         },
-    };
+    });
 }
 
 function positiveDecimalText(value: unknown): value is string {
@@ -239,6 +268,7 @@ export function validateLegalConfiguration(value: unknown, options: { requireCur
         !config || config.schema !== 'HR_PAYROLL_PARAMETRIC_V4' || config.legallyValidated !== true ||
         typeof config.currency !== 'string' || !/^[A-Z]{3}$/.test(config.currency) ||
         !divisors || !positiveDecimalText(divisors.WEEKLY) || !positiveDecimalText(divisors.BIWEEKLY) ||
+        !positiveDecimalText(divisors.FORTNIGHTLY) ||
         !positiveDecimalText(divisors.MONTHLY) || !positiveDecimalText(config.regular?.overtimeMultiplier) ||
         !positiveDecimalText(config.regular?.paidLeaveUnitMinutes?.DAYS) ||
         !positiveDecimalText(config.regular?.paidLeaveUnitMinutes?.HOURS) ||
@@ -860,7 +890,7 @@ async function reserveCoverage(tx: Prisma.TransactionClient, input: { companyId:
     return null;
 }
 
-export function compensationMinuteRate(item: { compensationType: string; amount: Prisma.Decimal; payFrequency: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' }, config: LegalConfiguration) {
+export function compensationMinuteRate(item: { compensationType: string; amount: Prisma.Decimal; payFrequency: 'WEEKLY' | 'BIWEEKLY' | 'FORTNIGHTLY' | 'MONTHLY' }, config: LegalConfiguration) {
     return item.compensationType === 'HOURLY' ? item.amount.dividedBy(60) : item.amount.dividedBy(config.regular.minuteDivisors[item.payFrequency]);
 }
 
@@ -1229,7 +1259,7 @@ async function applyStatutoryForUser(tx: Prisma.TransactionClient, input: {
 }) {
     await tx.payrollComponent.deleteMany({ where: { companyId: input.companyId, runId: input.runId, userId: input.userId, source: 'STATUTORY' } });
     await tx.payrollAnomaly.deleteMany({ where: { companyId: input.companyId, runId: input.runId, userId: input.userId, code: { in: ['UNCLASSIFIED_MANUAL_INCOME', 'UNCONFIGURED_PAYMENT_CONCEPT', 'MISSING_STATUTORY_PAY_FREQUENCY', 'INSS_MINIMUM_BASE_APPLIED', 'INCOMPLETE_PRIOR_STATUTORY_HISTORY', 'IR_CREDIT_PENDING_SETTLEMENT'] }, resolvedAt: null } });
-    if (!['WEEKLY', 'BIWEEKLY', 'MONTHLY'].includes(String(input.snapshot.payFrequency))) {
+    if (!['WEEKLY', 'BIWEEKLY', 'FORTNIGHTLY', 'MONTHLY'].includes(String(input.snapshot.payFrequency))) {
         await addAnomaly(tx, { companyId: input.companyId, runId: input.runId, employeeId: input.employeeId, userId: input.userId, code: 'MISSING_STATUTORY_PAY_FREQUENCY', message: 'No existe frecuencia de pago congelada para el cálculo estatutario' });
         return;
     }
@@ -1671,7 +1701,7 @@ async function revalidateFrozenSources(tx: Prisma.TransactionClient, companyId: 
                 throw new HrPayrollError('El histórico acumulado de IR cambió después del cálculo; recalcule', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
             }
             const snapshot = run.snapshots.find(item => item.userId === calculation.userId);
-            if (!snapshot || !['WEEKLY', 'BIWEEKLY', 'MONTHLY'].includes(String(snapshot.payFrequency))) throw new HrPayrollError('La frecuencia congelada del cálculo estatutario no está disponible', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
+            if (!snapshot || !['WEEKLY', 'BIWEEKLY', 'FORTNIGHTLY', 'MONTHLY'].includes(String(snapshot.payFrequency))) throw new HrPayrollError('La frecuencia congelada del cálculo estatutario no está disponible', 409, 'HR_PAYROLL_STATUTORY_SOURCE_STALE');
             if (prior.priorCompanyTaxRegimes.some(regime => regime !== frozenConfig.statutory.companyTaxRegime.code)) {
                 throw new HrPayrollError('El régimen tributario empresarial cambió dentro del año fiscal', 409, 'HR_PAYROLL_COMPANY_TAX_REGIME_CHANGED');
             }

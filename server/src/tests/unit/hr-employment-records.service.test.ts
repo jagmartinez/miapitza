@@ -112,12 +112,12 @@ describe('HR employment records and document custody', () => {
         jest.spyOn(prisma, '$transaction').mockImplementation((async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as never);
 
         await HrCompensationService.append(4, 7, 3, {
-            compensationType: 'SALARY', payFrequency: 'MONTHLY', amount: '25000.00', currency: 'NIO',
+            compensationType: 'SALARY', payFrequency: 'FORTNIGHTLY', amount: '25000.00', currency: 'NIO',
             effectiveFrom: '2026-01-01', reason: 'Ajuste anual aprobado',
         });
 
         expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { effectiveTo: new Date('2025-12-31T00:00:00.000Z') } }));
-        expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ amount: new Prisma.Decimal('25000.00'), effectiveFrom: new Date('2026-01-01T00:00:00.000Z') }) }));
+        expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ amount: new Prisma.Decimal('25000.00'), payFrequency: 'FORTNIGHTLY', effectiveFrom: new Date('2026-01-01T00:00:00.000Z') }) }));
     });
 
     it('blocks activation when an active contract overlaps the draft period', async () => {

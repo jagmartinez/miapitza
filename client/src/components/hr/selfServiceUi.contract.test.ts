@@ -80,7 +80,7 @@ describe('employee self-service UX contract', () => {
     expect(benefits).toContain('Reintentar');
     expect(workforce).toContain('En espera');
     expect(workforce).toContain('Aprobadas');
-    expect(workforce).toContain('Denegadas');
+    expect(workforce).toContain('Rechazadas o canceladas');
     expect(workforce).toContain('Promise.allSettled');
     expect(workforce).toContain('partialWarning');
   });

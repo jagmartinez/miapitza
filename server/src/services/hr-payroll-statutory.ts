@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 
 export type PayrollTaxRegime = 'GENERAL' | 'SIMPLIFIED_FIXED_QUOTA' | 'SPECIAL' | 'EXEMPT' | 'OTHER';
 export type StatutoryApplicability = 'APPLIES' | 'DOES_NOT_APPLY';
-export type StatutoryPayFrequency = 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY';
+export type StatutoryPayFrequency = 'WEEKLY' | 'BIWEEKLY' | 'FORTNIGHTLY' | 'MONTHLY';
 export type IncomeTaxTreatment = 'REGULAR_FIXED' | 'REGULAR_VARIABLE' | 'OCCASIONAL';
 export type IncomeTaxCalculationMethod = 'FIXED_PERIOD_PROJECTION' | 'FIXED_SALARY_CHANGE' | 'VARIABLE_ACCUMULATED';
 export type PayrollPaymentConceptType = 'INCOME' | 'DEDUCTION';
@@ -233,7 +233,7 @@ export function validateStatutoryConfiguration(value: PayrollStatutoryConfigurat
         !isRate(inss.employeeRate) || !isRate(inss.employerRateBelowThreshold) || !isRate(inss.employerRateAtOrAboveThreshold) ||
         !Number.isInteger(inss.employerSizeThreshold) || inss.employerSizeThreshold < 1 ||
         !isNonNegativeDecimal(inss.minimumMonthlyContributionBase) || (inss.applicability === 'APPLIES' && !decimal(inss.minimumMonthlyContributionBase).greaterThan(0)) || inss.minimumBaseProration !== 'PER_PAY_PERIOD_SERVICE_RATIO' ||
-        !(['WEEKLY', 'BIWEEKLY', 'MONTHLY'] as const).every(frequency => Number.isInteger(inss.annualPeriods?.[frequency]) && inss.annualPeriods[frequency] >= 1 && inss.annualPeriods[frequency] <= 366)
+        !(['WEEKLY', 'BIWEEKLY', 'FORTNIGHTLY', 'MONTHLY'] as const).every(frequency => Number.isInteger(inss.annualPeriods?.[frequency]) && inss.annualPeriods[frequency] >= 1 && inss.annualPeriods[frequency] <= 366)
     ) return false;
     if (!validObligation(inatec) || !isRate(inatec.employerRate)) return false;
     if (
@@ -243,7 +243,7 @@ export function validateStatutoryConfiguration(value: PayrollStatutoryConfigurat
         incomeTax.inssEmployeeContributionDeductible !== true || incomeTax.occasionalInssDeductionTreatment !== 'DEDUCT_FROM_OCCASIONAL_NET' ||
         incomeTax.adjustmentMode !== 'WITHHOLD_OR_REFUND' ||
         !validateProgressiveTaxBrackets(incomeTax.brackets) ||
-        !(['WEEKLY', 'BIWEEKLY', 'MONTHLY'] as const).every(frequency => Number.isInteger(incomeTax.annualPeriods?.[frequency]) && incomeTax.annualPeriods[frequency] >= 1 && incomeTax.annualPeriods[frequency] <= 366)
+        !(['WEEKLY', 'BIWEEKLY', 'FORTNIGHTLY', 'MONTHLY'] as const).every(frequency => Number.isInteger(incomeTax.annualPeriods?.[frequency]) && incomeTax.annualPeriods[frequency] >= 1 && incomeTax.annualPeriods[frequency] <= 366)
     ) return false;
     if (inss.applicability === 'APPLIES' && !value.paymentConceptCatalog.some(concept => concept.active !== false && concept.type === 'INCOME' && concept.socialSecurityApplicable)) return false;
     if (inatec.applicability === 'APPLIES' && !value.paymentConceptCatalog.some(concept => concept.active !== false && concept.type === 'INCOME' && concept.trainingContributionApplicable)) return false;

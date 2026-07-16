@@ -7,7 +7,7 @@ export function getReactSelectThemeStyles<
     IsMulti extends boolean = false,
     Group extends GroupBase<Option> = GroupBase<Option>
 >(variant: SelectVariant = 'standard'): StylesConfig<Option, IsMulti, Group> {
-    const controlBg = variant === 'modal' ? 'var(--color-background)' : 'var(--color-surface)';
+    const controlBg = variant === 'modal' ? 'var(--dialog-field-bg, var(--color-background))' : 'var(--color-surface)';
     const accent = variant === 'modal' ? 'var(--dialog-accent)' : 'var(--color-primary)';
     const focusRing = variant === 'modal' ? 'var(--dialog-focus-ring)' : 'rgba(37, 99, 235, 0.1)';
 
@@ -19,7 +19,7 @@ export function getReactSelectThemeStyles<
                 : state.isFocused ? 'var(--color-surface)' : controlBg,
             borderColor: state.isFocused ? accent : 'var(--color-border)',
             boxShadow: state.isFocused ? `0 0 0 3px ${focusRing}` : 'none',
-            minHeight: 38,
+            minHeight: variant === 'modal' ? 42 : 38,
             cursor: state.isDisabled ? 'not-allowed' : 'pointer',
             opacity: state.isDisabled ? 0.62 : 1,
             '&:hover': {
@@ -28,9 +28,9 @@ export function getReactSelectThemeStyles<
         }),
         menu: (base) => ({
             ...base,
-            backgroundColor: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            borderRadius: 6,
+            backgroundColor: variant === 'modal' ? 'var(--dialog-panel-bg, var(--color-surface))' : 'var(--color-surface)',
+            border: `1px solid ${variant === 'modal' ? 'var(--dialog-panel-border, var(--color-border))' : 'var(--color-border)'}`,
+            borderRadius: 8,
             boxShadow: 'var(--shadow-lg)',
             overflow: 'hidden',
             color: 'var(--color-text)',

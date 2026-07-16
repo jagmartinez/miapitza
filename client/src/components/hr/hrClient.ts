@@ -153,7 +153,7 @@ export const hrClient = {
     },
 
     async appendEmployeeCompensation(employeeId: number, payload: {
-        contractId?: number; compensationType: 'SALARY' | 'HOURLY'; payFrequency: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY';
+        contractId?: number; compensationType: 'SALARY' | 'HOURLY'; payFrequency: 'WEEKLY' | 'BIWEEKLY' | 'FORTNIGHTLY' | 'MONTHLY';
         amount: string; currency: string; effectiveFrom: string; reason: string;
     }): Promise<HrCompensationRecord> {
         const response = await api.post<HrEnvelope<HrCompensationRecord>>(`${HR_BASE}/employees/${employeeId}/compensations`, payload);

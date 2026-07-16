@@ -42,6 +42,7 @@ const employeeFields = [
     'emergencyContactName', 'emergencyContactPhone', 'emergencyContactRelationship',
     'hireDate', 'employmentType', 'departmentId', 'jobPositionId', 'costCenterId',
     'supervisorEmployeeId', 'notes', 'branchIds', 'primaryBranchId',
+    'initialCompensation',
 ] as const;
 
 const employeeBodySchema = {
@@ -116,6 +117,16 @@ router.post('/employees',
             employeeCode: { ...employeeBodySchema.employeeCode, required: true },
             legalName: { ...employeeBodySchema.legalName, required: true },
             hireDate: { ...employeeBodySchema.hireDate, required: true },
+            initialCompensation: {
+                type: 'object', required: true,
+                properties: {
+                    compensationType: { type: 'string', required: true, enum: ['SALARY', 'HOURLY'] },
+                    payFrequency: { type: 'string', required: true, enum: ['WEEKLY', 'BIWEEKLY', 'FORTNIGHTLY', 'MONTHLY'] },
+                    amount: { type: 'string', required: true, pattern: /^\d+(?:\.\d{1,2})?$/, max: 40 },
+                    currency: { type: 'string', required: true, pattern: /^[A-Z]{3}$/, max: 3 },
+                    reason: { type: 'string', required: true, min: 3, max: 500 },
+                },
+            },
         },
     }),
     HrController.createEmployee,
@@ -123,7 +134,7 @@ router.post('/employees',
 
 router.put('/employees/:id',
     requirePermission('hr.employee.manage', ROLES.SUPERADMIN),
-    allowHrBodyFields(employeeFields.filter((field) => field !== 'userId')),
+    allowHrBodyFields(employeeFields.filter((field) => field !== 'userId' && field !== 'initialCompensation')),
     validate({
         params: { id: { type: 'number', required: true, integer: true, min: 1 } },
         body: employeeBodySchema,
@@ -188,7 +199,7 @@ router.post('/employees/:id/compensations',
     validate({ params: employeeIdParams, body: {
         contractId: { type: 'number', integer: true, min: 1 },
         compensationType: { type: 'string', required: true, enum: ['SALARY', 'HOURLY'] },
-        payFrequency: { type: 'string', required: true, enum: ['WEEKLY', 'BIWEEKLY', 'MONTHLY'] },
+        payFrequency: { type: 'string', required: true, enum: ['WEEKLY', 'BIWEEKLY', 'FORTNIGHTLY', 'MONTHLY'] },
         amount: { type: 'string', required: true, pattern: /^\d+(?:\.\d{1,2})?$/ },
         currency: { type: 'string', pattern: /^[A-Z]{3}$/ }, effectiveFrom: { type: 'date', required: true },
         reason: { type: 'string', required: true, min: 3, max: 500 },

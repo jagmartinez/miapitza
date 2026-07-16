@@ -6,18 +6,21 @@ import {
     FileText,
     MapPin,
     UserRound,
+    WalletCards,
 } from 'lucide-react';
 import Button from '../Button';
 import Select from '../Select';
+import HrMoneyInput from './HrMoneyInput';
 import type {
     HrEmployee,
     HrEmployeePayload,
     HrNamedEntity,
     HrOrganizationCatalogs,
+    HrPayFrequency,
     HrUserSummary,
 } from '../../types/hr';
 
-type FormTab = 'data' | 'relationship' | 'user' | 'assignment';
+type FormTab = 'data' | 'relationship' | 'compensation' | 'user' | 'assignment';
 type Option = { value: string; label: string };
 
 interface EmployeeFormProps {
@@ -52,6 +55,11 @@ interface FormState {
     costCenterId: string;
     branchIds: string[];
     primaryBranchId: string;
+    compensationType: 'SALARY' | 'HOURLY';
+    payFrequency: HrPayFrequency;
+    compensationAmount: string;
+    compensationCurrency: string;
+    compensationReason: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -77,6 +85,11 @@ const EMPTY_FORM: FormState = {
     costCenterId: '',
     branchIds: [],
     primaryBranchId: '',
+    compensationType: 'SALARY',
+    payFrequency: 'MONTHLY',
+    compensationAmount: '',
+    compensationCurrency: 'NIO',
+    compensationReason: 'Compensación inicial acordada',
 };
 
 const asOption = (entity?: HrNamedEntity | null): Option | null =>
@@ -109,6 +122,11 @@ function initialState(employee: HrEmployee | null): FormState {
         costCenterId: employee.costCenterId ? String(employee.costCenterId) : '',
         branchIds: assignments.map((assignment) => String(assignment.branchId)),
         primaryBranchId: primary ? String(primary.branchId) : '',
+        compensationType: 'SALARY',
+        payFrequency: 'MONTHLY',
+        compensationAmount: '',
+        compensationCurrency: 'NIO',
+        compensationReason: '',
     };
 }
 
@@ -181,6 +199,16 @@ export default function EmployeeForm({
             setValidationError('La fecha de ingreso es obligatoria.');
             return;
         }
+        if (!employee && (!/^\d+(?:\.\d{1,2})?$/.test(form.compensationAmount) || Number(form.compensationAmount) <= 0)) {
+            setActiveTab('compensation');
+            setValidationError('Ingresa una compensación inicial válida mayor que cero.');
+            return;
+        }
+        if (!employee && form.compensationReason.trim().length < 3) {
+            setActiveTab('compensation');
+            setValidationError('Documenta el motivo de la compensación inicial.');
+            return;
+        }
         if (!form.userId) {
             setActiveTab('user');
             setValidationError('Selecciona el usuario que quedará vinculado al empleado.');
@@ -215,6 +243,15 @@ export default function EmployeeForm({
             costCenterId: form.costCenterId ? Number(form.costCenterId) : null,
             branchIds: form.branchIds.map(Number),
             primaryBranchId: form.primaryBranchId ? Number(form.primaryBranchId) : null,
+            ...(!employee ? {
+                initialCompensation: {
+                    compensationType: form.compensationType,
+                    payFrequency: form.payFrequency,
+                    amount: form.compensationAmount,
+                    currency: form.compensationCurrency,
+                    reason: form.compensationReason.trim(),
+                },
+            } : {}),
         });
     };
 
@@ -238,6 +275,7 @@ export default function EmployeeForm({
             <div className="modal-tabs" role="tablist" aria-label="Secciones del expediente">
                 {tab('data', 'Datos', <UserRound size={18} aria-hidden="true" />)}
                 {tab('relationship', 'Relación laboral', <Briefcase size={18} aria-hidden="true" />)}
+                {!employee && tab('compensation', 'Compensación', <WalletCards size={18} aria-hidden="true" />)}
                 {tab('user', 'Usuario', <FileText size={18} aria-hidden="true" />)}
                 {tab('assignment', 'Asignación', <MapPin size={18} aria-hidden="true" />)}
             </div>
@@ -372,6 +410,73 @@ export default function EmployeeForm({
                                 onChange={(option: SingleValue<Option>) => update('costCenterId', option?.value ?? '')}
                                 isClearable
                             />
+                        </section>
+                    )}
+
+                    {activeTab === 'compensation' && !employee && (
+                        <section
+                            id="hr-employee-panel-compensation"
+                            role="tabpanel"
+                            aria-labelledby="hr-employee-tab-compensation"
+                            className="modal-content-group"
+                        >
+                            <div className="modal-section-header">
+                                <WalletCards size={18} aria-hidden="true" />
+                                <h3>Compensación inicial</h3>
+                            </div>
+                            <div className="hr-inline-alert info">
+                                Se registrará junto con el expediente en una sola operación. Los cambios posteriores crearán una nueva versión en el historial salarial.
+                            </div>
+                            <div className="modal-form-row">
+                                <Select<Option>
+                                    variant="modal"
+                                    label="Tipo de compensación"
+                                    options={[
+                                        { value: 'SALARY', label: 'Salario por período' },
+                                        { value: 'HOURLY', label: 'Tarifa por hora' },
+                                    ]}
+                                    value={{ value: form.compensationType, label: form.compensationType === 'SALARY' ? 'Salario por período' : 'Tarifa por hora' }}
+                                    onChange={(option: SingleValue<Option>) => update('compensationType', (option?.value ?? 'SALARY') as FormState['compensationType'])}
+                                    isSearchable={false}
+                                />
+                                <Select<Option>
+                                    variant="modal"
+                                    label="Frecuencia de pago"
+                                    options={[
+                                        { value: 'WEEKLY', label: 'Semanal · 52 períodos/año' },
+                                        { value: 'BIWEEKLY', label: 'Quincenal · 24 períodos/año' },
+                                        { value: 'FORTNIGHTLY', label: 'Catorcenal · 26 períodos/año' },
+                                        { value: 'MONTHLY', label: 'Mensual · 12 períodos/año' },
+                                    ]}
+                                    value={[
+                                        { value: 'WEEKLY', label: 'Semanal · 52 períodos/año' },
+                                        { value: 'BIWEEKLY', label: 'Quincenal · 24 períodos/año' },
+                                        { value: 'FORTNIGHTLY', label: 'Catorcenal · 26 períodos/año' },
+                                        { value: 'MONTHLY', label: 'Mensual · 12 períodos/año' },
+                                    ].find((option) => option.value === form.payFrequency)}
+                                    onChange={(option: SingleValue<Option>) => update('payFrequency', (option?.value ?? 'MONTHLY') as HrPayFrequency)}
+                                    isSearchable={false}
+                                />
+                            </div>
+                            <div className="modal-form-row">
+                                <div className="modal-input-group">
+                                    <label htmlFor="hr-employee-compensation-amount">{form.compensationType === 'HOURLY' ? 'Tarifa por hora' : 'Monto por período'}</label>
+                                    <HrMoneyInput id="hr-employee-compensation-amount" value={form.compensationAmount} onValueChange={(value) => update('compensationAmount', value)} required aria-describedby="hr-employee-compensation-help" />
+                                    <small id="hr-employee-compensation-help">Se muestra con separadores y se envía como decimal canónico.</small>
+                                </div>
+                                <Select<Option>
+                                    variant="modal"
+                                    label="Moneda"
+                                    options={[{ value: 'NIO', label: 'NIO · Córdoba' }, { value: 'USD', label: 'USD · Dólar' }]}
+                                    value={form.compensationCurrency === 'USD' ? { value: 'USD', label: 'USD · Dólar' } : { value: 'NIO', label: 'NIO · Córdoba' }}
+                                    onChange={(option: SingleValue<Option>) => update('compensationCurrency', option?.value ?? 'NIO')}
+                                    isSearchable={false}
+                                />
+                            </div>
+                            <div className="modal-input-group">
+                                <label htmlFor="hr-employee-compensation-reason">Motivo y respaldo</label>
+                                <textarea id="hr-employee-compensation-reason" className="modal-textarea" rows={3} maxLength={500} value={form.compensationReason} onChange={(event) => update('compensationReason', event.target.value)} required />
+                            </div>
                         </section>
                     )}
 

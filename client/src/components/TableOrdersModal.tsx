@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
     X, Clock, FileText, Printer, ShoppingCart, Receipt,
     CreditCard, Scissors, ArrowRightLeft, Merge, ChefHat,
@@ -147,7 +148,7 @@ export default function TableOrdersModal({
         }, 250);
     };
 
-    return (
+    return createPortal(
         <div className="modal-overlay-orders" onClick={onClose}>
             <div
                 ref={containerRef}
@@ -297,6 +298,7 @@ export default function TableOrdersModal({
                     </button>}
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }

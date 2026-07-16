@@ -18,7 +18,7 @@
 
 /* Base control styles */
 .select-group .react-select__control {
-    border-radius: 6px;
+    border-radius: var(--radius-lg);
     transition: all var(--transition-fast);
     cursor: pointer;
     box-shadow: none;
@@ -34,8 +34,8 @@
 /* Modal Variant */
 .select-group.modal .react-select__control {
     border: 1px solid var(--color-border);
-    background-color: var(--color-background);
-    min-height: 38px;
+    background-color: var(--dialog-field-bg, var(--color-background));
+    min-height: 42px;
 }
 
 .select-group .react-select__control--is-focused {
@@ -56,6 +56,11 @@
 .select-group.modal .react-select__control--is-focused {
     border-color: var(--dialog-accent) !important;
     box-shadow: 0 0 0 3px var(--dialog-focus-ring) !important;
+}
+
+.select-group.modal .react-select__menu {
+    background-color: var(--dialog-panel-bg, var(--color-surface));
+    border-color: var(--dialog-panel-border, var(--color-border));
 }
 
 .select-group .react-select__value-container {

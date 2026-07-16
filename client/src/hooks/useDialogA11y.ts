@@ -3,6 +3,40 @@ import { useEffect, useId, useRef, type RefObject } from 'react';
 const FOCUSABLE =
     'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+let bodyScrollLockCount = 0;
+let bodyOverflowBeforeLock = '';
+const dialogStack: symbol[] = [];
+
+function lockBodyScroll() {
+    if (bodyScrollLockCount === 0) {
+        bodyOverflowBeforeLock = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+    }
+    bodyScrollLockCount += 1;
+}
+
+function unlockBodyScroll() {
+    bodyScrollLockCount = Math.max(0, bodyScrollLockCount - 1);
+    if (bodyScrollLockCount === 0) {
+        document.body.style.overflow = bodyOverflowBeforeLock;
+    }
+}
+
+function registerDialog(dialogId: symbol) {
+    const existingIndex = dialogStack.indexOf(dialogId);
+    if (existingIndex >= 0) dialogStack.splice(existingIndex, 1);
+    dialogStack.push(dialogId);
+}
+
+function unregisterDialog(dialogId: symbol) {
+    const index = dialogStack.lastIndexOf(dialogId);
+    if (index >= 0) dialogStack.splice(index, 1);
+}
+
+function isTopmostDialog(dialogId: symbol) {
+    return dialogStack[dialogStack.length - 1] === dialogId;
+}
+
 function getFocusableElements(container: HTMLElement): HTMLElement[] {
     return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
         el => el.offsetParent !== null || el === document.activeElement
@@ -17,6 +51,7 @@ export function useDialogA11y(
 ) {
     const titleId = useId();
     const descriptionId = useId();
+    const dialogIdRef = useRef(Symbol('dialog'));
     const previousFocusRef = useRef<HTMLElement | null>(null);
     const onCloseRef = useRef(onClose);
     onCloseRef.current = onClose;
@@ -27,11 +62,11 @@ export function useDialogA11y(
     useEffect(() => {
         if (!isOpen) return;
 
+        const dialogId = dialogIdRef.current;
+        registerDialog(dialogId);
         previousFocusRef.current = document.activeElement as HTMLElement | null;
 
-        if (lockScroll) {
-            document.body.style.overflow = 'hidden';
-        }
+        if (lockScroll) lockBodyScroll();
 
         const container = containerRef.current;
         if (container) {
@@ -43,10 +78,10 @@ export function useDialogA11y(
         }
 
         return () => {
-            if (lockScroll) {
-                document.body.style.overflow = 'unset';
-            }
-            previousFocusRef.current?.focus?.();
+            const wasTopmost = isTopmostDialog(dialogId);
+            unregisterDialog(dialogId);
+            if (lockScroll) unlockBodyScroll();
+            if (wasTopmost) previousFocusRef.current?.focus?.();
         };
     }, [isOpen, containerRef, lockScroll]);
 
@@ -54,8 +89,11 @@ export function useDialogA11y(
         if (!isOpen) return;
 
         const handleKeyDown = (event: KeyboardEvent) => {
+            if (!isTopmostDialog(dialogIdRef.current)) return;
+
             if (closeOnEscape && event.key === 'Escape') {
                 event.preventDefault();
+                event.stopPropagation();
                 onCloseRef.current();
                 return;
             }
@@ -70,7 +108,13 @@ export function useDialogA11y(
 
             const first = focusables[0];
             const last = focusables[focusables.length - 1];
-            const active = document.activeElement as HTMLElement;
+            const active = document.activeElement as HTMLElement | null;
+
+            if (!active || !containerRef.current.contains(active)) {
+                event.preventDefault();
+                (event.shiftKey ? last : first).focus();
+                return;
+            }
 
             if (event.shiftKey && active === first) {
                 event.preventDefault();

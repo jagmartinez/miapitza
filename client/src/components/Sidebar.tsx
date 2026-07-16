@@ -1,5 +1,6 @@
 import { ReactNode, useLayoutEffect, useRef } from 'react';
-import { X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { PanelRightOpen, X } from 'lucide-react';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import './Sidebar.css';
 
@@ -28,7 +29,7 @@ export default function Sidebar({ isOpen, onClose, title, children, width = 'nor
         else panel.setAttribute('inert', '');
     }, [isOpen]);
 
-    return (
+    return createPortal(
         <>
             {isOpen && <div className="sidebar-overlay" onClick={closeOnBackdrop ? onClose : undefined} aria-hidden="true" />}
 
@@ -43,7 +44,10 @@ export default function Sidebar({ isOpen, onClose, title, children, width = 'nor
                 tabIndex={-1}
             >
                 <div className="sidebar-header">
-                    <h2 id={titleId}>{title}</h2>
+                    <div className="sidebar-heading">
+                        <span className="sidebar-heading-icon" aria-hidden="true"><PanelRightOpen size={20} /></span>
+                        <h2 id={titleId}>{title}</h2>
+                    </div>
                     <button type="button" className="sidebar-close" onClick={onClose} aria-label={`Cerrar ${title}`}>
                         <X size={24} aria-hidden="true" />
                     </button>
@@ -54,6 +58,7 @@ export default function Sidebar({ isOpen, onClose, title, children, width = 'nor
                 </div>
                 {footer && <div className="sidebar-actions">{footer}</div>}
             </div>
-        </>
+        </>,
+        document.body,
     );
 }
