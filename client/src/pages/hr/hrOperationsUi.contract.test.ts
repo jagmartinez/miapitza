@@ -14,11 +14,14 @@ const myWorkforce = read('./MyWorkforce.tsx');
 const adminCss = read('./admin-tables.css');
 const attendanceCss = read('./attendance.css');
 
-const operationalPages = [
+const adminOperationalPages = [
   attendanceReview,
   attendanceManagement,
   leaveManagement,
   benefitsManagement,
+];
+
+const selfServicePages = [
   timeClock,
   myBenefits,
   myPayroll,
@@ -27,21 +30,28 @@ const operationalPages = [
 
 describe('RH operational UI contract', () => {
   it('uses the shared Inventory-inspired operational composition without global selectors', () => {
-    operationalPages.forEach((source) => expect(source).toContain('hr-operation-page'));
+    adminOperationalPages.forEach((source) => expect(source).toContain('hr-operation-page'));
+    selfServicePages.forEach((source) => expect(source).toContain('my-hr-page'));
     expect(adminCss).toContain('.hr-operation-page .hr-operation-kpis');
     expect(adminCss).toContain('.hr-operation-page .hr-operation-toolbar');
     expect(adminCss).toContain("[role='tabpanel']:focus-visible");
     expect(adminCss).not.toMatch(/(^|\n)\s*(body|:root)\s*\{/);
   });
 
-  it('keeps admin queues table-first with filters, KPIs, tabs and explicit counterflows', () => {
+  it('keeps admin queues table-first with external control tabs and explicit counterflows', () => {
     [attendanceManagement, leaveManagement].forEach((source) => {
       expect(source).toContain('hr-operation-toolbar');
-      expect(source).toContain('hr-operation-kpis');
+      expect(source).not.toContain('hr-operation-kpis');
+      expect(source).toContain('filters-toolbar hr-admin-tab-toolbar');
       expect(source).toContain('role="tablist"');
       expect(source).toContain('role="tabpanel"');
       expect(source).toContain('className="hr-admin-table inventory-table"');
+      expect(source).not.toContain('<caption>');
     });
+    expect(attendanceReview).not.toContain('attendance-review-table-title');
+    expect(attendanceReview).not.toContain('hr-operation-kpis');
+    expect(benefitsManagement).not.toContain('hr-operation-kpis');
+    expect(benefitsManagement).not.toContain('<caption>');
     expect(attendanceManagement).toContain("{ kind: 'reopen', item: period }");
     expect(attendanceManagement).toContain("{ kind: 'close', item: period }");
     expect(leaveManagement).toContain("openRequestAction(item, 'cancel')");
@@ -75,6 +85,6 @@ describe('RH operational UI contract', () => {
     expect(myBenefits).toContain('role="tabpanel"');
     expect(myPayroll).toContain('HrReactSelect');
     expect(myPayroll).toContain('formatHrMoney(receipt.currency, receipt.netPay)');
-    expect(myPayroll).toContain('hr-operation-kpis');
+    expect(myPayroll).toContain('my-hr-summary-grid');
   });
 });

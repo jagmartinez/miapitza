@@ -18,7 +18,7 @@ import type {
   HrPayrollRunKind,
 } from '../../types/hr-payroll';
 import './payroll.css';
-import './admin-tables.css';
+import './self-service.css';
 
 const currentYear = new Date().getFullYear();
 
@@ -100,26 +100,26 @@ export default function MyPayroll() {
   const bonusReceiptCount = receipts.filter((receipt) => receipt.runKind === 'AGUINALDO').length;
 
   return (
-    <div className="page-wrapper hr-payroll-page hr-my-payroll-page hr-operation-page">
+    <div className="page-wrapper hr-payroll-page hr-my-payroll-page my-hr-page">
+      <MyHrNav />
       <PageHeader
-        className="hr-operation-header"
+        className="my-hr-page-header"
         title="Mis recibos"
         subtitle="Consulta y descarga el desglose exacto publicado por nómina"
         icon={WalletCards}
       />
-      <MyHrNav />
 
-      <PayrollOnlineNotice online={online} />
+      {!online && <PayrollOnlineNotice online={false} />}
 
       {!loading && !error && (
-        <section className="hr-operation-kpis" aria-label="Resumen de recibos publicados">
+        <section className="my-hr-summary-grid" aria-label="Resumen de recibos publicados">
           <article><WalletCards size={19} aria-hidden="true" /><span>Recibos visibles</span><strong>{receipts.length}</strong><small>Según el tipo y año seleccionados</small></article>
           <article><FileText size={19} aria-hidden="true" /><span>Nómina ordinaria</span><strong>{regularReceiptCount}</strong><small>Colillas regulares publicadas</small></article>
           <article><Gift size={19} aria-hidden="true" /><span>Aguinaldo</span><strong>{bonusReceiptCount}</strong><small>Recibos de aguinaldo publicados</small></article>
         </section>
       )}
 
-      <div className="hr-payroll-filterbar hr-operation-toolbar" aria-label="Filtros de recibos">
+      <div className="hr-payroll-filterbar my-hr-toolbar" aria-label="Filtros de recibos">
         <label>
           Tipo
           <HrReactSelect

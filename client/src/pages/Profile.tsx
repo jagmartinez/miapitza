@@ -8,7 +8,6 @@ import { useCurrency } from '../hooks/useCurrency';
 import { usersAPI, reportsAPI, authAPI } from '../services/api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import Button from '../components/Button';
-import MyHrNav from '../components/hr/MyHrNav';
 import Select from '../components/Select';
 import type { SingleValue } from 'react-select';
 import {
@@ -255,28 +254,21 @@ export default function Profile() {
             {profileLoadWarning && <div className="profile-load-warning" role="status"><AlertCircle size={18} /><span>{profileLoadWarning}</span></div>}
 
             <div className="profile-workspace">
-                <aside className="profile-sidebar">
-                    <div className="profile-sidebar-heading">
-                        <span><Settings size={19} /></span>
-                        <div><strong>Administrar mi cuenta</strong><small>Identidad, accesos y seguridad</small></div>
-                    </div>
-                    <nav className="profile-nav" role="tablist" aria-label="Secciones de mi perfil">
-                        {tabs.map(t => (
-                            <button
-                                key={t.id}
-                                className={`profile-nav-item ${activeTab === t.id ? 'active' : ''}`}
-                                onClick={() => selectTab(t.id)}
-                                role="tab"
-                                aria-selected={activeTab === t.id}
-                                aria-controls="profile-active-panel"
-                            >
-                                <span><t.icon size={18} /></span>
-                                <strong>{t.label}</strong>
-                                <ChevronRight size={15} aria-hidden="true" />
-                            </button>
-                        ))}
-                    </nav>
-                </aside>
+                <nav className="profile-nav" role="tablist" aria-label="Secciones de mi perfil">
+                    {tabs.map(t => (
+                        <button
+                            key={t.id}
+                            className={`profile-nav-item ${activeTab === t.id ? 'active' : ''}`}
+                            onClick={() => selectTab(t.id)}
+                            role="tab"
+                            aria-selected={activeTab === t.id}
+                            aria-controls="profile-active-panel"
+                        >
+                            <t.icon size={17} aria-hidden="true" />
+                            <strong>{t.label}</strong>
+                        </button>
+                    ))}
+                </nav>
 
                 <main className="profile-content">
                 <div className="profile-content-card" id="profile-active-panel" role="tabpanel" aria-label={tabs.find(tab => tab.id === activeTab)?.label}>
@@ -328,7 +320,6 @@ export default function Profile() {
                     {/* EMPLOYEE SELF-SERVICE */}
                     {activeTab === 'hr' && (
                         <div className="profile-tab-fade">
-                            {hasEmployeeContext && <MyHrNav />}
                             {!hasEmployeeContext ? (
                                 <section className="profile-hr-unlinked" aria-labelledby="profile-hr-unlinked-title">
                                     <span className="profile-hr-unlinked-icon"><BriefcaseBusiness size={28} aria-hidden="true" /></span>
@@ -365,7 +356,7 @@ export default function Profile() {
                             <div className="profile-hr-context"><span><strong>{user?.employee?.status ?? 'Vinculado'}</strong> Estado laboral</span><span><strong>{fullUserData?.branch?.name || user?.branch?.name || 'Sin asignar'}</strong> Sucursal</span></div>
                             <div className="profile-hr-section-heading"><div><h4>Accesos de Mi RH</h4><p>Abre cada sección para consultar datos emitidos por el servidor o iniciar una gestión.</p></div></div>
                             <div className="profile-hr-grid">
-                                <Link to="/rh/mi-portal/horario"><CalendarClock size={22} /><span><strong>Horario</strong><small>Calendario y turnos publicados</small></span><ChevronRight size={17} /></Link>
+                                <Link to="/rh/mi-portal/horario"><CalendarClock size={22} /><span><strong>Mi horario</strong><small>Turnos publicados y acuse de lectura</small></span><ChevronRight size={17} /></Link>
                                 <Link to="/rh/marcaje"><MapPin size={22} /><span><strong>Marcajes</strong><small>Entrada, descansos y salida</small></span><ChevronRight size={17} /></Link>
                                 <Link to="/rh/mi-portal/gestion?tab=OVERTIME"><TrendingUp size={22} /><span><strong>Horas extra</strong><small>Solicitadas, aprobadas y rechazadas</small></span><ChevronRight size={17} /></Link>
                                 <Link to="/rh/mi-portal/gestion?tab=LEAVE"><Calendar size={22} /><span><strong>Vacaciones y permisos</strong><small>Crea solicitudes y revisa sus estados</small></span><ChevronRight size={17} /></Link>

@@ -24,14 +24,6 @@
     animation: slideUp 0.2s ease-out;
 }
 
-.keypad-container::before {
-    content: '';
-    position: absolute;
-    inset: 0 0 auto;
-    height: 2px;
-    background: linear-gradient(90deg, var(--dialog-accent), color-mix(in srgb, var(--dialog-accent) 22%, transparent) 70%, transparent);
-}
-
 @keyframes slideUp {
     from {
         opacity: 0;
@@ -57,17 +49,6 @@
     gap: var(--spacing-sm);
 }
 
-.keypad-heading-icon {
-    display: grid;
-    width: 36px;
-    height: 36px;
-    place-items: center;
-    border: 1px solid color-mix(in srgb, var(--dialog-accent) 42%, var(--dialog-panel-border));
-    border-radius: var(--radius-lg);
-    background: var(--dialog-accent-soft);
-    color: var(--dialog-accent);
-}
-
 .keypad-header h3 {
     font-size: var(--font-size-xl);
     font-weight: 600;
@@ -90,9 +71,9 @@
 }
 
 .keypad-close:hover {
-    background: var(--dialog-accent-soft);
-    border-color: color-mix(in srgb, var(--dialog-accent) 55%, var(--dialog-panel-border));
-    color: var(--dialog-accent);
+    background: var(--color-surface-hover);
+    border-color: var(--color-text-secondary);
+    color: var(--color-text);
 }
 
 .keypad-display {
@@ -163,12 +144,6 @@
 
 .keypad-confirm:hover {
     background: var(--color-primary-dark);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-}
-
-.keypad-confirm:active {
-    transform: translateY(0);
 }
 
 .keypad-container button:focus-visible {

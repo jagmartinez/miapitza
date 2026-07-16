@@ -98,19 +98,19 @@
   --modal-width-md: 650px;
   --modal-width-lg: 850px;
   --modal-width-xl: 950px;
-  /* Shared dialog foundation. The same blue/depth language starts at login. */
-  --dialog-overlay: rgba(2, 6, 23, 0.72);
+  /* Shared dialog foundation: flat operational surfaces; accent is reserved for actions/focus. */
+  --dialog-overlay: rgba(15, 23, 42, 0.66);
   --dialog-accent: #2563eb;
   --dialog-accent-hover: #1d4ed8;
-  --dialog-accent-soft: #e8f0ff;
+  --dialog-accent-soft: var(--color-primary-light);
   --dialog-title-color: var(--color-text);
   --dialog-panel-bg: var(--color-surface);
-  --dialog-content-bg: color-mix(in srgb, var(--color-surface) 94%, var(--color-background) 6%);
+  --dialog-content-bg: var(--color-surface);
   --dialog-field-bg: color-mix(in srgb, var(--color-background) 86%, var(--color-surface) 14%);
-  --dialog-panel-border: color-mix(in srgb, var(--color-border) 76%, var(--dialog-accent) 24%);
-  --dialog-panel-shadow: 0 34px 90px -30px rgb(2 6 23 / 0.7), 0 16px 40px -24px rgb(15 23 42 / 0.42);
-  --dialog-header-bg: linear-gradient(135deg, var(--dialog-panel-bg) 0%, color-mix(in srgb, var(--dialog-panel-bg) 90%, var(--dialog-accent) 10%) 100%);
-  --dialog-muted-bg: color-mix(in srgb, var(--dialog-content-bg) 92%, var(--dialog-accent) 8%);
+  --dialog-panel-border: var(--color-border);
+  --dialog-panel-shadow: var(--shadow-xl);
+  --dialog-header-bg: var(--dialog-panel-bg);
+  --dialog-muted-bg: var(--color-background);
   --dialog-focus-ring: color-mix(in srgb, var(--dialog-accent) 24%, transparent);
 }
 
@@ -129,13 +129,13 @@
   --dialog-overlay: rgba(2, 6, 23, 0.82);
   --dialog-accent: #3b82f6;
   --dialog-accent-hover: #60a5fa;
-  --dialog-accent-soft: #172b4d;
-  --dialog-panel-bg: #111c30;
-  --dialog-content-bg: #0d1728;
-  --dialog-field-bg: #0a1322;
-  --dialog-panel-border: #2b3d59;
-  --dialog-header-bg: linear-gradient(135deg, #111c30 0%, #152747 100%);
-  --dialog-muted-bg: #0b1628;
+  --dialog-accent-soft: var(--color-primary-light);
+  --dialog-panel-bg: var(--color-surface);
+  --dialog-content-bg: var(--color-surface);
+  --dialog-field-bg: var(--color-background);
+  --dialog-panel-border: var(--color-border);
+  --dialog-header-bg: var(--color-surface);
+  --dialog-muted-bg: var(--color-background);
   --dialog-focus-ring: rgb(59 130 246 / 0.24);
 
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
@@ -326,7 +326,7 @@ a {
 .modal-tabs {
   display: flex;
   padding: var(--spacing-md) var(--spacing-xl);
-  background: color-mix(in srgb, var(--dialog-muted-bg) 88%, var(--dialog-panel-bg) 12%);
+  background: var(--dialog-muted-bg);
   border-bottom: 1px solid var(--dialog-panel-border);
   gap: var(--spacing-sm);
   position: sticky;
@@ -383,7 +383,7 @@ button.modal-tab {
   background: var(--dialog-accent);
   color: white;
   border-color: var(--dialog-accent);
-  box-shadow: 0 8px 18px -14px color-mix(in srgb, var(--dialog-accent) 72%, transparent);
+  box-shadow: none;
 }
 
 .modal-tab svg {
@@ -441,12 +441,9 @@ button.modal-tab {
 }
 
 .modal-section-header svg {
-  color: var(--dialog-accent);
-  padding: 6px;
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-md);
-  background: var(--dialog-accent-soft);
+  color: var(--color-text-secondary);
+  width: 20px;
+  height: 20px;
 }
 
 .modal-form-row {

@@ -12,7 +12,7 @@
     max-width: 1500px;
 }
 
-.hr-time-clock-page.hr-operation-page { max-width: 1700px; }
+.hr-time-clock-page.my-hr-page { max-width: 1700px; }
 
 .hr-time-clock-workspace {
     display: grid;

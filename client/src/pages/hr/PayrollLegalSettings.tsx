@@ -229,7 +229,7 @@ export default function PayrollLegalSettings() {
         actions={<div className="hr-payroll-header-actions"><Button variant="ghost" onClick={() => void loadRules(selectedRuleId)} disabled={loading}><RefreshCw size={16} /> Actualizar</Button><Button onClick={() => { setCloneSource(null); setCreateOpen(true); }} disabled={!online || !companyTaxProfile?.ready}><Plus size={17} /> Nueva versión</Button></div>}
       />
 
-      <PayrollOnlineNotice online={online} />
+      {!online && <PayrollOnlineNotice online={online} />}
 
       {loading && <LoadingSpinner text="Cargando configuración legal…" />}
       {!loading && error && <div className="state-placeholder" role="alert"><AlertTriangle size={44} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadRules()}>Reintentar</Button></div>}
@@ -254,7 +254,7 @@ export default function PayrollLegalSettings() {
           <div className="hr-legal-readonly-table-wrap hr-admin-table-wrap"><table className="hr-admin-table inventory-table"><thead><tr><th scope="col">Versión</th><th scope="col">Vigencia</th><th scope="col">Estado</th><th scope="col">Configuración</th><th scope="col" className="hr-admin-actions-col">Acciones</th></tr></thead><tbody>{rules.map((rule) => {
             const isSelected = String(rule.id) === selectedRuleId;
             return <tr key={rule.id} className={isSelected ? 'is-selected' : undefined} aria-current={isSelected ? 'true' : undefined}>
-              <th scope="row"><strong>{rule.name}</strong><small>Versión {rule.version}</small></th>
+              <th scope="row" className="hr-legal-version-cell"><span className="hr-legal-version-number"><small>Versión</small><strong>{rule.version}</strong></span><strong className="hr-legal-version-name">{rule.name}</strong></th>
               <td><div className="hr-legal-date-range"><CalendarDays size={16} aria-hidden="true" /><div><strong>{formatLegalDate(rule.effectiveFrom)}</strong><small>Hasta {formatLegalDate(rule.effectiveTo).toLocaleLowerCase()}</small></div></div></td>
               <td><PayrollStatusPill status={rule.status} /></td>
               <td><strong>{rule.configurationSummary ? 'Configurada' : 'Pendiente'}</strong><small>{rule.configurationSummary || 'Sin revisión validada'}</small></td>

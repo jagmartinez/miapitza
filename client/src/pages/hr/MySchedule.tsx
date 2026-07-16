@@ -12,6 +12,7 @@ import { getScheduleErrorMessage, scheduleClient } from '../../components/hr/sch
 import { useAppToast } from '../../context/ToastContext';
 import type { HrHoliday, HrWeeklySchedule } from '../../types/hr-schedule';
 import './schedule.css';
+import './self-service.css';
 
 const weekFormatter = new Intl.DateTimeFormat('es-NI', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
@@ -80,11 +81,11 @@ export default function MySchedule() {
     };
 
     return (
-        <div className="page-wrapper hr-my-schedule-page">
-            <PageHeader title="Mi horario" subtitle="Consulta tus turnos publicados y confirma su recepción" icon={CalendarCheck} />
+        <div className="page-wrapper hr-my-schedule-page my-hr-page">
             <MyHrNav />
+            <PageHeader className="my-hr-page-header" title="Mi horario" subtitle="Consulta tus turnos publicados y confirma su recepción" icon={CalendarCheck} />
 
-            <section className="hr-week-navigation" aria-label="Navegación semanal">
+            <section className="hr-week-navigation my-hr-toolbar" aria-label="Navegación semanal">
                 <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={acknowledgingId !== null} aria-label="Semana anterior"><ChevronLeft size={18} aria-hidden="true" /> Anterior</Button>
                 <div><span>Semana</span><strong>{weekLabel(weekStart)}</strong></div>
                 <Button variant="ghost" onClick={() => setWeekStart(currentWeek)} disabled={weekStart === currentWeek || acknowledgingId !== null}>Hoy</Button>
@@ -95,6 +96,14 @@ export default function MySchedule() {
                 <div className="hr-schedule-alert info" role="status">
                     Estás consultando una copia guardada sin conexión. La confirmación de recepción se habilitará al recuperar conexión.
                 </div>
+            )}
+
+            {!loading && !error && (
+                <section className="my-hr-summary-grid" aria-label="Resumen de la semana consultada">
+                    <article><CalendarCheck size={19} aria-hidden="true" /><span>Versiones publicadas</span><strong>{published.length}</strong><small>{weekLabel(weekStart)}</small></article>
+                    <article className={pendingAcknowledgements.length > 0 ? 'is-warning' : 'is-success'}><CheckCheck size={19} aria-hidden="true" /><span>Por confirmar</span><strong>{pendingAcknowledgements.length}</strong><small>Acuses de recepción pendientes</small></article>
+                    <article><RefreshCw size={19} aria-hidden="true" /><span>Estado de la semana</span><strong>{hasShifts ? 'Con turnos' : 'Sin turnos'}</strong><small>{fromCache ? 'Copia offline' : 'Datos actualizados'}</small></article>
+                </section>
             )}
 
             {!loading && !error && published.length > 0 && (

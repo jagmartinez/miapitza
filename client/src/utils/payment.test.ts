@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
     calculateTipAmount,
     calculateTotalWithTip,
+    canUsePaymentMethodInMixed,
     formatMoneyInput,
     formatMoneyAmount,
+    hasUniqueNormalizedPayerNames,
+    normalizePayerName,
     parseMoneyInput,
     splitTotalEvenly,
     summarizePaymentAllocation,
@@ -54,5 +57,20 @@ describe('payment utils', () => {
             differenceCents: 1,
             exact: false,
         });
+    });
+
+    it('includes active cash in mixed payment only when the cash shift is usable', () => {
+        expect(canUsePaymentMethodInMixed('CASH', true)).toBe(true);
+        expect(canUsePaymentMethodInMixed('CASH', false)).toBe(false);
+        expect(canUsePaymentMethodInMixed('CARD', false)).toBe(true);
+        expect(canUsePaymentMethodInMixed('BANK_TRANSFER', false)).toBe(true);
+        expect(canUsePaymentMethodInMixed('OTHER', true)).toBe(false);
+    });
+
+    it('normalizes payer names and rejects case-insensitive collisions', () => {
+        expect(normalizePayerName('  Ana  ')).toBe('Ana');
+        expect(hasUniqueNormalizedPayerNames([' Ana ', 'Beto'])).toBe(true);
+        expect(hasUniqueNormalizedPayerNames([' Ana ', 'ana'])).toBe(false);
+        expect(hasUniqueNormalizedPayerNames(['Ana', '   '])).toBe(false);
     });
 });

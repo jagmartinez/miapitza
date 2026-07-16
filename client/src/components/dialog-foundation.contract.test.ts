@@ -43,16 +43,23 @@ describe('shared dialog foundation', () => {
     expect(payment).not.toContain('ref={dialogRef}\n                className={`payment-dialog');
   });
 
-  it('uses the same dark panel and blue accent tokens across shared and specialized dialogs', () => {
+  it('uses the same flat operational surfaces across shared and specialized dialogs', () => {
     const tokens = read('../index.css');
     const sharedModal = read('./Modal.css');
     const payment = read('./PaymentModal.css');
+    const sidebar = read('./Sidebar.css');
+    const tableOrders = read('./TableOrdersModal.css');
 
-    expect(tokens).toContain('--dialog-panel-bg: #111c30');
-    expect(tokens).toContain('--dialog-content-bg: #0d1728');
+    expect(tokens).toContain('--dialog-panel-bg: var(--color-surface)');
+    expect(tokens).toContain('--dialog-content-bg: var(--color-surface)');
+    expect(tokens).toContain('--dialog-header-bg: var(--color-surface)');
     expect(tokens).toContain('--dialog-accent: #3b82f6');
     expect(sharedModal).toContain('var(--dialog-panel-bg');
     expect(payment).toContain('var(--dialog-panel-bg');
+    for (const stylesheet of [sharedModal, payment, sidebar, tableOrders]) {
+      expect(stylesheet).not.toContain('linear-gradient');
+      expect(stylesheet).not.toContain('radial-gradient');
+    }
   });
 
   it('routes POS dialogs through the shared accessible modal and react-select contracts', () => {

@@ -1,0 +1,157 @@
+.my-hr-page {
+  display: flex;
+  width: 100%;
+  max-width: 1700px;
+  min-width: 0;
+  margin-inline: auto;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.my-hr-page > .my-hr-nav { margin-bottom: calc(var(--spacing-sm) * -1); }
+.my-hr-page > .my-hr-page-header { margin-bottom: 0; }
+
+.my-hr-page-header .header-subtitle {
+  max-width: 720px;
+  line-height: 1.5;
+}
+
+.my-hr-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.my-hr-summary-grid > :is(article, div) {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  gap: 3px 11px;
+  min-width: 0;
+  min-height: 78px;
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.my-hr-summary-grid > :is(article, div) > svg {
+  grid-row: 1 / span 2;
+  align-self: center;
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 11%, var(--color-background));
+  color: var(--color-primary);
+}
+
+.my-hr-summary-grid > :is(article, div) > span {
+  align-self: end;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 750;
+}
+
+.my-hr-summary-grid > :is(article, div) > strong {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  align-self: center;
+  max-width: 170px;
+  color: var(--color-text);
+  font-size: clamp(1.1rem, 1.7vw, 1.5rem);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.my-hr-summary-grid > :is(article, div) > small {
+  grid-column: 2;
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.my-hr-summary-grid > .is-warning { border-color: color-mix(in srgb, var(--color-warning) 42%, var(--color-border)); }
+.my-hr-summary-grid > .is-danger { border-color: color-mix(in srgb, var(--color-danger) 40%, var(--color-border)); }
+.my-hr-summary-grid > .is-success { border-color: color-mix(in srgb, var(--color-success) 34%, var(--color-border)); }
+.my-hr-summary-grid > .is-warning > svg { color: var(--color-warning); }
+.my-hr-summary-grid > .is-danger > svg { color: var(--color-danger); }
+.my-hr-summary-grid > .is-success > svg { color: var(--color-success); }
+
+.my-hr-toolbar {
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: none;
+}
+
+.my-hr-tabs {
+  display: flex;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.4rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.my-hr-tabs button {
+  display: inline-flex;
+  flex: 1 0 max-content;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 40px;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.my-hr-tabs button:hover { background: var(--color-background); color: var(--color-text); }
+.my-hr-tabs button[aria-selected='true'] { background: var(--color-neutral-700); color: white; }
+.my-hr-tabs button > span { min-width: 22px; padding: 2px 7px; border-radius: var(--radius-full); background: var(--color-background); color: var(--color-text); font-size: 11px; }
+
+.my-hr-tab-panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.my-hr-page :is(.hr-online-notice.offline, .hr-benefits-online.offline, .hr-payroll-online.offline) {
+  margin: 0;
+}
+
+.my-hr-panel {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.my-hr-page button:focus-visible,
+.my-hr-page a:focus-visible,
+.my-hr-page [role='tabpanel']:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 1024px) {
+  .my-hr-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 680px) {
+  .my-hr-page { gap: var(--spacing-md); }
+  .my-hr-summary-grid { grid-template-columns: 1fr; }
+  .my-hr-page-header .page-header-actions,
+  .my-hr-page-header .page-header-actions > *,
+  .my-hr-page-header .btn { width: 100%; }
+}

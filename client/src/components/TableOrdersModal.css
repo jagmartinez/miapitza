@@ -26,15 +26,6 @@
     animation: slideInRight 0.3s ease-out;
 }
 
-.orders-modal::before {
-    content: '';
-    position: absolute;
-    inset: 0 0 auto;
-    z-index: 3;
-    height: 2px;
-    background: linear-gradient(90deg, var(--dialog-accent), color-mix(in srgb, var(--dialog-accent) 22%, transparent) 70%, transparent);
-}
-
 @keyframes slideInRight {
     from {
         transform: translateX(100%);
@@ -82,9 +73,9 @@
 }
 
 .close-btn-orders:hover {
-    background: var(--dialog-accent-soft);
-    border-color: color-mix(in srgb, var(--dialog-accent) 55%, var(--dialog-panel-border));
-    color: var(--dialog-accent);
+    background: var(--color-surface-hover);
+    border-color: var(--color-text-secondary);
+    color: var(--color-text);
 }
 
 .close-btn-orders:focus-visible {
@@ -394,8 +385,6 @@
 
 .btn-modal-primary:hover {
     background: var(--color-primary-dark);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-lg);
 }
 
 /* Scrollbar */
@@ -596,7 +585,7 @@
     gap: var(--spacing-sm);
     padding: var(--spacing-md) var(--spacing-xl);
     border-bottom: 1px solid var(--color-border);
-    background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface));
+    background: var(--color-surface);
 }
 
 .table-command-strip button,
@@ -676,9 +665,7 @@
 /* ===== Table command center redesign ===== */
 .orders-modal {
     max-width: 620px;
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 4%, transparent), transparent 190px),
-        var(--dialog-panel-bg, var(--color-surface));
+    background: var(--dialog-panel-bg, var(--color-surface));
 }
 
 .orders-modal-header {
@@ -693,22 +680,10 @@
     gap: 12px;
 }
 
-.table-detail-icon {
-    width: 44px;
-    height: 44px;
-    display: grid;
-    flex: 0 0 auto;
-    place-items: center;
-    border: 1px solid color-mix(in srgb, var(--color-primary) 38%, var(--color-border));
-    border-radius: 13px;
-    background: color-mix(in srgb, var(--color-primary) 13%, var(--color-background));
-    color: var(--color-primary);
-}
-
 .table-detail-eyebrow {
     display: block;
     margin-bottom: 2px;
-    color: var(--color-primary);
+    color: var(--color-text-secondary);
     font-size: 10px;
     font-weight: 800;
     letter-spacing: .09em;
@@ -782,8 +757,16 @@
 }
 
 .modal-tab-content-orders {
+    width: 100%;
+    min-width: 0;
     padding: 16px 22px 22px;
-    background: color-mix(in srgb, var(--color-background) 76%, var(--color-surface));
+    background: var(--color-surface);
+}
+
+.orders-list,
+.no-orders-message {
+    width: 100%;
+    min-width: 0;
 }
 
 .order-card-modal {
@@ -791,12 +774,12 @@
     padding: 16px;
     border-width: 1px;
     border-radius: 14px;
-    box-shadow: 0 8px 24px rgb(2 6 23 / 10%);
+    box-shadow: none;
 }
 
 .order-card-modal:hover {
     transform: none;
-    box-shadow: 0 10px 28px rgb(2 6 23 / 16%);
+    box-shadow: none;
 }
 
 .order-waiter-row {

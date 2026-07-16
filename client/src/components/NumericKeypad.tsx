@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Hash, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import './NumericKeypad.css';
 
@@ -67,7 +67,6 @@ export default function NumericKeypad({ onConfirm, onClose, initialValue = 1, cl
             >
                 <div className="keypad-header">
                     <div className="keypad-heading">
-                        <span className="keypad-heading-icon" aria-hidden="true"><Hash size={19} /></span>
                         <h3 id={titleId}>Cantidad</h3>
                     </div>
                     <button type="button" onClick={onClose} className="keypad-close" aria-label="Cerrar selector de cantidad">

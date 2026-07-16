@@ -114,10 +114,6 @@ export default function AttendanceReview() {
                 label: `#${event.id} · ${event.user?.name ?? `Usuario ${event.userId}`} · ${ATTENDANCE_ACTION_LABELS[event.action]} · ${displayDate(event.occurredAt)}`,
             })),
     ], [events]);
-    const pageReviewRequired = events.filter((event) => event.decision === 'REVIEW_REQUIRED' && !event.reviewedAt).length;
-    const pageAccepted = events.filter((event) => event.decision === 'ACCEPTED').length;
-    const pageRejected = events.filter((event) => event.decision === 'REJECTED').length;
-
     const openReview = (event: HrAttendanceEvent) => {
         if (event.decision !== 'REVIEW_REQUIRED' || event.reviewedAt) return;
         setSelected(event);
@@ -193,20 +189,12 @@ export default function AttendanceReview() {
                 <div className="filter-field"><Select<Option> label="Resultado" options={DECISION_OPTIONS} value={DECISION_OPTIONS.find((option) => option.value === decision)} onChange={(option: SingleValue<Option>) => setDecision(option?.value ?? '')} /></div>
             </div>
 
-            {!loading && !error && <section className="hr-admin-kpis hr-operation-kpis" aria-label="Resumen de eventos filtrados">
-                <article><ClipboardCheck size={19} aria-hidden="true" /><span>Eventos encontrados</span><strong>{total}</strong><small>En el rango y alcance actual</small></article>
-                <article className={pageReviewRequired > 0 ? 'is-warning' : undefined}><AlertTriangle size={19} aria-hidden="true" /><span>Requieren decisión</span><strong>{pageReviewRequired}</strong><small>Visibles en esta página</small></article>
-                <article className="is-success"><CheckCircle2 size={19} aria-hidden="true" /><span>Aceptados</span><strong>{pageAccepted}</strong><small>Visibles en esta página</small></article>
-                <article className={pageRejected > 0 ? 'is-danger' : undefined}><XCircle size={19} aria-hidden="true" /><span>Rechazados</span><strong>{pageRejected}</strong><small>Contraflujos visibles</small></article>
-            </section>}
-
             {loading && <LoadingSpinner text="Cargando eventos…" />}
             {!loading && error && <div className="state-placeholder" role="alert"><AlertTriangle size={44} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadEvents()}><RefreshCw size={16} /> Reintentar</Button></div>}
             {!loading && !error && (
-                <section className="pr-table-card" aria-labelledby="attendance-review-table-title">
+                <section className="pr-table-card" aria-label="Eventos de asistencia">
                     <div className="hr-admin-table-wrap">
-                        <table className="hr-admin-table inventory-table">
-                            <caption id="attendance-review-table-title">Eventos de asistencia</caption>
+                        <table className="hr-admin-table inventory-table" aria-label="Eventos de asistencia">
                             <thead><tr><th scope="col">Empleado</th><th scope="col">Evento</th><th scope="col">Sucursal</th><th scope="col">Fecha y hora</th><th scope="col">Resultado</th><th scope="col">Evidencia</th><th scope="col" className="hr-admin-actions-col">Acción</th></tr></thead>
                             <tbody>
                                 {events.length === 0 ? <tr><td colSpan={7}><div className="hr-admin-empty"><ClipboardCheck size={34} /><strong>No hay eventos para los filtros seleccionados</strong><span>Amplía el rango o cambia los filtros para consultar otros marcajes.</span></div></td></tr> : events.map((attendanceEvent) => (

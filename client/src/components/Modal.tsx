@@ -1,6 +1,6 @@
 import { ReactNode, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { LayoutPanelTop, PanelRightOpen, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import './Modal.css';
 
@@ -38,8 +38,6 @@ export default function Modal({
         ? `modal-sidebar modal-${size}`
         : `modal-container modal-${size}`;
 
-    const HeadingIcon = variant === 'sidebar' ? PanelRightOpen : LayoutPanelTop;
-
     return createPortal(
         <div
             ref={containerRef}
@@ -59,7 +57,6 @@ export default function Modal({
             >
                 <div className="modal-header">
                     <div className="modal-heading">
-                        <span className="modal-heading-icon" aria-hidden="true"><HeadingIcon size={20} /></span>
                         <h2 id={titleId}>{title}</h2>
                     </div>
                     <button type="button" className="modal-close" onClick={onClose} aria-label={`Cerrar ${title}`}>

@@ -13,7 +13,7 @@ import { attendanceClient, getAttendanceErrorMessage } from '../../components/hr
 import { useAppToast } from '../../context/ToastContext';
 import type { HrAttendancePolicy, HrAttendancePunchResult, HrBiometricProfile, HrTodayAttendance } from '../../types/hr-attendance';
 import './attendance.css';
-import './admin-tables.css';
+import './self-service.css';
 
 export default function TimeClock() {
     const navigate = useNavigate();
@@ -58,16 +58,16 @@ export default function TimeClock() {
     const nextAction = today?.availableActions[0];
 
     return (
-        <div className="page-wrapper hr-time-clock-page hr-operation-page">
-            <PageHeader className="hr-operation-header" title="Marcaje" subtitle="Registra tu jornada con la hora y las validaciones oficiales del servidor" icon={Clock3} />
+        <div className="page-wrapper hr-time-clock-page my-hr-page">
             <MyHrNav />
-            <OnlineOnlyNotice online={online} />
+            <PageHeader className="my-hr-page-header" title="Marcaje" subtitle="Registra tu jornada con la hora y las validaciones oficiales del servidor" icon={Clock3} />
+            {!online && <OnlineOnlyNotice online={false} />}
             {loading && <LoadingSpinner text="Preparando marcaje…" />}
             {!loading && error && <div className="state-placeholder" role="alert"><Clock3 size={44} aria-hidden="true" /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void load()}><RefreshCw size={16} /> Reintentar</Button></div>}
 
             {!loading && !error && policy && today && (
                 <>
-                    <section className="hr-operation-kpis" aria-label="Estado de tu marcaje de hoy">
+                    <section className="my-hr-summary-grid" aria-label="Estado de tu marcaje de hoy">
                         <article><CalendarClock size={19} aria-hidden="true" /><span>Turno de hoy</span><strong>{today.scheduledShift ? 'Programado' : 'Sin publicar'}</strong><small>{today.scheduledShift?.branch?.name ?? 'La política se validará al marcar'}</small></article>
                         <article><Clock3 size={19} aria-hidden="true" /><span>Siguiente acción</span><strong>{nextAction ? ATTENDANCE_ACTION_LABELS[nextAction] : 'Sin acción disponible'}</strong><small>{today.availableActions.length > 0 ? `${today.availableActions.length} opción${today.availableActions.length === 1 ? '' : 'es'} habilitada${today.availableActions.length === 1 ? '' : 's'}` : 'El servidor no habilita un nuevo marcaje'}</small></article>
                         <article className={biometricBlocked ? 'is-warning' : 'is-success'}><Fingerprint size={19} aria-hidden="true" /><span>Validación biométrica</span><strong>{policy.requireBiometric ? (biometricBlocked ? 'Requiere atención' : 'Lista') : 'No requerida'}</strong><small>{today.punches.length} marcaje{today.punches.length === 1 ? '' : 's'} registrado{today.punches.length === 1 ? '' : 's'}</small></article>

@@ -13,22 +13,22 @@ const biometrics = read('../../pages/hr/Biometrics.tsx');
 const profile = read('../../pages/Profile.tsx');
 const navigation = read('./MyHrNav.tsx');
 const layout = read('../Layout.tsx');
+const selfServiceCss = read('../../pages/hr/self-service.css');
 
 describe('employee self-service UX contract', () => {
-  it('keeps contextual navigation on every personal HR section', () => {
-    [landing, schedule, workforce, payroll, benefits, timeClock, biometrics, profile].forEach((source) => {
+  it('uses Profile cards as the launcher and only a back link inside each destination', () => {
+    [schedule, workforce, payroll, benefits, timeClock, biometrics].forEach((source) => {
       expect(source).toContain('<MyHrNav />');
+      expect(source).toContain('my-hr-page');
+      expect(source).toContain("import './self-service.css'");
+      expect(source).not.toContain("import './admin-tables.css'");
     });
-    [
-      '/profile?tab=hr',
-      '/rh/mi-portal/horario',
-      '/rh/mi-portal/gestion',
-      '/rh/mi-portal/nomina',
-      '/rh/mi-portal/prestaciones',
-      '/rh/marcaje',
-      '/rh/biometria',
-    ].forEach((route) => expect(navigation).toContain(route));
-    expect(navigation).toContain('aria-label="Secciones de mi portal RH"');
+    expect(profile).not.toContain('<MyHrNav />');
+    expect(navigation).toContain('to="/profile?tab=hr"');
+    expect(navigation).toContain('Mis accesos de RH');
+    expect(navigation).not.toContain("const ITEMS");
+    expect(navigation).toContain('aria-label="Volver a Mis accesos de RH"');
+    expect(selfServiceCss).toContain('.my-hr-summary-grid');
   });
 
   it('builds the portal summary from scoped server resources and tolerates partial failures', () => {
@@ -83,5 +83,16 @@ describe('employee self-service UX contract', () => {
     expect(workforce).toContain('Rechazadas o canceladas');
     expect(workforce).toContain('Promise.allSettled');
     expect(workforce).toContain('partialWarning');
+  });
+
+  it('hides success-only connectivity banners but preserves explicit offline states', () => {
+    expect(workforce).toContain('!online && <OnlineOnlyNotice online={false} />');
+    expect(timeClock).toContain('!online && <OnlineOnlyNotice online={false} />');
+    expect(payroll).toContain('!online && <PayrollOnlineNotice online={false} />');
+    expect(benefits).toContain('!online && <BenefitsOnlineNotice online={false} />');
+    expect(biometrics).toContain('!online && <OnlineOnlyNotice online={false} />');
+    [workforce, timeClock, payroll, benefits].forEach((source) => {
+      expect(source).not.toContain('Notice online={online}');
+    });
   });
 });

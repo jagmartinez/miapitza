@@ -33,8 +33,14 @@
 
 .hr-legal-version-list { gap: 0; padding: 0; overflow: hidden; }
 .hr-legal-version-list .hr-legal-readonly-table-wrap table { min-width: 920px; margin: 0; border: 0; }
+.hr-legal-version-list thead th { font-size: 13px; font-weight: 850; letter-spacing: .045em; }
 .hr-legal-version-list tbody tr.is-selected { background: var(--legal-accent-soft); box-shadow: inset 3px 0 var(--legal-accent); }
 .hr-legal-version-list td small { display: block; max-width: 420px; margin-top: 3px; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+.hr-legal-version-cell { min-width: 210px; }
+.hr-legal-version-number { display: flex; align-items: baseline; gap: 8px; margin-bottom: 5px; }
+.hr-legal-version-number small { color: var(--color-text-secondary); font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.hr-legal-version-number strong { color: var(--legal-accent); font-size: 21px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+.hr-legal-version-name { display: block; max-width: 260px; overflow-wrap: anywhere; color: var(--color-text); font-size: var(--font-size-base); line-height: 1.3; }
 .hr-legal-version-table-toolbar {
   display: flex;
   align-items: center;
@@ -340,6 +346,10 @@
 .hr-legal-form :is(input:not([type='checkbox']):not([type='radio']), textarea):focus { border-color: var(--legal-accent); box-shadow: 0 0 0 3px var(--legal-accent-soft); }
 .hr-legal-form input[readonly] { border-style: dashed; background: var(--color-background); color: var(--color-text-secondary); }
 .hr-legal-form input:invalid:not(:focus):not(:placeholder-shown) { border-color: color-mix(in srgb, var(--color-danger, #b91c1c) 55%, var(--color-border)); }
+.hr-legal-settings-page input[type='number'],
+.hr-legal-settings-page .hr-money-input { text-align: right; font-variant-numeric: tabular-nums; }
+.hr-legal-settings-page .hr-legal-summary-grid strong,
+.hr-legal-settings-page .hr-legal-summary-grid small { text-align: right; }
 
 .hr-legal-form-section {
   display: grid;
@@ -565,6 +575,8 @@
 .hr-legal-readonly-kpis > div { display: grid; gap: 3px; padding: var(--spacing-md); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); }
 .hr-legal-readonly-kpis dt { color: var(--color-text-secondary); font-size: 11px; font-weight: 800; text-transform: uppercase; }
 .hr-legal-readonly-kpis dd { margin: 0; font-size: var(--font-size-lg); font-weight: 800; }
+.hr-legal-readonly-kpis dd,
+.hr-legal-readonly-operational dd { text-align: right; font-variant-numeric: tabular-nums; }
 .hr-legal-readonly-kpis small { color: var(--color-text-secondary); line-height: 1.4; }
 .hr-legal-readonly-obligations { display: grid; grid-template-columns: 1.5fr 1fr; gap: var(--spacing-md); }
 .hr-legal-readonly-obligations article { padding: var(--spacing-lg); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); }
@@ -576,6 +588,8 @@
 .hr-legal-readonly-table-wrap table { width: 100%; min-width: 760px; border-collapse: collapse; }
 .hr-legal-readonly-table-wrap th, .hr-legal-readonly-table-wrap td { padding: 11px 12px; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; }
 .hr-legal-readonly-table-wrap th { color: var(--color-text-secondary); background: var(--color-background); font-size: 11px; text-transform: uppercase; }
+.hr-legal-ir-readonly-table th:nth-child(n+2),
+.hr-legal-ir-readonly-table td:nth-child(n+2) { text-align: right; font-variant-numeric: tabular-nums; }
 .hr-legal-readonly-table-wrap td small { display: block; margin-top: 2px; color: var(--color-text-secondary); }
 .hr-legal-readonly-operational { margin: var(--spacing-xl); padding: var(--spacing-md); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); }
 .hr-legal-readonly-operational summary { cursor: pointer; font-weight: 800; }

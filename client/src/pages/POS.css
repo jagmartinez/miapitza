@@ -852,10 +852,10 @@
     width: 80px;
     height: 80px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+    background: var(--color-warning);
     color: white;
     margin-bottom: var(--spacing-lg);
-    box-shadow: 0 10px 25px -5px rgba(251, 191, 36, 0.4);
+    box-shadow: none;
 }
 
 .shift-warning-title {
@@ -905,13 +905,12 @@
 }
 
 .shift-warning-btn.primary {
-    background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+    background: var(--color-primary);
     color: white;
 }
 
 .shift-warning-btn.primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px -5px rgba(37, 99, 235, 0.4);
+    background: var(--color-primary-dark);
 }
 
 .shift-warning-btn.secondary {
@@ -1189,7 +1188,7 @@
 }
 
 .pos-modifier-add-btn {
-    background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+    background: var(--color-primary);
     color: #fff;
     border: none;
     border-radius: var(--radius-md);

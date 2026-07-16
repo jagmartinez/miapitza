@@ -27,4 +27,11 @@ describe('Biometrics guided UX contract', () => {
         expect(source).toContain("error?.includes('expiró')");
         expect(source).toContain('Revocar biometría');
     });
+
+    it('uses the Mi RH shell and blocks sensitive mutations while offline', () => {
+        expect(source).toContain('my-hr-page');
+        expect(source).toContain('!online && <OnlineOnlyNotice online={false} />');
+        expect(source).toContain('disabled={!online || saving || !faceImage || !consent}');
+        expect(source).toContain('Conéctate para revocar el consentimiento biométrico');
+    });
 });

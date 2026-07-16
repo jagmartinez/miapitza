@@ -24,9 +24,12 @@ import { isCashPaymentMethodType } from '../utils/paymentAccess';
 import { newIdempotencyKey } from '../utils/idempotency';
 import {
     centsToMoney,
+    canUsePaymentMethodInMixed,
     formatMoneyAmount,
     formatMoneyInput,
+    hasUniqueNormalizedPayerNames,
     moneyToCents,
+    normalizePayerName,
     parseMoneyInput,
     splitTotalEvenly,
     summarizePaymentAllocation,
@@ -132,7 +135,7 @@ export default function PaymentModal({
     const [mixedAttempted, setMixedAttempted] = useState(false);
     const mixedKeysRef = useRef<Record<string, string>>({});
 
-    const [splitStrategy, setSplitStrategy] = useState<SplitStrategy>('evenly');
+    const [splitStrategy, setSplitStrategy] = useState<SplitStrategy>('by-items');
     const [splitLegs, setSplitLegs] = useState<SplitLeg[]>([]);
     const [itemUnitOwners, setItemUnitOwners] = useState<Record<number, Array<number | null>>>({});
     const [splitSucceeded, setSplitSucceeded] = useState<string[]>([]);
@@ -140,6 +143,7 @@ export default function PaymentModal({
     const [previewLoading, setPreviewLoading] = useState(false);
     const splitKeysRef = useRef<Record<string, string>>({});
     const previewSequenceRef = useRef(0);
+    const lastItemPreviewSignatureRef = useRef('');
 
     const close = useCallback(() => {
         if (!loading) onClose();
@@ -166,9 +170,9 @@ export default function PaymentModal({
     const mixedMethodOptions = useMemo(
         () => usableMethodOptions.filter((option) => {
             const type = methodById.get(option.value)?.type;
-            return type === 'CASH' || type === 'CARD' || type === 'BANK_TRANSFER';
+            return canUsePaymentMethodInMixed(type, hasUsableCashShift);
         }),
-        [methodById, usableMethodOptions],
+        [hasUsableCashShift, methodById, usableMethodOptions],
     );
 
     const orderItems = useMemo(() => order?.items || [], [order]);
@@ -218,7 +222,7 @@ export default function PaymentModal({
         setMixedLegs([]);
         setMixedSucceeded([]);
         setMixedAttempted(false);
-        setSplitStrategy('evenly');
+        setSplitStrategy('by-items');
         setSplitLegs([]);
         setItemUnitOwners({});
         setSplitSucceeded([]);
@@ -227,6 +231,7 @@ export default function PaymentModal({
         singleKeyRef.current = newIdempotencyKey();
         mixedKeysRef.current = {};
         splitKeysRef.current = {};
+        lastItemPreviewSignatureRef.current = '';
     }, [initialMode, isOpen, orderTotal]);
 
     useEffect(() => {
@@ -290,8 +295,14 @@ export default function PaymentModal({
         }
         if (mode === 'split' && splitLegs.length === 0 && usableMethodOptions.length > 0) {
             setSplitLegs(buildSplitLegs(2));
+            if (splitStrategy === 'by-items') {
+                lastItemPreviewSignatureRef.current = '';
+                setItemUnitOwners(Object.fromEntries(
+                    orderItems.map((item) => [item.id, Array<number | null>(item.quantity).fill(null)]),
+                ));
+            }
         }
-    }, [buildMixedLegs, buildSplitLegs, mixedLegs.length, mixedMethodOptions.length, mode, splitLegs.length, usableMethodOptions.length]);
+    }, [buildMixedLegs, buildSplitLegs, mixedLegs.length, mixedMethodOptions.length, mode, orderItems, splitLegs.length, splitStrategy, usableMethodOptions.length]);
 
     const singleMethod = singleMethodId ? methodById.get(singleMethodId) : undefined;
     const singleIsCash = isCash(singleMethodId);
@@ -317,13 +328,19 @@ export default function PaymentModal({
         && mixedCashValid
         && mixedAllocation.exact;
 
+    const splitPayerNamesUnique = useMemo(
+        () => hasUniqueNormalizedPayerNames(splitLegs.map((leg) => leg.payerName)),
+        [splitLegs],
+    );
+
     const initializeEmptyAssignments = useCallback(() => {
+        lastItemPreviewSignatureRef.current = '';
         setItemUnitOwners(Object.fromEntries(
             orderItems.map((item) => [item.id, Array<number | null>(item.quantity).fill(null)]),
         ));
     }, [orderItems]);
 
-    const itemAssignmentsComplete = useMemo(() => splitStrategy !== 'by-items' || (
+    const unitAssignmentsComplete = useMemo(() => (
         orderItems.length > 0
         && orderItems.every((item) => {
             const owners = itemUnitOwners[item.id] || [];
@@ -331,9 +348,12 @@ export default function PaymentModal({
                 && owners.every((owner) => owner !== null && owner >= 0 && owner < splitLegs.length);
         })
         && splitLegs.every((_, payerIndex) => orderItems.some((item) => itemUnitOwners[item.id]?.includes(payerIndex)))
-    ), [itemUnitOwners, orderItems, splitLegs, splitStrategy]);
+    ), [itemUnitOwners, orderItems, splitLegs]);
+    const itemAssignmentsComplete = splitStrategy !== 'by-items'
+        || (unitAssignmentsComplete && splitPayerNamesUnique);
 
     const assignItemUnit = useCallback((itemId: number, unitIndex: number, payerIndex: number) => {
+        lastItemPreviewSignatureRef.current = '';
         setItemUnitOwners((current) => {
             const item = orderItems.find((candidate) => candidate.id === itemId);
             if (!item) return current;
@@ -357,7 +377,7 @@ export default function PaymentModal({
                 amounts = response.data.data.splits.map((split: { amount: number }) => Number(split.amount));
             } else if (splitStrategy === 'by-items') {
                 const assignments = splitLegs.map((leg, payerIndex) => ({
-                    personName: leg.payerName,
+                    personName: normalizePayerName(leg.payerName),
                     items: orderItems
                         .map((item) => ({
                             orderItemId: item.id,
@@ -369,7 +389,7 @@ export default function PaymentModal({
                 const amountByName = new Map<string, number>(
                     response.data.data.splits.map((split: { personName: string; total: number }) => [split.personName, Number(split.total)]),
                 );
-                amounts = splitLegs.map((leg) => amountByName.get(leg.payerName) ?? 0);
+                amounts = splitLegs.map((leg) => amountByName.get(normalizePayerName(leg.payerName)) ?? 0);
             } else {
                 const response = await splitBillAPI.splitByAmount(orderId, splitLegs.map((leg) => ({
                     personName: leg.payerName,
@@ -377,6 +397,10 @@ export default function PaymentModal({
                 })));
                 if (response.data.data.valid === false) throw new Error(response.data.data.error);
                 amounts = response.data.data.splits.map((split: { amount: number }) => Number(split.amount));
+            }
+            const previewAllocation = summarizePaymentAllocation(balance, amounts);
+            if (amounts.length !== splitLegs.length || !previewAllocation.exact) {
+                throw new Error('La vista previa no reconcilia exactamente con el saldo pendiente.');
             }
             if (stale()) return null;
             const next = splitLegs.map((leg, index) => {
@@ -392,12 +416,43 @@ export default function PaymentModal({
             setSplitLegs(next);
             return next;
         } catch (requestError: unknown) {
-            if (!stale()) setError(apiErrorMessage(requestError, 'No se pudo recalcular la división.'));
+            if (!stale()) {
+                if (splitStrategy === 'by-items') lastItemPreviewSignatureRef.current = '';
+                setError(apiErrorMessage(requestError, 'No se pudo recalcular la división.'));
+            }
             return null;
         } finally {
             if (!stale()) setPreviewLoading(false);
         }
-    }, [isCash, itemAssignmentsComplete, itemUnitOwners, orderId, orderItems, splitLegs, splitStrategy]);
+    }, [balance, isCash, itemAssignmentsComplete, itemUnitOwners, orderId, orderItems, splitLegs, splitStrategy]);
+
+    const splitItemAssignmentSignature = useMemo(() => JSON.stringify({
+        payers: splitLegs.map((leg) => ({ id: leg.id, name: leg.payerName.trim() })),
+        items: orderItems.map((item) => ({ id: item.id, owners: itemUnitOwners[item.id] || [] })),
+    }), [itemUnitOwners, orderItems, splitLegs]);
+
+    const itemPreviewReady = splitStrategy !== 'by-items'
+        || (itemAssignmentsComplete
+            && !previewLoading
+            && lastItemPreviewSignatureRef.current === splitItemAssignmentSignature);
+
+    useEffect(() => {
+        if (!isOpen
+            || mode !== 'split'
+            || splitStrategy !== 'by-items'
+            || splitAttempted
+            || !itemAssignmentsComplete
+            || !orderId
+            || lastItemPreviewSignatureRef.current === splitItemAssignmentSignature) return;
+
+        lastItemPreviewSignatureRef.current = splitItemAssignmentSignature;
+        setPreviewLoading(true);
+        const timeout = window.setTimeout(() => { void rebuildSplitPreview(); }, 180);
+        return () => {
+            window.clearTimeout(timeout);
+            setPreviewLoading(false);
+        };
+    }, [isOpen, itemAssignmentsComplete, mode, orderId, rebuildSplitPreview, splitAttempted, splitItemAssignmentSignature, splitStrategy]);
 
     const splitAllocation = summarizePaymentAllocation(balance, splitLegs.map((leg) => parseField(leg.amount)));
     const splitLegsArePayable = useCallback((legs: SplitLeg[]) => {
@@ -416,7 +471,7 @@ export default function PaymentModal({
             })
             && allocation.exact;
     }, [balance, hasUsableCashShift, isCash]);
-    const splitValid = itemAssignmentsComplete && splitLegsArePayable(splitLegs);
+    const splitValid = splitPayerNamesUnique && itemAssignmentsComplete && itemPreviewReady && splitLegsArePayable(splitLegs);
 
     const submitPayment = async (
         leg: PaymentLeg,
@@ -516,7 +571,7 @@ export default function PaymentModal({
                 const result = await submitPayment(
                     leg,
                     splitKeysRef.current[leg.id] ||= newIdempotencyKey(),
-                    leg.payerName.trim(),
+                    normalizePayerName(leg.payerName),
                 );
                 if (result === 'queued') {
                     setQueuedPayment(true);
@@ -541,6 +596,7 @@ export default function PaymentModal({
         setMixedLegs((current) => current.map((leg) => leg.id === id ? { ...leg, ...patch } : leg));
     };
     const updateSplitLeg = (id: string, patch: Partial<SplitLeg>) => {
+        if (patch.payerName !== undefined) lastItemPreviewSignatureRef.current = '';
         setSplitLegs((current) => current.map((leg) => leg.id === id ? { ...leg, ...patch } : leg));
     };
 
@@ -623,7 +679,6 @@ export default function PaymentModal({
             >
                 <header className="payment-dialog-header">
                     <div className="payment-dialog-heading">
-                        <span className="payment-dialog-icon" aria-hidden="true"><CreditCard size={20} /></span>
                         <div>
                             <span className="payment-eyebrow">Cobro de orden</span>
                             <h2 id={titleId}>Procesar pago</h2>
@@ -740,10 +795,13 @@ export default function PaymentModal({
                     {!methodsLoading && !methodsError && mode === 'split' && (
                         <div className="payment-panel split-panel">
                             <div className="payment-section-heading payment-section-heading-with-actions">
-                                <div><h3>Dividir cuenta</h3><p>Cobra a cada comensal por partes iguales, unidades consumidas o monto.</p></div>
+                                <div>
+                                    <h3>{splitStrategy === 'by-items' ? '¿Quién paga cada plato?' : 'Dividir cuenta'}</h3>
+                                    <p>{splitStrategy === 'by-items' ? 'Asigna cada plato o unidad y revisa el total exacto por comensal.' : 'Cobra a cada comensal por partes iguales o por monto.'}</p>
+                                </div>
                                 <div className="payment-heading-tools">
-                                    <button type="button" className="payment-recalculate" disabled={splitAttempted || previewLoading || !itemAssignmentsComplete} onClick={() => void rebuildSplitPreview()}>{previewLoading ? 'Calculando…' : 'Recalcular importes'}</button>
-                                    <AllocationStatus summary={splitAllocation} currencySymbol={currencySymbol} valid={splitValid} compact />
+                                    {splitStrategy !== 'by-items' && <button type="button" className="payment-recalculate" disabled={splitAttempted || previewLoading || !itemAssignmentsComplete} onClick={() => void rebuildSplitPreview()}>{previewLoading ? 'Calculando…' : 'Recalcular importes'}</button>}
+                                    {(splitStrategy !== 'by-items' || itemPreviewReady) && <AllocationStatus summary={splitAllocation} currencySymbol={currencySymbol} valid={splitValid} compact />}
                                 </div>
                             </div>
                             <div className="split-strategies" role="group" aria-label="Forma de dividir">
@@ -770,7 +828,7 @@ export default function PaymentModal({
                                     if (splitStrategy === 'by-items') initializeEmptyAssignments();
                                 }} aria-label="Agregar comensal"><Plus size={17} /></button>
                             </div>
-                            <div className="payment-leg-list">
+                            {splitStrategy !== 'by-items' && <div className="payment-leg-list">
                                 {splitLegs.map((leg, index) => {
                                     const cash = isCash(leg.paymentMethodId);
                                     const amount = parseField(leg.amount) ?? 0;
@@ -788,16 +846,14 @@ export default function PaymentModal({
                                             {splitLegs.length > 2 && !splitAttempted && <button type="button" className="leg-remove" onClick={() => {
                                                 const next = splitLegs.filter((item) => item.id !== leg.id);
                                                 setSplitLegs(buildSplitLegs(next.length, next));
-                                                if (splitStrategy === 'by-items') initializeEmptyAssignments();
                                             }}><Trash2 size={16} /> Eliminar</button>}
                                         </article>
                                     );
                                 })}
-                            </div>
+                            </div>}
 
                             {splitStrategy === 'by-items' && (
                                 <section className="unit-allocation">
-                                    <div className="unit-allocation-header"><div><h4>¿Quién paga cada plato?</h4><p>Selecciona un comensal para cada plato o unidad de la orden.</p></div></div>
                                     {orderItems.length === 0 ? <div className="payment-alert error">La orden no tiene unidades disponibles para dividir.</div> : orderItems.map((item) => {
                                         const owners = itemUnitOwners[item.id] ?? Array<number | null>(item.quantity).fill(null);
                                         const assigned = owners.filter((owner) => owner !== null).length;
@@ -827,7 +883,37 @@ export default function PaymentModal({
                                             </article>
                                         );
                                     })}
-                                    {!itemAssignmentsComplete && <div className="payment-alert warning">Asigna todos los platos y verifica que cada comensal tenga al menos uno.</div>}
+                                    <div className="split-payer-totals" aria-label="Totales exactos por comensal">
+                                        {splitLegs.map((leg, index) => {
+                                            const cash = isCash(leg.paymentMethodId);
+                                            const amount = parseField(leg.amount) ?? 0;
+                                            const received = parseField(leg.received) ?? 0;
+                                            return (
+                                                <article className={`split-payer-total ${splitSucceeded.includes(leg.id) ? 'completed' : ''}`} key={leg.id}>
+                                                    <header>
+                                                        <label className="payment-field" htmlFor={`payer-${leg.id}`}>
+                                                            <span>Comensal {index + 1}</span>
+                                                            <input id={`payer-${leg.id}`} value={leg.payerName} onChange={(event) => updateSplitLeg(leg.id, { payerName: event.target.value })} disabled={splitAttempted} maxLength={191} />
+                                                        </label>
+                                                        <div className="split-payer-amount">
+                                                            <span>Total exacto</span>
+                                                            <strong>{itemPreviewReady ? displayMoney(amount) : 'Pendiente'}</strong>
+                                                        </div>
+                                                    </header>
+                                                    <div className="split-payer-payment">
+                                                        <label className="payment-field"><span>Método</span>{renderMethodSelect(`split-method-${leg.id}`, leg.paymentMethodId, usableMethodOptions, (value) => updateSplitLeg(leg.id, { paymentMethodId: value, reference: '', received: leg.amount }), splitAttempted)}</label>
+                                                        {cash
+                                                            ? renderMoneyInput(`split-received-${leg.id}`, leg.received, (value) => updateSplitLeg(leg.id, { received: value }), splitAttempted, 'Efectivo recibido')
+                                                            : <label className="payment-field" htmlFor={`split-reference-${leg.id}`}><span>Referencia <em>opcional</em></span><input id={`split-reference-${leg.id}`} value={leg.reference} onChange={(event) => updateSplitLeg(leg.id, { reference: event.target.value })} disabled={splitAttempted} maxLength={191} /></label>}
+                                                    </div>
+                                                    {cash && <div className="leg-change">Cambio: <b>{displayMoney(Math.max(0, received - amount))}</b></div>}
+                                                    {splitSucceeded.includes(leg.id) && <div className="split-payer-confirmed">Pago confirmado</div>}
+                                                </article>
+                                            );
+                                        })}
+                                    </div>
+                                    {!splitPayerNamesUnique && <div className="payment-alert error">Cada comensal necesita un nombre único.</div>}
+                                    {!unitAssignmentsComplete && <div className="payment-alert warning">Asigna todos los platos y verifica que cada comensal tenga al menos uno.</div>}
                                 </section>
                             )}
                         </div>

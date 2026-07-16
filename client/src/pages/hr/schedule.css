@@ -36,7 +36,14 @@
 }
 
 .hr-schedule-filters .filter-field {
-    min-width: 210px;
+    flex: 1 1 270px;
+    min-width: min(270px, 100%);
+    max-width: 380px;
+}
+
+.hr-schedule-filters .filter-actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
 }
 
 .hr-schedule-kpis {
@@ -86,7 +93,6 @@
     font-variant-numeric: tabular-nums;
 }
 
-.hr-schedule-actions-bar,
 .hr-my-schedule-statuses > div {
     display: flex;
     align-items: center;
@@ -99,16 +105,13 @@
     background: var(--color-surface);
 }
 
-.hr-schedule-actions-bar > div,
-.hr-my-schedule-statuses > div > div,
-.hr-schedule-actions-bar > div:last-child {
+.hr-my-schedule-statuses > div > div {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: var(--spacing-sm);
 }
 
-.hr-schedule-actions-bar span,
 .hr-my-schedule-statuses span {
     color: var(--color-text-secondary);
     font-size: var(--font-size-sm);
@@ -656,6 +659,14 @@
 }
 
 @media (max-width: 768px) {
+    .hr-schedule-filters .filter-actions {
+        width: 100%;
+    }
+
+    .hr-schedule-filters .filter-actions .btn {
+        flex: 1 1 150px;
+    }
+
     .hr-schedule-kpis,
     .hr-schedule-coverage-grid {
         grid-template-columns: 1fr 1fr;
@@ -710,14 +721,11 @@
         margin: var(--spacing-sm);
     }
 
-    .hr-schedule-actions-bar,
     .hr-my-schedule-statuses > div {
         align-items: stretch;
         flex-direction: column;
     }
 
-    .hr-schedule-actions-bar > div:last-child,
-    .hr-schedule-actions-bar .btn,
     .hr-my-schedule-statuses .btn {
         width: 100%;
     }
@@ -726,7 +734,6 @@
 @media print {
     .hr-week-navigation,
     .hr-schedule-filters,
-    .hr-schedule-actions-bar,
     .hr-shift-actions {
         display: none !important;
     }

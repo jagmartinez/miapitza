@@ -5,6 +5,7 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 const login = read('./Login.tsx');
 const loginCss = read('./Login.css');
 const profile = read('./Profile.tsx');
+const profileCss = read('./Profile.css');
 
 describe('identity surfaces UX contract', () => {
     it('keeps authentication, 2FA, errors and accessible controls intact', () => {
@@ -27,11 +28,23 @@ describe('identity surfaces UX contract', () => {
     it('models Profile as identity, company, security and HR access center', () => {
         expect(profile).toContain('Centro de cuenta');
         expect(profile).toContain('Seguridad de la cuenta');
-        expect(profile).toContain('Administrar mi cuenta');
+        expect(profile).not.toContain('Administrar mi cuenta');
         expect(profile).toContain("user?.accountType === 'INTERNAL' && Boolean(user.employeeId)");
         expect(profile).toContain('Esta cuenta todavía no está vinculada a un empleado');
         expect(profile).toContain('Expediente laboral vinculado');
         expect(profile).toContain('aria-label="Secciones de mi perfil"');
         expect(profile).toContain('Promise.allSettled');
+    });
+
+    it('keeps Profile compact and makes Mi RH cards the primary navigation', () => {
+        expect(profile).not.toContain('<aside className="profile-sidebar">');
+        expect(profile).not.toContain('<MyHrNav />');
+        expect(profile).toContain('className="profile-hr-grid"');
+        expect(profile).toContain('to="/rh/mi-portal/horario"');
+        expect(profile).toContain('to="/rh/marcaje"');
+        expect(profile).toContain('to="/rh/biometria"');
+        expect(profileCss).toContain('max-width: 880px');
+        expect(profileCss).toContain('grid-template-columns: repeat(3, minmax(0, 1fr))');
+        expect(profileCss).toContain('background: var(--profile-panel)');
     });
 });

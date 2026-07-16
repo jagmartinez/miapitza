@@ -30,14 +30,6 @@
     overflow: hidden;
 }
 
-.confirm-dialog::before {
-    content: '';
-    position: absolute;
-    inset: 0 0 auto;
-    height: 2px;
-    background: linear-gradient(90deg, var(--dialog-accent), color-mix(in srgb, var(--dialog-accent) 22%, transparent) 70%, transparent);
-}
-
 @keyframes confirmSlideUp {
     from {
         opacity: 0;
@@ -106,9 +98,9 @@
 }
 
 .confirm-dialog-close:hover {
-    background: var(--dialog-accent-soft);
-    border-color: color-mix(in srgb, var(--dialog-accent) 55%, var(--dialog-panel-border));
-    color: var(--dialog-accent);
+    background: var(--color-surface-hover);
+    border-color: var(--color-text-secondary);
+    color: var(--color-text);
 }
 
 .confirm-dialog-close:focus-visible {

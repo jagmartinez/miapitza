@@ -18,7 +18,6 @@ import PageHeader from '../../components/PageHeader';
 import Select from '../../components/Select';
 import Sidebar from '../../components/Sidebar';
 import ScheduleShiftForm from '../../components/hr/ScheduleShiftForm';
-import ScheduleStatusPill from '../../components/hr/ScheduleStatusPill';
 import ScheduleWeekView from '../../components/hr/ScheduleWeekView';
 import {
     addDaysDateOnly,
@@ -382,7 +381,11 @@ export default function Schedules() {
                 <div className="filter-field"><Select<Option> label="Usuario" options={userOptions} value={userOptions.find((option) => option.value === userId)} onChange={(option: SingleValue<Option>) => setUserId(option?.value ?? '')} isDisabled={mutationBusy} isSearchable /></div>
                 <div className="filter-field"><Select<Option> label="Puesto" options={positionOptions} value={positionOptions.find((option) => option.value === jobPositionId)} onChange={(option: SingleValue<Option>) => setJobPositionId(option?.value ?? '')} isDisabled={mutationBusy} isSearchable /></div>
                 <div className="filter-spacer" />
-                <div className="filter-actions"><Button variant="ghost" disabled={mutationBusy} onClick={() => { setBranchId(''); setUserId(''); setJobPositionId(''); }}>Limpiar</Button></div>
+                <div className="filter-actions">
+                    <Button variant="ghost" disabled={mutationBusy} onClick={() => { setBranchId(''); setUserId(''); setJobPositionId(''); }}>Limpiar</Button>
+                    {!loading && !error && primarySchedule && <Button variant="secondary" disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void copyToNextWeek()}><ClipboardCopy size={17} aria-hidden="true" /> {mutationKind === 'copy' ? 'Copiando…' : 'Copiar semana'}</Button>}
+                    {!loading && !error && primarySchedule?.status === 'DRAFT' && <Button disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void publish()}><Send size={17} aria-hidden="true" /> {mutationKind === 'publish' ? 'Publicando…' : 'Publicar semana'}</Button>}
+                </div>
             </div>
 
             {!loading && !error && (
@@ -425,16 +428,6 @@ export default function Schedules() {
                     <h2 id="hr-schedule-conflicts-title"><AlertTriangle size={19} aria-hidden="true" /> Conflictos por resolver</h2>
                     <ul>{conflicts.map((conflict, index) => <li key={`${conflict.code}-${conflict.shiftId ?? index}`}><strong>{conflict.code}</strong><span>{conflict.message}</span></li>)}</ul>
                 </section>
-            )}
-
-            {!loading && !error && primarySchedule && (
-                <div className="hr-schedule-actions-bar">
-                    <div><ScheduleStatusPill status={primarySchedule.status} /><span>Versión {primarySchedule.version} · revisión {primarySchedule.revision}</span></div>
-                    <div>
-                        <Button variant="secondary" disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void copyToNextWeek()}><ClipboardCopy size={17} aria-hidden="true" /> {mutationKind === 'copy' ? 'Copiando…' : 'Copiar a semana siguiente'}</Button>
-                        {primarySchedule.status === 'DRAFT' && <Button disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void publish()}><Send size={17} aria-hidden="true" /> {mutationKind === 'publish' ? 'Publicando…' : 'Publicar semana'}</Button>}
-                    </div>
-                </div>
             )}
 
             {loading && <LoadingSpinner text="Cargando horarios…" />}

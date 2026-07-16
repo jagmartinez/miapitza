@@ -161,6 +161,55 @@ async function mockApp(page: Page, activeUser = user) {
     if (path.endsWith('/v1/hr/payroll/runs/91/employer-contributions')) data = [];
     if (path.endsWith('/v1/hr/payroll/runs/91/statutory-calculations')) data = [];
     if (path.endsWith('/v1/hr/payroll/rules/81/configuration-revisions')) data = [];
+    if (path.endsWith('/v1/hr/me/schedule')) data = [];
+    if (path.endsWith('/v1/hr/me/attendance/summary')) data = [];
+    if (path.endsWith('/v1/hr/me/workforce')) {
+      data = {
+        timezone: 'America/Managua',
+        incidents: [],
+        corrections: [],
+        overtimeRequests: [],
+        leaveRequests: [],
+        vacationBalances: [],
+        vacationLedger: [],
+      };
+    }
+    if (path.endsWith('/v1/hr/payroll/me/receipts')) data = [];
+    if (path.endsWith('/v1/hr/benefits/me/travel-requests')) data = [];
+    if (path.endsWith('/v1/hr/benefits/me/loans')) data = [];
+    if (path.endsWith('/v1/hr/benefits/me/deductions')) data = [];
+    if (path.endsWith('/v1/hr/attendance/policy')) {
+      data = {
+        version: 1,
+        timezone: 'America/Managua',
+        requireBiometric: false,
+        requireLiveness: false,
+        requireGeolocation: false,
+        maxLocationAccuracyM: 100,
+        earlyCheckInMinutes: 15,
+        lateCheckInToleranceM: 10,
+        earlyCheckOutToleranceM: 10,
+        lateCheckOutMinutes: 15,
+        scheduleViolationMode: 'REVIEW',
+        geofenceViolationMode: 'REVIEW',
+        biometricViolationMode: 'REVIEW',
+        allowUnscheduledPunch: true,
+        unscheduledViolationMode: 'REVIEW',
+        allowManualFallback: true,
+        biometricConsentVersion: 'QA-1',
+        biometricRetentionDays: 30,
+      };
+    }
+    if (path.endsWith('/v1/hr/me/attendance/today')) {
+      data = {
+        serverTime: '2026-07-16T18:00:00.000Z',
+        timezone: 'America/Managua',
+        availableActions: ['CHECK_IN'],
+        punches: [],
+        scheduledShift: null,
+      };
+    }
+    if (path.endsWith('/v1/hr/biometrics/me')) data = { status: 'NOT_ENROLLED', canEnroll: true };
     if (path.endsWith('/v1/hr/dashboard')) {
       data = {
         employees: {
@@ -346,13 +395,14 @@ test('menu view action opens a read-only recipe-style detail instead of the edit
   await expect(dialog.locator('form')).toHaveCount(0);
 });
 
-test('shared dialogs continue the login blue accent palette in dark mode', async ({ page }) => {
+test('shared dialogs stay flat in dark mode and reserve blue for active controls', async ({ page }) => {
   await mockApp(page);
   await page.goto('/reservations');
   await page.getByRole('button', { name: 'Nueva Reservación' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Nueva Reservación' });
   await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveCSS('background-image', 'none');
   await expect(dialog.getByRole('heading', { name: 'Nueva Reservación' })).toHaveCSS(
     'color',
     'rgb(248, 250, 252)'
@@ -505,14 +555,43 @@ test('employee portal and Profile expose a cohesive RH self-service entry point'
   await page.goto('/rh/mi-portal');
 
   await expect(page.getByRole('heading', { name: 'Mi perfil' })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'Secciones de mi portal RH' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Secciones de mi portal RH' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Mi información laboral' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Mi biometría Consentimiento, enrolamiento y revocación' })).toBeVisible();
 
-  await page.goto('/profile');
-  await page.getByRole('tab', { name: 'Mi RH' }).click();
+  await page.getByRole('link', { name: 'Mi horario Turnos publicados y acuse de lectura' }).click();
+  await expect(page.getByRole('heading', { name: 'Mi horario' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Volver a Mis accesos de RH' })).toBeVisible();
+  await expect(page.locator('.my-hr-page')).toHaveCSS('max-width', '1700px');
+
+  await page.getByRole('link', { name: 'Mis accesos de RH' }).click();
   await expect(page.getByRole('heading', { name: 'Mi información laboral' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Ir a marcaje' })).toBeVisible();
+});
+
+test('Profile and Mi RH destinations stay inside tablet and mobile viewports', async ({ page }) => {
+  test.setTimeout(90_000);
+  await mockApp(page);
+
+  for (const viewport of [
+    { width: 1024, height: 900 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/profile?tab=hr');
+    await expect(page.getByRole('heading', { name: 'Mi información laboral' })).toBeVisible();
+
+    for (const path of ['/rh/mi-portal/horario', '/rh/mi-portal/gestion', '/rh/mi-portal/nomina', '/rh/mi-portal/prestaciones', '/rh/marcaje', '/rh/biometria']) {
+      await page.goto(path);
+      const backLink = page.locator('.my-hr-nav a');
+      await expect(backLink).toBeVisible();
+      const box = await backLink.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width + 1);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    }
+  }
 });
 
 test('Profile explains missing employee linkage instead of hiding Mi RH', async ({ page }) => {

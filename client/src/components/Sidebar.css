@@ -35,16 +35,6 @@
     border-left: 1px solid var(--dialog-panel-border, var(--color-border));
 }
 
-.sidebar-panel::before {
-    content: '';
-    position: absolute;
-    inset: 0 0 auto;
-    z-index: 3;
-    height: 2px;
-    background: linear-gradient(90deg, var(--dialog-accent), color-mix(in srgb, var(--dialog-accent) 22%, transparent) 70%, transparent);
-    pointer-events: none;
-}
-
 .sidebar-panel.sidebar-wide {
     right: -1050px;
     width: 1050px;
@@ -94,18 +84,6 @@
     min-width: 0;
 }
 
-.sidebar-heading-icon {
-    display: grid;
-    flex: 0 0 auto;
-    width: 40px;
-    height: 40px;
-    place-items: center;
-    border: 1px solid color-mix(in srgb, var(--dialog-accent) 42%, var(--dialog-panel-border));
-    border-radius: var(--radius-lg);
-    background: var(--dialog-accent-soft);
-    color: var(--dialog-accent);
-}
-
 .sidebar-panel .sidebar-header h2 {
     margin: 0;
     font-size: clamp(var(--font-size-lg), 2vw, var(--font-size-xl));
@@ -131,9 +109,9 @@
 }
 
 .sidebar-close:hover {
-    background-color: var(--dialog-accent-soft);
-    border-color: color-mix(in srgb, var(--dialog-accent) 55%, var(--dialog-panel-border));
-    color: var(--dialog-accent);
+    background-color: var(--color-surface-hover);
+    border-color: var(--color-text-secondary);
+    color: var(--color-text);
 }
 
 .sidebar-close:focus-visible {
@@ -299,11 +277,6 @@
 }
 
 @media (max-width: 480px) {
-    .sidebar-heading-icon {
-        width: 36px;
-        height: 36px;
-    }
-
     .sidebar-actions {
         gap: var(--spacing-sm);
         padding-inline: var(--spacing-md);

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {
     X, Clock, FileText, Printer, ShoppingCart, Receipt,
     CreditCard, Scissors, ArrowRightLeft, Merge, ChefHat,
-    MapPin, Users, CircleDollarSign
+    Users, CircleDollarSign
 } from 'lucide-react';
 import type { Order, OrderItem, Table } from '../types';
 import { escapeHtml } from '../utils/escapeHtml';
@@ -161,7 +161,6 @@ export default function TableOrdersModal({
             >
                 <div className="orders-modal-header">
                     <div className="table-detail-title">
-                        <span className="table-detail-icon" aria-hidden="true"><MapPin size={21} /></span>
                         <div className="header-title">
                             <span className="table-detail-eyebrow">Centro operativo</span>
                             <h2 id={titleId}>Mesa {tableNumber}</h2>

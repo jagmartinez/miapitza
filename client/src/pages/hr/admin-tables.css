@@ -82,6 +82,63 @@
   text-align: center;
 }
 
+/* Operational tabs live in their own compact control bar, matching the
+   Production Recipes filter grammar instead of becoming a second table
+   header. The table card below remains a single, uninterrupted surface. */
+.filters-toolbar.hr-admin-tab-toolbar {
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 7px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.hr-admin-tab-toolbar button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hr-admin-tab-toolbar button:hover {
+  background: var(--color-background);
+  color: var(--color-text);
+}
+
+.hr-admin-tab-toolbar button[aria-selected='true'] {
+  background: var(--color-neutral-700);
+  color: white;
+}
+
+.hr-admin-tab-toolbar button > span {
+  min-width: 22px;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: var(--color-background);
+  color: var(--color-text);
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.hr-admin-tab-toolbar button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+  outline-offset: 1px;
+}
+
 .hr-admin-table-wrap {
   width: 100%;
   overflow: auto;

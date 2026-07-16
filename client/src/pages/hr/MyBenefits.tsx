@@ -40,7 +40,7 @@ import type {
   HrTravelRequestPayload,
 } from '../../types/hr-benefits';
 import './benefits.css';
-import './admin-tables.css';
+import './self-service.css';
 
 type Tab = 'TRAVEL' | 'LOAN' | 'DEDUCTION';
 type Selected =
@@ -229,9 +229,10 @@ export default function MyBenefits() {
   const activePanelId = `my-benefits-panel-${tab.toLowerCase()}`;
 
   return (
-    <div className="page-wrapper hr-benefits-page hr-my-benefits-page hr-operation-page">
+    <div className="page-wrapper hr-benefits-page hr-my-benefits-page my-hr-page">
+      <MyHrNav />
       <PageHeader
-        className="hr-operation-header"
+        className="my-hr-page-header"
         title="Mis viáticos y beneficios"
         subtitle="Consulta solicitudes, saldos, cuotas y deducciones con su estado oficial"
         icon={WalletCards}
@@ -243,16 +244,15 @@ export default function MyBenefits() {
           ) : undefined
         }
       />
-      <MyHrNav />
-      <BenefitsOnlineNotice online={online} />
+      {!online && <BenefitsOnlineNotice online={false} />}
       {!loading && !error && (
-        <section className="hr-operation-kpis" aria-label="Resumen de mis beneficios">
+        <section className="my-hr-summary-grid" aria-label="Resumen de mis beneficios">
           <article><WalletCards size={19} aria-hidden="true" /><span>Registros visibles</span><strong>{items.length}</strong><small>{tab === 'TRAVEL' ? 'Viáticos' : tab === 'LOAN' ? 'Préstamos' : 'Deducciones'}</small></article>
           <article className={actionableCount > 0 ? 'is-warning' : undefined}><RefreshCw size={19} aria-hidden="true" /><span>Con siguiente paso</span><strong>{actionableCount}</strong><small>Acciones permitidas por el servidor</small></article>
           <article><FileMinus2 size={19} aria-hidden="true" /><span>Finalizados</span><strong>{closedCount}</strong><small>Incluye cancelados o rechazados</small></article>
         </section>
       )}
-      <div className="hr-benefits-toolbar self hr-operation-toolbar">
+      <div className="hr-benefits-toolbar self my-hr-toolbar">
         <div className="hr-benefits-tabs" role="tablist" aria-label="Mis beneficios">
           <button
             type="button"

@@ -38,6 +38,22 @@ export interface PaymentAllocationSummary {
     exact: boolean;
 }
 
+/** Mixed payments accept only persisted financial method types; cash additionally needs a usable shift. */
+export const canUsePaymentMethodInMixed = (
+    type: string | null | undefined,
+    hasUsableCashShift: boolean,
+): boolean => type === 'CARD'
+    || type === 'BANK_TRANSFER'
+    || (type === 'CASH' && hasUsableCashShift);
+
+export const normalizePayerName = (name: string): string => name.trim();
+
+/** Mirrors the server's case-insensitive payer identity contract. */
+export const hasUniqueNormalizedPayerNames = (names: string[]): boolean => {
+    const normalized = names.map((name) => normalizePayerName(name).toLocaleLowerCase('es-NI'));
+    return normalized.every(Boolean) && new Set(normalized).size === normalized.length;
+};
+
 /** Compare payment legs in integer cents so mixed/split totals never rely on floats. */
 export const summarizePaymentAllocation = (
     target: number,
