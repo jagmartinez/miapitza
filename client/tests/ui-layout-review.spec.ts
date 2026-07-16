@@ -428,6 +428,12 @@ test('RH primary and secondary views share the 1700px layout and React Select co
 test('legal payroll settings is an independent RH view with one active navigation item', async ({
   page,
 }) => {
+  let revisionRequests = 0;
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.endsWith('/v1/hr/payroll/rules/81/configuration-revisions')) {
+      revisionRequests += 1;
+    }
+  });
   await mockApp(page);
   await page.goto('/rh/nomina/configuracion-legal');
 
@@ -438,6 +444,9 @@ test('legal payroll settings is an independent RH view with one active navigatio
   await expect(
     page.getByRole('heading', { name: 'Configuración paramétrica', exact: true })
   ).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  expect(revisionRequests).toBeGreaterThan(0);
+  expect(revisionRequests).toBeLessThanOrEqual(2);
 });
 
 test('manual attendance punch uses one compact canonical modal body', async ({ page }) => {

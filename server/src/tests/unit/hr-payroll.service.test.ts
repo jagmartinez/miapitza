@@ -134,6 +134,25 @@ describe('HR payroll safety and state machine', () => {
         expect(() => validateLegalConfiguration(legacy, { requireCurrentSchema: true })).toThrow('HR_PAYROLL_PARAMETRIC_V4');
     });
 
+    it('normalizes deprecated early-V4 aliases only for immutable historical reads', () => {
+        const deprecated = {
+            ...legalConfiguration,
+            aguinaldo: { ...legalConfiguration.aguinaldo, prorationMode: 'SERVICE_DAYS' },
+            statutory: {
+                ...statutory,
+                paymentConceptCatalog: statutory.paymentConceptCatalog.map(concept => {
+                    if (concept.code === 'VIATICOS') return { ...concept, incomeTaxTreatment: 'EXEMPT' };
+                    if (concept.type === 'DEDUCTION') return { ...concept, incomeTaxTreatment: 'NONE' };
+                    return concept;
+                }),
+            },
+        };
+        const normalized = validateLegalConfiguration(deprecated);
+        expect(normalized.aguinaldo.prorationMode).toBe('SERVICE_DAYS_RATIO');
+        expect(paymentConceptDefinition(normalized.statutory, 'VIATICOS')?.incomeTaxTreatment).toBeNull();
+        expect(paymentConceptDefinition(normalized.statutory, 'FONDO_PENSION_AUTORIZADO')?.incomeTaxTreatment).toBeNull();
+        expect(() => validateLegalConfiguration(deprecated, { requireCurrentSchema: true })).toThrow('configuración legal validada');
+    });
     it('rejects duplicate payment concept codes', () => {
         const ambiguous = {
             ...legalConfiguration,
@@ -587,6 +606,7 @@ describe('HR payroll persistence and route contract', () => {
     const statutoryMigration = fs.readFileSync(path.join(root, 'prisma/migrations/20260715_hr_statutory_payroll_v2/migration.sql'), 'utf8');
     const incomeTaxMigration = fs.readFileSync(path.join(root, 'prisma/migrations/20260715_hr_statutory_payroll_v3_art19/migration.sql'), 'utf8');
     const incomeTaxRollback = fs.readFileSync(path.join(root, 'prisma/migrations/20260715_hr_statutory_payroll_v3_art19/rollback.sql'), 'utf8');
+    const demoSeed = fs.readFileSync(path.join(root, 'prisma/seed-hr-payroll-demo.ts'), 'utf8');
     const workforce = fs.readFileSync(path.join(root, 'src/services/hr-workforce.service.ts'), 'utf8');
     const benefits = fs.readFileSync(path.join(root, 'src/services/hr-benefits.service.ts'), 'utf8');
 
@@ -651,6 +671,13 @@ describe('HR payroll persistence and route contract', () => {
         expect(migration).toContain('PayrollRuleConfigurationReview_no_delete');
     });
 
+    it('seeds only current legal aliases and appends a corrected immutable revision when needed', () => {
+        expect(demoSeed).toContain("prorationMode: 'SERVICE_DAYS_RATIO'");
+        expect(demoSeed).not.toContain("prorationMode: 'SERVICE_DAYS'");
+        expect(demoSeed).not.toMatch(/incomeTaxTreatment:\\s*'(?:EXEMPT|NONE)'/);
+        expect(demoSeed).toContain('where: { ruleVersionId: rule.id, configurationHash }');
+        expect(demoSeed).toContain("orderBy: { revision: 'desc' }");
+    });
     it('applies the validated-rule lock to both configuration upload and review paths', () => {
         const uploadPath = service.slice(service.indexOf('static async uploadConfiguration'), service.indexOf('static async listConfigurationRevisions'));
         const reviewPath = service.slice(service.indexOf('static async reviewConfiguration'), service.indexOf('static async transition(id: number'));

@@ -60,6 +60,13 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(configuration).toContain('otra identidad revise la carga');
   });
 
+  it('loads legal revisions once per selected rule instead of coupling requests to URL object churn', () => {
+    expect(legalSettings).toContain('const initialRequestedRuleId = useRef(requestedRuleId)');
+    expect(legalSettings).toContain('void loadRules(initialRequestedRuleId.current)');
+    expect(legalSettings).toContain('void loadRevisions(ruleId)');
+    expect(legalSettings).toContain('[loadRevisions, selectedRuleId]');
+    expect(legalSettings).not.toContain('[loadRevisions, selectedRule, setSearchParams]');
+  });
   it('exposes an exact parallel reconciliation without claiming legal or production certification', () => {
     expect(management).toContain('PayrollReconciliationPanel');
     expect(reconciliation).toContain('reconcileParallelControl');

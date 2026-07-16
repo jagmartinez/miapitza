@@ -41,7 +41,7 @@ const LEGAL_CONFIGURATION = {
     method: 'HISTORICAL_PAID_COMPONENTS',
     lookbackDays: 365,
     incomeDivisor: '12',
-    prorationMode: 'SERVICE_DAYS',
+    prorationMode: 'SERVICE_DAYS_RATIO',
     eligibleSources: ['ORDINARY', 'OVERTIME', 'PAID_LEAVE'],
     roundingScale: 2,
   },
@@ -140,7 +140,7 @@ const LEGAL_CONFIGURATION = {
         type: 'INCOME',
         socialSecurityApplicable: false,
         trainingContributionApplicable: false,
-        incomeTaxTreatment: 'EXEMPT',
+        incomeTaxTreatment: null,
         incomeTaxDeductible: false,
         sourceReference: 'Política de viáticos',
       },
@@ -150,7 +150,7 @@ const LEGAL_CONFIGURATION = {
         type: 'DEDUCTION',
         socialSecurityApplicable: false,
         trainingContributionApplicable: false,
-        incomeTaxTreatment: 'NONE',
+        incomeTaxTreatment: null,
         incomeTaxDeductible: true,
         sourceReference: 'Decreto 975',
       },
@@ -160,7 +160,7 @@ const LEGAL_CONFIGURATION = {
         type: 'DEDUCTION',
         socialSecurityApplicable: false,
         trainingContributionApplicable: false,
-        incomeTaxTreatment: 'NONE',
+        incomeTaxTreatment: null,
         incomeTaxDeductible: false,
         sourceReference: 'Ley 822',
       },
@@ -170,7 +170,7 @@ const LEGAL_CONFIGURATION = {
         type: 'DEDUCTION',
         socialSecurityApplicable: false,
         trainingContributionApplicable: false,
-        incomeTaxTreatment: 'NONE',
+        incomeTaxTreatment: null,
         incomeTaxDeductible: false,
         sourceReference: 'Autorización del colaborador',
       },
@@ -750,8 +750,13 @@ async function main() {
     },
   });
   const configurationHash = hash(LEGAL_CONFIGURATION);
-  const existingConfiguration = await prisma.payrollRuleConfigurationRevision.findUnique({
-    where: { ruleVersionId_revision: { ruleVersionId: rule.id, revision: 1 } },
+  const existingConfiguration = await prisma.payrollRuleConfigurationRevision.findFirst({
+    where: { ruleVersionId: rule.id, configurationHash },
+  });
+  const latestConfiguration = await prisma.payrollRuleConfigurationRevision.findFirst({
+    where: { ruleVersionId: rule.id },
+    orderBy: { revision: 'desc' },
+    select: { revision: true },
   });
   const configuration =
     existingConfiguration ??
@@ -759,7 +764,7 @@ async function main() {
       data: {
         companyId,
         ruleVersionId: rule.id,
-        revision: 1,
+        revision: (latestConfiguration?.revision ?? 0) + 1,
         configuration: LEGAL_CONFIGURATION as unknown as Prisma.InputJsonValue,
         configurationHash,
         sourceReference: 'Ley 822, Decreto 975 y Decreto 3-91',

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Landmark, Plus, RefreshCw, Scale, ShieldCheck } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import Button from '../../components/Button';
@@ -39,6 +39,7 @@ export default function PayrollLegalSettings() {
   const [createOpen, setCreateOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestedRuleId = searchParams.get('ruleId') || '';
+  const initialRequestedRuleId = useRef(requestedRuleId);
 
   const selectedRule = useMemo(
     () => rules.find((rule) => String(rule.id) === selectedRuleId) ?? null,
@@ -51,7 +52,7 @@ export default function PayrollLegalSettings() {
     try {
       const result = await payrollClient.getRules({ limit: 100 });
       setRules(result.items);
-      const requested = preferredId || requestedRuleId;
+      const requested = preferredId || '';
       const next = result.items.find((rule) => String(rule.id) === requested)
         ?? result.items.find((rule) => rule.status === 'ACTIVE')
         ?? result.items[0]
@@ -64,9 +65,9 @@ export default function PayrollLegalSettings() {
     } finally {
       setLoading(false);
     }
-  }, [requestedRuleId]);
+  }, []);
 
-  useEffect(() => { void loadRules(); }, [loadRules]);
+  useEffect(() => { void loadRules(initialRequestedRuleId.current); }, [loadRules]);
 
   const loadRevisions = useCallback(async (ruleId: number) => {
     setConfigurationLoading(true);
@@ -81,13 +82,29 @@ export default function PayrollLegalSettings() {
   }, [showError]);
 
   useEffect(() => {
-    if (!selectedRule) {
+    if (selectedRuleId && !requestedRuleId) {
+      setSearchParams({ ruleId: selectedRuleId }, { replace: true });
+    }
+  }, [requestedRuleId, selectedRuleId, setSearchParams]);
+
+  useEffect(() => {
+    if (
+      requestedRuleId
+      && requestedRuleId !== selectedRuleId
+      && rules.some((rule) => String(rule.id) === requestedRuleId)
+    ) {
+      setSelectedRuleId(requestedRuleId);
+    }
+  }, [requestedRuleId, rules, selectedRuleId]);
+
+  useEffect(() => {
+    const ruleId = Number(selectedRuleId);
+    if (!Number.isInteger(ruleId) || ruleId <= 0) {
       setRevisions([]);
       return;
     }
-    setSearchParams({ ruleId: String(selectedRule.id) }, { replace: true });
-    void loadRevisions(selectedRule.id);
-  }, [loadRevisions, selectedRule, setSearchParams]);
+    void loadRevisions(ruleId);
+  }, [loadRevisions, selectedRuleId]);
 
   const refreshSelected = async (ruleId: number) => {
     const [ruleResult, configurationResult] = await Promise.all([
@@ -201,7 +218,10 @@ export default function PayrollLegalSettings() {
               Regla y vigencia
               <HrReactSelect
                 value={selectedRuleId}
-                onChange={(event) => setSelectedRuleId(event.target.value)}
+                onChange={(event) => {
+                  setSelectedRuleId(event.target.value);
+                  setSearchParams({ ruleId: event.target.value }, { replace: true });
+                }}
                 aria-label="Regla legal de nómina"
               >
                 {rules.map((rule) => (

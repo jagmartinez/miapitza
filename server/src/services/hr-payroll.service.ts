@@ -125,7 +125,43 @@ type LegacyV3StatutoryConfiguration = Omit<PayrollStatutoryConfiguration, 'compa
     };
 };
 
-function normalizeLegacyConfiguration(value: unknown): unknown {
+function normalizeDeprecatedV4Aliases(value: unknown): unknown {
+    const config = value as JsonObject | null;
+    if (!config || config.schema !== 'HR_PAYROLL_PARAMETRIC_V4') return value;
+    const aguinaldo = config.aguinaldo as JsonObject | undefined;
+    const statutory = config.statutory as JsonObject | undefined;
+    const catalog = statutory?.paymentConceptCatalog;
+    const deprecatedProration = aguinaldo?.prorationMode === 'SERVICE_DAYS';
+    const deprecatedTreatments = Array.isArray(catalog) && catalog.some(item => {
+        const treatment = (item as JsonObject | null)?.incomeTaxTreatment;
+        return treatment === 'EXEMPT' || treatment === 'NONE';
+    });
+    if (!deprecatedProration && !deprecatedTreatments) return value;
+    return {
+        ...config,
+        aguinaldo: aguinaldo ? {
+            ...aguinaldo,
+            prorationMode: deprecatedProration ? 'SERVICE_DAYS_RATIO' : aguinaldo.prorationMode,
+        } : aguinaldo,
+        statutory: statutory ? {
+            ...statutory,
+            paymentConceptCatalog: Array.isArray(catalog) ? catalog.map(item => {
+                const concept = item as JsonObject;
+                return {
+                    ...concept,
+                    incomeTaxTreatment: concept.incomeTaxTreatment === 'EXEMPT' || concept.incomeTaxTreatment === 'NONE'
+                        ? null
+                        : concept.incomeTaxTreatment,
+                };
+            }) : catalog,
+        } : statutory,
+    };
+}
+
+function normalizeLegacyConfiguration(value: unknown, allowDeprecatedV4Aliases = true): unknown {
+    if (allowDeprecatedV4Aliases && (value as { schema?: unknown } | null)?.schema === 'HR_PAYROLL_PARAMETRIC_V4') {
+        return normalizeDeprecatedV4Aliases(value);
+    }
     const legacy = value as { schema?: string; statutory?: LegacyV3StatutoryConfiguration } & JsonObject;
     if (legacy?.schema !== 'HR_PAYROLL_PARAMETRIC_V3' || !legacy.statutory) return value;
     const statutory = legacy.statutory;
@@ -193,7 +229,7 @@ export function validateLegalConfiguration(value: unknown, options: { requireCur
     if (options.requireCurrentSchema && (value as { schema?: unknown } | null)?.schema !== 'HR_PAYROLL_PARAMETRIC_V4') {
         throw new HrPayrollError('Las configuraciones nuevas deben usar el catálogo paramétrico HR_PAYROLL_PARAMETRIC_V4', 409, 'HR_PAYROLL_CURRENT_CONFIGURATION_REQUIRED');
     }
-    const config = normalizeLegacyConfiguration(value) as Partial<LegalConfiguration> | null;
+    const config = normalizeLegacyConfiguration(value, options.requireCurrentSchema !== true) as Partial<LegalConfiguration> | null;
     const divisors = config?.regular?.minuteDivisors;
     if (
         !config || config.schema !== 'HR_PAYROLL_PARAMETRIC_V4' || config.legallyValidated !== true ||
