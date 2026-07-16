@@ -489,6 +489,80 @@
   gap: var(--spacing-sm);
 }
 
+.hr-receipt-detail {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.hr-receipt-header {
+  padding: var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface));
+}
+
+.hr-receipt-employee,
+.hr-receipt-header-actions,
+.hr-receipt-period {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.hr-receipt-employee > div {
+  display: grid;
+  gap: 2px;
+}
+
+.hr-receipt-employee h2 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: clamp(1.2rem, 2vw, 1.55rem);
+}
+
+.hr-receipt-avatar {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 2.75rem;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
+  color: var(--color-primary);
+}
+
+.hr-receipt-kicker {
+  color: var(--color-primary) !important;
+  font-size: var(--font-size-xs);
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.hr-receipt-period {
+  flex-wrap: wrap;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.hr-receipt-period > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.hr-receipt-period > span:not(:last-child)::after {
+  content: '';
+  width: 1px;
+  height: 1rem;
+  margin-left: var(--spacing-sm);
+  background: var(--color-border);
+}
+
 .hr-receipt-detail > header > div:first-child > div {
   display: flex;
   flex-direction: column;
@@ -502,6 +576,42 @@
 
 .hr-receipt-totals {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0 var(--spacing-lg);
+}
+
+.hr-receipt-totals > div {
+  background: var(--color-surface);
+}
+
+.hr-receipt-columns {
+  margin-top: 0;
+  padding: 0 var(--spacing-lg) var(--spacing-lg);
+}
+
+.hr-receipt-columns > section > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+  padding-bottom: var(--spacing-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.hr-receipt-columns > section > header h3,
+.hr-receipt-columns > section > header strong {
+  margin: 0;
+  color: var(--color-text);
+}
+
+.hr-receipt-columns > section > p {
+  margin: var(--spacing-md) 0 0;
+  color: var(--color-text-secondary);
+}
+
+.hr-receipt-columns dt small {
+  margin-top: 2px;
+  font-size: var(--font-size-xs);
 }
 
 .hr-receipt-columns dl {
@@ -534,15 +644,33 @@
 }
 
 .hr-receipt-trace {
-  margin-top: var(--spacing-lg);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-background);
 }
 
-.hr-receipt-trace > div {
+.hr-receipt-trace > summary {
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-weight: 700;
+}
+
+.hr-receipt-trace > p {
+  margin: var(--spacing-sm) 0 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.hr-receipt-trace-list > div {
   display: grid;
   grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr);
   gap: var(--spacing-sm);
   padding: var(--spacing-sm) 0;
   border-bottom: 1px solid var(--color-border);
+}
+
+.hr-receipt-trace-list > div:last-child {
+  border-bottom: 0;
 }
 
 .hr-payroll-configuration {
@@ -798,7 +926,7 @@
     text-align: left;
   }
 
-  .hr-receipt-trace > div {
+  .hr-receipt-trace-list > div {
     grid-template-columns: 1fr;
   }
 }

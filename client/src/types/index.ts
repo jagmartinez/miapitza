@@ -694,6 +694,11 @@ export interface Company {
   name: string;
   ruc: string | null;
   logo: string | null;
+  payrollTaxRegime: 'GENERAL' | 'SIMPLIFIED_FIXED_QUOTA' | 'SPECIAL' | 'EXEMPT' | 'OTHER';
+  payrollIncomeTaxWithholding: boolean;
+  payrollTaxRegimeReference: string | null;
+  payrollIncomeTaxException: string | null;
+  payrollTaxProfileReady: boolean;
   active: boolean;
   createdAt: string;
 }

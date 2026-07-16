@@ -338,6 +338,10 @@ export const createCompany: ValidationSchema = {
         name: { type: 'string', required: true, min: 1, max: 200 },
         ruc: { type: 'string', max: 50 },
         logo: { type: 'string', max: 500 },
+        payrollTaxRegime: { type: 'string', required: true, enum: ['GENERAL', 'SIMPLIFIED_FIXED_QUOTA', 'SPECIAL', 'EXEMPT', 'OTHER'] },
+        payrollIncomeTaxWithholding: { type: 'boolean', required: true },
+        payrollTaxRegimeReference: { type: 'string', required: true, min: 3, max: 500 },
+        payrollIncomeTaxException: { type: 'string', max: 500 },
     },
 };
 
@@ -348,6 +352,10 @@ export const updateCompany: ValidationSchema = {
         ruc: { type: 'string', max: 50 },
         logo: { type: 'string', max: 500 },
         active: { type: 'boolean' },
+        payrollTaxRegime: { type: 'string', enum: ['GENERAL', 'SIMPLIFIED_FIXED_QUOTA', 'SPECIAL', 'EXEMPT', 'OTHER'] },
+        payrollIncomeTaxWithholding: { type: 'boolean' },
+        payrollTaxRegimeReference: { type: 'string', max: 500 },
+        payrollIncomeTaxException: { type: 'string', max: 500 },
     },
 };
 

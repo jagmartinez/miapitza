@@ -35,12 +35,15 @@ describe('Phase 4 workforce UI safety contract', () => {
     expect(leaveForm).toContain("fraction === 'HOURS'");
   });
 
-  it('presents attendance and leave as task-oriented workspaces', () => {
-    expect(attendance).toContain('Pendientes de decisión');
-    expect(attendance).toContain('Decisiones pendientes');
-    expect(attendance).toContain('Cierra sólo cuando ya resolviste las incidencias');
-    expect(leave).toContain('Esperando decisión');
-    expect(leave).toContain('Historial del saldo');
+  it('presents attendance and leave as table-first administrative workspaces', () => {
+    expect(attendance).toContain('className="hr-admin-table"');
+    expect(attendance).toContain("['INCIDENTS', 'Incidencias'");
+    expect(attendance).toContain('Revisar y decidir');
+    expect(attendance).not.toContain('hr-summary-grid');
+    expect(leave).toContain('className="hr-admin-table"');
+    expect(leave).toContain("['BALANCES', 'Saldos'");
+    expect(leave).toContain('Movimientos de saldos');
+    expect(leave).not.toContain('hr-type-grid');
     expect(leave).toContain("fractionLabel(item.fraction)");
   });
 

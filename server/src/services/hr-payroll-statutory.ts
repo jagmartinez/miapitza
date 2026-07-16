@@ -24,6 +24,7 @@ interface StatutoryObligation {
 export interface PayrollPaymentConceptDefinition {
     code: string;
     name: string;
+    active?: boolean;
     type: PayrollPaymentConceptType;
     socialSecurityApplicable: boolean;
     trainingContributionApplicable: boolean;
@@ -168,6 +169,7 @@ function validPaymentConceptCatalog(value: unknown): value is PayrollPaymentConc
         if (
             !concept || !/^[A-Z0-9_]{2,64}$/.test(String(concept.code)) || codes.has(concept.code) ||
             typeof concept.name !== 'string' || concept.name.trim().length < 2 || concept.name.trim().length > 160 ||
+            (concept.active !== undefined && typeof concept.active !== 'boolean') ||
             !['INCOME', 'DEDUCTION'].includes(concept.type) || typeof concept.socialSecurityApplicable !== 'boolean' ||
             typeof concept.trainingContributionApplicable !== 'boolean' || typeof concept.incomeTaxDeductible !== 'boolean' ||
             typeof concept.sourceReference !== 'string' || concept.sourceReference.trim().length < 3 ||
@@ -190,7 +192,8 @@ export function paymentConceptDefinition(
     config: PayrollStatutoryConfiguration,
     code: string,
 ): PayrollPaymentConceptDefinition | null {
-    return config.paymentConceptCatalog.find(concept => concept.code === code) ?? null;
+    const concept = config.paymentConceptCatalog.find(item => item.code === code && item.active !== false);
+    return concept ? { ...concept, active: concept.active !== false } : null;
 }
 
 export function validateProgressiveTaxBrackets(brackets: ProgressiveTaxBracket[] | undefined): boolean {
@@ -242,9 +245,9 @@ export function validateStatutoryConfiguration(value: PayrollStatutoryConfigurat
         !validateProgressiveTaxBrackets(incomeTax.brackets) ||
         !(['WEEKLY', 'BIWEEKLY', 'MONTHLY'] as const).every(frequency => Number.isInteger(incomeTax.annualPeriods?.[frequency]) && incomeTax.annualPeriods[frequency] >= 1 && incomeTax.annualPeriods[frequency] <= 366)
     ) return false;
-    if (inss.applicability === 'APPLIES' && !value.paymentConceptCatalog.some(concept => concept.type === 'INCOME' && concept.socialSecurityApplicable)) return false;
-    if (inatec.applicability === 'APPLIES' && !value.paymentConceptCatalog.some(concept => concept.type === 'INCOME' && concept.trainingContributionApplicable)) return false;
-    if (value.companyTaxRegime.incomeTaxApplicability === 'APPLIES' && !value.paymentConceptCatalog.some(concept => concept.type === 'INCOME' && concept.incomeTaxTreatment !== null)) return false;
+    if (inss.applicability === 'APPLIES' && !value.paymentConceptCatalog.some(concept => concept.active !== false && concept.type === 'INCOME' && concept.socialSecurityApplicable)) return false;
+    if (inatec.applicability === 'APPLIES' && !value.paymentConceptCatalog.some(concept => concept.active !== false && concept.type === 'INCOME' && concept.trainingContributionApplicable)) return false;
+    if (value.companyTaxRegime.incomeTaxApplicability === 'APPLIES' && !value.paymentConceptCatalog.some(concept => concept.active !== false && concept.type === 'INCOME' && concept.incomeTaxTreatment !== null)) return false;
     return true;
 }
 

@@ -25,7 +25,9 @@ describe('Phase 6 benefits UI contract', () => {
     expect(owner).toContain('allowedActions.map');
     expect(owner).toContain('createBenefitsIdempotencyKey()');
     expect(owner).toContain('STATUS_OPTIONS[tab].map');
-    expect(owner).toContain('Con acciones disponibles');
+    expect(owner).toContain('className="hr-admin-table"');
+    expect(owner).toContain('Ver y gestionar');
+    expect(owner).not.toContain('className="hr-benefits-list"');
   });
 
   it('limits self-service to own endpoints and allowed travel actions', () => {

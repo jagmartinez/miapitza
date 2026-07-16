@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useTheme } from '../hooks/useTheme';
@@ -94,8 +94,12 @@ export default function Profile() {
     const { user, logout } = useAuth();
     const { theme, toggleTheme } = useTheme();
     const { language, setLanguage } = useLanguage();
+    const [searchParams, setSearchParams] = useSearchParams();
 
-    const [activeTab, setActiveTab] = useState<ProfileTab>('info');
+    const requestedTab = searchParams.get('tab');
+    const [activeTab, setActiveTab] = useState<ProfileTab>(() =>
+        requestedTab === 'hr' || (user?.accountType === 'INTERNAL' && Boolean(user.employeeId)) ? 'hr' : 'info'
+    );
     const [stats, setStats] = useState<MyStats | null>(null);
     const [fullUserData, setFullUserData] = useState<FullProfileUser | null>(null);
     const [activities, setActivities] = useState<ActivityEntry[]>([]);
@@ -130,6 +134,17 @@ export default function Profile() {
             } catch (e) { console.error('Error loading profile data:', e); }
         })();
     }, [user]);
+
+    useEffect(() => {
+        if (requestedTab && ['info', 'hr', 'stats', 'permissions', 'settings', 'security', 'sessions', '2fa'].includes(requestedTab)) {
+            setActiveTab(requestedTab as ProfileTab);
+        }
+    }, [requestedTab]);
+
+    const selectTab = (tab: ProfileTab) => {
+        setActiveTab(tab);
+        setSearchParams(tab === 'info' ? {} : { tab }, { replace: true });
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -200,7 +215,7 @@ export default function Profile() {
                         <button
                             key={t.id}
                             className={`profile-nav-item ${activeTab === t.id ? 'active' : ''}`}
-                            onClick={() => setActiveTab(t.id)}
+                            onClick={() => selectTab(t.id)}
                         >
                             <t.icon size={18} />
                             {t.label}

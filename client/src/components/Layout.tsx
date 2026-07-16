@@ -138,6 +138,7 @@ const NAV_SECTIONS: NavSection[] = [
     {
         section: 'Mi portal RH',
         items: [
+            { to: '/profile?tab=hr', icon: UserRoundCheck, label: 'Mi RH', roles: ALL_ROLES },
             { to: '/rh/mi-portal', icon: Briefcase, label: 'Resumen personal', internalOnly: true },
             { to: '/rh/mi-portal/horario', icon: Calendar, label: 'Mi horario', internalOnly: true },
             { to: '/rh/marcaje', icon: MapPin, label: 'Marcaje', internalOnly: true },

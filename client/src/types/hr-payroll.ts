@@ -50,6 +50,17 @@ export interface HrPayrollRuleVersion {
   createdBy?: HrPayrollActor | null;
 }
 
+export interface HrPayrollCompanyTaxProfile {
+  companyId: number;
+  companyName: string;
+  taxRegime: 'GENERAL' | 'SIMPLIFIED_FIXED_QUOTA' | 'SPECIAL' | 'EXEMPT' | 'OTHER';
+  incomeTaxWithholding: boolean;
+  sourceReference: string | null;
+  incomeTaxException: string | null;
+  ready: boolean;
+  updatedAt: string;
+}
+
 export interface HrPayrollLegalConfiguration {
   schema: 'HR_PAYROLL_PARAMETRIC_V4';
   legallyValidated: true;
@@ -115,6 +126,7 @@ export interface HrPayrollLegalConfiguration {
 export interface HrPayrollPaymentConceptDefinition {
   code: string;
   name: string;
+  active: boolean;
   type: HrPayrollComponentType;
   socialSecurityApplicable: boolean;
   trainingContributionApplicable: boolean;

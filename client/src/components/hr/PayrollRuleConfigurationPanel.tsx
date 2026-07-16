@@ -21,6 +21,7 @@ import { DEFAULT_PAYMENT_CONCEPTS } from './payrollPaymentConceptDefaults';
 import type {
   HrPayrollConfigurationReviewPayload,
   HrPayrollConfigurationUploadPayload,
+  HrPayrollCompanyTaxProfile,
   HrPayrollLegalConfiguration,
   HrPayrollRuleConfigurationRevision,
   HrPayrollRuleVersion,
@@ -32,6 +33,7 @@ interface Props {
   loading: boolean;
   saving: boolean;
   online: boolean;
+  companyTaxProfile: HrPayrollCompanyTaxProfile;
   onUpload: (payload: HrPayrollConfigurationUploadPayload) => Promise<void>;
   onReview: (payload: HrPayrollConfigurationReviewPayload) => Promise<void>;
 }
@@ -47,7 +49,9 @@ const DEFAULT_BRACKETS: Bracket[] = [
   { lowerBound: '500000', upperBound: null, baseTax: '82500', rate: '0.30', excessOver: '500000' },
 ];
 
-const decimalRateToPercent = (value: string) => value === '' ? '' : String(Number(value) * 100);
+const decimalRateToPercent = (value: string) => value === ''
+  ? ''
+  : String(Number((Number(value) * 100).toFixed(6)));
 const percentToDecimalRate = (value: string) => value === '' ? '' : String(Number(value) / 100);
 const validPercent = (value: string) => DECIMAL.test(value) && Number(value) >= 0 && Number(value) <= 100;
 const actorName = (actor?: { id: number; name?: string | null; username?: string | null } | null) =>
@@ -109,6 +113,7 @@ export default function PayrollRuleConfigurationPanel({
   loading,
   saving,
   online,
+  companyTaxProfile,
   onUpload,
   onReview,
 }: Props) {
@@ -126,10 +131,10 @@ export default function PayrollRuleConfigurationPanel({
   const [incomeDivisor, setIncomeDivisor] = useState(seed?.aguinaldo.incomeDivisor ?? '12');
   const [prorationMode, setProrationMode] = useState<'NONE' | 'SERVICE_DAYS_RATIO'>(seed?.aguinaldo.prorationMode ?? 'SERVICE_DAYS_RATIO');
   const [eligibleSources, setEligibleSources] = useState(seed?.aguinaldo.eligibleSources.join(', ') ?? 'ORDINARY, OVERTIME, PAID_LEAVE');
-  const [companyTaxRegime, setCompanyTaxRegime] = useState<'GENERAL' | 'SIMPLIFIED_FIXED_QUOTA' | 'SPECIAL' | 'EXEMPT' | 'OTHER'>(seedStatutory?.companyTaxRegime.code ?? 'GENERAL');
-  const [taxRegimeReference, setTaxRegimeReference] = useState(seedStatutory?.companyTaxRegime.sourceReference ?? 'Ley 822 y Decreto 01-2013');
-  const [regimeIncomeTaxApplicability, setRegimeIncomeTaxApplicability] = useState<'APPLIES' | 'DOES_NOT_APPLY'>(seedStatutory?.companyTaxRegime.incomeTaxApplicability ?? 'APPLIES');
-  const [regimeIncomeTaxException, setRegimeIncomeTaxException] = useState(seedStatutory?.companyTaxRegime.incomeTaxExceptionReason ?? '');
+  const companyTaxRegime = companyTaxProfile.taxRegime;
+  const taxRegimeReference = companyTaxProfile.sourceReference ?? '';
+  const regimeIncomeTaxApplicability = companyTaxProfile.incomeTaxWithholding ? 'APPLIES' as const : 'DOES_NOT_APPLY' as const;
+  const regimeIncomeTaxException = companyTaxProfile.incomeTaxException ?? '';
   const [inssApplicability, setInssApplicability] = useState<'APPLIES' | 'DOES_NOT_APPLY'>(seedStatutory?.inss.applicability ?? 'APPLIES');
   const [inssRegime, setInssRegime] = useState<'INTEGRAL' | 'IVM_RP' | 'FACULTATIVE_INTEGRAL' | 'FACULTATIVE_IVM' | 'OTHER'>(seedStatutory?.inss.regime ?? 'INTEGRAL');
   const [inssEmployeeRate, setInssEmployeeRate] = useState(decimalRateToPercent(seedStatutory?.inss.employeeRate ?? '0.07'));
@@ -143,8 +148,11 @@ export default function PayrollRuleConfigurationPanel({
   const [inatecRate, setInatecRate] = useState(decimalRateToPercent(seedStatutory?.inatec.employerRate ?? '0.02'));
   const [inatecReference, setInatecReference] = useState(seedStatutory?.inatec.sourceReference ?? 'Decreto 3-91, aporte patronal INATEC');
   const [inatecException, setInatecException] = useState(seedStatutory?.inatec.exceptionReason ?? '');
-  const [paymentConceptCatalog, setPaymentConceptCatalog] = useState(() =>
-    (seedStatutory?.paymentConceptCatalog ?? DEFAULT_PAYMENT_CONCEPTS).map((concept) => ({ ...concept }))
+  const [paymentConceptCatalog, setPaymentConceptCatalog] = useState<HrPayrollLegalConfiguration['statutory']['paymentConceptCatalog']>(() =>
+    (seedStatutory?.paymentConceptCatalog ?? DEFAULT_PAYMENT_CONCEPTS).map((concept) => ({
+      ...concept,
+      active: 'active' in concept ? concept.active : true,
+    }))
   );
   const [incomeTaxReference, setIncomeTaxReference] = useState(seedStatutory?.incomeTax.sourceReference ?? 'Ley 822 art. 23 y Decreto 01-2013 art. 19');
   const [periodsWeekly, setPeriodsWeekly] = useState(String(seedStatutory?.incomeTax.annualPeriods.WEEKLY ?? 52));
@@ -176,18 +184,18 @@ export default function PayrollRuleConfigurationPanel({
     const operationalDecimals = [weekly, biweekly, monthly, overtime, leaveDay, leaveHour, leaveMinute, incomeDivisor];
     if (!/^[A-Z]{3}$/.test(currency) || operationalDecimals.some((value) => !DECIMAL.test(value) || Number(value) <= 0)) issues.push('Completa los parámetros operativos de nómina y aguinaldo.');
     if (!Number.isInteger(Number(lookbackDays)) || Number(lookbackDays) < 1 || Number(lookbackDays) > 731 || !eligibleSources.split(',').some((value) => value.trim())) issues.push('Revisa el período y las fuentes elegibles del aguinaldo.');
-    if (!taxRegimeReference.trim() || (regimeIncomeTaxApplicability === 'DOES_NOT_APPLY' && regimeIncomeTaxException.trim().length < 3)) issues.push('Documenta el régimen de la empresa y su efecto sobre el IR laboral.');
+    if (!companyTaxProfile.ready || !taxRegimeReference.trim() || (regimeIncomeTaxApplicability === 'DOES_NOT_APPLY' && regimeIncomeTaxException.trim().length < 3)) issues.push('Completa y confirma el perfil fiscal desde Empresas antes de guardar esta versión.');
     if (!obligationReady(inssApplicability, inssReference, inssException) || ![inssEmployeeRate, inssEmployerBelow, inssEmployerAtOrAbove].every(validPercent) || !Number.isInteger(Number(inssThreshold)) || Number(inssThreshold) < 1 || !DECIMAL.test(inssMinimumBase) || (inssApplicability === 'APPLIES' && Number(inssMinimumBase) <= 0)) issues.push('Revisa tasas, umbral, base mínima y fuente del INSS.');
     if (!obligationReady(inatecApplicability, inatecReference, inatecException) || !validPercent(inatecRate)) issues.push('Revisa la tasa, aplicabilidad y fuente del INATEC.');
     if (!incomeTaxReference.trim() || !bracketTableIsValid(brackets) || [periodsWeekly, periodsBiweekly, periodsMonthly].some((value) => !Number.isInteger(Number(value)) || Number(value) < 1 || Number(value) > 366)) issues.push('La tabla progresiva del IR debe ser continua y cuadrar impuesto base, tasa y exceso.');
     if (!conceptCatalogReady) issues.push('Cada concepto de pago necesita código único, clasificación y fuente.');
-    if (inssApplicability === 'APPLIES' && !paymentConceptCatalog.some((concept) => concept.type === 'INCOME' && concept.socialSecurityApplicable)) issues.push('Marca al menos un ingreso como sujeto a INSS.');
-    if (inatecApplicability === 'APPLIES' && !paymentConceptCatalog.some((concept) => concept.type === 'INCOME' && concept.trainingContributionApplicable)) issues.push('Marca al menos un ingreso como base de INATEC.');
-    if (regimeIncomeTaxApplicability === 'APPLIES' && !paymentConceptCatalog.some((concept) => concept.type === 'INCOME' && concept.incomeTaxTreatment !== null)) issues.push('Clasifica al menos un ingreso sujeto a IR laboral.');
+    if (inssApplicability === 'APPLIES' && !paymentConceptCatalog.some((concept) => concept.active && concept.type === 'INCOME' && concept.socialSecurityApplicable)) issues.push('Marca al menos un ingreso activo como sujeto a INSS.');
+    if (inatecApplicability === 'APPLIES' && !paymentConceptCatalog.some((concept) => concept.active && concept.type === 'INCOME' && concept.trainingContributionApplicable)) issues.push('Marca al menos un ingreso activo como base de INATEC.');
+    if (regimeIncomeTaxApplicability === 'APPLIES' && !paymentConceptCatalog.some((concept) => concept.active && concept.type === 'INCOME' && concept.incomeTaxTreatment !== null)) issues.push('Clasifica al menos un ingreso activo sujeto a IR laboral.');
     if (sourceReference.trim().length < 3 || evidenceReference.trim().length < 3 || uploadReason.trim().length < 3) issues.push('Agrega fuente general, evidencia y motivo de la revisión.');
     if (!regimeRuleConfirmed || !sourceConfirmed) issues.push('Faltan las dos confirmaciones finales.');
     return issues;
-  }, [brackets, conceptCatalogReady, currency, eligibleSources, evidenceReference, incomeDivisor, incomeTaxReference, inatecApplicability, inatecException, inatecRate, inatecReference, inssApplicability, inssEmployeeRate, inssEmployerAtOrAbove, inssEmployerBelow, inssException, inssMinimumBase, inssReference, inssThreshold, leaveDay, leaveHour, leaveMinute, lookbackDays, monthly, overtime, paymentConceptCatalog, periodsBiweekly, periodsMonthly, periodsWeekly, regimeIncomeTaxApplicability, regimeIncomeTaxException, regimeRuleConfirmed, sourceConfirmed, sourceReference, taxRegimeReference, uploadReason, weekly, biweekly]);
+  }, [brackets, companyTaxProfile.ready, conceptCatalogReady, currency, eligibleSources, evidenceReference, incomeDivisor, incomeTaxReference, inatecApplicability, inatecException, inatecRate, inatecReference, inssApplicability, inssEmployeeRate, inssEmployerAtOrAbove, inssEmployerBelow, inssException, inssMinimumBase, inssReference, inssThreshold, leaveDay, leaveHour, leaveMinute, lookbackDays, monthly, overtime, paymentConceptCatalog, periodsBiweekly, periodsMonthly, periodsWeekly, regimeIncomeTaxApplicability, regimeIncomeTaxException, regimeRuleConfirmed, sourceConfirmed, sourceReference, taxRegimeReference, uploadReason, weekly, biweekly]);
 
   const uploadReady = validationIssues.length === 0;
   const editable = rule.status === 'DRAFT' && !rule.activeConfigurationRevisionId;
@@ -292,18 +300,6 @@ export default function PayrollRuleConfigurationPanel({
     });
   };
 
-  const updateCompanyTaxRegime = (regime: typeof companyTaxRegime) => {
-    setCompanyTaxRegime(regime);
-    setRegimeRuleConfirmed(false);
-    if (regime === 'GENERAL') {
-      setRegimeIncomeTaxApplicability('APPLIES');
-      setRegimeIncomeTaxException('');
-    } else if (regime === 'SIMPLIFIED_FIXED_QUOTA') {
-      setRegimeIncomeTaxApplicability('DOES_NOT_APPLY');
-      setRegimeIncomeTaxException('Régimen simplificado configurado sin cálculo de IR laboral; sujeto a fuente y validación dual.');
-    }
-  };
-
   return (
     <div className="hr-payroll-configuration hr-legal-panel">
       {editable ? (
@@ -313,11 +309,16 @@ export default function PayrollRuleConfigurationPanel({
               <span className="hr-legal-section-icon"><Landmark size={20} aria-hidden="true" /></span>
               <div><span className="hr-legal-step-label">1 · Alcance</span><h3 id="legal-regime-title">Régimen de la empresa</h3><p>Define si esta empresa retiene IR laboral. INSS e INATEC se configuran de forma independiente.</p></div>
             </header>
-            <div className="hr-legal-field-grid">
-              <label>Régimen tributario empresarial<HrReactSelect value={companyTaxRegime} onChange={(event) => updateCompanyTaxRegime(event.target.value as typeof companyTaxRegime)}><option value="GENERAL">General</option><option value="SIMPLIFIED_FIXED_QUOTA">Cuota fija / simplificado</option><option value="SPECIAL">Especial</option><option value="EXEMPT">Exento</option><option value="OTHER">Otro</option></HrReactSelect><small>Selecciona el régimen inscrito ante la DGI.</small></label>
-              <label>¿Retiene IR laboral?<HrReactSelect value={regimeIncomeTaxApplicability} onChange={(event) => { setRegimeIncomeTaxApplicability(event.target.value as typeof regimeIncomeTaxApplicability); setRegimeRuleConfirmed(false); }}><option value="APPLIES">Sí, calcula y retiene IR</option><option value="DOES_NOT_APPLY">No, existe excepción documentada</option></HrReactSelect><small>La decisión queda congelada en esta versión.</small></label>
-              <label className="span-full">Fuente del régimen<input value={taxRegimeReference} onChange={(event) => setTaxRegimeReference(event.target.value)} maxLength={500} required /><small>Ley, resolución, constancia o enlace verificable.</small></label>
-              {regimeIncomeTaxApplicability === 'DOES_NOT_APPLY' && <label className="span-full">Fundamento de no aplicación<textarea rows={3} value={regimeIncomeTaxException} onChange={(event) => { setRegimeIncomeTaxException(event.target.value); setRegimeRuleConfirmed(false); }} required /></label>}
+            <div className="hr-legal-company-profile" role="note">
+              <dl>
+                <div><dt>Empresa</dt><dd>{companyTaxProfile.companyName}</dd></div>
+                <div><dt>Régimen DGI</dt><dd>{companyTaxRegime === 'GENERAL' ? 'General' : companyTaxRegime === 'SIMPLIFIED_FIXED_QUOTA' ? 'Cuota fija / simplificado' : companyTaxRegime === 'SPECIAL' ? 'Especial' : companyTaxRegime === 'EXEMPT' ? 'Exento' : 'Otro'}</dd></div>
+                <div><dt>IR laboral</dt><dd>{companyTaxProfile.incomeTaxWithholding ? 'Calcula y retiene' : 'No retiene'}</dd></div>
+                <div><dt>Estado</dt><dd>{companyTaxProfile.ready ? 'Confirmado' : 'Pendiente'}</dd></div>
+                <div><dt>Respaldo</dt><dd>{taxRegimeReference || 'Pendiente'}</dd></div>
+              </dl>
+              {!companyTaxProfile.incomeTaxWithholding && <p><strong>Fundamento:</strong> {regimeIncomeTaxException || 'Pendiente de documentar en Empresas.'}</p>}
+              <p>Este dato viene de <strong>Configuración → Empresas</strong>. La versión guarda una copia para auditoría; no se modifica aquí.</p>
             </div>
           </section>
 
@@ -417,7 +418,7 @@ export default function PayrollRuleConfigurationPanel({
               <label className="span-full">Evidencia verificada<input value={evidenceReference} onChange={(event) => setEvidenceReference(event.target.value)} maxLength={500} placeholder="URL, expediente o documento interno" required /></label>
               <label className="span-full">Motivo de esta revisión<textarea rows={3} value={uploadReason} onChange={(event) => setUploadReason(event.target.value)} maxLength={900} required /></label>
             </div>
-            <label className="hr-payroll-confirm"><input type="checkbox" checked={regimeRuleConfirmed} onChange={(event) => setRegimeRuleConfirmed(event.target.checked)} /><span>Confirmo el régimen empresarial y la clasificación de cada concepto para IR, INSS e INATEC.</span></label>
+            <label className="hr-payroll-confirm"><input type="checkbox" checked={regimeRuleConfirmed} onChange={(event) => setRegimeRuleConfirmed(event.target.checked)} /><span>Confirmo que el perfil fiscal empresarial mostrado y la clasificación de cada concepto son correctos.</span></label>
             <label className="hr-payroll-confirm"><input type="checkbox" checked={sourceConfirmed} onChange={(event) => setSourceConfirmed(event.target.checked)} /><span>Confirmo que tasas, topes, bases y tramos fueron transcritos de fuentes autorizadas y vigentes.</span></label>
             {validationIssues.length > 0 && <div className="hr-legal-validation-summary" role="alert"><AlertCircle size={20} aria-hidden="true" /><div><strong>Antes de enviar, revisa:</strong><ul>{validationIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul></div></div>}
             <div className="hr-legal-submit-bar"><div><strong>{uploadReady ? 'Configuración lista para revisión' : `${validationIssues.length} ${validationIssues.length === 1 ? 'pendiente' : 'pendientes'}`}</strong><span>Después de guardar, otra persona debe validar y luego activar.</span></div><Button type="submit" disabled={!online || saving || !uploadReady}>{saving ? 'Guardando…' : 'Guardar y enviar a validación'}</Button></div>
@@ -482,7 +483,7 @@ function ReadOnlyConfiguration({ configuration, revision }: { configuration: HrP
 
     <section aria-labelledby="readonly-concepts-title">
       <header><span className="hr-legal-section-icon"><Users size={20} /></span><div><span className="hr-legal-step-label">Clasificación</span><h3 id="readonly-concepts-title">Qué aplica a cada ingreso y deducción</h3><p>Esta tabla responde si un concepto forma base de IR laboral, INSS o INATEC.</p></div></header>
-      <div className="hr-legal-readonly-table-wrap"><table><thead><tr><th>Concepto</th><th>Tipo</th><th>IR laboral</th><th>INSS</th><th>INATEC</th><th>Fuente</th></tr></thead><tbody>{statutory.paymentConceptCatalog.map((concept) => <tr key={concept.code}><td><strong>{concept.name}</strong><small>{concept.code}</small></td><td>{concept.type === 'INCOME' ? 'Ingreso' : 'Deducción'}</td><td>{concept.incomeTaxTreatment ? taxLabels[concept.incomeTaxTreatment] : concept.incomeTaxDeductible ? 'Deducible' : 'No sujeto'}</td><td>{yesNo(concept.socialSecurityApplicable)}</td><td>{yesNo(concept.trainingContributionApplicable)}</td><td>{concept.sourceReference}</td></tr>)}</tbody></table></div>
+      <div className="hr-legal-readonly-table-wrap"><table><thead><tr><th>Concepto</th><th>Tipo</th><th>IR laboral</th><th>INSS</th><th>INATEC</th><th>Estado</th><th>Fuente</th></tr></thead><tbody>{statutory.paymentConceptCatalog.map((concept) => <tr key={concept.code} className={!concept.active ? 'is-disabled' : undefined}><td><strong>{concept.name}</strong><small>{concept.code}</small></td><td>{concept.type === 'INCOME' ? 'Ingreso' : 'Deducción'}</td><td>{concept.incomeTaxTreatment ? taxLabels[concept.incomeTaxTreatment] : concept.incomeTaxDeductible ? 'Deducible' : 'No sujeto'}</td><td>{yesNo(concept.socialSecurityApplicable)}</td><td>{yesNo(concept.trainingContributionApplicable)}</td><td><span className={`hr-legal-status ${concept.active ? 'is-active' : 'is-inactive'}`}>{concept.active ? 'Activo' : 'Inhabilitado'}</span></td><td>{concept.sourceReference}</td></tr>)}</tbody></table></div>
     </section>
 
     <details className="hr-legal-readonly-operational"><summary>Ver parámetros operativos de nómina y aguinaldo</summary><dl><div><dt>Moneda</dt><dd>{configuration.currency}</dd></div><div><dt>Multiplicador de horas extra</dt><dd>{configuration.regular.overtimeMultiplier}×</dd></div><div><dt>Histórico de aguinaldo</dt><dd>{configuration.aguinaldo.lookbackDays} días</dd></div><div><dt>Divisor de aguinaldo</dt><dd>{configuration.aguinaldo.incomeDivisor}</dd></div></dl></details>

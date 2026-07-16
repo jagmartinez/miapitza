@@ -10,6 +10,7 @@ const payroll = read('../../pages/hr/MyPayroll.tsx');
 const benefits = read('../../pages/hr/MyBenefits.tsx');
 const profile = read('../../pages/Profile.tsx');
 const navigation = read('./MyHrNav.tsx');
+const layout = read('../Layout.tsx');
 
 describe('employee self-service UX contract', () => {
   it('keeps contextual navigation on every personal HR section', () => {
@@ -44,6 +45,8 @@ describe('employee self-service UX contract', () => {
     expect(profile).toContain("{ id: 'hr', icon: BriefcaseBusiness, label: 'Mi RH' }");
     expect(profile).toContain('Esta cuenta todavía no está vinculada a un empleado');
     expect(profile).toContain('Vincular en Personal');
+    expect(profile).toContain("setSearchParams(tab === 'info' ? {} : { tab }");
+    expect(layout).toContain("to: '/profile?tab=hr'");
     expect(profile).toContain('to="/rh/mi-portal/nomina"');
     expect(profile).toContain('to="/rh/mi-portal/gestion"');
   });

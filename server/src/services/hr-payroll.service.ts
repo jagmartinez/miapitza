@@ -132,11 +132,12 @@ function normalizeDeprecatedV4Aliases(value: unknown): unknown {
     const statutory = config.statutory as JsonObject | undefined;
     const catalog = statutory?.paymentConceptCatalog;
     const deprecatedProration = aguinaldo?.prorationMode === 'SERVICE_DAYS';
+    const conceptsWithoutState = Array.isArray(catalog) && catalog.some(item => typeof (item as JsonObject | null)?.active !== 'boolean');
     const deprecatedTreatments = Array.isArray(catalog) && catalog.some(item => {
         const treatment = (item as JsonObject | null)?.incomeTaxTreatment;
         return treatment === 'EXEMPT' || treatment === 'NONE';
     });
-    if (!deprecatedProration && !deprecatedTreatments) return value;
+    if (!deprecatedProration && !deprecatedTreatments && !conceptsWithoutState) return value;
     return {
         ...config,
         aguinaldo: aguinaldo ? {
@@ -149,6 +150,7 @@ function normalizeDeprecatedV4Aliases(value: unknown): unknown {
                 const concept = item as JsonObject;
                 return {
                     ...concept,
+                    active: typeof concept.active === 'boolean' ? concept.active : true,
                     incomeTaxTreatment: concept.incomeTaxTreatment === 'EXEMPT' || concept.incomeTaxTreatment === 'NONE'
                         ? null
                         : concept.incomeTaxTreatment,
@@ -183,6 +185,7 @@ function normalizeLegacyConfiguration(value: unknown, allowDeprecatedV4Aliases =
         return {
             code,
             name: code,
+            active: true,
             type,
             socialSecurityApplicable: type === 'INCOME' && inssCodes.includes(code),
             trainingContributionApplicable: type === 'INCOME' && inatecCodes.includes(code),
@@ -493,7 +496,73 @@ async function trace(tx: Prisma.TransactionClient, data: { companyId: number; ru
     await tx.payrollTrace.create({ data });
 }
 
+const companyTaxProfileSelect = {
+    payrollTaxRegime: true,
+    payrollIncomeTaxWithholding: true,
+    payrollTaxRegimeReference: true,
+    payrollIncomeTaxException: true,
+    payrollTaxProfileReady: true,
+} satisfies Prisma.CompanySelect;
+
+type CompanyTaxProfileRecord = Prisma.CompanyGetPayload<{ select: typeof companyTaxProfileSelect }>;
+
+async function companyTaxProfileRecord(db: Db, companyId: number): Promise<CompanyTaxProfileRecord> {
+    const profile = await db.company.findUnique({ where: { id: companyId }, select: companyTaxProfileSelect });
+    if (!profile) throw new HrPayrollError('Empresa no encontrada', 404, 'COMPANY_NOT_FOUND');
+    return profile;
+}
+
+export function assertCompanyTaxProfileReady(profile: CompanyTaxProfileRecord): void {
+    if (
+        !profile.payrollTaxProfileReady ||
+        !profile.payrollTaxRegimeReference?.trim() ||
+        (!profile.payrollIncomeTaxWithholding && !profile.payrollIncomeTaxException?.trim())
+    ) {
+        throw new HrPayrollError('Completa y confirma el perfil fiscal de la empresa antes de continuar', 409, 'COMPANY_TAX_PROFILE_REQUIRED');
+    }
+}
+
+export function assertConfigurationMatchesCompanyTaxProfile(config: LegalConfiguration, profile: CompanyTaxProfileRecord): void {
+    assertCompanyTaxProfileReady(profile);
+    const expectedApplicability = profile.payrollIncomeTaxWithholding ? 'APPLIES' : 'DOES_NOT_APPLY';
+    if (
+        config.statutory.companyTaxRegime.code !== profile.payrollTaxRegime ||
+        config.statutory.companyTaxRegime.incomeTaxApplicability !== expectedApplicability ||
+        config.statutory.companyTaxRegime.sourceReference !== profile.payrollTaxRegimeReference ||
+        (expectedApplicability === 'DOES_NOT_APPLY' && config.statutory.companyTaxRegime.incomeTaxExceptionReason !== profile.payrollIncomeTaxException)
+    ) {
+        throw new HrPayrollError('El perfil fiscal de la empresa cambió; clona la versión y vuelve a validarla', 409, 'COMPANY_TAX_PROFILE_MISMATCH');
+    }
+}
+
 export class PayrollRuleService {
+    static async companyTaxProfile(companyId: number) {
+        const company = await prisma.company.findUnique({
+            where: { id: companyId },
+            select: {
+                id: true,
+                name: true,
+                payrollTaxRegime: true,
+                payrollIncomeTaxWithholding: true,
+                payrollTaxRegimeReference: true,
+                payrollIncomeTaxException: true,
+                payrollTaxProfileReady: true,
+                updatedAt: true,
+            },
+        });
+        if (!company) throw new HrPayrollError('Empresa no encontrada', 404, 'COMPANY_NOT_FOUND');
+        return serialize({
+            companyId: company.id,
+            companyName: company.name,
+            taxRegime: company.payrollTaxRegime,
+            incomeTaxWithholding: company.payrollIncomeTaxWithholding,
+            sourceReference: company.payrollTaxRegimeReference,
+            incomeTaxException: company.payrollIncomeTaxException,
+            ready: company.payrollTaxProfileReady,
+            updatedAt: company.updatedAt,
+        });
+    }
+
     static async list(companyId: number, filters: InputMap) {
         const p = paging(filters);
         const where: Prisma.PayrollRuleVersionWhereInput = { companyId, status: filters.status || undefined };
@@ -518,6 +587,81 @@ export class PayrollRuleService {
             }, include: { createdBy: { select: actorSelect } } });
             await AuditLogService.log({ companyId, userId: actorId, entityType: 'PayrollRuleVersion', entityId: result.id, action: 'CREATE', details: { name, version: result.version, sourceReference: result.sourceReference } }, tx);
             return presentRule(result);
+        });
+    }
+
+    static async clone(id: number, companyId: number, actorId: number, payload: InputMap, key: string) {
+        return idempotent(companyId, key, `PAYROLL_RULE_CLONE:${id}`, { actorId, payload }, async tx => {
+            const source = await tx.payrollRuleVersion.findFirst({
+                where: { id, companyId },
+                include: { activeConfigurationRevision: true },
+            });
+            if (!source) throw new HrPayrollError('Regla no encontrada', 404, 'HR_PAYROLL_RULE_NOT_FOUND');
+            if (!source.activeConfigurationRevision || !source.activeConfigurationRevisionId) {
+                throw new HrPayrollError('Sólo puede clonarse una versión con configuración validada', 409, 'HR_PAYROLL_VALIDATED_CONFIGURATION_REQUIRED');
+            }
+            const expectedRevision = Number(payload.expectedRevision);
+            if (!Number.isInteger(expectedRevision) || expectedRevision !== source.revision) {
+                throw new HrPayrollError('La regla cambió; actualice la vista', 409, 'HR_PAYROLL_REVISION_CONFLICT');
+            }
+            const companyProfile = await companyTaxProfileRecord(tx, companyId);
+            assertCompanyTaxProfileReady(companyProfile);
+            const sourceConfig = validateLegalConfiguration(source.activeConfigurationRevision.configuration);
+            const companyTaxRegime = {
+                code: companyProfile.payrollTaxRegime as PayrollStatutoryConfiguration['companyTaxRegime']['code'],
+                sourceReference: companyProfile.payrollTaxRegimeReference,
+                incomeTaxApplicability: companyProfile.payrollIncomeTaxWithholding ? 'APPLIES' as const : 'DOES_NOT_APPLY' as const,
+                ...(companyProfile.payrollIncomeTaxWithholding
+                    ? {}
+                    : { incomeTaxExceptionReason: companyProfile.payrollIncomeTaxException! }),
+            };
+            const clonedConfig = validateLegalConfiguration({
+                ...sourceConfig,
+                statutory: { ...sourceConfig.statutory, companyTaxRegime },
+            }, { requireCurrentSchema: true });
+            const name = requiredText(payload.name, 'name', 120);
+            const effectiveFrom = dateValue(payload.effectiveFrom, 'effectiveFrom');
+            const effectiveTo = payload.effectiveTo ? dateValue(payload.effectiveTo, 'effectiveTo') : null;
+            if (effectiveTo && effectiveTo < effectiveFrom) throw new HrPayrollError('effectiveTo no puede ser anterior a effectiveFrom');
+            const latest = await tx.payrollRuleVersion.findFirst({ where: { companyId, name }, orderBy: { version: 'desc' }, select: { version: true } });
+            const rule = await tx.payrollRuleVersion.create({ data: {
+                companyId,
+                createdById: actorId,
+                name,
+                version: (latest?.version ?? 0) + 1,
+                effectiveFrom,
+                effectiveTo,
+                sourceReference: requiredText(payload.sourceReference, 'sourceReference', 500),
+                description: optionalText(payload.description),
+                status: 'DRAFT',
+            }, include: { createdBy: { select: actorSelect } } });
+            const configurationHash = hashPayload(clonedConfig);
+            const clonedRevision = await tx.payrollRuleConfigurationRevision.create({ data: {
+                companyId,
+                ruleVersionId: rule.id,
+                revision: 1,
+                configuration: clonedConfig as unknown as Prisma.InputJsonValue,
+                configurationHash,
+                sourceReference: source.activeConfigurationRevision.sourceReference,
+                evidenceReference: source.activeConfigurationRevision.evidenceReference,
+                uploadReason: `Borrador clonado desde ${source.name} v${source.version}; requiere revisión antes de activarse`,
+                uploadedById: actorId,
+            } });
+            await AuditLogService.log({
+                companyId,
+                userId: actorId,
+                entityType: 'PayrollRuleVersion',
+                entityId: rule.id,
+                action: 'CREATE',
+                details: {
+                    operation: 'CLONE_TO_DRAFT',
+                    sourceRuleVersionId: source.id,
+                    sourceConfigurationRevisionId: source.activeConfigurationRevisionId,
+                    clonedConfigurationRevisionId: clonedRevision.id,
+                    configurationHash,
+                },
+            }, tx);
+            return presentRule(rule);
         });
     }
 
@@ -548,6 +692,8 @@ export class PayrollRuleService {
             const expectedRevision = Number(payload.expectedRevision);
             if (!Number.isInteger(expectedRevision) || expectedRevision !== rule.revision) throw new HrPayrollError('La regla cambió; actualice la vista', 409, 'HR_PAYROLL_REVISION_CONFLICT');
             const config = validateLegalConfiguration(payload.configuration, { requireCurrentSchema: true });
+            const companyProfile = await companyTaxProfileRecord(tx, companyId);
+            assertConfigurationMatchesCompanyTaxProfile(config, companyProfile);
             const configurationHash = hashPayload(config);
             const latest = await tx.payrollRuleConfigurationRevision.findFirst({ where: { ruleVersionId: id }, orderBy: { revision: 'desc' }, select: { revision: true } });
             const revision = (latest?.revision ?? 0) + 1;
@@ -591,6 +737,9 @@ export class PayrollRuleService {
             if (configuration.uploadedById === actorId) throw new HrPayrollError('Control dual: el cargador no puede validar su propia configuración', 409, 'HR_PAYROLL_DUAL_CONTROL_REQUIRED');
             const config = validateLegalConfiguration(configuration.configuration, { requireCurrentSchema: true });
             const decision = payload.decision === 'REJECTED' ? 'REJECTED' : payload.decision === 'VALIDATED' ? 'VALIDATED' : (() => { throw new HrPayrollError('decision debe ser VALIDATED o REJECTED'); })();
+            if (decision === 'VALIDATED') {
+                assertConfigurationMatchesCompanyTaxProfile(config, await companyTaxProfileRecord(tx, companyId));
+            }
             await tx.payrollRuleConfigurationReview.create({ data: { companyId, configurationRevisionId, decision, reason: requiredText(payload.reason, 'reason'), reviewerId: actorId } });
             const update: Prisma.PayrollRuleVersionUncheckedUpdateManyInput = decision === 'VALIDATED' ? {
                 activeConfigurationRevisionId: configurationRevisionId, configurationSummary: configurationSummary(config, configuration.configurationHash), validatedById: actorId, validatedAt: new Date(), revision: { increment: 1 },
@@ -614,7 +763,8 @@ export class PayrollRuleService {
                 if (!current.activeConfigurationRevisionId) throw new HrPayrollError('La regla requiere una configuración revisada y VALIDATED', 409, 'HR_PAYROLL_VALIDATED_CONFIGURATION_REQUIRED');
                 const validated = await tx.payrollRuleConfigurationRevision.findFirst({ where: { id: current.activeConfigurationRevisionId, companyId, ruleVersionId: id, review: { decision: 'VALIDATED' } } });
                 if (!validated) throw new HrPayrollError('La revisión legal VALIDATED no está disponible', 409, 'HR_PAYROLL_VALIDATED_CONFIGURATION_REQUIRED');
-                validateLegalConfiguration(validated.configuration, { requireCurrentSchema: true });
+                const validatedConfig = validateLegalConfiguration(validated.configuration, { requireCurrentSchema: true });
+                assertConfigurationMatchesCompanyTaxProfile(validatedConfig, await companyTaxProfileRecord(tx, companyId));
                 const overlap = await tx.payrollRuleVersion.findFirst({ where: { companyId, id: { not: id }, status: 'ACTIVE', effectiveFrom: { lte: current.effectiveTo ?? new Date('9999-12-31') }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: current.effectiveFrom } }] }, select: { id: true, name: true } });
                 if (overlap) throw new HrPayrollError(`Existe otra regla ACTIVE superpuesta: ${overlap.name}`, 409, 'HR_PAYROLL_ACTIVE_RULE_OVERLAP');
                 await tx.payrollRuleVersion.update({ where: { id }, data: { status: 'ACTIVE', revision: { increment: 1 }, activatedAt: new Date() } });
@@ -665,7 +815,9 @@ async function ensureActiveRule(tx: Prisma.TransactionClient, companyId: number,
     const rule = await tx.payrollRuleVersion.findFirst({ where: { id: ruleVersionId, companyId, status: 'ACTIVE', effectiveFrom: { lte: referenceDate }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: referenceDate } }] }, include: { activeConfigurationRevision: { include: { review: true } } } });
     if (!rule) throw new HrPayrollError('La regla no está ACTIVE o no aplica a la fecha de corte', 409, 'HR_PAYROLL_RULE_NOT_ACTIVE');
     if (!rule.activeConfigurationRevision || rule.activeConfigurationRevision.review?.decision !== 'VALIDATED') throw new HrPayrollError('La regla ACTIVE no tiene configuración legal VALIDATED', 409, 'HR_PAYROLL_VALIDATED_CONFIGURATION_REQUIRED');
-    return { rule, configurationRevision: rule.activeConfigurationRevision, config: validateLegalConfiguration(rule.activeConfigurationRevision.configuration) };
+    const config = validateLegalConfiguration(rule.activeConfigurationRevision.configuration);
+    assertConfigurationMatchesCompanyTaxProfile(config, await companyTaxProfileRecord(tx, companyId));
+    return { rule, configurationRevision: rule.activeConfigurationRevision, config };
 }
 
 async function addAnomaly(tx: Prisma.TransactionClient, data: { companyId: number; runId: number; employeeId?: number; userId?: number; code: string; message: string; severity?: 'INFO' | 'WARNING' | 'BLOCKING' }) {

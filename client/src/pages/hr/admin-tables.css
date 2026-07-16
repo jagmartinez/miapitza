@@ -1,0 +1,171 @@
+.hr-admin-board {
+  margin-top: var(--spacing-lg);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-lg);
+  background: var(--color-surface);
+}
+
+.hr-admin-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 8px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-background-secondary);
+}
+
+.hr-admin-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hr-admin-tabs button:hover {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.hr-admin-tabs button[aria-selected='true'] {
+  border-color: rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--color-primary);
+}
+
+.hr-admin-tabs button span {
+  min-width: 22px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-size: var(--font-size-xs);
+  text-align: center;
+}
+
+.hr-admin-table-wrap {
+  width: 100%;
+  overflow: auto;
+}
+
+.hr-admin-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}
+
+.hr-admin-table caption {
+  padding: 16px 18px;
+  color: var(--color-text);
+  font-size: var(--font-size-lg);
+  font-weight: 800;
+  text-align: left;
+}
+
+.hr-admin-table th,
+.hr-admin-table td {
+  padding: 13px 14px;
+  border-top: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.hr-admin-table th {
+  background: var(--color-background-secondary);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 800;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.hr-admin-table tbody tr:not(:has(.hr-admin-empty)):hover,
+.hr-admin-table tbody tr.is-selected {
+  background: rgba(59, 130, 246, 0.07);
+}
+
+.hr-admin-table td > small,
+.hr-admin-table td > strong + small {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.hr-admin-actions-col {
+  width: 1%;
+  text-align: right !important;
+  white-space: nowrap;
+}
+
+.hr-admin-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.hr-admin-cell-warning {
+  color: var(--color-warning);
+  font-weight: 800;
+}
+
+.hr-admin-muted {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.hr-admin-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-height: 116px;
+  padding: var(--spacing-lg);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.hr-admin-empty strong {
+  color: var(--color-text);
+}
+
+.hr-benefits-admin-layout {
+  display: block;
+}
+
+.hr-benefits-admin-board {
+  margin-top: 0;
+}
+
+.hr-benefits-page:not(.hr-my-benefits-page) .hr-benefits-workspace.is-empty {
+  display: none;
+}
+
+.hr-benefits-page:not(.hr-my-benefits-page) .hr-benefits-workspace.is-visible {
+  margin-top: var(--spacing-lg);
+}
+
+@media (max-width: 760px) {
+  .hr-admin-empty {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .hr-admin-tabs button {
+    min-height: 42px;
+  }
+}

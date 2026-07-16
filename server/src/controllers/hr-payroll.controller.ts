@@ -44,8 +44,10 @@ async function binary(res: Response, result: { contentType: string; filename: st
 }
 
 export class HrPayrollController {
+    static async companyTaxProfile(req: Request, res: Response, next: NextFunction) { try { owner(req); res.json({ success: true, data: await PayrollRuleService.companyTaxProfile(req.user!.companyId) }); } catch (e) { handle(e, res, next); } }
     static async rules(req: Request, res: Response, next: NextFunction) { try { owner(req); sendList(res, await PayrollRuleService.list(req.user!.companyId, filters(req))); } catch (e) { handle(e, res, next); } }
     static async createRule(req: Request, res: Response, next: NextFunction) { try { owner(req); res.status(201).json({ success: true, data: await PayrollRuleService.create(req.user!.companyId, req.user!.userId, req.body, key(req)) }); } catch (e) { handle(e, res, next); } }
+    static async cloneRule(req: Request, res: Response, next: NextFunction) { try { owner(req); res.status(201).json({ success: true, data: await PayrollRuleService.clone(id(req), req.user!.companyId, req.user!.userId, req.body, key(req)) }); } catch (e) { handle(e, res, next); } }
     static async updateRule(req: Request, res: Response, next: NextFunction) { try { owner(req); res.json({ success: true, data: await PayrollRuleService.update(id(req), req.user!.companyId, req.user!.userId, req.body, key(req)) }); } catch (e) { handle(e, res, next); } }
     static async uploadRuleConfiguration(req: Request, res: Response, next: NextFunction) { try { owner(req); res.status(201).json({ success: true, data: await PayrollRuleService.uploadConfiguration(id(req), req.user!.companyId, req.user!.userId, req.body, key(req)) }); } catch (e) { handle(e, res, next); } }
     static async ruleConfigurations(req: Request, res: Response, next: NextFunction) { try { owner(req); res.json({ success: true, data: await PayrollRuleService.listConfigurationRevisions(id(req), req.user!.companyId) }); } catch (e) { handle(e, res, next); } }

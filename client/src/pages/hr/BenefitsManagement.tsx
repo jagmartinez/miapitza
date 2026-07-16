@@ -6,7 +6,6 @@ import {
   FileMinus2,
   WalletCards,
   Plus,
-  Receipt,
   RefreshCw,
   Route,
 } from 'lucide-react';
@@ -46,6 +45,7 @@ import type {
   HrTravelRequestPayload,
 } from '../../types/hr-benefits';
 import './benefits.css';
+import './admin-tables.css';
 
 type Tab = 'TRAVEL' | 'LOAN' | 'DEDUCTION';
 const STATUS_OPTIONS: Record<Tab, Array<{ value: string; label: string }>> = {
@@ -427,67 +427,55 @@ export default function BenefitsManagement() {
       )}
       {!loading && !error && (
         <>
-        <section className="hr-benefits-overview" aria-label="Resumen de la bandeja">
-          <div><span>Registros visibles</span><strong>{cards.length}</strong><small>Según el estado seleccionado</small></div>
-          <div><span>Con acciones disponibles</span><strong>{cards.filter((item) => item.allowedActions.length > 0).length}</strong><small>Abre el detalle para continuar</small></div>
-          <div><span>Proceso finalizado</span><strong>{cards.filter((item) => ['SETTLED', 'PAID', 'CLOSED', 'COMPLETED'].includes(item.status)).length}</strong><small>Listos para consulta</small></div>
-        </section>
-        <div className="hr-benefits-layout">
-          <section className="hr-benefits-list" aria-label={`Lista de ${tab.toLowerCase()}`}>
-            {cards.length === 0 ? (
-              <div className="hr-benefits-empty">
-                <Receipt size={36} />
-                <p>No hay registros para los filtros seleccionados.</p>
-              </div>
-            ) : (
-              cards.map((entry) => {
-                const resource = tab;
-                const item = entry as HrTravelRequest | HrLoan | HrDeduction;
-                const subtitle =
-                  resource === 'TRAVEL'
-                    ? `${(item as HrTravelRequest).destination} · ${dateLabel((item as HrTravelRequest).departureDate)}`
-                    : resource === 'LOAN'
-                      ? (item as HrLoan).purpose
-                      : (item as HrDeduction).name;
-                const amount =
-                  resource === 'TRAVEL'
-                    ? money(
-                        (item as HrTravelRequest).currency,
-                        (item as HrTravelRequest).approvedAmount ??
-                          (item as HrTravelRequest).requestedAmount
-                      )
-                    : resource === 'LOAN'
-                      ? money((item as HrLoan).currency, (item as HrLoan).outstandingBalance)
-                      : money(
-                          (item as HrDeduction).currency,
-                          (item as HrDeduction).applicableAmount
-                        );
-                return (
-                  <button
-                    type="button"
-                    key={`${resource}-${item.id}`}
-                    className={
-                      selected?.resource === resource && selected.item.id === item.id
-                        ? 'selected'
-                        : ''
-                    }
-                    onClick={() => void openDetail({ resource, item } as Selected)}
-                  >
-                    <span>
-                      <strong>{item.code}</strong>
-                      <small>{item.user?.name ?? `Usuario #${item.userId}`}</small>
-                      <small>{subtitle}</small>
-                    </span>
-                    <span className="hr-benefits-list-amount">
-                      <strong>{amount}</strong>
-                      <BenefitsStatusPill status={item.status} />
-                    </span>
-                  </button>
-                );
-              })
-            )}
+        <div className="hr-benefits-layout hr-benefits-admin-layout">
+          <section className="hr-admin-board hr-benefits-admin-board" aria-label={`Bandeja de ${tab === 'TRAVEL' ? 'viáticos' : tab === 'LOAN' ? 'préstamos' : 'deducciones'}`}>
+            <div className="hr-admin-table-wrap">
+              <table className="hr-admin-table">
+                <caption>{tab === 'TRAVEL' ? 'Viáticos' : tab === 'LOAN' ? 'Préstamos' : 'Deducciones'}: {cards.length} registro(s)</caption>
+                <thead>
+                  <tr><th>Código</th><th>Empleado</th><th>{tab === 'TRAVEL' ? 'Destino y fechas' : tab === 'LOAN' ? 'Motivo' : 'Deducción y vigencia'}</th><th>{tab === 'LOAN' ? 'Saldo' : 'Importe'}</th><th>Estado</th><th>Siguiente paso</th><th className="hr-admin-actions-col">Acción</th></tr>
+                </thead>
+                <tbody>
+                  {cards.length === 0 ? (
+                    <tr><td colSpan={7}><div className="hr-admin-empty"><strong>No hay registros para este estado</strong><span>Cambia el estado o crea un nuevo registro.</span>{status && <Button size="sm" variant="ghost" onClick={() => setStatus('')}>Mostrar todos</Button>}<Button size="sm" onClick={() => setCreatePanel(tab)} disabled={!online}><Plus size={15} /> {tab === 'TRAVEL' ? 'Nuevo viático' : tab === 'LOAN' ? 'Nuevo préstamo' : 'Nueva deducción'}</Button></div></td></tr>
+                  ) : cards.map((entry) => {
+                    const resource = tab;
+                    const item = entry as HrTravelRequest | HrLoan | HrDeduction;
+                    const description = resource === 'TRAVEL'
+                      ? `${(item as HrTravelRequest).destination} · ${dateLabel((item as HrTravelRequest).departureDate)} a ${dateLabel((item as HrTravelRequest).returnDate)}`
+                      : resource === 'LOAN'
+                        ? (item as HrLoan).purpose
+                        : `${(item as HrDeduction).name} · desde ${dateLabel((item as HrDeduction).effectiveFrom)}`;
+                    const amount = resource === 'TRAVEL'
+                      ? money((item as HrTravelRequest).currency, (item as HrTravelRequest).approvedAmount ?? (item as HrTravelRequest).requestedAmount)
+                      : resource === 'LOAN'
+                        ? money((item as HrLoan).currency, (item as HrLoan).outstandingBalance)
+                        : money((item as HrDeduction).currency, (item as HrDeduction).applicableAmount);
+                    const nextAction = item.allowedActions[0];
+                    const nextLabel = !nextAction
+                      ? 'Sin acciones pendientes'
+                      : resource === 'TRAVEL'
+                        ? TRAVEL_ACTION_LABELS[nextAction as HrTravelRequest['allowedActions'][number]]
+                        : resource === 'LOAN'
+                          ? LOAN_ACTION_LABELS[nextAction as HrLoan['allowedActions'][number]]
+                          : DEDUCTION_ACTION_LABELS[nextAction as HrDeduction['allowedActions'][number]];
+                    return (
+                      <tr key={`${resource}-${item.id}`} className={selected?.resource === resource && selected.item.id === item.id ? 'is-selected' : ''}>
+                        <td><strong>{item.code}</strong></td>
+                        <td>{item.user?.name ?? `Usuario #${item.userId}`}</td>
+                        <td>{description}</td>
+                        <td><strong>{amount}</strong></td>
+                        <td><BenefitsStatusPill status={item.status} /></td>
+                        <td>{nextLabel}</td>
+                        <td className="hr-admin-actions-col"><Button size="sm" variant="secondary" onClick={() => void openDetail({ resource, item } as Selected)}>Ver y gestionar</Button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </section>
-          <section className="hr-benefits-workspace" aria-live="polite">
+          <section className={`hr-benefits-workspace ${selected || detailLoading ? 'is-visible' : 'is-empty'}`} aria-live="polite">
             {detailLoading ? (
               <LoadingSpinner text="Abriendo detalle…" />
             ) : selected ? (
@@ -751,13 +739,7 @@ export default function BenefitsManagement() {
                   </>
                 )}
               </>
-            ) : (
-              <div className="hr-benefits-empty workspace">
-                <WalletCards size={44} />
-                <h2>Selecciona un registro</h2>
-                <p>Verás saldos, calendario, soportes y trazabilidad calculados por el servidor.</p>
-              </div>
-            )}
+            ) : null}
           </section>
         </div>
         </>

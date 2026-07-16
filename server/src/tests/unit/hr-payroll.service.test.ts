@@ -7,6 +7,8 @@ import {
     assertPayrollTransitionAllowed,
     assertRuleConfigurationMutable,
     assertRuleMetadataEditable,
+    assertCompanyTaxProfileReady,
+    assertConfigurationMatchesCompanyTaxProfile,
     HrPayrollError,
     compensationMinuteRate,
     reconcilePublishedShiftSummaries,
@@ -104,6 +106,35 @@ describe('HR payroll safety and state machine', () => {
             socialSecurityApplicable: false,
             incomeTaxTreatment: null,
         }));
+    });
+
+    it('keeps inactive concepts for history but excludes them from new payroll selection', () => {
+        const inactive = {
+            ...statutory,
+            paymentConceptCatalog: statutory.paymentConceptCatalog.map((concept) => concept.code === 'VIATICOS'
+                ? { ...concept, active: false }
+                : concept),
+        };
+        expect(paymentConceptDefinition(inactive, 'VIATICOS')).toBeNull();
+        expect(inactive.paymentConceptCatalog.find((concept) => concept.code === 'VIATICOS')).toBeDefined();
+    });
+
+    it('fails closed for a pending or stale company fiscal profile', () => {
+        const pendingProfile = {
+            payrollTaxRegime: 'GENERAL',
+            payrollIncomeTaxWithholding: true,
+            payrollTaxRegimeReference: 'Perfil pendiente',
+            payrollIncomeTaxException: null,
+            payrollTaxProfileReady: false,
+        };
+        expect(() => assertCompanyTaxProfileReady(pendingProfile)).toThrow('Completa y confirma');
+
+        const readyProfile = { ...pendingProfile, payrollTaxProfileReady: true, payrollTaxRegimeReference: 'Constancia DGI 2026' };
+        expect(() => assertConfigurationMatchesCompanyTaxProfile(legalConfiguration, readyProfile)).toThrow('cambió');
+        expect(() => assertConfigurationMatchesCompanyTaxProfile(legalConfiguration, {
+            ...readyProfile,
+            payrollTaxRegimeReference: legalConfiguration.statutory.companyTaxRegime.sourceReference,
+        })).not.toThrow();
     });
 
     it('normalizes a frozen V3 configuration for historical reads while requiring V4 for new uploads', () => {
@@ -611,7 +642,7 @@ describe('HR payroll persistence and route contract', () => {
     const benefits = fs.readFileSync(path.join(root, 'src/services/hr-benefits.service.ts'), 'utf8');
 
     it('matches the frontend endpoints and separates read/manage/approve/self permissions', () => {
-        for (const endpoint of ['/rules', '/periods', '/runs', '/aguinaldo/runs', '/me/receipts']) expect(routes).toContain(endpoint);
+        for (const endpoint of ['/company-tax-profile', '/rules', '/rules/:id/clone', '/periods', '/runs', '/aguinaldo/runs', '/me/receipts']) expect(routes).toContain(endpoint);
         for (const action of ['calculate', 'recalculate', 'submit-review', 'approve', 'pay', 'void']) expect(routes).toContain(`/:id/${action}`);
         for (const part of ['anomalies', 'snapshot', 'components', 'receipts', 'export']) expect(routes).toContain(`/:id/${part}`);
         expect(routes).toContain("requirePermission('hr.payroll.read', ROLES.SUPERADMIN)");
@@ -619,6 +650,9 @@ describe('HR payroll persistence and route contract', () => {
         expect(routes).toContain("requirePermission('hr.payroll.approve', ROLES.SUPERADMIN)");
         expect(routes).toContain("requirePermission('hr.payroll.self'");
         expect(routes).not.toMatch(/router\.delete/i);
+        expect(service).toContain("where: { id, companyId }");
+        expect(service).toContain('PAYROLL_RULE_CLONE:${id}');
+        expect(service).toContain('assertConfigurationMatchesCompanyTaxProfile');
     });
 
     it('keeps self-service internal, employee-linked, published-only and tenant scoped', () => {

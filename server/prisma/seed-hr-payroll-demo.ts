@@ -205,6 +205,17 @@ async function main() {
     );
   }
 
+  await prisma.company.update({
+    where: { id: companyId },
+    data: {
+      payrollTaxRegime: LEGAL_CONFIGURATION.statutory.companyTaxRegime.code,
+      payrollIncomeTaxWithholding: true,
+      payrollTaxRegimeReference: LEGAL_CONFIGURATION.statutory.companyTaxRegime.sourceReference,
+      payrollIncomeTaxException: null,
+      payrollTaxProfileReady: true,
+    },
+  });
+
   const branch = await prisma.branch.findFirst({
     where: { companyId, status: 'ACTIVE' },
     orderBy: { id: 'asc' },

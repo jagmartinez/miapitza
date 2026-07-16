@@ -8,7 +8,6 @@ import {
   Plus,
   RefreshCw,
   SlidersHorizontal,
-  WalletCards,
 } from 'lucide-react';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -39,6 +38,7 @@ import type {
   HrVacationLedgerEntry,
 } from '../../types/hr-workforce';
 import './workforce.css';
+import './admin-tables.css';
 
 const EMPTY_LOOKUPS: HrOrganizationCatalogs = {
   departments: [],
@@ -69,8 +69,17 @@ function monthRange(): { dateFrom: string; dateTo: string } {
 
 const fractionLabel = (value: string) => ({ FULL_DAY: 'Día completo', HALF_DAY: 'Medio día', HOURS: 'Por horas' }[value] ?? value);
 
+function dateLabel(value?: string | null): string {
+  if (!value) return '—';
+  const parsed = new Date(`${value.slice(0, 10)}T12:00:00`);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : new Intl.DateTimeFormat('es-NI', { dateStyle: 'medium' }).format(parsed);
+}
+
 type Panel = 'request' | 'type' | 'adjustment' | null;
 type RequestAction = { item: HrLeaveRequest; kind: 'decide' | 'cancel' } | null;
+type LeaveTable = 'REQUESTS' | 'CALENDAR' | 'BALANCES' | 'TYPES' | 'HISTORY';
 
 export default function LeaveManagement() {
   const online = useWorkforceOnline();
@@ -103,6 +112,8 @@ export default function LeaveManagement() {
     reason: '',
     reference: '',
   });
+  const [activeTable, setActiveTable] = useState<LeaveTable>('REQUESTS');
+  const [focusedRequestId, setFocusedRequestId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -309,7 +320,7 @@ export default function LeaveManagement() {
           />
         </label>
         <label>
-          Usuario
+          Empleado
           <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)}>
             <option value="">Todos</option>
             {users.map((user) => (
@@ -335,215 +346,62 @@ export default function LeaveManagement() {
         </div>
       )}
       {!loading && !error && (
-        <>
-          <nav className="hr-workforce-jump-nav" aria-label="Secciones de permisos y vacaciones">
-            <a href="#leave-requests">Solicitudes</a>
-            <a href="#leave-calendar">Calendario</a>
-            <a href="#leave-balances">Saldos</a>
-            <a href="#leave-types">Políticas</a>
-          </nav>
-          <section className="hr-workflow-overview" aria-label="Estado de solicitudes">
-            <div><span>Esperando decisión</span><small>Solicitudes enviadas</small><strong>{requests.filter((item) => item.status === 'PENDING').length}</strong></div>
-            <div><span>Aprobadas en el rango</span><small>Visibles en calendario</small><strong>{requests.filter((item) => item.status === 'APPROVED').length}</strong></div>
-            <div><span>Empleados con saldo</span><small>Vacaciones controladas</small><strong>{balances.length}</strong></div>
-          </section>
-          <div className="hr-workforce-columns">
-            <section id="leave-requests" className="hr-workforce-section hr-workforce-anchor">
-              <div className="hr-section-heading">
-                <div>
-                  <h2>
-                    <ListChecks size={20} /> Solicitudes
-                  </h2>
-                  <p>Las solicitudes enviadas quedan aquí hasta que Recursos Humanos las apruebe o deniegue.</p>
-                </div>
-              </div>
-              {requests.length === 0 ? (
-                <p className="hr-empty">Sin solicitudes.</p>
-              ) : (
-                <div className="hr-record-list">
-                  {requests.map((item) => (
-                    <article key={item.id}>
-                      <div>
-                        <strong>
-                          {item.user?.name ?? `Usuario #${item.userId}`} ·{' '}
-                          {item.leaveType?.name ?? `Tipo #${item.leaveTypeId}`}
-                        </strong>
-                        <span>
-                          {item.startDate} – {item.endDate} · {fractionLabel(item.fraction)}
-                        </span>
-                        <small>{item.reason}</small>
-                      </div>
-                      <div className="hr-record-actions">
-                        <WorkforceStatusPill status={item.status} />
-                        {item.status === 'DRAFT' && (
-                          <Button
-                            size="sm"
-                            onClick={() => void submitDraft(item)}
-                            disabled={!online || saving}
-                          >
-                            Enviar
-                          </Button>
-                        )}
-                        {item.status === 'PENDING' && (
-                          <Button
-                            size="sm"
-                            onClick={() => openRequestAction(item, 'decide')}
-                            disabled={!online}
-                          >
-                            Decidir
-                          </Button>
-                        )}
-                        {(item.status === 'DRAFT' || item.status === 'PENDING') && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => openRequestAction(item, 'cancel')}
-                            disabled={!online}
-                          >
-                            Cancelar
-                          </Button>
-                        )}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
-            <section id="leave-calendar" className="hr-workforce-section hr-workforce-anchor">
-              <div className="hr-section-heading">
-                <div>
-                  <h2>
-                    <CalendarDays size={20} /> Calendario aprobado
-                  </h2>
-                  <p>Ausencias aprobadas para organizar la cobertura del equipo.</p>
-                </div>
-              </div>
-              {calendar.length === 0 ? (
-                <p className="hr-empty">Sin ausencias en el rango.</p>
-              ) : (
-                <div className="hr-calendar-list">
-                  {calendar.map((entry) => (
-                    <article key={entry.id}>
-                      <time dateTime={entry.date}>{entry.date}</time>
-                      <div>
-                        <strong>{entry.user?.name ?? `Usuario #${entry.userId}`}</strong>
-                        <span>
-                          {entry.leaveType?.name ?? `Tipo #${entry.leaveTypeId}`} · {fractionLabel(entry.fraction)}
-                        </span>
-                      </div>
-                      <WorkforceStatusPill status={entry.status} />
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
+        <section className="hr-admin-board" aria-label="Administración de permisos y vacaciones">
+          <div className="hr-admin-tabs" role="tablist" aria-label="Bandejas de permisos y vacaciones">
+            {([
+              ['REQUESTS', 'Solicitudes', requests.filter((item) => item.status === 'PENDING').length],
+              ['CALENDAR', 'Calendario', calendar.length],
+              ['BALANCES', 'Saldos', balances.length],
+              ['TYPES', 'Tipos de ausencia', leaveTypes.length],
+              ['HISTORY', 'Movimientos', ledger.length],
+            ] as Array<[LeaveTable, string, number]>).map(([value, label, count]) => (
+              <button key={value} type="button" role="tab" aria-selected={activeTable === value} onClick={() => setActiveTable(value)}>{label} <span>{count}</span></button>
+            ))}
           </div>
 
-          <section id="leave-types" className="hr-workforce-section hr-workforce-anchor">
-            <div className="hr-section-heading">
-              <div>
-                <h2>Tipos de ausencia</h2>
-                <p>Define cuáles permisos existen, si son pagados y si descuentan un saldo.</p>
-              </div>
-            </div>
-            <div className="hr-type-grid">
-              {leaveTypes.map((type) => (
-                <article key={type.id}>
-                  <div>
-                    <strong>{type.name}</strong>
-                    <code>{type.code}</code>
-                  </div>
-                  <span>
-                    {type.paid ? 'Remunerada' : 'No remunerada'} · {type.unit} ·{' '}
-                    {type.balanceTracked ? 'controla saldo' : 'sin saldo'}
-                  </span>
-                  <div>
-                    <WorkforceStatusPill status={type.active ? 'ACTIVE' : 'INACTIVE'} />
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => openType(type)}
-                      disabled={!online}
-                    >
-                      Editar
-                    </Button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
+          <div className="hr-admin-table-wrap">
+            {activeTable === 'REQUESTS' && (
+              <table className="hr-admin-table">
+                <caption>Solicitudes de permisos y vacaciones</caption>
+                <thead><tr><th>Empleado</th><th>Tipo</th><th>Fechas</th><th>Duración</th><th>Motivo</th><th>Estado</th><th className="hr-admin-actions-col">Acciones</th></tr></thead>
+                <tbody>{requests.length === 0 ? <tr><td colSpan={7}><div className="hr-admin-empty"><strong>No hay solicitudes en este periodo</strong><span>Puedes registrar una solicitud en nombre de un empleado.</span><Button size="sm" onClick={() => setPanel('request')} disabled={!online}><Plus size={15} /> Nueva solicitud</Button></div></td></tr> : requests.map((item) => <tr key={item.id} className={focusedRequestId === item.id ? 'is-selected' : ''}><td><strong>{item.user?.name ?? `Usuario #${item.userId}`}</strong></td><td>{item.leaveType?.name ?? `Tipo #${item.leaveTypeId}`}</td><td>{dateLabel(item.startDate)}<small>{item.endDate !== item.startDate ? `hasta ${dateLabel(item.endDate)}` : 'Un día'}</small></td><td>{fractionLabel(item.fraction)}{item.requestedAmount != null && <small>{formatHrNumber(item.requestedAmount)} {item.balanceUnit ?? ''}</small>}</td><td>{item.reason}</td><td><WorkforceStatusPill status={item.status} /></td><td className="hr-admin-actions-col"><div className="hr-admin-row-actions">{item.status === 'DRAFT' && <Button size="sm" onClick={() => void submitDraft(item)} disabled={!online || saving}>Enviar</Button>}{item.status === 'PENDING' && <Button size="sm" onClick={() => openRequestAction(item, 'decide')} disabled={!online}>Revisar</Button>}{(item.status === 'DRAFT' || item.status === 'PENDING') && <Button size="sm" variant="ghost" onClick={() => openRequestAction(item, 'cancel')} disabled={!online}>Cancelar</Button>}{!['DRAFT', 'PENDING'].includes(item.status) && <span className="hr-admin-muted">Finalizada</span>}</div></td></tr>)}</tbody>
+              </table>
+            )}
 
-          <div className="hr-workforce-columns">
-            <section id="leave-balances" className="hr-workforce-section hr-workforce-anchor">
-              <div className="hr-section-heading">
-                <div>
-                  <h2>
-                    <WalletCards size={20} /> Saldos
-                  </h2>
-                  <p>Días u horas disponibles, usados y pendientes por empleado.</p>
-                </div>
-                <Button size="sm" onClick={() => setPanel('adjustment')} disabled={!online}>
-                  Ajustar
-                </Button>
-              </div>
-              {balances.length === 0 ? (
-                <p className="hr-empty">Sin saldos.</p>
-              ) : (
-                <div className="hr-balance-grid">
-                  {balances.map((balance) => (
-                    <article key={balance.id}>
-                      <strong>{balance.user?.name ?? `Usuario #${balance.userId}`}</strong>
-                      <span>
-                        Disponible: {formatHrNumber(balance.available)} {balance.unit}
-                      </span>
-                      <small>
-                        Devengado {formatHrNumber(balance.accrued)} · usado{' '}
-                        {formatHrNumber(balance.used)} · pendiente {formatHrNumber(balance.pending)}
-                      </small>
-                      <small>
-                        Al {balance.asOf} · revisión {balance.sourceRevision ?? '—'}
-                      </small>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
-            <section className="hr-workforce-section">
-              <div className="hr-section-heading">
-                <div>
-                  <h2>Historial del saldo</h2>
-                  <p>Cada aumento, uso o ajuste y el saldo que dejó.</p>
-                </div>
-              </div>
-              {ledger.length === 0 ? (
-                <p className="hr-empty">Sin movimientos.</p>
-              ) : (
-                <div className="hr-record-list">
-                  {ledger.map((entry) => (
-                    <article key={entry.id}>
-                      <div>
-                        <strong>
-                          {entry.type} · {formatHrNumber(entry.amount)} {entry.unit}
-                        </strong>
-                        <span>{entry.reason}</span>
-                        <small>
-                          {entry.effectiveDate} · {entry.reference ?? `Movimiento #${entry.id}`}
-                        </small>
-                      </div>
-                      {entry.resultingBalance != null && (
-                        <strong>
-                          {entry.resultingBalance} {entry.unit}
-                        </strong>
-                      )}
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
+            {activeTable === 'CALENDAR' && (
+              <table className="hr-admin-table">
+                <caption>Ausencias aprobadas entre {dateLabel(dateFrom)} y {dateLabel(dateTo)}</caption>
+                <thead><tr><th>Fecha</th><th>Empleado</th><th>Tipo</th><th>Duración</th><th>Sucursal</th><th>Estado</th><th className="hr-admin-actions-col">Acción</th></tr></thead>
+                <tbody>{calendar.length === 0 ? <tr><td colSpan={7}><div className="hr-admin-empty"><strong>No hay ausencias aprobadas</strong><span>Amplía el rango de fechas o revisa las solicitudes pendientes.</span><Button size="sm" variant="ghost" onClick={() => setActiveTable('REQUESTS')}>Ver solicitudes</Button></div></td></tr> : calendar.map((entry) => <tr key={entry.id}><td><strong>{dateLabel(entry.date)}</strong></td><td>{entry.user?.name ?? `Usuario #${entry.userId}`}</td><td>{entry.leaveType?.name ?? `Tipo #${entry.leaveTypeId}`}</td><td>{fractionLabel(entry.fraction)}</td><td>{entry.branch?.name ?? 'Sin sucursal'}</td><td><WorkforceStatusPill status={entry.status} /></td><td className="hr-admin-actions-col"><Button size="sm" variant="ghost" onClick={() => { setFocusedRequestId(entry.leaveRequestId); setActiveTable('REQUESTS'); }}>Ver solicitud</Button></td></tr>)}</tbody>
+              </table>
+            )}
+
+            {activeTable === 'BALANCES' && (
+              <table className="hr-admin-table">
+                <caption>Saldos disponibles por empleado</caption>
+                <thead><tr><th>Empleado</th><th>Tipo</th><th>Periodo</th><th>Devengado</th><th>Usado</th><th>Pendiente</th><th>Disponible</th><th>Actualizado</th><th className="hr-admin-actions-col">Acción</th></tr></thead>
+                <tbody>{balances.length === 0 ? <tr><td colSpan={9}><div className="hr-admin-empty"><strong>No hay saldos configurados</strong><span>Registra un ajuste inicial para comenzar el control.</span><Button size="sm" onClick={() => setPanel('adjustment')} disabled={!online}>Registrar ajuste</Button></div></td></tr> : balances.map((balance) => <tr key={balance.id}><td><strong>{balance.user?.name ?? `Usuario #${balance.userId}`}</strong></td><td>{balance.leaveType?.name ?? 'Vacaciones'}</td><td>{balance.periodLabel ?? 'Vigente'}</td><td>{formatHrNumber(balance.accrued)} {balance.unit}</td><td>{formatHrNumber(balance.used)} {balance.unit}</td><td>{formatHrNumber(balance.pending)} {balance.unit}</td><td><strong>{formatHrNumber(balance.available)} {balance.unit}</strong></td><td>{dateLabel(balance.asOf)}</td><td className="hr-admin-actions-col"><Button size="sm" variant="secondary" onClick={() => { setAdjustment((current) => ({ ...current, userId: String(balance.userId), balanceId: String(balance.id), unit: balance.unit })); setPanel('adjustment'); }} disabled={!online}>Ajustar</Button></td></tr>)}</tbody>
+              </table>
+            )}
+
+            {activeTable === 'TYPES' && (
+              <table className="hr-admin-table">
+                <caption>Tipos de ausencia disponibles</caption>
+                <thead><tr><th>Nombre</th><th>Código</th><th>Pago</th><th>Control de saldo</th><th>Unidad</th><th>Adjunto</th><th>Estado</th><th className="hr-admin-actions-col">Acción</th></tr></thead>
+                <tbody>{leaveTypes.length === 0 ? <tr><td colSpan={8}><div className="hr-admin-empty"><strong>No hay tipos de ausencia</strong><span>Crea vacaciones, permisos, subsidios u otras políticas.</span><Button size="sm" onClick={() => openType()} disabled={!online}><Plus size={15} /> Crear tipo</Button></div></td></tr> : leaveTypes.map((type) => <tr key={type.id}><td><strong>{type.name}</strong><small>{type.description || 'Sin descripción'}</small></td><td><code>{type.code}</code></td><td>{type.paid ? 'Remunerado' : 'No remunerado'}</td><td>{type.balanceTracked ? 'Sí, descuenta saldo' : 'No'}</td><td>{type.unit}</td><td>{type.requiresAttachment ? 'Obligatorio' : 'Opcional'}</td><td><WorkforceStatusPill status={type.active ? 'ACTIVE' : 'INACTIVE'} /></td><td className="hr-admin-actions-col"><Button size="sm" variant="secondary" onClick={() => openType(type)} disabled={!online}>Editar</Button></td></tr>)}</tbody>
+              </table>
+            )}
+
+            {activeTable === 'HISTORY' && (
+              <table className="hr-admin-table">
+                <caption>Movimientos de saldos</caption>
+                <thead><tr><th>Fecha</th><th>Empleado</th><th>Movimiento</th><th>Cantidad</th><th>Motivo</th><th>Referencia</th><th>Saldo resultante</th><th className="hr-admin-actions-col">Acción</th></tr></thead>
+                <tbody>{ledger.length === 0 ? <tr><td colSpan={8}><div className="hr-admin-empty"><strong>No hay movimientos</strong><span>Los devengos, usos y ajustes aparecerán aquí.</span><Button size="sm" variant="ghost" onClick={() => setPanel('adjustment')} disabled={!online}>Registrar ajuste</Button></div></td></tr> : ledger.map((entry) => <tr key={entry.id}><td>{dateLabel(entry.effectiveDate)}</td><td>{users.find((user) => user.id === entry.userId)?.name ?? `Usuario #${entry.userId}`}</td><td>{entry.type}</td><td>{formatHrNumber(entry.amount)} {entry.unit}</td><td>{entry.reason}</td><td>{entry.reference ?? `Movimiento #${entry.id}`}</td><td>{entry.resultingBalance != null ? `${formatHrNumber(entry.resultingBalance)} ${entry.unit}` : '—'}</td><td className="hr-admin-actions-col"><Button size="sm" variant="ghost" onClick={() => { setAdjustment((current) => ({ ...current, userId: String(entry.userId), balanceId: String(entry.balanceId), unit: entry.unit })); setPanel('adjustment'); }} disabled={!online}>Ajustar saldo</Button></td></tr>)}</tbody>
+              </table>
+            )}
           </div>
-        </>
+        </section>
       )}
-
       <Sidebar
         isOpen={Boolean(panel)}
         onClose={() => !saving && setPanel(null)}

@@ -18,6 +18,11 @@ interface Company {
     name: string;
     ruc: string | null;
     logo: string | null;
+    payrollTaxRegime: TaxRegime;
+    payrollIncomeTaxWithholding: boolean;
+    payrollTaxRegimeReference: string | null;
+    payrollIncomeTaxException: string | null;
+    payrollTaxProfileReady: boolean;
     active: boolean;
     createdAt: string;
     _count?: {
@@ -25,6 +30,26 @@ interface Company {
         users: number;
     };
 }
+
+type TaxRegime = 'GENERAL' | 'SIMPLIFIED_FIXED_QUOTA' | 'SPECIAL' | 'EXEMPT' | 'OTHER';
+
+const TAX_REGIMES: Array<{ value: TaxRegime; label: string }> = [
+    { value: 'GENERAL', label: 'Régimen general' },
+    { value: 'SIMPLIFIED_FIXED_QUOTA', label: 'Cuota fija / simplificado' },
+    { value: 'SPECIAL', label: 'Régimen especial' },
+    { value: 'EXEMPT', label: 'Exento' },
+    { value: 'OTHER', label: 'Otro' },
+];
+
+const defaultCompanyForm = () => ({
+    name: '',
+    ruc: '',
+    active: true,
+    payrollTaxRegime: 'GENERAL' as TaxRegime,
+    payrollIncomeTaxWithholding: true,
+    payrollTaxRegimeReference: '',
+    payrollIncomeTaxException: '',
+});
 
 export default function Companies() {
     const { error: showError } = useAppToast();
@@ -34,11 +59,7 @@ export default function Companies() {
     const { viewMode, setViewMode } = useViewMode('companies');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCompany, setEditingCompany] = useState<Company | null>(null);
-    const [formData, setFormData] = useState({
-        name: '',
-        ruc: '',
-        active: true
-    });
+    const [formData, setFormData] = useState(defaultCompanyForm);
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
@@ -90,15 +111,15 @@ export default function Companies() {
             setFormData({
                 name: company.name,
                 ruc: company.ruc || '',
-                active: company.active
+                active: company.active,
+                payrollTaxRegime: company.payrollTaxRegime || 'GENERAL',
+                payrollIncomeTaxWithholding: company.payrollIncomeTaxWithholding ?? true,
+                payrollTaxRegimeReference: company.payrollTaxRegimeReference || '',
+                payrollIncomeTaxException: company.payrollIncomeTaxException || '',
             });
         } else {
             setEditingCompany(null);
-            setFormData({
-                name: '',
-                ruc: '',
-                active: true
-            });
+            setFormData(defaultCompanyForm());
         }
         setIsModalOpen(true);
     };
@@ -176,6 +197,16 @@ export default function Companies() {
                         { key: 'branches', header: 'Sucursales', align: 'center', render: (c) => c._count?.branches || 0 },
                         { key: 'users', header: 'Usuarios', align: 'center', render: (c) => c._count?.users || 0 },
                         {
+                            key: 'taxRegime',
+                            header: 'Perfil fiscal',
+                            render: (c) => (
+                                <div className="catalog-cell-stack">
+                                    <span className="cell-title">{TAX_REGIMES.find((item) => item.value === c.payrollTaxRegime)?.label ?? c.payrollTaxRegime}</span>
+                                    <span className="cell-sub">{!c.payrollTaxProfileReady ? 'Perfil fiscal pendiente' : c.payrollIncomeTaxWithholding ? 'Retiene IR laboral' : 'No retiene IR laboral'}</span>
+                                </div>
+                            )
+                        },
+                        {
                             key: 'status',
                             header: 'Estado',
                             render: (c) => <span className={`catalog-pill ${c.active ? 'ok' : 'neutral'}`}>{c.active ? 'Activa' : 'Inactiva'}</span>
@@ -227,6 +258,11 @@ export default function Companies() {
 
                             <div className="company-ruc-new">
                                 RUC: {company.ruc || 'No registrado'}
+                            </div>
+
+                            <div className="company-tax-profile-summary">
+                                <strong>{TAX_REGIMES.find((item) => item.value === company.payrollTaxRegime)?.label ?? company.payrollTaxRegime}</strong>
+                                <span>{!company.payrollTaxProfileReady ? 'Perfil fiscal pendiente' : company.payrollIncomeTaxWithholding ? 'Retiene IR laboral' : 'No retiene IR laboral'}</span>
                             </div>
 
                             <div className="company-stats-new">
@@ -310,6 +346,78 @@ export default function Companies() {
                                         required
                                         autoFocus
                                     />
+                                </div>
+
+                                <div className="company-tax-profile-form" aria-labelledby="company-tax-profile-title">
+                                    <div className="modal-section-header">
+                                        <FileText size={18} />
+                                        <div>
+                                            <h3 id="company-tax-profile-title">Perfil fiscal para nómina</h3>
+                                            <p>Se administra aquí. Cada nueva versión legal toma estos datos y conserva una copia para auditoría.</p>
+                                        </div>
+                                    </div>
+                                    <Select
+                                        variant="modal"
+                                        label="Régimen tributario registrado"
+                                        options={TAX_REGIMES}
+                                        value={TAX_REGIMES.find((item) => item.value === formData.payrollTaxRegime)}
+                                        onChange={(option: SingleValue<{ value: TaxRegime; label: string }>) => {
+                                            if (!option) return;
+                                            const stopsWithholding = ['SIMPLIFIED_FIXED_QUOTA', 'EXEMPT'].includes(option.value);
+                                            setFormData({
+                                                ...formData,
+                                                payrollTaxRegime: option.value,
+                                                payrollIncomeTaxWithholding: stopsWithholding ? false : formData.payrollIncomeTaxWithholding,
+                                                payrollIncomeTaxException: formData.payrollIncomeTaxException,
+                                            });
+                                        }}
+                                        isSearchable={false}
+                                    />
+                                    <Select
+                                        variant="modal"
+                                        label="Retención de IR laboral"
+                                        options={[
+                                            { value: 'true', label: 'Sí, la empresa retiene IR laboral' },
+                                            { value: 'false', label: 'No retiene IR laboral' },
+                                        ]}
+                                        value={formData.payrollIncomeTaxWithholding
+                                            ? { value: 'true', label: 'Sí, la empresa retiene IR laboral' }
+                                            : { value: 'false', label: 'No retiene IR laboral' }}
+                                        onChange={(option: SingleValue<{ value: string; label: string }>) => setFormData({
+                                            ...formData,
+                                            payrollIncomeTaxWithholding: option?.value === 'true',
+                                            payrollIncomeTaxException: option?.value === 'true' ? '' : formData.payrollIncomeTaxException,
+                                        })}
+                                        isSearchable={false}
+                                    />
+                                    <div className="modal-input-group company-tax-reference">
+                                        <label className="modal-input-label" htmlFor="company-tax-reference">Referencia o respaldo fiscal</label>
+                                        <input
+                                            id="company-tax-reference"
+                                            className="modal-standard-input"
+                                            value={formData.payrollTaxRegimeReference}
+                                            onChange={(event) => setFormData({ ...formData, payrollTaxRegimeReference: event.target.value })}
+                                            placeholder="Constancia DGI, resolución o referencia verificable"
+                                            maxLength={500}
+                                            required
+                                        />
+                                    </div>
+                                    {!formData.payrollIncomeTaxWithholding && (
+                                        <div className="modal-input-group company-tax-reference">
+                                            <label className="modal-input-label" htmlFor="company-tax-exception">Fundamento para no retener IR laboral</label>
+                                            <textarea
+                                                id="company-tax-exception"
+                                                className="modal-standard-input"
+                                                rows={3}
+                                                value={formData.payrollIncomeTaxException}
+                                                onChange={(event) => setFormData({ ...formData, payrollIncomeTaxException: event.target.value })}
+                                                placeholder="Resolución, excepción o justificación fiscal aplicable"
+                                                minLength={3}
+                                                maxLength={500}
+                                                required
+                                            />
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="modal-input-group">

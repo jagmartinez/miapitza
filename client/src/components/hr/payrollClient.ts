@@ -4,6 +4,7 @@ import type {
   HrPayrollAnomaly,
   HrPayrollComponent,
   HrPayrollComponentPayload,
+  HrPayrollCompanyTaxProfile,
   HrPayrollConfigurationReviewPayload,
   HrPayrollConfigurationUploadPayload,
   HrPayrollEnvelope,
@@ -263,6 +264,11 @@ async function transitionRun(
 }
 
 export const payrollClient = {
+  async getCompanyTaxProfile(): Promise<HrPayrollCompanyTaxProfile> {
+    const response = await api.get(`${PAYROLL_BASE}/company-tax-profile`, { skipOfflineCache: true });
+    return requireObject<HrPayrollCompanyTaxProfile>(response.data, 'perfil fiscal de empresa');
+  },
+
   async getRules(filters: HrPayrollFilters = {}): Promise<HrPayrollList<HrPayrollRuleVersion>> {
     const response = await api.get(`${PAYROLL_BASE}/rules`, { params: paramsOf(filters), skipOfflineCache: true });
     const result = requireList<HrPayrollRuleVersion>(response.data, 'reglas de nómina', [
@@ -279,6 +285,19 @@ export const payrollClient = {
   ): Promise<HrPayrollRuleVersion> {
     const response = await api.post(
       `${PAYROLL_BASE}/rules`,
+      payload,
+      mutationConfig(idempotencyKey)
+    );
+    return requireRule(response.data);
+  },
+
+  async cloneRule(
+    id: number,
+    payload: HrPayrollRulePayload & { expectedRevision: number },
+    idempotencyKey: string
+  ): Promise<HrPayrollRuleVersion> {
+    const response = await api.post(
+      `${PAYROLL_BASE}/rules/${id}/clone`,
       payload,
       mutationConfig(idempotencyKey)
     );

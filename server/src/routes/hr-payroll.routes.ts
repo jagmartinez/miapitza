@@ -30,8 +30,12 @@ const transitionBody = {
     expectedRevision: { type: 'number' as const, required: true, integer: true, min: 0 },
 };
 
+router.get('/company-tax-profile', ownerRead, HrPayrollController.companyTaxProfile);
 router.get('/rules', ownerRead, validate({ query: listQuery }), HrPayrollController.rules);
 router.post('/rules', ownerManage, allowHrBodyFields(ruleFields), validate({ body: ruleBody }), HrPayrollController.createRule);
+router.post('/rules/:id/clone', ownerManage, allowHrBodyFields([...ruleFields, 'expectedRevision']), validate({ params: idParam, body: {
+    ...ruleBody, expectedRevision: { type: 'number', required: true, integer: true, min: 0 },
+} }), HrPayrollController.cloneRule);
 router.put('/rules/:id', ownerManage, allowHrBodyFields(ruleFields), validate({ params: idParam, body: ruleBody }), HrPayrollController.updateRule);
 router.get('/rules/:id/configuration-revisions', ownerRead, validate({ params: idParam }), HrPayrollController.ruleConfigurations);
 router.post('/rules/:id/configuration-revisions', ownerManage, allowHrBodyFields(['configuration', 'sourceReference', 'evidenceReference', 'reason', 'expectedRevision']), validate({ params: idParam, body: {

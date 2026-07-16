@@ -20,6 +20,12 @@ model Company {
   name          String
   ruc           String?       @unique // Registro Único de Contribuyente (Nicaragua)
   logo          String?
+  /// Perfil fiscal maestro consumido por las versiones legales de nómina.
+  payrollTaxRegime            String   @default("GENERAL") @db.VarChar(40)
+  payrollIncomeTaxWithholding Boolean  @default(true)
+  payrollTaxRegimeReference   String?  @db.VarChar(500)
+  payrollIncomeTaxException   String?  @db.VarChar(500)
+  payrollTaxProfileReady      Boolean  @default(false)
   costingMethod CostingMethod @default(WEIGHTED_AVERAGE)
   active        Boolean       @default(true)
   createdAt     DateTime      @default(now())

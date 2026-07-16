@@ -1,6 +1,6 @@
 import type { HrPayrollPaymentConceptDefinition } from '../../types/hr-payroll';
 
-export const DEFAULT_PAYMENT_CONCEPTS: HrPayrollPaymentConceptDefinition[] = [
+export const DEFAULT_PAYMENT_CONCEPTS: Array<Omit<HrPayrollPaymentConceptDefinition, 'active'>> = [
   { code: 'INGRESO_ORDINARIO_FIJO', name: 'Ingreso ordinario fijo', type: 'INCOME', socialSecurityApplicable: true, trainingContributionApplicable: true, incomeTaxTreatment: 'REGULAR_FIXED', incomeTaxDeductible: false, sourceReference: 'Contrato y regla laboral vigente' },
   { code: 'INGRESO_ORDINARIO_VARIABLE', name: 'Ingreso ordinario variable', type: 'INCOME', socialSecurityApplicable: true, trainingContributionApplicable: true, incomeTaxTreatment: 'REGULAR_VARIABLE', incomeTaxDeductible: false, sourceReference: 'Contrato y regla laboral vigente' },
   { code: 'HORAS_EXTRA_APROBADAS', name: 'Horas extra aprobadas', type: 'INCOME', socialSecurityApplicable: true, trainingContributionApplicable: true, incomeTaxTreatment: 'REGULAR_VARIABLE', incomeTaxDeductible: false, sourceReference: 'Código del Trabajo y regla laboral vigente' },
