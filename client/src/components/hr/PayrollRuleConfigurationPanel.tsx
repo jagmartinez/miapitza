@@ -392,19 +392,25 @@ export default function PayrollRuleConfigurationPanel({
 
           <details className="hr-legal-advanced">
             <summary><span><ChevronDown size={18} aria-hidden="true" /><strong>Parámetros operativos de nómina y aguinaldo</strong></span><small>Divisores, horas extra, permisos y fuentes históricas</small></summary>
-            <div className="hr-legal-field-grid hr-legal-advanced-grid">
-              <label>Moneda ISO<input value={currency} maxLength={3} onChange={(event) => setCurrency(event.target.value.toUpperCase())} /></label>
-              <label>Multiplicador hora extra<input type="number" min="0.0001" step="0.0001" value={overtime} onChange={(event) => setOvertime(event.target.value)} /></label>
-              <label>Divisor minutos semanal<input type="number" min="0.0001" step="0.0001" value={weekly} onChange={(event) => setWeekly(event.target.value)} /></label>
-              <label>Divisor minutos quincenal<input type="number" min="0.0001" step="0.0001" value={biweekly} onChange={(event) => setBiweekly(event.target.value)} /></label>
-              <label>Divisor minutos mensual<input type="number" min="0.0001" step="0.0001" value={monthly} onChange={(event) => setMonthly(event.target.value)} /></label>
-              <label>Permiso: minutos por día<input type="number" min="0.0001" step="0.0001" value={leaveDay} onChange={(event) => setLeaveDay(event.target.value)} /></label>
-              <label>Permiso: minutos por hora<input type="number" min="0.0001" step="0.0001" value={leaveHour} onChange={(event) => setLeaveHour(event.target.value)} /></label>
-              <label>Permiso: minutos por minuto<input type="number" min="0.0001" step="0.0001" value={leaveMinute} onChange={(event) => setLeaveMinute(event.target.value)} /></label>
-              <label>Aguinaldo: días históricos<input type="number" min="1" max="731" value={lookbackDays} onChange={(event) => setLookbackDays(event.target.value)} /></label>
-              <label>Aguinaldo: divisor de ingreso<input type="number" min="0.0001" step="0.0001" value={incomeDivisor} onChange={(event) => setIncomeDivisor(event.target.value)} /></label>
-              <label>Prorrateo<HrReactSelect value={prorationMode} onChange={(event) => setProrationMode(event.target.value as typeof prorationMode)}><option value="SERVICE_DAYS_RATIO">Proporción por días de servicio</option><option value="NONE">Sin prorrateo</option></HrReactSelect></label>
-              <label>Fuentes elegibles<input value={eligibleSources} onChange={(event) => setEligibleSources(event.target.value)} placeholder="ORDINARY, OVERTIME" /><small>Separadas por coma.</small></label>
+            <div className="hr-legal-advanced-grid">
+              <fieldset><legend>Nómina</legend><div className="hr-legal-field-grid">
+                <label>Moneda de la corrida<input value={currency} maxLength={3} onChange={(event) => setCurrency(event.target.value.toUpperCase())} /><small>Código ISO de tres letras, por ejemplo NIO.</small></label>
+                <label>Multiplicador de hora extra<input type="number" min="0.0001" step="0.0001" value={overtime} onChange={(event) => setOvertime(event.target.value)} /><small>2 representa pago doble.</small></label>
+                <label>Divisor semanal (minutos)<input type="number" min="0.0001" step="0.0001" value={weekly} onChange={(event) => setWeekly(event.target.value)} /></label>
+                <label>Divisor quincenal (minutos)<input type="number" min="0.0001" step="0.0001" value={biweekly} onChange={(event) => setBiweekly(event.target.value)} /></label>
+                <label>Divisor mensual (minutos)<input type="number" min="0.0001" step="0.0001" value={monthly} onChange={(event) => setMonthly(event.target.value)} /></label>
+              </div></fieldset>
+              <fieldset><legend>Permisos pagados</legend><div className="hr-legal-field-grid">
+                <label>Minutos por día<input type="number" min="0.0001" step="0.0001" value={leaveDay} onChange={(event) => setLeaveDay(event.target.value)} /></label>
+                <label>Minutos por hora<input type="number" min="0.0001" step="0.0001" value={leaveHour} onChange={(event) => setLeaveHour(event.target.value)} /></label>
+                <label>Minutos por minuto<input type="number" min="0.0001" step="0.0001" value={leaveMinute} onChange={(event) => setLeaveMinute(event.target.value)} /></label>
+              </div></fieldset>
+              <fieldset><legend>Aguinaldo</legend><div className="hr-legal-field-grid">
+                <label>Días históricos<input type="number" min="1" max="731" value={lookbackDays} onChange={(event) => setLookbackDays(event.target.value)} /><small>Ventana de componentes pagados que alimenta el cálculo.</small></label>
+                <label>Divisor de ingreso<input type="number" min="0.0001" step="0.0001" value={incomeDivisor} onChange={(event) => setIncomeDivisor(event.target.value)} /></label>
+                <label>Prorrateo<HrReactSelect value={prorationMode} onChange={(event) => setProrationMode(event.target.value as typeof prorationMode)}><option value="SERVICE_DAYS_RATIO">Proporción por días de servicio</option><option value="NONE">Sin prorrateo</option></HrReactSelect></label>
+                <label className="span-full">Fuentes elegibles<input value={eligibleSources} onChange={(event) => setEligibleSources(event.target.value)} placeholder="ORDINARY, OVERTIME" /><small>Códigos separados por coma.</small></label>
+              </div></fieldset>
             </div>
           </details>
 
@@ -413,9 +419,9 @@ export default function PayrollRuleConfigurationPanel({
               <span className="hr-legal-section-icon"><ShieldCheck size={20} aria-hidden="true" /></span>
               <div><span className="hr-legal-step-label">5 · Respaldo</span><h3 id="legal-evidence-title">Guardar para revisión independiente</h3><p>Guardar crea una revisión inmutable; todavía no se usa en nómina hasta validarla y activarla.</p></div>
             </header>
-            <div className="hr-legal-field-grid">
-              <label className="span-full">Fuente general<input value={sourceReference} onChange={(event) => setSourceReference(event.target.value)} maxLength={500} required /></label>
-              <label className="span-full">Evidencia verificada<input value={evidenceReference} onChange={(event) => setEvidenceReference(event.target.value)} maxLength={500} placeholder="URL, expediente o documento interno" required /></label>
+            <div className="hr-legal-field-grid hr-legal-evidence-grid">
+              <label>Fuente general<input value={sourceReference} onChange={(event) => setSourceReference(event.target.value)} maxLength={500} required /></label>
+              <label>Evidencia verificada<input value={evidenceReference} onChange={(event) => setEvidenceReference(event.target.value)} maxLength={500} placeholder="URL, expediente o documento interno" required /></label>
               <label className="span-full">Motivo de esta revisión<textarea rows={3} value={uploadReason} onChange={(event) => setUploadReason(event.target.value)} maxLength={900} required /></label>
             </div>
             <label className="hr-payroll-confirm"><input type="checkbox" checked={regimeRuleConfirmed} onChange={(event) => setRegimeRuleConfirmed(event.target.checked)} /><span>Confirmo que el perfil fiscal empresarial mostrado y la clasificación de cada concepto son correctos.</span></label>

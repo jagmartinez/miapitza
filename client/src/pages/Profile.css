@@ -779,9 +779,18 @@ input:checked + .slider:before { transform: translateX(20px); }
 
 .profile-hr-identity {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: var(--spacing-md);
     margin: 0 0 var(--spacing-lg);
+}
+
+.profile-hr-identity > .profile-hr-vacation-balance {
+    border-color: color-mix(in srgb, var(--color-success) 42%, var(--color-border));
+    background: color-mix(in srgb, var(--color-success) 8%, var(--color-background));
+}
+
+.profile-hr-vacation-balance dd {
+    color: var(--color-success);
 }
 
 .profile-hr-identity > div {

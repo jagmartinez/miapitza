@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 const attendance = read('../../pages/hr/AttendanceManagement.tsx');
+const attendanceReview = read('../../pages/hr/AttendanceReview.tsx');
 const leave = read('../../pages/hr/LeaveManagement.tsx');
 const benefits = read('../../pages/hr/BenefitsManagement.tsx');
 const payroll = read('../../pages/hr/PayrollManagement.tsx');
@@ -15,9 +16,17 @@ const legalConfiguration = read('./PayrollRuleConfigurationPanel.tsx');
 const concepts = read('./PayrollPaymentConceptCatalogEditor.tsx');
 const companies = read('../../pages/Companies.tsx');
 const payrollClient = read('./payrollClient.ts');
+const adminCss = read('../../pages/hr/admin-tables.css');
+const layoutCss = read('../Layout.css');
 
 describe('reconstrucción RH: criterios de aceptación integrados', () => {
   it('administra asistencia, permisos y prestaciones desde tablas con acciones por fila', () => {
+    [attendance, leave, benefits, payroll].forEach((source) => {
+      expect(source).toContain('inventory-header-new');
+      expect(source).toContain('inventory-table');
+      expect(source).toContain('<Pagination');
+      expect(source).toContain('table-action-btn');
+    });
     [attendance, leave, benefits].forEach((source) => {
       expect(source).toContain('hr-admin-table');
       expect(source).toContain('<table');
@@ -33,7 +42,9 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
 
   it('presenta nómina como registro operativo, autoabre una corrida y entrega reportes y colillas', () => {
     expect(payroll).toContain('payroll-run-table');
-    expect(payroll).toContain('<th>Acciones</th>');
+    expect(payroll).toContain('<th scope="col">Acciones</th>');
+    expect(payroll).toContain('Buscar código o periodo');
+    expect(payroll).toContain('filteredRuns');
     expect(payroll).toContain('autoOpenedRunKey');
     expect(payroll).toContain('void openWorkspace(latest)');
     expect(payroll).toContain("exportSpecificRun(run, 'xlsx')");
@@ -46,12 +57,34 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
   });
 
   it('hace visible Mi RH desde Perfil y enlaza todas las rutas personales', () => {
-    expect(layout).toContain("to: '/profile?tab=hr'");
-    expect(layout).toContain("label: 'Mi RH'");
+    expect(layout).not.toContain("section: 'Mi portal RH'");
+    expect(layout).not.toContain("to: '/profile?tab=hr'");
+    expect(layout).toContain('Perfil y Mi RH');
     expect(profile).toContain("{ id: 'hr', icon: BriefcaseBusiness, label: 'Mi RH' }");
     expect(profile).toContain("setSearchParams(tab === 'info' ? {} : { tab }");
-    ['/rh/mi-portal', '/rh/mi-portal/horario', '/rh/mi-portal/gestion', '/rh/mi-portal/nomina', '/rh/mi-portal/prestaciones']
+    expect(profile).toContain('selectVacationBalance');
+    expect(profile).toContain('Saldo de vacaciones');
+    ['/rh/mi-portal/horario', '/rh/marcaje', '/rh/mi-portal/gestion?tab=OVERTIME', '/rh/mi-portal/gestion?tab=LEAVE', '/rh/mi-portal/nomina']
       .forEach((route) => expect(profile).toContain(`to=\"${route}\"`));
+  });
+
+  it('no oculta registros por el límite de una página del servidor y conserva semántica accesible', () => {
+    [attendance, leave, payroll].forEach((source) => {
+      expect(source).toContain('collectAllPages');
+      expect(source).toContain('aria-controls=');
+      expect(source).toContain('role="tabpanel"');
+      expect(source).toContain('scope="col"');
+    });
+    expect(attendanceReview).toContain('inventory-table');
+    expect(attendanceReview).not.toContain('hr-attendance-events');
+  });
+
+  it('expande el menú colapsado con hover o teclado sin reemplazar la navegación móvil', () => {
+    expect(layoutCss).toContain('.sidebar.collapsed:is(:hover, :focus-within)');
+    expect(layoutCss).toContain('@media (min-width: 769px)');
+    expect(layoutCss).toContain('@media (max-width: 768px)');
+    expect(adminCss).toContain('.table-action-btn.btn');
+    expect(adminCss).toContain('scrollbar-gutter: stable');
   });
 
   it('toma el perfil fiscal de Empresas y permite gestionar conceptos legales sin perder histórico', () => {

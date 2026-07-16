@@ -130,6 +130,12 @@
   color: var(--color-primary);
 }
 
+.hr-workforce-jump-nav a.is-active,
+.hr-workforce-jump-nav a[aria-current="location"] {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
 .hr-workforce-jump-nav a:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
   outline-offset: 1px;

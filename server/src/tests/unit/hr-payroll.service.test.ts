@@ -9,7 +9,9 @@ import {
     assertRuleMetadataEditable,
     assertCompanyTaxProfileReady,
     assertConfigurationMatchesCompanyTaxProfile,
+    buildPayrollReceiptPdfModel,
     HrPayrollError,
+    PayrollReceiptService,
     compensationMinuteRate,
     reconcilePublishedShiftSummaries,
     normalizeFullCoverageSalary,
@@ -623,6 +625,68 @@ describe('HR payroll safety and state machine', () => {
         expect(() => assertAguinaldoDependencyFresh(fresh)).not.toThrow();
         expect(() => assertAguinaldoDependencyFresh({ ...fresh, current: { ...fresh.current, componentAmount: '1500.01' } })).toThrow('fuente histórica');
         expect(() => assertAguinaldoDependencyFresh({ ...fresh, current: { ...fresh.current, runReversed: true } })).toThrow(HrPayrollError);
+    });
+});
+
+describe('HR payroll receipt document', () => {
+    const input = {
+        id: 87,
+        runKind: 'REGULAR' as const,
+        runCode: 'NOM-2026-07-Q1',
+        periodLabel: '01 al 15 de julio de 2026',
+        payDate: '2026-07-16',
+        currency: 'NIO',
+        grossIncome: '34650.00',
+        totalDeductions: '8434.50',
+        netPay: '26215.50',
+        status: 'PUBLISHED',
+        legalName: 'Ana López',
+        employeeCode: 'EMP-001',
+        companyName: 'La Mía Pizza',
+        companyRuc: 'J0310000000000',
+        components: [
+            { code: 'SALARIO', name: 'Salario ordinario', type: 'INCOME' as const, amount: '30000.00' },
+            { code: 'HORAS_EXTRA', name: 'Horas extra', type: 'INCOME' as const, amount: '4650.00', reason: '12 horas aprobadas' },
+            { code: 'INSS_LABORAL', name: 'INSS laboral', type: 'DEDUCTION' as const, amount: '2425.50' },
+            { code: 'IR_LABORAL', name: 'IR laboral', type: 'DEDUCTION' as const, amount: '6009.00' },
+        ],
+        employerContributions: [
+            { code: 'INSS_PATRONAL', name: 'INSS patronal', baseAmount: '34650.00', rate: '0.215', amount: '7449.75' },
+            { code: 'INATEC', name: 'INATEC patronal', baseAmount: '34650.00', rate: '0.02', amount: '693.00' },
+        ],
+    };
+
+    it('structures employee, period, income, deduction, employer contribution and net sections', () => {
+        const model = buildPayrollReceiptPdfModel(input);
+        expect(model.company).toEqual({ name: 'La Mía Pizza', ruc: 'J0310000000000' });
+        expect(model.document.kind).toBe('Nómina ordinaria');
+        expect(model.document.verificationCode).toMatch(/^[A-F0-9]{16}$/);
+        expect(model.employee).toEqual({ name: 'Ana López', code: 'EMP-001' });
+        expect(model.period.runCode).toBe('NOM-2026-07-Q1');
+        expect(model.incomes.map(item => item.concept)).toEqual(['Salario ordinario', 'Horas extra']);
+        expect(model.incomes[1].reference).toBe('12 horas aprobadas');
+        expect(model.deductions.map(item => item.concept)).toEqual(['INSS laboral', 'IR laboral']);
+        expect(model.employerContributions.map(item => item.concept)).toEqual(['INSS patronal', 'INATEC patronal']);
+        expect(model.employerContributions[0].rate).toBe('21.5%');
+        expect(model.totals.net).toContain('26');
+        expect(model.notes.join(' ')).toContain('no reducen el neto');
+    });
+
+    it('keeps the validation code deterministic and changes it when an issued total changes', () => {
+        const original = buildPayrollReceiptPdfModel(input).document.verificationCode;
+        expect(buildPayrollReceiptPdfModel(input).document.verificationCode).toBe(original);
+        expect(buildPayrollReceiptPdfModel({ ...input, netPay: '26215.51' }).document.verificationCode).not.toBe(original);
+    });
+
+    it('renders a valid PDF document with an employee-specific filename', async () => {
+        const get = jest.spyOn(PayrollReceiptService, 'get').mockResolvedValue(input as never);
+        const result = await PayrollReceiptService.pdf(3, input.id, { publishedOnly: true });
+        expect(get).toHaveBeenCalledWith(3, input.id, { publishedOnly: true });
+        expect(result.contentType).toBe('application/pdf');
+        expect(result.filename).toBe('colilla-EMP-001-87.pdf');
+        expect(result.buffer.subarray(0, 4).toString('ascii')).toBe('%PDF');
+        expect(result.buffer.length).toBeGreaterThan(4_000);
+        get.mockRestore();
     });
 });
 

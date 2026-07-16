@@ -6,6 +6,36 @@
   background: var(--color-surface);
 }
 
+/* RH catalogues intentionally reuse the same visual grammar as Production
+   Recipes: wide centered canvas, compact filter toolbar, one bordered table
+   card and the shared Pagination footer. */
+.hr-admin-catalog-page {
+  max-width: 1700px;
+  min-width: 0;
+}
+
+.hr-admin-catalog-page .page-header-bar {
+  margin-bottom: var(--spacing-xl);
+}
+
+.hr-admin-catalog-page .inventory-filters-row,
+.hr-admin-catalog-page .hr-workforce-filters,
+.hr-admin-catalog-page .hr-benefits-toolbar,
+.hr-admin-catalog-page .payroll-operation-switcher {
+  margin-bottom: var(--spacing-xl);
+}
+
+.hr-admin-catalog-page .pr-table-card,
+.hr-admin-catalog-page .hr-admin-board,
+.hr-admin-catalog-page .payroll-run-register {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
 .hr-admin-tabs {
   display: flex;
   gap: 4px;
@@ -37,9 +67,9 @@
 }
 
 .hr-admin-tabs button[aria-selected='true'] {
-  border-color: rgba(59, 130, 246, 0.35);
-  background: rgba(59, 130, 246, 0.12);
-  color: var(--color-primary);
+  border-color: transparent;
+  background: var(--color-neutral-700);
+  color: white;
 }
 
 .hr-admin-tabs button span {
@@ -65,6 +95,17 @@
   font-size: var(--font-size-sm);
 }
 
+.hr-admin-catalog-page .hr-admin-table,
+.hr-admin-catalog-page .payroll-run-table {
+  margin: 0;
+  border: 0;
+}
+
+.hr-admin-catalog-page .hr-admin-table tbody tr,
+.hr-admin-catalog-page .payroll-run-table tbody tr {
+  transition: background-color var(--transition-fast);
+}
+
 .hr-admin-table caption {
   padding: 16px 18px;
   color: var(--color-text);
@@ -73,15 +114,15 @@
   text-align: left;
 }
 
-.hr-admin-table th,
-.hr-admin-table td {
+.hr-admin-table:not(.inventory-table) th,
+.hr-admin-table:not(.inventory-table) td {
   padding: 13px 14px;
   border-top: 1px solid var(--color-border);
   text-align: left;
   vertical-align: middle;
 }
 
-.hr-admin-table th {
+.hr-admin-table:not(.inventory-table) th {
   background: var(--color-background-secondary);
   color: var(--color-text-secondary);
   font-size: var(--font-size-xs);
@@ -115,6 +156,43 @@
   justify-content: flex-end;
   gap: 6px;
   white-space: nowrap;
+}
+
+.hr-admin-catalog-page .hr-admin-row-actions,
+.hr-admin-catalog-page .payroll-run-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.hr-admin-catalog-page .table-action-btn.btn {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  box-shadow: none;
+  transform: none;
+}
+
+.hr-admin-catalog-page .table-action-btn.btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  background: var(--color-surface);
+  color: var(--color-primary);
+  box-shadow: none;
+  transform: none;
+}
+
+.hr-admin-catalog-page .table-action-btn.btn.danger:hover:not(:disabled) {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.hr-admin-catalog-page .table-pagination {
+  border-top: 1px solid var(--color-border);
 }
 
 .hr-admin-cell-warning {
@@ -160,6 +238,27 @@
 }
 
 @media (max-width: 760px) {
+  .hr-admin-catalog-page.inventory-page {
+    padding: 0;
+  }
+
+  .hr-admin-catalog-page .page-header-bar,
+  .hr-admin-catalog-page .inventory-filters-row {
+    align-items: stretch;
+  }
+
+  .hr-admin-catalog-page .inventory-status-filters {
+    flex-wrap: nowrap;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .hr-admin-catalog-page .hr-admin-table-wrap,
+  .hr-admin-catalog-page .payroll-run-table-wrap {
+    overscroll-behavior-inline: contain;
+    scrollbar-gutter: stable;
+  }
+
   .hr-admin-empty {
     align-items: stretch;
     flex-direction: column;

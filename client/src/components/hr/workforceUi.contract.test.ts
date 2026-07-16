@@ -36,15 +36,24 @@ describe('Phase 4 workforce UI safety contract', () => {
   });
 
   it('presents attendance and leave as table-first administrative workspaces', () => {
-    expect(attendance).toContain('className="hr-admin-table"');
+    expect(attendance).toContain('className="hr-admin-table inventory-table"');
     expect(attendance).toContain("['INCIDENTS', 'Incidencias'");
     expect(attendance).toContain('Revisar y decidir');
     expect(attendance).not.toContain('hr-summary-grid');
-    expect(leave).toContain('className="hr-admin-table"');
+    expect(leave).toContain('className="hr-admin-table inventory-table"');
     expect(leave).toContain("['BALANCES', 'Saldos'");
     expect(leave).toContain('Movimientos de saldos');
     expect(leave).not.toContain('hr-type-grid');
     expect(leave).toContain("fractionLabel(item.fraction)");
+  });
+
+  it('loads every authoritative server page and exposes accessible tabs and column headers', () => {
+    [attendance, leave].forEach((source) => {
+      expect(source).toContain('collectAllPages');
+      expect(source).toContain('aria-controls=');
+      expect(source).toContain('role="tabpanel"');
+      expect(source).toContain('scope="col"');
+    });
   });
 
   it('does not persist or queue sensitive workforce mutations offline', () => {

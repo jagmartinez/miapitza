@@ -20,6 +20,10 @@ import {
 } from 'lucide-react';
 import type { User as AppUser } from '../types';
 import type { Language } from '../utils/translations';
+import { workforceClient } from '../components/hr/workforceClient';
+import { selectVacationBalance } from '../components/hr/vacationBalance';
+import type { HrMyWorkforce } from '../types/hr-workforce';
+import { formatHrNumber } from '../utils/hrFormat';
 import './Profile.css';
 
 function axiosErr(err: unknown, fallback: string): string {
@@ -105,6 +109,8 @@ export default function Profile() {
     const [activities, setActivities] = useState<ActivityEntry[]>([]);
     const [performance, setPerformance] = useState<PerformanceData | null>(null);
     const [passwordInfo, setPasswordInfo] = useState<PasswordInfoState | null>(null);
+    const [myWorkforce, setMyWorkforce] = useState<HrMyWorkforce | null>(null);
+    const [myHrLoading, setMyHrLoading] = useState(false);
 
     const [formData, setFormData] = useState({
         name: user?.name || '', email: user?.email || '',
@@ -136,6 +142,20 @@ export default function Profile() {
     }, [user]);
 
     useEffect(() => {
+        if (user?.accountType !== 'INTERNAL' || !user.employeeId) {
+            setMyWorkforce(null);
+            return;
+        }
+        let active = true;
+        setMyHrLoading(true);
+        void workforceClient.getMyWorkforce({ limit: 30 })
+            .then((data) => { if (active) setMyWorkforce(data); })
+            .catch(() => { if (active) setMyWorkforce(null); })
+            .finally(() => { if (active) setMyHrLoading(false); });
+        return () => { active = false; };
+    }, [user?.accountType, user?.employeeId]);
+
+    useEffect(() => {
         if (requestedTab && ['info', 'hr', 'stats', 'permissions', 'settings', 'security', 'sessions', '2fa'].includes(requestedTab)) {
             setActiveTab(requestedTab as ProfileTab);
         }
@@ -165,6 +185,7 @@ export default function Profile() {
     const initials = getInitials(user?.name || 'U');
     const hasEmployeeContext = user?.accountType === 'INTERNAL' && Boolean(user.employeeId);
     const canManageEmployeeLinks = roleLower.includes('admin') || roleLower.includes('human') || roleLower.includes('rh');
+    const vacationBalance = selectVacationBalance(myWorkforce?.vacationBalances);
 
     const tabs: { id: ProfileTab; icon: LucideIcon; label: string }[] = [
         { id: 'info', icon: User, label: 'Información' },
@@ -299,19 +320,18 @@ export default function Profile() {
                                     <h3 className="profile-section-title"><BriefcaseBusiness size={20} /> Mi información RH</h3>
                                     <p>Consulta tu jornada, solicitudes, pagos y beneficios personales.</p>
                                 </div>
-                                <Link to="/rh/mi-portal" className="profile-hr-main-link">
-                                    Abrir portal RH <ChevronRight size={17} aria-hidden="true" />
-                                </Link>
                             </div>
                             <dl className="profile-hr-identity">
                                 <div><dt>Empleado</dt><dd>{user?.employee?.employeeCode ?? user?.employee?.employeeNumber ?? `#${user?.employeeId}`}</dd></div>
                                 <div><dt>Estado</dt><dd>{user?.employee?.status ?? 'Vinculado'}</dd></div>
                                 <div><dt>Sucursal</dt><dd>{fullUserData?.branch?.name || user?.branch?.name || 'Sin asignar'}</dd></div>
+                                <div className="profile-hr-vacation-balance"><dt>Saldo de vacaciones</dt><dd>{myHrLoading ? 'Cargando…' : vacationBalance ? `${formatHrNumber(vacationBalance.available)} ${vacationBalance.unit.toLowerCase()}` : 'Sin saldo disponible'}</dd></div>
                             </dl>
                             <div className="profile-hr-grid">
                                 <Link to="/rh/mi-portal/horario"><CalendarClock size={22} /><span><strong>Horario</strong><small>Calendario y turnos publicados</small></span><ChevronRight size={17} /></Link>
                                 <Link to="/rh/marcaje"><MapPin size={22} /><span><strong>Marcajes</strong><small>Entrada, descansos y salida</small></span><ChevronRight size={17} /></Link>
-                                <Link to="/rh/mi-portal/gestion"><BriefcaseBusiness size={22} /><span><strong>Solicitudes</strong><small>Vacaciones, permisos, correcciones y horas extra</small></span><ChevronRight size={17} /></Link>
+                                <Link to="/rh/mi-portal/gestion?tab=OVERTIME"><TrendingUp size={22} /><span><strong>Horas extra</strong><small>Solicitadas, aprobadas y rechazadas</small></span><ChevronRight size={17} /></Link>
+                                <Link to="/rh/mi-portal/gestion?tab=LEAVE"><Calendar size={22} /><span><strong>Vacaciones y permisos</strong><small>Crea solicitudes y revisa sus estados</small></span><ChevronRight size={17} /></Link>
                                 <Link to="/rh/mi-portal/nomina"><FileText size={22} /><span><strong>Recibos de pago</strong><small>Ingresos, deducciones y colillas</small></span><ChevronRight size={17} /></Link>
                                 <Link to="/rh/mi-portal/prestaciones"><WalletCards size={22} /><span><strong>Beneficios</strong><small>Viáticos, préstamos y deducciones</small></span><ChevronRight size={17} /></Link>
                             </div>

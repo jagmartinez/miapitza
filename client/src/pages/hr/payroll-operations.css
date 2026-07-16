@@ -124,6 +124,32 @@
   font-weight: 700;
 }
 
+.payroll-run-search {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  min-height: 40px;
+  padding: 0 .7rem;
+  border: 1px solid var(--payroll-border);
+  border-radius: var(--radius-md);
+  background: var(--color-background);
+  color: var(--color-text-secondary);
+}
+
+.payroll-run-search:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.payroll-run-search input {
+  width: 100%;
+  min-width: 180px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text);
+}
+
 .payroll-run-table-wrap,
 .payroll-operation-table-wrap { overflow-x: auto; }
 

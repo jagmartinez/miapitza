@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Prisma, type PayrollRuleStatus, type PayrollRunKind, type PayrollRunStatus } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import prisma from '../utils/prisma';
 import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
 import { AuditLogService } from './audit-log.service';
@@ -2313,12 +2314,114 @@ const receiptInclude = Prisma.validator<Prisma.PayrollReceiptInclude>()({
     components: true,
     user: { select: userSelect },
     employee: { select: { employeeCode: true, legalName: true } },
-    run: { include: { trace: { include: { actor: { select: actorSelect } }, orderBy: { occurredAt: 'asc' } } } },
+    company: { select: { name: true, ruc: true } },
+    run: { include: {
+        employerContributionLines: true,
+        trace: { include: { actor: { select: actorSelect } }, orderBy: { occurredAt: 'asc' } },
+    } },
 });
 type ReceiptItem = Prisma.PayrollReceiptGetPayload<{ include: typeof receiptInclude }>;
 
 async function receiptDetail(receipt: ReceiptItem, selfSafe = false) {
-    return serialize({ ...receipt, components: receipt.components, trace: selfSafe ? [] : receipt.run.trace, run: undefined, user: receipt.user, employeeCode: receipt.employee.employeeCode, legalName: receipt.employee.legalName });
+    return serialize({
+        ...receipt,
+        companyName: receipt.company.name,
+        companyRuc: receipt.company.ruc,
+        components: receipt.components,
+        employerContributions: receipt.run.employerContributionLines.filter(item => item.userId === receipt.userId),
+        trace: selfSafe ? [] : receipt.run.trace,
+        run: undefined,
+        company: undefined,
+        user: receipt.user,
+        employeeCode: receipt.employee.employeeCode,
+        legalName: receipt.employee.legalName,
+    });
+}
+
+export interface PayrollReceiptPdfInput {
+    id: number;
+    runKind: 'REGULAR' | 'AGUINALDO';
+    runCode: string;
+    periodLabel: string;
+    payDate: string | Date;
+    publishedAt?: string | Date | null;
+    currency: string;
+    grossIncome: string;
+    totalDeductions: string;
+    netPay: string;
+    status: string;
+    legalName: string;
+    employeeCode: string;
+    companyName?: string | null;
+    companyRuc?: string | null;
+    components: Array<{ code: string; name: string; type: 'INCOME' | 'DEDUCTION'; amount: string; reason?: string | null }>;
+    employerContributions?: Array<{ code: string; name: string; baseAmount: string; rate: string; amount: string }>;
+}
+
+export interface PayrollReceiptPdfModel {
+    company: { name: string; ruc: string };
+    document: { title: string; kind: string; number: string; verificationCode: string; status: string };
+    employee: { name: string; code: string };
+    period: { label: string; payDate: string; runCode: string };
+    incomes: Array<{ concept: string; reference: string; amount: string }>;
+    deductions: Array<{ concept: string; reference: string; amount: string }>;
+    employerContributions: Array<{ concept: string; base: string; rate: string; amount: string }>;
+    totals: { gross: string; deductions: string; net: string };
+    notes: string[];
+}
+
+const payrollCurrencySymbol = (currency: string) => currency === 'NIO' ? 'C$' : currency === 'USD' ? 'US$' : currency;
+const payrollMoney = (currency: string, value: string) => {
+    const amount = Number(value);
+    const formatted = Number.isFinite(amount)
+        ? amount.toLocaleString('es-NI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '0.00';
+    return `${payrollCurrencySymbol(currency)} ${formatted.replace(/\u00a0/g, ' ')}`;
+};
+const payrollPercent = (value: string) => `${(Number(value) * 100).toLocaleString('es-NI', { maximumFractionDigits: 4 })}%`;
+
+export function buildPayrollReceiptPdfModel(receipt: PayrollReceiptPdfInput): PayrollReceiptPdfModel {
+    const verificationCode = createHash('sha256').update([
+        receipt.id, receipt.runCode, receipt.employeeCode, receipt.grossIncome,
+        receipt.totalDeductions, receipt.netPay, receipt.status,
+    ].join('|')).digest('hex').slice(0, 16).toUpperCase();
+    const rows = (type: 'INCOME' | 'DEDUCTION') => receipt.components
+        .filter(component => component.type === type)
+        .map(component => ({
+            concept: component.name,
+            reference: component.reason?.trim() || component.code,
+            amount: payrollMoney(receipt.currency, component.amount),
+        }));
+    return {
+        company: { name: receipt.companyName?.trim() || 'Empresa', ruc: receipt.companyRuc?.trim() || 'No registrado' },
+        document: {
+            title: 'Colilla de pago',
+            kind: receipt.runKind === 'AGUINALDO' ? 'Aguinaldo' : 'Nómina ordinaria',
+            number: `REC-${receipt.id}`,
+            verificationCode,
+            status: receipt.status === 'PUBLISHED' ? 'Publicada' : 'Anulada',
+        },
+        employee: { name: receipt.legalName, code: receipt.employeeCode },
+        period: { label: receipt.periodLabel, payDate: dateKey(new Date(receipt.payDate)), runCode: receipt.runCode },
+        incomes: rows('INCOME'),
+        deductions: rows('DEDUCTION'),
+        employerContributions: (receipt.employerContributions ?? []).map(item => ({
+            concept: item.name,
+            base: payrollMoney(receipt.currency, item.baseAmount),
+            rate: payrollPercent(item.rate),
+            amount: payrollMoney(receipt.currency, item.amount),
+        })),
+        totals: {
+            gross: payrollMoney(receipt.currency, receipt.grossIncome),
+            deductions: payrollMoney(receipt.currency, receipt.totalDeductions),
+            net: payrollMoney(receipt.currency, receipt.netPay),
+        },
+        notes: [
+            'Los aportes patronales son costos de la empresa y no reducen el neto del empleado.',
+            'Documento generado desde una colilla publicada e inmutable de la corrida de nómina.',
+            'Conserve este documento como comprobante de pago. Cualquier aclaración debe tramitarse con Recursos Humanos.',
+        ],
+    };
 }
 
 export class PayrollReceiptService {
@@ -2338,15 +2441,126 @@ export class PayrollReceiptService {
     }
 
     static async pdf(companyId: number, receiptId: number, opts: { userId?: number; runId?: number; publishedOnly?: boolean; selfSafe?: boolean } = {}) {
-        const receipt = await this.get(companyId, receiptId, opts);
-        const document = new jsPDF(); document.setFontSize(16); document.text('Recibo de nómina', 14, 18);
-        document.setFontSize(10); const lines = [
-            `Corrida: ${receipt.runCode}`, `Colaborador: ${receipt.legalName}`, `Código: ${receipt.employeeCode}`,
-            `Período: ${receipt.periodLabel}`, `Fecha de pago: ${dateKey(new Date(receipt.payDate))}`,
-            `Ingresos: ${receipt.currency} ${receipt.grossIncome}`, `Deducciones: ${receipt.currency} ${receipt.totalDeductions}`,
-            `Neto: ${receipt.currency} ${receipt.netPay}`, `Estado: ${receipt.status}`,
-        ]; lines.forEach((line, index) => document.text(line, 14, 30 + index * 7));
-        document.text('Documento generado desde un snapshot inmutable y trazable.', 14, 100);
-        return { contentType: 'application/pdf', filename: `recibo-${receipt.id}.pdf`, buffer: Buffer.from(document.output('arraybuffer')) };
+        const receipt = await this.get(companyId, receiptId, opts) as unknown as PayrollReceiptPdfInput;
+        const model = buildPayrollReceiptPdfModel(receipt);
+        const document = new jsPDF({ unit: 'mm', format: 'a4' });
+        const pageWidth = document.internal.pageSize.getWidth();
+        const margin = 14;
+        const tableStyles = { fontSize: 8.5, cellPadding: 2.4, lineColor: [220, 226, 235] as [number, number, number], lineWidth: 0.1 };
+        const headStyles = { fillColor: [31, 61, 104] as [number, number, number], textColor: 255, fontStyle: 'bold' as const };
+
+        document.setFillColor(20, 45, 82);
+        document.rect(0, 0, pageWidth, 33, 'F');
+        document.setTextColor(255, 255, 255);
+        document.setFont('helvetica', 'bold');
+        document.setFontSize(15);
+        document.text(model.company.name, margin, 12);
+        document.setFont('helvetica', 'normal');
+        document.setFontSize(8.5);
+        document.text(`RUC: ${model.company.ruc}`, margin, 18);
+        document.text(`${model.document.kind} · ${model.document.number}`, margin, 24);
+        document.setFont('helvetica', 'bold');
+        document.setFontSize(17);
+        document.text('COLILLA DE PAGO', pageWidth - margin, 14, { align: 'right' });
+        document.setFontSize(8.5);
+        document.text(`Estado: ${model.document.status}`, pageWidth - margin, 22, { align: 'right' });
+
+        document.setTextColor(25, 35, 52);
+        autoTable(document, {
+            startY: 39,
+            margin: { left: margin, right: margin },
+            theme: 'grid',
+            styles: tableStyles,
+            headStyles,
+            head: [['Empleado', 'Código', 'Período', 'Fecha de pago']],
+            body: [[model.employee.name, model.employee.code, model.period.label, model.period.payDate]],
+        });
+        let cursor = (document as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 7;
+
+        const paymentTable = (title: string, rows: Array<{ concept: string; reference: string; amount: string }>, empty: string) => {
+            document.setFont('helvetica', 'bold');
+            document.setFontSize(11);
+            document.text(title, margin, cursor);
+            autoTable(document, {
+                startY: cursor + 3,
+                margin: { left: margin, right: margin },
+                theme: 'grid',
+                styles: tableStyles,
+                headStyles,
+                head: [['Concepto', 'Referencia', 'Importe']],
+                body: rows.length ? rows.map(row => [row.concept, row.reference, row.amount]) : [[empty, '—', '—']],
+                columnStyles: { 2: { halign: 'right', cellWidth: 34 } },
+            });
+            cursor = (document as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 7;
+        };
+        paymentTable('Ingresos', model.incomes, 'Sin ingresos registrados');
+        paymentTable('Deducciones', model.deductions, 'Sin deducciones registradas');
+
+        document.setFont('helvetica', 'bold');
+        document.setFontSize(11);
+        document.text('Aportes de la empresa (informativo)', margin, cursor);
+        autoTable(document, {
+            startY: cursor + 3,
+            margin: { left: margin, right: margin },
+            theme: 'grid',
+            styles: tableStyles,
+            headStyles,
+            head: [['Concepto', 'Base', 'Tasa', 'Aporte patronal']],
+            body: model.employerContributions.length
+                ? model.employerContributions.map(row => [row.concept, row.base, row.rate, row.amount])
+                : [['Sin aportes patronales registrados', '—', '—', '—']],
+            columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+        });
+        cursor = (document as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 7;
+
+        autoTable(document, {
+            startY: cursor,
+            margin: { left: pageWidth - margin - 88, right: margin },
+            theme: 'grid',
+            styles: { ...tableStyles, fontSize: 9.5 },
+            body: [
+                ['Total ingresos', model.totals.gross],
+                ['Total deducciones', model.totals.deductions],
+                ['NETO PAGADO', model.totals.net],
+            ],
+            columnStyles: { 0: { fontStyle: 'bold' }, 1: { halign: 'right', fontStyle: 'bold' } },
+            didParseCell: hook => {
+                if (hook.row.index === 2) {
+                    hook.cell.styles.fillColor = [225, 247, 235];
+                    hook.cell.styles.textColor = [14, 100, 63];
+                    hook.cell.styles.fontSize = 11;
+                }
+            },
+        });
+        cursor = (document as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+        if (cursor > 238) { document.addPage(); cursor = 22; }
+        document.setFont('helvetica', 'bold');
+        document.setFontSize(9);
+        document.text('Notas', margin, cursor);
+        document.setFont('helvetica', 'normal');
+        document.setFontSize(8);
+        model.notes.forEach(note => {
+            const noteLines = document.splitTextToSize(`• ${note}`, pageWidth - margin * 2);
+            document.text(noteLines, margin, cursor + 5);
+            cursor += noteLines.length * 4 + 2;
+        });
+        if (cursor > 257) { document.addPage(); cursor = 28; }
+        document.setDrawColor(125, 135, 150);
+        document.line(margin, cursor + 12, margin + 72, cursor + 12);
+        document.line(pageWidth - margin - 72, cursor + 12, pageWidth - margin, cursor + 12);
+        document.setFontSize(8);
+        document.text('Firma del empleado', margin + 36, cursor + 17, { align: 'center' });
+        document.text('Firma autorizada / RR. HH.', pageWidth - margin - 36, cursor + 17, { align: 'center' });
+
+        const pageCount = document.getNumberOfPages();
+        for (let page = 1; page <= pageCount; page += 1) {
+            document.setPage(page);
+            document.setFont('helvetica', 'normal');
+            document.setFontSize(7.5);
+            document.setTextColor(90, 102, 120);
+            document.text(`Corrida ${model.period.runCode} · Validación ${model.document.verificationCode}`, margin, 290);
+            document.text(`Página ${page} de ${pageCount}`, pageWidth - margin, 290, { align: 'right' });
+        }
+        return { contentType: 'application/pdf', filename: `colilla-${receipt.employeeCode}-${receipt.id}.pdf`, buffer: Buffer.from(document.output('arraybuffer')) };
     }
 }

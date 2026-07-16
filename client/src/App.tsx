@@ -87,7 +87,6 @@ const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 const HrDashboard = lazy(() => import('./pages/hr/HrDashboard'));
 const Employees = lazy(() => import('./pages/hr/Employees'));
 const EmployeeDetail = lazy(() => import('./pages/hr/EmployeeDetail'));
-const MyHrLanding = lazy(() => import('./pages/hr/MyHrLanding'));
 const Schedules = lazy(() => import('./pages/hr/Schedules'));
 const MySchedule = lazy(() => import('./pages/hr/MySchedule'));
 const TimeClock = lazy(() => import('./pages/hr/TimeClock'));
@@ -125,7 +124,7 @@ function App() {
                                 {/* Open to all authenticated users */}
                                 <Route path="/dashboard" element={<Dashboard />} />
                                 <Route path="/profile" element={<Profile />} />
-                                <Route path="/rh/mi-portal" element={<InternalEmployeeGuard><MyHrLanding /></InternalEmployeeGuard>} />
+                                <Route path="/rh/mi-portal" element={<InternalEmployeeGuard><Navigate to="/profile?tab=hr" replace /></InternalEmployeeGuard>} />
                                 <Route path="/rh/mi-portal/horario" element={<InternalEmployeeGuard><MySchedule /></InternalEmployeeGuard>} />
                                 <Route path="/rh/marcaje" element={<InternalEmployeeGuard><TimeClock /></InternalEmployeeGuard>} />
                                 <Route path="/rh/biometria" element={<InternalEmployeeGuard><Biometrics /></InternalEmployeeGuard>} />

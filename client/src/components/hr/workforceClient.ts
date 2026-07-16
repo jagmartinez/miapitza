@@ -355,10 +355,11 @@ export const workforceClient = {
     ]).items;
   },
 
-  async getVacationBalances(filters: HrWorkforceFilters = {}): Promise<HrVacationBalance[]> {
+  async getVacationBalances(
+    filters: HrWorkforceFilters = {}
+  ): Promise<HrWorkforceList<HrVacationBalance>> {
     const response = await api.get(`${HR_BASE}/vacation/balances`, { params: paramsOf(filters), skipOfflineCache: true });
-    return requireList<HrVacationBalance>(response.data, 'saldos de vacaciones', ['balances'])
-      .items;
+    return requireList<HrVacationBalance>(response.data, 'saldos de vacaciones', ['balances']);
   },
 
   async getVacationLedger(

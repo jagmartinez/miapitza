@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { formatHrNumber } from '../../utils/hrFormat';
 import {
   AlertTriangle,
@@ -71,6 +72,7 @@ type CancelPanel =
   | null;
 
 export default function MyWorkforce() {
+  const [searchParams] = useSearchParams();
   const online = useWorkforceOnline();
   const { success: showSuccess, error: showError } = useAppToast();
   const range = initialRange();
@@ -114,6 +116,16 @@ export default function MyWorkforce() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const requestedTab = searchParams.get('tab')?.toUpperCase();
+  useEffect(() => {
+    if (loading || (requestedTab !== 'OVERTIME' && requestedTab !== 'LEAVE')) return;
+    const targetId = requestedTab === 'OVERTIME' ? 'mis-horas-extra' : 'mis-permisos';
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [loading, requestedTab]);
 
   const createCorrection = async (payload: HrAttendanceCorrectionPayload) => {
     setSaving(true);
@@ -281,7 +293,8 @@ export default function MyWorkforce() {
         <>
           <nav className="hr-workforce-jump-nav" aria-label="Contenido de mi gestión laboral">
             <a href="#mi-asistencia"><Clock3 size={17} /> Asistencia</a>
-            <a href="#mis-solicitudes"><FilePenLine size={17} /> Solicitudes</a>
+            <a href="#mis-horas-extra" className={requestedTab === 'OVERTIME' ? 'is-active' : undefined} aria-current={requestedTab === 'OVERTIME' ? 'location' : undefined}><Clock3 size={17} /> Horas extra</a>
+            <a href="#mis-permisos" className={requestedTab === 'LEAVE' ? 'is-active' : undefined} aria-current={requestedTab === 'LEAVE' ? 'location' : undefined}><FilePenLine size={17} /> Permisos</a>
             <a href="#mis-vacaciones"><WalletCards size={17} /> Vacaciones</a>
           </nav>
           <section className="hr-workflow-overview" aria-label="Estado de mis solicitudes">
@@ -433,10 +446,10 @@ export default function MyWorkforce() {
           </div>
 
           <div className="hr-workforce-columns">
-            <section id="mis-solicitudes" className="hr-workforce-section hr-workforce-anchor">
+            <section id="mis-horas-extra" className="hr-workforce-section hr-workforce-anchor" tabIndex={-1} aria-labelledby="mis-horas-extra-title">
               <div className="hr-section-heading">
                 <div>
-                  <h2>Mis horas extra</h2>
+                  <h2 id="mis-horas-extra-title">Mis horas extra</h2>
                   <p>Lo candidato y lo solicitado no sustituyen la decisión.</p>
                 </div>
               </div>
@@ -471,10 +484,10 @@ export default function MyWorkforce() {
                 </div>
               )}
             </section>
-            <section className="hr-workforce-section">
+            <section id="mis-permisos" className="hr-workforce-section hr-workforce-anchor" tabIndex={-1} aria-labelledby="mis-permisos-title">
               <div className="hr-section-heading">
                 <div>
-                  <h2>Mis permisos y vacaciones</h2>
+                  <h2 id="mis-permisos-title">Mis permisos y vacaciones</h2>
                   <p>Rango, fracción y estado autoritativo.</p>
                 </div>
               </div>

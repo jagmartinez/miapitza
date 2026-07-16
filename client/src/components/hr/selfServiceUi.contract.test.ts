@@ -46,9 +46,24 @@ describe('employee self-service UX contract', () => {
     expect(profile).toContain('Esta cuenta todavía no está vinculada a un empleado');
     expect(profile).toContain('Vincular en Personal');
     expect(profile).toContain("setSearchParams(tab === 'info' ? {} : { tab }");
-    expect(layout).toContain("to: '/profile?tab=hr'");
+    expect(layout).not.toContain("section: 'Mi portal RH'");
+    expect(layout).not.toContain("to: '/profile?tab=hr'");
+    expect(layout).toContain('className="user-profile-section-link"');
+    expect(profile).toContain('workforceClient.getMyWorkforce');
+    expect(profile).toContain('selectVacationBalance');
+    expect(profile).toContain('Saldo de vacaciones');
     expect(profile).toContain('to="/rh/mi-portal/nomina"');
-    expect(profile).toContain('to="/rh/mi-portal/gestion"');
+    expect(profile).toContain('to="/rh/mi-portal/gestion?tab=OVERTIME"');
+    expect(profile).toContain('to="/rh/mi-portal/gestion?tab=LEAVE"');
+  });
+
+  it('usa el mismo saldo semántico de vacaciones y enfoca enlaces profundos', () => {
+    expect(landing).toContain('selectVacationBalance');
+    expect(workforce).toContain("searchParams.get('tab')");
+    expect(workforce).toContain("requestedTab === 'OVERTIME'");
+    expect(workforce).toContain("requestedTab === 'LEAVE'");
+    expect(workforce).toContain('scrollIntoView');
+    expect(workforce).toContain('tabIndex={-1}');
   });
 
   it('keeps empty/error recovery and creation CTAs visible', () => {

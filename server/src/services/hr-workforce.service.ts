@@ -1814,19 +1814,24 @@ function vacationLedgerApi(entry: Prisma.VacationLedgerEntryGetPayload<Record<st
 }
 
 export class VacationService {
-    static async listBalances(companyId: number, filters: { userId?: number; branchId?: number }) {
+    static async listBalances(companyId: number, filters: { userId?: number; branchId?: number; page?: number; limit?: number }) {
+        const current = page(filters);
         const where: Prisma.VacationBalanceWhereInput = {
             companyId,
             userId: filters.userId,
             user: filters.branchId ? { branchId: filters.branchId } : undefined,
         };
-        const balances = await prisma.vacationBalance.findMany({
-            where,
-            include: vacationBalanceInclude,
-            orderBy: [{ userId: 'asc' }, { id: 'asc' }],
-            take: 500,
-        });
-        return Promise.all(balances.map(async balance => {
+        const [balances, total] = await Promise.all([
+            prisma.vacationBalance.findMany({
+                where,
+                include: vacationBalanceInclude,
+                orderBy: [{ userId: 'asc' }, { id: 'asc' }],
+                skip: current.skip,
+                take: current.limit,
+            }),
+            prisma.vacationBalance.count({ where }),
+        ]);
+        const items = await Promise.all(balances.map(async balance => {
             const [ledger, accrued, used, pending] = await Promise.all([
                 prisma.vacationLedgerEntry.aggregate({ where: { balanceId: balance.id }, _sum: { amount: true } }),
                 prisma.vacationLedgerEntry.aggregate({ where: { balanceId: balance.id, type: 'ACCRUAL' }, _sum: { amount: true } }),
@@ -1861,6 +1866,7 @@ export class VacationService {
                 sourceRevision: balance.sourceRevision,
             };
         }));
+        return { items, pagination: pagination(total, current) };
     }
 
     static async listLedger(companyId: number, filters: {
@@ -2006,7 +2012,7 @@ export class WorkforcePortalService {
             corrections: corrections.items,
             overtimeRequests: overtime.items,
             leaveRequests: leave.items,
-            vacationBalances: balances,
+            vacationBalances: balances.items,
             vacationLedger: ledger.items,
         };
     }

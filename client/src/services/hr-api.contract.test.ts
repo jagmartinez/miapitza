@@ -6,6 +6,7 @@ const usersSource = readFileSync(new URL('../pages/Users.tsx', import.meta.url),
 const branchesSource = readFileSync(new URL('../pages/Branches.tsx', import.meta.url), 'utf8');
 const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
 const layoutSource = readFileSync(new URL('../components/Layout.tsx', import.meta.url), 'utf8');
+const profileSource = readFileSync(new URL('../pages/Profile.tsx', import.meta.url), 'utf8');
 
 describe('Phase 1 HR API contract', () => {
     it('keeps every HR resource under the versioned API prefix', () => {
@@ -40,14 +41,15 @@ describe('Phase 2 HR schedule navigation contract', () => {
         expect(appSource).toContain("lazy(() => import('./pages/hr/MySchedule'))");
         expect(appSource).toContain('path="/rh/horarios" element={<RoleGuard roles={HR_OWNER}><Schedules /></RoleGuard>}');
         expect(appSource).toContain('path="/rh/mi-portal/horario" element={<InternalEmployeeGuard><MySchedule /></InternalEmployeeGuard>}');
-        expect(appSource).toContain('path="/rh/mi-portal" element={<InternalEmployeeGuard><MyHrLanding /></InternalEmployeeGuard>}');
+        expect(appSource).toContain('path="/rh/mi-portal" element={<InternalEmployeeGuard><Navigate to="/profile?tab=hr" replace /></InternalEmployeeGuard>}');
     });
 
-    it('keeps Owner navigation role-scoped and marks self schedule as internal-only', () => {
+    it('keeps Owner navigation role-scoped and consolidates employee access in Profile', () => {
         expect(layoutSource).toContain("{ to: '/rh/personal', icon: Users, label: 'Personal', roles: HR_OWNER }");
         expect(layoutSource).toContain("{ to: '/rh/horarios', icon: Calendar, label: 'Horarios', roles: HR_OWNER }");
-        expect(layoutSource).toContain("{ to: '/rh/mi-portal/horario', icon: Calendar, label: 'Mi horario', internalOnly: true }");
-        expect(layoutSource).toContain("{ to: '/rh/mi-portal/gestion', icon: Briefcase, label: 'Mi gestión RH', internalOnly: true }");
+        expect(layoutSource).not.toContain("section: 'Mi portal RH'");
+        expect(profileSource).toContain('to="/rh/mi-portal/horario"');
+        expect(profileSource).toContain('to="/rh/mi-portal/gestion?tab=LEAVE"');
         expect(layoutSource).toContain("item.to === '/rh/asistencia'");
         expect(layoutSource).toContain("item.to === '/rh/nomina'");
     });
@@ -66,14 +68,15 @@ describe('Phase 3 attendance navigation contract', () => {
         expect(appSource).not.toContain('path="/rh/biometria" element={<RoleGuard');
     });
 
-    it('shows Owner administration only to HR_OWNER and employee tools only to internal employees', () => {
+    it('shows Owner administration only to HR_OWNER and keeps employee tools inside Profile', () => {
         expect(layoutSource).toContain("{ to: '/rh', icon: Briefcase, label: 'Panel RH', roles: HR_OWNER }");
         expect(layoutSource).toContain("{ to: '/rh/asistencia', icon: ClipboardList, label: 'Asistencia', roles: HR_OWNER }");
         expect(layoutSource).toContain("{ to: '/rh/asistencia/configuracion', icon: SlidersHorizontal, label: 'Configurar asistencia', roles: HR_OWNER }");
         expect(layoutSource).toContain("item.to === '/rh/asistencia'");
         expect(layoutSource).toContain("item.to === '/rh/nomina'");
-        expect(layoutSource).toContain("{ to: '/rh/marcaje', icon: MapPin, label: 'Marcaje', internalOnly: true }");
-        expect(layoutSource).toContain("{ to: '/rh/biometria', icon: UserRoundCheck, label: 'Mi biometría', internalOnly: true }");
+        expect(profileSource).toContain('to="/rh/marcaje"');
+        expect(layoutSource).not.toContain("to: '/rh/marcaje'");
+        expect(layoutSource).not.toContain("to: '/rh/biometria'");
         expect(layoutSource).not.toContain("label: 'Marcaje', roles:");
         expect(layoutSource).not.toContain("label: 'Mi biometría', roles:");
 

@@ -45,7 +45,6 @@ import {
     FlaskConical,
     Factory,
     Briefcase,
-    UserRoundCheck,
     SlidersHorizontal,
     BadgeDollarSign,
     Landmark,
@@ -68,7 +67,7 @@ import {
 import './Layout.css';
 
 // Role-based navigation items
-type NavItem = { to: string; icon: LucideIcon; label: string; roles?: string[]; internalOnly?: boolean };
+type NavItem = { to: string; icon: LucideIcon; label: string; roles?: string[] };
 type NavSection = { section: string; items: NavItem[] };
 
 const ALL_ROLES: string[] = Object.values(ROLES);
@@ -136,19 +135,6 @@ const NAV_SECTIONS: NavSection[] = [
         ],
     },
     {
-        section: 'Mi portal RH',
-        items: [
-            { to: '/profile?tab=hr', icon: UserRoundCheck, label: 'Mi RH', roles: ALL_ROLES },
-            { to: '/rh/mi-portal', icon: Briefcase, label: 'Resumen personal', internalOnly: true },
-            { to: '/rh/mi-portal/horario', icon: Calendar, label: 'Mi horario', internalOnly: true },
-            { to: '/rh/marcaje', icon: MapPin, label: 'Marcaje', internalOnly: true },
-            { to: '/rh/biometria', icon: UserRoundCheck, label: 'Mi biometría', internalOnly: true },
-            { to: '/rh/mi-portal/gestion', icon: Briefcase, label: 'Mi gestión RH', internalOnly: true },
-            { to: '/rh/mi-portal/nomina', icon: Wallet, label: 'Mis recibos', internalOnly: true },
-            { to: '/rh/mi-portal/prestaciones', icon: BadgeDollarSign, label: 'Mis prestaciones', internalOnly: true },
-        ],
-    },
-    {
         section: 'Configuración',
         items: [
             { to: '/branches', icon: MapPin, label: 'Sucursales', roles: ADMIN },
@@ -197,8 +183,7 @@ export default function Layout() {
     const renderNavSections = (onNavigate?: () => void) =>
         NAV_SECTIONS.map((section, sIdx) => {
             const visibleItems = section.items.filter(item =>
-                (!item.roles || userRoleNames.some(r => item.roles!.includes(r))) &&
-                (!item.internalOnly || isInternalEmployee)
+                !item.roles || userRoleNames.some(r => item.roles!.includes(r))
             );
             if (visibleItems.length === 0) return null;
             return (
@@ -263,6 +248,7 @@ export default function Layout() {
                             </div>
                             <div className="user-text-info">
                                 <div className="user-name">{user?.name}</div>
+                                {isInternalEmployee && <div className="user-profile-destination">Perfil y Mi RH</div>}
                                 <div className="user-role">{userRoleNames.join(' / ')}</div>
                             </div>
                         </div>
@@ -366,6 +352,7 @@ export default function Layout() {
                                     </div>
                                     <div className="user-text-info">
                                         <div className="user-name">{user?.name}</div>
+                                        {isInternalEmployee && <div className="user-profile-destination">Perfil y Mi RH</div>}
                                         <div className="user-role">{userRoleNames.join(' / ')}</div>
                                     </div>
                                 </div>

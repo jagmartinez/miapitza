@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
-  Check,
-  CircleDot,
   Copy,
-  FileCheck2,
+  Eye,
   Landmark,
   LockKeyhole,
   Plus,
@@ -40,6 +38,8 @@ import type {
 } from '../../types/hr-payroll';
 import './payroll.css';
 import './payroll-legal.css';
+import './admin-tables.css';
+import '../Inventory.css';
 
 export default function PayrollLegalSettings() {
   const online = usePayrollOnline();
@@ -237,9 +237,9 @@ export default function PayrollLegalSettings() {
       {!loading && !error && selectedRule && companyTaxProfile && <>
         <section className="hr-legal-purpose" aria-labelledby="legal-purpose-title"><div className="hr-legal-purpose-icon"><ShieldCheck size={24} aria-hidden="true" /></div><div><span className="hr-legal-eyebrow">Qué controla esta pantalla</span><h2 id="legal-purpose-title">Una versión legal es la receta que usa cada nómina</h2><p>Toma el perfil fiscal de Empresa y define tasas, bases, tramos y conceptos sujetos a cada obligación. Sólo afecta cálculos cuando queda <strong>validada</strong>, <strong>activa</strong> y dentro de su vigencia.</p></div></section>
 
-        <section className="hr-legal-version-list" aria-labelledby="legal-version-list-title">
+        <section className="hr-legal-version-list pr-table-card" aria-labelledby="legal-version-list-title">
           <div className="hr-legal-tax-table-heading"><div><h2 id="legal-version-list-title">Versiones legales</h2><small>Abre una fila para consultar. Para cambiar una versión activa, clónala como borrador.</small></div></div>
-          <div className="hr-legal-readonly-table-wrap"><table><thead><tr><th>Versión</th><th>Vigencia</th><th>Estado</th><th>Configuración</th><th>Acciones</th></tr></thead><tbody>{rules.map((rule) => <tr key={rule.id} className={String(rule.id) === selectedRuleId ? 'is-selected' : undefined}><td><strong>{rule.name}</strong><small>v{rule.version}</small></td><td>{rule.effectiveFrom}<small>hasta {rule.effectiveTo ?? 'sin fecha fin'}</small></td><td><PayrollStatusPill status={rule.status} /></td><td>{rule.configurationSummary ? 'Configurada' : 'Pendiente'}<small>{rule.configurationSummary || 'Sin revisión validada'}</small></td><td><div className="hr-legal-row-actions"><Button type="button" size="sm" variant="ghost" onClick={() => { setSelectedRuleId(String(rule.id)); setSearchParams({ ruleId: String(rule.id) }, { replace: true }); }}>Abrir</Button>{rule.activeConfigurationRevisionId && <Button type="button" size="sm" variant="ghost" disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(rule); setCreateOpen(true); }}><Copy size={15} /> Clonar para editar</Button>}</div></td></tr>)}</tbody></table></div>
+          <div className="hr-legal-readonly-table-wrap hr-admin-table-wrap"><table className="hr-admin-table inventory-table"><thead><tr><th scope="col">Versión</th><th scope="col">Vigencia</th><th scope="col">Estado</th><th scope="col">Configuración</th><th scope="col" className="hr-admin-actions-col">Acciones</th></tr></thead><tbody>{rules.map((rule) => <tr key={rule.id} className={String(rule.id) === selectedRuleId ? 'is-selected' : undefined}><th scope="row"><strong>{rule.name}</strong><small>v{rule.version}</small></th><td>{rule.effectiveFrom}<small>hasta {rule.effectiveTo ?? 'sin fecha fin'}</small></td><td><PayrollStatusPill status={rule.status} /></td><td>{rule.configurationSummary ? 'Configurada' : 'Pendiente'}<small>{rule.configurationSummary || 'Sin revisión validada'}</small></td><td className="hr-admin-actions-col"><div className="table-actions"><Button className="table-action-btn" type="button" size="sm" variant="ghost" title={`Abrir ${rule.name}`} aria-label={`Abrir ${rule.name}`} onClick={() => { setSelectedRuleId(String(rule.id)); setSearchParams({ ruleId: String(rule.id) }, { replace: true }); }}><Eye size={16} /></Button>{rule.activeConfigurationRevisionId && <Button className="table-action-btn" type="button" size="sm" variant="ghost" title={`Clonar ${rule.name} para editar`} aria-label={`Clonar ${rule.name} para editar`} disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(rule); setCreateOpen(true); }}><Copy size={16} /></Button>}</div></td></tr>)}</tbody></table></div>
         </section>
 
         <section className="hr-legal-rule-toolbar" aria-label="Versión legal seleccionada"><div><span className="hr-legal-eyebrow">Versión abierta</span><strong>{selectedRule.name} · v{selectedRule.version}</strong></div><div className="hr-legal-rule-meta"><PayrollStatusPill status={selectedRule.status} /><span>{selectedRule.effectiveFrom} – {selectedRule.effectiveTo ?? 'sin fecha fin'}</span><small>Fuente: {selectedRule.sourceReference}</small>{selectedRule.activeConfigurationRevisionId && <Button type="button" size="sm" variant="ghost" disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(selectedRule); setCreateOpen(true); }}><Copy size={15} /> Clonar para editar</Button>}</div></section>
@@ -247,13 +247,15 @@ export default function PayrollLegalSettings() {
         {!selectedProfileIsCurrent && <div className="hr-legal-profile-warning" role="alert"><AlertTriangle size={20} /><div><strong>El perfil fiscal de Empresa cambió después de validar esta versión.</strong><p>La versión activa conserva su copia histórica. Clónala para crear un borrador con el régimen y la retención vigentes.</p></div><Button type="button" size="sm" disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(selectedRule); setCreateOpen(true); }}><Copy size={15} /> Clonar ahora</Button></div>}
 
         <section className="hr-legal-lifecycle" aria-labelledby="legal-lifecycle-title">
-          <div className="hr-legal-lifecycle-heading"><div><span className="hr-legal-eyebrow">Flujo de publicación</span><h2 id="legal-lifecycle-title">Estado de esta versión</h2></div><p>{selectedRule.status === 'ACTIVE' ? 'Esta versión ya participa en los cálculos según su vigencia.' : validatedRevision ? 'La revisión legal está aprobada; falta activar la versión.' : pendingRevision ? 'Una segunda persona debe revisar los parámetros.' : 'Completa y guarda los parámetros para iniciar la validación.'}</p></div>
-          <ol>
-            <li className="is-complete"><span><Check size={16} aria-hidden="true" /></span><div><strong>1. Borrador</strong><small>Se editan tasas y tramos</small></div></li>
-            <li className={pendingRevision || validatedRevision || selectedRule.status !== 'DRAFT' ? 'is-complete' : 'is-current'}><span>{pendingRevision || validatedRevision || selectedRule.status !== 'DRAFT' ? <Check size={16} aria-hidden="true" /> : <CircleDot size={16} aria-hidden="true" />}</span><div><strong>2. En validación</strong><small>Revisión por otra persona</small></div></li>
-            <li className={validatedRevision || selectedRule.status !== 'DRAFT' ? 'is-complete' : pendingRevision ? 'is-current' : ''}><span>{validatedRevision || selectedRule.status !== 'DRAFT' ? <Check size={16} aria-hidden="true" /> : <FileCheck2 size={16} aria-hidden="true" />}</span><div><strong>3. Validada</strong><small>Parámetros congelados</small></div></li>
-            <li className={selectedRule.status === 'ACTIVE' ? 'is-complete is-current' : selectedRule.status === 'RETIRED' ? 'is-complete' : validatedRevision ? 'is-current' : ''}><span>{selectedRule.status === 'ACTIVE' || selectedRule.status === 'RETIRED' ? <Check size={16} aria-hidden="true" /> : <LockKeyhole size={16} aria-hidden="true" />}</span><div><strong>4. Activa</strong><small>Disponible para nómina</small></div></li>
-          </ol>
+          <div className="hr-legal-lifecycle-current">
+            <span className="hr-legal-section-icon"><LockKeyhole size={20} aria-hidden="true" /></span>
+            <div><span className="hr-legal-eyebrow">Estado de la versión</span><h2 id="legal-lifecycle-title">{selectedRule.status === 'ACTIVE' ? 'Activa en nómina' : selectedRule.status === 'RETIRED' ? 'Retirada' : validatedRevision ? 'Validada, lista para activar' : pendingRevision ? 'Esperando revisión independiente' : 'Borrador editable'}</h2><p>{selectedRule.status === 'ACTIVE' ? 'Participa en los cálculos cuya fecha cae dentro de su vigencia.' : validatedRevision ? 'Los parámetros ya están congelados. Confirma la vigencia para activarla.' : pendingRevision ? 'Otra persona debe aprobar o rechazar la revisión cargada.' : 'Configura tasas, tramos y conceptos; luego envíalos a revisión.'}</p></div>
+          </div>
+          <dl className="hr-legal-lifecycle-facts">
+            <div><dt>Estado</dt><dd><PayrollStatusPill status={selectedRule.status} /></dd></div>
+            <div><dt>Revisión</dt><dd>{activeRevision ? `v${activeRevision.revision} · ${activeRevision.status === 'VALIDATED' ? 'validada' : activeRevision.status === 'UPLOADED' ? 'pendiente' : 'rechazada'}` : 'Sin revisión'}</dd></div>
+            <div><dt>Siguiente acción</dt><dd>{selectedRule.status === 'ACTIVE' ? 'Consultar o clonar' : validatedRevision ? 'Activar versión' : pendingRevision ? 'Emitir dictamen' : 'Guardar para revisión'}</dd></div>
+          </dl>
         </section>
 
         <div className="hr-legal-summary-grid">

@@ -23,6 +23,7 @@ import { payrollClient } from '../../components/hr/payrollClient';
 import { scheduleClient } from '../../components/hr/scheduleClient';
 import { weekStartFor } from '../../components/hr/scheduleDates';
 import { workforceClient } from '../../components/hr/workforceClient';
+import { selectVacationBalance } from '../../components/hr/vacationBalance';
 import { useAuth } from '../../hooks/useAuth';
 import type { HrLoan, HrTravelRequest } from '../../types/hr-benefits';
 import type { HrPayrollReceiptSummary } from '../../types/hr-payroll';
@@ -127,7 +128,7 @@ export default function MyHrLanding() {
     ].filter((item) => PENDING_WORKFLOW.has(item.status)).length;
   }, [summary.workforce]);
 
-  const vacation = summary.workforce?.vacationBalances[0] ?? null;
+  const vacation = selectVacationBalance(summary.workforce?.vacationBalances);
   const activeBenefits = [...summary.travel, ...summary.loans].filter((item) => ACTIVE_BENEFIT.has(item.status)).length;
 
   const actions = [

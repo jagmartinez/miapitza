@@ -289,7 +289,7 @@ export class HrWorkforceController {
             requireCompanyOwner(req);
             const query = filters(req);
             query.branchId = resolveBranchScope(req.user!, query.branchId);
-            res.json({ success: true, data: await VacationService.listBalances(req.user!.companyId, query) });
+            sendList(res, await VacationService.listBalances(req.user!.companyId, query));
         } catch (error) { handleError(error, res, next); }
     }
 

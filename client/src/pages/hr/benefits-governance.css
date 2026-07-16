@@ -1,0 +1,318 @@
+.benefits-governance-page {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.benefits-governance-page.is-embedded {
+  padding: 0;
+}
+.governance-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  background: var(--bg-secondary, #162238);
+  border: 1px solid var(--border-color, #31415a);
+  border-radius: 10px;
+}
+.governance-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 16px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary, #9db1cc);
+  font-weight: 700;
+  cursor: pointer;
+}
+.governance-tabs button.active {
+  background: #2563eb;
+  color: #fff;
+}
+.governance-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+}
+.governance-toolbar h2,
+.governance-form h3 {
+  margin: 0;
+}
+.governance-toolbar p {
+  margin: 5px 0 0;
+  color: var(--text-secondary, #9db1cc);
+}
+.governance-toolbar-actions {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.governance-toolbar-actions > label {
+  display: grid;
+  gap: 4px;
+  min-width: 180px;
+  color: var(--text-secondary, #9db1cc);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+.governance-toolbar-actions > input {
+  min-width: min(280px, 100%);
+  min-height: 40px;
+  padding: 9px 11px;
+  color: var(--text-primary, #fff);
+  background: var(--bg-primary, #0d1729);
+  border: 1px solid var(--border-color, #34455e);
+  border-radius: 6px;
+}
+.governance-form,
+.governance-table-wrap {
+  padding: 18px;
+  background: var(--bg-secondary, #1d2a3e);
+  border: 1px solid var(--border-color, #34455e);
+  border-radius: 10px;
+}
+.governance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 15px 0;
+}
+.governance-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-secondary, #a6b7ce);
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+.governance-form input,
+.governance-form select,
+.governance-form textarea {
+  min-height: 40px;
+  padding: 9px 11px;
+  color: var(--text-primary, #fff);
+  background: var(--bg-primary, #0d1729);
+  border: 1px solid var(--border-color, #34455e);
+  border-radius: 6px;
+}
+.governance-sidebar-form {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.governance-form-table {
+  width: 100%;
+  margin-bottom: 14px;
+  overflow-x: auto;
+}
+.governance-form-table table {
+  min-width: 920px;
+}
+.governance-form-table input:not([type='checkbox']) {
+  min-width: 130px;
+}
+.governance-help {
+  margin: 0 0 12px;
+  color: var(--text-secondary, #9db1cc);
+}
+.governance-form textarea {
+  min-height: 74px;
+  resize: vertical;
+}
+.governance-form .governance-check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 10px 0;
+}
+.governance-check input {
+  min-height: auto;
+}
+.span-2 {
+  grid-column: span 2;
+}
+.preview-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color, #34455e);
+}
+.governance-blocker,
+.governance-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+}
+.governance-blocker {
+  background: #431d25;
+  color: #fecaca;
+}
+.governance-warning {
+  background: #413510;
+  color: #fde68a;
+}
+.governance-table-wrap {
+  overflow: auto;
+  padding: 0;
+}
+.governance-table-wrap > table {
+  min-width: 860px;
+}
+.governance-table-wrap table,
+.governance-form table,
+.preview-panel table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.governance-table-wrap th,
+.governance-table-wrap td,
+.governance-form th,
+.governance-form td,
+.preview-panel th,
+.preview-panel td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color, #34455e);
+  vertical-align: top;
+}
+.governance-table-wrap th,
+.governance-form th,
+.preview-panel th {
+  color: var(--text-secondary, #9db1cc);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+}
+.governance-table-wrap small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-secondary, #9db1cc);
+}
+.governance-status {
+  display: inline-flex;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #334155;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+.governance-status.active,
+.governance-status.approved,
+.governance-status.paid {
+  background: #123f35;
+  color: #6ee7b7;
+}
+.governance-status.rejected,
+.governance-status.void {
+  background: #4b2028;
+  color: #fca5a5;
+}
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.governance-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.governance-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color, #34455e);
+}
+.governance-detail-head > div {
+  display: grid;
+  gap: 4px;
+}
+.governance-detail-head span,
+.governance-detail small {
+  color: var(--text-secondary, #9db1cc);
+}
+.governance-detail table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.governance-detail th,
+.governance-detail td {
+  padding: 10px;
+  border-bottom: 1px solid var(--border-color, #34455e);
+  text-align: left;
+  vertical-align: top;
+}
+.governance-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid #34d399;
+  border-radius: 8px;
+  background: color-mix(in srgb, #10b981 12%, transparent);
+}
+.governance-action-form {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-color, #34455e);
+  border-radius: 8px;
+}
+.governance-action-form label,
+.governance-detail .governance-check {
+  display: grid;
+  gap: 6px;
+}
+.governance-action-form input,
+.governance-action-form textarea {
+  min-height: 40px;
+  padding: 9px 11px;
+  color: var(--text-primary, #fff);
+  background: var(--bg-primary, #0d1729);
+  border: 1px solid var(--border-color, #34455e);
+  border-radius: 6px;
+}
+.governance-tabs button:focus-visible,
+.governance-toolbar-actions input:focus-visible,
+.governance-form input:focus-visible,
+.governance-form textarea:focus-visible {
+  outline: 2px solid var(--color-primary, #3b82f6);
+  outline-offset: 2px;
+}
+@media (max-width: 800px) {
+  .benefits-governance-page {
+    padding: 14px;
+  }
+  .governance-grid {
+    grid-template-columns: 1fr;
+  }
+  .span-2 {
+    grid-column: auto;
+  }
+  .governance-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .governance-toolbar-actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .governance-toolbar-actions > input,
+  .governance-toolbar-actions > label {
+    width: 100%;
+  }
+  .governance-tabs {
+    overflow: auto;
+  }
+  .governance-tabs button {
+    white-space: nowrap;
+  }
+}

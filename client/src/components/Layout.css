@@ -27,6 +27,61 @@
     overflow-y: auto;
 }
 
+/* A collapsed desktop menu expands as an overlay on pointer or keyboard focus.
+   The content canvas keeps its 70px offset, so opening navigation never causes
+   a horizontal jump. Mobile continues to use its dedicated drawer. */
+@media (min-width: 769px) {
+    .sidebar.collapsed:is(:hover, :focus-within) {
+        width: 300px;
+        overflow-y: auto;
+        box-shadow: var(--shadow-xl);
+    }
+
+    .sidebar.collapsed:is(:hover, :focus-within) .brand-info,
+    .sidebar.collapsed:is(:hover, :focus-within) .header-controls-row,
+    .sidebar.collapsed:is(:hover, :focus-within) .nav-section-title,
+    .sidebar.collapsed:is(:hover, :focus-within) .nav-section-divider,
+    .sidebar.collapsed:is(:hover, :focus-within) .nav-item span,
+    .sidebar.collapsed:is(:hover, :focus-within) .user-text-info,
+    .sidebar.collapsed:is(:hover, :focus-within) .logout-btn-premium {
+        display: flex;
+    }
+
+    .sidebar.collapsed:is(:hover, :focus-within) .nav-section-title {
+        display: block;
+    }
+
+    .sidebar.collapsed:is(:hover, :focus-within) .sidebar-header {
+        padding: var(--spacing-lg);
+        align-items: stretch;
+        gap: var(--spacing-md);
+    }
+
+    .sidebar.collapsed:is(:hover, :focus-within) .header-brand-row {
+        justify-content: space-between;
+    }
+
+    .sidebar.collapsed:is(:hover, :focus-within) .sidebar-nav {
+        padding: var(--spacing-lg);
+        align-items: stretch;
+    }
+
+    .sidebar.collapsed:is(:hover, :focus-within) .nav-item {
+        justify-content: flex-start;
+        padding: var(--spacing-md) var(--spacing-lg);
+        gap: var(--spacing-md);
+    }
+
+    .sidebar.collapsed:is(:hover, :focus-within) .sidebar-footer {
+        padding: var(--spacing-lg);
+        align-items: stretch;
+    }
+
+    .sidebar.collapsed:is(:hover, :focus-within) .logout-icon-only {
+        display: none;
+    }
+}
+
 /* Estilos de scrollbar más sutiles */
 .sidebar::-webkit-scrollbar {
     width: 6px;
@@ -508,6 +563,13 @@
     transition: margin-left var(--transition-normal);
     width: calc(100% - 300px);
     max-width: none;
+}
+
+.user-profile-destination {
+    color: var(--color-primary);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
 }
 
 /* Keep every routed view on a readable, centered canvas without constraining

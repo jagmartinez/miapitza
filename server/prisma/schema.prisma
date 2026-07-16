@@ -144,6 +144,9 @@ model Company {
   deductionApplications           HrDeductionApplication[]
   benefitTraces                   HrBenefitTrace[]
   benefitIdempotency              HrBenefitIdempotencyRecord[]
+  benefitPolicies                 HrBenefitPolicyVersion[]
+  employmentSettlements           HrEmploymentSettlement[]
+  employmentSettlementLines       HrEmploymentSettlementLine[]
   kitchenNotifications            KitchenNotification[]
 }
 
@@ -459,6 +462,10 @@ model User {
   deductionsCreated                 HrDeduction[]                      @relation("HrDeductionCreator")
   deductionApplicationsCreated      HrDeductionApplication[]           @relation("HrDeductionApplicationActor")
   benefitTraces                     HrBenefitTrace[]                   @relation("HrBenefitTraceActor")
+  benefitPoliciesCreated            HrBenefitPolicyVersion[]           @relation("HrBenefitPolicyCreator")
+  benefitPoliciesActivated          HrBenefitPolicyVersion[]           @relation("HrBenefitPolicyActivator")
+  employmentSettlementsCreated      HrEmploymentSettlement[]           @relation("HrEmploymentSettlementCreator")
+  employmentSettlements             HrEmploymentSettlement[]           @relation("HrEmploymentSettlementSubject")
 
   // DEFERRED (require data migration / backfill - NOT done in this additive pass):
   //  - email/username are globally @unique; making them tenant-scoped composite
@@ -660,6 +667,7 @@ model Employee {
   travelRequests    HrTravelRequest[]
   loans             HrLoan[]
   deductions        HrDeduction[]
+  employmentSettlements HrEmploymentSettlement[]
 
   @@unique([companyId, employeeCode])
   @@index([companyId, status])
@@ -2449,6 +2457,7 @@ model HrTravelRequest {
   createdById                 Int
   createdAt                   DateTime       @default(now())
   updatedAt                   DateTime       @updatedAt
+  policyVersionId             Int?
 
   company   Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
   user      User                  @relation("HrTravelSubject", fields: [userId], references: [id], onDelete: Restrict)
@@ -2457,6 +2466,7 @@ model HrTravelRequest {
   createdBy User                  @relation("HrTravelCreator", fields: [createdById], references: [id], onDelete: Restrict)
   expenses  HrTravelExpense[]
   ledger    HrTravelLedgerEntry[]
+  policyVersion HrBenefitPolicyVersion? @relation(fields: [policyVersionId], references: [id], onDelete: Restrict)
 
   @@unique([companyId, code])
   @@index([companyId, userId, status, departureDate])
@@ -2470,6 +2480,8 @@ model HrTravelExpense {
   category         String                @db.VarChar(64)
   description      String                @db.VarChar(600)
   occurredOn       DateTime              @db.Date
+  occurredTime     String?               @db.VarChar(5)
+  policyCategoryCode String?             @db.VarChar(64)
   currency         String                @db.VarChar(3)
   claimedAmount    Decimal               @db.Decimal(18, 2)
   recognizedAmount Decimal?              @db.Decimal(18, 2)
@@ -2559,6 +2571,7 @@ model HrLoan {
   createdById                 Int
   requestedAt                 DateTime     @default(now())
   updatedAt                   DateTime     @updatedAt
+  policyVersionId             Int?
 
   company          Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
   user             User                    @relation("HrLoanSubject", fields: [userId], references: [id], onDelete: Restrict)
@@ -2567,6 +2580,7 @@ model HrLoan {
   scheduleVersions HrLoanScheduleVersion[]
   ledger           HrLoanLedgerEntry[]
   deduction        HrDeduction?
+  policyVersion    HrBenefitPolicyVersion? @relation(fields: [policyVersionId], references: [id], onDelete: Restrict)
 
   @@unique([companyId, code])
   @@index([companyId, userId, status, requestedAt])
@@ -2774,6 +2788,122 @@ model HrBenefitIdempotencyRecord {
 
   @@unique([companyId, key])
   @@index([companyId, operation, createdAt])
+}
+
+enum HrBenefitPolicyStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+model HrBenefitPolicyVersion {
+  id                       Int                   @id @default(autoincrement())
+  companyId                Int
+  version                  Int
+  status                   HrBenefitPolicyStatus @default(DRAFT)
+  effectiveFrom            DateTime              @db.Date
+  effectiveTo              DateTime?             @db.Date
+  currency                 String                @db.VarChar(3)
+  travelCategories         Json
+  travelMaxDays            Int
+  travelEvidenceRequired   Boolean               @default(true)
+  loanMinTenureMonths      Int
+  loanMaxAmount            Decimal               @db.Decimal(18, 2)
+  loanMaxInstallments      Int
+  loanMaxPaymentPercent    Decimal               @db.Decimal(5, 2)
+  sourceReference          String                @db.VarChar(300)
+  reason                   String                @db.Text
+  createdById              Int
+  activatedById            Int?
+  activatedAt              DateTime?
+  revision                 Int                   @default(0)
+  createdAt                DateTime              @default(now())
+
+  company                  Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  createdBy                User                  @relation("HrBenefitPolicyCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  activatedBy              User?                 @relation("HrBenefitPolicyActivator", fields: [activatedById], references: [id], onDelete: Restrict)
+  travelRequests           HrTravelRequest[]
+  loans                    HrLoan[]
+
+  @@unique([companyId, version])
+  @@index([companyId, status, effectiveFrom])
+}
+
+enum HrEmploymentSettlementStatus {
+  DRAFT
+  SUBMITTED
+  REVIEWED
+  APPROVED
+  REJECTED
+  PAID
+  VOID
+}
+
+enum HrEmploymentExitType {
+  RESIGNATION
+  DISMISSAL
+  MUTUAL_AGREEMENT
+  CONTRACT_END
+  OTHER
+}
+
+enum HrEmploymentSettlementLineType {
+  EARNED_SALARY
+  VACATION
+  AGUINALDO
+  INDEMNITY
+  OTHER_EARNING
+  DEDUCTION
+}
+
+model HrEmploymentSettlement {
+  id                    Int                          @id @default(autoincrement())
+  companyId             Int
+  code                  String                       @db.VarChar(64)
+  employeeId            Int
+  userId                Int
+  exitType              HrEmploymentExitType
+  cause                 String                       @db.VarChar(300)
+  justification         String                       @db.Text
+  terminationDate       DateTime                     @db.Date
+  currency              String                       @db.VarChar(3)
+  evidenceReferences    Json
+  grossEarnings         Decimal                      @db.Decimal(18, 2)
+  totalDeductions       Decimal                      @db.Decimal(18, 2)
+  netPay                Decimal                      @db.Decimal(18, 2)
+  calculationHash       String                       @db.Char(64)
+  status                HrEmploymentSettlementStatus @default(DRAFT)
+  revision              Int                          @default(0)
+  createdById           Int
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
+
+  company               Company                      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  employee              Employee                     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  user                  User                         @relation("HrEmploymentSettlementSubject", fields: [userId], references: [id], onDelete: Restrict)
+  createdBy             User                         @relation("HrEmploymentSettlementCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  lines                 HrEmploymentSettlementLine[]
+
+  @@unique([companyId, code])
+  @@index([companyId, status, terminationDate])
+  @@index([companyId, employeeId, terminationDate])
+}
+
+model HrEmploymentSettlementLine {
+  id                    Int                            @id @default(autoincrement())
+  companyId             Int
+  settlementId          Int
+  type                  HrEmploymentSettlementLineType
+  concept               String                         @db.VarChar(160)
+  formulaBasis          String                         @db.VarChar(600)
+  sourceReference       String                         @db.VarChar(300)
+  amount                Decimal                        @db.Decimal(18, 2)
+  createdAt             DateTime                       @default(now())
+
+  company               Company                        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  settlement            HrEmploymentSettlement         @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, settlementId, type])
 }
 
 // ==========================================

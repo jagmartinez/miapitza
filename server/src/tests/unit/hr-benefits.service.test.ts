@@ -104,6 +104,7 @@ describe('HR benefits API, persistence and security contract', () => {
     const routes = fs.readFileSync(path.join(root, 'src/routes/hr-benefits.routes.ts'), 'utf8');
     const controller = fs.readFileSync(path.join(root, 'src/controllers/hr-benefits.controller.ts'), 'utf8');
     const service = fs.readFileSync(path.join(root, 'src/services/hr-benefits.service.ts'), 'utf8');
+    const governance = fs.readFileSync(path.join(root, 'src/services/hr-benefits-governance.service.ts'), 'utf8');
     const schema = fs.readFileSync(path.join(root, 'prisma/schema.prisma'), 'utf8');
     const migration = fs.readFileSync(path.join(root, 'prisma/migrations/20260713_hr_06_benefits_loans_deductions/migration.sql'), 'utf8');
 
@@ -141,10 +142,12 @@ describe('HR benefits API, persistence and security contract', () => {
         expect(service).toContain("type: 'REVERSAL'");
     });
 
-    it('fails closed for unverified evidence identifiers', () => {
+    it('fails closed for unverified evidence identifiers and accepts only documentary references', () => {
+        expect(service).toContain('validateTravelExpensePolicy');
         expect(service).toContain('HR_BENEFITS_EVIDENCE_REPOSITORY_REQUIRED');
-        expect(service).toContain('pendingExpenses.some(expense => expense.evidenceId === null)');
         expect(service).toContain('evidenceId se rechaza de forma cerrada');
+        expect(service).toContain('pendingExpenses.some((expense) => !expense.receiptReference)');
+        expect(governance).toContain('referencia de soporte/comprobante');
         expect(schema).toContain('evidenceId');
     });
 
