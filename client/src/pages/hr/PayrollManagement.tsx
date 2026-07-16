@@ -18,6 +18,7 @@ import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
 import Sidebar from '../../components/Sidebar';
+import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import PayrollComponentForm from '../../components/hr/PayrollComponentForm';
 import PayrollOnlineNotice from '../../components/hr/PayrollOnlineNotice';
 import PayrollReconciliationPanel from '../../components/hr/PayrollReconciliationPanel';
@@ -77,9 +78,18 @@ const INCOME_TAX_METHOD_LABELS: Record<string, string> = {
 };
 
 function TaxBracketTrace({ item }: { item: HrPayrollStatutoryCalculation }) {
-  const bracket = item.bracketSnapshot?.effective ?? item.bracketSnapshot?.withCurrentOccasional ?? item.bracketSnapshot?.regular;
+  const bracket =
+    item.bracketSnapshot?.effective ??
+    item.bracketSnapshot?.withCurrentOccasional ??
+    item.bracketSnapshot?.regular;
   if (!bracket) return null;
-  return <small>Tramo IR efectivo: desde {bracket.lowerBound} hasta {bracket.upperBound ?? 'en adelante'} · base {bracket.baseTax} · tasa {(Number(bracket.rate) * 100).toFixed(2)}% · exceso {bracket.excessOver}</small>;
+  return (
+    <small>
+      Tramo IR efectivo: desde {bracket.lowerBound} hasta {bracket.upperBound ?? 'en adelante'} ·
+      base {bracket.baseTax} · tasa {(Number(bracket.rate) * 100).toFixed(2)}% · exceso{' '}
+      {bracket.excessOver}
+    </small>
+  );
 }
 
 type CreatePanel =
@@ -112,8 +122,12 @@ export default function PayrollManagement() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState<HrPayrollRunDetail | null>(null);
-  const [selectedPaymentConcepts, setSelectedPaymentConcepts] = useState<HrPayrollPaymentConceptDefinition[]>([]);
-  const [selectedIncomeTaxApplicability, setSelectedIncomeTaxApplicability] = useState<'APPLIES' | 'DOES_NOT_APPLY' | null>(null);
+  const [selectedPaymentConcepts, setSelectedPaymentConcepts] = useState<
+    HrPayrollPaymentConceptDefinition[]
+  >([]);
+  const [selectedIncomeTaxApplicability, setSelectedIncomeTaxApplicability] = useState<
+    'APPLIES' | 'DOES_NOT_APPLY' | null
+  >(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [createPanel, setCreatePanel] = useState<CreatePanel>(null);
   const componentOperationKey = useRef<string | null>(null);
@@ -168,11 +182,16 @@ export default function PayrollManagement() {
         payrollClient.getRunWorkspace(run.kind, run.id),
         payrollClient.getRuleConfigurations(run.ruleVersionId),
       ]);
-      const configurationRevisionId = workspace.configurationRevisionId ?? workspace.ruleVersion?.activeConfigurationRevisionId;
-      const configuration = revisions.find((revision) => revision.id === configurationRevisionId)?.configuration;
+      const configurationRevisionId =
+        workspace.configurationRevisionId ?? workspace.ruleVersion?.activeConfigurationRevisionId;
+      const configuration = revisions.find(
+        (revision) => revision.id === configurationRevisionId
+      )?.configuration;
       setSelected(workspace);
       setSelectedPaymentConcepts(configuration?.statutory.paymentConceptCatalog ?? []);
-      setSelectedIncomeTaxApplicability(configuration?.statutory.companyTaxRegime.incomeTaxApplicability ?? null);
+      setSelectedIncomeTaxApplicability(
+        configuration?.statutory.companyTaxRegime.incomeTaxApplicability ?? null
+      );
     } catch (workspaceError) {
       showError(
         getPayrollErrorMessage(workspaceError, 'No fue posible cargar el detalle de la corrida.')
@@ -257,12 +276,7 @@ export default function PayrollManagement() {
     componentOperationKey.current = idempotencyKey;
     setSaving(true);
     try {
-      await payrollClient.addComponent(
-        selected.kind,
-        selected.id,
-        payload,
-        idempotencyKey
-      );
+      await payrollClient.addComponent(selected.kind, selected.id, payload, idempotencyKey);
       showSuccess('Componente agregado; INSS, INATEC, IR y totales fueron recalculados.');
       componentOperationKey.current = null;
       setCreatePanel(null);
@@ -497,10 +511,21 @@ export default function PayrollManagement() {
                   <h2>
                     <Scale size={20} /> Configuración legal: IR, INSS e INATEC
                   </h2>
-                  <p>Abre una regla para administrar tasas, régimen, tramos de IR, fuentes y revisión por segundo actor. El cálculo autoritativo permanece en servidor.</p>
+                  <p>
+                    Abre una regla para administrar tasas, régimen, tramos de IR, fuentes y revisión
+                    por segundo actor. El cálculo autoritativo permanece en servidor.
+                  </p>
                 </div>
                 {rules.length > 0 && (
-                  <Button size="sm" variant="secondary" onClick={() => navigate(`/rh/nomina/configuracion-legal?ruleId=${(rules.find((rule) => rule.status === 'ACTIVE') ?? rules[0]).id}`)}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() =>
+                      navigate(
+                        `/rh/nomina/configuracion-legal?ruleId=${(rules.find((rule) => rule.status === 'ACTIVE') ?? rules[0]).id}`
+                      )
+                    }
+                  >
                     <Scale size={15} /> Configurar parámetros legales
                   </Button>
                 )}
@@ -509,8 +534,17 @@ export default function PayrollManagement() {
                 {rules.length === 0 && (
                   <div className="hr-payroll-legal-empty">
                     <strong>Aún no hay una regla de nómina.</strong>
-                    <span>Crea la regla base y después abre su configuración para registrar IR, INSS e INATEC con fuente y revisión dual.</span>
-                    <Button size="sm" onClick={() => setCreatePanel({ kind: 'rule' })} disabled={!online}>Crear regla base</Button>
+                    <span>
+                      Crea la regla base y después abre su configuración para registrar IR, INSS e
+                      INATEC con fuente y revisión dual.
+                    </span>
+                    <Button
+                      size="sm"
+                      onClick={() => setCreatePanel({ kind: 'rule' })}
+                      disabled={!online}
+                    >
+                      Crear regla base
+                    </Button>
                   </div>
                 )}
                 {rules.map((rule) => (
@@ -552,7 +586,11 @@ export default function PayrollManagement() {
                               setRuleAction({ rule, action: 'activate' });
                             }}
                             disabled={!online || !rule.activeConfigurationRevisionId}
-                            title={!rule.activeConfigurationRevisionId ? 'Requiere configuración VALIDATED por segundo actor' : undefined}
+                            title={
+                              !rule.activeConfigurationRevisionId
+                                ? 'Requiere configuración VALIDATED por segundo actor'
+                                : undefined
+                            }
                           >
                             Activar
                           </Button>
@@ -662,9 +700,7 @@ export default function PayrollManagement() {
                     </div>
                     <div className="net">
                       <dt>Neto</dt>
-                      <dd>
-                        {formatHrMoney(selected.totals.currency, selected.totals.netPay)}
-                      </dd>
+                      <dd>{formatHrMoney(selected.totals.currency, selected.totals.netPay)}</dd>
                     </div>
                     <div>
                       <dt>Personas</dt>
@@ -686,7 +722,10 @@ export default function PayrollManagement() {
                     </small>
                   </div>
                 </div>
-                <PayrollReconciliationPanel key={`${selected.kind}-${selected.id}-${selected.revision}`} run={selected} />
+                <PayrollReconciliationPanel
+                  key={`${selected.kind}-${selected.id}-${selected.revision}`}
+                  run={selected}
+                />
 
                 <div className="hr-payroll-workspace-grid">
                   <section>
@@ -716,28 +755,76 @@ export default function PayrollManagement() {
                       <h3>Traza INSS, INATEC e IR</h3>
                       <span>Revisión {selected.revision}</span>
                     </div>
-                    {selected.statutoryCalculations.length === 0 ? <p>Sin cálculo estatutario para esta corrida.</p> : (
+                    {selected.statutoryCalculations.length === 0 ? (
+                      <p>Sin cálculo estatutario para esta corrida.</p>
+                    ) : (
                       <div className="hr-payroll-records">
-                        {selected.statutoryCalculations.map((item) => <article key={item.id}>
-                          <div>
-                            <strong>{item.user?.name ?? `Usuario #${item.userId}`} · {item.companyTaxRegime}</strong>
-                            <span>Método IR: {INCOME_TAX_METHOD_LABELS[item.incomeTaxMethod] ?? item.incomeTaxMethod} · versión {item.methodVersion}</span>
-                            <span>INSS laboral {item.employeeInss} · IR ordinario {item.regularIncomeTaxWithheld} · IR ocasional {item.occasionalIncomeTaxWithheld} · total retenido {item.currentIncomeTaxWithheld}</span>
-                            <small>Bruto fijo {item.fixedIncomeTaxGross} · variable {item.variableIncomeTaxGross} · ocasional {item.occasionalIncomeTaxGross} · compensación fija {item.fixedCompensationAmount} · renta neta ordinaria acumulada {item.accumulatedIncomeTaxNet} · proyección anual {item.annualProjection}</small>
-                            <small>Período de pago {item.elapsedPeriods}/{item.annualPeriods} · meses fiscales transcurridos {item.elapsedFiscalMonths}/12 · configuración legal #{item.configurationRevisionId} · creado {item.createdAt}</small>
-                            <TaxBracketTrace item={item} />
-                            <small>Huella del histórico: {item.historyFingerprint}</small>
-                            {(Number(item.incomeTaxCreditBalance) > 0 || Number(item.incomeTaxRefund) > 0) && <small>Crédito calculado {item.incomeTaxCreditBalance} · devolución patronal aplicada {item.incomeTaxRefund}</small>}
-                          </div>
-                        </article>)}
+                        {selected.statutoryCalculations.map((item) => (
+                          <article key={item.id}>
+                            <div>
+                              <strong>
+                                {item.user?.name ?? `Usuario #${item.userId}`} ·{' '}
+                                {item.companyTaxRegime}
+                              </strong>
+                              <span>
+                                Método IR:{' '}
+                                {INCOME_TAX_METHOD_LABELS[item.incomeTaxMethod] ??
+                                  item.incomeTaxMethod}{' '}
+                                · versión {item.methodVersion}
+                              </span>
+                              <span>
+                                INSS laboral {item.employeeInss} · IR ordinario{' '}
+                                {item.regularIncomeTaxWithheld} · IR ocasional{' '}
+                                {item.occasionalIncomeTaxWithheld} · total retenido{' '}
+                                {item.currentIncomeTaxWithheld}
+                              </span>
+                              <small>
+                                Bruto fijo {item.fixedIncomeTaxGross} · variable{' '}
+                                {item.variableIncomeTaxGross} · ocasional{' '}
+                                {item.occasionalIncomeTaxGross} · compensación fija{' '}
+                                {item.fixedCompensationAmount} · renta neta ordinaria acumulada{' '}
+                                {item.accumulatedIncomeTaxNet} · proyección anual{' '}
+                                {item.annualProjection}
+                              </small>
+                              <small>
+                                Período de pago {item.elapsedPeriods}/{item.annualPeriods} · meses
+                                fiscales transcurridos {item.elapsedFiscalMonths}/12 · configuración
+                                legal #{item.configurationRevisionId} · creado {item.createdAt}
+                              </small>
+                              <TaxBracketTrace item={item} />
+                              <small>Huella del histórico: {item.historyFingerprint}</small>
+                              {(Number(item.incomeTaxCreditBalance) > 0 ||
+                                Number(item.incomeTaxRefund) > 0) && (
+                                <small>
+                                  Crédito calculado {item.incomeTaxCreditBalance} · devolución
+                                  patronal aplicada {item.incomeTaxRefund}
+                                </small>
+                              )}
+                            </div>
+                          </article>
+                        ))}
                       </div>
                     )}
-                    {selected.employerContributions.length > 0 && <div className="hr-payroll-records">
-                      {selected.employerContributions.map((item) => <article key={item.id}>
-                        <div><strong>{item.name} · {item.user?.name ?? `Usuario #${item.userId}`}</strong><small>Base {formatHrMoney(selected.totals?.currency, item.baseAmount)} · tasa {(Number(item.rate) * 100).toFixed(2)}% · {item.traceReference}</small></div>
-                        <strong className="hr-money">{formatHrMoney(selected.totals?.currency, item.amount)}</strong>
-                      </article>)}
-                    </div>}
+                    {selected.employerContributions.length > 0 && (
+                      <div className="hr-payroll-records">
+                        {selected.employerContributions.map((item) => (
+                          <article key={item.id}>
+                            <div>
+                              <strong>
+                                {item.name} · {item.user?.name ?? `Usuario #${item.userId}`}
+                              </strong>
+                              <small>
+                                Base {formatHrMoney(selected.totals?.currency, item.baseAmount)} ·
+                                tasa {(Number(item.rate) * 100).toFixed(2)}% · {item.traceReference}
+                              </small>
+                            </div>
+                            <strong className="hr-money">
+                              {formatHrMoney(selected.totals?.currency, item.amount)}
+                            </strong>
+                          </article>
+                        ))}
+                      </div>
+                    )}
                   </section>
                   <section>
                     <div className="hr-payroll-subheading">
@@ -796,7 +883,9 @@ export default function PayrollManagement() {
                               </span>
                               <small>{item.traceReference ?? 'Sin referencia adicional'}</small>
                             </div>
-                            <strong className="hr-money">{formatHrMoney(selected.totals?.currency, item.amount)}</strong>
+                            <strong className="hr-money">
+                              {formatHrMoney(selected.totals?.currency, item.amount)}
+                            </strong>
                           </article>
                         ))}
                       </div>
@@ -832,9 +921,7 @@ export default function PayrollManagement() {
                           <article key={receipt.id}>
                             <div>
                               <strong>{receipt.periodLabel}</strong>
-                              <span>
-                                {formatHrMoney(receipt.currency, receipt.netPay)} neto
-                              </span>
+                              <span>{formatHrMoney(receipt.currency, receipt.netPay)} neto</span>
                               <small>{receipt.status}</small>
                             </div>
                             <Button
@@ -880,105 +967,9 @@ export default function PayrollManagement() {
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
-        <div className="hr-payroll-sidebar">
-          <PayrollOnlineNotice online={online} compact />
-          {createPanel?.kind === 'rule' && (
-            <PayrollRuleForm
-              initial={createPanel.rule}
-              online={online}
-              saving={saving}
-              onSubmit={saveRule}
-              onCancel={() => setCreatePanel(null)}
-            />
-          )}
-          {createPanel?.kind === 'period' && (
-            <form className="hr-payroll-form" onSubmit={(event) => void savePeriod(event)}>
-              <label>
-                Código
-                <input
-                  value={periodForm.code}
-                  onChange={(event) =>
-                    setPeriodForm((current) => ({
-                      ...current,
-                      code: event.target.value.toUpperCase(),
-                    }))
-                  }
-                  required
-                />
-              </label>
-              <label>
-                Desde
-                <input
-                  type="date"
-                  value={periodForm.dateFrom}
-                  onChange={(event) =>
-                    setPeriodForm((current) => ({ ...current, dateFrom: event.target.value }))
-                  }
-                  required
-                />
-              </label>
-              <label>
-                Hasta
-                <input
-                  type="date"
-                  min={periodForm.dateFrom}
-                  value={periodForm.dateTo}
-                  onChange={(event) =>
-                    setPeriodForm((current) => ({ ...current, dateTo: event.target.value }))
-                  }
-                  required
-                />
-              </label>
-              <label>
-                Fecha de pago
-                <input
-                  type="date"
-                  value={periodForm.payDate}
-                  onChange={(event) =>
-                    setPeriodForm((current) => ({ ...current, payDate: event.target.value }))
-                  }
-                  required
-                />
-              </label>
-              <label className="span-full">
-                Razón
-                <textarea
-                  rows={4}
-                  value={periodForm.reason}
-                  onChange={(event) =>
-                    setPeriodForm((current) => ({ ...current, reason: event.target.value }))
-                  }
-                  required
-                />
-              </label>
-              <p className="hr-payroll-help span-full">
-                El periodo no recibe totales ni valores legales desde la UI.
-              </p>
-              <div className="hr-payroll-form-actions span-full">
-                <Button type="button" variant="ghost" onClick={() => setCreatePanel(null)}>
-                  Cancelar
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={!online || saving || !periodForm.code || !periodForm.reason.trim()}
-                >
-                  {saving ? 'Creando…' : 'Crear periodo'}
-                </Button>
-              </div>
-            </form>
-          )}
-          {createPanel?.kind === 'run' && (
-            <PayrollRunForm
-              kind={createPanel.runKind}
-              periods={periods}
-              rules={rules}
-              online={online}
-              saving={saving}
-              onSubmit={(payload) => saveRun(createPanel.runKind, payload)}
-              onCancel={() => setCreatePanel(null)}
-            />
-          )}
-          {createPanel?.kind === 'component' && selected && (
+        {createPanel?.kind === 'component' && selected && (
+          <div className="hr-payroll-sidebar">
+            <PayrollOnlineNotice online={online} compact />
             <PayrollComponentForm
               users={lookups.users ?? []}
               concepts={selectedPaymentConcepts}
@@ -991,8 +982,116 @@ export default function PayrollManagement() {
                 setCreatePanel(null);
               }}
             />
-          )}
-        </div>
+          </div>
+        )}
+        {createPanel?.kind === 'rule' && (
+          <PayrollRuleForm
+            initial={createPanel.rule}
+            online={online}
+            saving={saving}
+            notice={<PayrollOnlineNotice online={online} compact />}
+            onSubmit={saveRule}
+            onCancel={() => setCreatePanel(null)}
+          />
+        )}
+        {createPanel?.kind === 'period' && (
+          <HrModalFormShell
+            ariaLabel="Sección de periodo de nómina"
+            tabLabel="Periodo"
+            sectionTitle="Código, fechas y motivo de apertura"
+            icon={<FilePlus2 size={18} aria-hidden="true" />}
+            formClassName="hr-payroll-form"
+            notice={<PayrollOnlineNotice online={online} compact />}
+            onSubmit={(event) => void savePeriod(event)}
+            footer={
+              <>
+                <Button type="button" variant="ghost" onClick={() => setCreatePanel(null)}>
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={!online || saving || !periodForm.code || !periodForm.reason.trim()}
+                >
+                  {saving ? 'Creando…' : 'Crear periodo'}
+                </Button>
+              </>
+            }
+          >
+            <label>
+              Código
+              <input
+                value={periodForm.code}
+                onChange={(event) =>
+                  setPeriodForm((current) => ({
+                    ...current,
+                    code: event.target.value.toUpperCase(),
+                  }))
+                }
+                required
+              />
+            </label>
+            <label>
+              Desde
+              <input
+                type="date"
+                value={periodForm.dateFrom}
+                onChange={(event) =>
+                  setPeriodForm((current) => ({ ...current, dateFrom: event.target.value }))
+                }
+                required
+              />
+            </label>
+            <label>
+              Hasta
+              <input
+                type="date"
+                min={periodForm.dateFrom}
+                value={periodForm.dateTo}
+                onChange={(event) =>
+                  setPeriodForm((current) => ({ ...current, dateTo: event.target.value }))
+                }
+                required
+              />
+            </label>
+            <label>
+              Fecha de pago
+              <input
+                type="date"
+                value={periodForm.payDate}
+                onChange={(event) =>
+                  setPeriodForm((current) => ({ ...current, payDate: event.target.value }))
+                }
+                required
+              />
+            </label>
+            <label className="span-full">
+              Razón
+              <textarea
+                rows={4}
+                value={periodForm.reason}
+                onChange={(event) =>
+                  setPeriodForm((current) => ({ ...current, reason: event.target.value }))
+                }
+                required
+              />
+            </label>
+            <p className="hr-payroll-help span-full">
+              El periodo no recibe totales ni valores legales desde la UI.
+            </p>
+          </HrModalFormShell>
+        )}
+        {createPanel?.kind === 'run' && (
+          <PayrollRunForm
+            kind={createPanel.runKind}
+            periods={periods}
+            rules={rules}
+            online={online}
+            saving={saving}
+            notice={<PayrollOnlineNotice online={online} compact />}
+            onSubmit={(payload) => saveRun(createPanel.runKind, payload)}
+            onCancel={() => setCreatePanel(null)}
+          />
+        )}
       </Sidebar>
 
       <Sidebar
@@ -1073,7 +1172,6 @@ export default function PayrollManagement() {
           </div>
         </form>
       </Sidebar>
-
     </div>
   );
 }

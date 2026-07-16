@@ -1,8 +1,9 @@
 import HrReactSelect from './HrReactSelect';
 import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, BadgeMinus } from 'lucide-react';
 import Button from '../Button';
+import HrModalFormShell from './HrModalFormShell';
 import type { HrUserSummary } from '../../types/hr';
 import type { HrDeductionFrequency, HrDeductionPayload } from '../../types/hr-benefits';
 
@@ -48,7 +49,24 @@ export default function DeductionForm({
   };
 
   return (
-    <form className="hr-benefits-form" onSubmit={(event) => void submit(event)}>
+    <HrModalFormShell
+      ariaLabel="Sección de deducción"
+      tabLabel="Deducción"
+      sectionTitle="Persona, importe, prioridad y vigencia"
+      icon={<BadgeMinus size={18} aria-hidden="true" />}
+      formClassName="hr-benefits-form"
+      onSubmit={(event) => void submit(event)}
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={!online || saving || !confirmed || !form.userId}>
+            {saving ? 'Guardando…' : 'Crear deducción'}
+          </Button>
+        </>
+      }
+    >
       <div className="hr-benefits-warning span-full" role="note">
         <AlertTriangle size={19} aria-hidden="true" />
         <span>
@@ -182,14 +200,6 @@ export default function DeductionForm({
           Confirmo la persona, vigencia, prioridad, límite y motivo. Se creará como borrador.
         </span>
       </label>
-      <div className="hr-benefits-form-actions span-full">
-        <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
-          Cancelar
-        </Button>
-        <Button type="submit" disabled={!online || saving || !confirmed || !form.userId}>
-          {saving ? 'Guardando…' : 'Crear deducción'}
-        </Button>
-      </div>
-    </form>
+    </HrModalFormShell>
   );
 }

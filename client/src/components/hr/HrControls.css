@@ -24,3 +24,68 @@
   min-width: 7ch;
   white-space: nowrap;
 }
+
+/* Canonical layout for every RH create/edit dialog. */
+.hr-flow-modal-content {
+  width: 100%;
+  height: 100%;
+  background: color-mix(in srgb, var(--color-surface) 95%, var(--color-background) 5%);
+}
+
+.hr-modal-form {
+  display: flex !important;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.hr-modal-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-lg);
+  align-items: start;
+  min-width: 0;
+}
+
+.hr-modal-form-grid > * {
+  min-width: 0;
+}
+
+.hr-modal-form-grid > .span-full {
+  grid-column: 1 / -1;
+}
+
+.hr-modal-form-grid
+  label:not(.hr-payroll-confirm):not(.hr-benefits-confirm):not(.hr-benefits-check) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.hr-modal-form-grid
+  :is(input, textarea):not([type='checkbox']):not([type='radio']):not(.react-select__input) {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.hr-modal-form-grid textarea {
+  resize: vertical;
+}
+
+.hr-flow-modal-content .modal-footer .btn {
+  min-width: 118px;
+}
+
+@media (max-width: 680px) {
+  .hr-modal-form-grid {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-md);
+  }
+
+  .hr-modal-form-grid > * {
+    grid-column: 1 !important;
+  }
+
+  .hr-flow-modal-content .modal-footer .btn {
+    min-width: 0;
+  }
+}

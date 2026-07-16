@@ -1,8 +1,9 @@
 import HrReactSelect from './HrReactSelect';
 import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, WalletCards } from 'lucide-react';
 import Button from '../Button';
+import HrModalFormShell from './HrModalFormShell';
 import type { HrUserSummary } from '../../types/hr';
 import type { HrLoanRequestPayload } from '../../types/hr-benefits';
 
@@ -39,7 +40,24 @@ export default function LoanRequestForm({
   };
 
   return (
-    <form className="hr-benefits-form" onSubmit={(event) => void submit(event)}>
+    <HrModalFormShell
+      ariaLabel="Sección de solicitud de préstamo"
+      tabLabel="Préstamo"
+      sectionTitle="Solicitante, monto y plan preferido"
+      icon={<WalletCards size={18} aria-hidden="true" />}
+      formClassName="hr-benefits-form"
+      onSubmit={(event) => void submit(event)}
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={!online || saving || !confirmed}>
+            {saving ? 'Enviando…' : 'Enviar solicitud'}
+          </Button>
+        </>
+      }
+    >
       {!selfService && (
         <label className="span-full">
           Persona solicitante
@@ -140,14 +158,6 @@ export default function LoanRequestForm({
           entiendo que no representan aprobación.
         </span>
       </label>
-      <div className="hr-benefits-form-actions span-full">
-        <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
-          Cancelar
-        </Button>
-        <Button type="submit" disabled={!online || saving || !confirmed}>
-          {saving ? 'Enviando…' : 'Enviar solicitud'}
-        </Button>
-      </div>
-    </form>
+    </HrModalFormShell>
   );
 }

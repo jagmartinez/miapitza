@@ -1,6 +1,8 @@
 import HrReactSelect from './HrReactSelect';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import { CalendarDays } from 'lucide-react';
 import Button from '../Button';
+import HrModalFormShell from './HrModalFormShell';
 import type { HrUserSummary } from '../../types/hr';
 import type { HrLeaveFraction, HrLeaveRequestPayload, HrLeaveType } from '../../types/hr-workforce';
 
@@ -11,6 +13,7 @@ interface LeaveRequestFormProps {
   saving: boolean;
   onSubmit: (payload: HrLeaveRequestPayload) => Promise<void>;
   onCancel?: () => void;
+  notice?: ReactNode;
 }
 
 export default function LeaveRequestForm({
@@ -20,6 +23,7 @@ export default function LeaveRequestForm({
   saving,
   onSubmit,
   onCancel,
+  notice,
 }: LeaveRequestFormProps) {
   const [userId, setUserId] = useState('');
   const [leaveTypeId, setLeaveTypeId] = useState('');
@@ -33,8 +37,10 @@ export default function LeaveRequestForm({
     const [hour, minute] = value.split(':').map(Number);
     return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : null;
   };
-  const halfDayDurationInvalid = fraction === 'HALF_DAY' && Boolean(startTime && endTime)
-    && minuteOfDay(endTime)! - minuteOfDay(startTime)! !== 240;
+  const halfDayDurationInvalid =
+    fraction === 'HALF_DAY' &&
+    Boolean(startTime && endTime) &&
+    minuteOfDay(endTime)! - minuteOfDay(startTime)! !== 240;
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -50,11 +56,48 @@ export default function LeaveRequestForm({
   };
 
   return (
-    <form className="hr-workforce-form" onSubmit={(event) => void submit(event)}>
+    <HrModalFormShell
+      ariaLabel="Sección de solicitud de ausencia"
+      tabLabel="Solicitud"
+      sectionTitle="Persona, ausencia y vigencia"
+      icon={<CalendarDays size={18} aria-hidden="true" />}
+      formClassName="hr-workforce-form"
+      notice={notice}
+      onSubmit={(event) => void submit(event)}
+      footer={
+        <>
+          {onCancel && (
+            <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
+              Cancelar
+            </Button>
+          )}
+          <Button
+            type="submit"
+            disabled={
+              !online ||
+              saving ||
+              !leaveTypeId ||
+              !startDate ||
+              !endDate ||
+              !reason.trim() ||
+              Boolean(users && !userId) ||
+              (['HOURS', 'HALF_DAY'].includes(fraction) && (!startTime || !endTime)) ||
+              halfDayDurationInvalid
+            }
+          >
+            {saving ? 'Guardando…' : 'Crear borrador'}
+          </Button>
+        </>
+      }
+    >
       {users && (
         <label>
           Usuario
-          <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)} required>
+          <HrReactSelect
+            value={userId}
+            onChange={(event) => setUserId(event.target.value)}
+            required
+          >
             <option value="">Seleccionar…</option>
             {users.map((user) => (
               <option key={user.id} value={user.id}>
@@ -154,29 +197,6 @@ export default function LeaveRequestForm({
         La duración, elegibilidad y afectación del saldo las determina el servidor según el tipo y
         la política vigente.
       </p>
-      <div className="hr-form-actions span-full">
-        {onCancel && (
-          <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
-            Cancelar
-          </Button>
-        )}
-        <Button
-          type="submit"
-          disabled={
-            !online ||
-            saving ||
-            !leaveTypeId ||
-            !startDate ||
-            !endDate ||
-            !reason.trim() ||
-            Boolean(users && !userId) ||
-            (['HOURS', 'HALF_DAY'].includes(fraction) && (!startTime || !endTime)) ||
-            halfDayDurationInvalid
-          }
-        >
-          {saving ? 'Guardando…' : 'Crear borrador'}
-        </Button>
-      </div>
-    </form>
+    </HrModalFormShell>
   );
 }

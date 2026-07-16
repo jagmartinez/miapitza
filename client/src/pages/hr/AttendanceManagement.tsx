@@ -14,6 +14,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
 import Sidebar from '../../components/Sidebar';
 import AttendanceCorrectionForm from '../../components/hr/AttendanceCorrectionForm';
+import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import OvertimeRequestForm from '../../components/hr/OvertimeRequestForm';
 import useWorkforceOnline from '../../components/hr/useWorkforceOnline';
@@ -574,83 +575,95 @@ export default function AttendanceManagement() {
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
-        <div className="hr-sidebar-body">
-          <OnlineOnlyNotice online={online} compact />
-          {createPanel?.kind === 'correction' && (
-            <AttendanceCorrectionForm
-              users={users}
-              branches={branches}
-              initialUserId={createPanel.summary?.userId ?? createPanel.incident?.userId}
-              dailySummaryId={
-                createPanel.summary?.id ?? createPanel.incident?.dailySummaryId ?? undefined
-              }
-              incidentId={createPanel.incident?.id}
-              timezone={createPanel.summary?.timezone}
-              online={online}
-              saving={saving}
-              onSubmit={createCorrection}
-              onCancel={() => setCreatePanel(null)}
-            />
-          )}
-          {createPanel?.kind === 'overtime' && (
-            <OvertimeRequestForm
-              users={users}
-              initialUserId={createPanel.summary?.userId}
-              initialDate={createPanel.summary?.date ?? date}
-              dailySummaryId={createPanel.summary?.id}
-              candidateMinutes={createPanel.summary?.candidateOvertimeMinutes}
-              online={online}
-              saving={saving}
-              onSubmit={createOvertime}
-              onCancel={() => setCreatePanel(null)}
-            />
-          )}
-          {createPanel?.kind === 'period' && (
-            <form className="hr-workforce-form" onSubmit={(event) => void createPeriod(event)}>
-              <label>
-                Desde
-                <input
-                  type="date"
-                  value={periodForm.dateFrom}
-                  onChange={(event) =>
-                    setPeriodForm((current) => ({ ...current, dateFrom: event.target.value }))
-                  }
-                  required
-                />
-              </label>
-              <label>
-                Hasta
-                <input
-                  type="date"
-                  min={periodForm.dateFrom}
-                  value={periodForm.dateTo}
-                  onChange={(event) =>
-                    setPeriodForm((current) => ({ ...current, dateTo: event.target.value }))
-                  }
-                  required
-                />
-              </label>
-              <label className="span-full">
-                Razón de apertura
-                <textarea
-                  rows={4}
-                  value={periodForm.reason}
-                  onChange={(event) =>
-                    setPeriodForm((current) => ({ ...current, reason: event.target.value }))
-                  }
-                />
-              </label>
-              <div className="hr-form-actions span-full">
+        {createPanel?.kind !== 'period' && (
+          <div className="hr-sidebar-body">
+            <OnlineOnlyNotice online={online} compact />
+            {createPanel?.kind === 'correction' && (
+              <AttendanceCorrectionForm
+                users={users}
+                branches={branches}
+                initialUserId={createPanel.summary?.userId ?? createPanel.incident?.userId}
+                dailySummaryId={
+                  createPanel.summary?.id ?? createPanel.incident?.dailySummaryId ?? undefined
+                }
+                incidentId={createPanel.incident?.id}
+                timezone={createPanel.summary?.timezone}
+                online={online}
+                saving={saving}
+                onSubmit={createCorrection}
+                onCancel={() => setCreatePanel(null)}
+              />
+            )}
+            {createPanel?.kind === 'overtime' && (
+              <OvertimeRequestForm
+                users={users}
+                initialUserId={createPanel.summary?.userId}
+                initialDate={createPanel.summary?.date ?? date}
+                dailySummaryId={createPanel.summary?.id}
+                candidateMinutes={createPanel.summary?.candidateOvertimeMinutes}
+                online={online}
+                saving={saving}
+                onSubmit={createOvertime}
+                onCancel={() => setCreatePanel(null)}
+              />
+            )}
+          </div>
+        )}
+        {createPanel?.kind === 'period' && (
+          <HrModalFormShell
+            ariaLabel="Sección de periodo de asistencia"
+            tabLabel="Periodo"
+            sectionTitle="Rango y motivo de apertura"
+            icon={<CalendarClock size={18} aria-hidden="true" />}
+            formClassName="hr-workforce-form"
+            notice={<OnlineOnlyNotice online={online} compact />}
+            onSubmit={(event) => void createPeriod(event)}
+            footer={
+              <>
                 <Button type="button" variant="ghost" onClick={() => setCreatePanel(null)}>
                   Cancelar
                 </Button>
                 <Button type="submit" disabled={!online || saving}>
                   {saving ? 'Creando…' : 'Crear periodo'}
                 </Button>
-              </div>
-            </form>
-          )}
-        </div>
+              </>
+            }
+          >
+            <label>
+              Desde
+              <input
+                type="date"
+                value={periodForm.dateFrom}
+                onChange={(event) =>
+                  setPeriodForm((current) => ({ ...current, dateFrom: event.target.value }))
+                }
+                required
+              />
+            </label>
+            <label>
+              Hasta
+              <input
+                type="date"
+                min={periodForm.dateFrom}
+                value={periodForm.dateTo}
+                onChange={(event) =>
+                  setPeriodForm((current) => ({ ...current, dateTo: event.target.value }))
+                }
+                required
+              />
+            </label>
+            <label className="span-full">
+              Razón de apertura
+              <textarea
+                rows={4}
+                value={periodForm.reason}
+                onChange={(event) =>
+                  setPeriodForm((current) => ({ ...current, reason: event.target.value }))
+                }
+              />
+            </label>
+          </HrModalFormShell>
+        )}
       </Sidebar>
 
       <Sidebar

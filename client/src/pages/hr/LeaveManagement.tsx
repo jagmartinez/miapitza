@@ -14,6 +14,7 @@ import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
 import Sidebar from '../../components/Sidebar';
+import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import LeaveRequestForm from '../../components/hr/LeaveRequestForm';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
 import useWorkforceOnline from '../../components/hr/useWorkforceOnline';
@@ -489,8 +490,8 @@ export default function LeaveManagement() {
                         Disponible: {formatHrNumber(balance.available)} {balance.unit}
                       </span>
                       <small>
-                        Devengado {formatHrNumber(balance.accrued)} · usado {formatHrNumber(balance.used)} · pendiente{' '}
-                        {formatHrNumber(balance.pending)}
+                        Devengado {formatHrNumber(balance.accrued)} · usado{' '}
+                        {formatHrNumber(balance.used)} · pendiente {formatHrNumber(balance.pending)}
                       </small>
                       <small>
                         Al {balance.asOf} · revisión {balance.sourceRevision ?? '—'}
@@ -550,241 +551,147 @@ export default function LeaveManagement() {
         closeOnBackdrop={!saving}
         closeOnEscape={!saving}
       >
-        <div className="hr-sidebar-body">
-          <OnlineOnlyNotice online={online} compact />
-          {panel === 'request' && (
-            <LeaveRequestForm
-              users={users}
-              leaveTypes={leaveTypes}
-              online={online}
-              saving={saving}
-              onSubmit={createRequest}
-              onCancel={() => setPanel(null)}
-            />
-          )}
-          {panel === 'type' && (
-            <form className="hr-workforce-form" onSubmit={(event) => void saveType(event)}>
-              <label>
-                Código
-                <input
-                  value={typeForm.code}
-                  onChange={(event) =>
-                    setTypeForm((current) => ({
-                      ...current,
-                      code: event.target.value.toUpperCase(),
-                    }))
-                  }
-                  required
-                />
-              </label>
-              <label>
-                Nombre
-                <input
-                  value={typeForm.name}
-                  onChange={(event) =>
-                    setTypeForm((current) => ({ ...current, name: event.target.value }))
-                  }
-                  required
-                />
-              </label>
-              <label>
-                Unidad
-                <HrReactSelect
-                  value={typeForm.unit}
-                  onChange={(event) =>
-                    setTypeForm((current) => ({
-                      ...current,
-                      unit: event.target.value as HrBalanceUnit,
-                    }))
-                  }
-                >
-                  <option value="DAYS">Días</option>
-                  <option value="HOURS">Horas</option>
-                  <option value="MINUTES">Minutos</option>
-                </HrReactSelect>
-              </label>
-              <label className="span-full">
-                Descripción
-                <textarea
-                  rows={3}
-                  value={typeForm.description}
-                  onChange={(event) =>
-                    setTypeForm((current) => ({ ...current, description: event.target.value }))
-                  }
-                />
-              </label>
-              <div className="hr-checkbox-grid span-full">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={typeForm.paid}
-                    onChange={(event) =>
-                      setTypeForm((current) => ({ ...current, paid: event.target.checked }))
-                    }
-                  />{' '}
-                  Remunerada
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={typeForm.balanceTracked}
-                    onChange={(event) =>
-                      setTypeForm((current) => ({
-                        ...current,
-                        balanceTracked: event.target.checked,
-                      }))
-                    }
-                  />{' '}
-                  Controla saldo
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={typeForm.requiresAttachment}
-                    onChange={(event) =>
-                      setTypeForm((current) => ({
-                        ...current,
-                        requiresAttachment: event.target.checked,
-                      }))
-                    }
-                  />{' '}
-                  Requiere soporte
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={typeForm.active}
-                    onChange={(event) =>
-                      setTypeForm((current) => ({ ...current, active: event.target.checked }))
-                    }
-                  />{' '}
-                  Activo
-                </label>
-              </div>
-              <div className="hr-form-actions span-full">
+        {panel === 'request' && (
+          <LeaveRequestForm
+            users={users}
+            leaveTypes={leaveTypes}
+            online={online}
+            saving={saving}
+            notice={<OnlineOnlyNotice online={online} compact />}
+            onSubmit={createRequest}
+            onCancel={() => setPanel(null)}
+          />
+        )}
+        {panel === 'type' && (
+          <HrModalFormShell
+            ariaLabel="Sección de tipo de ausencia"
+            tabLabel="Tipo"
+            sectionTitle="Identidad y comportamiento del permiso"
+            icon={<ListChecks size={18} aria-hidden="true" />}
+            formClassName="hr-workforce-form"
+            notice={<OnlineOnlyNotice online={online} compact />}
+            onSubmit={(event) => void saveType(event)}
+            footer={
+              <>
                 <Button type="button" variant="ghost" onClick={() => setPanel(null)}>
                   Cancelar
                 </Button>
                 <Button type="submit" disabled={!online || saving}>
                   {saving ? 'Guardando…' : 'Guardar tipo'}
                 </Button>
-              </div>
-            </form>
-          )}
-          {panel === 'adjustment' && (
-            <form className="hr-workforce-form" onSubmit={(event) => void saveAdjustment(event)}>
+              </>
+            }
+          >
+            <label>
+              Código
+              <input
+                value={typeForm.code}
+                onChange={(event) =>
+                  setTypeForm((current) => ({
+                    ...current,
+                    code: event.target.value.toUpperCase(),
+                  }))
+                }
+                required
+              />
+            </label>
+            <label>
+              Nombre
+              <input
+                value={typeForm.name}
+                onChange={(event) =>
+                  setTypeForm((current) => ({ ...current, name: event.target.value }))
+                }
+                required
+              />
+            </label>
+            <label>
+              Unidad
+              <HrReactSelect
+                value={typeForm.unit}
+                onChange={(event) =>
+                  setTypeForm((current) => ({
+                    ...current,
+                    unit: event.target.value as HrBalanceUnit,
+                  }))
+                }
+              >
+                <option value="DAYS">Días</option>
+                <option value="HOURS">Horas</option>
+                <option value="MINUTES">Minutos</option>
+              </HrReactSelect>
+            </label>
+            <label className="span-full">
+              Descripción
+              <textarea
+                rows={3}
+                value={typeForm.description}
+                onChange={(event) =>
+                  setTypeForm((current) => ({ ...current, description: event.target.value }))
+                }
+              />
+            </label>
+            <div className="hr-checkbox-grid span-full">
               <label>
-                Usuario
-                <HrReactSelect
-                  value={adjustment.userId}
+                <input
+                  type="checkbox"
+                  checked={typeForm.paid}
                   onChange={(event) =>
-                    setAdjustment((current) => ({
+                    setTypeForm((current) => ({ ...current, paid: event.target.checked }))
+                  }
+                />{' '}
+                Remunerada
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={typeForm.balanceTracked}
+                  onChange={(event) =>
+                    setTypeForm((current) => ({
                       ...current,
-                      userId: event.target.value,
-                      balanceId: '',
+                      balanceTracked: event.target.checked,
                     }))
                   }
-                  required
-                >
-                  <option value="">Seleccionar…</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name}
-                    </option>
-                  ))}
-                </HrReactSelect>
+                />{' '}
+                Controla saldo
               </label>
               <label>
-                Saldo objetivo
-                <HrReactSelect
-                  value={adjustment.balanceId}
-                  onChange={(event) => {
-                    const balance = balances.find((item) => String(item.id) === event.target.value);
-                    setAdjustment((current) => ({
-                      ...current,
-                      balanceId: event.target.value,
-                      unit: balance?.unit ?? current.unit,
-                    }));
-                  }}
-                >
-                  <option value="">Resolver en servidor</option>
-                  {balances
-                    .filter((balance) => String(balance.userId) === adjustment.userId)
-                    .map((balance) => (
-                      <option key={balance.id} value={balance.id}>
-                        {balance.periodLabel ?? `Saldo #${balance.id}`} · {balance.unit}
-                      </option>
-                    ))}
-                </HrReactSelect>
-              </label>
-              <label>
-                Fecha efectiva
                 <input
-                  type="date"
-                  value={adjustment.effectiveDate}
+                  type="checkbox"
+                  checked={typeForm.requiresAttachment}
                   onChange={(event) =>
-                    setAdjustment((current) => ({ ...current, effectiveDate: event.target.value }))
-                  }
-                  required
-                />
-              </label>
-              <label>
-                Cantidad con signo
-                <input
-                  type="number"
-                  step="0.01"
-                  value={adjustment.amount}
-                  onChange={(event) =>
-                    setAdjustment((current) => ({ ...current, amount: event.target.value }))
-                  }
-                  required
-                />
-              </label>
-              <label>
-                Unidad
-                <HrReactSelect
-                  value={adjustment.unit}
-                  onChange={(event) =>
-                    setAdjustment((current) => ({
+                    setTypeForm((current) => ({
                       ...current,
-                      unit: event.target.value as HrBalanceUnit,
+                      requiresAttachment: event.target.checked,
                     }))
                   }
-                >
-                  <option value="DAYS">Días</option>
-                  <option value="HOURS">Horas</option>
-                  <option value="MINUTES">Minutos</option>
-                </HrReactSelect>
+                />{' '}
+                Requiere soporte
               </label>
               <label>
-                Referencia
                 <input
-                  value={adjustment.reference}
+                  type="checkbox"
+                  checked={typeForm.active}
                   onChange={(event) =>
-                    setAdjustment((current) => ({ ...current, reference: event.target.value }))
+                    setTypeForm((current) => ({ ...current, active: event.target.checked }))
                   }
-                />
+                />{' '}
+                Activo
               </label>
-              <label className="span-full">
-                Razón obligatoria
-                <textarea
-                  rows={4}
-                  maxLength={700}
-                  value={adjustment.reason}
-                  onChange={(event) =>
-                    setAdjustment((current) => ({ ...current, reason: event.target.value }))
-                  }
-                  required
-                />
-              </label>
-              <div className="hr-sensitive-warning span-full">
-                <AlertTriangle size={18} />
-                <span>
-                  El ajuste crea un movimiento de ledger; no edita ni recalcula el saldo en el
-                  navegador.
-                </span>
-              </div>
-              <div className="hr-form-actions span-full">
+            </div>
+          </HrModalFormShell>
+        )}
+        {panel === 'adjustment' && (
+          <HrModalFormShell
+            ariaLabel="Sección de ajuste de vacaciones"
+            tabLabel="Ajuste"
+            sectionTitle="Saldo, movimiento y trazabilidad"
+            icon={<SlidersHorizontal size={18} aria-hidden="true" />}
+            formClassName="hr-workforce-form"
+            notice={<OnlineOnlyNotice online={online} compact />}
+            onSubmit={(event) => void saveAdjustment(event)}
+            footer={
+              <>
                 <Button type="button" variant="ghost" onClick={() => setPanel(null)}>
                   Cancelar
                 </Button>
@@ -800,10 +707,122 @@ export default function LeaveManagement() {
                 >
                   {saving ? 'Registrando…' : 'Registrar ajuste'}
                 </Button>
-              </div>
-            </form>
-          )}
-        </div>
+              </>
+            }
+          >
+            <label>
+              Usuario
+              <HrReactSelect
+                value={adjustment.userId}
+                onChange={(event) =>
+                  setAdjustment((current) => ({
+                    ...current,
+                    userId: event.target.value,
+                    balanceId: '',
+                  }))
+                }
+                required
+              >
+                <option value="">Seleccionar…</option>
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}
+                  </option>
+                ))}
+              </HrReactSelect>
+            </label>
+            <label>
+              Saldo objetivo
+              <HrReactSelect
+                value={adjustment.balanceId}
+                onChange={(event) => {
+                  const balance = balances.find((item) => String(item.id) === event.target.value);
+                  setAdjustment((current) => ({
+                    ...current,
+                    balanceId: event.target.value,
+                    unit: balance?.unit ?? current.unit,
+                  }));
+                }}
+              >
+                <option value="">Resolver en servidor</option>
+                {balances
+                  .filter((balance) => String(balance.userId) === adjustment.userId)
+                  .map((balance) => (
+                    <option key={balance.id} value={balance.id}>
+                      {balance.periodLabel ?? `Saldo #${balance.id}`} · {balance.unit}
+                    </option>
+                  ))}
+              </HrReactSelect>
+            </label>
+            <label>
+              Fecha efectiva
+              <input
+                type="date"
+                value={adjustment.effectiveDate}
+                onChange={(event) =>
+                  setAdjustment((current) => ({ ...current, effectiveDate: event.target.value }))
+                }
+                required
+              />
+            </label>
+            <label>
+              Cantidad con signo
+              <input
+                type="number"
+                step="0.01"
+                value={adjustment.amount}
+                onChange={(event) =>
+                  setAdjustment((current) => ({ ...current, amount: event.target.value }))
+                }
+                required
+              />
+            </label>
+            <label>
+              Unidad
+              <HrReactSelect
+                value={adjustment.unit}
+                onChange={(event) =>
+                  setAdjustment((current) => ({
+                    ...current,
+                    unit: event.target.value as HrBalanceUnit,
+                  }))
+                }
+              >
+                <option value="DAYS">Días</option>
+                <option value="HOURS">Horas</option>
+                <option value="MINUTES">Minutos</option>
+              </HrReactSelect>
+            </label>
+            <label>
+              Referencia
+              <input
+                value={adjustment.reference}
+                onChange={(event) =>
+                  setAdjustment((current) => ({ ...current, reference: event.target.value }))
+                }
+              />
+            </label>
+            <label className="span-full">
+              Razón obligatoria
+              <textarea
+                rows={4}
+                maxLength={700}
+                value={adjustment.reason}
+                onChange={(event) =>
+                  setAdjustment((current) => ({ ...current, reason: event.target.value }))
+                }
+                required
+              />
+            </label>
+            <div className="hr-sensitive-warning span-full">
+              <AlertTriangle size={18} />
+              <span>
+                El ajuste crea un movimiento de ledger; no edita ni recalcula el saldo en el
+                navegador.
+              </span>
+            </div>
+          </HrModalFormShell>
+        )}
       </Sidebar>
 
       <Sidebar

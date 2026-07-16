@@ -17,6 +17,7 @@
     "seed:central-warehouses": "ts-node prisma/bootstrap-central-warehouses.ts",
     "seed:features": "ts-node prisma/seed-feature-scenarios.ts",
     "seed:operational": "ts-node prisma/operational-seed.ts",
+    "seed:hr-payroll-demo": "ts-node --transpile-only prisma/seed-hr-payroll-demo.ts",
     "import:maestros": "ts-node prisma/import-maestros-miapitz.ts",
     "normalize:menu-recipe-catalog": "node dist/scripts/apply-recipe-catalog-map.js",
     "prepare:recipe-catalog": "node dist/scripts/prepare-recipe-catalog.js",

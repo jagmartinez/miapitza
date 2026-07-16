@@ -3,6 +3,7 @@ import HrMoneyInput from './HrMoneyInput';
 import { useState } from 'react';
 import { MapPin, ShieldCheck } from 'lucide-react';
 import Button from '../Button';
+import HrModalFormShell from './HrModalFormShell';
 import type { HrNamedEntity, HrUserSummary } from '../../types/hr';
 import type { HrTravelRequestPayload } from '../../types/hr-benefits';
 
@@ -49,7 +50,24 @@ export default function TravelRequestForm({
   };
 
   return (
-    <form className="hr-benefits-form" onSubmit={(event) => void submit(event)}>
+    <HrModalFormShell
+      ariaLabel="Sección de viático"
+      tabLabel="Viático"
+      sectionTitle="Persona, destino y presupuesto"
+      icon={<MapPin size={18} aria-hidden="true" />}
+      formClassName="hr-benefits-form"
+      onSubmit={(event) => void submit(event)}
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={!online || saving || !confirmed}>
+            {saving ? 'Guardando…' : 'Crear borrador'}
+          </Button>
+        </>
+      }
+    >
       {!selfService && (
         <label>
           Persona
@@ -167,14 +185,6 @@ export default function TravelRequestForm({
           solicitado.
         </span>
       </label>
-      <div className="hr-benefits-form-actions span-full">
-        <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
-          Cancelar
-        </Button>
-        <Button type="submit" disabled={!online || saving || !confirmed}>
-          {saving ? 'Guardando…' : 'Crear borrador'}
-        </Button>
-      </div>
-    </form>
+    </HrModalFormShell>
   );
 }

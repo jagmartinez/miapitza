@@ -26,19 +26,21 @@ async function mockApp(page: Page) {
     if (path.endsWith('/auth/me')) data = user;
     if (path.endsWith('/settings')) data = { currency_symbol: 'C$' };
     if (path.endsWith('/menu-items')) {
-      data = [{
-        id: 1,
-        name: 'Plato QA',
-        description: 'Detalle verificable',
-        price: 250,
-        categoryId: 3,
-        branchId: null,
-        brandId: null,
-        category: { id: 3, name: 'Especialidades' },
-        recipes: [],
-        images: [],
-        active: true,
-      }];
+      data = [
+        {
+          id: 1,
+          name: 'Plato QA',
+          description: 'Detalle verificable',
+          price: 250,
+          categoryId: 3,
+          branchId: null,
+          brandId: null,
+          category: { id: 3, name: 'Especialidades' },
+          recipes: [],
+          images: [],
+          active: true,
+        },
+      ];
     }
     if (path.endsWith('/menu-items/1')) {
       data = {
@@ -52,38 +54,64 @@ async function mockApp(page: Page) {
         branchId: null,
         brandId: null,
         category: { id: 3, name: 'Especialidades' },
-        recipes: [{ id: 9, menuItemId: 1, productId: 4, quantity: 2, unit: 'lb', product: { id: 4, name: 'Ingrediente QA', unit: 'lb', cost: 30 } }],
+        recipes: [
+          {
+            id: 9,
+            menuItemId: 1,
+            productId: 4,
+            quantity: 2,
+            unit: 'lb',
+            product: { id: 4, name: 'Ingrediente QA', unit: 'lb', cost: 30 },
+          },
+        ],
         active: true,
       };
     }
     if (path.endsWith('/menu-items/1/images')) data = [];
     if (path.endsWith('/advanced/pricing/1')) data = { branchPrices: [] };
     if (path.endsWith('/v1/hr/payroll/rules')) {
-      data = [{
-        id: 81,
-        name: 'Regla legal QA',
-        version: 1,
-        status: 'DRAFT',
-        effectiveFrom: '2026-01-01',
-        effectiveTo: null,
-        sourceReference: 'Normativa QA',
-        description: 'Control legal',
-        configurationSummary: null,
-        activeConfigurationRevisionId: null,
-        revision: 1,
-        createdAt: '2026-01-01T00:00:00.000Z',
-      }];
+      data = [
+        {
+          id: 81,
+          name: 'Regla legal QA',
+          version: 1,
+          status: 'DRAFT',
+          effectiveFrom: '2026-01-01',
+          effectiveTo: null,
+          sourceReference: 'Normativa QA',
+          description: 'Control legal',
+          configurationSummary: null,
+          activeConfigurationRevisionId: null,
+          revision: 1,
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ];
     }
     if (path.endsWith('/v1/hr/payroll/rules/81/configuration-revisions')) data = [];
     if (path.endsWith('/v1/hr/dashboard')) {
       data = {
-        employees: { total: 0, active: 0, suspended: 0, onLeave: 0, inactive: 0, internalAccounts: 0 },
+        employees: {
+          total: 0,
+          active: 0,
+          suspended: 0,
+          onLeave: 0,
+          inactive: 0,
+          internalAccounts: 0,
+        },
         catalogs: { departments: 0, jobPositions: 0, costCenters: 0 },
         branches: { total: 0, geofenceConfigured: 0, attendanceEnabled: 0 },
       };
     }
     if (path.includes('/tables/plan/')) {
-      data = { id: null, branchId: 10, canvasWidth: 1600, canvasHeight: 900, version: 1, areas: [], tables: [] };
+      data = {
+        id: null,
+        branchId: 10,
+        canvasWidth: 1600,
+        canvasHeight: 900,
+        version: 1,
+        areas: [],
+        tables: [],
+      };
     }
     await route.fulfill({
       status: 200,
@@ -92,6 +120,46 @@ async function mockApp(page: Page) {
     });
   });
 }
+
+test('login brand icon is centered and the page uses one continuous background', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1920, height: 900 });
+  await page.goto('/login');
+
+  const mark = page.locator('.login-brand .login-brand__mark');
+  const icon = mark.locator('svg');
+  await expect(mark).toBeVisible();
+  await expect(icon).toBeVisible();
+
+  const geometry = await page.evaluate(() => {
+    const markBox = document
+      .querySelector('.login-brand .login-brand__mark')!
+      .getBoundingClientRect();
+    const iconBox = document
+      .querySelector('.login-brand .login-brand__mark svg')!
+      .getBoundingClientRect();
+    const accessStyles = getComputedStyle(document.querySelector('.login-access')!);
+
+    return {
+      horizontalOffset: Math.abs(
+        markBox.left + markBox.width / 2 - (iconBox.left + iconBox.width / 2)
+      ),
+      verticalOffset: Math.abs(
+        markBox.top + markBox.height / 2 - (iconBox.top + iconBox.height / 2)
+      ),
+      accessBackground: accessStyles.backgroundColor,
+      accessBackgroundImage: accessStyles.backgroundImage,
+      accessBorderLeft: accessStyles.borderLeftWidth,
+    };
+  });
+
+  expect(geometry.horizontalOffset).toBeLessThanOrEqual(1);
+  expect(geometry.verticalOffset).toBeLessThanOrEqual(1);
+  expect(geometry.accessBackground).toBe('rgba(0, 0, 0, 0)');
+  expect(geometry.accessBackgroundImage).toBe('none');
+  expect(geometry.accessBorderLeft).toBe('0px');
+});
 
 test('all representative routed views expose the 1700px cap', async ({ page }) => {
   await mockApp(page);
@@ -105,7 +173,9 @@ test('all representative routed views expose the 1700px cap', async ({ page }) =
   }
 });
 
-test('operational table map uses the complete viewport without lateral gutters', async ({ page }) => {
+test('operational table map uses the complete viewport without lateral gutters', async ({
+  page,
+}) => {
   await mockApp(page);
   await page.setViewportSize({ width: 1920, height: 1000 });
   await page.goto('/tables');
@@ -139,7 +209,9 @@ test('attendance settings activates only its exact navigation option', async ({ 
   const activeItems = page.locator('.sidebar-nav .nav-item.active');
   await expect(activeItems).toHaveCount(1);
   await expect(activeItems).toHaveText('Configurar asistencia');
-  await expect(page.getByRole('link', { name: 'Asistencia', exact: true })).not.toHaveClass(/\bactive\b/);
+  await expect(page.getByRole('link', { name: 'Asistencia', exact: true })).not.toHaveClass(
+    /\bactive\b/
+  );
 });
 
 test('menu modal has no nested card spacing or reserved right gutter', async ({ page }) => {
@@ -177,7 +249,9 @@ test('menu modal has no nested card spacing or reserved right gutter', async ({ 
   expect(Math.abs(geometry.viewportWidth - geometry.panelRight)).toBeLessThanOrEqual(1);
 });
 
-test('menu view action opens a read-only recipe-style detail instead of the editor', async ({ page }) => {
+test('menu view action opens a read-only recipe-style detail instead of the editor', async ({
+  page,
+}) => {
   await mockApp(page);
   await page.goto('/menu');
 
@@ -198,9 +272,18 @@ test('shared dialogs use the muted accent palette in dark mode', async ({ page }
 
   const dialog = page.getByRole('dialog', { name: 'Nueva Reservación' });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('heading', { name: 'Nueva Reservación' })).toHaveCSS('color', 'rgb(248, 250, 252)');
-  await expect(dialog.getByRole('tab', { name: 'Cliente' })).toHaveCSS('background-color', 'rgb(95, 125, 168)');
-  await expect(dialog.getByRole('button', { name: 'Crear Reservación' })).toHaveCSS('background-color', 'rgb(95, 125, 168)');
+  await expect(dialog.getByRole('heading', { name: 'Nueva Reservación' })).toHaveCSS(
+    'color',
+    'rgb(248, 250, 252)'
+  );
+  await expect(dialog.getByRole('tab', { name: 'Cliente' })).toHaveCSS(
+    'background-color',
+    'rgb(95, 125, 168)'
+  );
+  await expect(dialog.getByRole('button', { name: 'Crear Reservación' })).toHaveCSS(
+    'background-color',
+    'rgb(95, 125, 168)'
+  );
 
   const customerName = dialog.getByLabel('Nombre del Cliente');
   await customerName.focus();
@@ -217,7 +300,9 @@ test('report header select aligns with Excel and category filters have room', as
   await expect(headerActions.locator('.select-label')).toHaveCount(0);
 
   const geometry = await page.evaluate(() => {
-    const select = document.querySelector('.page-header-actions .report-view-select')!.getBoundingClientRect();
+    const select = document
+      .querySelector('.page-header-actions .report-view-select')!
+      .getBoundingClientRect();
     const button = document.querySelector('.page-header-actions .btn')!.getBoundingClientRect();
     const category = document.querySelector('.filter-field-category')!.getBoundingClientRect();
     return {
@@ -244,10 +329,15 @@ test('Catering event modal follows the shared flat modal layout', async ({ page 
   await expect(dialog.locator('.catering-event-intro')).toHaveCount(0);
   await expect(dialog.locator('.animate-slide-in')).toHaveCount(0);
   await expect(dialog.locator('.modal-content-group').first()).toHaveCSS('padding-left', '0px');
-  await expect(dialog.locator('.modal-content-group').first()).toHaveCSS('border-left-width', '0px');
+  await expect(dialog.locator('.modal-content-group').first()).toHaveCSS(
+    'border-left-width',
+    '0px'
+  );
 });
 
-test('RH primary and secondary views share the 1700px layout and React Select controls', async ({ page }) => {
+test('RH primary and secondary views share the 1700px layout and React Select controls', async ({
+  page,
+}) => {
   await mockApp(page);
   await page.setViewportSize({ width: 1920, height: 1000 });
 
@@ -263,7 +353,9 @@ test('RH primary and secondary views share the 1700px layout and React Select co
   await expect(page.locator('.hr-react-select .react-select__control').first()).toBeVisible();
 });
 
-test('legal payroll settings is an independent RH view with one active navigation item', async ({ page }) => {
+test('legal payroll settings is an independent RH view with one active navigation item', async ({
+  page,
+}) => {
   await mockApp(page);
   await page.goto('/rh/nomina/configuracion-legal');
 
@@ -271,7 +363,9 @@ test('legal payroll settings is an independent RH view with one active navigatio
   await expect(page.locator('.sidebar-nav .nav-item.active')).toHaveCount(1);
   await expect(page.locator('.sidebar-nav .nav-item.active')).toHaveText('IR, INSS e INATEC');
   await expect(page.getByText('Regla legal QA', { exact: false }).first()).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Configuración paramétrica', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Configuración paramétrica', exact: true })
+  ).toBeVisible();
 });
 
 test('manual attendance punch uses one compact canonical modal body', async ({ page }) => {
@@ -285,4 +379,77 @@ test('manual attendance punch uses one compact canonical modal body', async ({ p
   await expect(dialog.locator('.premium-modal-content')).toHaveCount(1);
   await expect(dialog.locator('.modal-tab-content')).toHaveCount(1);
   await expect(dialog.getByRole('button', { name: 'Registrar marcaje manual' })).toBeVisible();
+});
+
+test('every HR creation flow uses the canonical modal shell', async ({ page }) => {
+  await mockApp(page);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+
+  const expectCanonical = async (title: string) => {
+    const dialog = page.getByRole('dialog', { name: title });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveCSS('right', '0px');
+    await expect(dialog.locator('.premium-modal-content.hr-flow-modal-content')).toHaveCount(1);
+    await expect(dialog.locator('.modal-tabs')).toHaveCount(1);
+    await expect(dialog.locator('.modal-tab-content')).toHaveCount(1);
+    await expect(dialog.locator('.modal-footer')).toHaveCount(1);
+    await expect(dialog.locator('.sidebar-body')).toHaveCSS('padding-left', '0px');
+    const geometry = await dialog.evaluate((element) => {
+      const panel = element.getBoundingClientRect();
+      const content = element.querySelector('.modal-tab-content')!.getBoundingClientRect();
+      const footer = element.querySelector('.modal-footer')!.getBoundingClientRect();
+      return {
+        panelRight: panel.right,
+        contentRight: content.right,
+        footerRight: footer.right,
+        viewportWidth: window.innerWidth,
+      };
+    });
+    expect(Math.abs(geometry.panelRight - geometry.viewportWidth)).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.contentRight - geometry.panelRight)).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.footerRight - geometry.panelRight)).toBeLessThanOrEqual(1);
+    await dialog.getByRole('button', { name: `Cerrar ${title}` }).click();
+  };
+
+  await page.goto('/rh/jornadas');
+  await page.getByRole('button', { name: 'Crear periodo' }).click();
+  await expectCanonical('Nuevo periodo');
+
+  await page.goto('/rh/ausencias');
+  await page.getByRole('button', { name: 'Solicitud' }).click();
+  await expectCanonical('Nueva solicitud');
+  await page.getByRole('button', { name: 'Tipo' }).click();
+  await expectCanonical('Tipo de ausencia');
+  await page.getByRole('button', { name: 'Ajustar' }).click();
+  await expectCanonical('Ajuste de vacaciones');
+
+  await page.goto('/rh/nomina');
+  await page.getByRole('button', { name: 'Periodo' }).click();
+  await expectCanonical('Nuevo periodo');
+  await page.getByRole('button', { name: 'Nueva regla base' }).click();
+  await expectCanonical('Versión de regla');
+  const ordinary = page
+    .locator('.hr-payroll-section')
+    .filter({ has: page.getByRole('heading', { name: 'Nómina ordinaria' }) });
+  await ordinary.getByRole('button', { name: 'Nueva' }).click();
+  await expectCanonical('Nueva corrida de nómina');
+  const aguinaldo = page
+    .locator('.hr-payroll-section')
+    .filter({ has: page.getByRole('heading', { name: 'Aguinaldo' }) });
+  await aguinaldo.getByRole('button', { name: 'Nueva' }).click();
+  await expectCanonical('Nueva corrida de aguinaldo');
+
+  await page.goto('/rh/nomina/configuracion-legal');
+  await page.getByRole('button', { name: 'Nueva regla base' }).click();
+  await expectCanonical('Nueva regla legal de nómina');
+
+  await page.goto('/rh/prestaciones');
+  await page.getByRole('button', { name: 'Viático' }).click();
+  await expectCanonical('Nuevo viático');
+  await page.getByRole('tab', { name: 'Préstamos 0' }).click();
+  await page.getByRole('button', { name: 'Préstamo' }).click();
+  await expectCanonical('Nueva solicitud de préstamo');
+  await page.getByRole('tab', { name: 'Deducciones 0' }).click();
+  await page.getByRole('button', { name: 'Deducción' }).click();
+  await expectCanonical('Nueva deducción');
 });
