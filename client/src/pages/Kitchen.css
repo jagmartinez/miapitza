@@ -294,6 +294,14 @@
     gap: var(--spacing-lg);
 }
 
+.kitchen-grid-new > .empty-state {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-height: clamp(320px, calc(100dvh - 330px), 620px);
+    padding-inline: var(--spacing-lg);
+    box-sizing: border-box;
+}
+
 /* Kitchen Card */
 /* Kitchen Card Premium Redesign (Synced with Catering/Reservations) */
 .kitchen-card-new {

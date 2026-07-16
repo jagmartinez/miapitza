@@ -69,6 +69,23 @@ async function mockApp(page: Page) {
     }
     if (path.endsWith('/menu-items/1/images')) data = [];
     if (path.endsWith('/advanced/pricing/1')) data = { branchPrices: [] };
+    if (path.endsWith('/catering')) {
+      data = [
+        {
+          id: 41,
+          title: 'Evento Catering QA',
+          customer: { name: 'Cliente QA', phone: '8888-0000' },
+          date: '2026-07-20T18:00:00.000Z',
+          peopleCount: 60,
+          status: 'RESERVED',
+          totalAmount: 18000,
+          balance: 9000,
+          subtotal: 15652.17,
+          tax: 2347.83,
+          location: 'Salón QA',
+        },
+      ];
+    }
     if (path.endsWith('/v1/hr/payroll/rules')) {
       data = [
         {
@@ -333,6 +350,61 @@ test('Catering event modal follows the shared flat modal layout', async ({ page 
     'border-left-width',
     '0px'
   );
+  await dialog.getByRole('tab', { name: 'Logística' }).click();
+  await expect(dialog.getByRole('heading', { name: 'Logística y notas' })).toBeVisible();
+  await expect(dialog.getByLabel('Ubicación')).toBeVisible();
+  await dialog.getByRole('tab', { name: 'Datos' }).click();
+  await expect(dialog.getByRole('heading', { name: 'Logística y notas' })).toHaveCount(0);
+});
+
+test('Catering services exposes a real paginated table view', async ({ page }) => {
+  await mockApp(page);
+  await page.goto('/catering');
+
+  await page.getByRole('button', { name: 'Vista de tabla' }).click();
+  const table = page.locator('.catering-events-table .catalog-table');
+  await expect(table).toBeVisible();
+  await expect(table.getByRole('columnheader', { name: 'Evento' })).toBeVisible();
+  await expect(table.getByText('Evento Catering QA')).toBeVisible();
+  await expect(table.getByText('C$ 18,000.00')).toBeVisible();
+  await expect(table.getByRole('button', { name: 'Ver evento Evento Catering QA' })).toBeVisible();
+});
+
+test('KDS empty state spans and centers in the complete result area', async ({ page }) => {
+  await mockApp(page);
+  await page.setViewportSize({ width: 1743, height: 805 });
+  await page.goto('/kitchen');
+
+  const empty = page.locator('.kitchen-grid-new > .empty-state');
+  await expect(empty).toBeVisible();
+  await expect(empty).toHaveCSS('grid-column-start', '1');
+  await expect(empty).toHaveCSS('grid-column-end', '-1');
+  const centers = await page.evaluate(() => {
+    const grid = document.querySelector('.kitchen-grid-new')!.getBoundingClientRect();
+    const emptyState = document
+      .querySelector('.kitchen-grid-new > .empty-state')!
+      .getBoundingClientRect();
+    return {
+      gridCenter: grid.left + grid.width / 2,
+      emptyCenter: emptyState.left + emptyState.width / 2,
+    };
+  });
+  expect(Math.abs(centers.gridCenter - centers.emptyCenter)).toBeLessThanOrEqual(1);
+});
+
+test('catalog view toggles match adjacent primary action height and Kardex stays out of navigation', async ({
+  page,
+}) => {
+  await mockApp(page);
+  await page.goto('/menu');
+
+  const toggle = page.locator('.catalog-view-toggle');
+  const action = page.getByRole('button', { name: 'Nuevo Plato' });
+  const [toggleBox, actionBox] = await Promise.all([toggle.boundingBox(), action.boundingBox()]);
+  expect(toggleBox).not.toBeNull();
+  expect(actionBox).not.toBeNull();
+  expect(Math.abs(toggleBox!.height - actionBox!.height)).toBeLessThanOrEqual(1);
+  await expect(page.getByRole('link', { name: 'Kardex', exact: true })).toHaveCount(0);
 });
 
 test('RH primary and secondary views share the 1700px layout and React Select controls', async ({

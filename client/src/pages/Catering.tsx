@@ -3,12 +3,13 @@ import {
     Calendar, Users, Plus, MapPin, FileText,
     Download,
     Trash2, AlertCircle, DollarSign, ConciergeBell,
-    Grid3x3, CalendarDays, ChevronLeft, ChevronRight, Phone,
+    Grid3x3, List, CalendarDays, ChevronLeft, ChevronRight, Phone,
     Eye
 } from 'lucide-react';
 import Select from '../components/Select';
 import type { SingleValue } from 'react-select';
 import Button from '../components/Button';
+import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import Sidebar from '../components/Sidebar';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { cateringAPI, menuAPI, paymentsAPI, branchesAPI, settingsAPI, warehousesAPI } from '../services/api';
@@ -101,6 +102,9 @@ type CateringEventDetail = CateringEvent & {
     clauses?: CateringClausesForm;
 };
 
+type CateringViewMode = 'grid' | 'table' | 'calendar';
+type CateringTab = 'info' | 'logistics' | 'services' | 'menu' | 'clauses' | 'financial';
+
 export default function Catering() {
     const { formatMoney } = useCurrency();
     const { user } = useAuth();
@@ -113,14 +117,14 @@ export default function Catering() {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [savingEvent, setSavingEvent] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState<CateringEvent | null>(null);
-    const [viewMode, setViewMode] = useState<'grid' | 'calendar'>('grid');
+    const [viewMode, setViewMode] = useState<CateringViewMode>('grid');
     const [calendarViewMode, setCalendarViewMode] = useState<'month' | 'week' | 'day'>('month');
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [currentWeek, setCurrentWeek] = useState(new Date());
     const [currentDay, setCurrentDay] = useState(new Date());
     const [filterStatus, setFilterStatus] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeTab, setActiveTab] = useState<'info' | 'services' | 'menu' | 'clauses' | 'financial'>('info');
+    const [activeTab, setActiveTab] = useState<CateringTab>('info');
 
     // Master data
     const [allServices, setAllServices] = useState<CateringServiceCatalog[]>([]);
@@ -247,7 +251,7 @@ export default function Catering() {
         loadMasterData();
     }, [loadEvents, loadMasterData]);
 
-    const handleOpenSidebar = async (event?: CateringEvent, tab: 'info' | 'services' | 'menu' | 'financial' = 'info') => {
+    const handleOpenSidebar = async (event?: CateringEvent, tab: CateringTab = 'info') => {
         setAvailabilityAlerts([]);
         setFinishWarehouseId(null);
         setMenuCategoryFilter('all');
@@ -473,6 +477,127 @@ export default function Catering() {
         return matchesStatus && matchesSearch;
     });
 
+    const handleDeleteEvent = async (event: CateringEvent) => {
+        if (!canManageCatering) return;
+        if (!(await confirm('¿Estás seguro de eliminar este evento?', { title: 'Confirmar acción' }))) return;
+
+        try {
+            await cateringAPI.deleteEvent(event.id);
+            loadEvents();
+        } catch (error) {
+            console.error('Error deleting event:', error);
+            showError('No se pudo eliminar el evento de catering.');
+        }
+    };
+
+    const tableColumns: CatalogColumn<CateringEvent>[] = [
+        {
+            key: 'event',
+            header: 'Evento',
+            render: (event) => (
+                <div className="catalog-cell-stack">
+                    <span className="cell-title">{event.title}</span>
+                    <span className="cell-sub">
+                        {event.customer?.name || 'Sin cliente'}
+                        {event.customer?.phone ? ` · ${event.customer.phone}` : ''}
+                    </span>
+                </div>
+            ),
+        },
+        {
+            key: 'date',
+            header: 'Fecha y hora',
+            render: (event) => new Date(event.date).toLocaleString('es-NI', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            }),
+        },
+        {
+            key: 'people',
+            header: 'Personas',
+            align: 'center',
+            render: (event) => event.peopleCount,
+        },
+        {
+            key: 'location',
+            header: 'Ubicación',
+            render: (event) => event.location || 'Sin ubicación',
+        },
+        {
+            key: 'total',
+            header: 'Total',
+            align: 'right',
+            render: (event) => formatMoney(Number(event.totalAmount || 0)),
+        },
+        {
+            key: 'status',
+            header: 'Estado',
+            render: (event) => (
+                <span className={`catalog-pill ${
+                    event.status === 'PAID' || event.status === 'FINISHED'
+                        ? 'ok'
+                        : event.status === 'CANCELLED'
+                            ? 'danger'
+                            : event.status === 'RESERVED'
+                                ? 'warning'
+                                : 'neutral'
+                }`}>
+                    {getStatusText(event.status)}
+                </span>
+            ),
+        },
+        {
+            key: 'actions',
+            header: 'Acciones',
+            align: 'right',
+            render: (event) => (
+                <div className="catalog-table-actions">
+                    <button
+                        type="button"
+                        className="catalog-action-btn"
+                        onClick={() => void handleOpenSidebar(event, 'info')}
+                        title="Ver evento"
+                        aria-label={`Ver evento ${event.title}`}
+                    >
+                        <Eye size={16} />
+                    </button>
+                    <button
+                        type="button"
+                        className="catalog-action-btn"
+                        onClick={() => void handleOpenSidebar(event, 'financial')}
+                        title="Ver pagos"
+                        aria-label={`Ver pagos de ${event.title}`}
+                    >
+                        <DollarSign size={16} />
+                    </button>
+                    <button
+                        type="button"
+                        className="catalog-action-btn"
+                        onClick={() => void handleDownloadContract(event)}
+                        title="Descargar contrato PDF"
+                        aria-label={`Descargar contrato de ${event.title}`}
+                    >
+                        <Download size={16} />
+                    </button>
+                    {canManageCatering && (
+                        <button
+                            type="button"
+                            className="catalog-action-btn danger"
+                            onClick={() => void handleDeleteEvent(event)}
+                            title="Eliminar evento"
+                            aria-label={`Eliminar evento ${event.title}`}
+                        >
+                            <Trash2 size={16} />
+                        </button>
+                    )}
+                </div>
+            ),
+        },
+    ];
+
     const calculateTabTotals = () => {
         const servicesTotal = formData.services.reduce((acc, s) => acc + (Number(s.quantity) * Number(s.unitPrice)), 0);
         const menuTotal = formData.menuItems.reduce((acc, m) => acc + (Number(m.quantity) * Number(m.unitPrice)), 0);
@@ -562,16 +687,32 @@ export default function Catering() {
                 <div style={{ display: 'flex', gap: '12px' }}>
                     <div className="view-toggle">
                         <button
+                            type="button"
                             className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
                             onClick={() => setViewMode('grid')}
                             title="Vista de Tarjetas"
+                            aria-label="Vista de tarjetas"
+                            aria-pressed={viewMode === 'grid'}
                         >
                             <Grid3x3 size={18} />
                         </button>
                         <button
+                            type="button"
+                            className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+                            onClick={() => setViewMode('table')}
+                            title="Vista de Tabla"
+                            aria-label="Vista de tabla"
+                            aria-pressed={viewMode === 'table'}
+                        >
+                            <List size={18} />
+                        </button>
+                        <button
+                            type="button"
                             className={`view-toggle-btn ${viewMode === 'calendar' ? 'active' : ''}`}
                             onClick={() => setViewMode('calendar')}
                             title="Vista de Calendario"
+                            aria-label="Vista de calendario"
+                            aria-pressed={viewMode === 'calendar'}
                         >
                             <CalendarDays size={18} />
                         </button>
@@ -585,8 +726,8 @@ export default function Catering() {
                 </div>
             </div>
 
-            {/* Filters - Only show in grid view */}
-            {viewMode === 'grid' && (
+            {/* Filters apply to card and table views. */}
+            {viewMode !== 'calendar' && (
                 <div className="catering-filters">
                     {/* Status Filters */}
                     <div className="filter-buttons">
@@ -793,6 +934,15 @@ export default function Catering() {
                     <FileText size={64} opacity={0.2} />
                     <p>No se encontraron eventos</p>
                 </div>
+            ) : viewMode === 'table' ? (
+                <div className="catering-events-table">
+                    <CatalogTable<CateringEvent>
+                        rows={filteredEvents}
+                        rowKey={(event) => event.id}
+                        columns={tableColumns}
+                        resetKey={`${filterStatus}-${searchQuery}`}
+                    />
+                </div>
             ) : (
                 <div className="catering-grid">
                     {filteredEvents.map(event => (
@@ -863,16 +1013,7 @@ export default function Catering() {
                                 {canManageCatering && (
                                     <button
                                         className="action-btn-new delete"
-                                        onClick={async () => {
-                                            if (await confirm('¿Estás seguro de eliminar este evento?', { title: 'Confirmar acción' })) {
-                                                try {
-                                                    await cateringAPI.deleteEvent(event.id);
-                                                    loadEvents();
-                                                } catch (error) {
-                                                    console.error('Error deleting event:', error);
-                                                }
-                                            }
-                                        }}
+                                        onClick={() => void handleDeleteEvent(event)}
                                         title="Eliminar"
                                     >
                                         <Trash2 size={20} />
@@ -901,6 +1042,16 @@ export default function Catering() {
                         >
                             <FileText size={18} />
                             <span>Datos</span>
+                        </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'logistics'}
+                            className={`modal-tab ${activeTab === 'logistics' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('logistics')}
+                        >
+                            <MapPin size={18} />
+                            <span>Logística</span>
                         </button>
                         <button
                             type="button"
@@ -1104,6 +1255,11 @@ export default function Catering() {
                                     </div>
                                 </section>
 
+                            </div>
+                        )}
+
+                        {activeTab === 'logistics' && (
+                            <div className="catering-tab-panel">
                                 <section className="modal-content-group catering-event-section catering-event-section-full">
                                     <div className="modal-section-header">
                                         <MapPin size={18} />
@@ -1114,16 +1270,18 @@ export default function Catering() {
                                         <input
                                             id="catering-location"
                                             className="modal-standard-input"
+                                            placeholder="Dirección, salón o punto de referencia"
                                             value={formData.location}
                                             onChange={e => setFormData({ ...formData, location: e.target.value })}
                                         />
                                     </div>
                                     <div className="modal-input-group" style={{ marginTop: '12px' }}>
-                                        <label htmlFor="catering-notes">Notas</label>
+                                        <label htmlFor="catering-notes">Notas operativas</label>
                                         <textarea
                                             id="catering-notes"
                                             className="modal-standard-input"
-                                            rows={4}
+                                            rows={7}
+                                            placeholder="Montaje, acceso, contacto en sitio y observaciones para el equipo"
                                             value={formData.notes}
                                             onChange={e => setFormData({ ...formData, notes: e.target.value })}
                                         />

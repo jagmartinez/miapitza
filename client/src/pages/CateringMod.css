@@ -66,6 +66,19 @@
     border-left: 1px solid var(--color-border);
 }
 
+.catering-header .view-toggle {
+    height: 44px;
+    min-height: 44px;
+    box-sizing: border-box;
+}
+
+.catering-header .view-toggle-btn {
+    min-width: 44px;
+    height: 100%;
+    padding-block: 0;
+    box-sizing: border-box;
+}
+
 /* Filters Row - Modern Pills with Stats */
 .catering-filters {
     display: flex;
@@ -1825,6 +1838,22 @@
 .catering-event-modal-content {
     min-height: 0;
     overflow: hidden;
+}
+
+.catering-events-table .catalog-table {
+    min-width: 1050px;
+}
+
+.catering-events-table .catalog-table tbody td {
+    padding-block: 12px;
+}
+
+.catering-events-table .catalog-cell-stack {
+    min-width: 220px;
+}
+
+.catering-events-table .catalog-table-actions {
+    min-width: 132px;
 }
 
 .catering-event-modal-content > .modal-tabs .modal-tab b {

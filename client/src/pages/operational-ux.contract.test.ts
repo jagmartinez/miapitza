@@ -37,6 +37,28 @@ describe('operational UX contracts', () => {
         expect(tablesStyles).toContain('.tables-page:not(.tables-page--map)');
     });
 
+    it('keeps catalog actions aligned and secondary routes out of the primary menu', () => {
+        const toggleSource = read('../components/ViewToggle.tsx');
+        const toggleStyles = read('../components/CatalogView.css');
+        const layoutSource = read('../components/Layout.tsx');
+
+        expect(toggleSource).toContain('view-toggle catalog-view-toggle');
+        expect(toggleStyles).toContain('.view-toggle.catalog-view-toggle');
+        expect(toggleStyles).toContain('height: 44px');
+        expect(layoutSource).not.toContain("{ to: '/kardex'");
+    });
+
+    it('centers KDS empty results and exposes Catering table and logistics modes', () => {
+        const kitchenStyles = read('./Kitchen.css');
+        const cateringSource = read('./Catering.tsx');
+
+        expect(kitchenStyles).toContain('.kitchen-grid-new > .empty-state');
+        expect(kitchenStyles).toContain('grid-column: 1 / -1');
+        expect(cateringSource).toContain("type CateringViewMode = 'grid' | 'table' | 'calendar'");
+        expect(cateringSource).toContain("activeTab === 'logistics'");
+        expect(cateringSource).toContain('<CatalogTable<CateringEvent>');
+    });
+
     it('keeps modal content flush without nested section cards or reserved scrollbar space', () => {
         const sharedStyles = read('../index.css');
         const modalStyles = read('../components/Modal.css');

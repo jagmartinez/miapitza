@@ -524,44 +524,44 @@ async function main() {
         { suffix: 'OUT', action: 'CHECK_OUT' as const, time: checkOutAt, source: 'SELF' as const },
       ]) {
         const idempotencyKey = `${PREFIX}-${companyId}-${employee.key}-${day}-${event.suffix}`;
-        await prisma.attendanceEvent.upsert({
+        const existingEvent = await prisma.attendanceEvent.findUnique({
           where: { companyId_idempotencyKey: { companyId, idempotencyKey } },
-          update: {
-            serverAt: event.time,
-            clientAt: event.time,
-            decision: late ? 'REVIEW' : 'ACCEPTED',
-          },
-          create: {
-            companyId,
-            userId: employee.userId,
-            actorUserId: event.source === 'MANUAL' ? actor.id : employee.userId,
-            branchId: branch.id,
-            policyId: policy.id,
-            policyVersion: policy.version,
-            idempotencyKey,
-            requestHash: hash({ employee: employee.key, day, action: event.action }),
-            sessionKey: `${PREFIX}-${employee.key}-${day}`,
-            sequenceKey: `${PREFIX}-${employee.key}-${day}-${event.suffix}`,
-            action: event.action,
-            source: event.source,
-            serverAt: event.time,
-            clientAt: event.time,
-            faceStatus: 'NOT_REQUIRED',
-            livenessStatus: 'NOT_REQUIRED',
-            decision: late ? 'REVIEW' : 'ACCEPTED',
-            reasonCode:
-              event.source === 'MANUAL' ? 'SUPERVISED_DEMO' : late ? 'LATE_ARRIVAL' : null,
-            reasonCodes:
-              event.source === 'MANUAL' ? ['SUPERVISED_DEMO'] : late ? ['LATE_ARRIVAL'] : [],
-            message:
-              event.source === 'MANUAL'
-                ? 'Marcaje manual supervisado de ejemplo'
-                : late
-                  ? 'Llegada tardía para revisión'
-                  : 'Marcaje aceptado',
-            checks: { synthetic: true, policyVersion: policy.version },
-          },
+          select: { id: true },
         });
+        if (!existingEvent) {
+          await prisma.attendanceEvent.create({
+            data: {
+              companyId,
+              userId: employee.userId,
+              actorUserId: event.source === 'MANUAL' ? actor.id : employee.userId,
+              branchId: branch.id,
+              policyId: policy.id,
+              policyVersion: policy.version,
+              idempotencyKey,
+              requestHash: hash({ employee: employee.key, day, action: event.action }),
+              sessionKey: `${PREFIX}-${employee.key}-${day}`,
+              sequenceKey: `${PREFIX}-${employee.key}-${day}-${event.suffix}`,
+              action: event.action,
+              source: event.source,
+              serverAt: event.time,
+              clientAt: event.time,
+              faceStatus: 'NOT_REQUIRED',
+              livenessStatus: 'NOT_REQUIRED',
+              decision: late ? 'REVIEW' : 'ACCEPTED',
+              reasonCode:
+                event.source === 'MANUAL' ? 'SUPERVISED_DEMO' : late ? 'LATE_ARRIVAL' : null,
+              reasonCodes:
+                event.source === 'MANUAL' ? ['SUPERVISED_DEMO'] : late ? ['LATE_ARRIVAL'] : [],
+              message:
+                event.source === 'MANUAL'
+                  ? 'Marcaje manual supervisado de ejemplo'
+                  : late
+                    ? 'Llegada tardía para revisión'
+                    : 'Marcaje aceptado',
+              checks: { synthetic: true, policyVersion: policy.version },
+            },
+          });
+        }
       }
       if (late) {
         await prisma.attendanceIncident.upsert({
@@ -637,23 +637,27 @@ async function main() {
       },
     });
     const accrualRef = `${PREFIX}-ACCRUAL-${employee.key}`;
-    await prisma.vacationLedgerEntry.upsert({
+    const existingAccrual = await prisma.vacationLedgerEntry.findUnique({
       where: { companyId_reference: { companyId, reference: accrualRef } },
-      update: { amount: money(15), resultingBalance: money(15) },
-      create: {
-        companyId,
-        balanceId: balance.id,
-        userId: employee.userId,
-        effectiveDate: date('2026-01-01'),
-        amount: money(15),
-        unit: 'DAYS',
-        type: 'ACCRUAL',
-        reason: 'Acreditación anual demo',
-        reference: accrualRef,
-        actorId: actor.id,
-        resultingBalance: money(15),
-      },
+      select: { id: true },
     });
+    if (!existingAccrual) {
+      await prisma.vacationLedgerEntry.create({
+        data: {
+          companyId,
+          balanceId: balance.id,
+          userId: employee.userId,
+          effectiveDate: date('2026-01-01'),
+          amount: money(15),
+          unit: 'DAYS',
+          type: 'ACCRUAL',
+          reason: 'Acreditación anual demo',
+          reference: accrualRef,
+          actorId: actor.id,
+          resultingBalance: money(15),
+        },
+      });
+    }
     if (index === 0) {
       let request = await prisma.leaveRequest.findFirst({
         where: {
@@ -689,24 +693,29 @@ async function main() {
               ...data,
             },
           });
-      await prisma.vacationLedgerEntry.upsert({
-        where: { companyId_reference: { companyId, reference: `${PREFIX}-USAGE-${employee.key}` } },
-        update: { leaveRequestId: request.id, amount: money(-2), resultingBalance: money(13) },
-        create: {
-          companyId,
-          balanceId: balance.id,
-          userId: employee.userId,
-          leaveRequestId: request.id,
-          effectiveDate: date('2026-07-10'),
-          amount: money(-2),
-          unit: 'DAYS',
-          type: 'USAGE',
-          reason: 'Vacaciones aprobadas demo',
-          reference: `${PREFIX}-USAGE-${employee.key}`,
-          actorId: actor.id,
-          resultingBalance: money(13),
-        },
+      const usageRef = `${PREFIX}-USAGE-${employee.key}`;
+      const existingUsage = await prisma.vacationLedgerEntry.findUnique({
+        where: { companyId_reference: { companyId, reference: usageRef } },
+        select: { id: true },
       });
+      if (!existingUsage) {
+        await prisma.vacationLedgerEntry.create({
+          data: {
+            companyId,
+            balanceId: balance.id,
+            userId: employee.userId,
+            leaveRequestId: request.id,
+            effectiveDate: date('2026-07-10'),
+            amount: money(-2),
+            unit: 'DAYS',
+            type: 'USAGE',
+            reason: 'Vacaciones aprobadas demo',
+            reference: usageRef,
+            actorId: actor.id,
+            resultingBalance: money(13),
+          },
+        });
+      }
     }
   }
   void medicalType;
@@ -741,42 +750,39 @@ async function main() {
     },
   });
   const configurationHash = hash(LEGAL_CONFIGURATION);
-  const configuration = await prisma.payrollRuleConfigurationRevision.upsert({
+  const existingConfiguration = await prisma.payrollRuleConfigurationRevision.findUnique({
     where: { ruleVersionId_revision: { ruleVersionId: rule.id, revision: 1 } },
-    update: {
-      configuration: LEGAL_CONFIGURATION as unknown as Prisma.InputJsonValue,
-      configurationHash,
-      sourceReference: 'Ley 822, Decreto 975 y Decreto 3-91',
-      evidenceReference: `${PREFIX}-LEGAL-2026`,
-      uploadReason: 'Configuración legal completa para demostración',
-    },
-    create: {
-      companyId,
-      ruleVersionId: rule.id,
-      revision: 1,
-      configuration: LEGAL_CONFIGURATION as unknown as Prisma.InputJsonValue,
-      configurationHash,
-      sourceReference: 'Ley 822, Decreto 975 y Decreto 3-91',
-      evidenceReference: `${PREFIX}-LEGAL-2026`,
-      uploadReason: 'Configuración legal completa para demostración',
-      uploadedById: actor.id,
-    },
   });
-  await prisma.payrollRuleConfigurationReview.upsert({
+  const configuration =
+    existingConfiguration ??
+    (await prisma.payrollRuleConfigurationRevision.create({
+      data: {
+        companyId,
+        ruleVersionId: rule.id,
+        revision: 1,
+        configuration: LEGAL_CONFIGURATION as unknown as Prisma.InputJsonValue,
+        configurationHash,
+        sourceReference: 'Ley 822, Decreto 975 y Decreto 3-91',
+        evidenceReference: `${PREFIX}-LEGAL-2026`,
+        uploadReason: 'Configuración legal completa para demostración',
+        uploadedById: actor.id,
+      },
+    }));
+  const existingReview = await prisma.payrollRuleConfigurationReview.findUnique({
     where: { configurationRevisionId: configuration.id },
-    update: {
-      decision: 'VALIDATED',
-      reason: 'Fuentes y parámetros verificados para el escenario demo',
-      reviewerId: actor.id,
-    },
-    create: {
-      companyId,
-      configurationRevisionId: configuration.id,
-      decision: 'VALIDATED',
-      reason: 'Fuentes y parámetros verificados para el escenario demo',
-      reviewerId: actor.id,
-    },
+    select: { id: true },
   });
+  if (!existingReview) {
+    await prisma.payrollRuleConfigurationReview.create({
+      data: {
+        companyId,
+        configurationRevisionId: configuration.id,
+        decision: 'VALIDATED',
+        reason: 'Fuentes y parámetros verificados para el escenario demo',
+        reviewerId: actor.id,
+      },
+    });
+  }
   await prisma.payrollRuleVersion.update({
     where: { id: rule.id },
     data: { activeConfigurationRevisionId: configuration.id },
@@ -925,7 +931,7 @@ async function main() {
       reason: 'Reembolso al colaborador',
     },
   ]) {
-    await prisma.hrTravelLedgerEntry.upsert({
+    const existingTravelEntry = await prisma.hrTravelLedgerEntry.findUnique({
       where: {
         travelRequestId_type_reference: {
           travelRequestId: travel.id,
@@ -933,19 +939,23 @@ async function main() {
           reference: entry.ref,
         },
       },
-      update: { amount: money(entry.amount), reason: entry.reason },
-      create: {
-        companyId,
-        travelRequestId: travel.id,
-        type: entry.type,
-        amount: money(entry.amount),
-        currency: 'NIO',
-        effectiveDate: date('2026-07-06'),
-        reference: entry.ref,
-        reason: entry.reason,
-        actorId: actor.id,
-      },
+      select: { id: true },
     });
+    if (!existingTravelEntry) {
+      await prisma.hrTravelLedgerEntry.create({
+        data: {
+          companyId,
+          travelRequestId: travel.id,
+          type: entry.type,
+          amount: money(entry.amount),
+          currency: 'NIO',
+          effectiveDate: date('2026-07-06'),
+          reference: entry.ref,
+          reason: entry.reason,
+          actorId: actor.id,
+        },
+      });
+    }
   }
 
   const loanDefinitions = [
@@ -1006,72 +1016,89 @@ async function main() {
         requestedAt: at('2026-06-20T15:00:00.000Z'),
       },
     });
-    const schedule = await prisma.hrLoanScheduleVersion.upsert({
+    const existingSchedule = await prisma.hrLoanScheduleVersion.findUnique({
       where: { loanId_version: { loanId: loan.id, version: 1 } },
-      update: { status: 'ACTIVE' },
-      create: { companyId, loanId: loan.id, version: 1, status: 'ACTIVE', principalOnly: true },
     });
+    const schedule =
+      existingSchedule ??
+      (await prisma.hrLoanScheduleVersion.create({
+        data: { companyId, loanId: loan.id, version: 1, status: 'ACTIVE', principalOnly: true },
+      }));
     const installmentAmount = item.amount / item.installments;
     for (let number = 1; number <= item.installments; number += 1) {
       const month = 7 + number - 1;
       const due = new Date(Date.UTC(2026, month - 1, 16));
-      await prisma.hrLoanInstallment.upsert({
+      const existingInstallment = await prisma.hrLoanInstallment.findUnique({
         where: { scheduleVersionId_number: { scheduleVersionId: schedule.id, number } },
-        update: {
-          dueDate: due,
-          scheduledPrincipal: money(installmentAmount),
-          scheduledTotal: money(installmentAmount),
+        select: { id: true },
+      });
+      if (!existingInstallment) {
+        await prisma.hrLoanInstallment.create({
+          data: {
+            companyId,
+            scheduleVersionId: schedule.id,
+            number,
+            dueDate: due,
+            scheduledPrincipal: money(installmentAmount),
+            scheduledCharge: money(0),
+            scheduledTotal: money(installmentAmount),
+          },
+        });
+      }
+    }
+    const disbursementRef = `${code}-DISB`;
+    const existingDisbursement = await prisma.hrLoanLedgerEntry.findUnique({
+      where: {
+        loanId_type_reference: {
+          loanId: loan.id,
+          type: 'DISBURSEMENT',
+          reference: disbursementRef,
         },
-        create: {
+      },
+      select: { id: true },
+    });
+    if (!existingDisbursement) {
+      await prisma.hrLoanLedgerEntry.create({
+        data: {
           companyId,
-          scheduleVersionId: schedule.id,
-          number,
-          dueDate: due,
-          scheduledPrincipal: money(installmentAmount),
-          scheduledCharge: money(0),
-          scheduledTotal: money(installmentAmount),
+          loanId: loan.id,
+          type: 'DISBURSEMENT',
+          amount: money(item.amount),
+          currency: 'NIO',
+          effectiveDate: date('2026-06-25'),
+          reference: disbursementRef,
+          reason: 'Desembolso aprobado del escenario demo',
+          actorId: actor.id,
         },
       });
     }
-    await prisma.hrLoanLedgerEntry.upsert({
-      where: {
-        loanId_type_reference: { loanId: loan.id, type: 'DISBURSEMENT', reference: `${code}-DISB` },
-      },
-      update: { amount: money(item.amount) },
-      create: {
-        companyId,
-        loanId: loan.id,
-        type: 'DISBURSEMENT',
-        amount: money(item.amount),
-        currency: 'NIO',
-        effectiveDate: date('2026-06-25'),
-        reference: `${code}-DISB`,
-        reason: 'Desembolso aprobado del escenario demo',
-        actorId: actor.id,
-      },
-    });
-    await prisma.hrLoanLedgerEntry.upsert({
+    const deductionRef = `${code}-Q1`;
+    const existingLoanDeduction = await prisma.hrLoanLedgerEntry.findUnique({
       where: {
         loanId_type_reference: {
           loanId: loan.id,
           type: 'PAYROLL_DEDUCTION',
-          reference: `${code}-Q1`,
+          reference: deductionRef,
         },
       },
-      update: { amount: money(item.paid), payrollRunId: run.id },
-      create: {
-        companyId,
-        loanId: loan.id,
-        type: 'PAYROLL_DEDUCTION',
-        amount: money(item.paid),
-        currency: 'NIO',
-        effectiveDate: date('2026-07-16'),
-        payrollRunId: run.id,
-        reference: `${code}-Q1`,
-        reason: 'Cuota descontada en la corrida demo',
-        actorId: actor.id,
-      },
+      select: { id: true },
     });
+    if (!existingLoanDeduction) {
+      await prisma.hrLoanLedgerEntry.create({
+        data: {
+          companyId,
+          loanId: loan.id,
+          type: 'PAYROLL_DEDUCTION',
+          amount: money(item.paid),
+          currency: 'NIO',
+          effectiveDate: date('2026-07-16'),
+          payrollRunId: run.id,
+          reference: deductionRef,
+          reason: 'Cuota descontada en la corrida demo',
+          actorId: actor.id,
+        },
+      });
+    }
     const deductionCode = `${code}-DED`;
     const deduction = await prisma.hrDeduction.upsert({
       where: { companyId_code: { companyId, code: deductionCode } },
@@ -1094,31 +1121,30 @@ async function main() {
         createdById: actor.id,
       },
     });
-    const version = await prisma.hrDeductionVersion.upsert({
+    const existingVersion = await prisma.hrDeductionVersion.findUnique({
       where: { deductionId_version: { deductionId: deduction.id, version: 1 } },
-      update: {
-        requestedAmount: money(item.amount),
-        applicableAmount: money(item.amount),
-        perPeriodLimit: money(item.paid),
-      },
-      create: {
-        companyId,
-        deductionId: deduction.id,
-        version: 1,
-        name:
-          item.key === 'ADELANTO'
-            ? 'Recuperación de adelanto salarial'
-            : 'Cuota de préstamo personal',
-        reason: item.purpose,
-        currency: 'NIO',
-        frequency: 'RECURRING',
-        requestedAmount: money(item.amount),
-        applicableAmount: money(item.amount),
-        perPeriodLimit: money(item.paid),
-        priority: 20,
-        effectiveFrom: date('2026-07-01'),
-      },
     });
+    const version =
+      existingVersion ??
+      (await prisma.hrDeductionVersion.create({
+        data: {
+          companyId,
+          deductionId: deduction.id,
+          version: 1,
+          name:
+            item.key === 'ADELANTO'
+              ? 'Recuperación de adelanto salarial'
+              : 'Cuota de préstamo personal',
+          reason: item.purpose,
+          currency: 'NIO',
+          frequency: 'RECURRING',
+          requestedAmount: money(item.amount),
+          applicableAmount: money(item.amount),
+          perPeriodLimit: money(item.paid),
+          priority: 20,
+          effectiveFrom: date('2026-07-01'),
+        },
+      }));
     loanDeductions.push({
       deductionId: deduction.id,
       versionId: version.id,
@@ -1143,24 +1169,27 @@ async function main() {
       createdById: actor.id,
     },
   });
-  const manualVersion = await prisma.hrDeductionVersion.upsert({
+  const existingManualVersion = await prisma.hrDeductionVersion.findUnique({
     where: { deductionId_version: { deductionId: manualDeduction.id, version: 1 } },
-    update: { perPeriodLimit: money(300) },
-    create: {
-      companyId,
-      deductionId: manualDeduction.id,
-      version: 1,
-      name: 'Aporte cooperativa',
-      reason: 'Deducción voluntaria autorizada',
-      currency: 'NIO',
-      frequency: 'RECURRING',
-      requestedAmount: money(1200),
-      applicableAmount: money(1200),
-      perPeriodLimit: money(300),
-      priority: 80,
-      effectiveFrom: date('2026-07-01'),
-    },
   });
+  const manualVersion =
+    existingManualVersion ??
+    (await prisma.hrDeductionVersion.create({
+      data: {
+        companyId,
+        deductionId: manualDeduction.id,
+        version: 1,
+        name: 'Aporte cooperativa',
+        reason: 'Deducción voluntaria autorizada',
+        currency: 'NIO',
+        frequency: 'RECURRING',
+        requestedAmount: money(1200),
+        applicableAmount: money(1200),
+        perPeriodLimit: money(300),
+        priority: 80,
+        effectiveFrom: date('2026-07-01'),
+      },
+    }));
   loanDeductions.push({
     deductionId: manualDeduction.id,
     versionId: manualVersion.id,
@@ -1342,7 +1371,11 @@ async function main() {
         amount: money(component.amount),
         taxable: component.taxable,
         incomeTaxTreatment:
-          component.type === 'INCOME' ? (component.taxable ? 'REGULAR_FIXED' : 'EXEMPT') : 'NONE',
+          component.type === 'INCOME' && component.taxable
+            ? component.code === 'SALARIO_BASE'
+              ? 'REGULAR_FIXED'
+              : 'REGULAR_VARIABLE'
+            : null,
         incomeTaxDeductible: component.code === 'INSS_LABORAL',
         socialSecurityApplicable: component.social,
         trainingContributionApplicable: component.inatec,
@@ -1363,7 +1396,7 @@ async function main() {
           });
       const linked = benefitDeductions.find((item) => item.code === component.code);
       if (linked) {
-        await prisma.hrDeductionApplication.upsert({
+        const existingApplication = await prisma.hrDeductionApplication.findUnique({
           where: {
             deductionId_payrollRunId_kind: {
               deductionId: linked.deductionId,
@@ -1371,24 +1404,24 @@ async function main() {
               kind: 'APPLIED',
             },
           },
-          update: {
-            versionId: linked.versionId,
-            amount: money(linked.amount),
-            componentId: row.id,
-          },
-          create: {
-            companyId,
-            deductionId: linked.deductionId,
-            versionId: linked.versionId,
-            payrollRunId: run.id,
-            kind: 'APPLIED',
-            amount: money(linked.amount),
-            currency: 'NIO',
-            componentId: row.id,
-            reason: 'Aplicación en la corrida demo',
-            actorId: actor.id,
-          },
+          select: { id: true },
         });
+        if (!existingApplication) {
+          await prisma.hrDeductionApplication.create({
+            data: {
+              companyId,
+              deductionId: linked.deductionId,
+              versionId: linked.versionId,
+              payrollRunId: run.id,
+              kind: 'APPLIED',
+              amount: money(linked.amount),
+              currency: 'NIO',
+              componentId: row.id,
+              reason: 'Aplicación en la corrida demo',
+              actorId: actor.id,
+            },
+          });
+        }
       }
     }
     for (const contribution of [
@@ -1422,9 +1455,7 @@ async function main() {
         amount: money(contribution.amount),
         traceReference: `${PREFIX}:${contribution.code}`,
       };
-      if (existing)
-        await prisma.payrollEmployerContribution.update({ where: { id: existing.id }, data });
-      else
+      if (!existing)
         await prisma.payrollEmployerContribution.create({
           data: {
             companyId,
@@ -1484,12 +1515,7 @@ async function main() {
       bracketSnapshot: { synthetic: true, effectiveRate: gross ? incomeTax / gross : 0 },
       historyFingerprint: hash({ run: run.id, user: employee.userId, gross, deductions }),
     };
-    if (statutory)
-      await prisma.payrollStatutoryCalculation.update({
-        where: { id: statutory.id },
-        data: statutoryData,
-      });
-    else
+    if (!statutory)
       await prisma.payrollStatutoryCalculation.create({
         data: {
           companyId,
@@ -1556,6 +1582,49 @@ async function main() {
       });
   }
 
+  const employeeUserIds = employees.map((employee) => employee.userId);
+  const [
+    attendanceEvents,
+    attendanceSummaries,
+    vacationMovements,
+    leaveRequests,
+    travelLedgerEntries,
+    loans,
+    deductions,
+    payrollReceipts,
+    payrollComponents,
+    employerContributions,
+    statutoryCalculations,
+    payrollTraces,
+  ] = await Promise.all([
+    prisma.attendanceEvent.count({
+      where: { companyId, userId: { in: employeeUserIds }, idempotencyKey: { startsWith: PREFIX } },
+    }),
+    prisma.attendanceDailySummary.count({
+      where: { companyId, periodId: attendancePeriod.id, userId: { in: employeeUserIds } },
+    }),
+    prisma.vacationLedgerEntry.count({
+      where: { companyId, reference: { startsWith: PREFIX } },
+    }),
+    prisma.leaveRequest.count({
+      where: { companyId, userId: { in: employeeUserIds } },
+    }),
+    prisma.hrTravelLedgerEntry.count({
+      where: { companyId, travelRequestId: travel.id },
+    }),
+    prisma.hrLoan.count({
+      where: { companyId, code: { startsWith: PREFIX } },
+    }),
+    prisma.hrDeduction.count({
+      where: { companyId, code: { startsWith: PREFIX } },
+    }),
+    prisma.payrollReceipt.count({ where: { companyId, runId: run.id } }),
+    prisma.payrollComponent.count({ where: { companyId, runId: run.id } }),
+    prisma.payrollEmployerContribution.count({ where: { companyId, runId: run.id } }),
+    prisma.payrollStatutoryCalculation.count({ where: { companyId, runId: run.id } }),
+    prisma.payrollTrace.count({ where: { companyId, runId: run.id } }),
+  ]);
+
   console.log(
     JSON.stringify(
       {
@@ -1573,6 +1642,20 @@ async function main() {
         payrollRunId: run.id,
         travelRequestId: travel.id,
         deductions: loanDeductions.map((item) => item.deductionId),
+        verification: {
+          attendanceEvents,
+          attendanceSummaries,
+          vacationMovements,
+          leaveRequests,
+          travelLedgerEntries,
+          loans,
+          deductions,
+          payrollReceipts,
+          payrollComponents,
+          employerContributions,
+          statutoryCalculations,
+          payrollTraces,
+        },
       },
       null,
       2

@@ -30,6 +30,20 @@
     color: #fff;
 }
 
+/* Match the default primary action height used beside catalog toggles. */
+.view-toggle.catalog-view-toggle {
+    height: 44px;
+    min-height: 44px;
+    box-sizing: border-box;
+}
+
+.view-toggle.catalog-view-toggle .view-toggle-btn {
+    min-width: 42px;
+    height: 100%;
+    padding-block: 0;
+    box-sizing: border-box;
+}
+
 /* ── Generic catalog table ── */
 .catalog-table-wrapper {
     overflow-x: auto;
