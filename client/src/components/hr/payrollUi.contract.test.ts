@@ -13,8 +13,11 @@ const conceptDefaults = read('./payrollPaymentConceptDefaults.ts');
 const receipt = read('./PayrollReceiptBreakdown.tsx');
 const onlineNotice = read('./PayrollOnlineNotice.tsx');
 const reconciliation = read('./PayrollReconciliationPanel.tsx');
+const operation = read('./payroll-operation-workspace.tsx');
+const operationCss = read('../../pages/hr/payroll-operations.css');
 const css = read('../../pages/hr/payroll.css');
-const ui = [management, mine, transition, receipt, onlineNotice].join('\n');
+const legalCss = read('../../pages/hr/payroll-legal.css');
+const ui = [management, operation, mine, transition, receipt, onlineNotice].join('\n');
 
 describe('Phase 5 payroll UI safety and UX contract', () => {
   it('keeps calculation, review, approval, payment and voiding as explicit server transitions', () => {
@@ -26,8 +29,8 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
       'payrollClient.payRun',
       'payrollClient.voidRun',
     ].forEach((method) => expect(management).toContain(method));
-    expect(management).toContain('selected.allowedActions.map');
-    expect(management).toContain('blockingAnomalyCount');
+    expect(operation).toContain('run.allowedActions');
+    expect(operation).toContain('blockingAnomalyCount');
     expect(transition).toContain('confirmed: true');
     expect(transition).toContain('expectedRevision: run.revision');
     expect(transition).toContain('Doble control');
@@ -51,13 +54,21 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(conceptDefaults).toContain('incomeTaxTreatment: null');
     expect(conceptDefaults).toContain('socialSecurityApplicable: false');
     expect(conceptCatalog).toContain('El cálculo usa estas banderas congeladas');
-    expect(configuration).toContain('Tabla progresiva anual');
+    expect(configuration.toLocaleLowerCase()).toContain('tabla progresiva');
     expect(configuration).toContain("occasionalInssDeductionTreatment: 'DEDUCT_FROM_OCCASIONAL_NET'");
     expect(configuration).not.toContain('DEDUCT_FROM_REGULAR_NET');
-    expect(configuration).toContain('se deduce exclusivamente de la renta neta ocasional');
+    expect(configuration).toContain('El INSS laboral se descuenta de la renta gravable');
     expect(configuration).toContain("revision.status === 'UPLOADED'");
     expect(configuration).toContain("review(revision, 'VALIDATED')");
-    expect(configuration).toContain('otra identidad revise la carga');
+    expect(configuration).toContain('una persona distinta de quien cargó la revisión');
+    expect(legalSettings).toContain('Una versión legal es la receta que usa cada nómina');
+    expect(legalSettings).toContain('Activar versión legal');
+    expect(configuration).toContain('Régimen de la empresa');
+    expect(configuration).toContain('Tramos progresivos de IR laboral');
+    expect(configuration).toContain('Qué ingresos llevan INSS, INATEC e IR');
+    expect(configuration).toContain('Las tasas se ingresan como porcentajes normales');
+    expect(configuration).toContain('Ver evidencia y huella técnica');
+    expect(legalCss).toContain('@media (max-width: 760px)');
   });
 
   it('loads legal revisions once per selected rule instead of coupling requests to URL object churn', () => {
@@ -68,7 +79,7 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(legalSettings).not.toContain('[loadRevisions, selectedRule, setSearchParams]');
   });
   it('exposes an exact parallel reconciliation without claiming legal or production certification', () => {
-    expect(management).toContain('PayrollReconciliationPanel');
+    expect(operation).toContain('PayrollReconciliationPanel');
     expect(reconciliation).toContain('reconcileParallelControl');
     expect(reconciliation).toContain('No se aplica tolerancia ni fallback');
     expect(reconciliation).toContain('expectedEmployerContributions');
@@ -76,12 +87,12 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
   });
 
   it('presents regular payroll and aguinaldo as independent traceable runs', () => {
-    expect(management).toContain("renderRuns('Nómina ordinaria'");
-    expect(management).toContain("renderRuns('Aguinaldo'");
+    expect(management).toContain("setActiveKind('REGULAR')");
+    expect(management).toContain("setActiveKind('AGUINALDO')");
     expect(management).toContain('createAguinaldoRun');
-    expect(management).toContain('Snapshot de fuentes');
-    expect(management).toContain('Traza INSS, INATEC e IR');
-    expect(management).toContain('Recibos y exportación');
+    expect(operation).toContain('Pago por colaborador');
+    expect(operation).toContain('Traza de INSS e IR');
+    expect(operation).toContain('Reportes y colillas');
   });
 
   it('uses self-only endpoints for employee receipts and exposes published breakdowns', () => {
@@ -124,7 +135,7 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
 
   it('renders the complete immutable Art. 19 calculation trace', () => {
     for (const field of ['configurationRevisionId', 'fixedCompensationAmount', 'elapsedFiscalMonths', 'bracketSnapshot', 'historyFingerprint', 'createdAt']) {
-      expect(management).toContain(`item.${field}`);
+      expect(operation).toContain(`row.statutory.${field}`);
     }
   });
 
@@ -135,7 +146,7 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
   });
 
   it('offers manual components only after the server has frozen a CALCULATED snapshot', () => {
-    expect(management).toContain("selected.status === 'CALCULATED'");
+    expect(operation).toContain("run.status === 'CALCULATED'");
     expect(management).not.toContain("selected.status === 'DRAFT' && (\n                        <Button");
   });
 
@@ -146,5 +157,18 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(css).toContain(':focus-visible');
     expect(css).toContain('@media (max-width: 760px)');
     expect(css).toContain('.hr-my-payroll-layout');
+    expect(operationCss).toContain('@media (max-width: 760px)');
+    expect(operationCss).toContain(':focus-visible');
+  });
+
+  it('makes payroll operational with employee totals, reports, and individual or batch payslips', () => {
+    for (const label of ['Ingresos', 'INSS laboral', 'IR laboral', 'Deducciones', 'Neto', 'Incidencias']) {
+      expect(operation).toContain(label);
+    }
+    expect(operation).toContain('Registrar pago y publicar colillas');
+    expect(operation).toContain('onDownloadReceipt(row.receipt!.id)');
+    expect(operation).toContain('onDownloadReceiptBatch(receiptIds)');
+    expect(management).toContain('downloadReceiptBatch');
+    expect(management).toContain("payrollClient.exportRun(selected.kind, selected.id, format)");
   });
 });

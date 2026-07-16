@@ -900,8 +900,16 @@ export class HrOverviewService {
             ...(branchId ? { branchAssignments: { some: { branchId, effectiveTo: null } } } : {}),
         };
         const branchWhere: Prisma.BranchWhereInput = { companyId, ...(branchId ? { id: branchId } : {}) };
+        const scopedUserRelation = branchId
+            ? { user: { employee: { branchAssignments: { some: { branchId, effectiveTo: null } } } } }
+            : {};
+        const scopedEmployeeRelation = branchId
+            ? { employee: { branchAssignments: { some: { branchId, effectiveTo: null } } } }
+            : {};
         const [total, active, onLeave, inactive, suspended, terminated, internalAccounts,
-            departments, jobPositions, costCenters, totalBranches, geofenceConfigured, attendanceEnabled] = await Promise.all([
+            departments, jobPositions, costCenters, totalBranches, geofenceConfigured, attendanceEnabled,
+            leaveRequests, overtimeRequests, attendanceCorrections, attendanceIncidents, loanRequests,
+            activeRule, draftRuns, reviewRuns, approvedRuns] = await Promise.all([
             prisma.employee.count({ where: employeeWhere }),
             prisma.employee.count({ where: { ...employeeWhere, status: 'ACTIVE' } }),
             prisma.employee.count({ where: { ...employeeWhere, status: 'ON_LEAVE' } }),
@@ -926,11 +934,32 @@ export class HrOverviewService {
                 },
             }),
             prisma.branch.count({ where: { ...branchWhere, attendanceEnabled: true } }),
+            prisma.leaveRequest.count({
+                where: { companyId, status: 'PENDING', ...scopedUserRelation },
+            }),
+            prisma.overtimeRequest.count({
+                where: { companyId, status: 'PENDING', ...scopedUserRelation },
+            }),
+            prisma.attendanceCorrection.count({
+                where: { companyId, status: 'PENDING', ...scopedUserRelation },
+            }),
+            prisma.attendanceIncident.count({
+                where: { companyId, status: 'OPEN', ...scopedUserRelation },
+            }),
+            prisma.hrLoan.count({
+                where: { companyId, status: 'REQUESTED', ...scopedEmployeeRelation },
+            }),
+            prisma.payrollRuleVersion.count({ where: { companyId, status: 'ACTIVE' } }),
+            prisma.payrollRun.count({ where: { companyId, status: 'DRAFT' } }),
+            prisma.payrollRun.count({ where: { companyId, status: 'REVIEW' } }),
+            prisma.payrollRun.count({ where: { companyId, status: 'APPROVED' } }),
         ]);
         return {
             employees: { total, active, onLeave, inactive, suspended, terminated, internalAccounts },
             catalogs: { departments, jobPositions, costCenters },
             branches: { total: totalBranches, geofenceConfigured, attendanceEnabled },
+            attention: { leaveRequests, overtimeRequests, attendanceCorrections, attendanceIncidents, loanRequests },
+            payroll: { activeRule: activeRule > 0, draftRuns, reviewRuns, approvedRuns },
         };
     }
 

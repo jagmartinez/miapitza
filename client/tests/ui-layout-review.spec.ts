@@ -9,7 +9,10 @@ const user = {
   branchId: 10,
   role: { id: 1, name: 'SUPERADMIN' },
   roles: [{ id: 1, name: 'SUPERADMIN' }],
-  accountType: 'EXTERNAL',
+  accountType: 'INTERNAL',
+  employeeId: 321,
+  employee: { id: 321, employeeCode: 'EMP-321', status: 'ACTIVE' },
+  branch: { id: 10, name: 'Sucursal QA' },
   status: 'ACTIVE',
 };
 
@@ -92,7 +95,7 @@ async function mockApp(page: Page) {
           id: 81,
           name: 'Regla legal QA',
           version: 1,
-          status: 'DRAFT',
+          status: 'ACTIVE',
           effectiveFrom: '2026-01-01',
           effectiveTo: null,
           sourceReference: 'Normativa QA',
@@ -103,6 +106,19 @@ async function mockApp(page: Page) {
           createdAt: '2026-01-01T00:00:00.000Z',
         },
       ];
+    }
+    if (path.endsWith('/v1/hr/payroll/periods')) {
+      data = [{
+        id: 71,
+        code: '2026-QA-01',
+        dateFrom: '2026-07-01',
+        dateTo: '2026-07-15',
+        payDate: '2026-07-16',
+        timezone: 'America/Managua',
+        status: 'OPEN',
+        revision: 1,
+        reason: 'Periodo visual QA',
+      }];
     }
     if (path.endsWith('/v1/hr/payroll/rules/81/configuration-revisions')) data = [];
     if (path.endsWith('/v1/hr/dashboard')) {
@@ -117,6 +133,14 @@ async function mockApp(page: Page) {
         },
         catalogs: { departments: 0, jobPositions: 0, costCenters: 0 },
         branches: { total: 0, geofenceConfigured: 0, attendanceEnabled: 0 },
+        attention: {
+          leaveRequests: 2,
+          overtimeRequests: 1,
+          attendanceCorrections: 1,
+          attendanceIncidents: 0,
+          loanRequests: 1,
+        },
+        payroll: { activeRule: true, draftRuns: 1, reviewRuns: 0, approvedRuns: 0 },
       };
     }
     if (path.includes('/tables/plan/')) {
@@ -425,6 +449,31 @@ test('RH primary and secondary views share the 1700px layout and React Select co
   await expect(page.locator('.hr-react-select .react-select__control').first()).toBeVisible();
 });
 
+test('RH dashboard prioritizes pending work and the guided payroll route', async ({ page }) => {
+  await mockApp(page);
+  await page.goto('/rh');
+
+  await expect(page.getByRole('heading', { name: 'Centro de trabajo RH' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Por atender' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ruta de nómina' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Permisos y vacaciones Revisar solicitudes del equipo 2' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reglas legales Configuración activa' })).toBeVisible();
+});
+
+test('employee portal and Profile expose a cohesive RH self-service entry point', async ({ page }) => {
+  await mockApp(page);
+  await page.goto('/rh/mi-portal');
+
+  await expect(page.getByRole('heading', { name: 'Mi portal RH' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Secciones de mi portal RH' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Solicitudes y asistencia Vacaciones, permisos, correcciones de marcaje y horas extra en un solo lugar.' })).toBeVisible();
+
+  await page.goto('/profile');
+  await page.getByRole('button', { name: 'Mi RH' }).click();
+  await expect(page.getByRole('heading', { name: 'Mi información RH' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Abrir portal RH' })).toBeVisible();
+});
+
 test('legal payroll settings is an independent RH view with one active navigation item', async ({
   page,
 }) => {
@@ -439,10 +488,10 @@ test('legal payroll settings is an independent RH view with one active navigatio
 
   await expect(page.getByRole('heading', { name: 'IR laboral, INSS e INATEC' })).toBeVisible();
   await expect(page.locator('.sidebar-nav .nav-item.active')).toHaveCount(1);
-  await expect(page.locator('.sidebar-nav .nav-item.active')).toHaveText('IR, INSS e INATEC');
+  await expect(page.locator('.sidebar-nav .nav-item.active')).toHaveText('Reglas IR, INSS e INATEC');
   await expect(page.getByText('Regla legal QA', { exact: false }).first()).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'Configuración paramétrica', exact: true })
+    page.getByRole('heading', { name: 'Parámetros de la versión', exact: true })
   ).toBeVisible();
   await page.waitForLoadState('networkidle');
   expect(revisionRequests).toBeGreaterThan(0);
@@ -505,24 +554,17 @@ test('every HR creation flow uses the canonical modal shell', async ({ page }) =
   await expectCanonical('Ajuste de vacaciones');
 
   await page.goto('/rh/nomina');
-  await page.getByRole('button', { name: 'Periodo' }).click();
-  await expectCanonical('Nuevo periodo');
-  await page.getByRole('button', { name: 'Nueva regla base' }).click();
-  await expectCanonical('Versión de regla');
-  const ordinary = page
-    .locator('.hr-payroll-section')
-    .filter({ has: page.getByRole('heading', { name: 'Nómina ordinaria' }) });
-  await ordinary.getByRole('button', { name: 'Nueva' }).click();
-  await expectCanonical('Nueva corrida de nómina');
-  const aguinaldo = page
-    .locator('.hr-payroll-section')
-    .filter({ has: page.getByRole('heading', { name: 'Aguinaldo' }) });
-  await aguinaldo.getByRole('button', { name: 'Nueva' }).click();
-  await expectCanonical('Nueva corrida de aguinaldo');
+  await page.getByRole('button', { name: 'Gestionar periodos' }).click();
+  await expectCanonical('Nuevo periodo de nómina');
+  await page.getByRole('button', { name: 'Crear corrida de nómina' }).click();
+  await expectCanonical('Crear corrida de nómina');
+  await page.getByRole('tab', { name: 'Aguinaldo 0' }).click();
+  await page.getByRole('button', { name: 'Crear aguinaldo' }).click();
+  await expectCanonical('Crear aguinaldo');
 
   await page.goto('/rh/nomina/configuracion-legal');
-  await page.getByRole('button', { name: 'Nueva regla base' }).click();
-  await expectCanonical('Nueva regla legal de nómina');
+  await page.getByRole('button', { name: 'Nueva versión legal' }).click();
+  await expectCanonical('Nueva versión legal de nómina');
 
   await page.goto('/rh/prestaciones');
   await page.getByRole('button', { name: 'Viático' }).click();

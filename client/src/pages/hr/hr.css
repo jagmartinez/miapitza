@@ -140,6 +140,7 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
     gap: 1rem;
+    padding: var(--spacing-lg);
 }
 
 .hr-self-action {
@@ -173,6 +174,12 @@
     color: var(--primary-color);
 }
 
+.hr-self-action .hr-self-action-chevron {
+    align-self: center;
+    margin-left: auto;
+    color: var(--color-text-secondary);
+}
+
 .hr-self-action span,
 .hr-self-action small {
     display: block;
@@ -198,6 +205,132 @@
 .hr-panel-header h2 {
     margin: 0;
     font-size: var(--font-size-lg);
+}
+
+.hr-panel-header p {
+    margin: var(--spacing-xs) 0 0;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+}
+
+.hr-my-welcome {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+    padding: clamp(1.1rem, 3vw, 1.7rem);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 24%, var(--color-border));
+    border-radius: var(--radius-lg);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 12%, var(--color-surface)), var(--color-surface));
+}
+
+.hr-my-welcome span {
+    color: var(--color-primary);
+    font-size: var(--font-size-xs);
+    font-weight: 800;
+    letter-spacing: 0.08em;
+}
+
+.hr-my-welcome h2 {
+    margin: 0.25rem 0;
+    color: var(--color-text);
+    font-size: clamp(1.25rem, 3vw, 1.7rem);
+}
+
+.hr-my-welcome p {
+    margin: 0;
+    color: var(--color-text-secondary);
+}
+
+.hr-my-welcome > a {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 44px;
+    color: var(--color-primary);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.hr-my-summary-warning {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-lg);
+}
+
+.hr-my-summary-warning span {
+    flex: 1;
+}
+
+.hr-my-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.hr-my-summary-grid > button {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.35rem 0.65rem;
+    min-width: 0;
+    min-height: 132px;
+    padding: var(--spacing-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    color: var(--color-text);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.hr-my-summary-grid > button:hover {
+    border-color: var(--color-primary);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.hr-my-summary-grid > button:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+    outline-offset: 2px;
+}
+
+.hr-my-summary-grid svg {
+    grid-row: 1 / span 3;
+    padding: 0.5rem;
+    width: 38px;
+    height: 38px;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    color: var(--color-primary);
+}
+
+.hr-my-summary-grid span,
+.hr-my-summary-grid small,
+.hr-my-summary-grid strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.hr-my-summary-grid span {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.hr-my-summary-grid strong {
+    font-size: var(--font-size-lg);
+}
+
+.hr-my-summary-grid small {
+    color: var(--color-text-secondary);
+    line-height: 1.35;
 }
 
 .hr-foundation-grid {
@@ -367,6 +500,27 @@
 
     .hr-detail-wide {
         grid-column: auto;
+    }
+
+    .hr-my-welcome,
+    .hr-my-summary-warning {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .hr-my-summary-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 520px) {
+    .hr-my-summary-grid,
+    .hr-self-action-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .hr-self-action-grid {
+        padding: var(--spacing-md);
     }
 }
 .hr-employee-detail-page .page-tabs {

@@ -5,6 +5,7 @@ import { AlertTriangle, Download, FileText, Gift, RefreshCw, WalletCards } from 
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
+import MyHrNav from '../../components/hr/MyHrNav';
 import PayrollOnlineNotice from '../../components/hr/PayrollOnlineNotice';
 import PayrollReceiptBreakdown from '../../components/hr/PayrollReceiptBreakdown';
 import PayrollStatusPill from '../../components/hr/PayrollStatusPill';
@@ -101,6 +102,7 @@ export default function MyPayroll() {
         subtitle="Consulta el desglose publicado de nómina y aguinaldo"
         icon={WalletCards}
       />
+      <MyHrNav />
 
       <PayrollOnlineNotice online={online} />
 
@@ -163,6 +165,11 @@ export default function MyPayroll() {
               <div className="hr-payroll-empty">
                 <FileText size={34} aria-hidden="true" />
                 <p>No hay recibos publicados para los filtros seleccionados.</p>
+                {(kind || year !== String(currentYear)) && (
+                  <Button size="sm" variant="ghost" onClick={() => { setKind(''); setYear(String(currentYear)); }}>
+                    Ver recibos del año actual
+                  </Button>
+                )}
               </div>
             ) : (
               <div className="hr-my-receipt-list">

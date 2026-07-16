@@ -336,6 +336,19 @@
   min-height: 420px;
 }
 
+.hr-benefits-table-empty,
+.hr-benefits-ledger-empty {
+  padding: var(--spacing-lg) !important;
+  color: var(--color-text-secondary);
+  text-align: center !important;
+}
+
+.hr-benefits-ledger-empty {
+  margin: 0;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+}
+
 .hr-benefits-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

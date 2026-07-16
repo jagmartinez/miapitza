@@ -442,6 +442,7 @@ export interface HrPayrollTransitionPayload {
 export interface HrPayrollReceiptSummary {
   id: number;
   runId: number;
+  userId: number;
   runKind: HrPayrollRunKind;
   runCode: string;
   periodLabel: string;

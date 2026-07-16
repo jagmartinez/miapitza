@@ -14,6 +14,7 @@ import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
 import Sidebar from '../../components/Sidebar';
+import MyHrNav from '../../components/hr/MyHrNav';
 import AttendanceCorrectionForm from '../../components/hr/AttendanceCorrectionForm';
 import LeaveRequestForm from '../../components/hr/LeaveRequestForm';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
@@ -201,6 +202,15 @@ export default function MyWorkforce() {
     setCancelReason('');
   };
 
+  const workflowItems = [
+    ...workforce.corrections,
+    ...workforce.overtimeRequests,
+    ...workforce.leaveRequests,
+  ];
+  const pendingCount = workflowItems.filter((item) => item.status === 'DRAFT' || item.status === 'PENDING').length;
+  const approvedCount = workflowItems.filter((item) => item.status === 'APPROVED' || item.status === 'APPLIED').length;
+  const rejectedCount = workflowItems.filter((item) => item.status === 'REJECTED').length;
+
   return (
     <div className="page-wrapper hr-workforce-page">
       <PageHeader
@@ -222,6 +232,7 @@ export default function MyWorkforce() {
           </div>
         }
       />
+      <MyHrNav />
       <OnlineOnlyNotice online={online} />
       <section className="hr-workforce-filters">
         <label>
@@ -268,7 +279,17 @@ export default function MyWorkforce() {
       )}
       {!loading && !error && (
         <>
-          <section className="hr-workforce-section">
+          <nav className="hr-workforce-jump-nav" aria-label="Contenido de mi gestión laboral">
+            <a href="#mi-asistencia"><Clock3 size={17} /> Asistencia</a>
+            <a href="#mis-solicitudes"><FilePenLine size={17} /> Solicitudes</a>
+            <a href="#mis-vacaciones"><WalletCards size={17} /> Vacaciones</a>
+          </nav>
+          <section className="hr-workflow-overview" aria-label="Estado de mis solicitudes">
+            <div><span>En espera</span><strong>{pendingCount}</strong><small>Borradores o pendientes</small></div>
+            <div><span>Aprobadas</span><strong>{approvedCount}</strong><small>Aprobadas o aplicadas</small></div>
+            <div><span>Denegadas</span><strong>{rejectedCount}</strong><small>Solicitudes rechazadas</small></div>
+          </section>
+          <section id="mi-asistencia" className="hr-workforce-section hr-workforce-anchor">
             <div className="hr-section-heading">
               <div>
                 <h2>
@@ -412,7 +433,7 @@ export default function MyWorkforce() {
           </div>
 
           <div className="hr-workforce-columns">
-            <section className="hr-workforce-section">
+            <section id="mis-solicitudes" className="hr-workforce-section hr-workforce-anchor">
               <div className="hr-section-heading">
                 <div>
                   <h2>Mis horas extra</h2>
@@ -500,7 +521,7 @@ export default function MyWorkforce() {
           </div>
 
           <div className="hr-workforce-columns">
-            <section className="hr-workforce-section">
+            <section id="mis-vacaciones" className="hr-workforce-section hr-workforce-anchor">
               <div className="hr-section-heading">
                 <div>
                   <h2>

@@ -325,6 +325,13 @@
     font-size: var(--font-size-sm);
 }
 
+.hr-schedule-empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--spacing-sm);
+}
+
 @media (max-width: 768px) {
     .hr-week-navigation {
         grid-template-columns: 1fr 1fr;

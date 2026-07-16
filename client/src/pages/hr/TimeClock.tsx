@@ -70,7 +70,7 @@ export default function TimeClock() {
                     </section>
 
                     {biometricBlocked ? (
-                        <section className="hr-biometric-required" role="alert"><Fingerprint size={36} aria-hidden="true" /><h2>Enrolamiento requerido</h2><p>La política exige un perfil biométrico activo. El reconocimiento se ejecuta únicamente en el servidor y puede requerir revisión humana.</p><Button onClick={() => navigate('/rh/mi-portal/biometria')}>Gestionar biometría</Button></section>
+                        <section className="hr-biometric-required" role="alert"><Fingerprint size={36} aria-hidden="true" /><h2>Enrolamiento requerido</h2><p>La política exige un perfil biométrico activo. El reconocimiento se ejecuta únicamente en el servidor y puede requerir revisión humana.</p><Button onClick={() => navigate('/rh/biometria')}>Gestionar biometría</Button></section>
                     ) : <AttendancePunchWizard policy={policy} today={today} onCompleted={completed} />}
                 </>
             )}

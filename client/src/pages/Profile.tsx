@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useTheme } from '../hooks/useTheme';
@@ -14,6 +15,7 @@ import {
     Calendar, TrendingUp, Shield, Smartphone, Monitor, LogOut,
     ShoppingBag, CreditCard, Star, Languages,
     Moon, Sun, Bell, Settings,
+    Briefcase as BriefcaseBusiness, CalendarClock, ChevronRight, MapPin, FileText, WalletCards,
     type LucideIcon
 } from 'lucide-react';
 import type { User as AppUser } from '../types';
@@ -66,7 +68,7 @@ interface SessionRow {
     createdAt: string;
 }
 
-type ProfileTab = 'info' | 'stats' | 'permissions' | 'settings' | 'security' | 'sessions' | '2fa';
+type ProfileTab = 'info' | 'hr' | 'stats' | 'permissions' | 'settings' | 'security' | 'sessions' | '2fa';
 
 interface MyStats {
     salesToday: number;
@@ -146,9 +148,11 @@ export default function Profile() {
 
     const roleLower = (user?.role?.name || '').toLowerCase();
     const initials = getInitials(user?.name || 'U');
+    const hasEmployeeContext = user?.accountType === 'INTERNAL' && Boolean(user.employeeId);
 
     const tabs: { id: ProfileTab; icon: LucideIcon; label: string }[] = [
         { id: 'info', icon: User, label: 'Información' },
+        ...(hasEmployeeContext ? [{ id: 'hr' as const, icon: BriefcaseBusiness, label: 'Mi RH' }] : []),
         { id: 'stats', icon: TrendingUp, label: 'Mi Desempeño' },
         { id: 'permissions', icon: Shield, label: 'Permisos' },
         { id: 'settings', icon: Settings, label: 'Preferencias' },
@@ -249,6 +253,33 @@ export default function Profile() {
                                 </div>
                                 {message && <div className={`profile-msg ${message.type}`}>{message.text}</div>}
                             </form>
+                        </div>
+                    )}
+
+                    {/* EMPLOYEE SELF-SERVICE */}
+                    {activeTab === 'hr' && (
+                        <div className="profile-tab-fade">
+                            <div className="profile-hr-heading">
+                                <div>
+                                    <h3 className="profile-section-title"><BriefcaseBusiness size={20} /> Mi información RH</h3>
+                                    <p>Consulta tu jornada, solicitudes, pagos y beneficios personales.</p>
+                                </div>
+                                <Link to="/rh/mi-portal" className="profile-hr-main-link">
+                                    Abrir portal RH <ChevronRight size={17} aria-hidden="true" />
+                                </Link>
+                            </div>
+                            <dl className="profile-hr-identity">
+                                <div><dt>Empleado</dt><dd>{user?.employee?.employeeCode ?? user?.employee?.employeeNumber ?? `#${user?.employeeId}`}</dd></div>
+                                <div><dt>Estado</dt><dd>{user?.employee?.status ?? 'Vinculado'}</dd></div>
+                                <div><dt>Sucursal</dt><dd>{fullUserData?.branch?.name || user?.branch?.name || 'Sin asignar'}</dd></div>
+                            </dl>
+                            <div className="profile-hr-grid">
+                                <Link to="/rh/mi-portal/horario"><CalendarClock size={22} /><span><strong>Horario</strong><small>Calendario y turnos publicados</small></span><ChevronRight size={17} /></Link>
+                                <Link to="/rh/marcaje"><MapPin size={22} /><span><strong>Marcajes</strong><small>Entrada, descansos y salida</small></span><ChevronRight size={17} /></Link>
+                                <Link to="/rh/mi-portal/gestion"><BriefcaseBusiness size={22} /><span><strong>Solicitudes</strong><small>Vacaciones, permisos, correcciones y horas extra</small></span><ChevronRight size={17} /></Link>
+                                <Link to="/rh/mi-portal/nomina"><FileText size={22} /><span><strong>Recibos de pago</strong><small>Ingresos, deducciones y colillas</small></span><ChevronRight size={17} /></Link>
+                                <Link to="/rh/mi-portal/prestaciones"><WalletCards size={22} /><span><strong>Beneficios</strong><small>Viáticos, préstamos y deducciones</small></span><ChevronRight size={17} /></Link>
+                            </div>
                         </div>
                     )}
 

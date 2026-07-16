@@ -221,6 +221,19 @@ export interface HrDashboardData {
         geofenceConfigured: number;
         attendanceEnabled: number;
     };
+    attention: {
+        leaveRequests: number;
+        overtimeRequests: number;
+        attendanceCorrections: number;
+        attendanceIncidents: number;
+        loanRequests: number;
+    };
+    payroll: {
+        activeRule: boolean;
+        draftRuns: number;
+        reviewRuns: number;
+        approvedRuns: number;
+    };
 }
 
 export interface HrEnvelope<T> {

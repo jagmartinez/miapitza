@@ -127,12 +127,18 @@ const NAV_SECTIONS: NavSection[] = [
             { to: '/rh/personal', icon: Users, label: 'Personal', roles: HR_OWNER },
             { to: '/rh/horarios', icon: Calendar, label: 'Horarios', roles: HR_OWNER },
             { to: '/rh/asistencia', icon: ClipboardList, label: 'Asistencia', roles: HR_OWNER },
-            { to: '/rh/asistencia/configuracion', icon: SlidersHorizontal, label: 'Configurar asistencia', roles: HR_OWNER },
             { to: '/rh/jornadas', icon: ClipboardList, label: 'Jornadas y extras', roles: HR_OWNER },
-            { to: '/rh/ausencias', icon: Calendar, label: 'Permisos y vacaciones', roles: HR_OWNER },
+            { to: '/rh/ausencias', icon: Calendar, label: 'Solicitudes y vacaciones', roles: HR_OWNER },
             { to: '/rh/nomina', icon: Wallet, label: 'Nómina y aguinaldo', roles: HR_OWNER },
-            { to: '/rh/nomina/configuracion-legal', icon: Landmark, label: 'IR, INSS e INATEC', roles: HR_OWNER },
-            { to: '/rh/prestaciones', icon: BadgeDollarSign, label: 'Viáticos, préstamos y deducciones', roles: HR_OWNER },
+            { to: '/rh/nomina/configuracion-legal', icon: Landmark, label: 'Reglas IR, INSS e INATEC', roles: HR_OWNER },
+            { to: '/rh/prestaciones', icon: BadgeDollarSign, label: 'Préstamos y viáticos', roles: HR_OWNER },
+            { to: '/rh/asistencia/configuracion', icon: SlidersHorizontal, label: 'Configurar asistencia', roles: HR_OWNER },
+        ],
+    },
+    {
+        section: 'Mi portal RH',
+        items: [
+            { to: '/rh/mi-portal', icon: Briefcase, label: 'Resumen personal', internalOnly: true },
             { to: '/rh/mi-portal/horario', icon: Calendar, label: 'Mi horario', internalOnly: true },
             { to: '/rh/marcaje', icon: MapPin, label: 'Marcaje', internalOnly: true },
             { to: '/rh/biometria', icon: UserRoundCheck, label: 'Mi biometría', internalOnly: true },
@@ -202,7 +208,7 @@ export default function Layout() {
                         <NavLink
                             key={item.to}
                             to={item.to}
-                            end={item.to === '/rh' || item.to === '/rh/asistencia' || item.to === '/rh/nomina'}
+                            end={item.to === '/rh' || item.to === '/rh/asistencia' || item.to === '/rh/nomina' || item.to === '/rh/mi-portal'}
                             className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}
                             title={item.label}
                             onClick={onNavigate}

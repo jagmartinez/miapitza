@@ -13,6 +13,7 @@ import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
 import Sidebar from '../../components/Sidebar';
+import MyHrNav from '../../components/hr/MyHrNav';
 import BenefitsOnlineNotice from '../../components/hr/BenefitsOnlineNotice';
 import BenefitsStatusPill from '../../components/hr/BenefitsStatusPill';
 import BenefitsTransitionForm from '../../components/hr/BenefitsTransitionForm';
@@ -235,10 +236,12 @@ export default function MyBenefits() {
           ) : undefined
         }
       />
+      <MyHrNav />
       <BenefitsOnlineNotice online={online} />
       <div className="hr-benefits-toolbar self">
         <div className="hr-benefits-tabs" role="tablist" aria-label="Mis beneficios">
           <button
+            type="button"
             role="tab"
             aria-selected={tab === 'TRAVEL'}
             onClick={() => {
@@ -249,6 +252,7 @@ export default function MyBenefits() {
             <Route size={17} /> Viáticos <span>{travel.length}</span>
           </button>
           <button
+            type="button"
             role="tab"
             aria-selected={tab === 'LOAN'}
             onClick={() => {
@@ -259,6 +263,7 @@ export default function MyBenefits() {
             <Banknote size={17} /> Préstamos <span>{loans.length}</span>
           </button>
           <button
+            type="button"
             role="tab"
             aria-selected={tab === 'DEDUCTION'}
             onClick={() => {
@@ -289,7 +294,18 @@ export default function MyBenefits() {
             {items.length === 0 ? (
               <div className="hr-benefits-empty">
                 <WalletCards size={36} />
-                <p>No tienes registros en esta sección.</p>
+                <p>
+                  {tab === 'TRAVEL'
+                    ? 'Aún no tienes viáticos registrados.'
+                    : tab === 'LOAN'
+                      ? 'Aún no tienes préstamos registrados.'
+                      : 'No tienes deducciones asignadas.'}
+                </p>
+                {tab !== 'DEDUCTION' && (
+                  <Button size="sm" onClick={() => setPanel(tab)} disabled={!online}>
+                    <Plus size={15} /> {tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'}
+                  </Button>
+                )}
               </div>
             ) : (
               items.map((entry) => {
@@ -483,6 +499,9 @@ export default function MyBenefits() {
                           </tr>
                         </thead>
                         <tbody>
+                          {(selected.item.expenses ?? []).length === 0 && (
+                            <tr><td colSpan={5} className="hr-benefits-table-empty">Aún no has reportado gastos para este viático.</td></tr>
+                          )}
                           {(selected.item.expenses ?? []).map((expense) => (
                             <tr key={expense.id}>
                               <td>{dateLabel(expense.occurredOn)}</td>
@@ -519,6 +538,9 @@ export default function MyBenefits() {
                           </tr>
                         </thead>
                         <tbody>
+                          {(selected.item.schedule ?? []).length === 0 && (
+                            <tr><td colSpan={6} className="hr-benefits-table-empty">El calendario de cuotas todavía no está publicado.</td></tr>
+                          )}
                           {(selected.item.schedule ?? []).map((installment) => (
                             <tr key={installment.id}>
                               <td>{installment.number}</td>
@@ -538,6 +560,9 @@ export default function MyBenefits() {
                     </div>
                     <h3>Movimientos</h3>
                     <div className="hr-benefits-ledger">
+                      {(selected.item.ledger ?? []).length === 0 && (
+                        <p className="hr-benefits-ledger-empty">Aún no hay movimientos registrados.</p>
+                      )}
                       {(selected.item.ledger ?? []).map((entry) => (
                         <div key={entry.id}>
                           <span>

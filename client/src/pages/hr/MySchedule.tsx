@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarCheck, ChevronLeft, ChevronRight, CheckCheck, RefreshCw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
+import MyHrNav from '../../components/hr/MyHrNav';
 import ScheduleStatusPill from '../../components/hr/ScheduleStatusPill';
 import ScheduleWeekView from '../../components/hr/ScheduleWeekView';
 import { addDaysDateOnly, weekStartFor } from '../../components/hr/scheduleDates';
@@ -18,6 +20,7 @@ function weekLabel(weekStart: string): string {
 }
 
 export default function MySchedule() {
+    const navigate = useNavigate();
     const { success: showSuccess, error: showError } = useAppToast();
     const currentWeek = weekStartFor();
     const [weekStart, setWeekStart] = useState(currentWeek);
@@ -79,6 +82,7 @@ export default function MySchedule() {
     return (
         <div className="page-wrapper hr-my-schedule-page">
             <PageHeader title="Mi horario" subtitle="Consulta tus turnos publicados y confirma su recepción" icon={CalendarCheck} />
+            <MyHrNav />
 
             <section className="hr-week-navigation" aria-label="Navegación semanal">
                 <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={acknowledgingId !== null} aria-label="Semana anterior"><ChevronLeft size={18} aria-hidden="true" /> Anterior</Button>
@@ -113,7 +117,14 @@ export default function MySchedule() {
                 <div className="state-placeholder" role="alert"><CalendarCheck size={44} aria-hidden="true" /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadWeek()}><RefreshCw size={16} /> Reintentar</Button></div>
             )}
             {!loading && !error && !hasShifts && (
-                <div className="state-placeholder"><CalendarCheck size={48} aria-hidden="true" /><p>No tienes turnos publicados para esta semana.</p></div>
+                <div className="state-placeholder">
+                    <CalendarCheck size={48} aria-hidden="true" />
+                    <p>No tienes turnos publicados para esta semana.</p>
+                    <div className="hr-schedule-empty-actions">
+                        <Button onClick={() => navigate('/rh/marcaje')}>Ir a marcaje</Button>
+                        <Button variant="ghost" onClick={() => navigate('/rh/mi-portal/gestion')}>Ver solicitudes</Button>
+                    </div>
+                </div>
             )}
             {!loading && !error && hasShifts && <ScheduleWeekView weekStart={weekStart} schedules={published} holidays={holidays} readOnly />}
         </div>
