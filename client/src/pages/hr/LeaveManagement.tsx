@@ -67,6 +67,8 @@ function monthRange(): { dateFrom: string; dateTo: string } {
   return { dateFrom: value(from), dateTo: value(to) };
 }
 
+const fractionLabel = (value: string) => ({ FULL_DAY: 'Día completo', HALF_DAY: 'Medio día', HOURS: 'Por horas' }[value] ?? value);
+
 type Panel = 'request' | 'type' | 'adjustment' | null;
 type RequestAction = { item: HrLeaveRequest; kind: 'decide' | 'cancel' } | null;
 
@@ -274,7 +276,7 @@ export default function LeaveManagement() {
     <div className="page-wrapper hr-workforce-page">
       <PageHeader
         title="Permisos y vacaciones"
-        subtitle="Tipos, solicitudes, calendario y saldos con ledger"
+        subtitle="Aprueba solicitudes, consulta ausencias del equipo y controla los días disponibles"
         icon={CalendarDays}
         actions={
           <div className="hr-header-actions">
@@ -334,17 +336,25 @@ export default function LeaveManagement() {
       )}
       {!loading && !error && (
         <>
+          <nav className="hr-workforce-jump-nav" aria-label="Secciones de permisos y vacaciones">
+            <a href="#leave-requests">Solicitudes</a>
+            <a href="#leave-calendar">Calendario</a>
+            <a href="#leave-balances">Saldos</a>
+            <a href="#leave-types">Políticas</a>
+          </nav>
+          <section className="hr-workflow-overview" aria-label="Estado de solicitudes">
+            <div><span>Esperando decisión</span><small>Solicitudes enviadas</small><strong>{requests.filter((item) => item.status === 'PENDING').length}</strong></div>
+            <div><span>Aprobadas en el rango</span><small>Visibles en calendario</small><strong>{requests.filter((item) => item.status === 'APPROVED').length}</strong></div>
+            <div><span>Empleados con saldo</span><small>Vacaciones controladas</small><strong>{balances.length}</strong></div>
+          </section>
           <div className="hr-workforce-columns">
-            <section className="hr-workforce-section">
+            <section id="leave-requests" className="hr-workforce-section hr-workforce-anchor">
               <div className="hr-section-heading">
                 <div>
                   <h2>
                     <ListChecks size={20} /> Solicitudes
                   </h2>
-                  <p>
-                    Crear deja DRAFT; enviar deja PENDING; aprobar o rechazar requiere acción
-                    distinta.
-                  </p>
+                  <p>Las solicitudes enviadas quedan aquí hasta que Recursos Humanos las apruebe o deniegue.</p>
                 </div>
               </div>
               {requests.length === 0 ? (
@@ -359,7 +369,7 @@ export default function LeaveManagement() {
                           {item.leaveType?.name ?? `Tipo #${item.leaveTypeId}`}
                         </strong>
                         <span>
-                          {item.startDate} – {item.endDate} · {item.fraction}
+                          {item.startDate} – {item.endDate} · {fractionLabel(item.fraction)}
                         </span>
                         <small>{item.reason}</small>
                       </div>
@@ -399,13 +409,13 @@ export default function LeaveManagement() {
                 </div>
               )}
             </section>
-            <section className="hr-workforce-section">
+            <section id="leave-calendar" className="hr-workforce-section hr-workforce-anchor">
               <div className="hr-section-heading">
                 <div>
                   <h2>
                     <CalendarDays size={20} /> Calendario aprobado
                   </h2>
-                  <p>Fechas materializadas por el servidor para cobertura operativa.</p>
+                  <p>Ausencias aprobadas para organizar la cobertura del equipo.</p>
                 </div>
               </div>
               {calendar.length === 0 ? (
@@ -418,7 +428,7 @@ export default function LeaveManagement() {
                       <div>
                         <strong>{entry.user?.name ?? `Usuario #${entry.userId}`}</strong>
                         <span>
-                          {entry.leaveType?.name ?? `Tipo #${entry.leaveTypeId}`} · {entry.fraction}
+                          {entry.leaveType?.name ?? `Tipo #${entry.leaveTypeId}`} · {fractionLabel(entry.fraction)}
                         </span>
                       </div>
                       <WorkforceStatusPill status={entry.status} />
@@ -429,14 +439,11 @@ export default function LeaveManagement() {
             </section>
           </div>
 
-          <section className="hr-workforce-section">
+          <section id="leave-types" className="hr-workforce-section hr-workforce-anchor">
             <div className="hr-section-heading">
               <div>
                 <h2>Tipos de ausencia</h2>
-                <p>
-                  Configuración de catálogo; la política del servidor determina consumo y
-                  elegibilidad.
-                </p>
+                <p>Define cuáles permisos existen, si son pagados y si descuentan un saldo.</p>
               </div>
             </div>
             <div className="hr-type-grid">
@@ -467,13 +474,13 @@ export default function LeaveManagement() {
           </section>
 
           <div className="hr-workforce-columns">
-            <section className="hr-workforce-section">
+            <section id="leave-balances" className="hr-workforce-section hr-workforce-anchor">
               <div className="hr-section-heading">
                 <div>
                   <h2>
                     <WalletCards size={20} /> Saldos
                   </h2>
-                  <p>Valores autoritativos, sin recálculo en navegador.</p>
+                  <p>Días u horas disponibles, usados y pendientes por empleado.</p>
                 </div>
                 <Button size="sm" onClick={() => setPanel('adjustment')} disabled={!online}>
                   Ajustar
@@ -504,8 +511,8 @@ export default function LeaveManagement() {
             <section className="hr-workforce-section">
               <div className="hr-section-heading">
                 <div>
-                  <h2>Ledger de vacaciones</h2>
-                  <p>Movimientos inmutables y saldo resultante emitido por servidor.</p>
+                  <h2>Historial del saldo</h2>
+                  <p>Cada aumento, uso o ajuste y el saldo que dejó.</p>
                 </div>
               </div>
               {ledger.length === 0 ? (

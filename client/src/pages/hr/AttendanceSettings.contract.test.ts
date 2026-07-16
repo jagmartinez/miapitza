@@ -25,6 +25,6 @@ describe('Owner attendance settings safety contract', () => {
     expect(source).toContain('attendanceClient.revokeDevice');
     expect(source).toContain('attendanceClient.revokeUserBiometrics');
     expect(source).toContain('attendanceClient.runBiometricMaintenance');
-    expect(source).toContain('Guardar crea una versión nueva');
+    expect(source).toContain('la versión anterior se conserva en el historial');
   });
 });

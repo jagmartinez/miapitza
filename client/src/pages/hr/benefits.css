@@ -51,7 +51,8 @@
   font-size: var(--font-size-sm);
   font-weight: 600;
 }
-.hr-benefits-toolbar input {
+.hr-benefits-toolbar input,
+.hr-benefits-toolbar select {
   min-height: 42px;
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--color-border);
@@ -59,6 +60,26 @@
   background: var(--color-background);
   color: var(--color-text);
 }
+
+.hr-benefits-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-md);
+}
+.hr-benefits-overview > div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px var(--spacing-md);
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.hr-benefits-overview span,
+.hr-benefits-overview small { color: var(--color-text-secondary); }
+.hr-benefits-overview span { font-size: var(--font-size-sm); font-weight: 700; }
+.hr-benefits-overview small { font-size: var(--font-size-xs); }
+.hr-benefits-overview strong { grid-column: 2; grid-row: 1 / span 2; font-size: var(--font-size-2xl); }
 
 .hr-benefits-tabs {
   display: flex;
@@ -476,6 +497,9 @@
 }
 
 @media (max-width: 820px) {
+  .hr-benefits-overview {
+    grid-template-columns: 1fr;
+  }
   .hr-benefits-toolbar,
   .hr-benefits-toolbar.self {
     grid-template-columns: 1fr;

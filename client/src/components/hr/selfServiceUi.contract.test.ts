@@ -39,9 +39,11 @@ describe('employee self-service UX contract', () => {
     expect(landing).not.toContain('userId:');
   });
 
-  it('shows Profile HR access only for a linked INTERNAL account', () => {
+  it('always explains Profile HR access and opens self-service only for a linked account', () => {
     expect(profile).toContain("user?.accountType === 'INTERNAL' && Boolean(user.employeeId)");
-    expect(profile).toContain("hasEmployeeContext ? [{ id: 'hr'");
+    expect(profile).toContain("{ id: 'hr', icon: BriefcaseBusiness, label: 'Mi RH' }");
+    expect(profile).toContain('Esta cuenta todavía no está vinculada a un empleado');
+    expect(profile).toContain('Vincular en Personal');
     expect(profile).toContain('to="/rh/mi-portal/nomina"');
     expect(profile).toContain('to="/rh/mi-portal/gestion"');
   });

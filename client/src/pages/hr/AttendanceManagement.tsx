@@ -243,7 +243,7 @@ export default function AttendanceManagement() {
     <div className="page-wrapper hr-workforce-page">
       <PageHeader
         title="Control diario de asistencia"
-        subtitle="Minutos autoritativos, incidencias, correcciones, extras y periodos"
+        subtitle="Revisa quién trabajó, resuelve incidencias y aprueba horas extra antes de cerrar el periodo"
         icon={CalendarClock}
         actions={
           <Button
@@ -303,11 +303,21 @@ export default function AttendanceManagement() {
       )}
       {!loading && !error && (
         <>
-          <section className="hr-workforce-section" aria-labelledby="daily-summary-title">
+          <nav className="hr-workforce-jump-nav" aria-label="Secciones de asistencia">
+            <a href="#attendance-actions">Pendientes de decisión</a>
+            <a href="#attendance-summary">Jornada por empleado</a>
+            <a href="#attendance-periods">Cierre de periodo</a>
+          </nav>
+          <section className="hr-workflow-overview" aria-label="Estado del día">
+            <div><span>Empleados con jornada</span><small>En el filtro actual</small><strong>{summaries.length}</strong></div>
+            <div><span>Incidencias abiertas</span><small>Requieren revisión</small><strong>{incidents.filter((item) => item.status === 'OPEN').length}</strong></div>
+            <div><span>Decisiones pendientes</span><small>Correcciones y horas extra</small><strong>{corrections.filter((item) => item.status === 'PENDING').length + overtime.filter((item) => item.status === 'PENDING').length}</strong></div>
+          </section>
+          <section id="attendance-summary" className="hr-workforce-section hr-workforce-anchor" aria-labelledby="daily-summary-title">
             <div className="hr-section-heading">
               <div>
                 <h2 id="daily-summary-title">Resumen diario</h2>
-                <p>Todos los minutos provienen del cálculo versionado del servidor.</p>
+                <p>Abre cada empleado para comparar jornada ordinaria, tardanzas y horas extra.</p>
               </div>
             </div>
             {summaries.length === 0 ? (
@@ -383,12 +393,12 @@ export default function AttendanceManagement() {
             )}
           </section>
 
-          <div className="hr-workforce-columns">
+          <div id="attendance-actions" className="hr-workforce-columns hr-workforce-anchor">
             <section className="hr-workforce-section">
               <div className="hr-section-heading">
                 <div>
                   <h2>Incidencias</h2>
-                  <p>Señales generadas por las reglas del servidor.</p>
+                  <p>Marcajes o jornadas que necesitan revisión.</p>
                 </div>
               </div>
               {incidents.length === 0 ? (
@@ -424,7 +434,7 @@ export default function AttendanceManagement() {
               <div className="hr-section-heading">
                 <div>
                   <h2>Correcciones</h2>
-                  <p>Solicitudes compensatorias; nunca se borra el historial original.</p>
+                  <p>Solicitudes para corregir un marcaje sin borrar el registro original.</p>
                 </div>
               </div>
               {corrections.length === 0 ? (
@@ -467,7 +477,7 @@ export default function AttendanceManagement() {
               <div className="hr-section-heading">
                 <div>
                   <h2>Horas extra</h2>
-                  <p>Candidato no significa aprobado.</p>
+                  <p>Revisa los minutos solicitados y decide cuánto aprobar.</p>
                 </div>
               </div>
               {overtime.length === 0 ? (
@@ -503,11 +513,11 @@ export default function AttendanceManagement() {
                 </div>
               )}
             </section>
-            <section className="hr-workforce-section">
+            <section id="attendance-periods" className="hr-workforce-section hr-workforce-anchor">
               <div className="hr-section-heading">
                 <div>
                   <h2>Periodos</h2>
-                  <p>Cierre y reapertura impactan conciliación y pueden afectar nómina.</p>
+                  <p>Cierra sólo cuando ya resolviste las incidencias; este periodo alimenta la nómina.</p>
                 </div>
               </div>
               {periods.length === 0 ? (

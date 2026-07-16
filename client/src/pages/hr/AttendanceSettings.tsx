@@ -308,8 +308,8 @@ export default function AttendanceSettings() {
   return (
     <div className="page-wrapper hr-attendance-settings-page">
       <PageHeader
-        title="Configuración de asistencia"
-        subtitle="Políticas versionadas, dispositivos, consentimiento y ciclo de vida biométrico"
+        title="Reglas para el marcaje"
+        subtitle="Decide qué debe comprobar cada empleado al marcar y qué hacer cuando algo falla"
         icon={ShieldCheck}
         actions={
           <Button variant="ghost" onClick={() => void load()} disabled={loading}>
@@ -321,7 +321,7 @@ export default function AttendanceSettings() {
 
       <section className="hr-settings-scope" aria-label="Alcance de configuración">
         <label>
-          Alcance de política y dispositivos
+          Aplicar estas reglas a
           <HrReactSelect value={scope} onChange={(event) => setScope(event.target.value)}>
             <option value="">Toda la empresa</option>
             {lookups.branches.map((branch) => (
@@ -370,7 +370,7 @@ export default function AttendanceSettings() {
           <section className="hr-settings-summary" aria-label="Resumen de política">
             <article>
               <ShieldCheck size={20} />
-              <span>Versión vigente</span>
+              <span>Reglas vigentes</span>
               <strong>{policy.version === 0 ? 'Valores base' : `v${policy.version}`}</strong>
             </article>
             <article>
@@ -380,12 +380,12 @@ export default function AttendanceSettings() {
             </article>
             <article>
               <ScanFace size={20} />
-              <span>Consentimiento</span>
+              <span>Aviso biométrico</span>
               <strong>{policy.biometricConsentVersion}</strong>
             </article>
             <article>
               <Clock3 size={20} />
-              <span>Retención</span>
+              <span>Datos biométricos</span>
               <strong>{policy.biometricRetentionDays} días</strong>
             </article>
           </section>
@@ -394,8 +394,8 @@ export default function AttendanceSettings() {
             <section className="hr-settings-card" aria-labelledby="enforcement-title">
               <header>
                 <div>
-                  <h2 id="enforcement-title">Evidencia y enforcement</h2>
-                  <p>Define qué evidencia se exige y cómo se resuelve cada incumplimiento.</p>
+                  <h2 id="enforcement-title">Qué debe comprobar cada marcaje</h2>
+                  <p>Activa las comprobaciones y elige si una falla bloquea o se envía a revisión.</p>
                 </div>
                 <ScanFace size={22} />
               </header>
@@ -451,7 +451,7 @@ export default function AttendanceSettings() {
               </div>
               <div className="hr-settings-fields three-columns">
                 <label>
-                  Incumplimiento de horario
+                  Si marca fuera del horario
                   <HrReactSelect
                     value={policy.scheduleViolationMode}
                     onChange={(event) =>
@@ -469,7 +469,7 @@ export default function AttendanceSettings() {
                   </HrReactSelect>
                 </label>
                 <label>
-                  Incumplimiento geocerca
+                  Si marca fuera del lugar permitido
                   <HrReactSelect
                     value={policy.geofenceViolationMode}
                     onChange={(event) =>
@@ -487,7 +487,7 @@ export default function AttendanceSettings() {
                   </HrReactSelect>
                 </label>
                 <label>
-                  Incumplimiento biométrico
+                  Si no valida su identidad
                   <HrReactSelect
                     value={policy.biometricViolationMode}
                     onChange={(event) =>
@@ -524,16 +524,15 @@ export default function AttendanceSettings() {
                 </label>
               </div>
               <p className="hr-form-help">
-                Una falla del proveedor facial se conserva como intento para revisión; la pantalla
-                no la presenta como una validación aceptada.
+                Si el reconocimiento facial falla, se conserva el intento para que Recursos Humanos pueda revisarlo.
               </p>
             </section>
 
             <section className="hr-settings-card" aria-labelledby="tolerances-title">
               <header>
                 <div>
-                  <h2 id="tolerances-title">Tolerancias y calidad de ubicación</h2>
-                  <p>Los límites se evalúan en el servidor contra el turno y la geocerca.</p>
+                  <h2 id="tolerances-title">Horarios permitidos y precisión GPS</h2>
+                  <p>Define cuántos minutos antes o después puede marcar y la precisión mínima de ubicación.</p>
                 </div>
                 <Clock3 size={22} />
               </header>
@@ -671,9 +670,9 @@ export default function AttendanceSettings() {
             </section>
 
             <div className="hr-settings-savebar">
-              <p>Guardar crea una versión nueva; no modifica el registro histórico.</p>
+              <p>Al guardar, estas reglas quedan vigentes y la versión anterior se conserva en el historial.</p>
               <Button type="submit" disabled={!online || saving}>
-                {saving ? 'Versionando…' : 'Guardar nueva versión'}
+                {saving ? 'Guardando reglas…' : 'Guardar y aplicar reglas'}
               </Button>
             </div>
           </form>

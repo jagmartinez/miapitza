@@ -149,10 +149,11 @@ export default function Profile() {
     const roleLower = (user?.role?.name || '').toLowerCase();
     const initials = getInitials(user?.name || 'U');
     const hasEmployeeContext = user?.accountType === 'INTERNAL' && Boolean(user.employeeId);
+    const canManageEmployeeLinks = roleLower.includes('admin') || roleLower.includes('human') || roleLower.includes('rh');
 
     const tabs: { id: ProfileTab; icon: LucideIcon; label: string }[] = [
         { id: 'info', icon: User, label: 'Información' },
-        ...(hasEmployeeContext ? [{ id: 'hr' as const, icon: BriefcaseBusiness, label: 'Mi RH' }] : []),
+        { id: 'hr', icon: BriefcaseBusiness, label: 'Mi RH' },
         { id: 'stats', icon: TrendingUp, label: 'Mi Desempeño' },
         { id: 'permissions', icon: Shield, label: 'Permisos' },
         { id: 'settings', icon: Settings, label: 'Preferencias' },
@@ -259,6 +260,25 @@ export default function Profile() {
                     {/* EMPLOYEE SELF-SERVICE */}
                     {activeTab === 'hr' && (
                         <div className="profile-tab-fade">
+                            {!hasEmployeeContext ? (
+                                <section className="profile-hr-unlinked" aria-labelledby="profile-hr-unlinked-title">
+                                    <span className="profile-hr-unlinked-icon"><BriefcaseBusiness size={28} aria-hidden="true" /></span>
+                                    <div>
+                                        <p className="profile-hr-kicker">Mi expediente laboral</p>
+                                        <h3 id="profile-hr-unlinked-title">Esta cuenta todavía no está vinculada a un empleado</h3>
+                                        <p>Por eso no podemos mostrar horario, marcajes, horas extra, vacaciones, préstamos ni colillas personales. No significa que el módulo esté vacío: falta relacionar este usuario con su expediente en Personal.</p>
+                                        <dl className="profile-hr-link-status">
+                                            <div><dt>Tipo de cuenta</dt><dd>{user?.accountType === 'INTERNAL' ? 'Interna, pendiente de vínculo' : 'Externa'}</dd></div>
+                                            <div><dt>Expediente</dt><dd>No vinculado</dd></div>
+                                        </dl>
+                                        {canManageEmployeeLinks ? (
+                                            <Link to="/rh/personal" className="profile-hr-main-link">Vincular en Personal <ChevronRight size={17} aria-hidden="true" /></Link>
+                                        ) : (
+                                            <p className="profile-hr-help">Solicita a Recursos Humanos que vincule tu usuario con tu expediente laboral.</p>
+                                        )}
+                                    </div>
+                                </section>
+                            ) : <>
                             <div className="profile-hr-heading">
                                 <div>
                                     <h3 className="profile-section-title"><BriefcaseBusiness size={20} /> Mi información RH</h3>
@@ -280,6 +300,7 @@ export default function Profile() {
                                 <Link to="/rh/mi-portal/nomina"><FileText size={22} /><span><strong>Recibos de pago</strong><small>Ingresos, deducciones y colillas</small></span><ChevronRight size={17} /></Link>
                                 <Link to="/rh/mi-portal/prestaciones"><WalletCards size={22} /><span><strong>Beneficios</strong><small>Viáticos, préstamos y deducciones</small></span><ChevronRight size={17} /></Link>
                             </div>
+                            </>}
                         </div>
                     )}
 

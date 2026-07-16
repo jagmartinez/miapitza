@@ -191,6 +191,9 @@ export default function PayrollRuleConfigurationPanel({
 
   const uploadReady = validationIssues.length === 0;
   const editable = rule.status === 'DRAFT' && !rule.activeConfigurationRevisionId;
+  const displayRevision = revisions.find((revision) => revision.id === rule.activeConfigurationRevisionId)
+    ?? revisions.find((revision) => revision.status === 'VALIDATED')
+    ?? revisions[0];
 
   const submitUpload = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -421,7 +424,12 @@ export default function PayrollRuleConfigurationPanel({
           </section>
         </form>
       ) : (
-        <div className="hr-legal-readonly-note" role="note"><ShieldCheck size={22} aria-hidden="true" /><div><strong>Esta configuración está congelada.</strong><p>{rule.status === 'DRAFT' ? 'Ya fue validada. El siguiente paso es activar la regla desde el encabezado.' : 'Una regla activa o retirada no puede modificarse. Para cambiar tasas o tramos, crea una nueva regla base.'}</p></div></div>
+        <>
+          <div className="hr-legal-readonly-note" role="note"><ShieldCheck size={22} aria-hidden="true" /><div><strong>Configuración vigente en modo consulta.</strong><p>{rule.status === 'DRAFT' ? 'Ya fue validada. Puedes revisar todos los valores antes de activarla.' : 'Estos son los valores que usa la nómina. Para cambiarlos, crea y valida una nueva versión legal.'}</p></div></div>
+          {displayRevision?.configuration
+            ? <ReadOnlyConfiguration configuration={displayRevision.configuration} revision={displayRevision.revision} />
+            : <div className="hr-legal-history-empty"><AlertCircle size={22} /><div><strong>No encontramos parámetros para mostrar.</strong><p>Actualiza la pantalla o revisa el historial de esta regla.</p></div></div>}
+        </>
       )}
 
       <section className="hr-payroll-config-history hr-legal-history" aria-live="polite" aria-labelledby="legal-history-title">
@@ -441,4 +449,42 @@ export default function PayrollRuleConfigurationPanel({
       </section>
     </div>
   );
+}
+
+function ReadOnlyConfiguration({ configuration, revision }: { configuration: HrPayrollLegalConfiguration; revision: number }) {
+  const { statutory } = configuration;
+  const pct = (value: string) => `${(Number(value) * 100).toLocaleString('es-NI', { maximumFractionDigits: 4 })}%`;
+  const money = (value: string) => new Intl.NumberFormat('es-NI', { style: 'currency', currency: configuration.currency, maximumFractionDigits: 2 }).format(Number(value));
+  const yesNo = (value: boolean) => value ? 'Sí' : 'No';
+  const regimeLabels: Record<string, string> = { GENERAL: 'General', SIMPLIFIED_FIXED_QUOTA: 'Cuota fija / simplificado', SPECIAL: 'Especial', EXEMPT: 'Exento', OTHER: 'Otro' };
+  const taxLabels: Record<string, string> = { REGULAR_FIXED: 'IR fijo', REGULAR_VARIABLE: 'IR variable', OCCASIONAL: 'IR ocasional' };
+
+  return <div className="hr-legal-readonly-config" aria-label={`Parámetros de la revisión ${revision}`}>
+    <section aria-labelledby="readonly-regime-title">
+      <header><span className="hr-legal-section-icon"><Landmark size={20} /></span><div><span className="hr-legal-step-label">Aplicación</span><h3 id="readonly-regime-title">Régimen de la empresa y obligaciones</h3><p>Qué se retiene al empleado y qué paga la empresa.</p></div></header>
+      <dl className="hr-legal-readonly-kpis">
+        <div><dt>Régimen DGI</dt><dd>{regimeLabels[statutory.companyTaxRegime.code] ?? statutory.companyTaxRegime.code}</dd><small>{statutory.companyTaxRegime.sourceReference}</small></div>
+        <div><dt>IR laboral</dt><dd>{statutory.companyTaxRegime.incomeTaxApplicability === 'APPLIES' ? 'Sí se retiene' : 'No se retiene'}</dd><small>{statutory.companyTaxRegime.incomeTaxExceptionReason ?? statutory.incomeTax.sourceReference}</small></div>
+        <div><dt>INSS laboral</dt><dd>{statutory.inss.applicability === 'APPLIES' ? pct(statutory.inss.employeeRate) : 'No aplica'}</dd><small>Se deduce al empleado · régimen {statutory.inss.regime}</small></div>
+        <div><dt>INATEC</dt><dd>{statutory.inatec.applicability === 'APPLIES' ? pct(statutory.inatec.employerRate) : 'No aplica'}</dd><small>Aporte de la empresa; nunca se deduce al empleado</small></div>
+      </dl>
+      <div className="hr-legal-readonly-obligations">
+        <article><h4>INSS</h4><dl><div><dt>Empleado</dt><dd>{pct(statutory.inss.employeeRate)}</dd></div><div><dt>Patronal, menos de {statutory.inss.employerSizeThreshold} empleados</dt><dd>{pct(statutory.inss.employerRateBelowThreshold)}</dd></div><div><dt>Patronal, desde {statutory.inss.employerSizeThreshold} empleados</dt><dd>{pct(statutory.inss.employerRateAtOrAboveThreshold)}</dd></div><div><dt>Base mínima mensual</dt><dd>{money(statutory.inss.minimumMonthlyContributionBase)}</dd></div></dl><p>Fuente: {statutory.inss.sourceReference}</p></article>
+        <article><h4>INATEC</h4><dl><div><dt>Tasa patronal</dt><dd>{pct(statutory.inatec.employerRate)}</dd></div><div><dt>Se descuenta al empleado</dt><dd>No</dd></div></dl><p>Fuente: {statutory.inatec.sourceReference}</p></article>
+      </div>
+    </section>
+
+    <section aria-labelledby="readonly-ir-title">
+      <header><span className="hr-legal-section-icon"><Percent size={20} /></span><div><span className="hr-legal-step-label">Retención</span><h3 id="readonly-ir-title">Tramos anuales de IR laboral</h3><p>La nómina proyecta el ingreso neto gravable anual y aplica el tramo correspondiente.</p></div></header>
+      <div className="hr-legal-readonly-table-wrap"><table><thead><tr><th>Tramo</th><th>Desde</th><th>Hasta</th><th>Impuesto base</th><th>Tasa sobre exceso</th></tr></thead><tbody>{statutory.incomeTax.brackets.map((bracket, index) => <tr key={`${bracket.lowerBound}-${index}`}><td>{index + 1}</td><td>{money(bracket.lowerBound)}</td><td>{bracket.upperBound === null ? 'En adelante' : money(bracket.upperBound)}</td><td>{money(bracket.baseTax)}</td><td>{pct(bracket.rate)} sobre {money(bracket.excessOver)}</td></tr>)}</tbody></table></div>
+      <p className="hr-legal-readonly-source">Fuente: {statutory.incomeTax.sourceReference} · Periodos: semanal {statutory.incomeTax.annualPeriods.WEEKLY}, quincenal {statutory.incomeTax.annualPeriods.BIWEEKLY}, mensual {statutory.incomeTax.annualPeriods.MONTHLY}.</p>
+    </section>
+
+    <section aria-labelledby="readonly-concepts-title">
+      <header><span className="hr-legal-section-icon"><Users size={20} /></span><div><span className="hr-legal-step-label">Clasificación</span><h3 id="readonly-concepts-title">Qué aplica a cada ingreso y deducción</h3><p>Esta tabla responde si un concepto forma base de IR laboral, INSS o INATEC.</p></div></header>
+      <div className="hr-legal-readonly-table-wrap"><table><thead><tr><th>Concepto</th><th>Tipo</th><th>IR laboral</th><th>INSS</th><th>INATEC</th><th>Fuente</th></tr></thead><tbody>{statutory.paymentConceptCatalog.map((concept) => <tr key={concept.code}><td><strong>{concept.name}</strong><small>{concept.code}</small></td><td>{concept.type === 'INCOME' ? 'Ingreso' : 'Deducción'}</td><td>{concept.incomeTaxTreatment ? taxLabels[concept.incomeTaxTreatment] : concept.incomeTaxDeductible ? 'Deducible' : 'No sujeto'}</td><td>{yesNo(concept.socialSecurityApplicable)}</td><td>{yesNo(concept.trainingContributionApplicable)}</td><td>{concept.sourceReference}</td></tr>)}</tbody></table></div>
+    </section>
+
+    <details className="hr-legal-readonly-operational"><summary>Ver parámetros operativos de nómina y aguinaldo</summary><dl><div><dt>Moneda</dt><dd>{configuration.currency}</dd></div><div><dt>Multiplicador de horas extra</dt><dd>{configuration.regular.overtimeMultiplier}×</dd></div><div><dt>Histórico de aguinaldo</dt><dd>{configuration.aguinaldo.lookbackDays} días</dd></div><div><dt>Divisor de aguinaldo</dt><dd>{configuration.aguinaldo.incomeDivisor}</dd></div></dl></details>
+  </div>;
 }

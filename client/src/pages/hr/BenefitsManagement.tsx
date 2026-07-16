@@ -11,6 +11,7 @@ import {
   Route,
 } from 'lucide-react';
 import Button from '../../components/Button';
+import HrReactSelect from '../../components/hr/HrReactSelect';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
 import Sidebar from '../../components/Sidebar';
@@ -47,6 +48,25 @@ import type {
 import './benefits.css';
 
 type Tab = 'TRAVEL' | 'LOAN' | 'DEDUCTION';
+const STATUS_OPTIONS: Record<Tab, Array<{ value: string; label: string }>> = {
+  TRAVEL: [
+    { value: 'DRAFT', label: 'Borrador' }, { value: 'SUBMITTED', label: 'Enviado' },
+    { value: 'APPROVED', label: 'Aprobado' }, { value: 'ADVANCED', label: 'Anticipo entregado' },
+    { value: 'IN_SETTLEMENT', label: 'En liquidación' }, { value: 'SETTLED', label: 'Liquidado' },
+    { value: 'REJECTED', label: 'Denegado' }, { value: 'CANCELLED', label: 'Cancelado' },
+  ],
+  LOAN: [
+    { value: 'REQUESTED', label: 'Solicitado' }, { value: 'APPROVED', label: 'Aprobado' },
+    { value: 'DISBURSED', label: 'Desembolsado' }, { value: 'ACTIVE', label: 'Activo' },
+    { value: 'PAID', label: 'Pagado' }, { value: 'CLOSED', label: 'Cerrado' },
+    { value: 'REJECTED', label: 'Denegado' }, { value: 'CANCELLED', label: 'Cancelado' },
+  ],
+  DEDUCTION: [
+    { value: 'DRAFT', label: 'Borrador' }, { value: 'ACTIVE', label: 'Activa' },
+    { value: 'PAUSED', label: 'Pausada' }, { value: 'COMPLETED', label: 'Completada' },
+    { value: 'CANCELLED', label: 'Cancelada' },
+  ],
+};
 type Selected =
   | { resource: 'TRAVEL'; item: HrTravelRequest }
   | { resource: 'LOAN'; item: HrLoan }
@@ -336,13 +356,13 @@ export default function BenefitsManagement() {
     <div className="page-wrapper hr-benefits-page">
       <PageHeader
         title="Viáticos, préstamos y deducciones"
-        subtitle="Flujos financieros auditables y conectados con nómina"
+        subtitle="Aprueba solicitudes, registra pagos y controla lo que se descontará en nómina"
         icon={WalletCards}
         actions={
           <div className="hr-benefits-header-actions">
             <Button variant="secondary" onClick={() => setCreatePanel(tab)} disabled={!online}>
               <Plus size={17} aria-hidden="true" />{' '}
-              {tab === 'TRAVEL' ? 'Viático' : tab === 'LOAN' ? 'Préstamo' : 'Deducción'}
+              {tab === 'TRAVEL' ? 'Nuevo viático' : tab === 'LOAN' ? 'Nuevo préstamo' : 'Nueva deducción'}
             </Button>
           </div>
         }
@@ -355,6 +375,7 @@ export default function BenefitsManagement() {
             aria-selected={tab === 'TRAVEL'}
             onClick={() => {
               setTab('TRAVEL');
+              setStatus('');
               setSelected(null);
             }}
           >
@@ -365,6 +386,7 @@ export default function BenefitsManagement() {
             aria-selected={tab === 'LOAN'}
             onClick={() => {
               setTab('LOAN');
+              setStatus('');
               setSelected(null);
             }}
           >
@@ -375,6 +397,7 @@ export default function BenefitsManagement() {
             aria-selected={tab === 'DEDUCTION'}
             onClick={() => {
               setTab('DEDUCTION');
+              setStatus('');
               setSelected(null);
             }}
           >
@@ -382,12 +405,11 @@ export default function BenefitsManagement() {
           </button>
         </div>
         <label>
-          Estado{' '}
-          <input
-            value={status}
-            onChange={(event) => setStatus(event.target.value.toUpperCase())}
-            placeholder="Todos"
-          />
+          Estado
+          <HrReactSelect value={status} onChange={(event) => setStatus(event.target.value)}>
+            <option value="">Todos</option>
+            {STATUS_OPTIONS[tab].map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </HrReactSelect>
         </label>
         <Button variant="ghost" onClick={() => void load()} disabled={loading || !online}>
           <RefreshCw size={16} /> Actualizar
@@ -404,6 +426,12 @@ export default function BenefitsManagement() {
         </div>
       )}
       {!loading && !error && (
+        <>
+        <section className="hr-benefits-overview" aria-label="Resumen de la bandeja">
+          <div><span>Registros visibles</span><strong>{cards.length}</strong><small>Según el estado seleccionado</small></div>
+          <div><span>Con acciones disponibles</span><strong>{cards.filter((item) => item.allowedActions.length > 0).length}</strong><small>Abre el detalle para continuar</small></div>
+          <div><span>Proceso finalizado</span><strong>{cards.filter((item) => ['SETTLED', 'PAID', 'CLOSED', 'COMPLETED'].includes(item.status)).length}</strong><small>Listos para consulta</small></div>
+        </section>
         <div className="hr-benefits-layout">
           <section className="hr-benefits-list" aria-label={`Lista de ${tab.toLowerCase()}`}>
             {cards.length === 0 ? (
@@ -732,6 +760,7 @@ export default function BenefitsManagement() {
             )}
           </section>
         </div>
+        </>
       )}
       <Sidebar
         isOpen={Boolean(createPanel)}

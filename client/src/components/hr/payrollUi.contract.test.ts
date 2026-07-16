@@ -68,6 +68,10 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(configuration).toContain('Qué ingresos llevan INSS, INATEC e IR');
     expect(configuration).toContain('Las tasas se ingresan como porcentajes normales');
     expect(configuration).toContain('Ver evidencia y huella técnica');
+    expect(configuration).toContain('Configuración vigente en modo consulta');
+    expect(configuration).toContain('Tramos anuales de IR laboral');
+    expect(configuration).toContain('Qué aplica a cada ingreso y deducción');
+    expect(configuration).toContain('statutory.paymentConceptCatalog.map');
     expect(legalCss).toContain('@media (max-width: 760px)');
   });
 
@@ -159,6 +163,8 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(css).toContain('.hr-my-payroll-layout');
     expect(operationCss).toContain('@media (max-width: 760px)');
     expect(operationCss).toContain(':focus-visible');
+    expect(operationCss).toContain('background: var(--color-surface)');
+    expect(operationCss).not.toContain('var(--surface, #fff)');
   });
 
   it('makes payroll operational with employee totals, reports, and individual or batch payslips', () => {

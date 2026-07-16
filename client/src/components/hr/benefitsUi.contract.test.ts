@@ -24,6 +24,8 @@ describe('Phase 6 benefits UI contract', () => {
     ].forEach((label) => expect(owner).toContain(label));
     expect(owner).toContain('allowedActions.map');
     expect(owner).toContain('createBenefitsIdempotencyKey()');
+    expect(owner).toContain('STATUS_OPTIONS[tab].map');
+    expect(owner).toContain('Con acciones disponibles');
   });
 
   it('limits self-service to own endpoints and allowed travel actions', () => {

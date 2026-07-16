@@ -1,11 +1,11 @@
 .payroll-operations-page { --payroll-accent: #2563eb; --payroll-soft: #eff6ff; --payroll-border: #dbe3ee; display: grid; gap: 1.25rem; }
 .payroll-operations-page .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
-.payroll-operation-switcher { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .4rem; border: 1px solid var(--payroll-border); background: var(--surface, #fff); border-radius: 14px; }
+.payroll-operation-switcher { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .4rem; border: 1px solid var(--payroll-border); background: var(--color-surface); border-radius: 14px; }
 .payroll-operation-tabs { display: flex; gap: .35rem; }
 .payroll-operation-tabs button { border: 0; background: transparent; border-radius: 10px; padding: .75rem 1rem; color: var(--text-secondary, #526174); font: inherit; font-weight: 700; cursor: pointer; }
 .payroll-operation-tabs button.active { color: var(--payroll-accent); background: var(--payroll-soft); }
 .payroll-operation-list-layout { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
-.payroll-operation-runs { border: 1px solid var(--payroll-border); border-radius: 16px; background: var(--surface, #fff); overflow: hidden; }
+.payroll-operation-runs { border: 1px solid var(--payroll-border); border-radius: 16px; background: var(--color-surface); overflow: hidden; }
 .payroll-operation-runs > header { padding: 1rem; border-bottom: 1px solid var(--payroll-border); }
 .payroll-operation-runs h2, .payroll-operation-runs p, .payroll-operation-workspace h2, .payroll-operation-workspace h3, .payroll-operation-workspace h4, .payroll-operation-workspace p { margin: 0; }
 .payroll-operation-runs header p { color: var(--text-secondary, #64748b); font-size: .86rem; margin-top: .25rem; }
@@ -17,7 +17,7 @@
 .payroll-operation-run-card span, .payroll-operation-run-card small { color: var(--text-secondary, #64748b); }
 .payroll-operation-run-card .danger { color: #b42318; font-weight: 700; }
 .payroll-operation-empty-list { padding: 1.4rem; display: grid; gap: .65rem; color: var(--text-secondary, #64748b); }
-.payroll-operation-workspace { min-width: 0; border: 1px solid var(--payroll-border); border-radius: 16px; background: var(--surface, #fff); overflow: hidden; }
+.payroll-operation-workspace { min-width: 0; border: 1px solid var(--payroll-border); border-radius: 16px; background: var(--color-surface); overflow: hidden; }
 .payroll-operation-header { padding: 1.25rem; display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--payroll-border); }
 .payroll-operation-header p { color: var(--text-secondary, #64748b); margin-top: .4rem; }
 .payroll-operation-eyebrow { color: var(--payroll-accent); font-weight: 800; font-size: .76rem; text-transform: uppercase; letter-spacing: .06em; }
@@ -26,7 +26,7 @@
 .payroll-operation-stepper li { min-width: 0; display: flex; gap: .55rem; align-items: center; color: #94a3b8; position: relative; }
 .payroll-operation-stepper li:not(:last-child)::after { content: ''; height: 2px; background: #e2e8f0; position: absolute; left: 2.1rem; right: .45rem; top: 1rem; z-index: 0; }
 .payroll-operation-stepper li > span { z-index: 1; width: 2rem; height: 2rem; flex: 0 0 2rem; border-radius: 50%; display: grid; place-items: center; background: #e2e8f0; font-weight: 800; }
-.payroll-operation-stepper li > div { display: grid; z-index: 1; background: var(--surface, #fff); padding-right: .4rem; }
+.payroll-operation-stepper li > div { display: grid; z-index: 1; background: var(--color-surface); padding-right: .4rem; }
 .payroll-operation-stepper small { font-size: .68rem; }
 .payroll-operation-stepper li.complete, .payroll-operation-stepper li.current { color: var(--payroll-accent); }
 .payroll-operation-stepper li.complete > span, .payroll-operation-stepper li.current > span { color: #fff; background: var(--payroll-accent); }
@@ -57,7 +57,7 @@
 .payroll-operation-ok { display: inline-flex; align-items: center; gap: .2rem; color: #15803d; white-space: nowrap; }
 .payroll-operation-detail-row td { padding: 0; text-align: left; background: #f8fafc; }
 .payroll-operation-employee-detail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; padding: 1rem; }
-.payroll-operation-employee-detail section { background: var(--surface, #fff); border: 1px solid var(--payroll-border); border-radius: 10px; padding: .85rem; display: grid; gap: .6rem; align-content: start; }
+.payroll-operation-employee-detail section { background: var(--color-surface); border: 1px solid var(--payroll-border); border-radius: 10px; padding: .85rem; display: grid; gap: .6rem; align-content: start; }
 .payroll-operation-line { display: flex; justify-content: space-between; gap: 1rem; }
 .payroll-operation-line > div { display: grid; }
 .payroll-operation-line small { color: var(--text-secondary, #64748b); }
@@ -90,3 +90,57 @@
   .payroll-operation-actions, .payroll-operation-reporting > div:last-child { justify-content: stretch; }
   .payroll-operation-actions button, .payroll-operation-reporting button { flex: 1 1 100%; }
 }
+
+/* The payroll workspace must inherit the application's theme. The original
+   version used an undefined --surface token whose white fallback made the
+   entire operation unreadable in dark mode. */
+.payroll-operations-page {
+  --payroll-border: var(--color-border);
+  --payroll-soft: color-mix(in srgb, var(--payroll-accent) 12%, var(--color-surface));
+  color: var(--color-text);
+}
+
+.payroll-operation-switcher,
+.payroll-operation-runs,
+.payroll-operation-workspace,
+.payroll-operation-stepper li > div,
+.payroll-operation-employee-detail section {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.payroll-operation-tabs button,
+.payroll-operation-runs header p,
+.payroll-operation-run-card span,
+.payroll-operation-run-card small,
+.payroll-operation-header p,
+.payroll-operation-next-action span,
+.payroll-operation-totals dt,
+.payroll-operation-section-heading p,
+.payroll-operation-reporting p,
+.payroll-operation-table tbody th small,
+.payroll-operation-line small,
+.payroll-operation-audit-grid > div,
+.payroll-operation-empty,
+.payroll-operation-placeholder,
+.payroll-operation-no-results {
+  color: var(--color-text-secondary);
+}
+
+.payroll-operation-run-card:hover,
+.payroll-operation-run-card:focus-visible,
+.payroll-operation-table thead th,
+.payroll-operation-detail-row td {
+  background: var(--color-surface-hover);
+}
+
+.payroll-operation-table thead th { color: var(--color-text-secondary); }
+.payroll-operation-audit-grid strong { color: var(--color-text); }
+.payroll-operation-stepper li:not(:last-child)::after,
+.payroll-operation-stepper li > span { background: var(--color-border); }
+.payroll-operation-totals .net { background: color-mix(in srgb, var(--color-success) 10%, var(--color-surface)); }
+.payroll-operation-table tr.has-blocker,
+.payroll-operation-anomaly { background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface)); }
+.payroll-operation-anomaly.blocking,
+.payroll-operation-alert.danger { background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface)); color: var(--color-danger); }
+.payroll-operation-alert { background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface)); }

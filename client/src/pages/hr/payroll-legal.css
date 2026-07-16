@@ -400,6 +400,33 @@
 .hr-legal-readonly-note p,
 .hr-legal-history-empty p { margin: 4px 0 0; color: var(--color-text-secondary); }
 
+.hr-legal-readonly-config { display: grid; border-top: 1px solid var(--color-border); }
+.hr-legal-readonly-config > section { display: grid; gap: var(--spacing-lg); padding: var(--spacing-xl); border-bottom: 1px solid var(--color-border); }
+.hr-legal-readonly-config > section > header { display: flex; align-items: flex-start; gap: var(--spacing-md); }
+.hr-legal-readonly-config h3, .hr-legal-readonly-config h4, .hr-legal-readonly-config p { margin: 0; }
+.hr-legal-readonly-config header p, .hr-legal-readonly-source { margin-top: 4px; color: var(--color-text-secondary); }
+.hr-legal-readonly-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--spacing-md); margin: 0; }
+.hr-legal-readonly-kpis > div { display: grid; gap: 3px; padding: var(--spacing-md); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); }
+.hr-legal-readonly-kpis dt { color: var(--color-text-secondary); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.hr-legal-readonly-kpis dd { margin: 0; font-size: var(--font-size-lg); font-weight: 800; }
+.hr-legal-readonly-kpis small { color: var(--color-text-secondary); line-height: 1.4; }
+.hr-legal-readonly-obligations { display: grid; grid-template-columns: 1.5fr 1fr; gap: var(--spacing-md); }
+.hr-legal-readonly-obligations article { padding: var(--spacing-lg); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); }
+.hr-legal-readonly-obligations dl { display: grid; gap: 8px; margin: 12px 0; }
+.hr-legal-readonly-obligations dl > div { display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px dashed var(--color-border); padding-bottom: 7px; }
+.hr-legal-readonly-obligations dt, .hr-legal-readonly-obligations p { color: var(--color-text-secondary); }
+.hr-legal-readonly-obligations dd { margin: 0; font-weight: 800; text-align: right; }
+.hr-legal-readonly-table-wrap { overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
+.hr-legal-readonly-table-wrap table { width: 100%; min-width: 760px; border-collapse: collapse; }
+.hr-legal-readonly-table-wrap th, .hr-legal-readonly-table-wrap td { padding: 11px 12px; border-bottom: 1px solid var(--color-border); text-align: left; vertical-align: top; }
+.hr-legal-readonly-table-wrap th { color: var(--color-text-secondary); background: var(--color-background); font-size: 11px; text-transform: uppercase; }
+.hr-legal-readonly-table-wrap td small { display: block; margin-top: 2px; color: var(--color-text-secondary); }
+.hr-legal-readonly-operational { margin: var(--spacing-xl); padding: var(--spacing-md); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); }
+.hr-legal-readonly-operational summary { cursor: pointer; font-weight: 800; }
+.hr-legal-readonly-operational dl { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--spacing-md); margin: var(--spacing-md) 0 0; }
+.hr-legal-readonly-operational dt { color: var(--color-text-secondary); font-size: 11px; text-transform: uppercase; }
+.hr-legal-readonly-operational dd { margin: 2px 0 0; font-weight: 800; }
+
 .hr-legal-history {
   gap: 0;
   padding: var(--spacing-xl);
@@ -457,6 +484,7 @@
   .hr-legal-obligation-grid { grid-template-columns: 1fr; }
   .hr-legal-lifecycle ol { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacing-lg); }
   .hr-legal-lifecycle li::after { display: none; }
+  .hr-legal-readonly-kpis, .hr-legal-readonly-operational dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 760px) {
@@ -481,4 +509,7 @@
   .hr-legal-submit-bar .btn,
   .hr-legal-activation > .btn { width: 100%; }
   .hr-legal-readonly-note { margin: var(--spacing-md); }
+  .hr-legal-readonly-config > section { padding: var(--spacing-md); }
+  .hr-legal-readonly-kpis, .hr-legal-readonly-obligations, .hr-legal-readonly-operational dl { grid-template-columns: 1fr; }
+  .hr-legal-readonly-operational { margin: var(--spacing-md); }
 }

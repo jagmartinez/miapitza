@@ -16,17 +16,33 @@ const user = {
   status: 'ACTIVE',
 };
 
-async function mockApp(page: Page) {
+const payrollRun = {
+  id: 91,
+  code: 'NOMINA-QA-2026-07',
+  kind: 'REGULAR',
+  periodId: 71,
+  period: { id: 71, code: '2026-QA-01', dateFrom: '2026-07-01', dateTo: '2026-07-15', payDate: '2026-07-16' },
+  status: 'PAID',
+  ruleVersionId: 81,
+  configurationRevisionId: 801,
+  revision: 1,
+  anomalyCount: 0,
+  blockingAnomalyCount: 0,
+  allowedActions: [],
+  totals: { currency: 'NIO', grossIncome: '15000', totalDeductions: '2200', employerContributions: '3500', netPay: '12800', employeeCount: 1 },
+};
+
+async function mockApp(page: Page, activeUser = user) {
   await page.addInitScript((storedUser) => {
     localStorage.setItem('user', JSON.stringify(storedUser));
     localStorage.setItem('sidebar-collapsed', 'true');
     localStorage.setItem('theme', 'dark');
-  }, user);
+  }, activeUser);
 
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     let data: unknown = [];
-    if (path.endsWith('/auth/me')) data = user;
+    if (path.endsWith('/auth/me')) data = activeUser;
     if (path.endsWith('/settings')) data = { currency_symbol: 'C$' };
     if (path.endsWith('/menu-items')) {
       data = [
@@ -120,6 +136,18 @@ async function mockApp(page: Page) {
         reason: 'Periodo visual QA',
       }];
     }
+    if (path.endsWith('/v1/hr/payroll/runs')) data = [payrollRun];
+    if (path.endsWith('/v1/hr/payroll/aguinaldo/runs')) data = [];
+    if (path.endsWith('/v1/hr/payroll/runs/91')) data = payrollRun;
+    if (path.endsWith('/v1/hr/payroll/runs/91/anomalies')) data = [];
+    if (path.endsWith('/v1/hr/payroll/runs/91/snapshot')) data = [{ id: 1, userId: 321, user: { id: 902, name: 'Empleado QA', username: 'empleado-qa' }, branch: { id: 10, name: 'Sucursal QA' }, approvedOvertimeMinutes: 60 }];
+    if (path.endsWith('/v1/hr/payroll/runs/91/components')) data = [
+      { id: 1, userId: 321, code: 'SALARIO', name: 'Salario ordinario', type: 'INCOME', amount: '15000', source: 'CONTRACT' },
+      { id: 2, userId: 321, code: 'INSS', name: 'INSS laboral', type: 'DEDUCTION', amount: '1050', source: 'STATUTORY' },
+    ];
+    if (path.endsWith('/v1/hr/payroll/runs/91/receipts')) data = [];
+    if (path.endsWith('/v1/hr/payroll/runs/91/employer-contributions')) data = [];
+    if (path.endsWith('/v1/hr/payroll/runs/91/statutory-calculations')) data = [];
     if (path.endsWith('/v1/hr/payroll/rules/81/configuration-revisions')) data = [];
     if (path.endsWith('/v1/hr/dashboard')) {
       data = {
@@ -472,6 +500,25 @@ test('employee portal and Profile expose a cohesive RH self-service entry point'
   await page.getByRole('button', { name: 'Mi RH' }).click();
   await expect(page.getByRole('heading', { name: 'Mi información RH' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Abrir portal RH' })).toBeVisible();
+});
+
+test('Profile explains missing employee linkage instead of hiding Mi RH', async ({ page }) => {
+  await mockApp(page, { ...user, accountType: 'EXTERNAL', employeeId: undefined, employee: undefined });
+  await page.goto('/profile');
+  await page.getByRole('button', { name: 'Mi RH' }).click();
+  await expect(page.getByRole('heading', { name: 'Esta cuenta todavía no está vinculada a un empleado' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Vincular en Personal' })).toBeVisible();
+});
+
+test('payroll operation stays readable in dark mode', async ({ page }) => {
+  await mockApp(page);
+  await page.goto('/rh/nomina');
+  const workspace = page.locator('.payroll-operation-workspace');
+  await expect(workspace).toBeVisible();
+  await expect(workspace).toHaveCSS('background-color', 'rgb(30, 41, 59)');
+  await expect(page.getByRole('heading', { name: 'NOMINA-QA-2026-07' })).toHaveCSS('color', 'rgb(248, 250, 252)');
+  await expect(page.getByRole('heading', { name: 'Pago por colaborador' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Reportes y colillas' })).toBeVisible();
 });
 
 test('legal payroll settings is an independent RH view with one active navigation item', async ({

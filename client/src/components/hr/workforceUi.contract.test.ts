@@ -35,6 +35,15 @@ describe('Phase 4 workforce UI safety contract', () => {
     expect(leaveForm).toContain("fraction === 'HOURS'");
   });
 
+  it('presents attendance and leave as task-oriented workspaces', () => {
+    expect(attendance).toContain('Pendientes de decisión');
+    expect(attendance).toContain('Decisiones pendientes');
+    expect(attendance).toContain('Cierra sólo cuando ya resolviste las incidencias');
+    expect(leave).toContain('Esperando decisión');
+    expect(leave).toContain('Historial del saldo');
+    expect(leave).toContain("fractionLabel(item.fraction)");
+  });
+
   it('does not persist or queue sensitive workforce mutations offline', () => {
     expect(onlineNotice).toContain('No existe cola offline');
     expect(ui).not.toContain('localStorage');
