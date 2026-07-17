@@ -10,7 +10,7 @@ describe('Biometrics guided UX contract', () => {
         expect(source).toContain('attendanceClient.revokeMyBiometrics');
         expect(source).toContain('consentAccepted: true');
         expect(source).toContain('consentVersion: policy.biometricConsentVersion');
-        expect(source).toContain('faceImage,');
+        expect(source).toContain('faceEvidence,');
         expect(source).not.toContain('localStorage');
         expect(source).not.toContain('sessionStorage');
         expect(source).not.toContain('toDataURL');
@@ -26,12 +26,13 @@ describe('Biometrics guided UX contract', () => {
         expect(source).toContain('profile.canEnroll === false');
         expect(source).toContain("error?.includes('expiró')");
         expect(source).toContain('Revocar biometría');
+        expect(source).toContain('Every failed submission therefore needs a fresh challenge');
     });
 
     it('uses the Mi RH shell and blocks sensitive mutations while offline', () => {
         expect(source).toContain('my-hr-page');
         expect(source).toContain('!online && <OnlineOnlyNotice online={false} />');
-        expect(source).toContain('disabled={!online || saving || !faceImage || !consent}');
+        expect(source).toContain('disabled={!online || saving || !faceEvidence || !consent}');
         expect(source).toContain('Conéctate para revocar el consentimiento biométrico');
     });
 });

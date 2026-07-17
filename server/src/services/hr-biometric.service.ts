@@ -7,6 +7,9 @@ import { AuditLogService } from './audit-log.service';
 import {
     createFaceVerificationProvider,
     createFaceVerificationProviderForName,
+    FaceProviderUnavailableError,
+    type FaceCaptureEvidence,
+    type FaceLivenessAction,
     type FaceVerificationProvider,
 } from './hr-face-provider';
 
@@ -76,6 +79,17 @@ function mode(value: unknown, field: string, fallback: typeof MODES[number]) {
 
 export function hashChallengeToken(nonce: string, token: string): string {
     return createHash('sha256').update(`${nonce}.${token}`).digest('hex');
+}
+
+export function livenessActionFromNonce(nonce: string): FaceLivenessAction {
+    const discriminator = createHash('sha256').update(`hr-active-liveness-v1.${nonce}`).digest()[0];
+    return discriminator % 2 === 0 ? 'TURN_LEFT' : 'TURN_RIGHT';
+}
+
+function livenessInstruction(action: FaceLivenessAction): string {
+    return action === 'TURN_LEFT'
+        ? 'Primero mira al frente y, cuando inicie la secuencia, gira suavemente la cabeza hacia tu izquierda.'
+        : 'Primero mira al frente y, cuando inicie la secuencia, gira suavemente la cabeza hacia tu derecha.';
 }
 
 function safeEqualHex(left: string, right: string): boolean {
@@ -218,7 +232,13 @@ export class BiometricService {
         return mapBiometricProfile(profile);
     }
 
-    static async createChallenge(companyId: number, userId: number, purposeValue: unknown, actionValue?: unknown) {
+    static async createChallenge(
+        companyId: number,
+        userId: number,
+        purposeValue: unknown,
+        actionValue?: unknown,
+        provider: FaceVerificationProvider = createFaceVerificationProvider(),
+    ) {
         await assertInternalEmployee(companyId, userId);
         if (typeof purposeValue !== 'string' || !PURPOSES.includes(purposeValue as typeof PURPOSES[number])) throw new HrAttendanceError('purpose inválido');
         const purpose = purposeValue as BiometricChallengePurpose;
@@ -229,9 +249,18 @@ export class BiometricService {
         }
         if (purpose === 'ATTENDANCE_PUNCH' && !action) throw new HrAttendanceError('action es requerida para marcaje');
         if (purpose === 'BIOMETRIC_ENROLLMENT' && action) throw new HrAttendanceError('action no aplica al enrolamiento');
+        if (purpose === 'BIOMETRIC_ENROLLMENT') {
+            const health = await this.providerHealth(provider);
+            if (health.status !== 'AVAILABLE') {
+                throw new FaceProviderUnavailableError(
+                    'El enrolamiento biométrico no está disponible porque el proveedor facial no está configurado o no responde',
+                );
+            }
+        }
         const token = randomBytes(32).toString('base64url');
         const nonce = randomBytes(24).toString('base64url');
         const expiresAt = new Date(Date.now() + 5 * 60_000);
+        const livenessAction = livenessActionFromNonce(nonce);
         const challenge = await prisma.biometricChallenge.create({
             data: {
                 id: randomUUID(), companyId, userId, purpose, action,
@@ -241,7 +270,10 @@ export class BiometricService {
         });
         return {
             ...challenge, token,
-            livenessInstruction: 'Mira al frente y gira suavemente la cabeza antes de capturar.',
+            livenessAction,
+            captureFrameCount: 5,
+            captureIntervalMs: 320,
+            livenessInstruction: livenessInstruction(livenessAction),
         };
     }
 
@@ -293,27 +325,35 @@ export class BiometricService {
 
     static async enroll(input: {
         companyId: number; userId: number; challengeId: string; challengeToken?: string;
-        consentAccepted: boolean; consentVersion: string; capture: Buffer; branchId?: number;
+        consentAccepted: boolean; consentVersion: string; evidence: FaceCaptureEvidence; branchId?: number;
     }, provider: FaceVerificationProvider = createFaceVerificationProvider()) {
         await assertInternalEmployee(input.companyId, input.userId);
         if (input.consentAccepted !== true) throw new HrAttendanceError('Se requiere consentimiento biométrico explícito', 400, 'CONSENT_REQUIRED');
         const policy = await AttendancePolicyService.getCurrent(input.companyId, input.branchId);
         if (input.consentVersion !== policy.biometricConsentVersion) throw new HrAttendanceError('La versión de consentimiento cambió; recargue la política', 409, 'CONSENT_VERSION_MISMATCH');
-        await this.consumeChallenge({
+        const challenge = await this.consumeChallenge({
             companyId: input.companyId, userId: input.userId, challengeId: input.challengeId,
             challengeToken: input.challengeToken, purpose: 'BIOMETRIC_ENROLLMENT',
         });
         const existing = await prisma.biometricProfile.findFirst({ where: { companyId: input.companyId, userId: input.userId } });
-        const enrolled = await provider.enroll(input.capture);
+        const providerContext = {
+            tenantRef: String(input.companyId),
+            subjectRef: String(input.userId),
+            challengeRef: challenge.id,
+            livenessAction: livenessActionFromNonce(challenge.nonce),
+            requireLiveness: policy.requireLiveness,
+            retentionDays: policy.biometricRetentionDays,
+        } as const;
+        const enrolled = await provider.enroll(input.evidence, providerContext);
         if (policy.requireLiveness && !enrolled.livenessPassed) {
-            try { await provider.revokeTemplate(enrolled.templateRef); } catch { /* provider reconciliation remains operational */ }
+            try { await provider.revokeTemplate(enrolled.templateRef, providerContext); } catch { /* provider reconciliation remains operational */ }
             throw new HrAttendanceError('La prueba de vida no fue superada', 422, 'LIVENESS_FAILED');
         }
         let encryptedTemplate: string;
         try {
             encryptedTemplate = encryptBiometricTemplate(enrolled.templateRef);
         } catch (error) {
-            try { await provider.revokeTemplate(enrolled.templateRef); } catch { /* best-effort compensation */ }
+            try { await provider.revokeTemplate(enrolled.templateRef, providerContext); } catch { /* best-effort compensation */ }
             throw error;
         }
         const now = new Date();
@@ -372,7 +412,7 @@ export class BiometricService {
             }
             return mapBiometricProfile(result.saved);
         } catch (error) {
-            try { await provider.revokeTemplate(enrolled.templateRef); } catch { /* best-effort compensation */ }
+            try { await provider.revokeTemplate(enrolled.templateRef, providerContext); } catch { /* best-effort compensation */ }
             throw error;
         }
     }
@@ -434,6 +474,7 @@ export class BiometricService {
                 status: { in: ['PENDING', 'FAILED'] },
                 OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
             },
+            include: { profile: { select: { userId: true } } },
         });
         if (!request) return false;
         if (request.encryptedTemplateRef === 'PURGED') return false;
@@ -469,7 +510,10 @@ export class BiometricService {
             }
         }
         try {
-            await requestProvider.revokeTemplate(decryptBiometricTemplate(request.encryptedTemplateRef));
+            await requestProvider.revokeTemplate(decryptBiometricTemplate(request.encryptedTemplateRef), {
+                tenantRef: String(request.companyId),
+                subjectRef: String(request.profile.userId),
+            });
             const completed = await prisma.biometricPurgeRequest.updateMany({
                 where: { id, status: request.status, attempts: claimedAttempts },
                 data: {

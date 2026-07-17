@@ -25,7 +25,7 @@ import { attendanceClient, getAttendanceErrorMessage } from '../../components/hr
 import { isChallengeExpired } from '../../components/hr/attendanceRules';
 import { useConfirmDialog } from '../../context/ConfirmContext';
 import { useAppToast } from '../../context/ToastContext';
-import type { HrAttendanceChallenge, HrAttendancePolicy, HrBiometricProfile } from '../../types/hr-attendance';
+import type { HrAttendanceChallenge, HrAttendancePolicy, HrBiometricProfile, HrFaceCaptureEvidence } from '../../types/hr-attendance';
 import './attendance.css';
 import './Biometrics.css';
 import './self-service.css';
@@ -43,7 +43,7 @@ export default function Biometrics() {
     const [profile, setProfile] = useState<HrBiometricProfile | null>(null);
     const [policy, setPolicy] = useState<HrAttendancePolicy | null>(null);
     const [challenge, setChallenge] = useState<HrAttendanceChallenge | null>(null);
-    const [faceImage, setFaceImage] = useState<Blob | null>(null);
+    const [faceEvidence, setFaceEvidence] = useState<HrFaceCaptureEvidence | null>(null);
     const [consent, setConsent] = useState(false);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -76,7 +76,7 @@ export default function Biometrics() {
         setSaving(true);
         setError(null);
         setConsent(false);
-        setFaceImage(null);
+        setFaceEvidence(null);
         try {
             setChallenge(await attendanceClient.createChallenge('BIOMETRIC_ENROLLMENT'));
         } catch (challengeError) {
@@ -88,7 +88,7 @@ export default function Biometrics() {
 
     const cancelEnrollment = () => {
         setChallenge(null);
-        setFaceImage(null);
+        setFaceEvidence(null);
         setConsent(false);
         setError(null);
     };
@@ -98,7 +98,7 @@ export default function Biometrics() {
             showError('Conéctate para enviar el enrolamiento biométrico.');
             return;
         }
-        if (!challenge || !policy || !faceImage || !consent) return;
+        if (!challenge || !policy || !faceEvidence || !consent) return;
         if (isChallengeExpired(challenge.expiresAt)) {
             setError('El reto de enrolamiento expiró. Inicia uno nuevo.');
             return;
@@ -111,15 +111,21 @@ export default function Biometrics() {
                 challengeToken: challenge.token,
                 consentAccepted: true,
                 consentVersion: policy.biometricConsentVersion,
-                faceImage,
+                faceEvidence,
             });
             setProfile(updated);
             setChallenge(null);
-            setFaceImage(null);
+            setFaceEvidence(null);
             setConsent(false);
             showSuccess('Perfil biométrico enrolado.');
         } catch (enrollError) {
             const message = getAttendanceErrorMessage(enrollError, 'No fue posible completar el enrolamiento.');
+            // The server consumes a challenge before evaluating biometric evidence.
+            // Every failed submission therefore needs a fresh challenge; keeping the
+            // old button active would only produce a CHALLENGE_REPLAY on the next click.
+            setChallenge(null);
+            setFaceEvidence(null);
+            setConsent(false);
             setError(message);
             showError(message);
         } finally {
@@ -142,7 +148,7 @@ export default function Biometrics() {
         try {
             await attendanceClient.revokeMyBiometrics();
             setChallenge(null);
-            setFaceImage(null);
+            setFaceEvidence(null);
             setConsent(false);
             showSuccess('Perfil biométrico revocado.');
             await load();
@@ -189,7 +195,7 @@ export default function Biometrics() {
         }
     }, [profile]);
 
-    const currentStep: BiometricStep = !challenge ? 'privacy' : !faceImage ? 'capture' : 'confirm';
+    const currentStep: BiometricStep = !challenge ? 'privacy' : !faceEvidence ? 'capture' : 'confirm';
     const steps: Array<{ id: BiometricStep; label: string; hint: string; icon: typeof ShieldCheck }> = [
         { id: 'privacy', label: 'Privacidad', hint: 'Conoce el uso y la retención', icon: ShieldCheck },
         { id: 'capture', label: 'Captura segura', hint: 'Sigue la prueba de vida', icon: Camera },
@@ -305,7 +311,14 @@ export default function Biometrics() {
                                             <div><strong>Prueba de vida indicada por el servidor</strong><p>{challenge.livenessInstruction ?? challenge.instruction}</p></div>
                                         </div>
                                     )}
-                                    <CameraCapture onCapture={setFaceImage} resetKey={challenge.id} disabled={saving} />
+                                    <CameraCapture
+                                        onCapture={setFaceEvidence}
+                                        resetKey={challenge.id}
+                                        disabled={saving}
+                                        instruction={challenge.livenessInstruction ?? challenge.instruction}
+                                        frameCount={challenge.captureFrameCount}
+                                        intervalMs={challenge.captureIntervalMs}
+                                    />
                                     <label className={`hr-biometric-consent ${consent ? 'checked' : ''}`} htmlFor="hr-biometric-consent">
                                         <input id="hr-biometric-consent" type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
                                         <span aria-hidden="true"><Check size={15} /></span>
@@ -317,7 +330,7 @@ export default function Biometrics() {
                                         {error?.includes('expiró') ? (
                                             <Button onClick={() => void beginEnrollment()} disabled={!online || saving}><RefreshCw size={16} /> Crear reto nuevo</Button>
                                         ) : (
-                                            <Button onClick={() => void enroll()} disabled={!online || saving || !faceImage || !consent}>
+                                            <Button onClick={() => void enroll()} disabled={!online || saving || !faceEvidence || !consent}>
                                                 <ShieldCheck size={17} /> {saving ? 'Enrolando en servidor…' : 'Confirmar enrolamiento'}
                                             </Button>
                                         )}

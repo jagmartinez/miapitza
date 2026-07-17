@@ -34,6 +34,7 @@ describe('Phase 3 attendance API contract', () => {
 
     expect(source).toContain('new FormData()');
     expect(source).toContain("form.append('faceImage'");
+    expect(source).toContain("form.append('faceFrames'");
     expect(enrollmentRequest).toContain("'Content-Type': 'multipart/form-data'");
     expect(punchRequest).toContain("'Content-Type': 'multipart/form-data'");
     expect(punchRequest).toContain("'Idempotency-Key': idempotencyKey");
@@ -58,6 +59,8 @@ describe('Phase 3 attendance API contract', () => {
     expect(captureSources).not.toContain('console.log');
     expect(captureSources).toContain('URL.revokeObjectURL');
     expect(captureSources).toContain('track.stop()');
+    expect(captureSources).toContain('Iniciar prueba de vida');
+    expect(captureSources).toContain('frames.push(await captureFrame())');
   });
 
   it('bypasses offline cache for every sensitive owner settings read', () => {

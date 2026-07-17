@@ -27,7 +27,7 @@ const biometricLimiter = rateLimit({
 
 const faceUpload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 12, parts: 14 },
+    limits: { fileSize: 2 * 1024 * 1024, files: 6, fields: 12, parts: 20 },
     fileFilter: (_req, file, callback) => {
         if (!['image/jpeg', 'image/png'].includes(file.mimetype)) {
             callback(new Error('La captura debe ser JPEG o PNG'));
@@ -35,7 +35,11 @@ const faceUpload = multer({
         }
         callback(null, true);
     },
-}).fields([{ name: 'faceImage', maxCount: 1 }, { name: 'capture', maxCount: 1 }]);
+}).fields([
+    { name: 'faceImage', maxCount: 1 },
+    { name: 'faceFrames', maxCount: 5 },
+    { name: 'capture', maxCount: 1 },
+]);
 
 const memoryFaceUpload: RequestHandler = (req, res, next) => {
     faceUpload(req, res, (error) => {

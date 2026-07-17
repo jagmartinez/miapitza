@@ -8,7 +8,9 @@ describe('HR attendance route security contract', () => {
     it('uses memory-only bounded multipart uploads and accepts the UI field', () => {
         expect(source).toContain('multer.memoryStorage()');
         expect(source).toContain("{ name: 'faceImage', maxCount: 1 }");
+        expect(source).toContain("{ name: 'faceFrames', maxCount: 5 }");
         expect(source).toContain('fileSize: 2 * 1024 * 1024');
+        expect(source).toContain('files: 6');
         expect(source).not.toContain('diskStorage');
     });
 

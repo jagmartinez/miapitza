@@ -157,6 +157,7 @@ Para DST:
 - La API nunca devuelve plantilla cifrada, nonce, token hash, secreto de kiosco ni foto.
 - `HR_FACE_PROVIDER=disabled` es el default fail-closed.
 - `fake` requiere opt-in y se rechaza en producción.
+- `http` es el adaptador productivo y exige URL HTTPS, token, health check y clave biométrica.
 - Sólo comparación 1:1; no hay identificación masiva 1:N.
 
 ### Resolución del marcaje
@@ -429,6 +430,10 @@ Procedimiento mínimo:
 ```env
 HR_FACE_PROVIDER=disabled
 HR_ALLOW_FAKE_FACE_PROVIDER=false
+HR_FACE_PROVIDER_BASE_URL=
+HR_FACE_PROVIDER_TOKEN=
+HR_FACE_PROVIDER_MODEL=
+HR_FACE_PROVIDER_TIMEOUT_MS=5000
 HR_ATTENDANCE_KIOSK_ENABLED=false
 HR_BIOMETRIC_ENCRYPTION_KEY=
 ```

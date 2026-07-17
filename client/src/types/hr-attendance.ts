@@ -82,7 +82,14 @@ export interface HrAttendanceChallenge {
   token?: string;
   instruction?: string;
   livenessInstruction?: string;
+  livenessAction?: 'TURN_LEFT' | 'TURN_RIGHT';
+  captureFrameCount?: number;
+  captureIntervalMs?: number;
   expiresAt: string;
+}
+
+export interface HrFaceCaptureEvidence {
+  frames: Blob[];
 }
 
 export interface HrCapturedLocation {
@@ -159,7 +166,7 @@ export interface HrAttendancePunchPayload {
   challengeId: string;
   challengeToken?: string;
   location?: HrCapturedLocation | null;
-  faceImage?: Blob | null;
+  faceEvidence?: HrFaceCaptureEvidence | null;
 }
 
 export interface HrBiometricEnrollPayload {
@@ -167,7 +174,7 @@ export interface HrBiometricEnrollPayload {
   challengeToken?: string;
   consentAccepted: true;
   consentVersion: string;
-  faceImage: Blob;
+  faceEvidence: HrFaceCaptureEvidence;
 }
 
 export interface HrAttendanceEvent {

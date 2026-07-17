@@ -2,7 +2,11 @@ import type { NextFunction, Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { AttendanceDeviceService, AttendanceService } from '../services/hr-attendance.service';
 import { AttendancePolicyService, BiometricService, HrAttendanceError } from '../services/hr-biometric.service';
-import { FaceProviderUnavailableError } from '../services/hr-face-provider';
+import {
+    FaceEvidenceRejectedError,
+    FaceProviderUnavailableError,
+    type FaceCaptureEvidence,
+} from '../services/hr-face-provider';
 import { BranchScopeError, resolveBranchScope } from '../utils/branch-scope';
 
 function queryId(value: unknown): number | undefined {
@@ -19,9 +23,17 @@ function branchScope(req: Request, requested?: number): number | undefined {
     return resolveBranchScope(req.user!, requested);
 }
 
-function capture(req: Request): Buffer | undefined {
+function captureEvidence(req: Request): FaceCaptureEvidence | undefined {
     const files = req.files as Record<string, Express.Multer.File[]> | undefined;
-    return files?.faceImage?.[0]?.buffer || files?.capture?.[0]?.buffer;
+    const primary = files?.faceImage?.[0] || files?.capture?.[0];
+    if (!primary) return undefined;
+    const ordered = [primary, ...(files?.faceFrames || [])];
+    return {
+        frames: ordered.map((file) => ({
+            buffer: file.buffer,
+            mimeType: file.mimetype as 'image/jpeg' | 'image/png',
+        })),
+    };
 }
 
 function policyForApi(policy: Awaited<ReturnType<typeof AttendancePolicyService.getCurrent>>) {
@@ -51,8 +63,15 @@ function policyForApi(policy: Awaited<ReturnType<typeof AttendancePolicyService.
 }
 
 function handleError(error: unknown, res: Response, next: NextFunction): void {
-    if (error instanceof HrAttendanceError || error instanceof FaceProviderUnavailableError || error instanceof BranchScopeError) {
-        res.status(error.statusCode).json({ success: false, code: error instanceof HrAttendanceError ? error.code : undefined, message: error.message });
+    if (error instanceof HrAttendanceError || error instanceof FaceProviderUnavailableError || error instanceof FaceEvidenceRejectedError || error instanceof BranchScopeError) {
+        const code = error instanceof HrAttendanceError
+            ? error.code
+            : error instanceof FaceEvidenceRejectedError
+                ? error.code
+            : error instanceof FaceProviderUnavailableError
+                ? 'FACE_PROVIDER_UNAVAILABLE'
+                : undefined;
+        res.status(error.statusCode).json({ success: false, code, message: error.message });
         return;
     }
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -112,13 +131,13 @@ export class HrAttendanceController {
 
     static async enroll(req: Request, res: Response, next: NextFunction) {
         try {
-            const evidence = capture(req);
+            const evidence = captureEvidence(req);
             if (!evidence) throw new HrAttendanceError('faceImage es requerido');
             const data = await BiometricService.enroll({
                 companyId: req.user!.companyId, userId: req.user!.userId,
                 challengeId: String(req.body.challengeId || ''), challengeToken: req.body.challengeToken,
                 consentAccepted: req.body.consentAccepted === 'true' || req.body.consentAccepted === true,
-                consentVersion: String(req.body.consentVersion || ''), capture: evidence, branchId: req.user!.branchId,
+                consentVersion: String(req.body.consentVersion || ''), evidence, branchId: req.user!.branchId,
             });
             res.status(201).json({ success: true, data, message: 'Perfil biométrico enrolado' });
         } catch (error) { handleError(error, res, next); }
@@ -155,7 +174,7 @@ export class HrAttendanceController {
                 companyId: req.user!.companyId, userId: req.user!.userId, activeBranchId: req.user!.branchId,
                 idempotencyKey: String(req.get('Idempotency-Key') || ''), action: req.body.action,
                 challengeId: String(req.body.challengeId || ''), challengeToken: req.body.challengeToken,
-                capture: capture(req), latitude: req.body.latitude, longitude: req.body.longitude,
+                evidence: captureEvidence(req), latitude: req.body.latitude, longitude: req.body.longitude,
                 accuracyM: req.body.accuracyM, locationCapturedAt: req.body.locationCapturedAt,
                 deviceId: req.get('X-Attendance-Device-Id'), deviceKey: req.get('X-Attendance-Device-Key') || undefined,
             });

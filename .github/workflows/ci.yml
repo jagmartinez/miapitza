@@ -6,6 +6,46 @@ on:
   pull_request:
 
 jobs:
+  biometric-provider:
+    name: Biometric Provider Checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: biometric-provider
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            biometric-provider/requirements.txt
+            biometric-provider/requirements-dev.txt
+
+      - name: Install dependencies
+        run: python -m pip install --requirement requirements-dev.txt
+
+      - name: Validate dependency graph
+        run: python -m pip check
+
+      - name: Audit runtime dependencies
+        run: python -m pip_audit --requirement requirements.txt --strict --vulnerability-service osv --timeout 30
+
+      - name: Download and verify pinned models
+        run: python scripts/fetch_models.py
+
+      - name: Lint
+        run: python -m ruff check app tests scripts
+
+      - name: Unit, model and coverage tests
+        run: python -m pytest --cov=app --cov-branch --cov-report=term-missing
+
+      - name: Build production image
+        run: docker build --target final --tag mia-face-provider:ci .
+
   server:
     name: Server Checks
     runs-on: ubuntu-latest

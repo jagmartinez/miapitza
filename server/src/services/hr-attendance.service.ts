@@ -4,10 +4,12 @@ import prisma from '../utils/prisma';
 import { zonedDateKey, zonedDateTimeToUtc } from '../utils/timezone';
 import { decryptBiometricTemplate } from '../utils/hr-biometric-crypto';
 import { AuditLogService } from './audit-log.service';
-import { AttendancePolicyService, BiometricService, HrAttendanceError } from './hr-biometric.service';
+import { AttendancePolicyService, BiometricService, HrAttendanceError, livenessActionFromNonce } from './hr-biometric.service';
 import {
     createFaceVerificationProvider,
+    FaceEvidenceRejectedError,
     FaceProviderUnavailableError,
+    type FaceCaptureEvidence,
     type FaceVerificationProvider,
 } from './hr-face-provider';
 
@@ -558,7 +560,7 @@ export class AttendanceService {
 
     static async punch(input: {
         companyId: number; userId: number; activeBranchId?: number; idempotencyKey: string;
-        action: unknown; challengeId: string; challengeToken?: string; capture?: Buffer;
+        action: unknown; challengeId: string; challengeToken?: string; evidence?: FaceCaptureEvidence;
         latitude?: unknown; longitude?: unknown; accuracyM?: unknown; locationCapturedAt?: unknown;
         deviceId?: unknown; deviceKey?: string;
     }, provider: FaceVerificationProvider = createFaceVerificationProvider(), now = new Date()) {
@@ -680,9 +682,10 @@ export class AttendanceService {
         let providerScore: number | null = null;
         let biometricProfileId: number | null = null;
         let consumedChallengeId: string | null = null;
+        let consumedChallenge: Awaited<ReturnType<typeof BiometricService.consumeChallenge>> | null = null;
         let challengeError: HrAttendanceError | null = null;
         try {
-            await BiometricService.consumeChallenge({
+            consumedChallenge = await BiometricService.consumeChallenge({
                 companyId: input.companyId, userId: input.userId,
                 challengeId: input.challengeId, challengeToken: input.challengeToken,
                 purpose: 'ATTENDANCE_PUNCH', action, useKey: idempotencyKey, requestHash: hash,
@@ -696,7 +699,7 @@ export class AttendanceService {
             if (completed) return punchResult(completed);
             throw challengeError;
         }
-        if (!challengeError && policy.requireBiometric && input.capture) {
+        if (!challengeError && policy.requireBiometric && input.evidence && consumedChallenge) {
             const profile = await prisma.biometricProfile.findFirst({ where: { companyId: input.companyId, userId: input.userId, status: 'ACTIVE' } });
             if (!profile) {
                 biometric = check('FAILED', 'No existe un perfil biométrico activo', 'BIOMETRIC_PROFILE_REQUIRED');
@@ -707,7 +710,17 @@ export class AttendanceService {
             } else {
                 biometricProfileId = profile.id;
                 try {
-                    const verification = await provider.verifyOneToOne(input.capture, decryptBiometricTemplate(profile.templateRef));
+                    const verification = await provider.verifyOneToOne(
+                        input.evidence,
+                        decryptBiometricTemplate(profile.templateRef),
+                        {
+                            tenantRef: String(input.companyId),
+                            subjectRef: String(input.userId),
+                            challengeRef: consumedChallenge.id,
+                            livenessAction: livenessActionFromNonce(consumedChallenge.nonce),
+                            requireLiveness: policy.requireLiveness,
+                        },
+                    );
                     providerStatus = verification.providerStatus;
                     providerScore = verification.score;
                     faceStatus = verification.matched ? 'PASSED' : 'FAILED';
@@ -716,12 +729,19 @@ export class AttendanceService {
                     else if (!verification.matched) biometric = check('FAILED', 'El rostro no coincide con el perfil 1:1', 'FACE_NOT_MATCHED', verification.score);
                     else biometric = check('PASSED', 'Verificación facial 1:1 superada', undefined, verification.score);
                 } catch (error) {
-                    faceStatus = 'ERROR';
-                    livenessStatus = 'ERROR';
-                    providerStatus = error instanceof FaceProviderUnavailableError ? 'UNAVAILABLE' : 'ERROR';
-                    biometric = error instanceof FaceProviderUnavailableError
-                        ? check('REVIEW', 'Proveedor facial no disponible', 'FACE_PROVIDER_UNAVAILABLE')
-                        : check('REVIEW', 'El proveedor facial devolvió un error', 'FACE_PROVIDER_ERROR');
+                    if (error instanceof FaceEvidenceRejectedError) {
+                        faceStatus = 'FAILED';
+                        livenessStatus = error.code.includes('LIVENESS') ? 'FAILED' : 'ERROR';
+                        providerStatus = error.code;
+                        biometric = check('FAILED', error.message, error.code);
+                    } else {
+                        faceStatus = 'ERROR';
+                        livenessStatus = 'ERROR';
+                        providerStatus = error instanceof FaceProviderUnavailableError ? 'UNAVAILABLE' : 'ERROR';
+                        biometric = error instanceof FaceProviderUnavailableError
+                            ? check('REVIEW', 'Proveedor facial no disponible', 'FACE_PROVIDER_UNAVAILABLE')
+                            : check('REVIEW', 'El proveedor facial devolvió un error', 'FACE_PROVIDER_ERROR');
+                    }
                 }
             }
         }

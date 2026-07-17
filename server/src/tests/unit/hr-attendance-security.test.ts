@@ -14,9 +14,11 @@ import {
     AttendancePolicyService,
     BiometricService,
     hashChallengeToken,
+    livenessActionFromNonce,
 } from '../../services/hr-biometric.service';
 import {
     createFaceVerificationProvider,
+    FaceEvidenceRejectedError,
     FaceProviderUnavailableError,
     type FaceVerificationProvider,
 } from '../../services/hr-face-provider';
@@ -80,21 +82,86 @@ describe('HR attendance security and invariants', () => {
 
     it('fails closed when no production face provider is configured', async () => {
         const provider = createFaceVerificationProvider({ NODE_ENV: 'production', HR_FACE_PROVIDER: 'disabled' });
-        await expect(provider.verifyOneToOne(Buffer.from('capture'), 'template')).rejects.toBeInstanceOf(FaceProviderUnavailableError);
+        await expect(provider.verifyOneToOne(
+            { frames: [{ buffer: Buffer.from('capture'), mimeType: 'image/jpeg' }] },
+            'template',
+            {
+                tenantRef: '4', subjectRef: '8', challengeRef: 'challenge',
+                livenessAction: 'TURN_LEFT', requireLiveness: true,
+            },
+        )).rejects.toBeInstanceOf(FaceProviderUnavailableError);
     });
 
     it('requires HTTPS and credentials for the external HTTP provider in production', () => {
         expect(() => createFaceVerificationProvider({
-            NODE_ENV: 'production', HR_FACE_PROVIDER: 'http', HR_FACE_PROVIDER_BASE_URL: 'http://faces.internal', HR_FACE_PROVIDER_TOKEN: 'secret',
+            NODE_ENV: 'production', HR_FACE_PROVIDER: 'http', HR_FACE_PROVIDER_BASE_URL: 'http://faces.internal', HR_FACE_PROVIDER_TOKEN: 's'.repeat(32),
         })).toThrow('HTTPS');
         expect(() => createFaceVerificationProvider({
             NODE_ENV: 'production', HR_FACE_PROVIDER: 'http', HR_FACE_PROVIDER_BASE_URL: 'https://faces.internal',
         })).toThrow('URL y token');
+        expect(() => createFaceVerificationProvider({
+            NODE_ENV: 'production', HR_FACE_PROVIDER: 'http',
+            HR_FACE_PROVIDER_BASE_URL: 'http://faces.public.example',
+            HR_FACE_PROVIDER_ALLOW_HTTP_INTERNAL: 'true', HR_FACE_PROVIDER_TOKEN: 's'.repeat(32),
+        })).toThrow('HTTPS');
+        expect(() => createFaceVerificationProvider({
+            NODE_ENV: 'production', HR_FACE_PROVIDER: 'http',
+            HR_FACE_PROVIDER_BASE_URL: 'http://face-provider.railway.internal:8080',
+            HR_FACE_PROVIDER_ALLOW_HTTP_INTERNAL: 'true', HR_FACE_PROVIDER_TOKEN: 's'.repeat(32),
+        })).not.toThrow();
+    });
+
+    it('maps provider evidence rejection separately from infrastructure outage', async () => {
+        jest.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+            code: 'ACTIVE_LIVENESS_FAILED', message: 'No se detectó el giro solicitado', retryable: true,
+        }), { status: 422, headers: { 'Content-Type': 'application/json' } }));
+        const provider = createFaceVerificationProvider({
+            NODE_ENV: 'production', HR_FACE_PROVIDER: 'http',
+            HR_FACE_PROVIDER_BASE_URL: 'https://faces.internal.example', HR_FACE_PROVIDER_TOKEN: 's'.repeat(32),
+        });
+        await expect(provider.enroll(
+            { frames: [{ buffer: Buffer.from('capture'), mimeType: 'image/jpeg' }] },
+            {
+                tenantRef: '4', subjectRef: '8', challengeRef: 'challenge',
+                livenessAction: 'TURN_LEFT', requireLiveness: true, retentionDays: 365,
+            },
+        )).rejects.toMatchObject({
+            code: 'ACTIVE_LIVENESS_FAILED', statusCode: 422,
+        } satisfies Partial<FaceEvidenceRejectedError>);
+    });
+
+    it('derives the active liveness action deterministically from the secret nonce', () => {
+        expect(livenessActionFromNonce('nonce-a')).toBe(livenessActionFromNonce('nonce-a'));
+        expect(['TURN_LEFT', 'TURN_RIGHT']).toContain(livenessActionFromNonce('nonce-b'));
     });
 
     it('exposes a fail-closed provider health status without leaking credentials', async () => {
         const provider = createFaceVerificationProvider({ NODE_ENV: 'production', HR_FACE_PROVIDER: 'disabled' });
         await expect(provider.healthCheck?.()).resolves.toEqual(expect.objectContaining({ provider: 'disabled', status: 'UNAVAILABLE' }));
+    });
+
+    it('rejects enrollment before creating a challenge when the provider is unavailable', async () => {
+        jest.spyOn(prisma.user, 'findFirst').mockResolvedValue({ id: 8 } as never);
+        const create = jest.spyOn(prisma.biometricChallenge, 'create');
+        const provider: FaceVerificationProvider = {
+            name: 'unavailable-test',
+            model: 'none',
+            healthCheck: async () => ({
+                provider: 'unavailable-test', model: 'none', status: 'UNAVAILABLE',
+                checkedAt: new Date().toISOString(), detail: 'Proveedor deshabilitado',
+            }),
+            enroll: async () => { throw new FaceProviderUnavailableError(); },
+            verifyOneToOne: async () => { throw new FaceProviderUnavailableError(); },
+            revokeTemplate: async () => undefined,
+        };
+
+        await expect(BiometricService.createChallenge(
+            4, 8, 'BIOMETRIC_ENROLLMENT', undefined, provider,
+        )).rejects.toMatchObject({
+            statusCode: 503,
+            message: expect.stringContaining('proveedor facial'),
+        });
+        expect(create).not.toHaveBeenCalled();
     });
 
     it('rejects replayed challenges without attempting another CAS update', async () => {
@@ -251,7 +318,7 @@ describe('HR attendance security and invariants', () => {
         const result = await AttendanceService.punch({
             companyId: 4, userId: 8, activeBranchId: 10, idempotencyKey: 'idem-1',
             action: 'CHECK_IN', challengeId: 'challenge', challengeToken: 'token',
-            capture: Buffer.from('ephemeral-face-capture'),
+            evidence: { frames: [{ buffer: Buffer.from('ephemeral-face-capture'), mimeType: 'image/jpeg' }] },
         }, provider, new Date('2026-07-13T14:00:00Z'));
 
         expect(result).toEqual(expect.objectContaining({ decision: 'REVIEW_REQUIRED', serviceUnavailable: true }));

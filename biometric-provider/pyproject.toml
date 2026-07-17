@@ -1,0 +1,25 @@
+[project]
+name = "mia-face-provider"
+version = "1.0.0"
+description = "Proveedor biometrico facial 1:1 autocontenido y multiempresa"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+omit = ["app/__main__.py"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 82

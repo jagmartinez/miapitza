@@ -47,7 +47,12 @@ function punchForm(payload: HrAttendancePunchPayload): FormData {
     form.append('accuracyM', String(payload.location.accuracyM));
     form.append('locationCapturedAt', payload.location.capturedAt);
   }
-  if (payload.faceImage) form.append('faceImage', payload.faceImage, 'face-evidence.jpg');
+  if (payload.faceEvidence?.frames.length) {
+    form.append('faceImage', payload.faceEvidence.frames[0], 'face-evidence-0.jpg');
+    payload.faceEvidence.frames.slice(1).forEach((frame, index) => {
+      form.append('faceFrames', frame, `face-evidence-${index + 1}.jpg`);
+    });
+  }
   return form;
 }
 
@@ -57,7 +62,10 @@ function enrollmentForm(payload: HrBiometricEnrollPayload): FormData {
   appendIfPresent(form, 'challengeToken', payload.challengeToken);
   form.append('consentAccepted', 'true');
   form.append('consentVersion', payload.consentVersion);
-  form.append('faceImage', payload.faceImage, 'face-enrollment.jpg');
+  form.append('faceImage', payload.faceEvidence.frames[0], 'face-enrollment-0.jpg');
+  payload.faceEvidence.frames.slice(1).forEach((frame, index) => {
+    form.append('faceFrames', frame, `face-enrollment-${index + 1}.jpg`);
+  });
   return form;
 }
 

@@ -10,7 +10,7 @@ import cashShiftSource from '../pages/CashShift.tsx?raw';
 describe('Browser hardware fail-closed contracts', () => {
   it('releases camera tracks and never fabricates a capture after denial/failure', () => {
     expect(cameraSource).toContain("getTracks().forEach((track) => track.stop())");
-    expect(cameraSource).toContain('onCapture(null)');
+    expect(cameraSource).toContain('onCaptureRef.current(null)');
     expect(cameraSource).toContain("name === 'NotAllowedError'");
     expect(cameraSource).not.toMatch(/localStorage|sessionStorage|indexedDB/);
   });

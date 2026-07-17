@@ -7,6 +7,7 @@ import type {
     HrAttendancePolicy,
     HrAttendancePunchResult,
     HrCapturedLocation,
+    HrFaceCaptureEvidence,
     HrTodayAttendance,
 } from '../../types/hr-attendance';
 import { attendanceClient, createAttendanceIdempotencyKey, getAttendanceErrorMessage } from './attendanceClient';
@@ -30,7 +31,7 @@ const ACTION_ICONS: Record<HrAttendanceAction, typeof LogIn> = {
 export default function AttendancePunchWizard({ policy, today, onCompleted }: AttendancePunchWizardProps) {
     const [action, setAction] = useState<HrAttendanceAction | null>(null);
     const [challenge, setChallenge] = useState<HrAttendanceChallenge | null>(null);
-    const [faceImage, setFaceImage] = useState<Blob | null>(null);
+    const [faceEvidence, setFaceEvidence] = useState<HrFaceCaptureEvidence | null>(null);
     const [location, setLocation] = useState<HrCapturedLocation | null>(null);
     const [preparing, setPreparing] = useState(false);
     const [submitting, setSubmitting] = useState(false);
@@ -42,7 +43,7 @@ export default function AttendancePunchWizard({ policy, today, onCompleted }: At
         setPreparing(true);
         setError(null);
         setResult(null);
-        setFaceImage(null);
+        setFaceEvidence(null);
         setLocation(null);
         try {
             const nextChallenge = await attendanceClient.createChallenge('ATTENDANCE_PUNCH', selected);
@@ -59,14 +60,14 @@ export default function AttendancePunchWizard({ policy, today, onCompleted }: At
     const restart = () => {
         setAction(null);
         setChallenge(null);
-        setFaceImage(null);
+        setFaceEvidence(null);
         setLocation(null);
         setResult(null);
         setError(null);
         idempotencyKey.current = null;
     };
 
-    const handleFaceCapture = useCallback((image: Blob | null) => setFaceImage(image), []);
+    const handleFaceCapture = useCallback((evidence: HrFaceCaptureEvidence | null) => setFaceEvidence(evidence), []);
     const handleLocationCapture = useCallback((captured: HrCapturedLocation | null) => setLocation(captured), []);
 
     const submit = async () => {
@@ -75,7 +76,7 @@ export default function AttendancePunchWizard({ policy, today, onCompleted }: At
             setError('El reto expiró antes del envío. Reinicia el intento para proteger la validez de la evidencia.');
             return;
         }
-        if (policy.requireBiometric && !faceImage) {
+        if (policy.requireBiometric && !faceEvidence) {
             setError('Captura la evidencia facial antes de continuar.');
             return;
         }
@@ -90,11 +91,11 @@ export default function AttendancePunchWizard({ policy, today, onCompleted }: At
                 action,
                 challengeId: challenge.id,
                 challengeToken: challenge.token,
-                faceImage,
+                faceEvidence,
                 location,
             }, idempotencyKey.current);
             setResult(punchResult);
-            setFaceImage(null);
+            setFaceEvidence(null);
             onCompleted(punchResult);
         } catch (punchError) {
             setError(getAttendanceErrorMessage(punchError, 'El servidor no pudo procesar el marcaje. El mismo intento puede reintentarse sin duplicarlo.'));
@@ -152,12 +153,21 @@ export default function AttendancePunchWizard({ policy, today, onCompleted }: At
                     <p>{livenessInstruction}</p>
                 </div>
             )}
-            {policy.requireBiometric && <CameraCapture onCapture={handleFaceCapture} resetKey={challenge.id} disabled={submitting} />}
+            {policy.requireBiometric && (
+                <CameraCapture
+                    onCapture={handleFaceCapture}
+                    resetKey={challenge.id}
+                    disabled={submitting}
+                    instruction={livenessInstruction}
+                    frameCount={challenge.captureFrameCount}
+                    intervalMs={challenge.captureIntervalMs}
+                />
+            )}
             {policy.requireGeolocation && <GeolocationCapture maxAccuracyM={policy.maxLocationAccuracyM} onCapture={handleLocationCapture} disabled={submitting} />}
             {error && <div className="hr-attendance-alert danger" role="alert">{error}</div>}
             <div className="hr-wizard-actions">
                 <Button type="button" variant="ghost" onClick={restart} disabled={submitting}><ArrowLeft size={17} /> Cambiar acción</Button>
-                <Button type="button" onClick={() => void submit()} disabled={submitting || (policy.requireBiometric && !faceImage) || (policy.requireGeolocation && !location)}>{submitting ? 'Validando en servidor…' : `Confirmar ${ATTENDANCE_ACTION_LABELS[action].toLowerCase()}`}</Button>
+                <Button type="button" onClick={() => void submit()} disabled={submitting || (policy.requireBiometric && !faceEvidence) || (policy.requireGeolocation && !location)}>{submitting ? 'Validando en servidor…' : `Confirmar ${ATTENDANCE_ACTION_LABELS[action].toLowerCase()}`}</Button>
             </div>
         </section>
     );
