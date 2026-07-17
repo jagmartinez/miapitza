@@ -59,7 +59,12 @@ describe('Phase 3 attendance API contract', () => {
     expect(captureSources).not.toContain('console.log');
     expect(captureSources).toContain('URL.revokeObjectURL');
     expect(captureSources).toContain('track.stop()');
-    expect(captureSources).toContain('Iniciar prueba de vida');
+    expect(captureSources).toContain('Comenzar prueba guiada');
+    expect(captureSources).toContain('¡AHORA GIRA!');
+    expect(captureSources).toContain('hr-camera-recording-dot');
+    expect(captureSources).toContain('Capturando giro: cuadro');
+    expect(captureSources).toContain('livenessAction={challenge.livenessAction}');
+    expect(captureSources).toContain('await wait(900)');
     expect(captureSources).toContain('frames.push(await captureFrame())');
   });
 

@@ -157,7 +157,7 @@ def test_sequence_accepts_consistent_live_requested_motion(tmp_path: Path, monke
                 analysis([1, 0], 0.99, -0.04),
                 analysis([1, 0], 0.99, -0.08),
             ],
-            "giro solicitado",
+            "lado contrario",
         ),
         (
             [

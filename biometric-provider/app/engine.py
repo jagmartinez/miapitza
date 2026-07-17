@@ -181,11 +181,17 @@ class FaceEngine:
         expected_sign = 1.0 if liveness_action == "TURN_LEFT" else -1.0
         signed_deltas = [expected_sign * (item.nose_offset - initial_offset) for item in analyses[1:]]
         active_motion = max(signed_deltas, default=0.0)
+        opposite_motion = max((-delta for delta in signed_deltas), default=0.0)
         active_passed = abs(initial_offset) <= 0.14 and active_motion >= self.settings.active_motion_threshold
         liveness_passed = passive_passed and (active_passed if require_liveness else True)
         if require_liveness and not passive_passed:
             raise BiometricError("PASSIVE_LIVENESS_FAILED", "La captura parece una foto, pantalla o reproduccion")
         if require_liveness and not active_passed:
+            if abs(initial_offset) <= 0.14 and opposite_motion >= self.settings.active_motion_threshold:
+                raise BiometricError(
+                    "ACTIVE_LIVENESS_WRONG_DIRECTION",
+                    "Se detecto un giro hacia el lado contrario; sigue la flecha mostrada en la camara",
+                )
             raise BiometricError("ACTIVE_LIVENESS_FAILED", "No se detecto el giro solicitado desde una posicion frontal")
         aggregate = self._normalize(np.mean(np.stack([item.embedding for item in analyses], axis=0), axis=0))
         return EvidenceAnalysis(

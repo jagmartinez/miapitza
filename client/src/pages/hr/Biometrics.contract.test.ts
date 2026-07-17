@@ -11,6 +11,7 @@ describe('Biometrics guided UX contract', () => {
         expect(source).toContain('consentAccepted: true');
         expect(source).toContain('consentVersion: policy.biometricConsentVersion');
         expect(source).toContain('faceEvidence,');
+        expect(source).toContain('livenessAction={challenge.livenessAction}');
         expect(source).not.toContain('localStorage');
         expect(source).not.toContain('sessionStorage');
         expect(source).not.toContain('toDataURL');

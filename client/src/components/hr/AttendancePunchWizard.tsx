@@ -159,6 +159,7 @@ export default function AttendancePunchWizard({ policy, today, onCompleted }: At
                     resetKey={challenge.id}
                     disabled={submitting}
                     instruction={livenessInstruction}
+                    livenessAction={challenge.livenessAction}
                     frameCount={challenge.captureFrameCount}
                     intervalMs={challenge.captureIntervalMs}
                 />

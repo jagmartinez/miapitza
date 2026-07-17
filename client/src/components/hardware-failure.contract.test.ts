@@ -12,6 +12,8 @@ describe('Browser hardware fail-closed contracts', () => {
     expect(cameraSource).toContain("getTracks().forEach((track) => track.stop())");
     expect(cameraSource).toContain('onCaptureRef.current(null)');
     expect(cameraSource).toContain("name === 'NotAllowedError'");
+    expect(cameraSource).toContain("phase: 'READY'");
+    expect(cameraSource).toContain('El giro se validará al confirmar.');
     expect(cameraSource).not.toMatch(/localStorage|sessionStorage|indexedDB/);
   });
 

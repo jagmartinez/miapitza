@@ -88,8 +88,8 @@ export function livenessActionFromNonce(nonce: string): FaceLivenessAction {
 
 function livenessInstruction(action: FaceLivenessAction): string {
     return action === 'TURN_LEFT'
-        ? 'Primero mira al frente y, cuando inicie la secuencia, gira suavemente la cabeza hacia tu izquierda.'
-        : 'Primero mira al frente y, cuando inicie la secuencia, gira suavemente la cabeza hacia tu derecha.';
+        ? 'Mantén primero el rostro al frente. Solo cuando la cámara muestre “AHORA GIRA”, gira despacio hacia tu hombro izquierdo y mantén la posición.'
+        : 'Mantén primero el rostro al frente. Solo cuando la cámara muestre “AHORA GIRA”, gira despacio hacia tu hombro derecho y mantén la posición.';
 }
 
 function safeEqualHex(left: string, right: string): boolean {
@@ -271,8 +271,8 @@ export class BiometricService {
         return {
             ...challenge, token,
             livenessAction,
-            captureFrameCount: 5,
-            captureIntervalMs: 320,
+            captureFrameCount: 6,
+            captureIntervalMs: 450,
             livenessInstruction: livenessInstruction(livenessAction),
         };
     }

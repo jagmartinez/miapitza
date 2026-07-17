@@ -316,6 +316,7 @@ export default function Biometrics() {
                                         resetKey={challenge.id}
                                         disabled={saving}
                                         instruction={challenge.livenessInstruction ?? challenge.instruction}
+                                        livenessAction={challenge.livenessAction}
                                         frameCount={challenge.captureFrameCount}
                                         intervalMs={challenge.captureIntervalMs}
                                     />

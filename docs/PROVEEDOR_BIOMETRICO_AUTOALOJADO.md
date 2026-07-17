@@ -7,7 +7,7 @@ La plataforma integra un microservicio reutilizable que hace enrolamiento y veri
 ## Flujo transaccional
 
 1. La API principal crea un reto de cinco minutos y deriva en servidor `TURN_LEFT` o `TURN_RIGHT` desde su nonce.
-2. El navegador toma una secuencia corta: rostro frontal y luego el giro solicitado. Los cuadros existen solo en memoria.
+2. El navegador ejecuta una prueba guiada de seis cuadros: cuenta regresiva frontal, captura de referencia, aviso visible `AHORA GIRA`, tres segundos para obedecer y cinco cuadros con progreso visible mientras la persona mantiene el giro. Los cuadros existen solo en memoria.
 3. La API consume el reto una sola vez y envia evidencia, empresa, persona y politica al proveedor por HTTPS autenticado.
 4. El proveedor valida formato, una sola cara, calidad, identidad constante, prueba activa y anti-spoofing pasivo.
 5. En enrolamiento cifra el embedding y devuelve una referencia UUID opaca. La API principal cifra de nuevo esa referencia antes de guardarla.
@@ -15,6 +15,8 @@ La plataforma integra un microservicio reutilizable que hace enrolamiento y veri
 7. Al revocar o reenrolar, la API registra primero el cambio y una solicitud durable de purga; el proveedor acepta revocaciones repetidas.
 
 El proveedor no revoca la plantilla previa al crear una nueva. Esa compensacion ocurre despues del commit de la API principal, evitando que una falla intermedia destruya el enrolamiento vigente.
+
+La interfaz distingue deliberadamente **captura** de **validacion**: el punto rojo y el contador confirman que el telefono esta tomando cuadros; solo la respuesta del proveedor, despues del consentimiento y la confirmacion, puede afirmar que el giro correcto fue detectado. Si detecta movimiento hacia el lado opuesto devuelve un error especifico para repetir siguiendo la flecha.
 
 ## Invariantes de seguridad
 

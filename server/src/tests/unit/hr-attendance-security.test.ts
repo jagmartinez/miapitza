@@ -135,6 +135,36 @@ describe('HR attendance security and invariants', () => {
         expect(['TURN_LEFT', 'TURN_RIGHT']).toContain(livenessActionFromNonce('nonce-b'));
     });
 
+    it('issues a six-frame guided challenge with enough time to obey the turn instruction', async () => {
+        jest.spyOn(prisma.user, 'findFirst').mockResolvedValue({ id: 8 } as never);
+        jest.spyOn(prisma.biometricChallenge, 'create').mockResolvedValue({
+            id: 'guided-challenge',
+            purpose: 'BIOMETRIC_ENROLLMENT',
+            action: null,
+            expiresAt: new Date(Date.now() + 300_000),
+        } as never);
+        const provider: FaceVerificationProvider = {
+            name: 'guided-test',
+            model: 'test-model',
+            healthCheck: async () => ({
+                provider: 'guided-test', model: 'test-model', status: 'AVAILABLE', checkedAt: new Date().toISOString(),
+            }),
+            enroll: async () => { throw new Error('not used'); },
+            verifyOneToOne: async () => { throw new Error('not used'); },
+            revokeTemplate: async () => undefined,
+        };
+
+        const challenge = await BiometricService.createChallenge(4, 8, 'BIOMETRIC_ENROLLMENT', undefined, provider);
+
+        expect(challenge).toEqual(expect.objectContaining({
+            captureFrameCount: 6,
+            captureIntervalMs: 450,
+            livenessAction: expect.stringMatching(/^TURN_(LEFT|RIGHT)$/),
+            livenessInstruction: expect.stringContaining('“AHORA GIRA”'),
+        }));
+        expect(challenge.livenessInstruction).toContain('hombro');
+    });
+
     it('exposes a fail-closed provider health status without leaking credentials', async () => {
         const provider = createFaceVerificationProvider({ NODE_ENV: 'production', HR_FACE_PROVIDER: 'disabled' });
         await expect(provider.healthCheck?.()).resolves.toEqual(expect.objectContaining({ provider: 'disabled', status: 'UNAVAILABLE' }));
