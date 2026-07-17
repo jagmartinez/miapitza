@@ -216,6 +216,7 @@
 .my-benefits-actions-col { text-align: right; white-space: nowrap; }
 .my-benefits-actions-col { width: 1%; }
 .my-benefits-actions-col .btn { min-width: 38px; padding-inline: 9px; }
+.my-benefits-action-label { display: none; }
 .my-benefits-register > .pagination { border-top: 1px solid var(--color-border); }
 
 .hr-my-benefits-page .hr-benefits-workspace {
@@ -623,6 +624,73 @@
 @media (max-width: 680px) {
   .my-benefits-register-head { align-items: flex-start; flex-direction: column; }
   .my-benefits-register-count { align-self: flex-start; }
+
+  .my-benefits-table-wrap { overflow: visible; }
+  .my-benefits-table {
+    display: block;
+    min-width: 0;
+    padding: var(--spacing-sm);
+    background: var(--color-background);
+  }
+
+  .my-benefits-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .my-benefits-table tbody { display: grid; gap: var(--spacing-sm); }
+  .my-benefits-table tbody tr {
+    display: grid;
+    gap: 0;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+  }
+
+  .my-benefits-table tbody tr.is-selected {
+    border-color: color-mix(in srgb, var(--color-primary) 48%, var(--color-border));
+    box-shadow: inset 3px 0 var(--color-primary);
+  }
+
+  .my-benefits-table tbody td {
+    display: grid;
+    grid-template-columns: minmax(86px, 0.42fr) minmax(0, 1fr);
+    align-items: center;
+    gap: var(--spacing-sm);
+    min-width: 0;
+    padding: 0.68rem 0.8rem;
+    border-bottom: 1px solid var(--color-border);
+    text-align: left !important;
+    overflow-wrap: anywhere;
+  }
+
+  .my-benefits-table tbody td::before {
+    content: attr(data-label);
+    color: var(--color-text-secondary);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+
+  .my-benefits-table tbody td:last-child { border-bottom: 0; }
+  .my-benefits-actions-col { width: auto; }
+  .my-benefits-actions-col .btn { width: 100%; min-height: 42px; }
+  .my-benefits-action-label { display: inline; }
+
+  .my-benefits-table .my-benefits-empty-row td {
+    display: block;
+    padding: var(--spacing-lg);
+  }
+  .my-benefits-table .my-benefits-empty-row td::before { display: none; }
+
+  .hr-benefits-actions .btn { flex: 1 1 140px; }
 }
 
 @media (max-width: 580px) {
@@ -650,4 +718,48 @@
   .hr-benefits-form-actions .btn {
     flex: 1;
   }
+
+  .hr-benefits-table-wrap:not(.my-benefits-table-wrap) { overflow: visible; }
+  .hr-benefits-table-wrap:not(.my-benefits-table-wrap) table {
+    display: block;
+    min-width: 0;
+  }
+  .hr-benefits-table-wrap:not(.my-benefits-table-wrap) thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .hr-benefits-table-wrap:not(.my-benefits-table-wrap) tbody { display: grid; gap: var(--spacing-sm); }
+  .hr-benefits-table-wrap:not(.my-benefits-table-wrap) tr {
+    display: grid;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+  .hr-benefits-table-wrap:not(.my-benefits-table-wrap) td {
+    display: grid;
+    grid-template-columns: minmax(88px, 0.42fr) minmax(0, 1fr);
+    gap: var(--spacing-sm);
+    padding: 0.65rem 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+    text-align: left !important;
+    overflow-wrap: anywhere;
+  }
+  .hr-benefits-table-wrap:not(.my-benefits-table-wrap) td::before {
+    content: attr(data-label);
+    color: var(--color-text-secondary);
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .hr-benefits-table-wrap:not(.my-benefits-table-wrap) td:last-child { border-bottom: 0; }
+  .hr-benefits-table-wrap:not(.my-benefits-table-wrap) .hr-benefits-table-empty {
+    display: block;
+    text-align: center !important;
+  }
+  .hr-benefits-table-wrap:not(.my-benefits-table-wrap) .hr-benefits-table-empty::before { display: none; }
 }

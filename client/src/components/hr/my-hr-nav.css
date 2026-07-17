@@ -1,6 +1,7 @@
 .my-hr-nav {
   display: flex;
   justify-content: flex-end;
+  gap: 0.45rem;
   min-width: 0;
 }
 
@@ -22,6 +23,8 @@
 
 .my-hr-nav a svg:nth-child(2) { color: var(--color-primary); }
 
+.my-hr-nav__punch { display: none !important; }
+
 .my-hr-nav a:hover {
   border-color: color-mix(in srgb, var(--color-primary) 42%, var(--color-border));
   background: var(--color-background);
@@ -33,6 +36,29 @@
   outline-offset: 2px;
 }
 
-@media (max-width: 480px) {
-  .my-hr-nav a { width: 100%; justify-content: center; }
+@media (max-width: 768px) {
+  .my-hr-nav {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    width: 100%;
+  }
+
+  .my-hr-nav a {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .my-hr-nav__punch {
+    display: inline-flex !important;
+    border-color: color-mix(in srgb, var(--color-primary) 42%, var(--color-border)) !important;
+    background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface)) !important;
+    color: var(--color-primary) !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .my-hr-nav a { padding-inline: 0.45rem; }
+  .my-hr-nav__home svg:nth-child(2) { display: none; }
+  .my-hr-nav a span { font-size: 0.72rem; }
 }

@@ -916,7 +916,9 @@
   }
 
   .hr-my-receipt-list button {
+    display: grid;
     grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
   }
 
   .hr-my-receipt-amount {
@@ -925,6 +927,11 @@
     padding-left: calc(2.25rem + var(--spacing-md));
     text-align: left;
   }
+
+  .hr-payroll-filterbar { padding: var(--spacing-md); }
+
+  .hr-receipt-detail,
+  .hr-my-receipt-workspace { min-width: 0; }
 
   .hr-receipt-trace-list > div {
     grid-template-columns: 1fr;

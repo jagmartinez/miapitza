@@ -27,6 +27,8 @@ describe('Biometrics guided UX contract', () => {
         expect(source).toContain('profile.canEnroll === false');
         expect(source).toContain("error?.includes('expiró')");
         expect(source).toContain('Revocar biometría');
+        expect(source).toContain('Ir a marcar ahora');
+        expect(source).toContain("navigate('/rh/marcaje')");
         expect(source).toContain('Every failed submission therefore needs a fresh challenge');
     });
 

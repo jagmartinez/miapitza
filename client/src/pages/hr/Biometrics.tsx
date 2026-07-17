@@ -8,12 +8,14 @@ import {
     Fingerprint,
     Info,
     LockKeyhole,
+    MapPin,
     RefreshCw,
     RotateCcw,
     ShieldAlert,
     ShieldCheck,
     Trash2,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PageHeader from '../../components/PageHeader';
@@ -37,6 +39,7 @@ const formatDate = (value?: string | null): string => value
     : 'No disponible';
 
 export default function Biometrics() {
+    const navigate = useNavigate();
     const online = useWorkforceOnline();
     const { confirm } = useConfirmDialog();
     const { success: showSuccess, error: showError } = useAppToast();
@@ -295,6 +298,11 @@ export default function Biometrics() {
                                     {profile.status !== 'ACTIVE' && profile.status !== 'PENDING' && (
                                         <Button onClick={() => void beginEnrollment()} disabled={!online || saving || profile.canEnroll === false}>
                                             <Fingerprint size={17} /> {saving ? 'Creando reto…' : 'Iniciar enrolamiento'}
+                                        </Button>
+                                    )}
+                                    {profile.status === 'ACTIVE' && (
+                                        <Button onClick={() => navigate('/rh/marcaje')} disabled={!online || saving}>
+                                            <MapPin size={17} /> Ir a marcar ahora
                                         </Button>
                                     )}
                                     {profile.canEnroll === false && profile.status !== 'ACTIVE' && (

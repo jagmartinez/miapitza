@@ -702,7 +702,7 @@ test('employee portal and Profile expose a cohesive RH self-service entry point'
 
   await page.getByRole('link', { name: 'Mi horario Turnos publicados y acuse de lectura' }).click();
   await expect(page.getByRole('heading', { name: 'Mi horario' })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'Volver a Mis accesos de RH' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Navegación de Mi RH' })).toBeVisible();
   await expect(page.locator('.my-hr-page')).toHaveCSS('max-width', '1700px');
 
   await page.getByRole('link', { name: 'Mis accesos de RH' }).click();
@@ -724,13 +724,22 @@ test('Profile and Mi RH destinations stay inside tablet and mobile viewports', a
 
     for (const path of ['/rh/mi-portal/horario', '/rh/mi-portal/gestion', '/rh/mi-portal/nomina', '/rh/mi-portal/prestaciones', '/rh/marcaje', '/rh/biometria']) {
       await page.goto(path);
-      const backLink = page.locator('.my-hr-nav a');
-      await expect(backLink).toBeVisible();
-      const box = await backLink.boundingBox();
+      const navigation = page.locator('.my-hr-nav');
+      await expect(navigation).toBeVisible();
+      const box = await navigation.boundingBox();
       expect(box).not.toBeNull();
       expect(box!.x).toBeGreaterThanOrEqual(0);
       expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width + 1);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    }
+
+    if (viewport.width <= 390) {
+      await page.goto('/rh/mi-portal/prestaciones');
+      const table = page.locator('.my-benefits-table');
+      await expect(table).toHaveCSS('display', 'block');
+      await expect(table).toHaveCSS('min-width', '0px');
+      await expect(page.locator('.my-benefits-table-wrap')).toHaveCSS('overflow-x', 'visible');
+      await expect(page.getByRole('link', { name: 'Marcar ahora' })).toBeVisible();
     }
   }
 });

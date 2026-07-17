@@ -747,4 +747,10 @@
     .hr-enrollment-panel { padding: var(--spacing-md); }
     .hr-attendance-event-main { flex-direction: column; }
     .hr-attendance-checks > div { grid-template-columns: 1fr; }
+    .hr-camera-capture,
+    .hr-location-capture { padding: var(--spacing-sm); }
+    .hr-camera-guide { padding: var(--spacing-sm); }
+    .hr-camera-guide__heading strong { font-size: 0.95rem; }
+    .hr-camera-guide__heading span { font-size: 0.75rem; }
+    .hr-attendance-blocking .btn { width: 100%; }
 }

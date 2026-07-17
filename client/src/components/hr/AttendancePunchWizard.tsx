@@ -20,6 +20,7 @@ interface AttendancePunchWizardProps {
     today: HrTodayAttendance;
     onCompleted: (result: HrAttendancePunchResult) => void;
     onRequestCorrection?: () => void;
+    onViewSchedule?: () => void;
 }
 
 const ACTION_ICONS: Record<HrAttendanceAction, typeof LogIn> = {
@@ -48,7 +49,7 @@ const CHECK_LABELS: Record<string, string> = {
     branchStatus: 'Estado de la sucursal',
 };
 
-export default function AttendancePunchWizard({ policy, today, onCompleted, onRequestCorrection }: AttendancePunchWizardProps) {
+export default function AttendancePunchWizard({ policy, today, onCompleted, onRequestCorrection, onViewSchedule }: AttendancePunchWizardProps) {
     const [action, setAction] = useState<HrAttendanceAction | null>(null);
     const [challenge, setChallenge] = useState<HrAttendanceChallenge | null>(null);
     const [faceEvidence, setFaceEvidence] = useState<HrFaceCaptureEvidence | null>(null);
@@ -150,6 +151,13 @@ export default function AttendancePunchWizard({ policy, today, onCompleted, onRe
     }
 
     if (!action || !challenge) {
+        const missingAssignment = !today.targetBranch;
+        const missingSchedule = !today.scheduledShift && !policy.allowUnscheduledPunch;
+        const unavailableMessage = missingAssignment
+            ? 'No tienes una asignación RH vigente a una sucursal. Solicita a Recursos Humanos que revise tu adscripción.'
+            : missingSchedule
+                ? 'No tienes un turno publicado aplicable. Cuando se publique tu turno, actualiza esta pantalla para habilitar la entrada.'
+                : 'El servidor no habilita una entrada o salida para el estado actual de tu jornada.';
         return (
             <section className="hr-punch-actions" aria-labelledby="hr-punch-action-title">
                 <div className="hr-panel-heading"><ShieldCheck size={22} aria-hidden="true" /><div><span className="hr-section-kicker">PASO 1 DE 3</span><h2 id="hr-punch-action-title">Confirma qué vas a marcar</h2><p>El servidor habilita únicamente las acciones válidas para tu jornada.</p></div></div>
@@ -180,7 +188,7 @@ export default function AttendancePunchWizard({ policy, today, onCompleted, onRe
                         <Clock3 size={22} aria-hidden="true" />
                         <div>
                             <strong>{today.blockingIssue ? 'Debes resolver un marcaje anterior' : 'No hay un marcaje disponible'}</strong>
-                            <p>{today.blockingIssue?.message ?? 'El servidor no habilita una entrada o salida para el estado actual de tu jornada.'}</p>
+                            <p>{today.blockingIssue?.message ?? unavailableMessage}</p>
                             {today.blockingIssue?.occurredAt && (
                                 <small>
                                     Entrada pendiente: <time dateTime={today.blockingIssue.occurredAt}>{new Intl.DateTimeFormat('es-NI', { dateStyle: 'medium', timeStyle: 'short', timeZone: today.timezone }).format(new Date(today.blockingIssue.occurredAt))}</time>
@@ -189,6 +197,7 @@ export default function AttendancePunchWizard({ policy, today, onCompleted, onRe
                             )}
                             {today.blockingIssue && <small>No se creó una salida automática ni se abrió una jornada nueva.</small>}
                             {today.blockingIssue && onRequestCorrection && <Button type="button" variant="secondary" size="sm" onClick={onRequestCorrection}>Solicitar corrección</Button>}
+                            {!today.blockingIssue && missingSchedule && onViewSchedule && <Button type="button" variant="secondary" size="sm" onClick={onViewSchedule}>Ver mi horario</Button>}
                         </div>
                     </div>
                 )}

@@ -334,7 +334,7 @@ export default function MyBenefits() {
               <table className="inventory-table my-benefits-table">
                 <thead><tr><th scope="col">Código</th><th scope="col">Detalle</th><th scope="col">Actualizado</th><th scope="col" className="hr-amount-cell">{tab === 'LOAN' ? 'Saldo' : 'Importe'}</th><th scope="col">Estado</th><th scope="col" className="my-benefits-actions-col">Acción</th></tr></thead>
                 <tbody>
-                  {items.length === 0 ? <tr><td colSpan={6}><div className="hr-benefits-empty"><WalletCards size={36} /><p>{tab === 'TRAVEL' ? 'Aún no tienes viáticos registrados.' : tab === 'LOAN' ? 'Aún no tienes préstamos registrados.' : 'No tienes deducciones asignadas.'}</p>{tab !== 'DEDUCTION' && <Button size="sm" onClick={() => setPanel(tab)} disabled={!online}><Plus size={15} /> {tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'}</Button>}</div></td></tr> : pagedItems.map((entry) => {
+                  {items.length === 0 ? <tr className="my-benefits-empty-row"><td colSpan={6}><div className="hr-benefits-empty"><WalletCards size={36} /><p>{tab === 'TRAVEL' ? 'Aún no tienes viáticos registrados.' : tab === 'LOAN' ? 'Aún no tienes préstamos registrados.' : 'No tienes deducciones asignadas.'}</p>{tab !== 'DEDUCTION' && <Button size="sm" onClick={() => setPanel(tab)} disabled={!online}><Plus size={15} /> {tab === 'TRAVEL' ? 'Solicitar viático' : 'Solicitar préstamo'}</Button>}</div></td></tr> : pagedItems.map((entry) => {
                     const item = entry as HrTravelRequest | HrLoan | HrDeduction;
                     const detail = tab === 'TRAVEL' ? (item as HrTravelRequest).destination : tab === 'LOAN' ? (item as HrLoan).purpose : (item as HrDeduction).name;
                     const amount = tab === 'TRAVEL'
@@ -343,7 +343,7 @@ export default function MyBenefits() {
                         ? money((item as HrLoan).currency, (item as HrLoan).outstandingBalance)
                         : money((item as HrDeduction).currency, (item as HrDeduction).applicableAmount);
                     const isSelected = selected?.resource === tab && selected.item.id === item.id;
-                    return <tr key={`${tab}-${item.id}`} className={isSelected ? 'is-selected' : undefined}><td><strong>{item.code}</strong></td><td>{detail}</td><td>{dateLabel(item.updatedAt)}</td><td className="hr-amount-cell"><strong>{amount}</strong></td><td><BenefitsStatusPill status={item.status} /></td><td className="my-benefits-actions-col"><Button className="table-action-btn" size="sm" variant={isSelected ? 'secondary' : 'ghost'} onClick={() => void openDetail({ resource: tab, item } as Selected)} aria-label={`Ver detalle de ${item.code}`} title="Ver detalle"><Eye size={16} /></Button></td></tr>;
+                    return <tr key={`${tab}-${item.id}`} className={isSelected ? 'is-selected' : undefined}><td data-label="Código"><strong>{item.code}</strong></td><td data-label="Detalle">{detail}</td><td data-label="Actualizado">{dateLabel(item.updatedAt)}</td><td data-label={tab === 'LOAN' ? 'Saldo' : 'Importe'} className="hr-amount-cell"><strong>{amount}</strong></td><td data-label="Estado"><BenefitsStatusPill status={item.status} /></td><td data-label="Acción" className="my-benefits-actions-col"><Button className="table-action-btn" size="sm" variant={isSelected ? 'secondary' : 'ghost'} onClick={() => void openDetail({ resource: tab, item } as Selected)} aria-label={`Ver detalle de ${item.code}`} title="Ver detalle"><Eye size={16} /><span className="my-benefits-action-label">Ver detalle</span></Button></td></tr>;
                   })}
                 </tbody>
               </table>
@@ -502,11 +502,11 @@ export default function MyBenefits() {
                           )}
                           {(selected.item.expenses ?? []).map((expense) => (
                             <tr key={expense.id}>
-                              <td>{dateLabel(expense.occurredOn)}</td>
-                              <td>{expense.description}</td>
-                              <td className="hr-amount-cell">{money(expense.currency, expense.claimedAmount)}</td>
-                              <td className="hr-amount-cell">{money(expense.currency, expense.recognizedAmount)}</td>
-                              <td>
+                              <td data-label="Fecha">{dateLabel(expense.occurredOn)}</td>
+                              <td data-label="Descripción">{expense.description}</td>
+                              <td data-label="Reclamado" className="hr-amount-cell">{money(expense.currency, expense.claimedAmount)}</td>
+                              <td data-label="Reconocido" className="hr-amount-cell">{money(expense.currency, expense.recognizedAmount)}</td>
+                              <td data-label="Estado">
                                 <BenefitsStatusPill status={expense.status} />
                               </td>
                             </tr>
@@ -541,14 +541,14 @@ export default function MyBenefits() {
                           )}
                           {(selected.item.schedule ?? []).map((installment) => (
                             <tr key={installment.id}>
-                              <td>{installment.number}</td>
-                              <td>{dateLabel(installment.dueDate)}</td>
-                              <td className="hr-amount-cell">{money(selected.item.currency, installment.scheduledTotal)}</td>
-                              <td className="hr-amount-cell">{money(selected.item.currency, installment.paidAmount)}</td>
-                              <td className="hr-amount-cell">
+                              <td data-label="#">{installment.number}</td>
+                              <td data-label="Vence">{dateLabel(installment.dueDate)}</td>
+                              <td data-label="Cuota" className="hr-amount-cell">{money(selected.item.currency, installment.scheduledTotal)}</td>
+                              <td data-label="Pagado" className="hr-amount-cell">{money(selected.item.currency, installment.paidAmount)}</td>
+                              <td data-label="Saldo" className="hr-amount-cell">
                                 {money(selected.item.currency, installment.outstandingAmount)}
                               </td>
-                              <td>
+                              <td data-label="Estado">
                                 <BenefitsStatusPill status={installment.status} />
                               </td>
                             </tr>

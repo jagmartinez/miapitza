@@ -12,11 +12,15 @@ const timeClock = read('../../pages/hr/TimeClock.tsx');
 const biometrics = read('../../pages/hr/Biometrics.tsx');
 const profile = read('../../pages/Profile.tsx');
 const navigation = read('./MyHrNav.tsx');
+const punchWizard = read('./AttendancePunchWizard.tsx');
 const layout = read('../Layout.tsx');
 const selfServiceCss = read('../../pages/hr/self-service.css');
+const navigationCss = read('./my-hr-nav.css');
+const benefitsCss = read('../../pages/hr/benefits.css');
+const payrollCss = read('../../pages/hr/payroll.css');
 
 describe('employee self-service UX contract', () => {
-  it('uses Profile cards as the launcher and only a back link inside each destination', () => {
+  it('uses Profile cards as the launcher and adds a compact mobile punch shortcut', () => {
     [schedule, workforce, payroll, benefits, timeClock, biometrics].forEach((source) => {
       expect(source).toContain('<MyHrNav />');
       expect(source).toContain('my-hr-page');
@@ -25,11 +29,33 @@ describe('employee self-service UX contract', () => {
     });
     expect(profile).not.toContain('<MyHrNav />');
     expect(navigation).toContain('to="/profile?tab=hr"');
+    expect(navigation).toContain('to="/rh/marcaje"');
+    expect(navigation).toContain('Marcar ahora');
     expect(navigation).toContain('Mis accesos de RH');
     expect(navigation).not.toContain("const ITEMS");
-    expect(navigation).toContain('aria-label="Volver a Mis accesos de RH"');
+    expect(navigation).toContain('aria-label="Navegación de Mi RH"');
     expect(selfServiceCss).toContain('.my-hr-summary-grid');
     expect(selfServiceCss).toContain('.my-hr-page-header .page-header-actions');
+    expect(navigationCss).toContain('.my-hr-nav__punch');
+    expect(navigationCss).toContain('@media (max-width: 768px)');
+  });
+
+  it('turns wide self-service tables and receipt rows into mobile-native layouts', () => {
+    expect(benefits).toContain('data-label="Código"');
+    expect(benefits).toContain('data-label="Estado"');
+    expect(benefits).toContain('my-benefits-action-label');
+    expect(benefitsCss).toContain('.my-benefits-table tbody td::before');
+    expect(benefitsCss).toContain('content: attr(data-label)');
+    expect(payrollCss).toMatch(/\.hr-my-receipt-list button\s*\{[\s\S]*?display: grid;/);
+    expect(selfServiceCss).toContain('scroll-snap-type: x proximity');
+  });
+
+  it('explains why a punch is unavailable and links the next safe action', () => {
+    expect(punchWizard).toContain('No tienes un turno publicado aplicable');
+    expect(punchWizard).toContain('No tienes una asignación RH vigente');
+    expect(punchWizard).toContain('Ver mi horario');
+    expect(timeClock).toContain('onViewSchedule={() => navigate');
+    expect(biometrics).toContain('Ir a marcar ahora');
   });
 
   it('builds the portal summary from scoped server resources and tolerates partial failures', () => {
