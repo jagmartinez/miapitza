@@ -9,6 +9,7 @@ describe('Phase 4 workforce API contract', () => {
       '/attendance/daily-summaries',
       '/attendance/incidents',
       '/attendance/corrections',
+      '/attendance/corrections/${id}/cancel',
       '/attendance/corrections/${id}/decide',
       '/attendance/periods',
       '/attendance/periods/${id}/close',
@@ -47,6 +48,7 @@ describe('Phase 4 workforce API contract', () => {
     expect(source).toContain("'Idempotency-Key': idempotencyKey");
     [
       'createCorrection',
+      'cancelCorrection',
       'decideCorrection',
       'closePeriod',
       'createOvertimeRequest',

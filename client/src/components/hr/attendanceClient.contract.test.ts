@@ -66,6 +66,12 @@ describe('Phase 3 attendance API contract', () => {
     expect(captureSources).toContain('livenessAction={challenge.livenessAction}');
     expect(captureSources).toContain('await wait(900)');
     expect(captureSources).toContain('frames.push(await captureFrame())');
+    expect(captureSources).toContain('ESTÁS MARCANDO');
+    expect(captureSources).toContain('Sucursal a validar');
+    expect(captureSources).toContain('Geocerca de la sucursal');
+    expect(captureSources).toContain('Cancelar intento');
+    expect(captureSources).toContain('No se creó una salida automática ni se abrió una jornada nueva.');
+    expect(captureSources).toContain('Solicitar corrección');
   });
 
   it('bypasses offline cache for every sensitive owner settings read', () => {

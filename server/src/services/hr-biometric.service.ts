@@ -153,7 +153,15 @@ export class AttendancePolicyService {
         for (const currentKey of keys) {
             const policy = await prisma.attendancePolicy.findFirst({ where: { companyId, currentKey, active: true } });
             if (policy) {
-                return branchTimezone ? { ...policy, timezone: branchTimezone } : policy;
+                const enforced = {
+                    ...policy,
+                    // Self-service identity and location evidence are mandatory.
+                    // Legacy WARN/REVIEW rows remain readable but are normalized
+                    // fail-closed before they reach any punch decision.
+                    geofenceViolationMode: 'BLOCK' as const,
+                    biometricViolationMode: 'BLOCK' as const,
+                };
+                return branchTimezone ? { ...enforced, timezone: branchTimezone } : enforced;
             }
         }
         return { ...this.defaults, timezone: branchTimezone || this.defaults.timezone, id: undefined, branchId: branchId || null };
@@ -190,8 +198,8 @@ export class AttendancePolicyService {
             earlyCheckOutToleranceM: input.earlyCheckOutToleranceM === undefined ? base.earlyCheckOutToleranceM : integer(input.earlyCheckOutToleranceM, 'earlyCheckOutToleranceM', 0, 1440),
             lateCheckOutMinutes: input.lateCheckOutMinutes === undefined ? base.lateCheckOutMinutes : integer(input.lateCheckOutMinutes, 'lateCheckOutMinutes', 0, 2880),
             scheduleViolationMode: mode(input.scheduleViolationMode, 'scheduleViolationMode', base.scheduleViolationMode),
-            geofenceViolationMode: mode(input.geofenceViolationMode, 'geofenceViolationMode', base.geofenceViolationMode),
-            biometricViolationMode: mode(input.biometricViolationMode, 'biometricViolationMode', base.biometricViolationMode),
+            geofenceViolationMode: 'BLOCK' as const,
+            biometricViolationMode: 'BLOCK' as const,
             allowUnscheduledPunch: booleanValue(input.allowUnscheduledPunch, 'allowUnscheduledPunch', base.allowUnscheduledPunch),
             unscheduledViolationMode: mode(input.unscheduledViolationMode, 'unscheduledViolationMode', base.unscheduledViolationMode),
             allowManualFallback: booleanValue(input.allowManualFallback, 'allowManualFallback', base.allowManualFallback),
@@ -213,7 +221,11 @@ export class AttendancePolicyService {
                 companyId, userId: actorUserId, entityType: 'AttendancePolicy', entityId: policy.id,
                 action: current ? 'UPDATE' : 'CREATE', details: { branchId: branchId || null, version: policy.version },
             }, tx);
-            return policy;
+            return {
+                ...policy,
+                geofenceViolationMode: 'BLOCK' as const,
+                biometricViolationMode: 'BLOCK' as const,
+            };
         });
     }
 }

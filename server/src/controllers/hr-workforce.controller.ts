@@ -136,6 +136,17 @@ export class HrWorkforceController {
         } catch (error) { handleError(error, res, next); }
     }
 
+    static async cancelCorrection(req: Request, res: Response, next: NextFunction) {
+        try {
+            const forcedUserId = isCompanyWide(req.user!) ? undefined : selfUserId(req);
+            const data = await AttendanceCorrectionService.cancel(
+                Number(req.params.id), req.user!.companyId, req.user!.userId,
+                req.body.reason, idempotencyKey(req), forcedUserId,
+            );
+            res.json({ success: true, data, message: 'Solicitud de corrección cancelada con trazabilidad' });
+        } catch (error) { handleError(error, res, next); }
+    }
+
     static async decideCorrection(req: Request, res: Response, next: NextFunction) {
         try {
             requireCompanyOwner(req);

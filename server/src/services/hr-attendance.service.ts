@@ -66,6 +66,7 @@ function json(value: unknown): Prisma.InputJsonValue {
 function effectivePolicySnapshot(policy: Awaited<ReturnType<typeof AttendancePolicyService.getCurrent>>) {
     return {
         id: policy.id ?? null,
+        branchId: policy.branchId ?? null,
         version: policy.version,
         timezone: policy.timezone,
         requireBiometric: policy.requireBiometric,
@@ -125,6 +126,29 @@ export function availableActionsFrom(events: Array<{ action: string }>): Action[
     return ['CHECK_IN'];
 }
 
+type EffectiveBranchAssignment = Prisma.EmployeeBranchAssignmentGetPayload<{
+    include: { branch: { select: { id: true; name: true; code: true; timezone: true; status: true } } };
+}>;
+
+function assignmentCovers(
+    assignment: Pick<EffectiveBranchAssignment, 'effectiveFrom' | 'effectiveTo'>,
+    instant: Date,
+    timezone: string,
+) {
+    const dateKey = zonedDateKey(instant, timezone);
+    const from = assignment.effectiveFrom.toISOString().slice(0, 10);
+    const to = assignment.effectiveTo?.toISOString().slice(0, 10) || null;
+    return from <= dateKey && (to === null || to >= dateKey);
+}
+
+async function employeeBranchAssignments(companyId: number, userId: number): Promise<EffectiveBranchAssignment[]> {
+    return prisma.employeeBranchAssignment.findMany({
+        where: { companyId, employee: { companyId, userId } },
+        include: { branch: { select: { id: true, name: true, code: true, timezone: true, status: true } } },
+        orderBy: [{ isPrimary: 'desc' }, { effectiveFrom: 'desc' }],
+    });
+}
+
 function check(status: CheckStatus, message: string, reasonCode?: string, measuredValue?: number | null, limitValue?: number | null): AttendanceCheck {
     return { status, message, ...(reasonCode ? { reasonCode } : {}), ...(measuredValue !== undefined ? { measuredValue } : {}), ...(limitValue !== undefined ? { limitValue } : {}) };
 }
@@ -137,6 +161,13 @@ function decisionForViolation(current: 'ACCEPTED' | 'REVIEW' | 'REJECTED', statu
     if (enforcement === 'BLOCK') return 'REJECTED' as const;
     if (enforcement === 'REVIEW' && current !== 'REJECTED') return 'REVIEW' as const;
     return current;
+}
+
+export function decisionForSelfEvidence(
+    current: 'ACCEPTED' | 'REVIEW' | 'REJECTED',
+    status: CheckStatus | 'ERROR',
+) {
+    return decisionForViolation(current, status, 'BLOCK');
 }
 
 function externalDecision(value: 'ACCEPTED' | 'REVIEW' | 'REJECTED') {
@@ -246,6 +277,24 @@ async function selectShiftUsingBranchPolicies(companyId: number, shifts: Effecti
     };
 }
 
+async function shiftById(companyId: number, userId: number, shiftId: number): Promise<EffectiveShift | null> {
+    const shift = await prisma.scheduledShift.findFirst({
+        where: {
+            id: shiftId,
+            companyId,
+            OR: [
+                { assignmentOverride: { is: { assignedUserId: userId } } },
+                { assignmentOverride: { is: null }, userId },
+            ],
+        },
+        include: {
+            branch: { select: { id: true, name: true, code: true, timezone: true } },
+            assignmentOverride: { select: { assignedUserId: true } },
+        },
+    });
+    return shift as EffectiveShift | null;
+}
+
 async function lockAttendanceSubject(tx: Prisma.TransactionClient, companyId: number, userId: number) {
     const rows = await tx.$queryRaw<Array<{ id: number }>>(Prisma.sql`
         SELECT id FROM \`User\`
@@ -294,6 +343,50 @@ async function effectiveSessionEvents(
         orderBy: [{ serverAt: 'asc' }, { id: 'asc' }],
     });
     return events.filter(isEffectiveEvent);
+}
+
+async function effectiveSubjectEvents(
+    tx: Prisma.TransactionClient,
+    companyId: number,
+    userId: number,
+    excludeEventId?: number,
+) {
+    const events = await tx.attendanceEvent.findMany({
+        where: {
+            companyId, userId,
+            ...(excludeEventId ? { id: { not: excludeEventId } } : {}),
+            OR: [
+                { decision: 'ACCEPTED' },
+                { decision: 'REVIEW', review: { is: { decision: 'APPROVED' } } },
+            ],
+        },
+        include: {
+            review: { select: { decision: true } },
+            targetedCorrections: {
+                where: { status: 'APPLIED' },
+                select: { type: true, status: true, compensationEventId: true },
+            },
+        },
+        orderBy: [{ serverAt: 'asc' }, { id: 'asc' }],
+    });
+    return events.filter(isEffectiveEvent);
+}
+
+async function assertGlobalCandidateState(
+    tx: Prisma.TransactionClient,
+    candidate: { id?: number; companyId: number; userId: number; sessionKey: string; action: Action },
+) {
+    const effective = await effectiveSubjectEvents(tx, candidate.companyId, candidate.userId, candidate.id);
+    const opened = openSessions(effective);
+    if (candidate.action === 'CHECK_IN') {
+        if (opened.length > 0) {
+            throw new HrAttendanceError('Ya existe una entrada abierta; debe cerrarse o corregirse antes de otra entrada', 409, 'OPEN_ATTENDANCE_EXISTS');
+        }
+        return;
+    }
+    if (opened.length !== 1 || opened[0][0] !== candidate.sessionKey) {
+        throw new HrAttendanceError('La acción requiere una única entrada abierta de la misma jornada', 409, 'OPEN_ATTENDANCE_REQUIRED');
+    }
 }
 
 async function assertCandidateSequence(
@@ -400,7 +493,13 @@ function isEffectiveEvent(event: EffectiveAttendanceEvent): boolean {
 
 async function effectiveEventsInRange(companyId: number, userId: number, from: Date, to: Date) {
     const events = await prisma.attendanceEvent.findMany({
-        where: { companyId, userId, serverAt: { gte: from, lt: to } },
+        where: {
+            companyId, userId, serverAt: { gte: from, lt: to },
+            OR: [
+                { decision: 'ACCEPTED' },
+                { decision: 'REVIEW', review: { is: { decision: 'APPROVED' } } },
+            ],
+        },
         include: {
             review: { select: { decision: true } },
             targetedCorrections: {
@@ -437,6 +536,23 @@ function openSession(events: EffectiveAttendanceEvent[]) {
     return Array.from(groupSessions(events).entries())
         .filter(([, values]) => values[0]?.action === 'CHECK_IN' && values[values.length - 1]?.action !== 'CHECK_OUT')
         .sort((left, right) => right[1][right[1].length - 1].serverAt.getTime() - left[1][left[1].length - 1].serverAt.getTime())[0] || null;
+}
+
+function openSessions(events: EffectiveAttendanceEvent[]) {
+    return Array.from(groupSessions(events).entries())
+        .filter(([, values]) => values[0]?.action === 'CHECK_IN' && values[values.length - 1]?.action !== 'CHECK_OUT')
+        .sort((left, right) => right[1][right[1].length - 1].serverAt.getTime() - left[1][left[1].length - 1].serverAt.getTime());
+}
+
+function staleOpenSession(
+    open: [string, EffectiveAttendanceEvent[]] | null,
+    shift: EffectiveShift | null,
+    policy: Awaited<ReturnType<typeof AttendancePolicyService.getCurrent>>,
+    now: Date,
+) {
+    if (!open) return false;
+    if (shift) return now.getTime() > shift.endAt.getTime() + policy.lateCheckOutMinutes * 60_000;
+    return zonedDateKey(open[1][0].serverAt, policy.timezone) < zonedDateKey(now, policy.timezone);
 }
 
 function assertValidActionSequence(events: Array<{ action: string }>) {
@@ -514,30 +630,41 @@ export class AttendanceService {
     static async today(companyId: number, userId: number, activeBranchId?: number, now = new Date()) {
         const user = await prisma.user.findFirst({
             where: { id: userId, companyId, status: 'ACTIVE', accountType: 'INTERNAL', employee: { is: { status: 'ACTIVE' } } },
-            select: { branchId: true },
+            select: { id: true },
         });
         if (!user) throw new HrAttendanceError('Usuario activo no encontrado', 404);
-        const branchId = activeBranchId || user.branchId || undefined;
-        const fallbackPolicy = await AttendancePolicyService.getCurrent(companyId, branchId);
-        const [shifts, history] = await Promise.all([
+        const [shifts, history, assignments] = await Promise.all([
             effectiveShifts(companyId, userId, new Date(now.getTime() - 72 * 3600000), new Date(now.getTime() + 36 * 3600000)),
-            effectiveEventsInRange(companyId, userId, new Date(now.getTime() - 72 * 3600000), new Date(now.getTime() + 1000)),
+            effectiveEventsInRange(companyId, userId, new Date(0), new Date(now.getTime() + 1000)),
+            employeeBranchAssignments(companyId, userId),
         ]);
         const open = openSession(history);
         const completedShiftIds = new Set(history.filter((event) => event.action === 'CHECK_OUT' && event.scheduledShiftId).map((event) => event.scheduledShiftId));
-        const openShift = open?.[1][0].scheduledShiftId
-            ? shifts.find((shift) => shift.id === open[1][0].scheduledShiftId) || null
+        const openShiftId = open?.[1][0].scheduledShiftId || null;
+        const openShift = openShiftId
+            ? shifts.find((shift) => shift.id === openShiftId) || await shiftById(companyId, userId, openShiftId)
             : null;
         const selected = openShift
             ? { shift: openShift, policy: await AttendancePolicyService.getCurrent(companyId, openShift.branchId) }
             : await selectShiftUsingBranchPolicies(companyId, shifts.filter((shift) => !completedShiftIds.has(shift.id)), now);
         const scheduledShift = selected.shift;
-        const openBranchId = open?.[1][0].branchId || undefined;
-        const policy = selected.policy
-            || (openBranchId ? await AttendancePolicyService.getCurrent(companyId, openBranchId) : fallbackPolicy);
+        const effectiveNow = assignments.filter((assignment) => assignment.branch.status === 'ACTIVE' && assignmentCovers(assignment, now, assignment.branch.timezone));
+        const preferredAssignment = effectiveNow.find((assignment) => assignment.branchId === activeBranchId) || effectiveNow[0] || null;
+        const targetBranchId = open?.[1][0].branchId || scheduledShift?.branchId || preferredAssignment?.branchId || null;
+        const policy = selected.policy || await AttendancePolicyService.getCurrent(companyId, targetBranchId || undefined);
+        const authorizationInstant = scheduledShift?.startAt || open?.[1][0].serverAt || now;
+        const branchAssignment = targetBranchId
+            ? assignments.find((assignment) => assignment.branchId === targetBranchId && assignment.branch.status === 'ACTIVE' && assignmentCovers(assignment, authorizationInstant, assignment.branch.timezone)) || null
+            : null;
+        const targetBranch = targetBranchId
+            ? assignments.find((assignment) => assignment.branchId === targetBranchId)?.branch
+                || scheduledShift?.branch
+                || await prisma.branch.findFirst({ where: { id: targetBranchId, companyId }, select: { id: true, name: true, code: true, timezone: true, status: true } })
+            : null;
         const sessionEvents = open?.[1]
             || (scheduledShift ? history.filter((event) => event.scheduledShiftId === scheduledShift.id) : []);
-        const availableActions = scheduledShift || open || policy.allowUnscheduledPunch
+        const stale = staleOpenSession(open, openShift, policy, now);
+        const availableActions = !stale && branchAssignment && (scheduledShift || open || policy.allowUnscheduledPunch)
             ? availableActionsFrom(sessionEvents)
             : [];
         const bounds = dateBounds(zonedDateKey(now, policy.timezone), policy.timezone);
@@ -546,6 +673,15 @@ export class AttendanceService {
             || (open && effectiveSessionKey(event) === open[0]));
         return {
             serverTime: now, timezone: policy.timezone, availableActions,
+            policy: effectivePolicySnapshot(policy),
+            targetBranch: targetBranch ? { id: targetBranch.id, name: targetBranch.name, code: targetBranch.code } : null,
+            blockingIssue: stale && open ? {
+                code: 'STALE_OPEN_ATTENDANCE' as const,
+                message: 'Existe una entrada anterior sin salida fuera de su ventana válida. Solicita una corrección antes de iniciar otra jornada.',
+                occurredAt: open[1][0].serverAt,
+                branch: targetBranch ? { id: targetBranch.id, name: targetBranch.name, code: targetBranch.code } : null,
+                resolution: 'REQUEST_CORRECTION' as const,
+            } : null,
             punches: events.map((event) => ({
                 id: event.id, action: event.action, occurredAt: event.serverAt, branchId: event.branchId,
                 source: event.source,
@@ -575,7 +711,7 @@ export class AttendanceService {
                 id: input.userId, companyId: input.companyId, status: 'ACTIVE',
                 accountType: 'INTERNAL', employee: { is: { status: 'ACTIVE' } },
             },
-            select: { id: true, branchId: true, allowedBranches: { select: { branchId: true } } },
+            select: { id: true },
         });
         if (!user) throw new HrAttendanceError('El marcaje requiere un usuario interno vinculado a un empleado', 403, 'HR_INTERNAL_EMPLOYEE_REQUIRED');
         const requestedDeviceId = input.deviceId === undefined || input.deviceId === null || input.deviceId === '' ? null : positiveId(input.deviceId, 'X-Attendance-Device-Id');
@@ -606,16 +742,18 @@ export class AttendanceService {
             requestHash: hash, challengeId: input.challengeId, now,
         });
         if (claim.replay) return punchResult(claim.replay);
-        const [broadShifts, history] = await Promise.all([
+        const [broadShifts, history, assignments] = await Promise.all([
             effectiveShifts(input.companyId, input.userId, new Date(now.getTime() - 72 * 3600000), new Date(now.getTime() + 36 * 3600000)),
-            effectiveEventsInRange(input.companyId, input.userId, new Date(now.getTime() - 72 * 3600000), new Date(now.getTime() + 1000)),
+            effectiveEventsInRange(input.companyId, input.userId, new Date(0), new Date(now.getTime() + 1000)),
+            employeeBranchAssignments(input.companyId, input.userId),
         ]);
         const open = openSession(history);
         const startedShiftIds = new Set(history.filter((event) => event.action === 'CHECK_IN' && event.scheduledShiftId).map((event) => event.scheduledShiftId));
         let shift: EffectiveShift | null = null;
         let selectedShiftPolicy: Awaited<ReturnType<typeof AttendancePolicyService.getCurrent>> | null = null;
         if (open?.[1][0].scheduledShiftId) {
-            shift = broadShifts.find((candidate) => candidate.id === open[1][0].scheduledShiftId) || null;
+            shift = broadShifts.find((candidate) => candidate.id === open[1][0].scheduledShiftId)
+                || await shiftById(input.companyId, input.userId, open[1][0].scheduledShiftId);
             if (shift) selectedShiftPolicy = await AttendancePolicyService.getCurrent(input.companyId, shift.branchId);
         } else if (action === 'CHECK_IN') {
             const selected = await selectShiftUsingBranchPolicies(
@@ -626,13 +764,16 @@ export class AttendanceService {
             shift = selected.shift;
             selectedShiftPolicy = selected.policy;
         }
-        const branchId = open?.[1][0].branchId || shift?.branchId || device?.branchId || input.activeBranchId || user.branchId || null;
-        const allowedBranchIds = new Set([user.branchId, ...user.allowedBranches.map((entry) => entry.branchId)].filter((value): value is number => Boolean(value)));
-        const branchAuthorization = shift
-            ? check('PASSED', 'El turno publicado autoriza la sucursal')
-            : branchId && allowedBranchIds.has(branchId)
-                ? check('PASSED', 'Usuario habilitado para la sucursal')
-                : check('FAILED', 'Usuario no habilitado para marcar en esta sucursal', 'USER_BRANCH_NOT_ALLOWED');
+        const effectiveNow = assignments.filter((assignment) => assignment.branch.status === 'ACTIVE' && assignmentCovers(assignment, now, assignment.branch.timezone));
+        const preferredAssignment = effectiveNow.find((assignment) => assignment.branchId === input.activeBranchId) || effectiveNow[0] || null;
+        const branchId = open?.[1][0].branchId || shift?.branchId || device?.branchId || preferredAssignment?.branchId || null;
+        const authorizationInstant = shift?.startAt || open?.[1][0].serverAt || now;
+        const effectiveAssignment = branchId
+            ? assignments.find((assignment) => assignment.branchId === branchId && assignment.branch.status === 'ACTIVE' && assignmentCovers(assignment, authorizationInstant, assignment.branch.timezone)) || null
+            : null;
+        const branchAuthorization = effectiveAssignment
+            ? check('PASSED', 'Adscripción RH vigente para la sucursal')
+            : check('FAILED', 'El empleado no tiene una adscripción RH vigente para esta sucursal', 'EMPLOYEE_BRANCH_ASSIGNMENT_REQUIRED');
         const branch = branchId ? await prisma.branch.findFirst({
             where: { id: branchId, companyId: input.companyId },
             select: {
@@ -649,10 +790,13 @@ export class AttendanceService {
         }) : null;
         const policy = selectedShiftPolicy || await AttendancePolicyService.getCurrent(input.companyId, branchId || undefined);
         const schedule = scheduleCheck(action, shift, now, policy);
-        const sessionKey = open?.[0] || (shift ? `SHIFT:${shift.id}` : `UNSCHEDULED:${input.userId}:${claim.claimId}`);
+        const stale = staleOpenSession(open, shift, policy, now);
+        const sessionKey = open?.[0] || (shift ? `SHIFT:${shift.id}` : `UNSCHEDULED:${input.userId}:${zonedDateKey(now, policy.timezone)}:${claim.claimId}`);
         const sessionEvents = open?.[1] || history.filter((event) => effectiveSessionKey(event) === sessionKey);
         const allowedActions = availableActionsFrom(sessionEvents);
-        const sequence = allowedActions.includes(action)
+        const sequence = stale
+            ? check('FAILED', 'La entrada anterior quedó fuera de su ventana válida y requiere corrección', 'STALE_OPEN_ATTENDANCE')
+            : allowedActions.includes(action)
             ? check('PASSED', 'Secuencia de marcaje válida')
             : check('FAILED', `Acción fuera de secuencia; permitidas: ${allowedActions.join(', ') || 'ninguna'}`, 'INVALID_PUNCH_SEQUENCE');
         const deviceCheck = !device
@@ -760,10 +904,13 @@ export class AttendanceService {
         if (branchStatus.status === 'FAILED') { decision = 'REJECTED'; addReason(branchStatus.reasonCode); }
         const scheduleMode = !shift ? (policy.allowUnscheduledPunch ? policy.unscheduledViolationMode : 'BLOCK') : policy.scheduleViolationMode;
         decision = decisionForViolation(decision, schedule.status, scheduleMode);
-        decision = decisionForViolation(decision, geo.geofence.status, policy.geofenceViolationMode);
-        decision = decisionForViolation(decision, geo.locationAccuracy.status, policy.geofenceViolationMode);
-        decision = decisionForViolation(decision, freshness.status, policy.geofenceViolationMode);
-        decision = decisionForViolation(decision, biometric.status, policy.biometricViolationMode);
+        // Identidad y ubicación son evidencia constitutiva del auto-marcaje. Una
+        // configuración WARN nunca puede convertir evidencia fallida en tiempo
+        // trabajado; las excepciones usan una corrección compensatoria auditada.
+        decision = decisionForSelfEvidence(decision, geo.geofence.status);
+        decision = decisionForSelfEvidence(decision, geo.locationAccuracy.status);
+        decision = decisionForSelfEvidence(decision, freshness.status);
+        decision = decisionForSelfEvidence(decision, biometric.status);
         // Infrastructure failures are never effective, even when the business
         // policy is WARN. The immutable attempt remains reviewable and returns 503.
         if ((providerStatus === 'UNAVAILABLE' || providerStatus === 'ERROR') && decision !== 'REJECTED') decision = 'REVIEW';
@@ -784,7 +931,11 @@ export class AttendanceService {
             distanceM: geo.distanceM === null ? null : new Prisma.Decimal(geo.distanceM),
             faceStatus, livenessStatus, providerStatus, providerScore: providerScore === null ? null : new Prisma.Decimal(providerScore),
             decision, reasonCode: reasonCodes[0] || null, reasonCodes: json(reasonCodes),
-            message: decision === 'ACCEPTED' ? 'Marcaje aceptado' : decision === 'REVIEW' ? 'Marcaje enviado a revisión' : challengeError?.message || 'Marcaje rechazado',
+            message: decision === 'ACCEPTED'
+                ? 'Marcaje aceptado'
+                : decision === 'REVIEW'
+                    ? 'Marcaje enviado a revisión'
+                    : challengeError?.message || (sequence.status === 'FAILED' ? sequence.message : 'Marcaje rechazado'),
             checks: json(checks),
         };
         let event: EventForApi;
@@ -794,17 +945,29 @@ export class AttendanceService {
                 const period = await lockAttendanceDatePeriod(tx, input.companyId, localDate);
                 await lockAttendanceSubject(tx, input.companyId, input.userId);
                 const periodClosed = period?.status === 'CLOSED';
-                const transactionalDecision = periodClosed ? 'REJECTED' as const : decision;
-                const transactionalReasonCodes = periodClosed
+                let transactionalDecision: 'ACCEPTED' | 'REVIEW' | 'REJECTED' = periodClosed ? 'REJECTED' : decision;
+                let transactionalReasonCodes = periodClosed
                     ? [...new Set([...reasonCodes, 'ATTENDANCE_PERIOD_CLOSED'])]
                     : reasonCodes;
                 let transactionalSequenceKey = transactionalDecision === 'ACCEPTED' ? eventData.sequenceKey : null;
+                let transactionalFailure: HrAttendanceError | null = null;
                 if (transactionalDecision === 'ACCEPTED') {
-                    const effective = await assertCandidateSequence(tx, {
-                        companyId: input.companyId, userId: input.userId, sessionKey,
-                        action, serverAt: now,
-                    });
-                    transactionalSequenceKey = `${sessionKey}:${effective.length}`;
+                    try {
+                        await assertGlobalCandidateState(tx, {
+                            companyId: input.companyId, userId: input.userId, sessionKey, action,
+                        });
+                        const effective = await assertCandidateSequence(tx, {
+                            companyId: input.companyId, userId: input.userId, sessionKey,
+                            action, serverAt: now,
+                        });
+                        transactionalSequenceKey = `${sessionKey}:${effective.length}`;
+                    } catch (candidateError) {
+                        if (!(candidateError instanceof HrAttendanceError)) throw candidateError;
+                        transactionalFailure = candidateError;
+                        transactionalDecision = 'REJECTED';
+                        transactionalSequenceKey = null;
+                        transactionalReasonCodes = [...new Set([...transactionalReasonCodes, candidateError.code || 'CONCURRENT_SEQUENCE'])];
+                    }
                 }
                 const created = await tx.attendanceEvent.create({
                     data: {
@@ -813,10 +976,15 @@ export class AttendanceService {
                         decision: transactionalDecision,
                         reasonCode: transactionalReasonCodes[0] || null,
                         reasonCodes: json(transactionalReasonCodes),
-                        message: periodClosed ? 'Marcaje rechazado porque el periodo de asistencia está cerrado' : eventData.message,
+                        message: periodClosed
+                            ? 'Marcaje rechazado porque el periodo de asistencia está cerrado'
+                            : transactionalFailure?.message || eventData.message,
                         checks: periodClosed ? json({
                             ...checks,
                             periodStatus: check('FAILED', 'El periodo de asistencia está cerrado', 'ATTENDANCE_PERIOD_CLOSED'),
+                        }) : transactionalFailure ? json({
+                            ...checks,
+                            sequence: check('FAILED', transactionalFailure.message, transactionalFailure.code || 'CONCURRENT_SEQUENCE'),
                         }) : eventData.checks,
                     },
                     include: eventInclude,
@@ -944,7 +1112,11 @@ export class AttendanceService {
         const reason = requiredText(reasonValue, 'reason', 2000);
         const event = await prisma.attendanceEvent.findFirst({
             where: { id: eventId, companyId, decision: 'REVIEW', ...(scopeBranchId ? { branchId: scopeBranchId } : {}) },
-            select: { id: true, userId: true, branchId: true, scheduledShiftId: true, sessionKey: true, action: true, serverAt: true },
+            select: {
+                id: true, userId: true, branchId: true, scheduledShiftId: true, sessionKey: true,
+                action: true, serverAt: true, providerStatus: true, faceStatus: true, livenessStatus: true, checks: true,
+                scheduledShift: { select: { startAt: true } },
+            },
         });
         if (!event) throw new HrAttendanceError('Evento no encontrado', 404);
         const eventPolicy = await AttendancePolicyService.getCurrent(companyId, event.branchId || undefined);
@@ -961,9 +1133,48 @@ export class AttendanceService {
                 if (period?.status === 'CLOSED') {
                     throw new HrAttendanceError('Reabra el periodo de asistencia antes de aprobar este marcaje', 409, 'ATTENDANCE_PERIOD_CLOSED');
                 }
+                const checks = (event.checks || {}) as unknown as Record<string, AttendanceCheck | undefined>;
+                const evidenceChecks = ['geofence', 'locationAccuracy', 'locationFreshness', 'biometric']
+                    .map((key) => checks[key])
+                    .filter((entry): entry is AttendanceCheck => Boolean(entry));
+                const evidenceFailed = evidenceChecks.some((entry) => entry.status === 'FAILED' || entry.status === 'REVIEW');
+                if (
+                    event.providerStatus === 'UNAVAILABLE'
+                    || event.providerStatus === 'ERROR'
+                    || event.faceStatus === 'ERROR'
+                    || event.livenessStatus === 'ERROR'
+                    || evidenceFailed
+                ) {
+                    throw new HrAttendanceError(
+                        'La evidencia facial o geográfica falló y no puede aprobarse como marcaje; use una corrección compensatoria',
+                        409,
+                        'ATTENDANCE_EVIDENCE_NOT_APPROVABLE',
+                    );
+                }
+                if (event.branchId) {
+                    const authorizationInstant = event.scheduledShift?.startAt || event.serverAt;
+                    const authorizationDate = new Date(`${zonedDateKey(authorizationInstant, eventPolicy.timezone)}T00:00:00.000Z`);
+                    const assignment = await tx.employeeBranchAssignment.findFirst({
+                        where: {
+                            companyId, branchId: event.branchId,
+                            employee: { companyId, userId: event.userId },
+                            effectiveFrom: { lte: authorizationDate },
+                            OR: [{ effectiveTo: null }, { effectiveTo: { gte: authorizationDate } }],
+                            branch: { status: 'ACTIVE' },
+                        },
+                        select: { id: true },
+                    });
+                    if (!assignment) {
+                        throw new HrAttendanceError('La adscripción RH de la sucursal ya no es válida para este marcaje', 409, 'EMPLOYEE_BRANCH_ASSIGNMENT_REQUIRED');
+                    }
+                }
                 const sessionKey = event.sessionKey || (event.scheduledShiftId
                     ? `SHIFT:${event.scheduledShiftId}`
                     : `LEGACY:${event.userId}:${event.branchId || 'NONE'}:${event.serverAt.toISOString().slice(0, 10)}`);
+                await assertGlobalCandidateState(tx, {
+                    id: event.id, companyId, userId: event.userId, sessionKey,
+                    action: event.action,
+                });
                 await assertCandidateSequence(tx, {
                     id: event.id, companyId, userId: event.userId, sessionKey,
                     action: event.action, serverAt: event.serverAt,
@@ -1014,7 +1225,7 @@ export class AttendanceService {
                     id: userId, companyId: input.companyId, status: 'ACTIVE',
                     accountType: 'INTERNAL', employee: { is: { status: 'ACTIVE' } },
                 },
-                select: { id: true, branchId: true, allowedBranches: { select: { branchId: true } } },
+                select: { id: true },
             }),
             prisma.branch.findFirst({
                 where: { id: branchId, companyId: input.companyId, status: 'ACTIVE' },
@@ -1062,9 +1273,19 @@ export class AttendanceService {
         if (!scheduledShiftId) {
             throw new HrAttendanceError('Un marcaje manual independiente requiere un turno publicado aplicable', 409, 'MANUAL_PUBLISHED_SHIFT_REQUIRED');
         }
-        const branchAllowed = user.branchId === branchId || user.allowedBranches.some((entry) => entry.branchId === branchId);
-        if (!branchAllowed && !requestedShift && !target?.scheduledShiftId) {
-            throw new HrAttendanceError('El usuario no está autorizado para la sucursal', 403, 'USER_BRANCH_NOT_ALLOWED');
+        const assignmentDate = new Date(`${zonedDateKey(occurredAt, branch.timezone)}T00:00:00.000Z`);
+        const branchAssignment = await prisma.employeeBranchAssignment.findFirst({
+            where: {
+                companyId: input.companyId, branchId,
+                employee: { companyId: input.companyId, userId },
+                effectiveFrom: { lte: assignmentDate },
+                OR: [{ effectiveTo: null }, { effectiveTo: { gte: assignmentDate } }],
+                branch: { status: 'ACTIVE' },
+            },
+            select: { id: true },
+        });
+        if (!branchAssignment) {
+            throw new HrAttendanceError('El empleado no tiene una adscripción RH vigente para la sucursal', 403, 'EMPLOYEE_BRANCH_ASSIGNMENT_REQUIRED');
         }
         const geofenceVersion = await prisma.branchGeofenceVersion.findFirst({
             where: { companyId: input.companyId, branchId }, orderBy: { version: 'desc' }, select: { id: true },
@@ -1084,6 +1305,9 @@ export class AttendanceService {
                 });
                 if (!availableTarget) throw new HrAttendanceError('El evento objetivo fue ajustado concurrentemente', 409, 'MANUAL_TARGET_CONFLICT');
             }
+            await assertGlobalCandidateState(tx, {
+                companyId: input.companyId, userId, sessionKey, action,
+            });
             await assertCandidateSequence(tx, {
                 companyId: input.companyId, userId, sessionKey, action, serverAt: occurredAt,
             });

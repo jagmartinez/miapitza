@@ -192,6 +192,19 @@ export const workforceClient = {
     return requireObject(response.data, 'corrección creada');
   },
 
+  async cancelCorrection(
+    id: number,
+    payload: HrReasonPayload,
+    idempotencyKey: string
+  ): Promise<HrAttendanceCorrection> {
+    const response = await api.post(
+      `${HR_BASE}/attendance/corrections/${id}/cancel`,
+      payload,
+      mutationConfig(idempotencyKey)
+    );
+    return requireObject(response.data, 'cancelación de corrección');
+  },
+
   async decideCorrection(
     id: number,
     payload: HrDecisionPayload,

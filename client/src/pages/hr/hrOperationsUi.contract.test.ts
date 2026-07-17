@@ -77,12 +77,18 @@ describe('RH operational UI contract', () => {
     expect(timeClock).toContain('Marcaje no disponible sin conexión');
     expect(timeClock).toContain('AttendancePunchWizard');
     expect(timeClock).toContain('Marcaje registrado; no se pudo actualizar el estado');
+    expect(timeClock).toContain('Sucursal a validar');
+    expect(timeClock).toContain('Resuelta desde tu adscripción RH vigente');
+    expect(timeClock).toContain('setPolicy(todayResult.policy)');
+    expect(timeClock).toContain("navigate('/rh/mi-portal/gestion')");
     expect(attendanceReview).toContain('lookupsError');
     expect(attendanceReview).toContain('Reintentar catálogos');
     expect(attendanceManagement).toContain('Minutos a aprobar');
     expect(attendanceManagement).toContain('Los periodos de asistencia son de toda la empresa');
     expect(attendanceCss).toContain('.hr-time-clock-workspace');
     expect(attendanceCss).toContain('@media (max-width: 1080px)');
+    expect(attendanceCss).toContain('.hr-time-clock-action-panel { order: -1; }');
+    expect(attendanceCss).toContain('.hr-time-clock-page > .hr-time-clock-workspace { order: 1; }');
   });
 
   it('keeps react-select and grouped money in financial self-service views', () => {

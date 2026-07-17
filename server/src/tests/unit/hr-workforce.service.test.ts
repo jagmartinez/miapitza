@@ -32,6 +32,15 @@ describe('HR workforce invariants', () => {
         ]);
     });
 
+    it('reconciles an overnight checkout at or after shift end without inventing a missing exit', () => {
+        const result = deriveWorkedMinutes([
+            { id: 11, action: 'CHECK_IN', occurredAt: new Date('2026-07-15T04:00:00Z'), branchId: 2 },
+            { id: 12, action: 'CHECK_OUT', occurredAt: new Date('2026-07-15T12:15:00Z'), branchId: 2 },
+        ]);
+
+        expect(result).toEqual({ ordinaryMinutes: 495, breakMinutes: 0, anomalies: [] });
+    });
+
     it('detects invalid punch ordering without inventing worked time', () => {
         const result = deriveWorkedMinutes([
             { id: 1, action: 'CHECK_OUT', occurredAt: new Date('2026-07-14T14:00:00Z'), branchId: 2 },
@@ -242,6 +251,7 @@ describe('HR workforce invariants', () => {
 
 describe('HR workforce route and migration contract', () => {
     const routes = fs.readFileSync(path.resolve(__dirname, '../../routes/hr-workforce.routes.ts'), 'utf8');
+    const service = fs.readFileSync(path.resolve(__dirname, '../../services/hr-workforce.service.ts'), 'utf8');
     const migration = fs.readFileSync(path.resolve(__dirname, '../../../prisma/migrations/20260713_hr_04_workforce_management/migration.sql'), 'utf8');
 
     it('matches the client endpoint contract, including PUT for leave types', () => {
@@ -261,6 +271,12 @@ describe('HR workforce route and migration contract', () => {
             '/me/workforce',
         ]) expect(routes).toContain(endpoint);
         expect(routes).toContain("router.put('/leave/types/:id'");
+        expect(routes).toContain("/attendance/corrections/:id/cancel");
+    });
+
+    it('loads overnight events by scheduled shift instead of truncating checkout at shift end', () => {
+        expect(service).toContain('{ scheduledShiftId: { in: scheduledShiftIds } }');
+        expect(service).toContain('{ scheduledShiftId: null, serverAt: { gte: bounds.start, lt: bounds.end } }');
     });
 
     it('separates self, management and approval permissions', () => {

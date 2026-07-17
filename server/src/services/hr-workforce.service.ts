@@ -542,15 +542,26 @@ export class AttendanceDerivedService {
         // Attribute a shift to the local date on which it starts. This avoids
         // double-counting an overnight shift in both adjacent daily summaries.
         const shifts = candidateShifts.filter(shift => zonedDateKey(shift.startAt, timezone) === date);
-        const eventStart = shifts.reduce((value, shift) => shift.startAt < value ? shift.startAt : value, bounds.start);
-        const eventEnd = shifts.reduce((value, shift) => shift.endAt > value ? shift.endAt : value, bounds.end);
+        const scheduledShiftIds = shifts.map((shift) => shift.id);
         const leaveCoverageEnd = shifts.reduce((value, shift) => {
             const shiftEndDate = dateValue(zonedDateKey(shift.endAt, timezone), 'shiftEndDate');
             return shiftEndDate > value ? shiftEndDate : value;
         }, localDate);
         const [rawEvents, approvedLeaves] = await Promise.all([
             prisma.attendanceEvent.findMany({
-            where: { companyId, userId, serverAt: { gte: eventStart, lt: eventEnd } },
+            // Events bound to a shift belong to the local date on which that shift
+            // starts, even when the checkout is exactly at/after its overnight end.
+            // Unscheduled events remain bounded to the local calendar day.
+            where: {
+                companyId,
+                userId,
+                OR: scheduledShiftIds.length > 0
+                    ? [
+                        { scheduledShiftId: { in: scheduledShiftIds } },
+                        { scheduledShiftId: null, serverAt: { gte: bounds.start, lt: bounds.end } },
+                    ]
+                    : [{ scheduledShiftId: null, serverAt: { gte: bounds.start, lt: bounds.end } }],
+            },
             include: {
                 review: { select: { decision: true } },
                 targetedCorrections: {
@@ -1189,6 +1200,41 @@ export class AttendanceCorrectionService {
         });
     }
 
+    static async cancel(id: number, companyId: number, actorId: number, reasonValue: unknown, idempotencyKey: string, forcedUserId?: number) {
+        const reason = requiredText(reasonValue, 'reason');
+        return idempotent({
+            companyId,
+            key: idempotencyKey,
+            operation: `CORRECTION_CANCEL:${id}`,
+            entityType: 'AttendanceCorrection',
+            payload: { id, reason, forcedUserId: forcedUserId || null },
+            load: entityId => correctionById(entityId, companyId),
+            execute: async tx => {
+                const current = await tx.attendanceCorrection.findFirst({ where: { id, companyId } });
+                if (!current || (forcedUserId && current.userId !== forcedUserId)) {
+                    throw new HrWorkforceError('Corrección no encontrada', 404, 'HR_CORRECTION_NOT_FOUND');
+                }
+                if (current.status !== 'PENDING') {
+                    throw new HrWorkforceError('Solo una corrección pendiente puede cancelarse', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+                }
+                const changed = await tx.attendanceCorrection.updateMany({
+                    where: { id, companyId, status: 'PENDING', revision: current.revision },
+                    data: {
+                        status: 'CANCELLED', decidedById: actorId, decisionReason: reason,
+                        decidedAt: new Date(), revision: { increment: 1 },
+                    },
+                });
+                if (changed.count !== 1) throw new HrWorkforceError('La corrección cambió concurrentemente', 409, 'HR_WORKFLOW_CAS_CONFLICT');
+                await AuditLogService.log({
+                    companyId, userId: actorId, entityType: 'AttendanceCorrection', entityId: id,
+                    action: 'UPDATE', details: { transition: 'PENDING->CANCELLED', reason },
+                }, tx);
+                const updated = await tx.attendanceCorrection.findUniqueOrThrow({ where: { id }, include: correctionInclude });
+                return { entityId: id, value: correctionApi(updated) };
+            },
+        });
+    }
+
     static async decide(id: number, companyId: number, actorId: number, decisionValue: unknown, reasonValue: unknown, idempotencyKey: string) {
         const decision = requiredText(decisionValue, 'decision', 16) as Decision;
         if (!['APPROVED', 'REJECTED'].includes(decision)) throw new HrWorkforceError('decision inválida');
@@ -1251,7 +1297,8 @@ export class AttendanceCorrectionService {
                         : current.targetEvent?.action;
                     if (!action) throw new HrWorkforceError('No se pudo inferir la acción compensatoria', 409);
                     const branchId = current.requestedBranchId || current.targetEvent?.branchId || subjectUser.branchId;
-                    await ensureBranch(companyId, branchId, tx);
+                    const branch = await ensureBranch(companyId, branchId, tx);
+                    if (!branch) throw new HrWorkforceError('La corrección requiere una sucursal autoritativa', 409, 'HR_CORRECTION_BRANCH_REQUIRED');
                     let scheduledShiftId = current.targetEvent?.scheduledShiftId || null;
                     let sessionKey = current.targetEvent?.sessionKey || null;
                     if (!scheduledShiftId && current.type === 'ADD_PUNCH') {
@@ -1270,6 +1317,35 @@ export class AttendanceCorrectionService {
                         if (!shift) throw new HrWorkforceError('ADD_PUNCH requiere un turno publicado aplicable', 409, 'HR_CORRECTION_PUBLISHED_SHIFT_REQUIRED');
                         scheduledShiftId = shift.id;
                     }
+                    const scheduledShift = scheduledShiftId ? await tx.scheduledShift.findFirst({
+                        where: { id: scheduledShiftId, companyId },
+                        select: { id: true, branchId: true, startAt: true },
+                    }) : null;
+                    if (scheduledShiftId && !scheduledShift) {
+                        throw new HrWorkforceError('El turno de la corrección ya no existe', 409, 'HR_CORRECTION_PUBLISHED_SHIFT_REQUIRED');
+                    }
+                    if (current.type === 'ASSIGN_BRANCH' && !scheduledShift) {
+                        throw new HrWorkforceError('No se puede reasignar parcialmente una sesión sin turno publicado', 409, 'HR_CORRECTION_PUBLISHED_SHIFT_REQUIRED');
+                    }
+                    if (scheduledShift && scheduledShift.branchId !== branch.id) {
+                        throw new HrWorkforceError('La sucursal solicitada no coincide con la sucursal del turno publicado', 409, 'HR_CORRECTION_SHIFT_BRANCH_MISMATCH');
+                    }
+                    if (current.type !== 'VOID_PUNCH') {
+                        const assignmentInstant = scheduledShift?.startAt || instant;
+                        const assignmentDate = dateValue(zonedDateKey(assignmentInstant, branch.timezone), 'assignmentDate');
+                        const assignment = await tx.employeeBranchAssignment.findFirst({
+                            where: {
+                                companyId, branchId: branch.id,
+                                employee: { companyId, userId: current.userId },
+                                effectiveFrom: { lte: assignmentDate },
+                                OR: [{ effectiveTo: null }, { effectiveTo: { gte: assignmentDate } }],
+                            },
+                            select: { id: true },
+                        });
+                        if (!assignment) {
+                            throw new HrWorkforceError('El empleado no tiene adscripción RH vigente para la sucursal corregida', 409, 'HR_CORRECTION_BRANCH_ASSIGNMENT_REQUIRED');
+                        }
+                    }
                     sessionKey = sessionKey || (scheduledShiftId
                         ? `SHIFT:${scheduledShiftId}`
                         : `LEGACY:${current.userId}:${branchId || 'NONE'}:${instant.toISOString().slice(0, 10)}`);
@@ -1285,13 +1361,18 @@ export class AttendanceCorrectionService {
                     }
                     assertCanonicalSequence(simulated.map(event => ({ id: event.id, action: event.action, occurredAt: event.occurredAt })));
                     if (current.type !== 'VOID_PUNCH') {
+                    const reassignedGeofence = current.type === 'ASSIGN_BRANCH' ? await tx.branchGeofenceVersion.findFirst({
+                        where: { companyId, branchId: branch.id },
+                        orderBy: { version: 'desc' },
+                        select: { id: true },
+                    }) : null;
                     const event = await tx.attendanceEvent.create({ data: {
                         companyId, userId: current.userId, actorUserId: actorId, branchId,
                         scheduledShiftId, sessionKey,
                         sequenceKey: `${sessionKey}:CORRECTION:${current.id}`,
-                        geofenceVersionId: current.targetEvent?.geofenceVersionId,
-                        policyId: current.targetEvent?.policyId,
-                        policyVersion: current.targetEvent?.policyVersion,
+                        geofenceVersionId: current.type === 'ASSIGN_BRANCH' ? reassignedGeofence?.id || null : current.targetEvent?.geofenceVersionId,
+                        policyId: current.type === 'ASSIGN_BRANCH' ? null : current.targetEvent?.policyId,
+                        policyVersion: current.type === 'ASSIGN_BRANCH' ? null : current.targetEvent?.policyVersion,
                         adjustsEventId: current.targetEventId,
                         idempotencyKey: `workforce-correction:${current.id}:${current.revision + 1}`,
                         requestHash: requestHash({ correctionId: current.id, action, instant: instant.toISOString(), branchId }),

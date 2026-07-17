@@ -131,8 +131,17 @@ export interface HrAttendancePunch {
 export interface HrTodayAttendance {
   serverTime: string;
   timezone: string;
+  policy: HrAttendancePolicy;
+  targetBranch: HrNamedEntity | null;
   availableActions: HrAttendanceAction[];
   punches: HrAttendancePunch[];
+  blockingIssue: {
+    code: 'STALE_OPEN_ATTENDANCE';
+    message: string;
+    occurredAt: string;
+    branch: HrNamedEntity | null;
+    resolution: 'REQUEST_CORRECTION';
+  } | null;
   scheduledShift?: {
     id: number;
     branchId: number;

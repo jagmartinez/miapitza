@@ -30,6 +30,7 @@ import {
 } from '../../components/hr/workforceClient';
 import { useAppToast } from '../../context/ToastContext';
 import type {
+  HrAttendanceCorrection,
   HrAttendanceCorrectionPayload,
   HrAttendanceIncident,
   HrDailyAttendanceSummary,
@@ -69,6 +70,7 @@ type Panel =
   | { kind: 'leave' }
   | null;
 type CancelPanel =
+  | { kind: 'correction'; item: HrAttendanceCorrection }
   | { kind: 'overtime'; item: HrOvertimeRequest }
   | { kind: 'leave'; item: HrLeaveRequest }
   | null;
@@ -210,7 +212,13 @@ export default function MyWorkforce() {
     if (!cancelPanel || !cancelReason.trim()) return;
     setSaving(true);
     try {
-      if (cancelPanel.kind === 'overtime')
+      if (cancelPanel.kind === 'correction')
+        await workforceClient.cancelCorrection(
+          cancelPanel.item.id,
+          { reason: cancelReason.trim() },
+          createWorkforceIdempotencyKey()
+        );
+      else if (cancelPanel.kind === 'overtime')
         await workforceClient.cancelOvertimeRequest(
           cancelPanel.item.id,
           { reason: cancelReason.trim() },
@@ -471,7 +479,14 @@ export default function MyWorkforce() {
                         <span>{item.reason}</span>
                         <small>{item.auditReference ?? `Solicitud #${item.id}`}</small>
                       </div>
-                      <WorkforceStatusPill status={item.status} />
+                      <div className="hr-record-actions">
+                        <WorkforceStatusPill status={item.status} />
+                        {item.status === 'PENDING' && (
+                          <Button size="sm" variant="ghost" onClick={() => openCancel({ kind: 'correction', item })} disabled={!online}>
+                            Cancelar
+                          </Button>
+                        )}
+                      </div>
                     </article>
                   ))}
                 </div>

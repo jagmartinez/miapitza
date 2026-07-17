@@ -75,8 +75,8 @@ function policyPayload(policy: HrAttendancePolicy, branchId?: number): HrAttenda
     earlyCheckOutToleranceM: policy.earlyCheckOutToleranceM,
     lateCheckOutMinutes: policy.lateCheckOutMinutes,
     scheduleViolationMode: policy.scheduleViolationMode,
-    geofenceViolationMode: policy.geofenceViolationMode,
-    biometricViolationMode: policy.biometricViolationMode,
+    geofenceViolationMode: 'BLOCK',
+    biometricViolationMode: 'BLOCK',
     allowUnscheduledPunch: policy.allowUnscheduledPunch,
     unscheduledViolationMode: policy.unscheduledViolationMode,
     allowManualFallback: policy.allowManualFallback,
@@ -488,38 +488,22 @@ export default function AttendanceSettings() {
                 <label>
                   Si marca fuera del lugar permitido
                   <HrReactSelect
-                    value={policy.geofenceViolationMode}
-                    onChange={(event) =>
-                      updatePolicyField(
-                        'geofenceViolationMode',
-                        event.target.value as HrAttendanceViolationMode
-                      )
-                    }
+                    value="BLOCK"
+                    disabled
                   >
-                    {MODES.map((mode) => (
-                      <option key={mode.value} value={mode.value}>
-                        {mode.label}
-                      </option>
-                    ))}
+                    <option value="BLOCK">Bloquear (obligatorio)</option>
                   </HrReactSelect>
+                  <small>Una ubicación fuera de geocerca requiere corrección auditada.</small>
                 </label>
                 <label>
                   Si no valida su identidad
                   <HrReactSelect
-                    value={policy.biometricViolationMode}
-                    onChange={(event) =>
-                      updatePolicyField(
-                        'biometricViolationMode',
-                        event.target.value as HrAttendanceViolationMode
-                      )
-                    }
+                    value="BLOCK"
+                    disabled
                   >
-                    {MODES.map((mode) => (
-                      <option key={mode.value} value={mode.value}>
-                        {mode.label}
-                      </option>
-                    ))}
+                    <option value="BLOCK">Bloquear (obligatorio)</option>
                   </HrReactSelect>
+                  <small>Un rostro no coincidente nunca genera tiempo trabajado.</small>
                 </label>
                 <label>
                   Marcaje sin turno
