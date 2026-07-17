@@ -293,7 +293,17 @@
 }
 
 .hr-leave-management-page .hr-workforce-filters.inventory-filters-row {
-  grid-template-columns: repeat(2, minmax(160px, 0.8fr)) minmax(220px, 1.4fr) auto;
+  grid-template-columns: minmax(520px, 1.8fr) repeat(2, minmax(150px, 0.55fr)) minmax(250px, 0.9fr) auto;
+}
+
+.hr-leave-management-page .hr-workforce-filters > .hr-admin-tab-toolbar {
+  min-width: 0;
+  margin: 0;
+  padding: 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .hr-attendance-management-page .hr-workforce-filters > .btn,
@@ -408,6 +418,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .hr-leave-management-page .hr-workforce-filters > .hr-admin-tab-toolbar {
+    grid-column: 1 / -1;
+  }
+
   .hr-detail-group:nth-child(3):last-child {
     grid-column: 1 / -1;
   }
@@ -457,6 +471,11 @@
 
   .hr-attendance-management-page .hr-workforce-filters > .btn,
   .hr-leave-management-page .hr-workforce-filters > .btn {
+    width: 100%;
+  }
+
+  .hr-leave-management-page .hr-workforce-filters > .hr-admin-tab-toolbar {
+    grid-column: auto;
     width: 100%;
   }
 }

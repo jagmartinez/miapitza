@@ -90,6 +90,7 @@ export default function AttendanceSettings() {
   const online = useWorkforceOnline();
   const { success: showSuccess, error: showError } = useAppToast();
   const [scope, setScope] = useState('');
+  const [scopeMode, setScopeMode] = useState<'COMPANY' | 'BRANCH'>('COMPANY');
   const [lookups, setLookups] = useState<HrAttendanceSettingsLookups>(EMPTY_LOOKUPS);
   const [policy, setPolicy] = useState<HrAttendancePolicy | null>(null);
   const [devices, setDevices] = useState<HrAttendanceDevice[]>([]);
@@ -110,6 +111,14 @@ export default function AttendanceSettings() {
 
   const scopeBranchId = scope ? Number(scope) : undefined;
   const selectedBranch = lookups.branches.find((branch) => branch.id === scopeBranchId);
+  const selectScopeMode = (nextMode: 'COMPANY' | 'BRANCH') => {
+    setScopeMode(nextMode);
+    if (nextMode === 'COMPANY') {
+      setScope('');
+      return;
+    }
+    setScope((current) => current || String(lookups.branches[0]?.id ?? ''));
+  };
   const internalUsers = useMemo(
     () =>
       lookups.users.filter(
@@ -321,21 +330,28 @@ export default function AttendanceSettings() {
       <OnlineOnlyNotice online={online} />
 
       <section className="hr-settings-scope" aria-label="Alcance de configuración">
-        <label>
-          Aplicar estas reglas a
-          <HrReactSelect value={scope} onChange={(event) => setScope(event.target.value)}>
-            <option value="">Toda la empresa</option>
-            {lookups.branches.map((branch) => (
-              <option key={branch.id} value={branch.id}>
-                {branch.name}
-              </option>
-            ))}
-          </HrReactSelect>
-        </label>
-        <p>
+        <div className="hr-settings-scope-intro">
+          <span><ShieldCheck size={20} aria-hidden="true" /></span>
+          <div><strong>Alcance de la regla</strong><p>Define una base para toda la empresa o una excepción versionada para una sucursal.</p></div>
+        </div>
+        <div className="hr-settings-scope-controls">
+          <div className="hr-settings-scope-mode" role="group" aria-label="Tipo de alcance">
+            <button type="button" aria-pressed={scopeMode === 'COMPANY'} onClick={() => selectScopeMode('COMPANY')}>Regla general</button>
+            <button type="button" aria-pressed={scopeMode === 'BRANCH'} onClick={() => selectScopeMode('BRANCH')} disabled={lookups.branches.length === 0}>Por sucursal</button>
+          </div>
+          {scopeMode === 'BRANCH' && <label>
+            Sucursal que tendrá reglas propias
+            <HrReactSelect value={scope} onChange={(event) => setScope(event.target.value)} isSearchable aria-label="Seleccionar sucursal para reglas de marcaje">
+              {lookups.branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>{branch.name}</option>
+              ))}
+            </HrReactSelect>
+          </label>}
+        </div>
+        <p className="hr-settings-scope-note">
           {selectedBranch
-            ? `Administrando ${selectedBranch.name}. La zona horaria procede de la sucursal.`
-            : 'La política global es la base para sucursales sin una versión propia.'}
+            ? `Editando ${selectedBranch.name}. Al guardar se crea una versión exclusiva para esta sucursal.`
+            : 'La regla general se hereda en todas las sucursales que no tengan una versión propia.'}
         </p>
       </section>
 

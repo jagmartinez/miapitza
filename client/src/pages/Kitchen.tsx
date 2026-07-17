@@ -536,12 +536,15 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
 
                                 <div className={`kds-visible-items ${displayMode ? 'is-display-mode' : 'is-pc-mode'}`}>
                                     <div className="kds-visible-items-heading"><ListOrdered size={15} /><span>Preparación</span><b>{order.items?.length || 0}</b></div>
-                                    {order.items?.map((item) => (
-                                        <div key={item.id} className={`kds-visible-item status-${item.status.toLowerCase()}`}>
-                                            <div><strong>{item.quantity}× {item.menuItem?.name || 'Producto'}</strong>{item.notes && <span>{item.notes}</span>}</div>
-                                            <small>{kitchenItemStatusLabel[item.status]}</small>
-                                        </div>
-                                    ))}
+                                    {order.items?.map((item) => {
+                                        const awaitingSend = !item.sentAt && item.status === 'PENDING';
+                                        return (
+                                            <div key={item.id} className={`kds-visible-item status-${item.status.toLowerCase()}`}>
+                                                <div><strong>{item.quantity}× {item.menuItem?.name || 'Producto'}</strong>{item.notes && <span>{item.notes}</span>}</div>
+                                                <small>{awaitingSend ? 'Pendiente de envío' : kitchenItemStatusLabel[item.status]}</small>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </button>
 
@@ -692,6 +695,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                             <div className="kitchen-items-list kitchen-items-list-modal">
                                 {detailOrder.items?.map((item) => {
                                     const prepTime = getItemTimeDiff(item.startedAt);
+                                    const awaitingSend = !item.sentAt && item.status === 'PENDING';
                                     const itemStatusClass = item.status === 'DONE' ? 'item-done' : item.status === 'IN_PROGRESS' ? 'item-progress' : 'item-pending';
                                     return (
                                         <div key={item.id || item.menuItemId} className={`kitchen-item ${itemStatusClass}`}>
@@ -700,10 +704,10 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                                 <strong>{item.menuItem?.name || 'Producto'}</strong>
                                                 {item.notes && <small className="item-note-kitchen">{item.notes}</small>}
                                             </span>
-                                            <span className={`kitchen-item-state status-${item.status.toLowerCase()}`}>{kitchenItemStatusLabel[item.status]}{item.status === 'IN_PROGRESS' && prepTime !== null ? ` · ${prepTime} min` : ''}</span>
+                                            <span className={`kitchen-item-state status-${item.status.toLowerCase()}`}>{awaitingSend ? 'Pendiente de envío' : kitchenItemStatusLabel[item.status]}{item.status === 'IN_PROGRESS' && prepTime !== null ? ` · ${prepTime} min` : ''}</span>
                                             {detailOrder.status !== 'READY' && (
                                                 <>
-                                                    {canKitchenLineOps && item.status === 'PENDING' && (
+                                                    {canKitchenLineOps && item.status === 'PENDING' && !awaitingSend && (
                                                         <button
                                                             onClick={() => handleStartItem(detailOrder.id, item.id)}
                                                             title="Proceder"

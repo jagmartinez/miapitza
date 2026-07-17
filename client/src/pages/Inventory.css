@@ -483,6 +483,29 @@
     appearance: none;
 }
 
+.inventory-load-error {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding: 1rem;
+    border: 1px solid #f59e0b;
+    border-radius: 10px;
+    background: #fffbeb;
+    color: #78350f;
+}
+
+.inventory-load-error span {
+    display: block;
+    margin-top: 0.25rem;
+}
+
+.inventory-load-error ul {
+    margin: 0.5rem 0 0;
+    padding-left: 1.25rem;
+}
+
 .type-option:focus-visible {
     outline: 3px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
     outline-offset: 2px;

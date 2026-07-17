@@ -106,6 +106,53 @@ describe('InvoiceService immutable issuance', () => {
         }));
     });
 
+    it('does not reprice a historical order from mutable tax settings at invoice issuance', async () => {
+        jest.spyOn(SettingService, 'getAll').mockResolvedValue({ tax_rate: '15', currency_symbol: 'C$' });
+        const issuedAt = new Date('2026-07-14T18:00:00.000Z');
+        jest.useFakeTimers().setSystemTime(issuedAt);
+        const tx = {
+            $queryRaw: jest.fn().mockResolvedValue([{ id: 11 }] as never),
+            order: {
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 11,
+                    companyId: 1,
+                    branchId: 2,
+                    status: 'READY',
+                    financialStatus: 'PAID',
+                    total: 100,
+                    discount: 0,
+                    tax: 0,
+                    tipAmount: 0,
+                    invoiceNumber: null,
+                    invoicedAt: null,
+                    invoiceSnapshot: null,
+                    customerName: null,
+                    branch: {
+                        name: 'Centro', address: null, phone: null,
+                        company: { name: 'Empresa', ruc: 'J001' },
+                    },
+                    items: [{ quantity: 1, price: 100, subtotal: 100, menuItem: { name: 'Plato' } }],
+                } as never),
+                update: jest.fn().mockResolvedValue({ id: 11 } as never),
+            },
+            invoiceSequence: {
+                upsert: jest.fn().mockResolvedValue({ lastNumber: 0 } as never),
+                update: jest.fn().mockResolvedValue({ lastNumber: 1 } as never),
+            },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(((callback: unknown) =>
+            (callback as (client: typeof tx) => Promise<unknown>)(tx)) as never);
+
+        const invoice = await InvoiceService.generateInvoice(11, 1);
+
+        expect(invoice.tax).toBe(0);
+        expect(invoice.total).toBe(100);
+        expect(tx.order.update).toHaveBeenCalledTimes(1);
+        expect(tx.order.update).not.toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ tax: expect.anything() }),
+        }));
+    });
+
     it('returns the first snapshot on an idempotent issuance retry', async () => {
         jest.spyOn(SettingService, 'getAll').mockResolvedValue({ currency_symbol: '$' });
         const tx = {

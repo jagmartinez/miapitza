@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
 import prisma from '../../utils/prisma';
 import { CompanyService } from '../../services/company.service';
+import { CompanyProvisioningService } from '../../services/company-provisioning.service';
 import { DEFAULT_COMPANY_SETTINGS, SettingService } from '../../services/setting.service';
 
 describe('company settings provisioning', () => {
@@ -20,6 +21,9 @@ describe('company settings provisioning', () => {
         );
         const ensureDefaults = jest.spyOn(SettingService, 'ensureDefaultsForCompany')
             .mockResolvedValue({ count: Object.keys(DEFAULT_COMPANY_SETTINGS).length } as never);
+        // Create-company cases stub provisioning; real tx.permission/role path is covered below.
+        const provisionRoles = jest.spyOn(CompanyProvisioningService, 'provisionTenantRoles')
+            .mockResolvedValue(undefined);
 
         const company = await CompanyService.create({
             name: 'Nueva Empresa',
@@ -37,6 +41,7 @@ describe('company settings provisioning', () => {
             payrollTaxProfileReady: true,
         }) });
         expect(ensureDefaults).toHaveBeenCalledWith(8, tx as never);
+        expect(provisionRoles).toHaveBeenCalledWith(8, tx as never);
     });
 
     it('stores the non-withholding reason in the company fiscal profile', async () => {
@@ -45,6 +50,7 @@ describe('company settings provisioning', () => {
             (async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as never
         );
         jest.spyOn(SettingService, 'ensureDefaultsForCompany').mockResolvedValue({ count: 0 } as never);
+        jest.spyOn(CompanyProvisioningService, 'provisionTenantRoles').mockResolvedValue(undefined);
 
         await CompanyService.create({
             name: 'Cuota Fija',
@@ -59,6 +65,46 @@ describe('company settings provisioning', () => {
             payrollIncomeTaxWithholding: false,
             payrollIncomeTaxException: 'No retiene por resolución DGI',
         }) });
+    });
+
+    it('provisions tenant roles without SUPERADMIN using tx.permission/role', async () => {
+        const findMany = jest.fn().mockResolvedValue([
+            { id: 1, name: 'view_orders' },
+            { id: 2, name: 'view_menu' },
+            { id: 3, name: 'hr.schedule.manage' },
+            { id: 4, name: 'hr.payroll.approve' },
+            { id: 5, name: 'hr.benefits.approve' },
+        ] as never);
+        const roleCreate = jest.fn().mockResolvedValue({ id: 100 } as never);
+        const tx = {
+            permission: { findMany },
+            role: { create: roleCreate },
+        };
+
+        await CompanyProvisioningService.provisionTenantRoles(12, tx as never);
+
+        expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+            where: { name: { in: expect.any(Array) } },
+        }));
+        expect(roleCreate).toHaveBeenCalledTimes(7);
+        const createdNames = roleCreate.mock.calls.map(
+            (call) => (call[0] as { data: { name: string } }).data.name
+        );
+        expect(createdNames).toEqual(expect.arrayContaining([
+            'ADMIN', 'MESERO', 'HOST', 'COCINA', 'CHEF', 'BODEGA', 'CAJERO',
+        ]));
+        expect(createdNames).not.toContain('SUPERADMIN');
+        expect(roleCreate).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ companyId: 12 }),
+        }));
+        const adminCall = roleCreate.mock.calls.find(
+            (call) => (call[0] as { data: { name: string } }).data.name === 'ADMIN',
+        );
+        expect(adminCall?.[0]).toEqual(expect.objectContaining({
+            data: expect.objectContaining({
+                permissions: { connect: expect.arrayContaining([{ id: 3 }, { id: 4 }, { id: 5 }]) },
+            }),
+        }));
     });
 
     it('backfills missing defaults for every existing company at startup', async () => {
@@ -83,6 +129,42 @@ describe('company settings provisioning', () => {
                 companyId: 7,
                 name: { startsWith: '7_' }
             }
+        });
+    });
+
+    it('aliases canonical tax_rate onto taxRate for POS/Settings consumers', async () => {
+        jest.spyOn(prisma.setting, 'findMany').mockResolvedValue([
+            { name: '7_tax_rate', value: '15' },
+            { name: '7_restaurant_name', value: 'Demo' }
+        ] as never);
+        jest.spyOn(prisma.company, 'findUnique').mockResolvedValue({ ruc: null } as never);
+
+        const settings = await SettingService.getAll(7);
+
+        expect(settings.tax_rate).toBe('15');
+        expect(settings.taxRate).toBe('15');
+        expect(settings.restaurant_name).toBe('Demo');
+        expect(settings.companyName).toBe('Demo');
+    });
+
+    it('writes taxRate updates to canonical tax_rate and deletes the legacy key', async () => {
+        const findFirst = jest.fn().mockResolvedValue(null as never);
+        const create = jest.fn().mockResolvedValue({} as never);
+        const deleteMany = jest.fn().mockResolvedValue({ count: 1 } as never);
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (client: {
+                setting: { findFirst: typeof findFirst; create: typeof create; deleteMany: typeof deleteMany };
+            }) => Promise<unknown>) => callback({ setting: { findFirst, create, deleteMany } })) as never
+        );
+        jest.spyOn(SettingService, 'getAll').mockResolvedValue({ tax_rate: '15', taxRate: '15' } as never);
+
+        await SettingService.update(7, { taxRate: '15' });
+
+        expect(create).toHaveBeenCalledWith({
+            data: { name: '7_tax_rate', value: '15', companyId: 7 }
+        });
+        expect(deleteMany).toHaveBeenCalledWith({
+            where: { companyId: 7, name: '7_taxRate' }
         });
     });
 

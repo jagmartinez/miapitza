@@ -42,6 +42,7 @@ import type {
   HrOvertimeRequestPayload,
 } from '../../types/hr-workforce';
 import './workforce.css';
+import './attendance.css';
 import './admin-tables.css';
 import './hr-admin-operations.css';
 import '../Inventory.css';
@@ -139,7 +140,14 @@ export default function AttendanceManagement() {
         collectAllPages((page) => workforceClient.getIncidents({ ...filters, page, limit: 100 })),
         collectAllPages((page) => workforceClient.getCorrections({ ...filters, page, limit: 100 })),
         collectAllPages((page) => workforceClient.getOvertimeRequests({ ...filters, page, limit: 100 })),
-        collectAllPages((page) => workforceClient.getPeriods({ dateFrom: date, dateTo: date, page, limit: 100 })),
+        collectAllPages((page) => workforceClient.getPeriods({
+          dateFrom: date,
+          dateTo: date,
+          branchId: filters.branchId,
+          userId: filters.userId,
+          page,
+          limit: 100,
+        })),
       ]);
       setLookups(organization);
       setSummaries(summaryResult);
@@ -407,6 +415,12 @@ export default function AttendanceManagement() {
             )}
 
             {activeTable === 'PERIODS' && (
+              <>
+              {(branchId || userId) && (
+                <div className="hr-attendance-alert info" role="status">
+                  Los periodos de asistencia son de toda la empresa. Los contadores pendientes respetan el filtro de sucursal/empleado seleccionado arriba.
+                </div>
+              )}
               <table className="hr-admin-table inventory-table" aria-label="Periodos de asistencia">
                 <thead><tr><th scope="col">Periodo</th><th scope="col">Empleados</th><th scope="col">Incidencias</th><th scope="col">Correcciones</th><th scope="col">Horas extra</th><th scope="col">Nómina</th><th scope="col">Estado</th><th scope="col" className="hr-admin-actions-col">Acción</th></tr></thead>
                 <tbody>{periods.length === 0 ? <tr><td colSpan={8}><div className="hr-admin-empty"><strong>No hay periodos</strong><span>Crea un periodo para preparar y cerrar la asistencia que alimentará la nómina.</span><Button size="sm" onClick={() => { setPeriodForm({ dateFrom: date, dateTo: date, reason: '' }); setCreatePanel({ kind: 'period' }); }} disabled={!online}><Plus size={15} /> Crear periodo</Button></div></td></tr> : pageSlice(periods).map((period) => {
@@ -414,6 +428,7 @@ export default function AttendanceManagement() {
                   return <tr key={period.id}><td><strong>{dateLabel(period.dateFrom)} – {dateLabel(period.dateTo)}</strong></td><td>{period.summaryCount ?? 0}</td><td className={(period.unresolvedIncidentCount ?? 0) > 0 ? 'hr-admin-cell-warning' : ''}>{period.unresolvedIncidentCount ?? 0}</td><td className={(period.pendingCorrectionCount ?? 0) > 0 ? 'hr-admin-cell-warning' : ''}>{period.pendingCorrectionCount ?? 0}</td><td className={(period.pendingOvertimeCount ?? 0) > 0 ? 'hr-admin-cell-warning' : ''}>{period.pendingOvertimeCount ?? 0}</td><td>{period.payrollReference ?? 'No vinculada'}</td><td><WorkforceStatusPill status={period.status} /></td><td className="hr-admin-actions-col"><div className="table-actions">{period.status === 'CLOSED' ? <Button className="table-action-btn" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'reopen', item: period })} disabled={!online} title="Reabrir periodo" aria-label={`Reabrir periodo ${period.id}`}><RotateCcw size={16} /></Button> : <Button className="table-action-btn danger" size="sm" variant="ghost" onClick={() => openDecision({ kind: 'close', item: period })} disabled={!online || blockers > 0} title={blockers > 0 ? `Resuelve ${blockers} pendiente(s) antes de cerrar` : 'Cerrar periodo'} aria-label={`Cerrar periodo ${period.id}`}><LockKeyhole size={16} /></Button>}</div></td></tr>;
                 })}</tbody>
               </table>
+              </>
             )}
           </div>
           <Pagination page={tablePage} totalPages={Math.max(1, Math.ceil(activeTableCount / PAGE_SIZE))} totalItems={activeTableCount} pageSize={PAGE_SIZE} onPageChange={setTablePage} alwaysShow emptyLabel="Sin registros" />
@@ -577,15 +592,19 @@ export default function AttendanceManagement() {
           )}
           {decisionPanel?.kind === 'overtime' && decision === 'APPROVED' && (
             <label>
-              Minutos aprobados por el servidor
+              Minutos a aprobar
               <input
                 type="number"
                 min="0"
+                max={decisionPanel.item.requestedMinutes}
                 step="1"
                 value={approvedMinutes}
                 onChange={(event) => setApprovedMinutes(event.target.value)}
                 required
               />
+              <small>
+                Solicitados: {decisionPanel.item.requestedMinutes} min. El servidor valida el tope final contra la jornada.
+              </small>
             </label>
           )}
           <label className="span-full">

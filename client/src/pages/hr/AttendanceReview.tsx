@@ -47,6 +47,7 @@ export default function AttendanceReview() {
     const online = useWorkforceOnline();
     const { success: showSuccess, error: showError } = useAppToast();
     const [lookups, setLookups] = useState<HrOrganizationCatalogs>(EMPTY_LOOKUPS);
+    const [lookupsError, setLookupsError] = useState<string | null>(null);
     const [events, setEvents] = useState<HrAttendanceEvent[]>([]);
     const [dateFrom, setDateFrom] = useState(todayDate());
     const [dateTo, setDateTo] = useState(todayDate());
@@ -68,8 +69,10 @@ export default function AttendanceReview() {
     const loadLookups = useCallback(async () => {
         try {
             setLookups(await hrClient.getOrganization());
-        } catch {
+            setLookupsError(null);
+        } catch (lookupError) {
             setLookups(EMPTY_LOOKUPS);
+            setLookupsError(getAttendanceErrorMessage(lookupError, 'No fue posible cargar sucursales y usuarios para filtrar o crear marcajes manuales.'));
         }
     }, []);
 
@@ -177,8 +180,14 @@ export default function AttendanceReview() {
 
     return (
         <div className="page-wrapper inventory-page hr-attendance-review-page hr-admin-catalog-page hr-operation-page">
-            <PageHeader className="inventory-header-new hr-operation-header" title="Revisión de asistencia" subtitle="Resuelve incidencias y registra marcajes manuales sin perder trazabilidad" icon={ClipboardCheck} actions={<Button onClick={() => setManualOpen(true)} disabled={!online}><Plus size={18} /> Marcaje manual</Button>} />
+            <PageHeader className="inventory-header-new hr-operation-header" title="Revisión de asistencia" subtitle="Resuelve incidencias y registra marcajes manuales sin perder trazabilidad" icon={ClipboardCheck} actions={<Button onClick={() => setManualOpen(true)} disabled={!online || Boolean(lookupsError)}><Plus size={18} /> Marcaje manual</Button>} />
             <OnlineOnlyNotice online={online} />
+            {lookupsError && (
+                <div className="hr-attendance-alert danger" role="alert">
+                    <AlertTriangle size={18} aria-hidden="true" /><span>{lookupsError}</span>
+                    <Button size="sm" variant="ghost" onClick={() => void loadLookups()}><RefreshCw size={15} /> Reintentar catálogos</Button>
+                </div>
+            )}
 
             <div className="filters-toolbar hr-attendance-filters inventory-filters-row hr-operation-toolbar">
                 <div className="filter-field"><label className="filter-field-label" htmlFor="attendance-from">Desde</label><input id="attendance-from" className="filter-input" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></div>

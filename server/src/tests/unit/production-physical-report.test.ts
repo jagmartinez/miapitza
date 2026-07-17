@@ -9,8 +9,9 @@ afterEach(() => {
 
 describe('Production physical report reconciliation', () => {
     it('keeps cancelled orders in audit counts but excludes reversed quantities and costs', async () => {
+        const finishedAt = new Date('2026-07-15T12:00:00.000Z');
         jest.spyOn(prisma.productionOrder, 'findMany').mockResolvedValue([
-            { status: 'FINISHED', plannedQuantity: 10, producedQuantity: 9, estimatedCost: 50, realCost: 55, product: { unit: 'kg', baseUnit: null } },
+            { id: 1, code: 'PRD-1', status: 'FINISHED', plannedQuantity: 10, producedQuantity: 9, estimatedCost: 50, realCost: 55, finishedAt, product: { unit: 'kg', baseUnit: null } },
             { status: 'CANCELLED', plannedQuantity: 20, producedQuantity: 20, estimatedCost: 100, realCost: 110, product: { unit: 'l', baseUnit: null } },
             { status: 'PENDING', plannedQuantity: 5, producedQuantity: 0, estimatedCost: 25, realCost: 0, product: { unit: 'kg', baseUnit: null } }
         ] as never);
@@ -28,9 +29,10 @@ describe('Production physical report reconciliation', () => {
     });
 
     it('does not add planned or produced quantities across output units', async () => {
+        const finishedAt = new Date('2026-07-15T12:00:00.000Z');
         jest.spyOn(prisma.productionOrder, 'findMany').mockResolvedValue([
-            { status: 'FINISHED', plannedQuantity: 2, producedQuantity: 1.5, estimatedCost: 10, realCost: 11, product: { unit: 'kg', baseUnit: null } },
-            { status: 'FINISHED', plannedQuantity: 3, producedQuantity: 2.5, estimatedCost: 20, realCost: 21, product: { unit: 'l', baseUnit: null } }
+            { id: 1, code: 'PRD-1', status: 'FINISHED', plannedQuantity: 2, producedQuantity: 1.5, estimatedCost: 10, realCost: 11, finishedAt, product: { unit: 'kg', baseUnit: null } },
+            { id: 2, code: 'PRD-2', status: 'FINISHED', plannedQuantity: 3, producedQuantity: 2.5, estimatedCost: 20, realCost: 21, finishedAt, product: { unit: 'l', baseUnit: null } }
         ] as never);
 
         const report = await ProductionReportService.getProductions(1, {});
@@ -83,5 +85,49 @@ describe('Production physical report reconciliation', () => {
 
         expect(result.inputs[0].sourceProductions.map((source) => source.id)).toEqual([3]);
         expect(sources).toHaveBeenCalledWith(expect.objectContaining({ where: { companyId: 1, id: { in: [3] } } }));
+    });
+
+    it('fails closed instead of reporting zero yield for a malformed finished order', async () => {
+        jest.spyOn(prisma.productionOrder, 'findMany').mockResolvedValue([{
+            id: 18,
+            code: 'PRD-18',
+            status: 'FINISHED',
+            plannedQuantity: 0,
+            producedQuantity: 5,
+            estimatedCost: 10,
+            estimatedUnitCost: 2,
+            realCost: 10,
+            realUnitCost: 2,
+            finishedAt: new Date('2026-07-15T12:00:00.000Z'),
+            product: { id: 1, name: 'Masa', sku: 'MAS', unit: 'kg', baseUnit: null }
+        }] as never);
+
+        await expect(ProductionReportService.getPlanVsReal(1, {}))
+            .rejects.toThrow(/FINALIZADA.*mayores que cero/i);
+    });
+
+    it('fails closed when persisted input cost does not reconcile', async () => {
+        jest.spyOn(prisma.productionOrder, 'findMany').mockResolvedValue([{
+            id: 19,
+            code: 'PRD-19',
+            status: 'FINISHED',
+            plannedQuantity: 5,
+            producedQuantity: 5,
+            estimatedCost: 6,
+            realCost: 7,
+            finishedAt: new Date('2026-07-15T12:00:00.000Z'),
+            items: [{
+                id: 99,
+                componentProductId: 8,
+                consumedQuantity: 2,
+                unitCost: 3,
+                totalCost: 7,
+                unit: 'kg',
+                componentProduct: { id: 8, name: 'Harina', sku: 'HAR', unit: 'kg', baseUnit: null }
+            }]
+        }] as never);
+
+        await expect(ProductionReportService.getInputConsumption(1, {}))
+            .rejects.toThrow(/costo total no coincide/i);
     });
 });

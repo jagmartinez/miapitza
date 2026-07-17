@@ -12,6 +12,7 @@ const operationSource = read('./TableOperationModal.tsx');
 const kitchenSource = read('../pages/Kitchen.tsx');
 const layoutSource = read('./Layout.tsx');
 const bellSource = read('./KitchenNotificationBell.tsx');
+const panelStyles = read('./TableOrdersModal.css');
 
 describe('table operational center contract', () => {
     it('opens the real POS workspace with the selected table', () => {
@@ -99,6 +100,15 @@ describe('table operational center contract', () => {
         expect(panelSource).not.toContain('orders-section-heading');
         expect(panelSource).not.toContain("useState<'orders' | 'bill'>");
         expect(panelSource).not.toContain('role="tablist"');
+    });
+
+    it('uses a full-height, non-overflowing mobile order workspace', () => {
+        expect(panelStyles).toContain('height: 100dvh');
+        expect(panelStyles).toContain('grid-template-columns: minmax(0, 1fr) max-content');
+        expect(panelStyles).toContain('overscroll-behavior: contain');
+        expect(panelStyles).toContain('.orders-modal-footer .btn-modal-secondary:first-child { display: none; }');
+        expect(panelStyles).toContain('.table-order-add-products { display: none !important; }');
+        expect(panelStyles).toContain('env(safe-area-inset-bottom)');
     });
 
     it('limits kitchen fullscreen and administration navigation to the KDS rules', () => {

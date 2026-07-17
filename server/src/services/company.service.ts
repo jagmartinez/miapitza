@@ -1,13 +1,16 @@
 import prisma from '../utils/prisma';
 import { SettingService } from './setting.service';
+import { CompanyProvisioningService } from './company-provisioning.service';
 
 export class CompanyService {
-    static async getAll() {
+    static async getAll(companyId?: number) {
         return await prisma.company.findMany({
+            where: companyId === undefined ? undefined : { id: companyId },
             include: {
                 _count: {
                     select: {
-                        branches: true
+                        branches: true,
+                        users: true,
                     }
                 }
             }
@@ -15,6 +18,7 @@ export class CompanyService {
     }
 
     static async getById(id: number) {
+        if (!Number.isInteger(id) || id <= 0) throw new Error('Empresa inválida');
         const company = await prisma.company.findUnique({
             where: { id },
             include: {
@@ -68,6 +72,9 @@ export class CompanyService {
                 }
             });
             await SettingService.ensureDefaultsForCompany(company.id, tx);
+            // Tenant roles (ADMIN…CAJERO) — never SUPERADMIN — so new companies
+            // are usable without granting platform-wide privilege to the tenant.
+            await CompanyProvisioningService.provisionTenantRoles(company.id, tx);
             if (actorUserId) {
                 await tx.auditLog.create({
                     data: {

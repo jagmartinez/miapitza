@@ -222,9 +222,10 @@ describe('Recipe inventory flows (integration)', () => {
         // queued writes a turn, then remove all fixture data in FK-safe order.
         await new Promise((resolve) => setTimeout(resolve, 25));
         await prisma.auditLog.deleteMany({ where: { companyId } });
-        await prisma.inventoryMovement.deleteMany({ where: { companyId } });
-        await prisma.inventoryBatch.deleteMany({ where: { companyId } });
         await prisma.productCostHistory.deleteMany({ where: { companyId } });
+        await prisma.inventoryBatch.deleteMany({ where: { companyId } });
+        await prisma.inventoryMovement.deleteMany({ where: { companyId, reversalOfId: { not: null } } });
+        await prisma.inventoryMovement.deleteMany({ where: { companyId } });
         await prisma.kitchenNotification.deleteMany({ where: { companyId } });
         await prisma.payment.deleteMany({ where: { order: { companyId } } });
         await prisma.orderItemModifier.deleteMany({ where: { orderItem: { order: { companyId } } } });

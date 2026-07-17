@@ -149,7 +149,11 @@ export const attendanceClient = {
   },
 
   async enrollBiometrics(payload: HrBiometricEnrollPayload): Promise<HrBiometricProfile> {
-    const response = await api.post(`${HR_BASE}/biometrics/enroll`, enrollmentForm(payload));
+    // Override the API instance's JSON default. Axios keeps FormData intact and
+    // lets the browser attach the multipart boundary before sending the request.
+    const response = await api.post(`${HR_BASE}/biometrics/enroll`, enrollmentForm(payload), {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     return unwrap(response.data);
   },
 
@@ -162,8 +166,12 @@ export const attendanceClient = {
     idempotencyKey: string
   ): Promise<HrAttendancePunchResult> {
     try {
+      // Punch evidence follows the same multipart contract as enrollment.
       const response = await api.post(`${HR_BASE}/attendance/punches`, punchForm(payload), {
-        headers: { 'Idempotency-Key': idempotencyKey },
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          'Idempotency-Key': idempotencyKey,
+        },
       });
       return unwrap(response.data);
     } catch (error) {

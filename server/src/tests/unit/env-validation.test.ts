@@ -6,6 +6,7 @@ const validProductionEnv = {
     JWT_SECRET: 'a-production-secret-with-more-than-32-bytes',
     TWO_FA_ENCRYPTION_KEY: 'a'.repeat(64),
     CLIENT_URL: 'https://restaurant.example.com',
+    PLATFORM_TENANCY_MODE: 'single',
 } as NodeJS.ProcessEnv;
 
 describe('production environment validation', () => {
@@ -20,6 +21,30 @@ describe('production environment validation', () => {
 
     it('accepts a non-placeholder secret with the required production controls', () => {
         expect(collectEnvironmentErrors(validProductionEnv)).toEqual([]);
+    });
+
+    it('requires an explicit tenancy mode in production', () => {
+        const env = { ...validProductionEnv };
+        delete env.PLATFORM_TENANCY_MODE;
+        expect(collectEnvironmentErrors(env)).toContain(
+            'PLATFORM_TENANCY_MODE is required in production (single or multi).',
+        );
+    });
+
+    it('requires a valid operator company in multi mode and forbids it in single mode', () => {
+        expect(collectEnvironmentErrors({
+            ...validProductionEnv,
+            PLATFORM_TENANCY_MODE: 'multi',
+        })).toContain('PLATFORM_ADMIN_COMPANY_ID is required in multi tenancy mode.');
+        expect(collectEnvironmentErrors({
+            ...validProductionEnv,
+            PLATFORM_ADMIN_COMPANY_ID: '1',
+        })).toContain('PLATFORM_ADMIN_COMPANY_ID must be empty in single tenancy mode.');
+        expect(collectEnvironmentErrors({
+            ...validProductionEnv,
+            PLATFORM_TENANCY_MODE: 'multi',
+            PLATFORM_ADMIN_COMPANY_ID: '1',
+        })).toEqual([]);
     });
 
     it('forbids fake face verification in production', () => {

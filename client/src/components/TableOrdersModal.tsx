@@ -244,7 +244,7 @@ export default function TableOrdersModal({
                                         </div>
                                         <div className="table-order-actions">
                                             {canOperatePOS && !order.invoiceNumber && order.financialStatus === 'UNPAID' && (
-                                                <button type="button" onClick={() => onOpenPOS(table)}>
+                                                <button type="button" className="table-order-add-products" onClick={() => onOpenPOS(table)}>
                                                     <ShoppingCart size={16} /> Agregar productos
                                                 </button>
                                             )}

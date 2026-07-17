@@ -75,8 +75,10 @@ describe('Catering recipe UOM atomicity (integration)', () => {
         await prisma.cateringMenuItem.deleteMany({ where: { event: { companyId } } });
         await prisma.cateringEvent.deleteMany({ where: { companyId } });
         await prisma.customer.deleteMany({ where: { companyId } });
-        await prisma.inventoryMovement.deleteMany({ where: { companyId } });
+        await prisma.productCostHistory.deleteMany({ where: { companyId } });
         await prisma.inventoryBatch.deleteMany({ where: { companyId } });
+        await prisma.inventoryMovement.deleteMany({ where: { companyId, reversalOfId: { not: null } } });
+        await prisma.inventoryMovement.deleteMany({ where: { companyId } });
         await prisma.stock.deleteMany({ where: { companyId } });
         await prisma.recipe.deleteMany({ where: { menuItem: { companyId } } });
         await prisma.menuItem.deleteMany({ where: { companyId } });

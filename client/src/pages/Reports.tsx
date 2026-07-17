@@ -390,6 +390,7 @@ function ReportDetail({ reportId }: { reportId: string }) {
     const [data, setData] = useState<{ items: Record<string, unknown>[]; summary: Record<string, number> } | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [filterWarning, setFilterWarning] = useState('');
     const [exporting, setExporting] = useState(false);
     const [page, setPage] = useState(1);
     const PAGE_SIZE = 50;
@@ -413,18 +414,30 @@ function ReportDetail({ reportId }: { reportId: string }) {
     });
 
     useEffect(() => {
-        Promise.all([
-            branchesAPI.getAll().catch(() => ({ data: { data: [] } })),
-            categoriesAPI.getAll().catch(() => ({ data: { data: [] } })),
-            suppliersAPI.getAll().catch(() => ({ data: { data: [] } })),
-            warehousesAPI.getAll().catch(() => ({ data: { data: [] } })),
-            menuBrandsAPI.getAll().catch(() => ({ data: { data: [] } })),
-        ]).then(([bRes, cRes, sRes, wRes, brRes]) => {
-            setBranches(bRes.data.data || []);
-            setCategories(cRes.data.data || []);
-            setSuppliers(sRes.data.data || []);
-            setWarehouses(wRes.data.data || []);
-            setBrands(brRes.data.data || []);
+        const labels = ['sucursales', 'categorías', 'proveedores', 'almacenes', 'marcas'];
+        Promise.allSettled([
+            branchesAPI.getAll(),
+            categoriesAPI.getAll(),
+            suppliersAPI.getAll(),
+            warehousesAPI.getAll(),
+            menuBrandsAPI.getAll(),
+        ]).then((results) => {
+            const failedNames = results
+                .map((r, i) => (r.status === 'rejected' ? labels[i] : null))
+                .filter((name): name is string => Boolean(name));
+            if (failedNames.length > 0) {
+                console.error('Error loading report filter options:', failedNames);
+                setFilterWarning(
+                    `No se pudieron cargar filtros: ${failedNames.join(', ')}. Las listas pueden estar incompletas; no asuma que "todas" incluye opciones faltantes.`
+                );
+            } else {
+                setFilterWarning('');
+            }
+            setBranches(results[0].status === 'fulfilled' ? results[0].value.data.data || [] : []);
+            setCategories(results[1].status === 'fulfilled' ? results[1].value.data.data || [] : []);
+            setSuppliers(results[2].status === 'fulfilled' ? results[2].value.data.data || [] : []);
+            setWarehouses(results[3].status === 'fulfilled' ? results[3].value.data.data || [] : []);
+            setBrands(results[4].status === 'fulfilled' ? results[4].value.data.data || [] : []);
         });
     }, []);
 
@@ -603,6 +616,13 @@ function ReportDetail({ reportId }: { reportId: string }) {
             </div>
 
             {/* Filters Toolbar */}
+            {filterWarning && (
+                <div className="state-placeholder" role="status" style={{ marginBottom: '1rem', padding: '0.75rem 1rem' }}>
+                    <AlertTriangle size={18} />
+                    <p className="state-error" style={{ margin: 0 }}>{filterWarning}</p>
+                </div>
+            )}
+
             <div className="filters-toolbar">
                 {hasDateFilter(reportId) && (
                     <div className="filter-field filter-field-wide">

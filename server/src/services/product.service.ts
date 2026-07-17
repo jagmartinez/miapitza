@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { getErrorMessage } from '../utils/error';
 import { AuditLogService } from './audit-log.service';
+import { resolveEffectiveUnitCost } from '../utils/product-cost';
 
 export type ProductTypeValue = 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH' | 'INTERMEDIATE' | 'PACKAGING';
 
@@ -121,7 +122,15 @@ export class ProductService {
             const totalStock = product.stocks.reduce((sum, s) => sum + Number(s.quantity), 0);
             const { stocks, ...rest } = product;
             void stocks;
-            return { ...rest, totalStock };
+            const costQuality = resolveEffectiveUnitCost(
+                product.currentAverageCost,
+                product.cost,
+                {
+                    averageCostKnown: product.averageCostKnown,
+                    referenceCostKnown: product.referenceCostKnown
+                }
+            );
+            return { ...rest, totalStock, costQuality };
         });
 
         return { data: mapped, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
@@ -172,7 +181,17 @@ export class ProductService {
             throw new Error('Product not found');
         }
 
-        return product;
+        return {
+            ...product,
+            costQuality: resolveEffectiveUnitCost(
+                product.currentAverageCost,
+                product.cost,
+                {
+                    averageCostKnown: product.averageCostKnown,
+                    referenceCostKnown: product.referenceCostKnown
+                }
+            )
+        };
     }
 
     static async generateSku(
@@ -225,6 +244,7 @@ export class ProductService {
         unit: string;
         minStock?: number;
         cost?: number;
+        referenceCostKnown?: boolean;
         price?: number | null;
         type?: ProductTypeValue;
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE';
@@ -237,6 +257,9 @@ export class ProductService {
         if (!unit) throw new Error('La unidad de referencia del producto es requerida.');
         if (data.cost !== undefined && (!Number.isFinite(data.cost) || data.cost < 0)) {
             throw new Error('El costo de referencia debe ser un número finito mayor o igual a cero.');
+        }
+        if (data.referenceCostKnown === false && Number(data.cost ?? 0) > 0) {
+            throw new Error('Un costo de referencia positivo no puede marcarse como desconocido.');
         }
         if (data.minStock !== undefined && (!Number.isFinite(data.minStock) || data.minStock < 0)) {
             throw new Error('El inventario mínimo debe ser un número finito mayor o igual a cero.');
@@ -279,6 +302,7 @@ export class ProductService {
                 companyId,
                 minStock: data.minStock ?? 0,
                 cost: data.cost ?? 0,
+                referenceCostKnown: data.referenceCostKnown ?? (data.cost !== undefined),
                 price: data.price,
                 type: data.type || 'INGREDIENT',
                 storageType: data.storageType,
@@ -312,6 +336,7 @@ export class ProductService {
         unit?: string;
         minStock?: number;
         cost?: number;
+        referenceCostKnown?: boolean;
         price?: number | null;
         type?: ProductTypeValue;
         storageType?: 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE' | null;
@@ -324,6 +349,9 @@ export class ProductService {
         if (unit !== undefined && !unit) throw new Error('La unidad de referencia del producto es requerida.');
         if (data.cost !== undefined && (!Number.isFinite(data.cost) || data.cost < 0)) {
             throw new Error('El costo de referencia debe ser un número finito mayor o igual a cero.');
+        }
+        if (data.referenceCostKnown === false && Number(data.cost ?? 0) > 0) {
+            throw new Error('Un costo de referencia positivo no puede marcarse como desconocido.');
         }
         if (data.minStock !== undefined && (!Number.isFinite(data.minStock) || data.minStock < 0)) {
             throw new Error('El inventario mínimo debe ser un número finito mayor o igual a cero.');
@@ -389,6 +417,9 @@ export class ProductService {
             ...(unit !== undefined ? { unit } : {}),
             ...(data.minStock !== undefined ? { minStock: data.minStock } : {}),
             ...(data.cost !== undefined ? { cost: data.cost } : {}),
+            ...(data.referenceCostKnown !== undefined
+                ? { referenceCostKnown: data.referenceCostKnown }
+                : data.cost !== undefined ? { referenceCostKnown: true } : {}),
             ...(data.price !== undefined ? { price: data.price } : {}),
             ...(data.type !== undefined ? { type: data.type } : {}),
             ...(data.storageType !== undefined ? { storageType: data.storageType } : {}),

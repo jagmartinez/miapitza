@@ -32,6 +32,7 @@ describe('POS operational flow', () => {
     let tableId: number;
     let menuItemId: number;
     let directMenuItemId: number;
+    let ingredientProductId: number;
     let paymentMethodId: number;
     let registerId: number;
     let shiftId: number;
@@ -82,6 +83,11 @@ describe('POS operational flow', () => {
         await prisma.orderItem.deleteMany({ where: { order: { companyId } } });
         await prisma.order.deleteMany({ where: { companyId } });
         await prisma.reservation.deleteMany({ where: { companyId } });
+        await prisma.inventoryMovement.deleteMany({ where: { companyId } });
+        await prisma.inventoryBatch.deleteMany({ where: { companyId } });
+        await prisma.stock.deleteMany({ where: { companyId } });
+        await prisma.menuItem.deleteMany({ where: { companyId } });
+        await prisma.product.deleteMany({ where: { companyId } });
         const staleUsers = await prisma.user.findMany({ where: { username }, select: { id: true } });
         if (staleUsers.length) {
             await prisma.auditLog.deleteMany({ where: { userId: { in: staleUsers.map((user) => user.id) } } });
@@ -101,8 +107,31 @@ describe('POS operational flow', () => {
             update: {},
             create: { companyId, name: 'POS Integration Menu' }
         });
+        const ingredient = await prisma.product.create({
+            data: {
+                companyId,
+                categoryId: category.id,
+                name: 'Integration Ingredient',
+                sku: 'POS-IT-INGREDIENT',
+                unit: 'unit',
+                type: 'INGREDIENT',
+                cost: 5,
+                currentAverageCost: 5
+            }
+        });
+        ingredientProductId = ingredient.id;
         const menuItem = await prisma.menuItem.create({
-            data: { companyId, branchId, categoryId: category.id, name: 'Integration Plate', price: 100 }
+            data: {
+                companyId,
+                branchId,
+                categoryId: category.id,
+                name: 'Integration Plate',
+                price: 100,
+                type: 'PREPARED',
+                recipes: {
+                    create: { productId: ingredientProductId, quantity: 1, unit: 'unit' }
+                }
+            }
         });
         menuItemId = menuItem.id;
         const directMenuItem = await prisma.menuItem.create({
@@ -125,6 +154,9 @@ describe('POS operational flow', () => {
             create: { companyId, branchId, name: 'Integration Warehouse', code: 'POS-IT-WH' }
         });
         warehouseId = warehouse.id;
+        await prisma.stock.create({
+            data: { companyId, warehouseId, productId: ingredientProductId, quantity: 10 }
+        });
         await prisma.promotion.deleteMany({ where: { companyId } });
         await prisma.promotion.create({
             data: { companyId, code: 'POS10', name: 'POS integration 10%', type: 'PERCENTAGE', value: 10, usageLimit: 1 }
@@ -145,7 +177,11 @@ describe('POS operational flow', () => {
         await prisma.order.deleteMany({ where: { companyId } });
         await prisma.reservation.deleteMany({ where: { companyId } });
         await prisma.promotion.deleteMany({ where: { companyId } });
+        await prisma.inventoryMovement.deleteMany({ where: { companyId } });
+        await prisma.inventoryBatch.deleteMany({ where: { companyId } });
+        await prisma.stock.deleteMany({ where: { companyId } });
         await prisma.menuItem.deleteMany({ where: { companyId } });
+        await prisma.product.deleteMany({ where: { companyId } });
         await prisma.category.deleteMany({ where: { companyId } });
         await prisma.table.deleteMany({ where: { companyId } });
         await prisma.warehouse.deleteMany({ where: { companyId } });
@@ -187,14 +223,15 @@ describe('POS operational flow', () => {
         expect(priced.status).toBe(200);
         expect(Number(priced.body.data.discount)).toBe(10);
         expect(priced.body.data.discountCode).toBe('POS10');
-        expect(Number(priced.body.data.total)).toBe(90);
+        expect(Number(priced.body.data.tax)).toBe(13.5);
+        expect(Number(priced.body.data.total)).toBe(103.5);
 
         const issuedInvoice = await request(app).post(`/api/invoices/${paidOrderId}/issue`).set('Authorization', `Bearer ${token}`);
         expect(issuedInvoice.status).toBe(201);
         expect(issuedInvoice.body.data.invoiceNumber).toMatch(/^FAC-/);
 
         const paid = await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
-            .send({ orderId: paidOrderId, paymentMethodId, amount: 90 });
+            .send({ orderId: paidOrderId, paymentMethodId, amount: 103.5 });
         expect(paid.status).toBe(201);
         expect(await prisma.order.findUnique({ where: { id: paidOrderId } })).toEqual(expect.objectContaining({
             status: 'OPEN',
@@ -293,13 +330,14 @@ describe('POS operational flow', () => {
             .send({ menuItemId: directMenuItemId, quantity: 1 }).expect(201);
         const priced = await request(app).patch(`/api/orders/${splitOrderId}/pricing`).set('Authorization', `Bearer ${token}`)
             .send({ tax: 0.01, tipAmount: 0.02 });
-        expect(Number(priced.body.data.total)).toBe(100.03);
+        expect(Number(priced.body.data.tax)).toBe(15);
+        expect(Number(priced.body.data.total)).toBe(115.02);
 
         const split = await request(app).post(`/api/split-bill/${splitOrderId}/evenly`).set('Authorization', `Bearer ${token}`)
             .send({ numberOfPeople: 3 });
         expect(split.status).toBe(200);
-        expect(split.body.data.splits.map((entry: { amount: number }) => entry.amount)).toEqual([33.35, 33.34, 33.34]);
-        expect(split.body.data.splits.reduce((sum: number, entry: { amount: number }) => sum + entry.amount, 0)).toBe(100.03);
+        expect(split.body.data.splits.map((entry: { amount: number }) => entry.amount)).toEqual([38.34, 38.34, 38.34]);
+        expect(split.body.data.splits.reduce((sum: number, entry: { amount: number }) => sum + entry.amount, 0)).toBeCloseTo(115.02, 2);
 
         await request(app).post(`/api/invoices/${splitOrderId}/issue`).set('Authorization', `Bearer ${token}`).expect(201);
 
@@ -310,10 +348,10 @@ describe('POS operational flow', () => {
             status: 'OPEN', financialStatus: 'PARTIAL'
         }));
         const summary = await request(app).get(`/api/payments/order/${splitOrderId}/summary`).set('Authorization', `Bearer ${token}`);
-        expect(summary.body.data.remaining).toBeCloseTo(60.03, 2);
+        expect(summary.body.data.remaining).toBeCloseTo(75.02, 2);
 
         const second = await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
-            .send({ orderId: splitOrderId, paymentMethodId, amount: 60.03 });
+            .send({ orderId: splitOrderId, paymentMethodId, amount: 75.02 });
         expect(second.status).toBe(201);
         expect(await prisma.order.findUnique({ where: { id: splitOrderId } })).toEqual(expect.objectContaining({
             status: 'OPEN', financialStatus: 'PAID'
@@ -386,7 +424,7 @@ describe('POS operational flow', () => {
 
         const attempts = await Promise.all(orderIds.map((orderId) =>
             request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
-                .send({ orderId, paymentMethodId, amount: 99 })
+                .send({ orderId, paymentMethodId, amount: 113.85 })
         ));
         expect(attempts.map((response) => response.status).sort()).toEqual([201, 400]);
         expect((await prisma.promotion.findFirst({ where: { companyId, code: 'RACE1' } }))?.usageCount).toBe(1);
@@ -428,9 +466,9 @@ describe('POS operational flow', () => {
             new Date(Date.now() - 60 * 60 * 1000),
             new Date(Date.now() + 60 * 60 * 1000)
         );
-        expect(reconciliation.totals.totalSales).toBe(90);
-        expect(reconciliation.totals.byMethod.cash).toBe(90);
-        expect(reconciliation.reconciliation.cashExpected).toBe(140);
-        expect(reconciliation.reconciliation.cashActual).toBe(140);
+        expect(reconciliation.totals.totalSales).toBe(103.5);
+        expect(reconciliation.totals.byMethod.cash).toBe(103.5);
+        expect(reconciliation.reconciliation.cashExpected).toBe(153.5);
+        expect(reconciliation.reconciliation.cashActual).toBe(153.5);
     });
 });

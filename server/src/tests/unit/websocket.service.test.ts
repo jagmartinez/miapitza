@@ -7,6 +7,7 @@ import { SessionService } from '../../services/session.service';
 type MockClient = {
     readyState: number;
     send: jest.Mock;
+    authenticated?: boolean;
     companyId?: number;
     branchId?: number;
     roles?: string[];
@@ -23,12 +24,13 @@ function getWsClientsMap(): Map<string, MockClient> {
 describe('WebSocketService.broadcast', () => {
   afterEach(() => {
     getWsClientsMap().clear();
+    jest.restoreAllMocks();
   });
 
   it('filters messages by company and branch', () => {
-    const clientA = { readyState: 1, send: jest.fn(), companyId: 10, branchId: 2, roles: ['ADMIN'] };
-    const clientB = { readyState: 1, send: jest.fn(), companyId: 10, branchId: 3, roles: ['ADMIN'] };
-    const clientC = { readyState: 1, send: jest.fn(), companyId: 11, branchId: 2, roles: ['ADMIN'] };
+    const clientA = { readyState: 1, send: jest.fn(), authenticated: true, companyId: 10, branchId: 2, roles: ['ADMIN'] };
+    const clientB = { readyState: 1, send: jest.fn(), authenticated: true, companyId: 10, branchId: 3, roles: ['ADMIN'] };
+    const clientC = { readyState: 1, send: jest.fn(), authenticated: true, companyId: 11, branchId: 2, roles: ['ADMIN'] };
 
     (WebSocketService as unknown as WebSocketServiceTestAccess).clients = new Map([
       ['a', clientA],
@@ -44,8 +46,8 @@ describe('WebSocketService.broadcast', () => {
   });
 
   it('filters kitchen notifications by roles', () => {
-    const kitchenClient = { readyState: 1, send: jest.fn(), companyId: 10, branchId: 2, roles: ['CHEF'] };
-    const waiterClient = { readyState: 1, send: jest.fn(), companyId: 10, branchId: 2, roles: ['MESERO'] };
+    const kitchenClient = { readyState: 1, send: jest.fn(), authenticated: true, companyId: 10, branchId: 2, roles: ['CHEF'] };
+    const waiterClient = { readyState: 1, send: jest.fn(), authenticated: true, companyId: 10, branchId: 2, roles: ['MESERO'] };
 
     (WebSocketService as unknown as WebSocketServiceTestAccess).clients = new Map([
       ['kitchen', kitchenClient],
@@ -60,6 +62,26 @@ describe('WebSocketService.broadcast', () => {
 
     expect(kitchenClient.send).toHaveBeenCalledTimes(1);
     expect(waiterClient.send).not.toHaveBeenCalled();
+  });
+
+  it('blocks broadcasts without an explicit tenant scope', () => {
+    const client = { readyState: 1, send: jest.fn(), authenticated: true, companyId: 10, branchId: 2, roles: ['ADMIN'] };
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    (WebSocketService as unknown as WebSocketServiceTestAccess).clients = new Map([['a', client]]);
+
+    WebSocketService.broadcast({ type: 'ORDER_UPDATE', payload: { id: 1 } });
+
+    expect(client.send).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Blocked unscoped broadcast'));
+  });
+
+  it('rejects unauthenticated clients even if stale scope fields are present', () => {
+    const client = { readyState: 1, send: jest.fn(), authenticated: false, companyId: 10, branchId: 2, roles: ['ADMIN'] };
+    (WebSocketService as unknown as WebSocketServiceTestAccess).clients = new Map([['a', client]]);
+
+    WebSocketService.broadcast({ type: 'ORDER_UPDATE', payload: { id: 1 } }, { companyId: 10, branchId: 2 });
+
+    expect(client.send).not.toHaveBeenCalled();
   });
 });
 

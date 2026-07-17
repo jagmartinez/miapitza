@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import bcrypt from 'bcryptjs';
 import request from 'supertest';
 import app from '../../app';
+import { BankReconciliationService } from '../../services/bank-reconciliation.service';
+import { PaymentService } from '../../services/payment.service';
 import { InventoryEngineService } from '../../services/inventory-engine.service';
 import prisma from '../../utils/prisma';
 
@@ -35,6 +37,8 @@ describe('Fiscal cancellation and credit-note counterflow', () => {
         // Recover an isolated tenant left by an interrupted local run.
         await prisma.cashMovement.deleteMany({ where: { shift: { companyId } } });
         await prisma.cashShift.deleteMany({ where: { companyId } });
+        await prisma.fiscalCreditNotePaymentRefund.deleteMany({ where: { fiscalCreditNote: { companyId } } });
+        await prisma.fiscalCreditNoteLine.deleteMany({ where: { fiscalCreditNote: { companyId } } });
         await prisma.fiscalCreditNote.deleteMany({ where: { companyId } });
         await prisma.fiscalInvoiceCancellation.deleteMany({ where: { companyId } });
         await prisma.payment.deleteMany({ where: { order: { companyId } } });
@@ -97,10 +101,6 @@ describe('Fiscal cancellation and credit-note counterflow', () => {
             create: { companyId, name: 'Fiscal Integration' },
         });
         categoryId = category.id;
-        const menuItem = await prisma.menuItem.create({
-            data: { companyId, branchId, categoryId, name: 'Fiscal integration item', price: 100, type: 'DIRECT' },
-        });
-        menuItemId = menuItem.id;
         const method = await prisma.paymentMethod.create({
             data: { companyId, name: 'Fiscal cash', type: 'CASH' },
         });
@@ -121,6 +121,13 @@ describe('Fiscal cancellation and credit-note counterflow', () => {
             data: { companyId, categoryId, name: 'Fiscal stock evidence', sku: 'FISCAL-STOCK', unit: 'unit', cost: 10 },
         });
         productId = product.id;
+        const menuItem = await prisma.menuItem.create({
+            data: {
+                companyId, branchId, categoryId, name: 'Fiscal integration item', price: 100, type: 'PREPARED',
+                recipes: { create: { productId, quantity: 1, unit: 'unit' } }
+            },
+        });
+        menuItemId = menuItem.id;
 
         const login = await request(app).post('/api/auth/login').send({ username, password: 'FiscalFlow123!' });
         expect(login.status).toBe(200);
@@ -130,6 +137,8 @@ describe('Fiscal cancellation and credit-note counterflow', () => {
     afterAll(async () => {
         await prisma.cashMovement.deleteMany({ where: { shift: { companyId } } });
         await prisma.cashShift.deleteMany({ where: { companyId } });
+        await prisma.fiscalCreditNotePaymentRefund.deleteMany({ where: { fiscalCreditNote: { companyId } } });
+        await prisma.fiscalCreditNoteLine.deleteMany({ where: { fiscalCreditNote: { companyId } } });
         await prisma.fiscalCreditNote.deleteMany({ where: { companyId } });
         await prisma.fiscalInvoiceCancellation.deleteMany({ where: { companyId } });
         await prisma.payment.deleteMany({ where: { order: { companyId } } });
@@ -141,8 +150,9 @@ describe('Fiscal cancellation and credit-note counterflow', () => {
         await prisma.creditNoteSequence.deleteMany({ where: { companyId } });
         await prisma.invoiceSequence.deleteMany({ where: { companyId } });
         await prisma.auditLog.deleteMany({ where: { companyId } });
-        await prisma.product.deleteMany({ where: { companyId } });
+        await prisma.recipe.deleteMany({ where: { menuItem: { companyId } } });
         await prisma.menuItem.deleteMany({ where: { companyId } });
+        await prisma.product.deleteMany({ where: { companyId } });
         await prisma.category.deleteMany({ where: { companyId } });
         await prisma.warehouse.deleteMany({ where: { companyId } });
         await prisma.cashRegister.deleteMany({ where: { companyId } });
@@ -154,7 +164,7 @@ describe('Fiscal cancellation and credit-note counterflow', () => {
         await prisma.company.deleteMany({ where: { id: companyId } });
     });
 
-    const createOrder = async () => {
+    const createOrder = async (quantity = 1) => {
         return prisma.order.create({
             data: {
                 companyId,
@@ -167,9 +177,9 @@ describe('Fiscal cancellation and credit-note counterflow', () => {
                 customerTaxId: '00112233445566',
                 customerTaxIdType: 'RUC',
                 customerFiscalAddress: 'Managua',
-                total: 115,
-                tax: 15,
-                items: { create: { menuItemId, quantity: 1, price: 100, subtotal: 100 } },
+                total: 115 * quantity,
+                tax: 15 * quantity,
+                items: { create: { menuItemId, quantity, price: 100, subtotal: 100 * quantity } },
             },
         });
     };
@@ -269,7 +279,11 @@ describe('Fiscal cancellation and credit-note counterflow', () => {
         expect(retried.body.data.creditNoteNumber).toBe(credited.body.data.creditNoteNumber);
 
         expect(await prisma.fiscalCreditNote.count({ where: { orderId: order.id } })).toBe(1);
-        expect(await prisma.cashMovement.count({ where: { reference: `REV-PAY-${payment.id}`, type: 'OUT' } })).toBe(1);
+        const refundAllocation = await prisma.fiscalCreditNotePaymentRefund.findFirstOrThrow({
+            where: { paymentId: payment.id },
+        });
+        expect(Number(refundAllocation.amount)).toBe(115);
+        expect(await prisma.cashMovement.count({ where: { reference: refundAllocation.reference, type: 'OUT' } })).toBe(1);
         expect(await prisma.inventoryMovement.count({ where: { reference: `ORD-${order.id}`, type: 'IN' } })).toBe(1);
         expect(Number((await prisma.stock.findUniqueOrThrow({
             where: { warehouseId_productId: { warehouseId, productId } },
@@ -287,5 +301,119 @@ describe('Fiscal cancellation and credit-note counterflow', () => {
             .set('Authorization', `Bearer ${token}`);
         expect(immutable.status).toBe(200);
         expect(immutable.body.data.originalInvoiceNumber).toBe(issued.body.data.invoiceNumber);
+    });
+
+    it('issues two quantity-based partial notes without over-refunding money or stock and serializes retries', async () => {
+        const order = await createOrder(2);
+        const orderItem = await prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
+        await request(app).post(`/api/invoices/${order.id}/issue`)
+            .set('Authorization', `Bearer ${token}`).expect(201);
+
+        const payment = await prisma.payment.create({
+            data: {
+                orderId: order.id, paymentMethodId, methodType: 'CASH', amount: 230,
+                status: 'ACTIVE', registeredById: userId, idempotencyKey: `partial-payment-${order.id}`,
+            },
+        });
+        await prisma.cashMovement.create({
+            data: { shiftId, type: 'IN', amount: 230, description: `Pago orden #${order.id}`, reference: `PAY-${payment.id}` },
+        });
+        await prisma.order.update({
+            where: { id: order.id },
+            data: { status: 'DELIVERED', financialStatus: 'PAID', deliveredAt: new Date(), closedAt: new Date() },
+        });
+        await prisma.$transaction((tx) => InventoryEngineService.applyMovement(tx, {
+            type: 'OUT', companyId, warehouseId, productId, userId,
+            quantity: 2, reason: 'Consumo físico parcial', reference: `ORD-${order.id}`,
+        }));
+
+        const firstBody = {
+            idempotencyKey: `partial-credit-a-${order.id}`,
+            reason: 'Devolución parcial de una unidad',
+            inventoryAction: 'RETURN_TO_STOCK',
+            externalRefunds: [],
+            lines: [{ orderItemId: orderItem.id, quantity: 1 }],
+        };
+        const first = await request(app).post(`/api/invoices/${order.id}/credit-note`)
+            .set('Authorization', `Bearer ${token}`).send(firstBody);
+        expect(first.status).toBe(201);
+        expect(first.body.data).toEqual(expect.objectContaining({ total: 115, isFinal: false, creditedTotal: 115 }));
+        expect(first.body.data.lines).toEqual([expect.objectContaining({ orderItemId: orderItem.id, quantity: 1, total: 115 })]);
+
+        const retry = await request(app).post(`/api/invoices/${order.id}/credit-note`)
+            .set('Authorization', `Bearer ${token}`).send(firstBody);
+        expect(retry.status).toBe(201);
+        expect(retry.body.data.creditNoteNumber).toBe(first.body.data.creditNoteNumber);
+        expect(await prisma.fiscalCreditNote.count({ where: { orderId: order.id } })).toBe(1);
+        expect(Number((await prisma.stock.findUniqueOrThrow({
+            where: { warehouseId_productId: { warehouseId, productId } },
+        })).quantity)).toBe(9);
+        expect(await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).toEqual(expect.objectContaining({
+            status: 'DELIVERED', financialStatus: 'PAID', invoiceFiscalStatus: 'PARTIALLY_CREDITED',
+        }));
+        expect((await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } })).status).toBe('ACTIVE');
+        await expect(PaymentService.getOrderPaymentSummary(order.id, companyId)).resolves.toMatchObject({
+            grossTotal: 230,
+            credited: 115,
+            netTotal: 115,
+            grossPaid: 230,
+            refunded: 115,
+            netPaid: 115,
+            remaining: 0,
+            status: 'PAID',
+        });
+        await expect(PaymentService.create(companyId, {
+            orderId: order.id,
+            paymentMethodId,
+            amount: 1,
+        }, userId)).rejects.toThrow(/contraflujo fiscal/i);
+        await expect(PaymentService.delete(payment.id, companyId, userId, 'Reverso manual inválido'))
+            .rejects.toThrow(/contraflujo fiscal/i);
+
+        const excessive = await request(app).post(`/api/invoices/${order.id}/credit-note`)
+            .set('Authorization', `Bearer ${token}`).send({ ...firstBody, idempotencyKey: `partial-excess-${order.id}`, lines: [{ orderItemId: orderItem.id, quantity: 2 }] });
+        expect(excessive.status).toBe(400);
+        expect(await prisma.fiscalCreditNote.count({ where: { orderId: order.id } })).toBe(1);
+
+        const finalBody = {
+            idempotencyKey: `partial-credit-b-${order.id}`,
+            reason: 'Devolución final sin retorno físico',
+            inventoryAction: 'NO_RETURN',
+            externalRefunds: [],
+            lines: [{ orderItemId: orderItem.id, quantity: 1 }],
+        };
+        const concurrent = await Promise.all([
+            request(app).post(`/api/invoices/${order.id}/credit-note`).set('Authorization', `Bearer ${token}`).send(finalBody),
+            request(app).post(`/api/invoices/${order.id}/credit-note`).set('Authorization', `Bearer ${token}`).send(finalBody),
+        ]);
+        expect(concurrent.map((response) => response.status)).toEqual([201, 201]);
+        expect(concurrent[0].body.data.creditNoteNumber).toBe(concurrent[1].body.data.creditNoteNumber);
+        expect(concurrent[0].body.data).toEqual(expect.objectContaining({ total: 115, isFinal: true, creditedTotal: 230 }));
+        expect(await prisma.fiscalCreditNote.count({ where: { orderId: order.id } })).toBe(2);
+        const persistedNotes = await prisma.fiscalCreditNote.findMany({ where: { orderId: order.id }, orderBy: { id: 'asc' } });
+        const historical = await request(app).get(`/api/invoices/credit-notes/${persistedNotes[0].id}`)
+            .set('Authorization', `Bearer ${token}`);
+        expect(historical.status).toBe(200);
+        expect(historical.body.data.creditNoteNumber).toBe(first.body.data.creditNoteNumber);
+        expect(historical.body.data.isFinal).toBe(false);
+        expect(Number((await prisma.stock.findUniqueOrThrow({
+            where: { warehouseId_productId: { warehouseId, productId } },
+        })).quantity)).toBe(9);
+        expect(await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } })).toEqual(expect.objectContaining({ status: 'REVERSED' }));
+        expect(await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).toEqual(expect.objectContaining({
+            status: 'CANCELLED', financialStatus: 'UNPAID', invoiceFiscalStatus: 'CREDITED',
+        }));
+        const refunds = await prisma.fiscalCreditNotePaymentRefund.findMany({ where: { paymentId: payment.id } });
+        expect(refunds.map((refund) => Number(refund.amount))).toEqual([115, 115]);
+        expect(await prisma.cashMovement.count({ where: { reference: { in: refunds.map((refund) => refund.reference) }, type: 'OUT' } })).toBe(2);
+
+        const reconciliation = await BankReconciliationService.getReconciliationStatus(
+            companyId,
+            new Date(Date.now() - 60 * 60 * 1000),
+            new Date(Date.now() + 60 * 60 * 1000),
+            branchId,
+        );
+        expect(reconciliation.totals.bySource.pos.netCollected).toBe(0);
+        expect(reconciliation.totals.refunded).toBe(reconciliation.totals.grossCollected);
     });
 });

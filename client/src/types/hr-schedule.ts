@@ -53,6 +53,8 @@ export interface HrWeeklySchedule {
     shifts: HrScheduleShift[];
     conflicts?: HrScheduleConflict[];
     publishedAt?: string | null;
+    supersededAt?: string | null;
+    cancelledAt?: string | null;
     publishedById?: number | null;
     acknowledgedAt?: string | null;
     acknowledgements?: HrScheduleAcknowledgement[];

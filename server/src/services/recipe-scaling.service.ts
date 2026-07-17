@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma';
 import { effectiveUnitCost } from '../utils/product-cost';
+import { ProductionRecipeService } from './production-recipe.service';
 import { UnitConversionService } from './unit-conversion.service';
 
 /**
@@ -49,9 +50,12 @@ export class RecipeScalingService {
         const scaledIngredients = await Promise.all(recipes.map(async (r) => {
             const recipeUnit = r.unit || r.unitOfMeasure?.abbreviation || r.product.unit;
             const scaledQty = Number(r.quantity) * scaleFactor;
-            const unitCost = effectiveUnitCost(r.product.currentAverageCost, r.product.cost);
 
             try {
+                // Intermediate products can have no stored average until their first
+                // production. The production resolver derives their ACTIVE-BOM cost
+                // and detects circular dependencies instead of displaying a false 0.
+                const unitCost = await ProductionRecipeService.resolveProductUnitCost(r.productId, companyId);
                 const conv = await UnitConversionService.convert(r.productId, companyId, scaledQty, recipeUnit);
                 const totalCost = Math.round(unitCost * conv.baseQuantity * 100) / 100;
                 return {
@@ -97,6 +101,19 @@ export class RecipeScalingService {
             throw new Error('Menu item no encontrado');
         }
 
+        const explicitTotalWeight = settings.totalWeight == null ? null : Number(settings.totalWeight);
+        const explicitPortionSize = settings.portionSize == null ? null : Number(settings.portionSize);
+        const wastePercentage = settings.wastePercentage == null ? 0 : Number(settings.wastePercentage);
+        if (explicitTotalWeight !== null && (!Number.isFinite(explicitTotalWeight) || explicitTotalWeight <= 0)) {
+            throw new Error('El peso total de salida debe ser un número finito mayor a 0.');
+        }
+        if (explicitPortionSize !== null && (!Number.isFinite(explicitPortionSize) || explicitPortionSize <= 0)) {
+            throw new Error('El tamaño de porción debe ser un número finito mayor a 0.');
+        }
+        if (!Number.isFinite(wastePercentage) || wastePercentage < 0 || wastePercentage > 100) {
+            throw new Error('El porcentaje de merma debe estar entre 0 y 100.');
+        }
+
         const recipes = await prisma.recipe.findMany({
             where: { menuItemId },
             include: {
@@ -105,44 +122,84 @@ export class RecipeScalingService {
             }
         });
 
-        // Calculate total input weight (assuming quantities in same unit)
-        const totalInput = recipes.reduce((sum, r) => sum + Number(r.quantity), 0);
+        if (recipes.length === 0) {
+            throw new Error('El plato no tiene ingredientes para calcular rendimiento.');
+        }
+
+        // Normalize every line to the company's canonical measurement reference
+        // (g/ml/unidad, etc.). Raw recipe quantities cannot be added: 1 kg + 500 g
+        // is 1500 g, while mass + volume/count is not a meaningful total at all.
+        const normalizedIngredients = await Promise.all(recipes.map(async (r) => {
+            const recipeUnit = r.unit || r.unitOfMeasure?.abbreviation || r.product.unit;
+            try {
+                const [conv, unitCost] = await Promise.all([
+                    UnitConversionService.convert(r.productId, companyId, Number(r.quantity), recipeUnit),
+                    ProductionRecipeService.resolveProductUnitCost(r.productId, companyId)
+                ]);
+                const baseUnit = await prisma.unitOfMeasure.findFirst({
+                    where: { companyId, active: true, abbreviation: conv.baseUnit },
+                    select: { abbreviation: true, measurementType: true, systemFactor: true }
+                });
+                const systemFactor = Number(baseUnit?.systemFactor);
+                if (!baseUnit || !Number.isFinite(systemFactor) || systemFactor <= 0) {
+                    throw new Error(`la unidad base "${conv.baseUnit}" no tiene referencia de medición válida`);
+                }
+                return {
+                    measurementType: baseUnit.measurementType,
+                    canonicalQuantity: conv.baseQuantity * systemFactor,
+                    ingredientCost: unitCost * conv.baseQuantity
+                };
+            } catch (error) {
+                throw new Error(`No se pudo calcular "${r.product.name}" (${recipeUnit}): ${(error as Error).message}`);
+            }
+        }));
+
+        const measurementTypes = [...new Set(normalizedIngredients.map((ingredient) => ingredient.measurementType))];
+        if (measurementTypes.length !== 1) {
+            throw new Error(
+                `No se pueden sumar ingredientes de mediciones heterogéneas (${measurementTypes.join(', ')}). ` +
+                'Defina el rendimiento en una receta de producción con una unidad de salida explícita.'
+            );
+        }
+        const canonicalUnit = await prisma.unitOfMeasure.findFirst({
+            where: {
+                companyId,
+                active: true,
+                measurementType: measurementTypes[0],
+                systemFactor: 1
+            },
+            select: { abbreviation: true }
+        });
+        if (!canonicalUnit) {
+            throw new Error(`No existe una unidad de referencia para la medición ${measurementTypes[0]}.`);
+        }
+        const totalInput = normalizedIngredients.reduce((sum, ingredient) => sum + ingredient.canonicalQuantity, 0);
 
         // Apply waste percentage
-        const wasteMultiplier = 1 - ((settings.wastePercentage || 0) / 100);
-        const usableOutput = settings.totalWeight
-            ? settings.totalWeight
+        const wasteMultiplier = 1 - (wastePercentage / 100);
+        const usableOutput = explicitTotalWeight !== null
+            ? explicitTotalWeight
             : totalInput * wasteMultiplier;
 
         // Calculate portions
-        const portionsFromYield = settings.portionSize
-            ? Math.floor(usableOutput / settings.portionSize)
+        const portionsFromYield = explicitPortionSize !== null
+            ? Math.floor(usableOutput / explicitPortionSize)
             : 1;
         const safePortions = Math.max(1, portionsFromYield);
 
-        // Calculate costs in base units (convert with the recipe's unit and value
-        // with weighted-average/reference fallback) so the cost is coherent with kg/g usage.
-        const ingredientCosts = await Promise.all(recipes.map(async (r) => {
-            const recipeUnit = r.unit || r.unitOfMeasure?.abbreviation || r.product.unit;
-            const unitCost = effectiveUnitCost(r.product.currentAverageCost, r.product.cost);
-            try {
-                const conv = await UnitConversionService.convert(r.productId, companyId, Number(r.quantity), recipeUnit);
-                return unitCost * conv.baseQuantity;
-            } catch (error) {
-                throw new Error(`No se pudo convertir la unidad "${recipeUnit}" de "${r.product.name}": ${(error as Error).message}`);
-            }
-        }));
-        const totalIngredientCost = ingredientCosts.reduce((sum, v) => sum + v, 0);
+        const totalIngredientCost = normalizedIngredients.reduce((sum, ingredient) => sum + ingredient.ingredientCost, 0);
 
         return {
             input: {
                 totalWeight: totalInput,
+                unit: canonicalUnit.abbreviation,
                 ingredients: recipes.length
             },
             output: {
                 totalWeight: usableOutput,
-                wastePercentage: settings.wastePercentage || 0,
-                portionSize: settings.portionSize || usableOutput,
+                unit: canonicalUnit.abbreviation,
+                wastePercentage,
+                portionSize: explicitPortionSize ?? usableOutput,
                 numberOfPortions: portionsFromYield
             },
             costs: {
@@ -163,46 +220,68 @@ export class RecipeScalingService {
         unit: string;
         ingredients: { productId: number; quantity: number }[];
     }) {
-        // Create as a product that can be used in other recipes
-        const product = await prisma.product.create({
-            data: {
-                companyId,
-                name: `[Sub-Receta] ${data.name}`,
-                unit: data.unit,
-                type: 'INGREDIENT', // Can be used as ingredient
-                categoryId: data.categoryId,
-                minStock: 0,
-                cost: 0 // Will be calculated
-            }
-        });
-
-        // Calculate cost from ingredients
-        let totalCost = 0;
-        for (const ing of data.ingredients) {
-            const ingredient = await prisma.product.findFirst({
-                where: { id: ing.productId, companyId },
-                select: { cost: true }
-            });
-            if (!ingredient) {
-                throw new Error(`Ingrediente no encontrado: ${ing.productId}`);
-            }
-            totalCost += Number(ingredient?.cost || 0) * ing.quantity;
+        if (!Number.isFinite(data.baseYield) || !(data.baseYield > 0)) {
+            throw new Error('El rendimiento base de la sub-receta debe ser mayor a 0.');
+        }
+        if (!data.ingredients?.length) {
+            throw new Error('La sub-receta debe tener al menos un ingrediente.');
         }
 
-        // Update product cost
-        await prisma.product.update({
-            where: { id: product.id },
-            data: { cost: totalCost / data.baseYield }
-        });
+        // Not exposed by HTTP routes today; keep fail-closed so a future wire-up
+        // cannot silently publish a zero-cost composite ingredient.
+        return prisma.$transaction(async (tx) => {
+            let totalCost = 0;
+            for (const ing of data.ingredients) {
+                const quantity = Number(ing.quantity);
+                if (!Number.isFinite(quantity) || !(quantity > 0)) {
+                    throw new Error('Cada ingrediente de la sub-receta debe tener cantidad mayor a 0.');
+                }
+                const ingredient = await tx.product.findFirst({
+                    where: { id: ing.productId, companyId, active: true },
+                    select: { id: true, name: true, cost: true, currentAverageCost: true, unit: true }
+                });
+                if (!ingredient) {
+                    throw new Error(`Ingrediente no encontrado o inactivo: ${ing.productId}`);
+                }
+                const unitCost = effectiveUnitCost(ingredient.currentAverageCost, ingredient.cost);
+                if (!(unitCost > 0)) {
+                    throw new Error(
+                        `El ingrediente "${ingredient.name}" no tiene costo unitario positivo; no se puede crear la sub-receta.`
+                    );
+                }
+                const conv = await UnitConversionService.convert(
+                    ingredient.id,
+                    companyId,
+                    quantity,
+                    ingredient.unit,
+                    tx
+                );
+                totalCost += unitCost * conv.baseQuantity;
+            }
 
-        return {
-            id: product.id,
-            name: data.name,
-            unit: data.unit,
-            baseYield: data.baseYield,
-            costPerUnit: Math.round((totalCost / data.baseYield) * 100) / 100,
-            ingredients: data.ingredients
-        };
+            const costPerUnit = totalCost / data.baseYield;
+            const product = await tx.product.create({
+                data: {
+                    companyId,
+                    name: `[Sub-Receta] ${data.name}`,
+                    unit: data.unit,
+                    type: 'INGREDIENT',
+                    categoryId: data.categoryId,
+                    minStock: 0,
+                    cost: costPerUnit,
+                    currentAverageCost: costPerUnit
+                }
+            });
+
+            return {
+                id: product.id,
+                name: data.name,
+                unit: data.unit,
+                baseYield: data.baseYield,
+                costPerUnit: Math.round(costPerUnit * 100) / 100,
+                ingredients: data.ingredients
+            };
+        });
     }
 
     /**

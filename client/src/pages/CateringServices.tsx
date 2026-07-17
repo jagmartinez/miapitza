@@ -59,10 +59,11 @@ export default function CateringServices() {
             setServices(response.data.data);
         } catch (error) {
             console.error('Error loading services:', error);
+            showError('No se pudieron cargar los servicios de catering.');
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [showError]);
 
     useEffect(() => {
         loadServices();

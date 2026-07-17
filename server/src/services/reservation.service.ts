@@ -1,5 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { getZonedDayBounds } from '../utils/timezone';
+import { SettingService } from './setting.service';
 
 export class ReservationService {
     private static async getAvailableTablesWithClient(
@@ -8,12 +10,15 @@ export class ReservationService {
         companyId: number,
         date: Date,
         peopleCount: number,
-        excludeReservationId?: number
+        excludeReservationId?: number,
+        preserveTableId?: number | null
     ) {
-        // Range: reservation time +/- 2 hours
-        const startTime = new Date(date.getTime() - 2 * 60 * 60 * 1000);
-        const endTime = new Date(date.getTime() + 2 * 60 * 60 * 1000);
-        const isNearTerm = date.getTime() - Date.now() <= 2 * 60 * 60 * 1000;
+        const reservationWindowMs = (await SettingService.getReservationTableWindowMinutes(companyId, db)) * 60 * 1000;
+        const startTime = new Date(date.getTime() - reservationWindowMs);
+        const endTime = new Date(date.getTime() + reservationWindowMs);
+        const deltaFromNow = date.getTime() - Date.now();
+        const isNearTerm = deltaFromNow >= -reservationWindowMs
+            && deltaFromNow <= reservationWindowMs;
 
         // Lock compatible tables in this branch so concurrent booking checks serialize.
         if ('$queryRaw' in db) {
@@ -34,9 +39,12 @@ export class ReservationService {
                 branchId,
                 companyId,
                 capacity: { gte: peopleCount },
-                status: isNearTerm
-                    ? { in: ['AVAILABLE', 'RESERVED'] }
-                    : { not: 'OUT_OF_SERVICE' }
+                ...(isNearTerm ? {
+                    OR: [
+                        { status: 'AVAILABLE' as const },
+                        ...(preserveTableId ? [{ id: preserveTableId, status: 'RESERVED' as const }] : [])
+                    ]
+                } : { status: { not: 'OUT_OF_SERVICE' as const } })
             },
             orderBy: [{ capacity: 'asc' }, { id: 'asc' }]
         });
@@ -84,16 +92,11 @@ export class ReservationService {
         }
 
         if (filters?.date) {
-            // Get reservations for the entire day
-            const startOfDay = new Date(filters.date);
-            startOfDay.setHours(0, 0, 0, 0);
-
-            const endOfDay = new Date(filters.date);
-            endOfDay.setHours(23, 59, 59, 999);
-
+            const timeZone = await SettingService.getTimezone(companyId);
+            const { start, endInclusive } = getZonedDayBounds(timeZone, filters.date);
             where.date = {
-                gte: startOfDay,
-                lte: endOfDay
+                gte: start,
+                lte: endInclusive
             };
         }
 
@@ -190,11 +193,12 @@ export class ReservationService {
                 throw new Error('No tables available for this capacity at the requested time');
             }
 
+            const tableId = availableTables[0].id;
             return await tx.reservation.create({
                 data: {
                     ...data,
                     companyId,
-                    tableId: availableTables[0].id,
+                    tableId,
                     status: 'PENDING'
                 },
                 include: {
@@ -248,7 +252,7 @@ export class ReservationService {
             // Re-run allocation under the same table locks even when only contact
             // details change. This backfills legacy null tableId rows safely.
             const availableTables = await this.getAvailableTablesWithClient(
-                tx, current.branchId, companyId, newDate, newPeopleCount, id
+                tx, current.branchId, companyId, newDate, newPeopleCount, id, current.tableId
             );
             const selectedTable = availableTables.find((table) => table.id === current.tableId) ?? availableTables[0];
             if (!selectedTable) {
@@ -283,29 +287,30 @@ export class ReservationService {
         status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW' | 'COMPLETED'
     ) {
         return await prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT id FROM \`Reservation\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
-        const reservation = await tx.reservation.findFirst({ where: { id, companyId } });
-        if (!reservation) throw new Error('Reservation not found');
+            await tx.$queryRaw`SELECT id FROM \`Reservation\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            const reservation = await tx.reservation.findFirst({ where: { id, companyId } });
+            if (!reservation) throw new Error('Reservation not found');
 
-        const currentStatus = reservation.status;
-        const validNext = this.VALID_STATUS_TRANSITIONS[currentStatus] || [];
-        if (!validNext.includes(status)) {
-            throw new Error(`Transición de estado inválida: ${currentStatus} → ${status}`);
-        }
-
-        return await tx.reservation.update({
-            where: { id },
-            data: { status },
-            include: {
-                branch: {
-                    select: {
-                        id: true,
-                        name: true,
-                        code: true
-                    }
-                }
+            const currentStatus = reservation.status;
+            const validNext = this.VALID_STATUS_TRANSITIONS[currentStatus] || [];
+            if (!validNext.includes(status)) {
+                throw new Error(`Transición de estado inválida: ${currentStatus} → ${status}`);
             }
-        });
+
+            return await tx.reservation.update({
+                where: { id },
+                data: { status },
+                include: {
+                    branch: {
+                        select: {
+                            id: true,
+                            name: true,
+                            code: true
+                        }
+                    },
+                    table: { select: { id: true, number: true, capacity: true, location: true } }
+                }
+            });
         });
     }
 
@@ -337,9 +342,10 @@ export class ReservationService {
             }
 
             const now = new Date();
-            const toleranceMs = 2 * 60 * 60 * 1000;
+            const toleranceMinutes = await SettingService.getReservationTableWindowMinutes(companyId, tx);
+            const toleranceMs = toleranceMinutes * 60 * 1000;
             if (now.getTime() < reservation.date.getTime() - toleranceMs || now.getTime() > reservation.date.getTime() + toleranceMs) {
-                throw new Error('El check-in solo puede realizarse dentro de las 2 horas alrededor de la reservación');
+                throw new Error(`El check-in solo puede realizarse dentro de los ${toleranceMinutes} minutos alrededor de la reservación`);
             }
 
             await tx.$queryRaw`SELECT id FROM \`Table\` WHERE id = ${reservation.tableId} AND companyId = ${companyId} FOR UPDATE`;
@@ -369,6 +375,12 @@ export class ReservationService {
                 select: { id: true }
             });
             if (!branch) throw new Error('La sucursal de la reservación está inactiva');
+
+            const actor = await tx.user.findFirst({
+                where: { id: userId, companyId, status: 'ACTIVE' },
+                select: { id: true }
+            });
+            if (!actor) throw new Error('El usuario que registra la llegada no es válido para esta empresa');
 
             const order = await tx.order.create({
                 data: {
@@ -422,7 +434,8 @@ export class ReservationService {
 
     // Get today's reservations
     static async getTodayReservations(companyId: number, branchId?: number) {
-        const today = new Date();
+        const timeZone = await SettingService.getTimezone(companyId);
+        const today = getZonedDayBounds(timeZone).start;
         return await this.getAll(companyId, { branchId, date: today });
     }
 

@@ -19,7 +19,6 @@ import { currencyInputPadding } from '../utils/currency';
 import type { Branch, MenuItem, MenuBrand, MenuRecipe, Product, ProductAllowedUnit, UnitOfMeasure } from '../types';
 import type { SingleValue } from 'react-select';
 import {
-  buildMenuRecipeSyncPlan,
   calculateMenuRecipeLineCost,
   type EditableMenuRecipe,
   validateMenuRecipes,
@@ -148,7 +147,6 @@ export default function Menu() {
   });
 
   const [recipe, setRecipe] = useState<EditableMenuRecipe[]>([]);
-  const [originalRecipe, setOriginalRecipe] = useState<EditableMenuRecipe[]>([]);
   const [recipeUnitsByProduct, setRecipeUnitsByProduct] = useState<Record<number, ProductAllowedUnit[]>>({});
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [selectedIngredientUnit, setSelectedIngredientUnit] = useState<string>('');
@@ -353,7 +351,6 @@ export default function Menu() {
       // Never leave data from the previously-opened item in the editor while
       // this item's imported recipe is being loaded.
       setRecipe([]);
-      setOriginalRecipe([]);
       setRecipeUnitsByProduct({});
       setImages([]);
       setOriginalImages([]);
@@ -412,7 +409,6 @@ export default function Menu() {
         const loadedImages = loadedImageRecords.map((img) => img.imageUrl);
 
         setRecipe(loadedRecipes);
-        setOriginalRecipe(loadedRecipes.map((ingredient) => ({ ...ingredient })));
         setRecipeUnitsByProduct(Object.fromEntries(productUnitsMap));
         setImages(loadedImages);
         setOriginalImages(loadedImageRecords);
@@ -432,7 +428,6 @@ export default function Menu() {
       setEditingItem(null);
       setFormData({ name: '', description: '', price: '', categoryId: '', branchId: '', brandId: '' });
       setRecipe([]);
-      setOriginalRecipe([]);
       setRecipeUnitsByProduct({});
       setImages([]);
       setOriginalImages([]);
@@ -647,7 +642,7 @@ export default function Menu() {
       showWarning('Ingresa un precio válido');
       return;
     }
-    const recipeValidationError = validateMenuRecipes(recipe);
+    const recipeValidationError = validateMenuRecipes(recipe, { requireAtLeastOne: true });
     if (recipeValidationError) {
       showWarning(recipeValidationError);
       setActiveTab('recipe');
@@ -669,16 +664,12 @@ export default function Menu() {
 
       let menuItemId: number;
       if (editingItem) {
-        await menuAPI.update(editingItem.id, menuData);
         menuItemId = editingItem.id;
-
-        const syncPlan = buildMenuRecipeSyncPlan(originalRecipe, recipe);
-
-        // Update retained lines first. Removed rows are deleted before creates so
-        // replacing the same product cannot hit the unique menuItem/product key.
-        await Promise.all(syncPlan.update.map(({ id, data }) => menuAPI.updateRecipe(id, data)));
-        await Promise.all(syncPlan.delete.map((recipeId) => menuAPI.deleteRecipe(recipeId)));
-        await Promise.all(syncPlan.create.map((ingredient) => menuAPI.addRecipe(menuItemId, ingredient)));
+        await menuAPI.replaceRecipes(menuItemId, recipe.map((ingredient) => ({
+          productId: ingredient.productId,
+          quantity: Number(ingredient.quantity),
+          unit: ingredient.unit.trim(),
+        })), menuData);
 
         const retainedImageUrls = new Set(images);
         const originalImageUrls = new Set(originalImages.map((image) => image.imageUrl));
@@ -689,11 +680,11 @@ export default function Menu() {
       } else {
         const response = await menuAPI.create(menuData);
         menuItemId = response.data.data.id;
-        await Promise.all(recipe.map((ingredient) => menuAPI.addRecipe(menuItemId, {
+        await menuAPI.replaceRecipes(menuItemId, recipe.map((ingredient) => ({
           productId: ingredient.productId,
           quantity: Number(ingredient.quantity),
           unit: ingredient.unit.trim(),
-        })));
+        })), menuData);
         await Promise.all(images.map((imageUrl) => menuAPI.addImage(menuItemId, imageUrl)));
       }
 
@@ -704,13 +695,12 @@ export default function Menu() {
       console.error('Error saving menu item:', error);
       const message = errMsg(error, 'Error al guardar el plato y su receta');
 
-      // Line and image synchronisation uses several API requests. If one fails,
-      // the server may already contain a subset of the changes; prevent retrying
-      // with stale original IDs and force the next open to read authoritative data.
+      // Images and item metadata still use separate requests. Recipe replacement
+      // itself is atomic; force the next open to read the authoritative result if
+      // a later request fails.
       setIsSidebarOpen(false);
       setEditingItem(null);
       setRecipe([]);
-      setOriginalRecipe([]);
       setRecipeUnitsByProduct({});
       setSelectedProductId('');
       setSelectedIngredientUnit('');

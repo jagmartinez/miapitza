@@ -158,6 +158,10 @@ export const scheduleClient = {
         return normalizeSchedule(unwrap(response.data));
     },
 
+    async cancelSchedule(id: number, payload: HrSchedulePublishPayload): Promise<void> {
+        await api.post(`${HR_BASE}/schedules/${id}/cancel`, payload);
+    },
+
     async acknowledgeSchedule(id: number): Promise<void> {
         await api.post(`${HR_BASE}/schedules/${id}/acknowledge`);
     },

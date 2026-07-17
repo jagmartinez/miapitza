@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import type { Prisma } from '@prisma/client';
 import { AuditLogService } from './audit-log.service';
 import { OrderService } from './order.service';
-import { encrypt, decrypt, isEncrypted } from '../utils/encryption';
+import { encrypt, decrypt, isEncrypted, isLegacyEncryptionCandidate } from '../utils/encryption';
 import { DynamicPricingService } from './dynamic-pricing.service';
 import { externalHttpTimeoutMs, fetchWithTimeout } from '../utils/external-http';
 
@@ -34,7 +34,7 @@ export class PedidosYaService {
     /** Decrypts a stored secret, tolerating legacy plaintext values. */
     static decryptSecret(value: string | null | undefined): string | null {
         if (!value) return null;
-        if (!isEncrypted(value)) return value;
+        if (!isEncrypted(value) && !isLegacyEncryptionCandidate(value)) return value;
         try {
             return decrypt(value);
         } catch (error) {
@@ -46,7 +46,11 @@ export class PedidosYaService {
     /** Encrypts a secret for storage; passes through empty values. */
     private static encryptSecret(value: string | null | undefined): string | null | undefined {
         if (value === null || value === undefined || value === '') return value;
-        return isEncrypted(value) ? value : encrypt(value);
+        if (isEncrypted(value)) return value;
+        // Incoming configuration is explicit plaintext. Encrypt even when it
+        // happens to look like base64 so an operator can replace an ambiguous
+        // legacy value with a valid base64-formatted provider secret.
+        return encrypt(value);
     }
 
     /** Masks a secret for client responses, exposing only the last 4 chars. */
@@ -522,9 +526,23 @@ export class PedidosYaService {
             if (item.id) {
                 const mapping = await prisma.pedidosYaProductMapping.findFirst({
                     where: { companyId, externalId: item.id, isActive: true },
-                    include: { menuItem: { select: { id: true, price: true, branchId: true, active: true } } },
+                    include: {
+                        menuItem: {
+                            select: {
+                                id: true,
+                                price: true,
+                                branchId: true,
+                                active: true,
+                                type: true,
+                                _count: { select: { recipes: true } }
+                            }
+                        }
+                    },
                 });
-                if (mapping?.menuItem?.active && (mapping.menuItem.branchId === null || mapping.menuItem.branchId === branchId)) {
+                const mappedItemReady = mapping?.menuItem?.type === 'DIRECT'
+                    || (mapping?.menuItem?.type === 'PREPARED' && mapping.menuItem._count.recipes > 0);
+                if (mapping?.menuItem?.active && mappedItemReady
+                    && (mapping.menuItem.branchId === null || mapping.menuItem.branchId === branchId)) {
                     menuItemId = mapping.menuItem.id;
                     const basePrice = await DynamicPricingService.getPrice(menuItemId, branchId, companyId);
                     price = price ?? Math.round(basePrice * (1 + markupPct / 100) * 100) / 100;
@@ -533,7 +551,20 @@ export class PedidosYaService {
 
             if (!menuItemId) {
                 const candidates = await prisma.menuItem.findMany({
-                    where: { companyId, name: { contains: item.name.trim() }, active: true, OR: [{ branchId: null }, { branchId }] },
+                    where: {
+                        companyId,
+                        name: { contains: item.name.trim() },
+                        active: true,
+                        AND: [
+                            { OR: [{ branchId: null }, { branchId }] },
+                            {
+                                OR: [
+                                    { type: 'DIRECT' },
+                                    { type: 'PREPARED', recipes: { some: {} } }
+                                ]
+                            }
+                        ]
+                    },
                     select: { id: true, name: true, price: true },
                 });
                 const exact = candidates.filter((candidate) =>

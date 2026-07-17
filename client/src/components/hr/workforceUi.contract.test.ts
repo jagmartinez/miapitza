@@ -47,6 +47,12 @@ describe('Phase 4 workforce UI safety contract', () => {
     expect(leave).toContain("fractionLabel(item.fraction)");
   });
 
+  it('keeps leave tabs inside the operational toolbar and makes employee filtering searchable', () => {
+    expect(leave).toMatch(/hr-workforce-filters inventory-filters-row hr-operation-toolbar[\s\S]*filters-toolbar hr-admin-tab-toolbar/);
+    expect(leave).toContain('aria-label="Filtrar por empleado"');
+    expect(leave).toContain('isSearchable');
+  });
+
   it('loads every authoritative server page and exposes accessible tabs and column headers', () => {
     [attendance, leave].forEach((source) => {
       expect(source).toContain('collectAllPages');

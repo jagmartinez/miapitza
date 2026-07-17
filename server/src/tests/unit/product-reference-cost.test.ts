@@ -25,7 +25,7 @@ describe('Product reference cost isolation', () => {
 
         expect(update).toHaveBeenCalledWith(expect.objectContaining({
             where: { id: 8 },
-            data: { cost: 7 }
+            data: expect.objectContaining({ cost: 7, referenceCostKnown: true })
         }));
         const data = update.mock.calls[0][0].data as Record<string, unknown>;
         expect(data.currentAverageCost).toBeUndefined();

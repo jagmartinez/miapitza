@@ -12,7 +12,7 @@ export interface InvoiceData {
     customerFiscalAddress?: string;
     customerEmail?: string;
     customerPhone?: string;
-    items: Array<{ name: string; quantity: number; price: number; subtotal: number }>;
+    items: Array<{ orderItemId?: number; name: string; quantity: number; price: number; subtotal: number }>;
     grossSubtotal: number;
     discount: number;
     subtotal: number;
@@ -39,6 +39,9 @@ const invoiceOrderInclude = {
 type InvoiceOrder = Prisma.OrderGetPayload<{ include: typeof invoiceOrderInclude }>;
 
 function finiteNumber(value: unknown, field: string): number {
+    if (value == null) {
+        throw new Error(`Invoice snapshot is invalid: ${field}`);
+    }
     const number = Number(value);
     if (!Number.isFinite(number)) {
         throw new Error(`Invoice snapshot is invalid: ${field}`);
@@ -74,7 +77,10 @@ function assertInvoiceReconciles(data: InvoiceData, label: string): void {
         throw new Error(`${label} totals do not reconcile`);
     }
     for (const item of data.items) {
-        if (!Number.isInteger(item.quantity) || item.quantity <= 0 || item.price < 0 || item.subtotal < 0) {
+        if (
+            (item.orderItemId !== undefined && (!Number.isInteger(item.orderItemId) || item.orderItemId <= 0))
+            || !Number.isInteger(item.quantity) || item.quantity <= 0 || item.price < 0 || item.subtotal < 0
+        ) {
             throw new Error(`${label} totals do not reconcile`);
         }
         if (moneyCents(item.price * item.quantity) !== moneyCents(item.subtotal)) {
@@ -119,6 +125,9 @@ export function deserializeInvoiceSnapshot(snapshot: Prisma.JsonValue): InvoiceD
             }
             const item = entry as Record<string, Prisma.JsonValue>;
             return {
+                orderItemId: item.orderItemId == null
+                    ? undefined
+                    : finiteNumber(item.orderItemId, `items[${index}].orderItemId`),
                 name: requiredString(item.name, `items[${index}].name`),
                 quantity: finiteNumber(item.quantity, `items[${index}].quantity`),
                 price: finiteNumber(item.price, `items[${index}].price`),
@@ -162,11 +171,14 @@ function buildInvoiceData(
     if (order.customerTaxId) {
         validateConfiguredFiscalTaxId(order.customerTaxId, settings, 'La identificación tributaria del cliente');
     }
-    const itemSubtotal = order.items.reduce((sum, item) => sum + Number(item.subtotal), 0);
-    const discount = Number(order.discount || 0);
+    const itemSubtotal = order.items.reduce(
+        (sum, item, index) => sum + finiteNumber(item.subtotal, `items[${index}].subtotal`),
+        0
+    );
+    const discount = finiteNumber(order.discount, 'discount');
     const subtotal = Math.max(0, itemSubtotal - discount);
-    const tax = Number(order.tax || 0);
-    const tipAmount = Number(order.tipAmount || 0);
+    const tax = finiteNumber(order.tax, 'tax');
+    const tipAmount = finiteNumber(order.tipAmount, 'tipAmount');
     const configuredTaxRate = Number.parseFloat(settings.tax_rate || settings.taxRate || '');
     const defaultTaxRate = Number(DEFAULT_COMPANY_SETTINGS.tax_rate);
     const configuredTipRate = Number.parseFloat(settings.tipRate || '0');
@@ -180,10 +192,11 @@ function buildInvoiceData(
         customerEmail: order.customerEmail || undefined,
         customerPhone: order.customerPhone || undefined,
         items: order.items.map((item) => ({
+            orderItemId: item.id,
             name: item.menuItem.name,
             quantity: item.quantity,
-            price: Number(item.price),
-            subtotal: Number(item.subtotal),
+            price: finiteNumber(item.price, 'item.price'),
+            subtotal: finiteNumber(item.subtotal, 'item.subtotal'),
         })),
         grossSubtotal: itemSubtotal,
         discount,
@@ -193,7 +206,7 @@ function buildInvoiceData(
         tipRatePercent: tipAmount > 0 && subtotal > 0
             ? Math.round((tipAmount / subtotal) * 10000) / 100
             : (Number.isFinite(configuredTipRate) ? configuredTipRate : 0),
-        total: Number(order.total),
+        total: finiteNumber(order.total, 'total'),
         branchName: order.branch.name,
         branchAddress: order.branch.address ?? undefined,
         branchPhone: order.branch.phone ?? undefined,
@@ -244,7 +257,12 @@ export class InvoiceService {
                 return persisted;
             }
 
-            const totalCents = Math.round(Number(order.total) * 100);
+            // Fiscal issuance is not a pricing operation. Recomputing with the
+            // current company settings would rewrite a historical/possibly paid
+            // sale when tax policy changed. buildInvoiceData validates the
+            // persisted line, discount, tax, tip and total snapshot and fails
+            // closed if upstream pricing did not leave them reconciled.
+            const totalCents = Math.round(finiteNumber(order.total, 'total') * 100);
             if (order.status === 'CANCELLED' || totalCents <= 0 || order.items.length === 0) {
                 throw new Error('Solo se puede emitir una factura para una orden activa, con productos y total mayor a cero');
             }

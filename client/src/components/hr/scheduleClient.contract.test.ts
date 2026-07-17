@@ -91,12 +91,14 @@ describe('Phase 2 schedule API contract', () => {
         await scheduleClient.updateSchedule(7, update);
         await scheduleClient.copySchedule(7, { targetWeekStart: '2026-07-20' });
         await scheduleClient.publishSchedule(7, { expectedRevision: 2 });
+        await scheduleClient.cancelSchedule(7, { expectedRevision: 2 });
         await scheduleClient.acknowledgeSchedule(7);
 
         expect(apiMock.post).toHaveBeenCalledWith('/v1/hr/schedules', create);
         expect(apiMock.put).toHaveBeenCalledWith('/v1/hr/schedules/7', update);
         expect(apiMock.post).toHaveBeenCalledWith('/v1/hr/schedules/7/copy', { targetWeekStart: '2026-07-20' });
         expect(apiMock.post).toHaveBeenCalledWith('/v1/hr/schedules/7/publish', { expectedRevision: 2 });
+        expect(apiMock.post).toHaveBeenCalledWith('/v1/hr/schedules/7/cancel', { expectedRevision: 2 });
         expect(apiMock.post).toHaveBeenCalledWith('/v1/hr/schedules/7/acknowledge');
     });
 

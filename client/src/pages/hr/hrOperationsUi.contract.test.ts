@@ -76,6 +76,11 @@ describe('RH operational UI contract', () => {
     expect(timeClock).toContain('biometricBlocked');
     expect(timeClock).toContain('Marcaje no disponible sin conexión');
     expect(timeClock).toContain('AttendancePunchWizard');
+    expect(timeClock).toContain('Marcaje registrado; no se pudo actualizar el estado');
+    expect(attendanceReview).toContain('lookupsError');
+    expect(attendanceReview).toContain('Reintentar catálogos');
+    expect(attendanceManagement).toContain('Minutos a aprobar');
+    expect(attendanceManagement).toContain('Los periodos de asistencia son de toda la empresa');
     expect(attendanceCss).toContain('.hr-time-clock-workspace');
     expect(attendanceCss).toContain('@media (max-width: 1080px)');
   });

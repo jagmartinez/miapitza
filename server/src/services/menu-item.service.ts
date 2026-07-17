@@ -58,6 +58,19 @@ export class MenuItemService {
 
         if (filters?.active !== undefined) {
             where.active = filters.active;
+            if (filters.active) {
+                // Existing bad data must not reach operational/POS catalogs.
+                // DIRECT items need no BOM; PREPARED items need at least one
+                // sale-recipe line and remain visible in the admin's unfiltered list.
+                where.AND = [
+                    {
+                        OR: [
+                            { type: 'DIRECT' },
+                            { type: 'PREPARED', recipes: { some: {} } }
+                        ]
+                    }
+                ];
+            }
         }
 
         if (filters?.type) {
@@ -227,17 +240,17 @@ export class MenuItemService {
         categoryId?: number | null;
         brandId?: number | null;
         branchId?: number | null;
-    }) {
+    }, db: Prisma.TransactionClient | typeof prisma = prisma) {
         if (refs.categoryId !== undefined && refs.categoryId !== null) {
-            const category = await prisma.category.findFirst({ where: { id: refs.categoryId, companyId }, select: { id: true } });
+            const category = await db.category.findFirst({ where: { id: refs.categoryId, companyId }, select: { id: true } });
             if (!category) throw new Error('Categoría no encontrada para esta empresa');
         }
         if (refs.brandId !== undefined && refs.brandId !== null) {
-            const brand = await prisma.menuBrand.findFirst({ where: { id: refs.brandId, companyId }, select: { id: true } });
+            const brand = await db.menuBrand.findFirst({ where: { id: refs.brandId, companyId }, select: { id: true } });
             if (!brand) throw new Error('Marca no encontrada para esta empresa');
         }
         if (refs.branchId !== undefined && refs.branchId !== null) {
-            const branch = await prisma.branch.findFirst({ where: { id: refs.branchId, companyId }, select: { id: true } });
+            const branch = await db.branch.findFirst({ where: { id: refs.branchId, companyId }, select: { id: true } });
             if (!branch) throw new Error('Sucursal no encontrada para esta empresa');
         }
     }
@@ -256,6 +269,9 @@ export class MenuItemService {
         const name = data.name?.trim();
         if (!name) throw new Error('El nombre del elemento de menú es requerido');
         await this.assertScopedRefs(companyId, { categoryId: data.categoryId, brandId: data.brandId, branchId: data.branchId });
+        const type = data.type || 'PREPARED';
+        // PREPARED items require a sale recipe before going live; create inactive
+        // so POS cannot sell a kitchen plate with an empty BOM.
         return await prisma.menuItem.create({
             data: {
                 branchId: data.branchId,
@@ -265,7 +281,8 @@ export class MenuItemService {
                 description: data.description,
                 price,
                 companyId,
-                type: data.type || 'PREPARED'
+                type,
+                active: type === 'DIRECT'
             },
             include: {
                 category: {
@@ -304,6 +321,17 @@ export class MenuItemService {
         return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const item = await tx.menuItem.findFirst({ where: { id, companyId } });
             if (!item) throw new Error('Elemento de menú no encontrado');
+
+            const nextType = data.type ?? item.type;
+            const nextActive = data.active ?? item.active;
+            if (nextActive && nextType === 'PREPARED') {
+                const recipeCount = await tx.recipe.count({ where: { menuItemId: id } });
+                if (recipeCount === 0) {
+                    throw new Error(
+                        'No se puede activar un plato preparado sin receta de venta. Agregue ingredientes o márquelo como venta directa.'
+                    );
+                }
+            }
 
             const safeData: Prisma.MenuItemUncheckedUpdateInput = {
                 ...(data.branchId !== undefined ? { branchId: data.branchId } : {}),
@@ -347,11 +375,15 @@ export class MenuItemService {
      * `unit` string. Returns null when the abbreviation is empty or unknown
      * (kept non-blocking to avoid breaking legacy products without a catalog).
      */
-    private static async resolveUnitId(companyId: number, unit?: string | null): Promise<number | null> {
+    private static async resolveUnitId(
+        companyId: number,
+        unit?: string | null,
+        db: Prisma.TransactionClient | typeof prisma = prisma
+    ): Promise<number | null> {
         if (!unit) return null;
         const abbr = unit.trim();
         if (!abbr) return null;
-        const uom = await prisma.unitOfMeasure.findFirst({
+        const uom = await db.unitOfMeasure.findFirst({
             where: { companyId, abbreviation: abbr, active: true },
             select: { id: true }
         });
@@ -372,10 +404,10 @@ export class MenuItemService {
         await this.getById(menuItemId, companyId);
         // Verify the product also belongs to the company (avoid cross-tenant recipe links)
         const product = await prisma.product.findFirst({
-            where: { id: data.productId, companyId },
+            where: { id: data.productId, companyId, active: true },
             select: { id: true, unit: true }
         });
-        if (!product) throw new Error('Producto no encontrado para esta empresa');
+        if (!product) throw new Error('Producto no encontrado o inactivo para esta empresa');
         const unit = String(data.unit ?? product.unit).trim();
         if (!unit) throw new Error('La unidad de la receta es requerida');
         await UnitConversionService.convert(product.id, companyId, quantity, unit);
@@ -463,12 +495,159 @@ export class MenuItemService {
         });
     }
 
-    static async deleteRecipe(recipeId: number, companyId: number) {
-        return await prisma.recipe.delete({
-            where: {
-                id: recipeId,
-                menuItem: { companyId }
+    /**
+     * Replace the complete sale recipe in one transaction. Every product, unit
+     * and quantity is validated before the first delete, so a failed replacement
+     * leaves the previous BOM intact and an active PREPARED item is never exposed
+     * with an empty recipe.
+     */
+    static async replaceRecipes(menuItemId: number, companyId: number, recipes: Array<{
+        productId: number;
+        quantity: number;
+        unit?: string;
+    }>, menuItemData?: {
+        branchId?: number | null;
+        brandId?: number | null;
+        categoryId?: number;
+        name?: string;
+        description?: string;
+        price?: number;
+        active?: boolean;
+        type?: 'PREPARED' | 'DIRECT';
+    }) {
+        if (!Array.isArray(recipes)) throw new Error('La receta debe ser una lista de ingredientes');
+        if (recipes.length > 500) throw new Error('La receta excede el máximo de 500 ingredientes');
+
+        const productIds = recipes.map((line) => Number(line.productId));
+        if (productIds.some((productId) => !Number.isInteger(productId) || productId <= 0)) {
+            throw new Error('Todos los ingredientes deben tener un producto válido');
+        }
+        if (new Set(productIds).size !== productIds.length) {
+            throw new Error('La receta no puede contener productos duplicados');
+        }
+
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            await tx.$queryRaw`SELECT id FROM \`MenuItem\` WHERE id = ${menuItemId} AND companyId = ${companyId} FOR UPDATE`;
+            const menuItem = await tx.menuItem.findFirst({
+                where: { id: menuItemId, companyId },
+                select: { id: true, active: true, type: true, name: true }
+            });
+            if (!menuItem) throw new Error('Elemento de menú no encontrado');
+            if (menuItemData?.name !== undefined && !menuItemData.name.trim()) {
+                throw new Error('El nombre del elemento de menú es requerido');
             }
+            if (menuItemData?.price !== undefined
+                && (!Number.isFinite(Number(menuItemData.price)) || Number(menuItemData.price) < 0)) {
+                throw new Error('El precio debe ser un número válido mayor o igual a 0');
+            }
+            await this.assertScopedRefs(companyId, {
+                categoryId: menuItemData?.categoryId,
+                brandId: menuItemData?.brandId,
+                branchId: menuItemData?.branchId
+            }, tx);
+
+            const nextActive = menuItemData?.active ?? menuItem.active;
+            const nextType = menuItemData?.type ?? menuItem.type;
+            if (nextActive && nextType === 'PREPARED' && recipes.length === 0) {
+                throw new Error(`No se puede dejar "${menuItem.name}" activo sin ingredientes`);
+            }
+
+            const products = await tx.product.findMany({
+                where: { id: { in: productIds }, companyId, active: true },
+                select: { id: true, unit: true }
+            });
+            const productById = new Map(products.map((product) => [product.id, product]));
+            if (products.length !== productIds.length) {
+                throw new Error('Uno o más productos no existen, están inactivos o pertenecen a otra empresa');
+            }
+
+            const normalized = [] as Array<{
+                menuItemId: number;
+                productId: number;
+                quantity: number;
+                unit: string;
+                unitId: number | null;
+            }>;
+            for (const line of recipes) {
+                const quantity = Number(line.quantity);
+                if (!Number.isFinite(quantity) || quantity <= 0) {
+                    throw new Error('La cantidad de cada ingrediente debe ser mayor a 0');
+                }
+                const product = productById.get(Number(line.productId))!;
+                const unit = String(line.unit ?? product.unit).trim();
+                if (!unit) throw new Error('La unidad de cada ingrediente es requerida');
+
+                await UnitConversionService.convert(product.id, companyId, quantity, unit, tx);
+                const unitId = await this.resolveUnitId(companyId, unit, tx);
+                normalized.push({ menuItemId, productId: product.id, quantity, unit, unitId });
+            }
+
+            await tx.recipe.deleteMany({ where: { menuItemId } });
+            if (normalized.length > 0) {
+                await tx.recipe.createMany({ data: normalized });
+            }
+
+            const updatedMenuItem = menuItemData
+                ? await tx.menuItem.update({
+                    where: { id: menuItemId },
+                    data: {
+                        ...(menuItemData.branchId !== undefined ? { branchId: menuItemData.branchId } : {}),
+                        ...(menuItemData.brandId !== undefined ? { brandId: menuItemData.brandId } : {}),
+                        ...(menuItemData.categoryId !== undefined ? { categoryId: menuItemData.categoryId } : {}),
+                        ...(menuItemData.name !== undefined ? { name: menuItemData.name.trim() } : {}),
+                        ...(menuItemData.description !== undefined ? { description: menuItemData.description } : {}),
+                        ...(menuItemData.price !== undefined ? { price: Number(menuItemData.price) } : {}),
+                        ...(menuItemData.active !== undefined ? { active: menuItemData.active } : {}),
+                        ...(menuItemData.type !== undefined ? { type: menuItemData.type } : {})
+                    }
+                })
+                : menuItem;
+
+            const replacedRecipes = await tx.recipe.findMany({
+                where: { menuItemId },
+                include: {
+                    product: {
+                        select: { id: true, name: true, unit: true, cost: true }
+                    },
+                    unitOfMeasure: {
+                        select: { id: true, abbreviation: true }
+                    }
+                },
+                orderBy: { id: 'asc' }
+            });
+            return { menuItem: updatedMenuItem, recipes: replacedRecipes };
+        });
+    }
+
+    static async deleteRecipe(recipeId: number, companyId: number) {
+        return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            const existing = await tx.recipe.findFirst({
+                where: { id: recipeId, menuItem: { companyId } },
+                select: {
+                    id: true,
+                    menuItemId: true,
+                    menuItem: { select: { active: true, type: true, name: true } }
+                }
+            });
+            if (!existing) throw new Error('Receta no encontrada para esta empresa');
+
+            if (existing.menuItem.active && existing.menuItem.type === 'PREPARED') {
+                const remaining = await tx.recipe.count({
+                    where: { menuItemId: existing.menuItemId, id: { not: recipeId } }
+                });
+                if (remaining === 0) {
+                    throw new Error(
+                        `No se puede eliminar el último ingrediente de "${existing.menuItem.name}" mientras esté activo. Desactive el plato primero.`
+                    );
+                }
+            }
+
+            return tx.recipe.delete({
+                where: {
+                    id: recipeId,
+                    menuItem: { companyId }
+                }
+            });
         });
     }
 

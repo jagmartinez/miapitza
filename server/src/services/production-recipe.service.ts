@@ -346,7 +346,12 @@ export class ProductionRecipeService {
                 db as Tx
             );
             const yieldBaseQuantity = yieldConv.baseQuantity;
-            const unitCost = yieldBaseQuantity > 0 ? batchCost / yieldBaseQuantity : 0;
+            if (!(yieldBaseQuantity > 0)) {
+                throw new Error(
+                    `El rendimiento de la receta ${recipeId} no es válido tras conversión a unidad base (debe ser mayor a 0).`
+                );
+            }
+            const unitCost = batchCost / yieldBaseQuantity;
 
             const result = {
                 batchCost: round6(batchCost),
@@ -435,6 +440,9 @@ export class ProductionRecipeService {
             data.yieldQuantity,
             yieldUnit
         );
+        if (!(yieldConversion.baseQuantity > 0)) {
+            throw new Error('El rendimiento de la receta no es válido tras conversión a unidad base (debe ser mayor a 0).');
+        }
         return {
             batchCost: round6(batchCost),
             yieldBaseQuantity: yieldConversion.baseQuantity,

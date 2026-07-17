@@ -20,7 +20,13 @@ describe('HR payroll Art. 19 transactional lifecycle (integration)', () => {
     const actorIds: number[] = [];
 
     beforeAll(async () => {
-        const company = await prisma.company.create({ data: { name: `HR Art19 ${suffix}` } });
+        const company = await prisma.company.create({ data: {
+            name: `HR Art19 ${suffix}`,
+            payrollTaxRegime: 'GENERAL',
+            payrollIncomeTaxWithholding: true,
+            payrollTaxRegimeReference: 'Ley 822',
+            payrollTaxProfileReady: true,
+        } });
         companyId = company.id;
         const branch = await prisma.branch.create({ data: {
             companyId, name: `HR branch ${suffix}`, code: `HR-${suffix}`, timezone: 'America/Managua',

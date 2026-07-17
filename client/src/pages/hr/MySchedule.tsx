@@ -82,8 +82,7 @@ export default function MySchedule() {
 
     return (
         <div className="page-wrapper hr-my-schedule-page my-hr-page">
-            <MyHrNav />
-            <PageHeader className="my-hr-page-header" title="Mi horario" subtitle="Consulta tus turnos publicados y confirma su recepción" icon={CalendarCheck} />
+            <PageHeader className="my-hr-page-header" title="Mi horario" subtitle="Consulta tus turnos publicados y confirma su recepción" icon={CalendarCheck} actions={<MyHrNav />} />
 
             <section className="hr-week-navigation my-hr-toolbar" aria-label="Navegación semanal">
                 <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={acknowledgingId !== null} aria-label="Semana anterior"><ChevronLeft size={18} aria-hidden="true" /> Anterior</Button>

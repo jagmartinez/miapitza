@@ -1,5 +1,7 @@
 import type { DocumentType, Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { SettingService } from './setting.service';
+import { zonedDateKey } from '../utils/timezone';
 
 export class CashShiftService {
     static async getAll(companyId: number, filters?: {
@@ -377,17 +379,17 @@ export class CashShiftService {
         const totalIn = movementsIn.reduce((sum, m) => sum + Number(m.amount), 0);
         const totalOut = movementsOut.reduce((sum, m) => sum + Number(m.amount), 0);
 
-        // Calculate sales (movements that reference an Order)
+        // Cash sales are correlated by immutable POS/Catering payment references;
+        // never infer them from free-text descriptions.
         const grossSalesCash = movementsIn
-            .filter(
-                (m) =>
-                    m.reference &&
-                    (m.reference.toLowerCase().includes('order') ||
-                        m.description?.toLowerCase().includes('venta'))
-            )
+            .filter((m) => m.reference?.startsWith('PAY-') || m.reference?.startsWith('CAT-PAY-'))
             .reduce((sum, m) => sum + Number(m.amount), 0);
         const cashRefunds = movementsOut
-            .filter((m) => m.reference?.startsWith('REV-PAY-'))
+            .filter((m) =>
+                m.reference?.startsWith('REV-PAY-')
+                || m.reference?.startsWith('CN-REF-')
+                || m.reference?.startsWith('REV-CAT-PAY-')
+            )
             .reduce((sum, m) => sum + Number(m.amount), 0);
         const totalSalesCash = grossSalesCash - cashRefunds;
 
@@ -453,16 +455,18 @@ export class CashShiftService {
             };
         }
 
-        // Check if the shift is from a previous date
-        const shiftDate = new Date(activeShift.startDate).toDateString();
-        const today = new Date().toDateString();
-        const requiresClose = shiftDate !== today;
+        // Day boundary uses the company timezone (not the host clock's local TZ).
+        const timezone = await SettingService.getTimezone(companyId);
+        const shiftDay = zonedDateKey(new Date(activeShift.startDate), timezone);
+        const today = zonedDateKey(new Date(), timezone);
+        const requiresClose = shiftDay !== today;
 
         if (requiresClose) {
             const shiftDateFormatted = new Date(activeShift.startDate).toLocaleDateString('es-NI', {
                 day: '2-digit',
                 month: '2-digit',
-                year: 'numeric'
+                year: 'numeric',
+                timeZone: timezone
             });
             return {
                 hasActiveShift: true,

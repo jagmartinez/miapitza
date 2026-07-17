@@ -4,6 +4,7 @@ import ExcelJS from 'exceljs';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import prisma from '../utils/prisma';
+import { scheduledWorkMinutes } from '../utils/hr-shift-minutes';
 import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
 import { AuditLogService } from './audit-log.service';
 import { commitBenefitDeductions, projectBenefitDeductions, reverseBenefitDeductions } from './hr-benefits.service';
@@ -954,11 +955,7 @@ export function reconcilePublishedShiftSummaries(
 ) {
     const expectedByScope = new Map<string, number>();
     for (const shift of shifts) {
-        const expectedMinutes = Math.max(
-            0,
-            Math.round((new Date(shift.endAt).getTime() - new Date(shift.startAt).getTime()) / 60_000)
-                - (shift.paidBreak ? 0 : shift.breakMinutes),
-        );
+        const expectedMinutes = scheduledWorkMinutes(shift);
         const key = `${shift.localDate}:BRANCH:${shift.branchId}`;
         expectedByScope.set(key, (expectedByScope.get(key) ?? 0) + expectedMinutes);
     }

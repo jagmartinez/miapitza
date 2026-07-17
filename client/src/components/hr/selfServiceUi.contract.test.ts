@@ -29,6 +29,7 @@ describe('employee self-service UX contract', () => {
     expect(navigation).not.toContain("const ITEMS");
     expect(navigation).toContain('aria-label="Volver a Mis accesos de RH"');
     expect(selfServiceCss).toContain('.my-hr-summary-grid');
+    expect(selfServiceCss).toContain('.my-hr-page-header .page-header-actions');
   });
 
   it('builds the portal summary from scoped server resources and tolerates partial failures', () => {

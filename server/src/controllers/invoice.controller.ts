@@ -53,7 +53,7 @@ function forwardCreditNoteError(error: unknown, next: NextFunction) {
         || message.startsWith('Invoice cancellation snapshot')
     ) return next({ statusCode: 409, message });
     if (
-        /idempotencia|motivo|mercadería|bodega|reembolso|pago|RUC|orden no entregada|factura ya tiene/i.test(message)
+        /idempotencia|motivo|mercadería|bodega|reembolso|pago|RUC|orden no entregada|factura ya tiene|cantidad|línea|excede|saldo fiscal/i.test(message)
     ) return next({ statusCode: 400, message });
     return next(error);
 }
@@ -128,6 +128,28 @@ export class InvoiceController {
                 endDate: req.query.endDate ? parseQueryDateTo(String(req.query.endDate)) : undefined
             });
             res.json({ success: true, data });
+        } catch (error) {
+            forwardCreditNoteError(error, next);
+        }
+    }
+
+    static async getCreditNoteById(req: Request, res: Response, next: NextFunction) {
+        try {
+            const record = await CreditNoteService.getById(Number(req.params.creditNoteId), req.user!.companyId);
+            assertBranchAccess(req.user!, record.branchId);
+            res.json({ success: true, data: record.data });
+        } catch (error) {
+            forwardCreditNoteError(error, next);
+        }
+    }
+
+    static async getCreditNotePDFById(req: Request, res: Response, next: NextFunction) {
+        try {
+            const record = await CreditNoteService.generatePDFById(Number(req.params.creditNoteId), req.user!.companyId);
+            assertBranchAccess(req.user!, record.branchId);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename=credit-note-${req.params.creditNoteId}.pdf`);
+            res.send(record.pdf);
         } catch (error) {
             forwardCreditNoteError(error, next);
         }

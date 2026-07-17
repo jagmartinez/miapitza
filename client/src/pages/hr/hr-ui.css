@@ -48,8 +48,11 @@
 
 .page-wrapper[class*='hr-'] :is(.hr-payroll-totals, .hr-receipt-totals) dd,
 .page-wrapper[class*='hr-'] :is(.hr-payroll-component-list, .hr-benefits-list-amount) strong,
+.page-wrapper[class*='hr-'] .hr-benefits-metrics strong,
+.page-wrapper[class*='hr-'] .governance-total strong,
 .page-wrapper[class*='hr-'] :is(td, th).amount,
-.page-wrapper[class*='hr-'] :is(td, th).text-right {
+.page-wrapper[class*='hr-'] :is(td, th).text-right,
+.page-wrapper[class*='hr-'] :is(td, th).hr-amount-cell {
   font-variant-numeric: tabular-nums;
   text-align: right;
 }

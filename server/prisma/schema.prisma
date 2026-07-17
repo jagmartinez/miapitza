@@ -16,20 +16,20 @@ datasource db {
 // ==========================================
 
 model Company {
-  id            Int           @id @default(autoincrement())
-  name          String
-  ruc           String?       @unique // Registro Único de Contribuyente (Nicaragua)
-  logo          String?
+  id                          Int           @id @default(autoincrement())
+  name                        String
+  ruc                         String?       @unique // Registro Único de Contribuyente (Nicaragua)
+  logo                        String?
   /// Perfil fiscal maestro consumido por las versiones legales de nómina.
-  payrollTaxRegime            String   @default("GENERAL") @db.VarChar(40)
-  payrollIncomeTaxWithholding Boolean  @default(true)
-  payrollTaxRegimeReference   String?  @db.VarChar(500)
-  payrollIncomeTaxException   String?  @db.VarChar(500)
-  payrollTaxProfileReady      Boolean  @default(false)
-  costingMethod CostingMethod @default(WEIGHTED_AVERAGE)
-  active        Boolean       @default(true)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  payrollTaxRegime            String        @default("GENERAL") @db.VarChar(40)
+  payrollIncomeTaxWithholding Boolean       @default(true)
+  payrollTaxRegimeReference   String?       @db.VarChar(500)
+  payrollIncomeTaxException   String?       @db.VarChar(500)
+  payrollTaxProfileReady      Boolean       @default(false)
+  costingMethod               CostingMethod @default(WEIGHTED_AVERAGE)
+  active                      Boolean       @default(true)
+  createdAt                   DateTime      @default(now())
+  updatedAt                   DateTime      @updatedAt
 
   // Relations
   branches                        Branch[]
@@ -64,6 +64,8 @@ model Company {
   creditNoteSequences             CreditNoteSequence[]
   fiscalCreditNotes               FiscalCreditNote[]
   fiscalInvoiceCancellations      FiscalInvoiceCancellation[]
+  cateringFiscalInvoices          CateringFiscalInvoice[]
+  cateringFiscalCreditNotes       CateringFiscalCreditNote[]
   apiKeys                         ApiKey[]
   unitsOfMeasure                  UnitOfMeasure[]
   productUnits                    ProductUnit[]
@@ -195,6 +197,8 @@ model Branch {
   invoiceSequences               InvoiceSequence[]
   fiscalCreditNotes              FiscalCreditNote[]
   fiscalInvoiceCancellations     FiscalInvoiceCancellation[]
+  cateringFiscalInvoices         CateringFiscalInvoice[]
+  cateringFiscalCreditNotes      CateringFiscalCreditNote[]
   pedidosYaConfigs               PedidosYaConfig[]
   productionOrders               ProductionOrder[]
   employeeAssignments            EmployeeBranchAssignment[]
@@ -234,6 +238,7 @@ model InvoiceSequence {
 enum InvoiceFiscalStatus {
   NOT_ISSUED
   ISSUED
+  PARTIALLY_CREDITED
   CREDITED
   CANCELLED
 }
@@ -266,7 +271,7 @@ model FiscalCreditNote {
   id                    Int                            @id @default(autoincrement())
   companyId             Int
   branchId              Int
-  orderId               Int                            @unique
+  orderId               Int
   number                String                         @unique @db.VarChar(80)
   series                String                         @db.VarChar(20)
   sequenceNumber        Int
@@ -287,17 +292,56 @@ model FiscalCreditNote {
   issuedById            Int
   createdAt             DateTime                       @default(now())
 
-  company        Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  branch         Branch     @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  order          Order      @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  wasteWarehouse Warehouse? @relation(fields: [wasteWarehouseId], references: [id], onDelete: Restrict)
-  issuedBy       User       @relation("FiscalCreditNoteIssuedBy", fields: [issuedById], references: [id], onDelete: Restrict)
+  company        Company                         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch         Branch                          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  order          Order                           @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  wasteWarehouse Warehouse?                      @relation(fields: [wasteWarehouseId], references: [id], onDelete: Restrict)
+  issuedBy       User                            @relation("FiscalCreditNoteIssuedBy", fields: [issuedById], references: [id], onDelete: Restrict)
+  lines          FiscalCreditNoteLine[]
+  refunds        FiscalCreditNotePaymentRefund[]
 
   @@unique([companyId, idempotencyKey])
   @@unique([companyId, branchId, series, sequenceNumber])
   @@index([companyId, branchId, issuedAt])
+  @@index([orderId, issuedAt])
   @@index([originalInvoiceNumber])
   @@index([issuedById])
+}
+
+model FiscalCreditNoteLine {
+  id                 Int      @id @default(autoincrement())
+  fiscalCreditNoteId Int
+  orderItemId        Int
+  quantity           Int
+  grossSubtotal      Decimal  @db.Decimal(10, 2)
+  discount           Decimal  @db.Decimal(10, 2)
+  subtotal           Decimal  @db.Decimal(10, 2)
+  tax                Decimal  @db.Decimal(10, 2)
+  tipAmount          Decimal  @db.Decimal(10, 2)
+  total              Decimal  @db.Decimal(10, 2)
+  createdAt          DateTime @default(now())
+
+  fiscalCreditNote FiscalCreditNote @relation(fields: [fiscalCreditNoteId], references: [id], onDelete: Restrict)
+  orderItem        OrderItem        @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+
+  @@unique([fiscalCreditNoteId, orderItemId])
+  @@index([orderItemId])
+}
+
+model FiscalCreditNotePaymentRefund {
+  id                 Int      @id @default(autoincrement())
+  fiscalCreditNoteId Int
+  paymentId          Int
+  amount             Decimal  @db.Decimal(10, 2)
+  reference          String   @db.VarChar(191)
+  createdAt          DateTime @default(now())
+
+  fiscalCreditNote FiscalCreditNote @relation(fields: [fiscalCreditNoteId], references: [id], onDelete: Restrict)
+  payment          Payment          @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@unique([fiscalCreditNoteId, paymentId])
+  @@index([paymentId, createdAt])
+  @@index([reference])
 }
 
 model FiscalInvoiceCancellation {
@@ -385,6 +429,8 @@ model User {
   paymentsReversed                  Payment[]                          @relation("PaymentReversedBy")
   fiscalCreditNotesIssued           FiscalCreditNote[]                 @relation("FiscalCreditNoteIssuedBy")
   fiscalInvoicesCancelled           FiscalInvoiceCancellation[]        @relation("FiscalInvoiceCancelledBy")
+  cateringFiscalInvoicesIssued      CateringFiscalInvoice[]            @relation("CateringFiscalInvoiceIssuedBy")
+  cateringFiscalCreditNotesIssued   CateringFiscalCreditNote[]         @relation("CateringFiscalCreditNoteIssuedBy")
   cateringPaymentsRegistered        CateringPayment[]                  @relation("CateringPaymentRegisteredBy")
   cateringPaymentsReversed          CateringPayment[]                  @relation("CateringPaymentReversedBy")
   purchasePaymentsReversed          PurchaseOrderPayment[]             @relation("PurchaseOrderPaymentReversedBy")
@@ -650,23 +696,23 @@ model Employee {
   createdAt                    DateTime       @default(now())
   updatedAt                    DateTime       @updatedAt
 
-  company           Company                    @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  user              User                       @relation(fields: [userId], references: [id], onDelete: Restrict)
-  department        Department?                @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  jobPosition       JobPosition?               @relation(fields: [jobPositionId], references: [id], onDelete: SetNull)
-  costCenter        CostCenter?                @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
-  supervisor        Employee?                  @relation("EmployeeSupervisor", fields: [supervisorEmployeeId], references: [id], onDelete: SetNull)
-  directReports     Employee[]                 @relation("EmployeeSupervisor")
-  contracts         EmploymentContract[]
-  branchAssignments EmployeeBranchAssignment[]
-  compensation      CompensationHistory[]
-  documents         EmployeeDocument[]
-  payrollSnapshots  PayrollSnapshotLine[]
-  payrollAnomalies  PayrollAnomaly[]
-  payrollReceipts   PayrollReceipt[]
-  travelRequests    HrTravelRequest[]
-  loans             HrLoan[]
-  deductions        HrDeduction[]
+  company               Company                    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user                  User                       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  department            Department?                @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  jobPosition           JobPosition?               @relation(fields: [jobPositionId], references: [id], onDelete: SetNull)
+  costCenter            CostCenter?                @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  supervisor            Employee?                  @relation("EmployeeSupervisor", fields: [supervisorEmployeeId], references: [id], onDelete: SetNull)
+  directReports         Employee[]                 @relation("EmployeeSupervisor")
+  contracts             EmploymentContract[]
+  branchAssignments     EmployeeBranchAssignment[]
+  compensation          CompensationHistory[]
+  documents             EmployeeDocument[]
+  payrollSnapshots      PayrollSnapshotLine[]
+  payrollAnomalies      PayrollAnomaly[]
+  payrollReceipts       PayrollReceipt[]
+  travelRequests        HrTravelRequest[]
+  loans                 HrLoan[]
+  deductions            HrDeduction[]
   employmentSettlements HrEmploymentSettlement[]
 
   @@unique([companyId, employeeCode])
@@ -2460,13 +2506,13 @@ model HrTravelRequest {
   updatedAt                   DateTime       @updatedAt
   policyVersionId             Int?
 
-  company   Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  user      User                  @relation("HrTravelSubject", fields: [userId], references: [id], onDelete: Restrict)
-  employee  Employee              @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  branch    Branch?               @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  createdBy User                  @relation("HrTravelCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  expenses  HrTravelExpense[]
-  ledger    HrTravelLedgerEntry[]
+  company       Company                 @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user          User                    @relation("HrTravelSubject", fields: [userId], references: [id], onDelete: Restrict)
+  employee      Employee                @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  branch        Branch?                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy     User                    @relation("HrTravelCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  expenses      HrTravelExpense[]
+  ledger        HrTravelLedgerEntry[]
   policyVersion HrBenefitPolicyVersion? @relation(fields: [policyVersionId], references: [id], onDelete: Restrict)
 
   @@unique([companyId, code])
@@ -2475,22 +2521,22 @@ model HrTravelRequest {
 }
 
 model HrTravelExpense {
-  id               Int                   @id @default(autoincrement())
-  companyId        Int
-  travelRequestId  Int
-  category         String                @db.VarChar(64)
-  description      String                @db.VarChar(600)
-  occurredOn       DateTime              @db.Date
-  occurredTime     String?               @db.VarChar(5)
-  policyCategoryCode String?             @db.VarChar(64)
-  currency         String                @db.VarChar(3)
-  claimedAmount    Decimal               @db.Decimal(18, 2)
-  recognizedAmount Decimal?              @db.Decimal(18, 2)
-  receiptReference String?               @db.VarChar(160)
-  evidenceId       Int?
-  status           HrTravelExpenseStatus @default(PENDING)
-  createdById      Int
-  createdAt        DateTime              @default(now())
+  id                 Int                   @id @default(autoincrement())
+  companyId          Int
+  travelRequestId    Int
+  category           String                @db.VarChar(64)
+  description        String                @db.VarChar(600)
+  occurredOn         DateTime              @db.Date
+  occurredTime       String?               @db.VarChar(5)
+  policyCategoryCode String?               @db.VarChar(64)
+  currency           String                @db.VarChar(3)
+  claimedAmount      Decimal               @db.Decimal(18, 2)
+  recognizedAmount   Decimal?              @db.Decimal(18, 2)
+  receiptReference   String?               @db.VarChar(160)
+  evidenceId         Int?
+  status             HrTravelExpenseStatus @default(PENDING)
+  createdById        Int
+  createdAt          DateTime              @default(now())
 
   company       Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
   travelRequest HrTravelRequest @relation(fields: [travelRequestId], references: [id], onDelete: Restrict)
@@ -2798,33 +2844,33 @@ enum HrBenefitPolicyStatus {
 }
 
 model HrBenefitPolicyVersion {
-  id                       Int                   @id @default(autoincrement())
-  companyId                Int
-  version                  Int
-  status                   HrBenefitPolicyStatus @default(DRAFT)
-  effectiveFrom            DateTime              @db.Date
-  effectiveTo              DateTime?             @db.Date
-  currency                 String                @db.VarChar(3)
-  travelCategories         Json
-  travelMaxDays            Int
-  travelEvidenceRequired   Boolean               @default(true)
-  loanMinTenureMonths      Int
-  loanMaxAmount            Decimal               @db.Decimal(18, 2)
-  loanMaxInstallments      Int
-  loanMaxPaymentPercent    Decimal               @db.Decimal(5, 2)
-  sourceReference          String                @db.VarChar(300)
-  reason                   String                @db.Text
-  createdById              Int
-  activatedById            Int?
-  activatedAt              DateTime?
-  revision                 Int                   @default(0)
-  createdAt                DateTime              @default(now())
+  id                     Int                   @id @default(autoincrement())
+  companyId              Int
+  version                Int
+  status                 HrBenefitPolicyStatus @default(DRAFT)
+  effectiveFrom          DateTime              @db.Date
+  effectiveTo            DateTime?             @db.Date
+  currency               String                @db.VarChar(3)
+  travelCategories       Json
+  travelMaxDays          Int
+  travelEvidenceRequired Boolean               @default(true)
+  loanMinTenureMonths    Int
+  loanMaxAmount          Decimal               @db.Decimal(18, 2)
+  loanMaxInstallments    Int
+  loanMaxPaymentPercent  Decimal               @db.Decimal(5, 2)
+  sourceReference        String                @db.VarChar(300)
+  reason                 String                @db.Text
+  createdById            Int
+  activatedById          Int?
+  activatedAt            DateTime?
+  revision               Int                   @default(0)
+  createdAt              DateTime              @default(now())
 
-  company                  Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  createdBy                User                  @relation("HrBenefitPolicyCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  activatedBy              User?                 @relation("HrBenefitPolicyActivator", fields: [activatedById], references: [id], onDelete: Restrict)
-  travelRequests           HrTravelRequest[]
-  loans                    HrLoan[]
+  company        Company           @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  createdBy      User              @relation("HrBenefitPolicyCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  activatedBy    User?             @relation("HrBenefitPolicyActivator", fields: [activatedById], references: [id], onDelete: Restrict)
+  travelRequests HrTravelRequest[]
+  loans          HrLoan[]
 
   @@unique([companyId, version])
   @@index([companyId, status, effectiveFrom])
@@ -2858,32 +2904,32 @@ enum HrEmploymentSettlementLineType {
 }
 
 model HrEmploymentSettlement {
-  id                    Int                          @id @default(autoincrement())
-  companyId             Int
-  code                  String                       @db.VarChar(64)
-  employeeId            Int
-  userId                Int
-  exitType              HrEmploymentExitType
-  cause                 String                       @db.VarChar(300)
-  justification         String                       @db.Text
-  terminationDate       DateTime                     @db.Date
-  currency              String                       @db.VarChar(3)
-  evidenceReferences    Json
-  grossEarnings         Decimal                      @db.Decimal(18, 2)
-  totalDeductions       Decimal                      @db.Decimal(18, 2)
-  netPay                Decimal                      @db.Decimal(18, 2)
-  calculationHash       String                       @db.Char(64)
-  status                HrEmploymentSettlementStatus @default(DRAFT)
-  revision              Int                          @default(0)
-  createdById           Int
-  createdAt             DateTime                     @default(now())
-  updatedAt             DateTime                     @updatedAt
+  id                 Int                          @id @default(autoincrement())
+  companyId          Int
+  code               String                       @db.VarChar(64)
+  employeeId         Int
+  userId             Int
+  exitType           HrEmploymentExitType
+  cause              String                       @db.VarChar(300)
+  justification      String                       @db.Text
+  terminationDate    DateTime                     @db.Date
+  currency           String                       @db.VarChar(3)
+  evidenceReferences Json
+  grossEarnings      Decimal                      @db.Decimal(18, 2)
+  totalDeductions    Decimal                      @db.Decimal(18, 2)
+  netPay             Decimal                      @db.Decimal(18, 2)
+  calculationHash    String                       @db.Char(64)
+  status             HrEmploymentSettlementStatus @default(DRAFT)
+  revision           Int                          @default(0)
+  createdById        Int
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
 
-  company               Company                      @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  employee              Employee                     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  user                  User                         @relation("HrEmploymentSettlementSubject", fields: [userId], references: [id], onDelete: Restrict)
-  createdBy             User                         @relation("HrEmploymentSettlementCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  lines                 HrEmploymentSettlementLine[]
+  company   Company                      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  employee  Employee                     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  user      User                         @relation("HrEmploymentSettlementSubject", fields: [userId], references: [id], onDelete: Restrict)
+  createdBy User                         @relation("HrEmploymentSettlementCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  lines     HrEmploymentSettlementLine[]
 
   @@unique([companyId, code])
   @@index([companyId, status, terminationDate])
@@ -2891,18 +2937,18 @@ model HrEmploymentSettlement {
 }
 
 model HrEmploymentSettlementLine {
-  id                    Int                            @id @default(autoincrement())
-  companyId             Int
-  settlementId          Int
-  type                  HrEmploymentSettlementLineType
-  concept               String                         @db.VarChar(160)
-  formulaBasis          String                         @db.VarChar(600)
-  sourceReference       String                         @db.VarChar(300)
-  amount                Decimal                        @db.Decimal(18, 2)
-  createdAt             DateTime                       @default(now())
+  id              Int                            @id @default(autoincrement())
+  companyId       Int
+  settlementId    Int
+  type            HrEmploymentSettlementLineType
+  concept         String                         @db.VarChar(160)
+  formulaBasis    String                         @db.VarChar(600)
+  sourceReference String                         @db.VarChar(300)
+  amount          Decimal                        @db.Decimal(18, 2)
+  createdAt       DateTime                       @default(now())
 
-  company               Company                        @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  settlement            HrEmploymentSettlement         @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  company    Company                @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  settlement HrEmploymentSettlement @relation(fields: [settlementId], references: [id], onDelete: Restrict)
 
   @@index([companyId, settlementId, type])
 }
@@ -3215,24 +3261,29 @@ model ProductUnit {
 
 // Ingredients and Direct Sale Products
 model Product {
-  id                 Int          @id @default(autoincrement())
-  companyId          Int
-  name               String
-  sku                String?
-  categoryId         Int?
-  unit               String // Legacy: kg, g, L, ml, unit
-  baseUnitId         Int?
-  minStock           Decimal      @default(0) @db.Decimal(10, 3)
-  cost               Decimal      @default(0) @db.Decimal(10, 2)
-  currentAverageCost Decimal      @default(0) @db.Decimal(10, 6)
-  lastPurchaseCost   Decimal      @default(0) @db.Decimal(10, 6)
-  price              Decimal?     @db.Decimal(10, 2)
-  type               ProductType  @default(INGREDIENT)
-  storageType        StorageType?
-  observation        String?      @db.Text
-  active             Boolean      @default(true)
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
+  id                    Int          @id @default(autoincrement())
+  companyId             Int
+  name                  String
+  sku                   String?
+  categoryId            Int?
+  unit                  String // Legacy: kg, g, L, ml, unit
+  baseUnitId            Int?
+  minStock              Decimal      @default(0) @db.Decimal(10, 3)
+  cost                  Decimal      @default(0) @db.Decimal(10, 2)
+  // A zero can be a reviewed cost (donation/sample) or a legacy missing value.
+  // These flags make that distinction explicit without changing legacy numbers.
+  referenceCostKnown    Boolean      @default(false)
+  currentAverageCost    Decimal      @default(0) @db.Decimal(10, 6)
+  averageCostKnown      Boolean      @default(false)
+  lastPurchaseCost      Decimal      @default(0) @db.Decimal(10, 6)
+  lastPurchaseCostKnown Boolean      @default(false)
+  price                 Decimal?     @db.Decimal(10, 2)
+  type                  ProductType  @default(INGREDIENT)
+  storageType           StorageType?
+  observation           String?      @db.Text
+  active                Boolean      @default(true)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
 
   company  Company        @relation(fields: [companyId], references: [id])
   category Category?      @relation(fields: [categoryId], references: [id])
@@ -3355,6 +3406,8 @@ model InventoryMovement {
   companyId        Int
   type             MovementType
   transferGroupId  String?
+  direction        String?      @db.VarChar(3)
+  origin           String?      @db.VarChar(32)
   quantity         Decimal      @db.Decimal(18, 6)
   reason           String?
   reference        String?
@@ -3368,18 +3421,29 @@ model InventoryMovement {
   // Exact FIFO portions consumed by an OUT movement. This lets a compensating
   // reversal recreate the original layers/cost order instead of one averaged lot.
   consumedLayers   Json?
+  reversalOfId     Int?
+  reversalGroupId  String?      @db.VarChar(191)
+  reversalKey      String?      @db.VarChar(191)
   createdAt        DateTime     @default(now())
 
-  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
-  product   Product   @relation(fields: [productId], references: [id])
-  user      User      @relation(fields: [userId], references: [id])
-  company   Company   @relation(fields: [companyId], references: [id])
+  warehouse           Warehouse           @relation(fields: [warehouseId], references: [id])
+  product             Product             @relation(fields: [productId], references: [id])
+  user                User                @relation(fields: [userId], references: [id])
+  company             Company             @relation(fields: [companyId], references: [id])
+  reversalOf          InventoryMovement?  @relation("InventoryMovementReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal            InventoryMovement?  @relation("InventoryMovementReversal")
+  openedBatches       InventoryBatch[]    @relation("InventoryMovementBatches")
+  costHistory         ProductCostHistory? @relation("InventoryMovementCostHistory")
+  reversedCostHistory ProductCostHistory? @relation("InventoryMovementCostHistoryReversal")
 
+  @@unique([reversalOfId], map: "InvMove_reversalOf_key")
   @@index([productId])
   @@index([warehouseId])
   @@index([createdAt])
   @@index([companyId, productId, createdAt])
   @@index([transferGroupId])
+  @@index([companyId, reversalKey], map: "InvMove_company_reversalKey_idx")
+  @@index([reversalGroupId], map: "InvMove_reversalGroup_idx")
 }
 
 enum MovementType {
@@ -3394,24 +3458,27 @@ enum MovementType {
 // derive a real FIFO cost of goods. Only relevant when Company.costingMethod = FIFO;
 // for WEIGHTED_AVERAGE these rows are still maintained but not used for valuation.
 model InventoryBatch {
-  id           Int      @id @default(autoincrement())
-  companyId    Int
-  warehouseId  Int
-  productId    Int
-  unitCost     Decimal  @db.Decimal(18, 6)
-  originalQty  Decimal  @db.Decimal(18, 6)
-  remainingQty Decimal  @db.Decimal(18, 6)
-  sourceType   String // PURCHASE | PRODUCTION | ADJUSTMENT | TRANSFER | OPENING
-  sourceRef    String?
-  createdAt    DateTime @default(now())
+  id               Int      @id @default(autoincrement())
+  companyId        Int
+  warehouseId      Int
+  productId        Int
+  unitCost         Decimal  @db.Decimal(18, 6)
+  originalQty      Decimal  @db.Decimal(18, 6)
+  remainingQty     Decimal  @db.Decimal(18, 6)
+  sourceType       String // PURCHASE | PRODUCTION | ADJUSTMENT | TRANSFER | OPENING
+  sourceRef        String?
+  sourceMovementId Int?
+  createdAt        DateTime @default(now())
 
-  company   Company   @relation(fields: [companyId], references: [id])
-  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
-  product   Product   @relation(fields: [productId], references: [id])
+  company        Company            @relation(fields: [companyId], references: [id])
+  warehouse      Warehouse          @relation(fields: [warehouseId], references: [id])
+  product        Product            @relation(fields: [productId], references: [id])
+  sourceMovement InventoryMovement? @relation("InventoryMovementBatches", fields: [sourceMovementId], references: [id], onDelete: Restrict)
 
   @@index([companyId, productId, warehouseId, createdAt])
   @@index([warehouseId, productId])
   @@index([remainingQty])
+  @@index([sourceMovementId], map: "InvBatch_sourceMovement_idx")
 }
 
 // ==========================================
@@ -3530,24 +3597,33 @@ model PurchaseOrderItem {
 
 // Product Cost History - Tracks cost changes for auditing
 model ProductCostHistory {
-  id                  Int      @id @default(autoincrement())
-  productId           Int
-  companyId           Int
-  purchaseOrderItemId Int?
-  productionOrderId   Int?
-  quantity            Decimal  @db.Decimal(18, 6)
-  unitCost            Decimal  @db.Decimal(18, 6)
-  previousAvgCost     Decimal  @db.Decimal(18, 6)
-  newAvgCost          Decimal  @db.Decimal(18, 6)
-  previousStock       Decimal  @db.Decimal(18, 6)
-  newStock            Decimal  @db.Decimal(18, 6)
-  createdAt           DateTime @default(now())
+  id                   Int       @id @default(autoincrement())
+  productId            Int
+  companyId            Int
+  purchaseOrderItemId  Int?
+  productionOrderId    Int?
+  inventoryMovementId  Int?
+  reversalMovementId   Int?
+  quantity             Decimal   @db.Decimal(18, 6)
+  unitCost             Decimal   @db.Decimal(18, 6)
+  previousAvgCost      Decimal   @db.Decimal(18, 6)
+  previousAvgCostKnown Boolean   @default(false)
+  newAvgCost           Decimal   @db.Decimal(18, 6)
+  newAvgCostKnown      Boolean   @default(true)
+  previousStock        Decimal   @db.Decimal(18, 6)
+  newStock             Decimal   @db.Decimal(18, 6)
+  reversedAt           DateTime?
+  createdAt            DateTime  @default(now())
 
   product           Product            @relation(fields: [productId], references: [id])
   purchaseOrderItem PurchaseOrderItem? @relation(fields: [purchaseOrderItemId], references: [id])
   productionOrder   ProductionOrder?   @relation(fields: [productionOrderId], references: [id])
+  inventoryMovement InventoryMovement? @relation("InventoryMovementCostHistory", fields: [inventoryMovementId], references: [id], onDelete: Restrict)
+  reversalMovement  InventoryMovement? @relation("InventoryMovementCostHistoryReversal", fields: [reversalMovementId], references: [id], onDelete: Restrict)
   company           Company            @relation(fields: [companyId], references: [id])
 
+  @@unique([inventoryMovementId], map: "ProdCostHist_inventoryMove_key")
+  @@unique([reversalMovementId], map: "ProdCostHist_reversalMove_key")
   @@index([productId])
   @@index([companyId])
   @@index([productionOrderId])
@@ -3620,7 +3696,7 @@ model Order {
   payments                  Payment[]
   pedidosYaSyncs            PedidosYaOrderSync[]
   kitchenNotifications      KitchenNotification[]
-  fiscalCreditNote          FiscalCreditNote?
+  fiscalCreditNotes         FiscalCreditNote[]
   fiscalInvoiceCancellation FiscalInvoiceCancellation?
 
   @@index([companyId, branchId])
@@ -3679,9 +3755,10 @@ model OrderItem {
   originOrderId Int?
   originTableId Int?
 
-  order     Order               @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  menuItem  MenuItem            @relation(fields: [menuItemId], references: [id])
-  modifiers OrderItemModifier[]
+  order                 Order                  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  menuItem              MenuItem               @relation(fields: [menuItemId], references: [id])
+  modifiers             OrderItemModifier[]
+  fiscalCreditNoteLines FiscalCreditNoteLine[]
 
   @@index([orderId])
   @@index([menuItemId])
@@ -3773,10 +3850,11 @@ model Payment {
   reversalReason  String?
   refundReference String?            @db.VarChar(191)
 
-  order         Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  paymentMethod PaymentMethod @relation(fields: [paymentMethodId], references: [id])
-  registeredBy  User?         @relation("PaymentRegisteredBy", fields: [registeredById], references: [id], onDelete: Restrict)
-  reversedBy    User?         @relation("PaymentReversedBy", fields: [reversedById], references: [id], onDelete: Restrict)
+  order                   Order                           @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  paymentMethod           PaymentMethod                   @relation(fields: [paymentMethodId], references: [id])
+  registeredBy            User?                           @relation("PaymentRegisteredBy", fields: [registeredById], references: [id], onDelete: Restrict)
+  reversedBy              User?                           @relation("PaymentReversedBy", fields: [reversedById], references: [id], onDelete: Restrict)
+  fiscalCreditNoteRefunds FiscalCreditNotePaymentRefund[]
 
   @@unique([orderId, idempotencyKey])
   @@index([orderId])
@@ -4064,28 +4142,36 @@ model Setting {
 // ==========================================
 
 model CateringEvent {
-  id          Int            @id @default(autoincrement())
-  companyId   Int
-  branchId    Int
-  customerId  Int?
-  title       String
-  date        DateTime
-  peopleCount Int
-  status      CateringStatus @default(QUOTED)
-  totalAmount Decimal        @default(0) @db.Decimal(10, 2)
-  balance     Decimal        @default(0) @db.Decimal(10, 2)
-  location    String?
-  notes       String?        @db.Text
-  clauses     Json?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id                        Int            @id @default(autoincrement())
+  companyId                 Int
+  branchId                  Int
+  customerId                Int?
+  title                     String
+  date                      DateTime
+  peopleCount               Int
+  status                    CateringStatus @default(QUOTED)
+  totalAmount               Decimal        @default(0) @db.Decimal(10, 2)
+  balance                   Decimal        @default(0) @db.Decimal(10, 2)
+  /// Fiscal decomposition captured while the quote is still editable. Nullable
+  /// distinguishes legacy events whose historical tax basis is unknowable.
+  fiscalSubtotal            Decimal?       @db.Decimal(10, 2)
+  fiscalTax                 Decimal?       @db.Decimal(10, 2)
+  fiscalTaxRatePercent      Decimal?       @db.Decimal(7, 4)
+  pricingSnapshotCapturedAt DateTime?
+  location                  String?
+  notes                     String?        @db.Text
+  clauses                   Json?
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
 
-  company   Company               @relation(fields: [companyId], references: [id])
-  branch    Branch                @relation(fields: [branchId], references: [id])
-  customer  Customer?             @relation(fields: [customerId], references: [id])
-  services  CateringServiceItem[]
-  menuItems CateringMenuItem[]
-  payments  CateringPayment[]
+  company          Company                   @relation(fields: [companyId], references: [id])
+  branch           Branch                    @relation(fields: [branchId], references: [id])
+  customer         Customer?                 @relation(fields: [customerId], references: [id])
+  services         CateringServiceItem[]
+  menuItems        CateringMenuItem[]
+  payments         CateringPayment[]
+  fiscalInvoice    CateringFiscalInvoice?
+  fiscalCreditNote CateringFiscalCreditNote?
 
   @@index([companyId])
   @@index([branchId])
@@ -4178,6 +4264,75 @@ model CateringPayment {
 enum CateringPaymentType {
   ADVANCE
   FINAL_SETTLEMENT
+}
+
+/// Documento fiscal de Catering. La fila y su snapshot son inmutables después
+/// de emisión; la secuencia se comparte con POS para evitar números duplicados.
+model CateringFiscalInvoice {
+  id              Int                 @id @default(autoincrement())
+  companyId       Int
+  branchId        Int
+  cateringEventId Int                 @unique
+  number          String              @unique @db.VarChar(80)
+  status          InvoiceFiscalStatus @default(ISSUED)
+  idempotencyKey  String              @db.VarChar(191)
+  requestHash     String              @db.VarChar(64)
+  subtotal        Decimal             @db.Decimal(10, 2)
+  tax             Decimal             @db.Decimal(10, 2)
+  total           Decimal             @db.Decimal(10, 2)
+  snapshot        Json
+  issuedAt        DateTime            @default(now())
+  issuedById      Int
+  createdAt       DateTime            @default(now())
+
+  company    Company                   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch     Branch                    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  event      CateringEvent             @relation(fields: [cateringEventId], references: [id], onDelete: Restrict)
+  issuedBy   User                      @relation("CateringFiscalInvoiceIssuedBy", fields: [issuedById], references: [id], onDelete: Restrict)
+  creditNote CateringFiscalCreditNote?
+
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, branchId, issuedAt])
+  @@index([issuedById])
+}
+
+/// Contraflujo fiscal completo para Catering. No modela devoluciones parciales:
+/// todo importe, pago e inventario del evento se reconcilia en una transacción.
+model CateringFiscalCreditNote {
+  id                      Int                            @id @default(autoincrement())
+  companyId               Int
+  branchId                Int
+  cateringEventId         Int                            @unique
+  cateringFiscalInvoiceId Int                            @unique
+  number                  String                         @unique @db.VarChar(80)
+  series                  String                         @db.VarChar(20)
+  sequenceNumber          Int
+  status                  FiscalCreditNoteStatus         @default(ISSUED)
+  originalInvoiceNumber   String                         @db.VarChar(80)
+  reason                  String                         @db.VarChar(500)
+  jurisdiction            String                         @db.VarChar(32)
+  idempotencyKey          String                         @db.VarChar(191)
+  requestHash             String                         @db.VarChar(64)
+  subtotal                Decimal                        @db.Decimal(10, 2)
+  tax                     Decimal                        @db.Decimal(10, 2)
+  total                   Decimal                        @db.Decimal(10, 2)
+  inventoryDisposition    CreditNoteInventoryDisposition
+  snapshot                Json
+  issuedAt                DateTime                       @default(now())
+  issuedById              Int
+  createdAt               DateTime                       @default(now())
+
+  company  Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch   Branch                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  event    CateringEvent         @relation(fields: [cateringEventId], references: [id], onDelete: Restrict)
+  invoice  CateringFiscalInvoice @relation(fields: [cateringFiscalInvoiceId], references: [id], onDelete: Restrict)
+  issuedBy User                  @relation("CateringFiscalCreditNoteIssuedBy", fields: [issuedById], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, idempotencyKey])
+  @@unique([companyId, branchId, series, sequenceNumber])
+  @@index([companyId, branchId, issuedAt])
+  @@index([originalInvoiceNumber])
+  @@index([issuedById])
 }
 
 // ==========================================

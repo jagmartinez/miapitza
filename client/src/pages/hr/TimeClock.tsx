@@ -18,7 +18,7 @@ import './self-service.css';
 export default function TimeClock() {
     const navigate = useNavigate();
     const online = useWorkforceOnline();
-    const { success: showSuccess } = useAppToast();
+    const { success: showSuccess, error: showError } = useAppToast();
     const [policy, setPolicy] = useState<HrAttendancePolicy | null>(null);
     const [today, setToday] = useState<HrTodayAttendance | null>(null);
     const [biometrics, setBiometrics] = useState<HrBiometricProfile | null>(null);
@@ -51,7 +51,9 @@ export default function TimeClock() {
 
     const completed = (result: HrAttendancePunchResult) => {
         if (result.decision === 'ACCEPTED') showSuccess('Marcaje registrado.');
-        void attendanceClient.getToday().then(setToday).catch(() => undefined);
+        void attendanceClient.getToday().then(setToday).catch(() => {
+            showError('Marcaje registrado; no se pudo actualizar el estado. Actualiza antes de un nuevo intento.');
+        });
     };
 
     const biometricBlocked = policy?.requireBiometric && biometrics?.status !== 'ACTIVE';
@@ -59,8 +61,7 @@ export default function TimeClock() {
 
     return (
         <div className="page-wrapper hr-time-clock-page my-hr-page">
-            <MyHrNav />
-            <PageHeader className="my-hr-page-header" title="Marcaje" subtitle="Registra tu jornada con la hora y las validaciones oficiales del servidor" icon={Clock3} />
+            <PageHeader className="my-hr-page-header" title="Marcaje" subtitle="Registra tu jornada con la hora y las validaciones oficiales del servidor" icon={Clock3} actions={<MyHrNav />} />
             {!online && <OnlineOnlyNotice online={false} />}
             {loading && <LoadingSpinner text="Preparando marcaje…" />}
             {!loading && error && <div className="state-placeholder" role="alert"><Clock3 size={44} aria-hidden="true" /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void load()}><RefreshCw size={16} /> Reintentar</Button></div>}

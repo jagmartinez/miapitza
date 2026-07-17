@@ -35,13 +35,23 @@ describe('personal, compensation and weekly schedule UX contract', () => {
     expect(employeeRecords).toContain('Guardar nueva versión');
   });
 
-  it('uses an inventory-like KPI, coverage and employee-by-day workspace', () => {
-    expect(schedulePage).toContain('hr-schedule-kpis');
-    expect(schedulePage).toContain('Horas programadas');
-    expect(scheduleWeek).toContain('hr-schedule-coverage-grid');
+  it('uses a focused employee-by-day workspace without redundant KPI or coverage blocks', () => {
+    expect(schedulePage).not.toContain('hr-schedule-kpis');
+    expect(schedulePage).not.toContain('Horas programadas');
+    expect(scheduleWeek).not.toContain('hr-schedule-coverage');
     expect(scheduleWeek).toContain('hr-schedule-matrix-row');
     expect(scheduleWeek).toContain('role="table"');
     expect(scheduleStyles).toContain('@media (max-width: 1100px)');
     expect(scheduleStyles).toContain('.hr-schedule-matrix-wrap');
+    expect(scheduleStyles).not.toContain('.hr-schedule-kpis');
+    expect(scheduleStyles).not.toContain('.hr-schedule-coverage');
+  });
+
+  it('keeps cancelled and superseded schedule history visible but read-only', () => {
+    expect(schedulePage).toContain('historicalSchedules');
+    expect(schedulePage).toContain('activeSchedule ?? historicalSchedule');
+    expect(schedulePage).toContain('readOnly={mutationBusy || fromCache || !activeSchedule}');
+    expect(schedulePage).toContain("primarySchedule?.status === 'CANCELLED'");
+    expect(schedulePage).toContain("primarySchedule?.status === 'SUPERSEDED'");
   });
 });

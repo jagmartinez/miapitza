@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
@@ -7,6 +7,51 @@ import { InventoryEngineService } from './inventory-engine.service';
 import { CostingService } from './costing.service';
 
 export class InventoryMovementService {
+    private static movementDirection(movement: { type: string; direction?: string | null; reason?: string | null }): 'IN' | 'OUT' {
+        if (movement.direction === 'IN' || movement.direction === 'OUT') return movement.direction;
+        if (movement.type === 'IN' || movement.type === 'ADJUSTMENT') return 'IN';
+        if (movement.type === 'OUT') return 'OUT';
+        return (movement.reason || '').toLowerCase().startsWith('transfer in') ? 'IN' : 'OUT';
+    }
+
+    private static consumedLayers(value: Prisma.JsonValue | null): Array<{
+        quantity: number;
+        unitCost: number;
+        sourceRef?: string | null;
+        sourceType?: 'PURCHASE' | 'PRODUCTION' | 'ADJUSTMENT' | 'TRANSFER' | 'OPENING';
+        createdAt?: Date;
+    }> | undefined {
+        if (value == null) {
+            throw new Error('REVERSAL_PROVENANCE_MISSING: el movimiento no conserva sus capas de costo consumidas');
+        }
+        if (!Array.isArray(value) || value.length === 0) {
+            throw new Error('REVERSAL_PROVENANCE_MISSING: las capas consumidas no tienen un formato vÃ¡lido');
+        }
+        return value.map((raw) => {
+            if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+                throw new Error('REVERSAL_PROVENANCE_MISSING: existe una capa consumida invÃ¡lida');
+            }
+            const layer = raw as Record<string, Prisma.JsonValue>;
+            const quantity = Number(layer.quantity);
+            const unitCost = Number(layer.unitCost);
+            if (!(quantity > 0) || !Number.isFinite(unitCost) || unitCost < 0) {
+                throw new Error('REVERSAL_PROVENANCE_MISSING: cantidad o costo de capa invÃ¡lido');
+            }
+            const sourceType = typeof layer.sourceType === 'string'
+                && ['PURCHASE', 'PRODUCTION', 'ADJUSTMENT', 'TRANSFER', 'OPENING'].includes(layer.sourceType)
+                ? layer.sourceType as 'PURCHASE' | 'PRODUCTION' | 'ADJUSTMENT' | 'TRANSFER' | 'OPENING'
+                : undefined;
+            const parsedCreatedAt = typeof layer.createdAt === 'string' ? new Date(layer.createdAt) : undefined;
+            return {
+                quantity,
+                unitCost,
+                sourceRef: typeof layer.sourceRef === 'string' ? layer.sourceRef : null,
+                sourceType,
+                ...(parsedCreatedAt && !Number.isNaN(parsedCreatedAt.getTime()) ? { createdAt: parsedCreatedAt } : {})
+            };
+        });
+    }
+
     static async getAll(companyId: number, filters?: {
         warehouseId?: number;
         branchId?: number;
@@ -204,7 +249,7 @@ export class InventoryMovementService {
         // adding real FIFO layers.
         return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             let previousGlobalStock: number | null = null;
-            if ((data.type === 'IN' || data.type === 'ADJUSTMENT') && baseUnitCost != null) {
+            if (data.type === 'IN' || data.type === 'ADJUSTMENT') {
                 await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${data.productId} AND companyId = ${companyId} FOR UPDATE`;
                 const global = await tx.stock.aggregate({
                     where: { productId: data.productId, companyId },
@@ -226,21 +271,24 @@ export class InventoryMovementService {
                 originalUnit,
                 conversionFactor,
                 // IN / ADJUSTMENT open a manual-adjustment FIFO layer.
-                sourceType: 'ADJUSTMENT'
+                sourceType: 'ADJUSTMENT',
+                origin: 'MANUAL'
             });
 
             // A valued manual inbound changes the company-wide moving average just
             // like any other inventory entry. Without this, the movement/batch was
             // valued at the caller's cost but every later WA outflow used the stale
             // Product.currentAverageCost.
-            if (previousGlobalStock != null && baseUnitCost != null) {
+            if (previousGlobalStock != null) {
                 await CostingService.applyProductionCost(
                     tx,
                     data.productId,
                     companyId,
                     baseQuantity,
-                    baseUnitCost,
-                    previousGlobalStock
+                    result.unitCost,
+                    previousGlobalStock,
+                    undefined,
+                    result.movementId
                 );
             }
 
@@ -267,6 +315,218 @@ export class InventoryMovementService {
         // Generally, inventory movements should not be deleted
         // but marked as cancelled or reversed
         throw new Error('Inventory movements cannot be deleted. Create a reversal movement instead.');
+    }
+
+    /**
+     * Immutable counterflow for MANUAL, WASTE and TRANSFER movements only.
+     * Domain-owned POS/purchase/production rows must use their own counterflow.
+     */
+    static async reverse(companyId: number, movementId: number, data: {
+        userId: number;
+        reason: string;
+        reversalKey: string;
+        /** Undefined means tenant-wide; otherwise own branch plus CENTRAL only. */
+        branchId?: number;
+    }) {
+        const reason = data.reason?.trim();
+        const reversalKey = data.reversalKey?.trim();
+        if (!reason || reason.length < 5 || reason.length > 500) {
+            throw new Error('El motivo de reversa debe tener entre 5 y 500 caracteres');
+        }
+        if (!reversalKey || reversalKey.length < 8 || reversalKey.length > 191) {
+            throw new Error('X-Idempotency-Key es requerido y debe tener entre 8 y 191 caracteres');
+        }
+        if (!Number.isInteger(movementId) || movementId <= 0) {
+            throw new Error('Movimiento invÃ¡lido');
+        }
+
+        return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            const selected = await tx.inventoryMovement.findFirst({
+                where: { id: movementId, companyId },
+                select: { id: true, transferGroupId: true }
+            });
+            if (!selected) throw new Error('Movimiento no encontrado para esta empresa');
+
+            const groupWhere: Prisma.InventoryMovementWhereInput = selected.transferGroupId
+                ? { companyId, transferGroupId: selected.transferGroupId }
+                : { companyId, id: selected.id };
+            const ids = (await tx.inventoryMovement.findMany({
+                where: groupWhere,
+                select: { id: true },
+                orderBy: { id: 'asc' }
+            })).map((row) => row.id);
+            if (ids.length === 0) throw new Error('Movimiento no encontrado para esta empresa');
+
+            await tx.$queryRaw`SELECT id FROM \`InventoryMovement\` WHERE companyId = ${companyId} AND id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;
+            const originals = await tx.inventoryMovement.findMany({
+                where: { companyId, id: { in: ids } },
+                include: { warehouse: { select: { branchId: true } } },
+                orderBy: { id: 'asc' }
+            });
+            if (originals.length !== ids.length) throw new Error('El grupo de movimiento cambiÃ³ durante la reversa');
+
+            for (const original of originals) {
+                if (original.reversalOfId != null || original.origin === 'REVERSAL') {
+                    throw new Error('Una reversa no puede volver a reversarse desde este flujo');
+                }
+                const reversibleOrigin = original.origin
+                    || (original.type === 'TRANSFER' && original.transferGroupId ? 'TRANSFER' : null)
+                    || ((original.reason || '').startsWith('WASTE:') ? 'WASTE' : null);
+                if (!['MANUAL', 'WASTE', 'TRANSFER'].includes(reversibleOrigin || '')) {
+                    throw new Error(
+                        `El movimiento ${original.id} pertenece a otro dominio y debe reversarse desde su flujo de origen`
+                    );
+                }
+                if (data.branchId != null
+                    && original.warehouse.branchId != null
+                    && original.warehouse.branchId !== data.branchId) {
+                    throw new Error(`El movimiento ${original.id} pertenece a otra sucursal`);
+                }
+                const quantity = Number(original.quantity);
+                const unitCost = Number(original.unitCost);
+                const totalCost = Number(original.totalCost);
+                if (!(quantity > 0) || !Number.isFinite(unitCost) || unitCost < 0
+                    || !Number.isFinite(totalCost) || totalCost < 0
+                    || Math.abs(quantity * unitCost - totalCost) > 0.0001) {
+                    throw new Error(
+                        `MOVEMENT_COST_INTEGRITY_ERROR: el movimiento ${original.id} no reconcilia cantidad, costo unitario y costo total`
+                    );
+                }
+            }
+
+            const already = await tx.inventoryMovement.findMany({
+                where: { companyId, reversalOfId: { in: ids } },
+                orderBy: { id: 'asc' }
+            });
+            if (already.length > 0) {
+                if (already.length === originals.length && already.every((row) => row.reversalKey === reversalKey)) {
+                    return { success: true, idempotent: true, reversalGroupId: already[0].reversalGroupId, movements: already };
+                }
+                throw new Error('El movimiento o una parte de su transferencia ya fue reversado');
+            }
+            const keyConflict = await tx.inventoryMovement.findFirst({
+                where: { companyId, reversalKey }
+            });
+            if (keyConflict) throw new Error('X-Idempotency-Key ya fue usada para otra reversa');
+
+            const reversalGroupId = `REV-${randomUUID()}`;
+            const reversedIds: number[] = [];
+            const isTransfer = originals.some((row) => row.type === 'TRANSFER' || row.transferGroupId != null);
+
+            if (isTransfer) {
+                const incoming = originals.filter((row) => this.movementDirection(row) === 'IN');
+                const outgoing = originals.filter((row) => this.movementDirection(row) === 'OUT');
+                if (originals.length !== 2 || incoming.length !== 1 || outgoing.length !== 1) {
+                    throw new Error('TRANSFER_PROVENANCE_INVALID: la transferencia no tiene exactamente una entrada y una salida');
+                }
+                const destination = incoming[0];
+                const source = outgoing[0];
+                if (destination.productId !== source.productId
+                    || Math.abs(Number(destination.quantity) - Number(source.quantity)) > 1e-9
+                    || Math.abs(Number(destination.totalCost) - Number(source.totalCost)) > 0.0001) {
+                    throw new Error('TRANSFER_RECONCILIATION_ERROR: las dos piernas de la transferencia no cuadran');
+                }
+
+                // Remove destination stock first, consuming only the exact layers
+                // opened by the original inbound transfer movement.
+                const destinationReverse = await InventoryEngineService.applyMovement(tx, {
+                    type: 'TRANSFER', direction: 'OUT', origin: 'REVERSAL',
+                    companyId, warehouseId: destination.warehouseId, productId: destination.productId,
+                    userId: data.userId, quantity: Number(destination.quantity),
+                    unitCost: Number(destination.unitCost),
+                    consumeSourceMovementId: destination.id,
+                    reason: `REVERSAL: ${reason}`,
+                    reference: `REV-MOV-${destination.id}`,
+                    transferGroupId: reversalGroupId,
+                    reversalOfId: destination.id, reversalGroupId, reversalKey
+                });
+                reversedIds.push(destinationReverse.movementId);
+
+                // Restore source stock with the exact FIFO portions just removed
+                // from destination, preserving their original acquisition order.
+                const sourceReverse = await InventoryEngineService.applyMovement(tx, {
+                    type: 'TRANSFER', direction: 'IN', origin: 'REVERSAL',
+                    companyId, warehouseId: source.warehouseId, productId: source.productId,
+                    userId: data.userId, quantity: Number(source.quantity),
+                    unitCost: Number(source.unitCost), inboundLayers: destinationReverse.consumedLayers,
+                    reason: `REVERSAL: ${reason}`,
+                    reference: `REV-MOV-${source.id}`,
+                    transferGroupId: reversalGroupId, sourceType: 'TRANSFER',
+                    reversalOfId: source.id, reversalGroupId, reversalKey
+                });
+                reversedIds.push(sourceReverse.movementId);
+
+                const company = await tx.company.findUnique({ where: { id: companyId }, select: { costingMethod: true } });
+                if ((company?.costingMethod || 'WEIGHTED_AVERAGE') === 'FIFO') {
+                    await CostingService.syncFifoCurrentAverageCost(tx, source.productId, companyId);
+                }
+            } else {
+                const original = originals[0];
+                const originalDirection = this.movementDirection(original);
+                if (originalDirection === 'IN') {
+                    const reversal = await InventoryEngineService.applyMovement(tx, {
+                        type: 'ADJUSTMENT', direction: 'OUT', origin: 'REVERSAL',
+                        companyId, warehouseId: original.warehouseId, productId: original.productId,
+                        userId: data.userId, quantity: Number(original.quantity),
+                        unitCost: Number(original.unitCost), consumeSourceMovementId: original.id,
+                        reason: `REVERSAL: ${reason}`, reference: `REV-MOV-${original.id}`,
+                        reversalOfId: original.id, reversalGroupId, reversalKey
+                    });
+                    reversedIds.push(reversal.movementId);
+                    await CostingService.reverseInventoryMovementCost(tx, original.id, reversal.movementId, companyId);
+                } else {
+                    const layers = this.consumedLayers(original.consumedLayers);
+                    const reversal = await InventoryEngineService.applyMovement(tx, {
+                        type: 'ADJUSTMENT', direction: 'IN', origin: 'REVERSAL',
+                        companyId, warehouseId: original.warehouseId, productId: original.productId,
+                        userId: data.userId, quantity: Number(original.quantity),
+                        unitCost: Number(original.unitCost), inboundLayers: layers,
+                        reason: `REVERSAL: ${reason}`, reference: `REV-MOV-${original.id}`,
+                        sourceType: 'ADJUSTMENT',
+                        reversalOfId: original.id, reversalGroupId, reversalKey
+                    });
+                    reversedIds.push(reversal.movementId);
+                    const company = await tx.company.findUnique({ where: { id: companyId }, select: { costingMethod: true } });
+                    if ((company?.costingMethod || 'WEIGHTED_AVERAGE') === 'FIFO') {
+                        await CostingService.syncFifoCurrentAverageCost(tx, original.productId, companyId);
+                    } else {
+                        // An OUT never changes WA at posting time, but restoring it
+                        // after later receipts does. Append a valued inbound cost
+                        // event so the current and future moving average follows
+                        // chronological quantity/value, not the stale pre-reversal average.
+                        const global = await tx.stock.aggregate({
+                            where: { productId: original.productId, companyId },
+                            _sum: { quantity: true }
+                        });
+                        const previousGlobalStock = Number(global._sum.quantity ?? 0) - Number(original.quantity);
+                        if (previousGlobalStock < -1e-9) {
+                            throw new Error('MOVEMENT_STOCK_INTEGRITY_ERROR: el saldo global previo a la reversa es invÃ¡lido');
+                        }
+                        await CostingService.applyProductionCost(
+                            tx,
+                            original.productId,
+                            companyId,
+                            Number(original.quantity),
+                            Number(original.unitCost),
+                            Math.max(0, previousGlobalStock),
+                            undefined,
+                            reversal.movementId
+                        );
+                    }
+                }
+            }
+
+            const movements = await tx.inventoryMovement.findMany({
+                where: { id: { in: reversedIds }, companyId },
+                include: {
+                    warehouse: { select: { id: true, name: true, branchId: true } },
+                    product: { select: { id: true, name: true, unit: true } },
+                    user: { select: { id: true, name: true } }
+                },
+                orderBy: { id: 'asc' }
+            });
+            return { success: true, idempotent: false, reversalGroupId, movements };
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     }
 
     // Get kardex (movement history) for a product
@@ -385,7 +645,8 @@ export class InventoryMovementService {
                 reason: `Transfer out to warehouse ${data.toWarehouseId}`,
                 reference: data.reference || undefined,
                 transferGroupId,
-                productName: product.name
+                productName: product.name,
+                origin: 'TRANSFER'
             });
 
             // --- IN to destination warehouse (TRANSFER, inbound leg) ---
@@ -407,8 +668,19 @@ export class InventoryMovementService {
                 reason: `Transfer in from warehouse ${data.fromWarehouseId}`,
                 reference: data.reference || undefined,
                 transferGroupId,
-                sourceType: 'TRANSFER'
+                sourceType: 'TRANSFER',
+                origin: 'TRANSFER'
             });
+
+            // OUT refreshed the company-wide FIFO average without the in-flight
+            // layers; restore it now that the destination layers exist.
+            const company = await tx.company.findUnique({
+                where: { id: companyId },
+                select: { costingMethod: true }
+            });
+            if ((company?.costingMethod || 'WEIGHTED_AVERAGE') === 'FIFO') {
+                await CostingService.syncFifoCurrentAverageCost(tx, data.productId, companyId);
+            }
 
             return { success: true, transferGroupId };
         });

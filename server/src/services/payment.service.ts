@@ -1,5 +1,7 @@
 import prisma from '../utils/prisma';
 import type { PaymentMethodType, Prisma } from '@prisma/client';
+import { DEFAULT_COMPANY_SETTINGS } from './setting.service';
+import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
 
 export class PaymentService {
     private static normalizeMoney(value: unknown): { amount: number; cents: number } {
@@ -20,6 +22,37 @@ export class PaymentService {
         if (!normalized) return null;
         if (normalized.length > 191) throw new Error(`${field} is too long`);
         return normalized;
+    }
+
+    private static async resolveCompanyTimezone(
+        tx: Prisma.TransactionClient,
+        companyId: number
+    ): Promise<string> {
+        const name = `${companyId}_timezone`;
+        const setting = await tx.setting.findUnique({
+            where: { companyId_name: { companyId, name } },
+            select: { value: true }
+        });
+        const configured = setting?.value?.trim();
+        return configured && isValidTimeZone(configured)
+            ? configured
+            : DEFAULT_COMPANY_SETTINGS.timezone;
+    }
+
+    /** Cash IN/OUT must land on a same-calendar-day open shift (company timezone). */
+    private static async assertCurrentDayCashShift(
+        tx: Prisma.TransactionClient,
+        companyId: number,
+        shiftStartDate: Date
+    ): Promise<void> {
+        const timezone = await this.resolveCompanyTimezone(tx, companyId);
+        const shiftDay = zonedDateKey(new Date(shiftStartDate), timezone);
+        const today = zonedDateKey(new Date(), timezone);
+        if (shiftDay !== today) {
+            throw new Error(
+                'Tiene un turno de caja de un día anterior; ciérrelo y abra uno nuevo antes de registrar efectivo'
+            );
+        }
     }
 
     private static async assertActiveCashLedger(
@@ -130,6 +163,13 @@ export class PaymentService {
             if (!order.invoiceNumber?.trim()) {
                 throw new Error('Debe emitir la factura de la orden antes de procesar cualquier pago');
             }
+            // Idempotent replay is resolved above. Every new mutation after a
+            // fiscal counterdocument must fail closed: a partially credited sale
+            // is still fully settled for its reduced net balance and must never
+            // be reopened for collection.
+            if (order.invoiceFiscalStatus !== 'ISSUED') {
+                throw new Error('La factura ya tiene un contraflujo fiscal y no admite nuevos pagos');
+            }
 
             // Lock and re-read the semantic method inside the same transaction.
             // An administrator cannot deactivate or re-type it between validation
@@ -189,12 +229,13 @@ export class PaymentService {
                         endDate: null,
                         cashRegister: { branchId: order.branchId }
                     },
-                    select: { id: true, cashRegisterId: true }
+                    select: { id: true, cashRegisterId: true, startDate: true }
                 });
 
                 if (!activeShift) {
                     throw new Error('No active cash shift found for this user. Please open a shift first.');
                 }
+                await this.assertCurrentDayCashShift(tx, companyId, activeShift.startDate);
 
                 // Serialize with shift close. Otherwise this payment can observe
                 // an open shift and post cash after a concurrent close commits.
@@ -207,11 +248,12 @@ export class PaymentService {
                         endDate: null,
                         cashRegister: { branchId: order.branchId }
                     },
-                    select: { id: true, cashRegisterId: true }
+                    select: { id: true, cashRegisterId: true, startDate: true }
                 });
                 if (!lockedShift) {
                     throw new Error('El turno de caja fue cerrado durante el cobro; vuelva a intentarlo');
                 }
+                await this.assertCurrentDayCashShift(tx, companyId, lockedShift.startDate);
 
                 await tx.cashMovement.create({
                     data: {
@@ -294,12 +336,19 @@ export class PaymentService {
             const payment = await tx.payment.findFirst({
                 where: { id, orderId: target.orderId, status: 'ACTIVE', order: { companyId } },
                 include: {
+                    fiscalCreditNoteRefunds: true,
                     order: {
                         include: { payments: { where: { status: 'ACTIVE' } } }
                     }
                 }
             });
             if (!payment) throw new Error('Payment not found');
+            if (
+                (payment.fiscalCreditNoteRefunds || []).length > 0
+                || ['PARTIALLY_CREDITED', 'CREDITED'].includes(payment.order.invoiceFiscalStatus)
+            ) {
+                throw new Error('El pago ya participa en una nota de crédito; use exclusivamente el contraflujo fiscal');
+            }
             const actor = await tx.user.findFirst({
                 where: { id: userId, companyId, status: 'ACTIVE' },
                 select: { id: true }
@@ -318,11 +367,12 @@ export class PaymentService {
                         endDate: null,
                         cashRegister: { branchId: payment.order.branchId }
                     },
-                    select: { id: true }
+                    select: { id: true, startDate: true }
                 });
                 if (!refundShift) {
                     throw new Error('Debe abrir un turno de caja en la sucursal de la orden para registrar el reembolso en efectivo');
                 }
+                await this.assertCurrentDayCashShift(tx, companyId, refundShift.startDate);
                 await tx.$queryRaw`SELECT id FROM \`CashShift\` WHERE id = ${refundShift.id} AND companyId = ${companyId} FOR UPDATE`;
                 const lockedRefundShift = await tx.cashShift.findFirst({
                     where: {
@@ -332,9 +382,10 @@ export class PaymentService {
                         endDate: null,
                         cashRegister: { branchId: payment.order.branchId }
                     },
-                    select: { id: true }
+                    select: { id: true, startDate: true }
                 });
                 if (!lockedRefundShift) throw new Error('El turno de caja para el reembolso ya fue cerrado');
+                await this.assertCurrentDayCashShift(tx, companyId, lockedRefundShift.startDate);
                 await tx.cashMovement.create({
                     data: {
                         shiftId: lockedRefundShift.id,
@@ -421,10 +472,11 @@ export class PaymentService {
         const order = await prisma.order.findFirst({
             where: { id: orderId, companyId },
             include: {
+                fiscalCreditNotes: { select: { total: true } },
                 payments: {
-                    where: { status: 'ACTIVE' },
                     include: {
-                        paymentMethod: true
+                        paymentMethod: true,
+                        fiscalCreditNoteRefunds: { select: { amount: true } }
                     }
                 }
             }
@@ -434,20 +486,48 @@ export class PaymentService {
             throw new Error('Order not found');
         }
 
-        const totalCents = Math.round(Number(order.total) * 100);
-        const totalPaidCents = order.payments.reduce(
+        const grossTotalCents = Math.round(Number(order.total) * 100);
+        const creditedCents = order.fiscalCreditNotes.reduce(
+            (sum, note) => sum + Math.round(Number(note.total) * 100),
+            0
+        );
+        const grossPaidCents = order.payments.reduce(
             (sum, payment) => sum + Math.round(Number(payment.amount) * 100),
             0
         );
+        const refundedCents = order.payments.reduce((sum, payment) => {
+            const allocations = payment.fiscalCreditNoteRefunds.reduce(
+                (refundSum, refund) => refundSum + Math.round(Number(refund.amount) * 100),
+                0
+            );
+            // Legacy/manual all-or-nothing reversals have no allocation rows.
+            return sum + (allocations > 0
+                ? allocations
+                : payment.status === 'REVERSED' ? Math.round(Number(payment.amount) * 100) : 0);
+        }, 0);
+        const netTotalCents = grossTotalCents - creditedCents;
+        const netPaidCents = grossPaidCents - refundedCents;
+        if (netTotalCents < 0 || netPaidCents < 0 || netPaidCents > netTotalCents) {
+            throw new Error('El ledger neto de factura, pagos y devoluciones no concilia');
+        }
+        const activePayments = order.payments.filter((payment) => payment.status === 'ACTIVE');
 
         return {
             orderId,
-            total: totalCents / 100,
-            totalPaid: totalPaidCents / 100,
-            remaining: Math.max(0, totalCents - totalPaidCents) / 100,
+            // Legacy aliases now expose the actionable net balance. Explicit
+            // gross fields preserve the immutable original sale for audit.
+            total: netTotalCents / 100,
+            totalPaid: netPaidCents / 100,
+            remaining: (netTotalCents - netPaidCents) / 100,
+            grossTotal: grossTotalCents / 100,
+            credited: creditedCents / 100,
+            refunded: refundedCents / 100,
+            netTotal: netTotalCents / 100,
+            grossPaid: grossPaidCents / 100,
+            netPaid: netPaidCents / 100,
             status: order.financialStatus,
             operationalStatus: order.status,
-            payments: order.payments
+            payments: activePayments
         };
     }
 }

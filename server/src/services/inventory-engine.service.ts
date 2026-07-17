@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { CostingService } from './costing.service';
-import { effectiveUnitCost } from '../utils/product-cost';
+import { resolveEffectiveUnitCost } from '../utils/product-cost';
 
 /**
  * Single inventory engine (#5). Centralizes the stock + movement + FIFO-batch
@@ -51,7 +51,13 @@ export interface ApplyMovementParams {
      * quantity, reject instead of consuming unrelated stock.
      */
     consumeSourceRef?: string;
+    /** Restrict an exact reversal to layers opened by one inbound movement. */
+    consumeSourceMovementId?: number;
     transferGroupId?: string | null;
+    origin?: 'MANUAL' | 'WASTE' | 'TRANSFER' | 'REVERSAL';
+    reversalOfId?: number;
+    reversalGroupId?: string;
+    reversalKey?: string;
     /** Allow the resulting balance to go negative (skip the OUT stock check). */
     allowNegative?: boolean;
     /**
@@ -133,11 +139,22 @@ export class InventoryEngineService {
         // engine, so re-locking one row here is safe and prevents TOCTOU scope
         // changes for every other inventory writer.
         await tx.$queryRaw`SELECT id FROM \`Warehouse\` WHERE id = ${warehouseId} AND companyId = ${companyId} FOR UPDATE`;
+        // Product.currentAverageCost is company-wide while stock/layers are per
+        // warehouse. Lock the product before touching any warehouse layer so two
+        // concurrent FIFO movements in different warehouses cannot publish stale,
+        // last-writer-wins averages. Multi-product callers must acquire product
+        // locks in ascending id order (purchase/production flows do so).
+        await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${productId} AND companyId = ${companyId} FOR UPDATE`;
         const [warehouse, product] = await Promise.all([
             tx.warehouse.findFirst({ where: { id: warehouseId, companyId }, select: { id: true } }),
             tx.product.findFirst({
                 where: { id: productId, companyId },
-                select: { currentAverageCost: true, cost: true }
+                select: {
+                    currentAverageCost: true,
+                    averageCostKnown: true,
+                    cost: true,
+                    referenceCostKnown: true
+                }
             })
         ]);
         if (!warehouse) throw new Error('Almacén no encontrado para la empresa');
@@ -164,13 +181,32 @@ export class InventoryEngineService {
 
         // Costing context: the product's moving-average cost (reference for the
         // valued balance and the IN fallback) and the company's costing method.
-        const avgCost = effectiveUnitCost(product?.currentAverageCost, product?.cost);
+        const costResolution = resolveEffectiveUnitCost(
+            product?.currentAverageCost,
+            product?.cost,
+            {
+                averageCostKnown: product?.averageCostKnown,
+                referenceCostKnown: product?.referenceCostKnown
+            }
+        );
+        const avgCost = costResolution.value;
 
         const company = await tx.company.findUnique({
             where: { id: companyId },
             select: { costingMethod: true }
         });
         const isFifo = (company?.costingMethod || 'WEIGHTED_AVERAGE') === 'FIFO';
+
+        if (direction === 'IN' && params.unitCost == null && !params.inboundLayers?.length && !costResolution.known) {
+            throw new Error(
+                `PRODUCT_COST_MISSING: el producto ${productId} no tiene costo promedio ni costo de referencia confirmado`
+            );
+        }
+        if (direction === 'OUT' && !isFifo && params.unitCost == null && !costResolution.known) {
+            throw new Error(
+                `PRODUCT_COST_MISSING: el producto ${productId} no tiene costo promedio ni costo de referencia confirmado`
+            );
+        }
 
         // 2. New balance + OUT stock guard.
         const newQty = direction === 'IN' ? currentQty + quantity : currentQty - quantity;
@@ -189,6 +225,7 @@ export class InventoryEngineService {
         let totalCost: number;
         let balanceCost: number;
         const consumedLayers: NonNullable<ApplyMovementResult['consumedLayers']> = [];
+        const openedBatchIds: number[] = [];
 
         if (direction === 'IN') {
             // Load layers only when needed to value the FIFO balance.
@@ -208,8 +245,12 @@ export class InventoryEngineService {
                 if (Math.abs(layerQty - quantity) > EPS) {
                     throw new Error('Las capas de entrada no cuadran con la cantidad del movimiento');
                 }
-                totalCost = params.inboundLayers.reduce((sum, layer) => sum + layer.quantity * layer.unitCost, 0);
-                unitCost = totalCost / quantity;
+                const layerValue = params.inboundLayers.reduce((sum, layer) => sum + layer.quantity * layer.unitCost, 0);
+                // A WA transfer/reversal can have FIFO provenance whose layer
+                // value differs from its financial ledger value. Preserve both:
+                // layers recreate provenance, explicit unitCost reconciles money.
+                unitCost = params.unitCost != null ? Number(params.unitCost) : layerValue / quantity;
+                totalCost = quantity * unitCost;
             } else {
                 unitCost = params.unitCost != null ? Number(params.unitCost) : avgCost;
                 totalCost = quantity * unitCost;
@@ -219,7 +260,8 @@ export class InventoryEngineService {
             // Open a FIFO cost layer for this entry.
             const layersToCreate = params.inboundLayers ?? [{ quantity, unitCost, sourceRef: params.reference ?? null }];
             for (const layer of layersToCreate) {
-                await tx.inventoryBatch.create({ data: {
+                const opened = await tx.inventoryBatch.create({
+                    data: {
                     companyId,
                     warehouseId,
                     productId,
@@ -229,7 +271,10 @@ export class InventoryEngineService {
                     sourceType: params.sourceType ?? layer.sourceType ?? 'ADJUSTMENT',
                     sourceRef: layer.sourceRef ?? params.reference ?? null,
                     ...(layer.createdAt ? { createdAt: layer.createdAt } : {})
-                } });
+                    },
+                    select: { id: true }
+                });
+                openedBatchIds.push(opened.id);
             }
         } else {
             // OUT: load the layers (oldest first), lock them, and consume them so
@@ -237,15 +282,25 @@ export class InventoryEngineService {
             const allLayers = await tx.inventoryBatch.findMany({
                 where: { companyId, warehouseId, productId, remainingQty: { gt: 0 } },
                 orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-                select: { id: true, unitCost: true, remainingQty: true, sourceRef: true, sourceType: true, createdAt: true }
+                select: {
+                    id: true,
+                    unitCost: true,
+                    remainingQty: true,
+                    sourceRef: true,
+                    sourceType: true,
+                    sourceMovementId: true,
+                    createdAt: true
+                }
             });
             if (allLayers.length > 0) {
                 // Lock the candidate layers to avoid concurrent double-consumption.
                 await tx.$queryRaw`SELECT id FROM \`InventoryBatch\` WHERE companyId = ${companyId} AND warehouseId = ${warehouseId} AND productId = ${productId} AND remainingQty > 0 ORDER BY createdAt, id FOR UPDATE`;
             }
-            const layers = params.consumeSourceRef
-                ? allLayers.filter((layer) => layer.sourceRef === params.consumeSourceRef)
-                : allLayers;
+            const layers = params.consumeSourceMovementId != null
+                ? allLayers.filter((layer) => layer.sourceMovementId === params.consumeSourceMovementId)
+                : params.consumeSourceRef
+                    ? allLayers.filter((layer) => layer.sourceRef === params.consumeSourceRef)
+                    : allLayers;
             const allLayerQuantity = allLayers.reduce((sum, layer) => sum + Number(layer.remainingQty), 0);
             if (isFifo && Math.abs(allLayerQuantity - currentQty) > EPS) {
                 throw new Error(
@@ -280,9 +335,9 @@ export class InventoryEngineService {
             }
             // Exact reversals must never consume another purchase/production
             // layer. A shortfall means this output was already used.
-            if (remaining > EPS && params.consumeSourceRef) {
+            if (remaining > EPS && (params.consumeSourceRef || params.consumeSourceMovementId != null)) {
                 throw new Error(
-                    `No hay cantidad suficiente en el lote ${params.consumeSourceRef} para una reversa exacta. ` +
+                    `No hay cantidad suficiente en las capas del movimiento ${params.consumeSourceMovementId ?? params.consumeSourceRef} para una reversa exacta. ` +
                     `Requerido: ${quantity}, Disponible en lote: ${quantity - remaining}`
                 );
             }
@@ -331,6 +386,8 @@ export class InventoryEngineService {
                 userId,
                 type,
                 transferGroupId: params.transferGroupId ?? null,
+                direction,
+                origin: params.origin ?? null,
                 quantity,
                 reason: params.reason ?? null,
                 reference: params.reference ?? null,
@@ -341,6 +398,9 @@ export class InventoryEngineService {
                 totalCost,
                 balanceQty: newQty,
                 balanceCost,
+                reversalOfId: params.reversalOfId ?? null,
+                reversalGroupId: params.reversalGroupId ?? null,
+                reversalKey: params.reversalKey ?? null,
                 ...(direction === 'OUT' && consumedLayers.length > 0
                     ? {
                         consumedLayers: consumedLayers.map((layer) => ({
@@ -355,6 +415,21 @@ export class InventoryEngineService {
             },
             select: { id: true }
         });
+
+        if (openedBatchIds.length > 0) {
+            await tx.inventoryBatch.updateMany({
+                where: { id: { in: openedBatchIds } },
+                data: { sourceMovementId: movement.id }
+            });
+        }
+
+        // FIFO display/recipe cost is the weighted average of remaining layers.
+        // Refresh on OUT only: receipt/production IN paths recompute via
+        // CostingService with a correct previousAvgCost snapshot. Syncing on IN
+        // here would overwrite that snapshot before history is written.
+        if (isFifo && direction === 'OUT') {
+            await CostingService.syncFifoCurrentAverageCost(tx, productId, companyId);
+        }
 
         return {
             movementId: movement.id,

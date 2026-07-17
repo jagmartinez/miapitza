@@ -29,9 +29,10 @@ describe('CostingService.getOutflowUnitCost', () => {
         expect(await CostingService.getOutflowUnitCost(db, 1, 1)).toBe(5);
     });
 
-    it('returns 0 when the product has no cost data', async () => {
+    it('fails closed when the product has no confirmed cost data', async () => {
         const db = makeDb(null, 'WEIGHTED_AVERAGE');
-        expect(await CostingService.getOutflowUnitCost(db, 1, 1)).toBe(0);
+        await expect(CostingService.getOutflowUnitCost(db, 1, 1))
+            .rejects.toThrow(/PRODUCT_COST_MISSING/);
     });
 
     it('values the outflow at the oldest remaining batch under FIFO', async () => {

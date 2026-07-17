@@ -761,24 +761,30 @@ function SessionsSection() {
 /** Two-Factor Authentication */
 function TwoFactorSection() {
     const { user } = useAuth();
-    const [status, setStatus] = useState<'loading' | 'off' | 'setup' | 'on'>('loading');
+    const [status, setStatus] = useState<'loading' | 'unavailable' | 'off' | 'setup' | 'on'>('loading');
     const [qrCode, setQrCode] = useState('');
     const [code, setCode] = useState('');
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
 
     const checkStatus = useCallback(async () => {
+        setError('');
+        setStatus('loading');
         try {
             if (!user?.id) {
-                setStatus('off');
+                setStatus('unavailable');
+                setError('No se pudo identificar la cuenta para consultar el estado de 2FA.');
                 return;
             }
 
-            const userRes = await usersAPI.getById(user.id).catch(() => null);
-            const enabled = Boolean(userRes?.data?.data?.twoFactorEnabled);
+            const userRes = await usersAPI.getById(user.id);
+            const enabled = Boolean(userRes.data?.data?.twoFactorEnabled);
             setStatus(enabled ? 'on' : 'off');
-        } catch {
-            setStatus('off');
+        } catch (err: unknown) {
+            // Unknown is not the same as disabled: exposing the enable flow on
+            // a failed read can misrepresent or overwrite security state.
+            setStatus('unavailable');
+            setError(axiosErr(err, 'No se pudo consultar el estado de 2FA.'));
         }
     }, [user?.id]);
 
@@ -828,6 +834,19 @@ function TwoFactorSection() {
             {error && <div className="profile-msg error" role="alert" aria-live="assertive">{error}</div>}
 
             {status === 'loading' && <p className="profile-inline-loading" role="status">Cargando estado de seguridad…</p>}
+
+            {status === 'unavailable' && (
+                <div className="twofa-status-card">
+                    <div className="twofa-status-info">
+                        <Shield size={24} style={{ color: 'var(--color-warning)' }} />
+                        <div>
+                            <strong>Estado de 2FA no disponible</strong>
+                            <p>No se habilitarán cambios hasta confirmar el estado actual.</p>
+                        </div>
+                    </div>
+                    <button type="button" className="twofa-enable-btn" onClick={() => void checkStatus()}>Reintentar</button>
+                </div>
+            )}
 
             {status === 'off' && (
                 <div className="twofa-status-card">

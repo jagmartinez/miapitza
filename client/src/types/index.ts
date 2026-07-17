@@ -232,7 +232,7 @@ export interface Order {
   customerPhone?: string;
   invoiceNumber?: string;
   invoicedAt?: string;
-  invoiceFiscalStatus?: 'NOT_ISSUED' | 'ISSUED' | 'CREDITED' | 'CANCELLED';
+  invoiceFiscalStatus?: 'NOT_ISSUED' | 'ISSUED' | 'PARTIALLY_CREDITED' | 'CREDITED' | 'CANCELLED';
   fiscalCreditNote?: { id: number; number: string; status: 'ISSUED'; issuedAt: string } | null;
   fiscalInvoiceCancellation?: { id: number; cancelledAt: string; reason: string } | null;
   closedAt?: string;
@@ -318,6 +318,7 @@ export interface Product {
   baseUnitId?: number;
   baseUnit?: UnitOfMeasure;
   cost: number;
+  referenceCostKnown?: boolean;
   price?: number;
   minStock: number;
   categoryId?: number;
@@ -327,7 +328,15 @@ export interface Product {
   active: boolean;
   allowedUnits?: ProductAllowedUnit[];
   currentAverageCost?: number;
+  averageCostKnown?: boolean;
   lastPurchaseCost?: number;
+  lastPurchaseCostKnown?: boolean;
+  costQuality?: {
+    value: number;
+    known: boolean;
+    source: 'AVERAGE' | 'REFERENCE' | 'MISSING';
+    anomaly: 'PRODUCT_COST_MISSING' | null;
+  };
 }
 
 export type ProductType = 'INGREDIENT' | 'PRODUCT_FOR_SALE' | 'BOTH' | 'INTERMEDIATE' | 'PACKAGING';

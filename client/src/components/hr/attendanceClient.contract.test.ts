@@ -23,9 +23,20 @@ describe('Phase 3 attendance API contract', () => {
   });
 
   it('sends evidence as multipart and requires idempotency headers', () => {
+    const enrollmentRequest = source.slice(
+      source.indexOf('async enrollBiometrics'),
+      source.indexOf('async revokeMyBiometrics')
+    );
+    const punchRequest = source.slice(
+      source.indexOf('async createPunch'),
+      source.indexOf('async getEvents')
+    );
+
     expect(source).toContain('new FormData()');
     expect(source).toContain("form.append('faceImage'");
-    expect(source).toContain("headers: { 'Idempotency-Key': idempotencyKey }");
+    expect(enrollmentRequest).toContain("'Content-Type': 'multipart/form-data'");
+    expect(punchRequest).toContain("'Content-Type': 'multipart/form-data'");
+    expect(punchRequest).toContain("'Idempotency-Key': idempotencyKey");
     expect(source).not.toContain('localStorage');
     expect(source).not.toContain('sessionStorage');
     expect(source).not.toContain('toDataURL');

@@ -45,7 +45,14 @@ export const calculateMenuRecipeLineCost = (ingredient: EditableMenuRecipe): num
  * Validate recipe rows before any menu or recipe mutation is sent. This keeps a
  * failed line from leaving a partially-synchronised imported recipe.
  */
-export const validateMenuRecipes = (recipes: EditableMenuRecipe[]): string | null => {
+export const validateMenuRecipes = (
+  recipes: EditableMenuRecipe[],
+  options?: { requireAtLeastOne?: boolean }
+): string | null => {
+  if (options?.requireAtLeastOne && recipes.length === 0) {
+    return 'Agrega al menos un ingrediente a la receta del plato preparado.';
+  }
+
   const seenProducts = new Set<number>();
 
   for (const ingredient of recipes) {

@@ -16,6 +16,8 @@ const governance = readFileSync(
   'utf8'
 );
 const governanceClient = readFileSync(new URL('./benefitsGovernanceClient.ts', import.meta.url), 'utf8');
+const benefitsStyles = readFileSync(new URL('../../pages/hr/benefits.css', import.meta.url), 'utf8');
+const hrUiStyles = readFileSync(new URL('../../pages/hr/hr-ui.css', import.meta.url), 'utf8');
 
 describe('Phase 6 benefits UI contract', () => {
   it('exposes all Owner workspaces and server-authored detail', () => {
@@ -40,6 +42,16 @@ describe('Phase 6 benefits UI contract', () => {
     expect(owner).toContain('collectAllPages');
   });
 
+  it('uses accessible label-free filters and right-aligned financial values', () => {
+    expect(owner).toContain('<span className="sr-only">Buscar</span>');
+    expect(owner).toContain('aria-label="Buscar por código, empleado o detalle"');
+    expect(owner).toContain('<span className="sr-only">Estado</span>');
+    expect(owner).toContain('aria-label="Filtrar por estado"');
+    expect(benefitsStyles).toContain('minmax(480px, 1.25fr)');
+    expect(benefitsStyles).toContain(':is(th, td).hr-amount-cell');
+    expect(hrUiStyles).toContain(':is(td, th).hr-amount-cell');
+  });
+
   it('keeps policies and settlement drafts administrable without native prompts', () => {
     expect(governance).toContain('openPolicyEditor(row)');
     expect(governance).toContain('openPolicyEditor(row, true)');
@@ -60,6 +72,14 @@ describe('Phase 6 benefits UI contract', () => {
     expect(self).toContain("['SUBMIT', 'START_SETTLEMENT', 'CANCEL']");
     expect(self).not.toContain('transitionDeduction(');
     expect(self).not.toContain('transitionLoan(');
+  });
+
+  it('presents personal benefits as a full-width paginated register', () => {
+    expect(self).toContain('className="my-benefits-register"');
+    expect(self).toContain('inventory-table my-benefits-table');
+    expect(self).toContain('<Pagination');
+    expect(self).toContain('className="hr-amount-cell"');
+    expect(self).not.toContain('className="hr-benefits-list"');
   });
 
   it('requires explicit confirmation and explains server authority', () => {

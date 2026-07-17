@@ -11,6 +11,28 @@ type InventoryMovementRow = Awaited<ReturnType<typeof InventoryMovementService.g
 type TopProductRow = Awaited<ReturnType<typeof ReportService.getTopSellingProducts>>[number];
 type SalesByUserRow = Awaited<ReturnType<typeof ReportService.getSalesByUser>>[number];
 
+function requireExportNumber(value: unknown, field: string, rowId: number): number {
+    if (value == null) throw new Error(`Exportación bloqueada: ${field} ausente en registro ${rowId}`);
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) throw new Error(`Exportación bloqueada: ${field} inválido en registro ${rowId}`);
+    return parsed;
+}
+
+function inventoryCostCells(movement: InventoryMovementRow, quantity: number): { unitCost: string; totalCost: string } {
+    const rawUnit = movement.unitCost == null ? null : Number(movement.unitCost);
+    const rawTotal = movement.totalCost == null ? null : Number(movement.totalCost);
+    const unitCost = rawUnit != null && Number.isFinite(rawUnit) && rawUnit >= 0
+        ? rawUnit
+        : (rawTotal != null && Number.isFinite(rawTotal) && rawTotal >= 0 && quantity > 0 ? rawTotal / quantity : null);
+    const totalCost = rawTotal != null && Number.isFinite(rawTotal) && rawTotal >= 0
+        ? rawTotal
+        : (unitCost != null ? unitCost * quantity : null);
+    return {
+        unitCost: unitCost == null ? 'N/D' : unitCost.toFixed(6),
+        totalCost: totalCost == null ? 'N/D' : totalCost.toFixed(6),
+    };
+}
+
 export class ExportController {
 
     // Export sales report to CSV
@@ -24,11 +46,26 @@ export class ExportController {
             if (endDate) filters.endDate = parseOptionalQueryDateTo(endDate as string, req.user!.timezone);
             if (branchId) filters.branchId = parseInt(branchId as string);
 
-            const result = await OrderService.getAll(companyId, { ...filters, limit: 10000 });
+            // OrderService caps each page at 200. Fetch the complete, fixed
+            // createdAt window instead of silently exporting only the first page.
+            const exportFilters = { ...filters, endDate: filters.endDate ?? new Date() };
+            const orders: OrderListRow[] = [];
+            let page = 1;
+            let totalPages = 1;
+            do {
+                const result = await OrderService.getAll(companyId, { ...exportFilters, page, limit: 200 });
+                orders.push(...result.data);
+                totalPages = result.pagination.totalPages;
+                page += 1;
+            } while (page <= totalPages);
 
             // Transform data for CSV
-            const data = result.data.map((order: OrderListRow) => {
-                const subtotal = (order.items || []).reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+            const data = orders.map((order: OrderListRow) => {
+                if (!Array.isArray(order.items)) throw new Error(`Exportación bloqueada: detalle ausente en orden ${order.id}`);
+                const subtotal = order.items.reduce(
+                    (sum, item) => sum + requireExportNumber(item.subtotal, 'subtotal de línea', order.id),
+                    0
+                );
                 const paymentMethods = Array.from(
                     new Set((order.payments || []).map((payment) => payment.paymentMethod?.name).filter(Boolean))
                 );
@@ -41,8 +78,8 @@ export class ExportController {
                     'Cliente': order.customerName || 'N/A',
                     'Estado': order.status,
                     'Subtotal': subtotal.toFixed(2),
-                    'Impuestos': Number(order.tax || 0).toFixed(2),
-                    'Total': Number(order.total || 0).toFixed(2),
+                    'Impuestos': requireExportNumber(order.tax, 'impuesto', order.id).toFixed(2),
+                    'Total': requireExportNumber(order.total, 'total', order.id).toFixed(2),
                     'Método de Pago': paymentMethods.length > 0 ? paymentMethods.join(' / ') : 'N/A'
                 };
             });
@@ -69,21 +106,35 @@ export class ExportController {
             if (endDate) filters.endDate = parseOptionalQueryDateTo(endDate as string, req.user!.timezone);
             if (warehouseId) filters.warehouseId = parseInt(warehouseId as string);
 
-            const movements = await InventoryMovementService.getAll(companyId, filters);
+            // InventoryMovementService caps each page at 500. Keep a fixed upper
+            // time bound and walk every page so historical exports are complete.
+            const exportFilters = { ...filters, endDate: filters.endDate ?? new Date(), limit: 500 };
+            const movements: InventoryMovementRow[] = [];
+            for (let page = 1; ; page += 1) {
+                const batch = await InventoryMovementService.getAll(companyId, { ...exportFilters, page });
+                movements.push(...batch);
+                if (batch.length < 500) break;
+            }
 
-            const data = movements.map((movement: InventoryMovementRow) => ({
-                'ID': movement.id,
-                'Fecha': new Date(movement.createdAt).toLocaleDateString('es-ES'),
-                'Producto': movement.product?.name || 'N/A',
-                'Tipo': movement.type,
-                'Cantidad': movement.quantity,
-                'Unidad': movement.product?.unit || 'N/A',
-                'Almacén': movement.warehouse?.name || 'N/A',
-                'Usuario': movement.user?.name || 'Sistema',
-                'Notas': movement.reason || ''
-            }));
+            const data = movements.map((movement: InventoryMovementRow) => {
+                const quantity = requireExportNumber(movement.quantity, 'cantidad', movement.id);
+                const costs = inventoryCostCells(movement, quantity);
+                return {
+                    'ID': movement.id,
+                    'Fecha': new Date(movement.createdAt).toLocaleDateString('es-ES'),
+                    'Producto': movement.product?.name || 'N/A',
+                    'Tipo': movement.type,
+                    'Cantidad': quantity,
+                    'Unidad': movement.product?.unit || 'N/A',
+                    'Costo Unitario': costs.unitCost,
+                    'Costo Total': costs.totalCost,
+                    'Almacén': movement.warehouse?.name || 'N/A',
+                    'Usuario': movement.user?.name || 'Sistema',
+                    'Notas': movement.reason || ''
+                };
+            });
 
-            const fields = ['ID', 'Fecha', 'Producto', 'Tipo', 'Cantidad', 'Unidad', 'Almacén', 'Usuario', 'Notas'];
+            const fields = ['ID', 'Fecha', 'Producto', 'Tipo', 'Cantidad', 'Unidad', 'Costo Unitario', 'Costo Total', 'Almacén', 'Usuario', 'Notas'];
             const csv = toCSV(data, fields);
 
             res.setHeader('Content-Type', 'text/csv; charset=utf-8');

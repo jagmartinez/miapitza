@@ -99,7 +99,7 @@ export class InvoiceCancellationService {
                     branch: { include: { company: true } },
                     payments: { where: { status: 'ACTIVE' }, select: { id: true } },
                     fiscalInvoiceCancellation: true,
-                    fiscalCreditNote: { select: { id: true } }
+                    fiscalCreditNotes: { select: { id: true }, take: 1 }
                 }
             });
             if (!order) throw new Error('Order not found or unauthorized');
@@ -120,7 +120,7 @@ export class InvoiceCancellationService {
                 return deserializeInvoiceCancellationSnapshot(existing.snapshot);
             }
 
-            if (!order.invoiceNumber || order.invoiceSnapshot === null || order.invoiceFiscalStatus !== 'ISSUED' || order.fiscalCreditNote) {
+            if (!order.invoiceNumber || order.invoiceSnapshot === null || order.invoiceFiscalStatus !== 'ISSUED' || order.fiscalCreditNotes.length > 0) {
                 throw new Error('Solo una factura emitida, íntegra y no acreditada puede anularse');
             }
             if (order.status === 'DELIVERED') {

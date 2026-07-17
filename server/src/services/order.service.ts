@@ -4,6 +4,8 @@ import { PedidosYaService } from './pedidosya.service';
 import { InventoryConsumptionService } from './inventory-consumption.service';
 import { DynamicPricingService } from './dynamic-pricing.service';
 import { calculatePromotionDiscount } from './promotion.service';
+import { DEFAULT_COMPANY_SETTINGS, SettingService } from './setting.service';
+import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
 
 /** Valid state transitions for orders */
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -38,6 +40,18 @@ export interface OrderCancelOptions {
 }
 
 export class OrderService {
+    private static assertMenuItemSellable(menuItem: {
+        name: string;
+        type: string;
+        _count?: { recipes: number };
+    }): void {
+        if (menuItem.type === 'PREPARED' && Number(menuItem._count?.recipes ?? 0) === 0) {
+            throw new Error(
+                `El plato preparado "${menuItem.name}" no tiene receta de venta y está bloqueado hasta corregir su BOM`
+            );
+        }
+    }
+
     private static normalizeFiscalCustomer(data: FiscalCustomerInput) {
         const text = (value: unknown, max: number, field: string): string | null => {
             if (value === undefined || value === null) return null;
@@ -81,6 +95,50 @@ export class OrderService {
         const safeTip = Math.max(0, Number(tipAmount) || 0);
         const discountedSubtotal = Math.max(0, safeSubtotal - safeDiscount);
         return Math.round((discountedSubtotal + safeTax + safeTip) * 100) / 100;
+    }
+
+    private static taxFromRate(discountedSubtotal: number, taxRatePercent: number): number {
+        const base = Math.max(0, Number(discountedSubtotal) || 0);
+        const rate = Number(taxRatePercent);
+        if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+            throw new Error('La tasa de impuesto configurada no es válida');
+        }
+        return Math.round(base * (rate / 100) * 100) / 100;
+    }
+
+    private static async getCompanyTaxRate(
+        tx: Prisma.TransactionClient,
+        companyId: number
+    ): Promise<number> {
+        // Prefer canonical `tax_rate`; fall back to legacy `taxRate` rows written by older Settings UI.
+        const settings = await tx.setting.findMany({
+            where: {
+                companyId,
+                name: { in: [`${companyId}_tax_rate`, `${companyId}_taxRate`] }
+            },
+            select: { name: true, value: true }
+        });
+        const byName = new Map(settings.map((row) => [row.name, row.value]));
+        const raw = byName.get(`${companyId}_tax_rate`)
+            ?? byName.get(`${companyId}_taxRate`)
+            ?? DEFAULT_COMPANY_SETTINGS.tax_rate;
+        const rate = Number.parseFloat(raw);
+        if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+            throw new Error('La tasa de impuesto configurada no es válida');
+        }
+        return rate;
+    }
+
+    /** Tax is always derived from company tax_rate × discounted subtotal — never trusted from the client. */
+    private static async repriceTax(
+        tx: Prisma.TransactionClient,
+        companyId: number,
+        subtotal: number,
+        discount: number
+    ): Promise<number> {
+        const discountedSubtotal = Math.max(0, Number(subtotal) - Math.max(0, Number(discount)));
+        const taxRate = await this.getCompanyTaxRate(tx, companyId);
+        return this.taxFromRate(discountedSubtotal, taxRate);
     }
 
     private static async getOrderItemsSubtotal(
@@ -146,14 +204,22 @@ export class OrderService {
 
     private static deriveStatusFromItems(order: { items?: Array<{ sentAt?: Date | null; status?: string }> }) {
         const items = order.items || [];
-        const hasSentItems = items.some(item => item.sentAt != null);
-        const hasInProgressItem = items.some(item => item.status === 'IN_PROGRESS');
-        const hasPendingKitchenItem = items.some(item => item.sentAt != null && item.status !== 'DONE');
-        const hasReadyItems = items.length > 0 && items.every(item => item.status === 'DONE');
+        const sentItems = items.filter((item) => item.sentAt != null);
+        const hasSentItems = sentItems.length > 0;
+        const hasInProgressItem = sentItems.some((item) => item.status === 'IN_PROGRESS');
+        const hasPendingKitchenItem = sentItems.some((item) => item.status !== 'DONE');
+        const hasUnsentItem = items.some((item) => item.sentAt == null);
+        const wholeOrderReady = items.length > 0
+            && !hasUnsentItem
+            && sentItems.every((item) => item.status === 'DONE');
 
-        if (hasReadyItems) return 'READY';
+        if (wholeOrderReady) return 'READY';
         if (hasInProgressItem) return 'IN_PREPARATION';
-        if (hasPendingKitchenItem || hasSentItems) return 'SENT_TO_KITCHEN';
+        if (hasPendingKitchenItem) return 'SENT_TO_KITCHEN';
+        // A completed wave followed by unsent additions is operationally open
+        // again. It cannot be released or delivered until the new wave is sent.
+        if (hasUnsentItem) return 'OPEN';
+        if (hasSentItems) return 'SENT_TO_KITCHEN';
         return 'OPEN';
     }
 
@@ -269,8 +335,10 @@ export class OrderService {
                             menuItem: true
                         }
                     },
-                    fiscalCreditNote: {
-                        select: { id: true, number: true, status: true, issuedAt: true }
+                    fiscalCreditNotes: {
+                        select: { id: true, number: true, status: true, issuedAt: true },
+                        orderBy: [{ issuedAt: 'desc' }, { id: 'desc' }],
+                        take: 1
                     },
                     fiscalInvoiceCancellation: {
                         select: { id: true, cancelledAt: true, reason: true }
@@ -286,7 +354,10 @@ export class OrderService {
         ]);
 
         return {
-            data: data.map((order) => this.withTimeline(order)),
+            data: data.map((order) => {
+                const { fiscalCreditNotes, ...rest } = order;
+                return this.withTimeline({ ...rest, fiscalCreditNote: fiscalCreditNotes[0] || null });
+            }),
             pagination: {
                 page,
                 limit,
@@ -342,8 +413,10 @@ export class OrderService {
                         }
                     }
                 },
-                fiscalCreditNote: {
-                    select: { id: true, number: true, status: true, issuedAt: true }
+                fiscalCreditNotes: {
+                    select: { id: true, number: true, status: true, issuedAt: true },
+                    orderBy: [{ issuedAt: 'desc' }, { id: 'desc' }],
+                    take: 1
                 },
                 fiscalInvoiceCancellation: {
                     select: { id: true, cancelledAt: true, reason: true }
@@ -355,7 +428,8 @@ export class OrderService {
             throw new Error('Order not found');
         }
 
-        return this.withTimeline(order);
+        const { fiscalCreditNotes, ...rest } = order;
+        return this.withTimeline({ ...rest, fiscalCreditNote: fiscalCreditNotes[0] || null });
     }
 
     /**
@@ -477,6 +551,7 @@ export class OrderService {
                             const menuItem = await tx.menuItem.findFirst({
                                 where: { id: item.menuItemId, companyId, active: true, OR: [{ branchId: null }, { branchId: data.branchId }] },
                                 include: {
+                                    _count: { select: { recipes: true } },
                                     modifierGroups: {
                                         where: { active: true },
                                         include: { modifiers: { where: { active: true }, select: { id: true } } }
@@ -486,6 +561,7 @@ export class OrderService {
                             if (!menuItem) {
                                 throw new Error('Elemento de menú no encontrado o inactivo');
                             }
+                            this.assertMenuItemSellable(menuItem);
 
                             // Validate + price the selected modifiers (same rule as addItem).
                             const modifiers = await this.resolveItemModifiers(tx, companyId, menuItem, item.modifierIds);
@@ -516,10 +592,11 @@ export class OrderService {
                         const repricedDiscount = await this.repriceStoredDiscount(
                             tx, companyId, newSubtotal, existingOrder.discount, existingOrder.discountCode
                         );
+                        const repricedTax = await this.repriceTax(tx, companyId, newSubtotal, repricedDiscount);
                         const newTotal = this.calculateFinalTotal(
                             newSubtotal,
                             repricedDiscount,
-                            Number(existingOrder.tax || 0),
+                            repricedTax,
                             Number(existingOrder.tipAmount || 0)
                         );
                         await tx.order.update({
@@ -527,6 +604,7 @@ export class OrderService {
                             data: {
                                 total: newTotal,
                                 discount: repricedDiscount,
+                                tax: repricedTax,
                                 ...fiscalCustomer,
                                 ...(existingOrder.status === 'READY' ? {
                                     status: 'SENT_TO_KITCHEN' as const,
@@ -565,7 +643,13 @@ export class OrderService {
                     throw new Error('La mesa no está disponible para abrir una nueva orden');
                 }
 
+                // Block walk-ins under the same tenant-configured window used by
+                // reservation allocation. One shared setting prevents the two
+                // entry points from disagreeing about table availability.
                 const now = new Date();
+                const reservationWindowMs = (
+                    await SettingService.getReservationTableWindowMinutes(companyId, tx)
+                ) * 60 * 1000;
                 const reservationConflicts = await tx.reservation.findMany({
                     where: {
                         companyId,
@@ -573,8 +657,8 @@ export class OrderService {
                         tableId: data.tableId,
                         status: { in: ['PENDING', 'CONFIRMED'] },
                         date: {
-                            gt: new Date(now.getTime() - 2 * 60 * 60 * 1000),
-                            lt: new Date(now.getTime() + 2 * 60 * 60 * 1000)
+                            gt: new Date(now.getTime() - reservationWindowMs),
+                            lt: new Date(now.getTime() + reservationWindowMs)
                         }
                     },
                     select: { id: true, status: true }
@@ -610,6 +694,7 @@ export class OrderService {
                     const menuItem = await tx.menuItem.findFirst({
                         where: { id: item.menuItemId, companyId, active: true, OR: [{ branchId: null }, { branchId: data.branchId }] },
                         include: {
+                            _count: { select: { recipes: true } },
                             modifierGroups: {
                                 where: { active: true },
                                 include: { modifiers: { where: { active: true }, select: { id: true } } }
@@ -619,6 +704,7 @@ export class OrderService {
                     if (!menuItem) {
                         throw new Error('Elemento de menú no encontrado o inactivo');
                     }
+                    this.assertMenuItemSellable(menuItem);
 
                     // Validate + price the selected modifiers (same rule as addItem).
                     const modifiers = await this.resolveItemModifiers(tx, companyId, menuItem, item.modifierIds);
@@ -646,16 +732,18 @@ export class OrderService {
                     });
                 }
 
-                // Update order total from subtotal + stored adjustments.
+                // Update order total from subtotal + company tax rate + stored tip.
+                const initialDiscount = Number(order.discount || 0);
+                const initialTax = await this.repriceTax(tx, companyId, totalAmount, initialDiscount);
                 const newTotal = this.calculateFinalTotal(
                     totalAmount,
-                    Number(order.discount || 0),
-                    Number(order.tax || 0),
+                    initialDiscount,
+                    initialTax,
                     Number(order.tipAmount || 0)
                 );
                 await tx.order.update({
                     where: { id: order.id },
-                    data: { total: newTotal }
+                    data: { total: newTotal, tax: initialTax }
                 });
 
                 (order as { total: number | typeof order.total }).total = newTotal;
@@ -725,6 +813,7 @@ export class OrderService {
                     OR: [{ branchId: null }, { branchId: order.branchId }]
                 },
                 include: {
+                    _count: { select: { recipes: true } },
                     modifierGroups: {
                         where: { active: true },
                         include: { modifiers: { where: { active: true }, select: { id: true } } }
@@ -734,6 +823,7 @@ export class OrderService {
             if (!menuItem) {
                 throw new Error('Elemento de menú no encontrado, inactivo o no disponible en la sucursal');
             }
+            this.assertMenuItemSellable(menuItem);
             const modifiers = await this.resolveItemModifiers(tx, companyId, menuItem, data.modifierIds);
 
             // Resolve the branch-effective price for the order's branch (falls
@@ -766,10 +856,11 @@ export class OrderService {
             const repricedDiscount = await this.repriceStoredDiscount(
                 tx, companyId, newSubtotal, order.discount, order.discountCode
             );
+            const repricedTax = await this.repriceTax(tx, companyId, newSubtotal, repricedDiscount);
             const newTotal = this.calculateFinalTotal(
                 newSubtotal,
                 repricedDiscount,
-                Number(order.tax || 0),
+                repricedTax,
                 Number(order.tipAmount || 0)
             );
 
@@ -778,6 +869,7 @@ export class OrderService {
                 data: {
                     total: newTotal,
                     discount: repricedDiscount,
+                    tax: repricedTax,
                     // READY is no longer truthful after appending an unsent line.
                     ...(order.status === 'READY' ? {
                         status: 'SENT_TO_KITCHEN' as const,
@@ -840,16 +932,17 @@ export class OrderService {
             const repricedDiscount = await this.repriceStoredDiscount(
                 tx, companyId, newSubtotal, item.order.discount, item.order.discountCode
             );
+            const repricedTax = await this.repriceTax(tx, companyId, newSubtotal, repricedDiscount);
             const newTotal = this.calculateFinalTotal(
                 newSubtotal,
                 repricedDiscount,
-                Number(item.order.tax || 0),
+                repricedTax,
                 Number(item.order.tipAmount || 0)
             );
 
             await tx.order.update({
                 where: { id: item.orderId },
-                data: { total: newTotal, discount: repricedDiscount }
+                data: { total: newTotal, discount: repricedDiscount, tax: repricedTax }
             });
 
             return { success: true };
@@ -894,6 +987,9 @@ export class OrderService {
             // the already-ready order so the durable, deduplicated notifier can
             // be attempted again without manufacturing a second transition.
             if (status === 'READY' && existing.status === 'READY') {
+                if (existing.items.length === 0 || existing.items.some((item) => item.sentAt === null)) {
+                    throw new Error('La orden marcada como lista contiene productos sin enviar a cocina');
+                }
                 const readyOrder = await tx.order.findUnique({
                     where: { id },
                     include: {
@@ -924,8 +1020,9 @@ export class OrderService {
             }
 
             // When the whole order is marked as READY (e.g. "Todo Listo" in KDS),
-            // force every still-open item to DONE so the kitchen timeline (firstStartedAt / readyAt)
-            // reflects the actual completion time instead of staying blank.
+            // force every still-open sent item to DONE so the kitchen timeline
+            // (firstStartedAt / readyAt) reflects completion. READY is an order-
+            // level assertion, so every line must already have been sent.
             if (status === 'READY') {
                 if (existing.items.length === 0) {
                     throw new Error('Cannot mark an empty order as ready');
@@ -935,11 +1032,11 @@ export class OrderService {
                 }
                 const now = new Date();
                 await tx.orderItem.updateMany({
-                    where: { orderId: id, status: { not: 'DONE' } },
+                    where: { orderId: id, sentAt: { not: null }, status: { not: 'DONE' } },
                     data: { status: 'DONE', finishedAt: now }
                 });
                 await tx.orderItem.updateMany({
-                    where: { orderId: id, startedAt: null },
+                    where: { orderId: id, sentAt: { not: null }, startedAt: null },
                     data: { startedAt: now }
                 });
             }
@@ -1003,7 +1100,7 @@ export class OrderService {
                 throw new Error('Order not found');
             }
 
-            if (!['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION'].includes(order.status)) {
+            if (!['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'].includes(order.status)) {
                 throw new Error(`Cannot send order to kitchen when status is ${order.status}`);
             }
 
@@ -1041,7 +1138,15 @@ export class OrderService {
                 ? refreshed
                 : tx.order.update({
                     where: { id },
-                    data: { status: nextStatus },
+                    data: {
+                        status: nextStatus,
+                        ...(order.status === 'READY' ? {
+                            kitchenReleasedAt: null,
+                            kitchenReleasedById: null,
+                            kitchenStartedAt: null,
+                            kitchenStartedById: null
+                        } : {})
+                    },
                     include: {
                         items: {
                             include: { menuItem: true, modifiers: true }
@@ -1193,11 +1298,6 @@ export class OrderService {
             });
             if (!updated) throw new Error('Item no encontrado');
 
-            // Check if all items in the order are DONE
-            const pendingItems = await tx.orderItem.count({
-                where: { orderId, status: { not: 'DONE' } }
-            });
-
             const orderInclude = {
                 table: true,
                 user: {
@@ -1215,20 +1315,25 @@ export class OrderService {
                 }
             } as const;
 
-            let updatedOrder = await tx.order.findUnique({
+            const currentOrder = await tx.order.findUnique({
                 where: { id: orderId },
                 include: orderInclude
             });
+            if (!currentOrder) throw new Error('Order not found');
 
-            if (pendingItems === 0) {
-                updatedOrder = await tx.order.update({
+            const nextStatus = this.deriveStatusFromItems(currentOrder);
+            const updatedOrder = nextStatus !== currentOrder.status
+                ? await tx.order.update({
                     where: { id: orderId },
-                    data: { status: 'READY' },
+                    data: { status: nextStatus },
                     include: orderInclude
-                });
-            }
+                })
+                : currentOrder;
 
-            return { item: updated, allDone: pendingItems === 0, order: this.withTimeline(updatedOrder!) };
+            const allDone = updatedOrder.items.length > 0
+                && updatedOrder.items.every((item) => item.sentAt != null && item.status === 'DONE');
+
+            return { item: updated, allDone, order: this.withTimeline(updatedOrder) };
         });
         this.syncPedidosYaStatus(companyId, result.order);
         return result;
@@ -1274,6 +1379,9 @@ export class OrderService {
             });
             if (!order) throw new Error('Order not found');
             if (order.status !== 'READY') throw new Error('Order must be ready before completing');
+            if (order.items.some((item) => item.sentAt == null)) {
+                throw new Error('No se puede entregar una orden con productos sin enviar a cocina');
+            }
 
             const isZeroTotal = Math.round(Number(order.total) * 100) === 0;
             if (order.financialStatus !== 'PAID' && !isZeroTotal) {
@@ -1450,7 +1558,7 @@ export class OrderService {
                             }
                         }
                     },
-                    fiscalCreditNote: {
+                    fiscalCreditNotes: {
                         select: { id: true, number: true, status: true, issuedAt: true }
                     }
                 }
@@ -1594,10 +1702,21 @@ export class OrderService {
                                 endDate: null,
                                 cashRegister: { branchId: order.branchId }
                             },
-                            select: { id: true }
+                            select: { id: true, startDate: true }
                         });
                         if (!refundShift) {
                             throw new Error('Debe existir un turno de caja abierto en la sucursal para registrar el reembolso en efectivo');
+                        }
+                        const timezoneSetting = await tx.setting.findUnique({
+                            where: { companyId_name: { companyId, name: `${companyId}_timezone` } },
+                            select: { value: true }
+                        });
+                        const configuredTz = timezoneSetting?.value?.trim();
+                        const timezone = configuredTz && isValidTimeZone(configuredTz)
+                            ? configuredTz
+                            : DEFAULT_COMPANY_SETTINGS.timezone;
+                        if (zonedDateKey(new Date(refundShift.startDate), timezone) !== zonedDateKey(new Date(), timezone)) {
+                            throw new Error('Tiene un turno de caja de un día anterior; ciérrelo y abra uno nuevo antes de registrar el reembolso en efectivo');
                         }
                         await tx.$queryRaw`SELECT id FROM \`CashShift\` WHERE id = ${refundShift.id} AND companyId = ${companyId} FOR UPDATE`;
                         const lockedRefundShift = await tx.cashShift.findFirst({
@@ -1608,9 +1727,12 @@ export class OrderService {
                                 endDate: null,
                                 cashRegister: { branchId: order.branchId }
                             },
-                            select: { id: true }
+                            select: { id: true, startDate: true }
                         });
                         if (!lockedRefundShift) throw new Error('El turno de caja para el reembolso ya fue cerrado');
+                        if (zonedDateKey(new Date(lockedRefundShift.startDate), timezone) !== zonedDateKey(new Date(), timezone)) {
+                            throw new Error('Tiene un turno de caja de un día anterior; ciérrelo y abra uno nuevo antes de registrar el reembolso en efectivo');
+                        }
                         await tx.cashMovement.create({
                             data: {
                                 shiftId: lockedRefundShift.id, type: 'OUT', amount: payment.amount,
@@ -1764,11 +1886,8 @@ export class OrderService {
                 Math.max(0, Number(authoritativeDiscount)),
                 Math.max(0, subtotal)
             ) * 100) / 100;
-            const discountedSubtotal = Math.max(0, subtotal - nextDiscount);
-            const nextTax = Math.round(Math.min(
-                Math.max(0, Number(data.tax ?? Number(order.tax || 0))),
-                discountedSubtotal
-            ) * 100) / 100;
+            // Client-supplied tax is ignored: IVA is always company tax_rate × net subtotal.
+            const nextTax = await this.repriceTax(tx, companyId, subtotal, nextDiscount);
             const nextTip = Math.round(Math.max(0, Number(data.tipAmount ?? Number(order.tipAmount || 0))) * 100) / 100;
             const nextTotal = this.calculateFinalTotal(subtotal, nextDiscount, nextTax, nextTip);
 

@@ -72,6 +72,34 @@ describe('BankReconciliationService.getReconciliationStatus', () => {
         expect(result.totals.byMethod.card).toBe(-75);
     });
 
+    it('books partial credit-note allocations once even when the payment is finally marked reversed', async () => {
+        jest.spyOn(SettingService, 'getCashReconciliationTolerance').mockResolvedValue(1);
+        jest.spyOn(prisma.payment, 'findMany').mockResolvedValue([{
+            id: 41,
+            amount: 230,
+            status: 'REVERSED',
+            createdAt: new Date('2026-01-15T12:00:00.000Z'),
+            reversedAt: new Date('2026-02-15T12:00:00.000Z'),
+            methodType: 'CASH',
+            fiscalCreditNoteRefunds: [
+                { amount: 115, createdAt: new Date('2026-02-10T12:00:00.000Z'), reference: 'CN-REF-NC-1-PAY-41' },
+                { amount: 115, createdAt: new Date('2026-03-10T12:00:00.000Z'), reference: 'CN-REF-NC-2-PAY-41' },
+            ]
+        }] as never);
+        jest.spyOn(prisma.cashShift, 'findMany').mockResolvedValue([] as never);
+
+        const result = await BankReconciliationService.getReconciliationStatus(
+            1,
+            new Date('2026-02-01T00:00:00.000Z'),
+            new Date('2026-02-28T23:59:59.999Z')
+        );
+
+        expect(result.totals.grossCollected).toBe(0);
+        expect(result.totals.refunded).toBe(115);
+        expect(result.totals.netCollected).toBe(-115);
+        expect(result.totals.byMethod.cash).toBe(-115);
+    });
+
     it('includes catering collections and reversals once, separated by source', async () => {
         jest.spyOn(SettingService, 'getCashReconciliationTolerance').mockResolvedValue(1);
         jest.spyOn(prisma.payment, 'findMany').mockResolvedValue([] as never);
@@ -129,6 +157,52 @@ describe('BankReconciliationService.getReconciliationStatus', () => {
         expect(result.totals.totalExpenses).toBe(0);
         expect(result.totals.netSales).toBe(-25);
     });
+
+    it('does not certify a closed shift whose counted cash is missing', async () => {
+        jest.spyOn(SettingService, 'getCashReconciliationTolerance').mockResolvedValue(1);
+        jest.spyOn(prisma.payment, 'findMany').mockResolvedValue([] as never);
+        jest.spyOn(prisma.cashShift, 'findMany').mockResolvedValue([{
+            id: 88,
+            startAmount: 50,
+            endAmount: null,
+            cashRegister: { name: 'Caja 1' },
+            user: { name: 'Cajero' },
+            movements: []
+        }] as never);
+
+        await expect(BankReconciliationService.getReconciliationStatus(
+            1,
+            new Date('2026-02-01T00:00:00.000Z'),
+            new Date('2026-02-28T23:59:59.999Z')
+        )).rejects.toThrow(/turno cerrado 88.*efectivo final.*remediación/i);
+    });
+});
+
+describe('BankReconciliationService.generateReport timezone window', () => {
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
+    it('uses the requested tenant-local calendar month instead of the host timezone', async () => {
+        jest.spyOn(SettingService, 'getTimezone').mockResolvedValue('America/Managua');
+        const status = {
+            shifts: 0,
+            totals: { byMethod: { cash: 0, card: 0, transfer: 0 } },
+            reconciliation: { cashExpected: 0, cashActual: 0, difference: 0, status: 'RECONCILED' }
+        };
+        const lookup = jest.spyOn(BankReconciliationService, 'getReconciliationStatus')
+            .mockResolvedValue(status as never);
+
+        const result = await BankReconciliationService.generateReport(4, 7, 2026, 8);
+
+        expect(lookup).toHaveBeenCalledWith(
+            4,
+            new Date('2026-07-01T06:00:00.000Z'),
+            new Date('2026-08-01T05:59:59.999Z'),
+            8
+        );
+        expect(result.report.summary).toContain('Período: 2026-07-01 - 2026-07-31');
+    });
 });
 
 describe('BankReconciliationService deposit lifecycle', () => {
@@ -175,6 +249,21 @@ describe('BankReconciliationService deposit lifecycle', () => {
         await expect(BankReconciliationService.recordDeposit(1, 5, {
             date: '2026-07-12', amount: 100, bankAccount: 'BAC-1', reference: 'DEP-MISMATCH', shiftIds: [7]
         })).rejects.toThrow(/no coincide/i);
+        expect(tx.bankDeposit.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects deposit linkage when a closed shift has no counted end amount', async () => {
+        const tx = {
+            $queryRaw: jest.fn().mockResolvedValue([] as never),
+            user: { findFirst: jest.fn().mockResolvedValue({ id: 5 } as never) },
+            cashShift: { findMany: jest.fn().mockResolvedValue([{ id: 7, endAmount: null, depositLinks: [] }] as never) },
+            bankDeposit: { create: jest.fn() }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation((async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as never);
+
+        await expect(BankReconciliationService.recordDeposit(1, 5, {
+            date: '2026-07-12', amount: 100, bankAccount: 'BAC-1', reference: 'DEP-MISSING', shiftIds: [7]
+        })).rejects.toThrow(/efectivo final.*remediación/i);
         expect(tx.bankDeposit.create).not.toHaveBeenCalled();
     });
 

@@ -22,7 +22,7 @@ import type { SingleValue } from 'react-select';
 import { formatCurrency, currencyInputPadding, type CurrencySettings } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
 import { isCategoryVisibleInInventory } from '../utils/categoryVisibility';
-import { effectiveUnitCost } from '../utils/productCost';
+import { resolveEffectiveUnitCost, type ProductCostResolution } from '../utils/productCost';
 import { newIdempotencyKey } from '../utils/idempotency';
 import './Inventory.css';
 
@@ -60,6 +60,30 @@ function apiErrorMessage(error: unknown): string {
     }
     if (error instanceof Error) return error.message;
     return 'Error';
+}
+
+function inventoryCostQuality(product: ProductInventory): ProductCostResolution {
+    return product.costQuality ?? resolveEffectiveUnitCost(
+        product.currentAverageCost,
+        product.cost,
+        {
+            averageCostKnown: product.averageCostKnown,
+            referenceCostKnown: product.referenceCostKnown
+        }
+    );
+}
+
+function formatInventoryCost(product: ProductInventory, currencySettings: CurrencySettings): string {
+    const quality = inventoryCostQuality(product);
+    return quality.known ? formatCurrency(quality.value, currencySettings) : 'N/D';
+}
+
+function formatLastPurchaseCost(product: ProductInventory, currencySettings: CurrencySettings): string {
+    const value = Number(product.lastPurchaseCost);
+    const known = product.lastPurchaseCostKnown === true || value > 0;
+    return known && Number.isFinite(value) && value >= 0
+        ? formatCurrency(value, currencySettings)
+        : 'Sin compras';
 }
 
 const STORAGE_TYPE_OPTIONS: { value: '' | 'PERISHABLE' | 'FROZEN' | 'NON_PERISHABLE'; label: string; icon: typeof Package }[] = [
@@ -154,6 +178,19 @@ export default function Inventory() {
     const [allUnits, setAllUnits] = useState<UnitOfMeasure[]>([]);
     const { symbol } = useCurrency();
     const [settings, setSettings] = useState<CurrencySettings>({});
+    const [loadIssues, setLoadIssues] = useState<Record<string, string>>({});
+
+    const setLoadIssue = useCallback((area: string, error?: unknown) => {
+        setLoadIssues((current) => {
+            if (error == null) {
+                if (!(area in current)) return current;
+                const next = { ...current };
+                delete next[area];
+                return next;
+            }
+            return { ...current, [area]: apiErrorMessage(error) };
+        });
+    }, []);
 
     // Excel import state
     const [showImportSidebar, setShowImportSidebar] = useState(false);
@@ -173,62 +210,65 @@ export default function Inventory() {
     } | null>(null);
     const [importLoading, setImportLoading] = useState(false);
 
-    useEffect(() => {
-        loadInventory();
-        loadWarehouses();
-        loadCategories();
-        loadOperationalData();
-        loadUnitsCatalog();
-        settingsAPI.getAll()
-            .then((res) => setSettings(res.data.data || {}))
-            .catch((err) => console.error('Error loading settings:', err));
-    }, []);
-
-    const loadUnitsCatalog = async (): Promise<UnitOfMeasure[]> => {
+    const loadUnitsCatalog = useCallback(async (): Promise<UnitOfMeasure[]> => {
         try {
             const res = await unitsAPI.getAll();
             const units: UnitOfMeasure[] = res.data.data || [];
             setAllUnits(units);
+            setLoadIssue('Unidades');
             return units;
         } catch (error) {
             console.error('Error loading units:', error);
+            setLoadIssue('Unidades', error);
             return [];
         }
-    };
+    }, [setLoadIssue]);
 
-    const loadOperationalData = async () => {
-        try {
-            const [branchesRes, suppliersRes] = await Promise.all([
-                branchesAPI.getAll(),
-                suppliersAPI.getAll({ active: true })
-            ]);
-            setBranches(branchesRes.data.data || []);
-            setSuppliers(suppliersRes.data.data || []);
-        } catch (error) {
-            console.error('Error loading operational data:', error);
+    const loadOperationalData = useCallback(async () => {
+        const [branchesResult, suppliersResult] = await Promise.allSettled([
+            branchesAPI.getAll(),
+            suppliersAPI.getAll({ active: true })
+        ]);
+        if (branchesResult.status === 'fulfilled') {
+            setBranches(branchesResult.value.data.data || []);
+            setLoadIssue('Sucursales');
+        } else {
+            console.error('Error loading branches:', branchesResult.reason);
+            setLoadIssue('Sucursales', branchesResult.reason);
         }
-    };
+        if (suppliersResult.status === 'fulfilled') {
+            setSuppliers(suppliersResult.value.data.data || []);
+            setLoadIssue('Proveedores');
+        } else {
+            console.error('Error loading suppliers:', suppliersResult.reason);
+            setLoadIssue('Proveedores', suppliersResult.reason);
+        }
+    }, [setLoadIssue]);
 
-    const loadCategories = async () => {
+    const loadCategories = useCallback(async () => {
         try {
             const res = await categoriesAPI.getAll();
             setCategories(res.data.data);
+            setLoadIssue('Categorias');
         } catch (error) {
             console.error('Error loading categories:', error);
+            setLoadIssue('Categorias', error);
         }
-    };
+    }, [setLoadIssue]);
 
-    const loadWarehouses = async () => {
+    const loadWarehouses = useCallback(async () => {
         try {
             const { warehousesAPI } = await import('../services/api');
             const res = await warehousesAPI.getAll();
             setWarehouses(res.data.data);
+            setLoadIssue('Almacenes');
         } catch (error) {
             console.error('Error loading warehouses:', error);
+            setLoadIssue('Almacenes', error);
         }
-    };
+    }, [setLoadIssue]);
 
-    const loadInventory = async () => {
+    const loadInventory = useCallback(async () => {
         const results = await Promise.allSettled([
             productsAPI.getAll({ active: true, limit: 500 }),
             productsAPI.getLowStock(),
@@ -241,24 +281,38 @@ export default function Inventory() {
 
         if (productsRes.status === 'fulfilled') {
             setProducts(productsRes.value.data.data || []);
+            setLoadIssue('Productos');
         } else {
             console.error('Error loading products:', productsRes.reason);
+            setLoadIssue('Productos', productsRes.reason);
         }
         if (lowStockRes.status === 'fulfilled') {
             setLowStock(lowStockRes.value.data.data || []);
+            setLoadIssue('Stock bajo');
+        } else {
+            setLoadIssue('Stock bajo', lowStockRes.reason);
         }
         if (alertsRes.status === 'fulfilled') {
             setStockAlerts(alertsRes.value.data.data || []);
+            setLoadIssue('Alertas');
+        } else {
+            setLoadIssue('Alertas', alertsRes.reason);
         }
         if (alertSummaryRes.status === 'fulfilled') {
             setStockAlertSummary(alertSummaryRes.value.data.data || null);
+            setLoadIssue('Resumen de alertas');
+        } else {
+            setLoadIssue('Resumen de alertas', alertSummaryRes.reason);
         }
         if (suggestionsRes.status === 'fulfilled') {
             setAutoPurchaseSuggestions(suggestionsRes.value.data.data?.suggestions || []);
+            setLoadIssue('Sugerencias de compra');
+        } else {
+            setLoadIssue('Sugerencias de compra', suggestionsRes.reason);
         }
 
         setLoading(false);
-    };
+    }, [setLoadIssue]);
 
     const handleOpenSidebar = async (product?: Product) => {
         await loadUnitsCatalog();
@@ -294,6 +348,23 @@ export default function Inventory() {
         setActiveTab('general');
         setIsSidebarOpen(true);
     };
+
+    useEffect(() => {
+        void loadInventory();
+        void loadWarehouses();
+        void loadCategories();
+        void loadOperationalData();
+        void loadUnitsCatalog();
+        settingsAPI.getAll()
+            .then((res) => {
+                setSettings(res.data.data || {});
+                setLoadIssue('Configuracion');
+            })
+            .catch((err) => {
+                console.error('Error loading settings:', err);
+                setLoadIssue('Configuracion', err);
+            });
+    }, [loadCategories, loadInventory, loadOperationalData, loadUnitsCatalog, loadWarehouses, setLoadIssue]);
 
     const handleViewProduct = (product: Product) => {
         setViewingProduct(product as ProductInventory);
@@ -863,6 +934,35 @@ export default function Inventory() {
                 </div>
             </div>
 
+            {Object.keys(loadIssues).length > 0 && (
+                <div className="inventory-load-error" role="alert">
+                    <div>
+                        <strong>Inventario cargado parcialmente.</strong>
+                        <span>Los datos faltantes no se mostraran como cero ni como listas vacias.</span>
+                        <ul>
+                            {Object.entries(loadIssues).map(([area, message]) => (
+                                <li key={area}><strong>{area}:</strong> {message}</li>
+                            ))}
+                        </ul>
+                    </div>
+                    <Button
+                        variant="secondary"
+                        onClick={() => {
+                            void loadInventory();
+                            void loadWarehouses();
+                            void loadCategories();
+                            void loadOperationalData();
+                            void loadUnitsCatalog();
+                            settingsAPI.getAll()
+                                .then((res) => { setSettings(res.data.data || {}); setLoadIssue('Configuracion'); })
+                                .catch((error) => setLoadIssue('Configuracion', error));
+                        }}
+                    >
+                        Reintentar cargas
+                    </Button>
+                </div>
+            )}
+
             <div className="inventory-grid-new" style={{ marginBottom: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
                 <div className="inventory-card-new">
                     <div className="inventory-card-body-new">
@@ -1049,7 +1149,7 @@ export default function Inventory() {
                                 <div className="product-pricing-new">
                                     <div className="pricing-item">
                                         <span className="pricing-label">Costo unit.</span>
-                                        <span className="pricing-value">{formatCurrency(effectiveUnitCost((product as ProductInventory).currentAverageCost, product.cost), settings)}</span>
+                                        <span className="pricing-value">{formatInventoryCost(product as ProductInventory, settings)}</span>
                                     </div>
                                     <div className="pricing-item">
                                         <span className="pricing-label">Precio</span>
@@ -1167,7 +1267,7 @@ export default function Inventory() {
                                         <td>{product.baseUnit?.abbreviation || product.unit}</td>
                                         <td className="text-right">{stock.toLocaleString('es-NI', { maximumFractionDigits: 2 })}</td>
                                         <td className="text-right">{product.minStock}</td>
-                                        <td className="text-right">{formatCurrency(effectiveUnitCost((product as ProductInventory).currentAverageCost, product.cost), settings)}</td>
+                                        <td className="text-right">{formatInventoryCost(product as ProductInventory, settings)}</td>
                                         <td className="text-right">{product.price ? formatCurrency(Number(product.price), settings) : '-'}</td>
                                         <td>
                                             {isLow
@@ -1269,8 +1369,8 @@ export default function Inventory() {
                     const unit = viewingProduct.baseUnit?.abbreviation || viewingProduct.unit;
                     const storageLabel = STORAGE_TYPE_OPTIONS.find(option => option.value === viewingProduct.storageType)?.label || 'Sin clasificar';
                     const category = categories.find(item => item.id === viewingProduct.categoryId)?.name || 'Sin categoría';
-                    const currentAverageCost = Number(viewingProduct.currentAverageCost || 0);
-                    const hasTransactionalCost = currentAverageCost > 0;
+                    const costQuality = inventoryCostQuality(viewingProduct);
+                    const hasTransactionalCost = costQuality.source === 'AVERAGE';
                     const stockLevel = minStock > 0 ? Math.max(0, Math.min(100, (stock / minStock) * 100)) : 100;
 
                     return (
@@ -1343,19 +1443,23 @@ export default function Inventory() {
                                     <div className="inventory-detail-effective-cost">
                                         <div>
                                             <span>Costo efectivo para recetas</span>
-                                            <strong>{formatCurrency(effectiveUnitCost(viewingProduct.currentAverageCost, viewingProduct.cost), settings)}</strong>
+                                            <strong>{costQuality.known ? formatCurrency(costQuality.value, settings) : 'N/D'}</strong>
                                         </div>
                                         <span className="inventory-detail-cost-source">
-                                            {hasTransactionalCost ? 'Promedio ponderado' : 'Costo de referencia'}
+                                            {costQuality.source === 'AVERAGE'
+                                                ? 'Promedio ponderado'
+                                                : costQuality.source === 'REFERENCE' ? 'Costo de referencia' : 'Costo no confirmado'}
                                         </span>
                                     </div>
                                     <dl className="inventory-detail-finance-breakdown">
-                                        <div><dt>Referencia</dt><dd>{formatCurrency(Number(viewingProduct.cost), settings)}</dd></div>
-                                        <div><dt>Última compra</dt><dd>{Number(viewingProduct.lastPurchaseCost || 0) > 0 ? formatCurrency(Number(viewingProduct.lastPurchaseCost), settings) : 'Sin compras'}</dd></div>
+                                        <div><dt>Referencia</dt><dd>{viewingProduct.referenceCostKnown || Number(viewingProduct.cost) > 0 ? formatCurrency(Number(viewingProduct.cost), settings) : 'N/D'}</dd></div>
+                                        <div><dt>Última compra</dt><dd>{formatLastPurchaseCost(viewingProduct, settings)}</dd></div>
                                         <div><dt>Precio de venta</dt><dd>{viewingProduct.price != null ? formatCurrency(Number(viewingProduct.price), settings) : 'No aplica'}</dd></div>
                                     </dl>
                                     <p className="inventory-detail-finance-note">
-                                        {hasTransactionalCost
+                                        {!costQuality.known
+                                            ? 'El producto no tiene un costo confirmado. Las salidas se bloquearan hasta corregir esta anomalia.'
+                                            : hasTransactionalCost
                                             ? 'El costo efectivo proviene del promedio ponderado de las compras recibidas.'
                                             : 'Mientras no existan compras recibidas, las recetas utilizan el costo de referencia.'}
                                     </p>
@@ -1679,13 +1783,13 @@ export default function Inventory() {
                                                 <div className="inventory-cost-metric">
                                                     <span>Costo efectivo para recetas</span>
                                                     <strong>
-                                                        {formatCurrency(effectiveUnitCost((editingProduct as ProductInventory).currentAverageCost, editingProduct.cost), settings)}
+                                                        {formatInventoryCost(editingProduct as ProductInventory, settings)}
                                                     </strong>
                                                 </div>
                                                 <div className="inventory-cost-metric">
                                                     <span>Última compra</span>
                                                     <strong>
-                                                        {formatCurrency(Number((editingProduct as ProductInventory).lastPurchaseCost ?? editingProduct.cost), settings)}
+                                                        {formatLastPurchaseCost(editingProduct as ProductInventory, settings)}
                                                     </strong>
                                                 </div>
                                             </div>

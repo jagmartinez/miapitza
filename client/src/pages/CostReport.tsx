@@ -7,7 +7,7 @@ import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import {
     DollarSign, TrendingUp, ShoppingCart, BarChart3,
-    Search, RefreshCw, Calendar, Tag, Building2, Truck, Package
+    Search, RefreshCw, Calendar, Tag, Building2, Truck, Package, AlertTriangle
 } from 'lucide-react';
 import type { Branch, Supplier } from '../types';
 import './CostReport.css';
@@ -23,6 +23,8 @@ interface CostSummary {
     totalRevenue: number;
     grossMargin: number;
     purchaseOrderCount: number;
+    excludedLegacyPurchaseLines: number;
+    excludedLegacyPurchaseAmount: number;
 }
 
 interface ProductCost {
@@ -43,6 +45,8 @@ export default function CostReport() {
     const [summary, setSummary] = useState<CostSummary | null>(null);
     const [products, setProducts] = useState<ProductCost[]>([]);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [filterWarning, setFilterWarning] = useState<string | null>(null);
     const [settings, setSettings] = useState<CurrencySettings>({});
     const [page, setPage] = useState(1);
     const [branches, setBranches] = useState<Branch[]>([]);
@@ -58,21 +62,32 @@ export default function CostReport() {
     });
 
     useEffect(() => {
-        Promise.all([
+        Promise.allSettled([
             branchesAPI.getAll(),
             categoriesAPI.getAll(),
             suppliersAPI.getAll(),
-            settingsAPI.getAll().catch(() => ({ data: { data: {} } })),
+            settingsAPI.getAll(),
         ]).then(([bRes, cRes, sRes, settingsRes]) => {
-            setBranches(bRes.data.data || []);
-            setCategories(cRes.data.data || []);
-            setSuppliers(sRes.data.data || []);
-            setSettings(settingsRes.data.data || {});
+            const failed: string[] = [];
+            if (bRes.status === 'fulfilled') setBranches(bRes.value.data.data || []);
+            else failed.push('sucursales');
+            if (cRes.status === 'fulfilled') setCategories(cRes.value.data.data || []);
+            else failed.push('categorías');
+            if (sRes.status === 'fulfilled') setSuppliers(sRes.value.data.data || []);
+            else failed.push('proveedores');
+            if (settingsRes.status === 'fulfilled') setSettings(settingsRes.value.data.data || {});
+            else failed.push('configuración');
+            setFilterWarning(
+                failed.length > 0
+                    ? `No se pudieron cargar filtros: ${failed.join(', ')}. Algunas opciones pueden estar incompletas.`
+                    : null
+            );
         });
     }, []);
 
     const loadReport = useCallback(async () => {
         setLoading(true);
+        setError(null);
         try {
             const params: Record<string, string> = {};
             if (filters.dateFrom) params.dateFrom = filters.dateFrom;
@@ -85,8 +100,13 @@ export default function CostReport() {
             setSummary(res.data.data.summary);
             setProducts(res.data.data.byProduct || []);
             setPage(1);
-        } catch (err) {
-            console.error('Error loading cost report:', err);
+        } catch (err: unknown) {
+            const message = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message
+                || (err as Error)?.message
+                || 'Error al cargar el reporte de costos';
+            setError(message);
+            setSummary(null);
+            setProducts([]);
         } finally {
             setLoading(false);
         }
@@ -123,6 +143,31 @@ export default function CostReport() {
                     </Button>
                 </div>
             </div>
+
+            {filterWarning && (
+                <div className="state-placeholder" role="status" style={{ marginBottom: '1rem', padding: '0.75rem 1rem' }}>
+                    <AlertTriangle size={18} />
+                    <p className="state-error" style={{ margin: 0 }}>{filterWarning}</p>
+                </div>
+            )}
+            {summary && summary.excludedLegacyPurchaseLines > 0 && (
+                <div className="state-placeholder" role="status" style={{ marginBottom: '1rem', padding: '0.75rem 1rem' }}>
+                    <AlertTriangle size={18} />
+                    <p className="state-error" style={{ margin: 0 }}>
+                        {summary.excludedLegacyPurchaseLines} línea(s) histórica(s) por {formatCurrency(summary.excludedLegacyPurchaseAmount, settings)}
+                        {' '}no tienen cantidad/costo en UOM base. El total monetario sí las incluye, pero se excluyen del desglose por producto para no reinterpretar unidades.
+                    </p>
+                </div>
+            )}
+            {error && (
+                <div className="state-placeholder" role="alert" style={{ marginBottom: '1rem', padding: '0.75rem 1rem' }}>
+                    <AlertTriangle size={18} />
+                    <p className="state-error" style={{ margin: 0 }}>{error}</p>
+                    <Button onClick={loadReport} disabled={loading}>
+                        <RefreshCw size={14} /> Reintentar
+                    </Button>
+                </div>
+            )}
 
             {/* Filters Toolbar */}
             <div className="filters-toolbar">
@@ -201,7 +246,7 @@ export default function CostReport() {
                             <DollarSign size={14} /> COGS Estimado
                         </div>
                         <div className="kpi-value">{formatCurrency(summary.estimatedCOGS, settings)}</div>
-                        <div className="kpi-detail">Basado en recetas × costo promedio</div>
+                        <div className="kpi-detail">Ledger ORD-* (receta × costo solo si no hay movimientos)</div>
                     </div>
                     <div className="kpi-card kpi-success">
                         <div className="kpi-label">

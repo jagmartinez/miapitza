@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import type { CateringStatus } from '@prisma/client';
 import prisma from '../../utils/prisma';
 import { CATERING_STATUS_TRANSITIONS, CateringService } from '../../services/catering.service';
+import { SettingService } from '../../services/setting.service';
 
 afterEach(() => {
     jest.restoreAllMocks();
@@ -39,6 +40,26 @@ describe('catering status machine', () => {
 });
 
 describe('catering service boundary', () => {
+    it('excludes cancelled and already-consumed FINISHED events from the resource forecast', async () => {
+        jest.spyOn(SettingService, 'getTimezone').mockResolvedValue('America/Managua');
+        const eventLookup = jest.spyOn(prisma.cateringEvent, 'findMany').mockResolvedValue([]);
+
+        const result = await CateringService.checkResourceAvailability(
+            new Date('2026-07-16T18:00:00.000Z'),
+            1,
+            2
+        );
+
+        expect(eventLookup).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({
+                companyId: 1,
+                branchId: 2,
+                status: { notIn: ['CANCELLED', 'FINISHED'] }
+            })
+        }));
+        expect(result).toEqual({ eventCount: 0, alerts: [] });
+    });
+
     it('rejects malformed catalog values before touching persistence', async () => {
         await expect(CateringService.createService(1, {
             name: '  ', internalCost: 1, salePrice: 2

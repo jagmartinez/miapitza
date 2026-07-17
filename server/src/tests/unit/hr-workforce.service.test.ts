@@ -5,6 +5,7 @@ import prisma from '../../utils/prisma';
 import {
     deriveWorkedMinutes,
     deriveWorkedIntervals,
+    employeeBranchScope,
     hasAttendanceLeaveConflict,
     hasSummarySourceChanged,
     leaveAmount,
@@ -109,11 +110,29 @@ describe('HR workforce invariants', () => {
         })).toBe(false);
     });
 
-    it('requires a half-day interval to match its four-hour ledger charge', () => {
+    it('requires a half-day interval to match its configured ledger charge', () => {
         const date = new Date('2026-07-15T00:00:00Z');
         expect(leaveAmount(date, date, 'HALF_DAY', '08:00', '12:00', 'HOURS')).toBe(4);
         expect(() => leaveAmount(date, date, 'HALF_DAY', '00:00', '23:59', 'DAYS'))
-            .toThrow('intervalo exacto de 4 horas');
+            .toThrow('intervalo exacto de 240 minutos');
+        expect(leaveAmount(date, date, 'HALF_DAY', '08:00', '11:45', 'HOURS', { dayMinutes: 450, hourMinutes: 60 })).toBe(3.75);
+    });
+
+    it('evaluates employee branch scope against the process window in both directions', () => {
+        const from = new Date('2026-07-01T00:00:00.000Z');
+        const to = new Date('2026-07-31T00:00:00.000Z');
+
+        expect(employeeBranchScope(4, { from, to })).toEqual({
+            employee: {
+                branchAssignments: {
+                    some: {
+                        branchId: 4,
+                        effectiveFrom: { lte: to },
+                        OR: [{ effectiveTo: null }, { effectiveTo: { gte: from } }],
+                    },
+                },
+            },
+        });
     });
 
     it('forbids a user from deciding their own leave request', async () => {

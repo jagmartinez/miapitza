@@ -2,12 +2,24 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { formatCurrency } from '../utils/currency';
 import { SettingService } from './setting.service';
+import { getZonedMonthBounds, zonedDateKey } from '../utils/timezone';
 
 /**
  * Bank Reconciliation Service
  * Handles matching cash register totals with bank deposits
  */
 export class BankReconciliationService {
+    private static requireClosedShiftMoney(value: unknown, field: string, shiftId: number): number {
+        if (value === null || value === undefined) {
+            throw new Error(`El turno cerrado ${shiftId} no tiene ${field} materializado; requiere remediación antes de conciliar`);
+        }
+        const amount = Number(value);
+        if (!Number.isFinite(amount)) {
+            throw new Error(`El turno cerrado ${shiftId} tiene ${field} inválido; requiere remediación antes de conciliar`);
+        }
+        return amount;
+    }
+
     /**
      * Get reconciliation status for a date range
      */
@@ -17,7 +29,8 @@ export class BankReconciliationService {
             where: {
                 OR: [
                     { createdAt: { gte: startDate, lte: endDate } },
-                    { status: 'REVERSED', reversedAt: { gte: startDate, lte: endDate } }
+                    { status: 'REVERSED', reversedAt: { gte: startDate, lte: endDate } },
+                    { fiscalCreditNoteRefunds: { some: { createdAt: { gte: startDate, lte: endDate } } } }
                 ],
                 order: {
                     companyId,
@@ -30,7 +43,10 @@ export class BankReconciliationService {
                 status: true,
                 createdAt: true,
                 reversedAt: true,
-                methodType: true
+                methodType: true,
+                fiscalCreditNoteRefunds: {
+                    select: { amount: true, createdAt: true, reference: true }
+                }
             }
         });
         const cateringPayments = await prisma.cateringPayment.findMany({
@@ -73,7 +89,11 @@ export class BankReconciliationService {
 
         const refundLedgerCents = new Map<string, number>();
         for (const payment of payments) {
-            if (payment.status === 'REVERSED' && payment.methodType === 'CASH') {
+            for (const refund of payment.fiscalCreditNoteRefunds || []) {
+                refundLedgerCents.set(refund.reference, Math.round(Number(refund.amount) * 100));
+            }
+            // Legacy full reversals predate the partial-refund allocation ledger.
+            if (payment.status === 'REVERSED' && payment.methodType === 'CASH' && (payment.fiscalCreditNoteRefunds || []).length === 0) {
                 refundLedgerCents.set(`REV-PAY-${payment.id}`, Math.round(Number(payment.amount) * 100));
             }
         }
@@ -129,7 +149,7 @@ export class BankReconciliationService {
                 }
             }
 
-            const endAmt = Number(shift.endAmount || 0);
+            const endAmt = this.requireClosedShiftMoney(shift.endAmount, 'efectivo final', shift.id);
             totalCash += endAmt;
 
             const shiftExpectedCash = Number(shift.startAmount) + shiftSalesIn - shiftCashOut;
@@ -160,7 +180,18 @@ export class BankReconciliationService {
                 status: payment.status,
                 collectedAt: payment.createdAt,
                 reversedAt: payment.reversedAt,
-                methodType: payment.methodType
+                methodType: payment.methodType,
+                // New POS refunds are immutable allocations. Only fall back to
+                // the all-or-nothing Payment reversal for legacy rows that have
+                // no allocation lineage, otherwise a final partial would be
+                // subtracted twice.
+                refundCents: (payment.fiscalCreditNoteRefunds || []).length > 0
+                    ? payment.fiscalCreditNoteRefunds
+                        .filter((refund) => inPeriod(refund.createdAt))
+                        .reduce((sum, refund) => sum + Math.round(Number(refund.amount) * 100), 0)
+                    : payment.status === 'REVERSED' && inPeriod(payment.reversedAt)
+                        ? Math.round(Number(payment.amount) * 100)
+                        : 0
             })),
             ...cateringPayments.map((payment) => ({
                 source: 'catering' as const,
@@ -168,14 +199,17 @@ export class BankReconciliationService {
                 status: payment.status,
                 collectedAt: payment.date,
                 reversedAt: payment.reversedAt,
-                methodType: payment.methodType
+                methodType: payment.methodType,
+                refundCents: payment.status === 'REVERSED' && inPeriod(payment.reversedAt)
+                    ? Math.round(Number(payment.amount) * 100)
+                    : 0
             }))
         ];
         const centsFor = (rows: typeof ledger, mode: 'gross' | 'refund') => rows
             .filter((payment) => mode === 'gross'
                 ? inPeriod(payment.collectedAt)
-                : payment.status === 'REVERSED' && inPeriod(payment.reversedAt))
-            .reduce((sum, payment) => sum + Math.round(Number(payment.amount) * 100), 0);
+                : payment.refundCents > 0)
+            .reduce((sum, payment) => sum + (mode === 'gross' ? Math.round(Number(payment.amount) * 100) : payment.refundCents), 0);
         const grossCollectedCents = centsFor(ledger, 'gross');
         const refundedCents = centsFor(ledger, 'refund');
         const grossCollected = grossCollectedCents / 100;
@@ -183,9 +217,7 @@ export class BankReconciliationService {
         totalSales = (grossCollectedCents - refundedCents) / 100;
         for (const payment of ledger) {
             const grossAmount = inPeriod(payment.collectedAt) ? Number(payment.amount) : 0;
-            const refundAmount = payment.status === 'REVERSED' && inPeriod(payment.reversedAt)
-                ? Number(payment.amount)
-                : 0;
+            const refundAmount = payment.refundCents / 100;
             const amount = grossAmount - refundAmount;
             if (payment.methodType === 'CARD') totalsByMethod.card += amount;
             else if (payment.methodType === 'BANK_TRANSFER') totalsByMethod.transfer += amount;
@@ -298,7 +330,9 @@ export class BankReconciliationService {
                 if (shifts.length !== shiftIds.length) throw new Error('Uno o más turnos no existen, pertenecen a otra empresa o continúan abiertos');
                 if (shifts.some((shift) => shift.depositLinks.length > 0)) throw new Error('Uno o más turnos ya están conciliados con un depósito activo');
                 const linkedAmountCents = shifts.reduce(
-                    (sum, shift) => sum + Math.round(Number(shift.endAmount) * 100),
+                    (sum, shift) => sum + Math.round(
+                        this.requireClosedShiftMoney(shift.endAmount, 'efectivo final', shift.id) * 100
+                    ),
                     0
                 );
                 const toleranceCents = Math.round(tolerance * 100);
@@ -350,7 +384,7 @@ export class BankReconciliationService {
         });
 
         return unreconciledShifts.map((shift) => {
-            const diff = Number(shift.difference || 0);
+            const diff = this.requireClosedShiftMoney(shift.difference, 'diferencia de cierre', shift.id);
             let salesTotal = 0;
             let expensesTotal = 0;
 
@@ -364,7 +398,7 @@ export class BankReconciliationService {
             }
 
             const expectedCash = Number(shift.startAmount) + salesTotal - expensesTotal;
-            const actualCash = Number(shift.endAmount || 0);
+            const actualCash = this.requireClosedShiftMoney(shift.endAmount, 'efectivo final', shift.id);
             const cashVariance = Math.round((actualCash - expectedCash) * 100) / 100;
 
             return {
@@ -426,12 +460,16 @@ export class BankReconciliationService {
             if (shifts.some((shift) => shift.depositLinks.length > 0)) throw new Error('Uno o más turnos ya están conciliados');
             const existingShiftIds = new Set(deposit.shifts.map((link) => link.shiftId));
             const existingAmountCents = deposit.shifts.reduce(
-                (sum, link) => sum + Math.round(Number(link.shift.endAmount) * 100),
+                (sum, link) => sum + Math.round(
+                    this.requireClosedShiftMoney(link.shift.endAmount, 'efectivo final', link.shiftId) * 100
+                ),
                 0
             );
             const selectedAmountCents = shifts
                 .filter((shift) => !existingShiftIds.has(shift.id))
-                .reduce((sum, shift) => sum + Math.round(Number(shift.endAmount) * 100), 0);
+                .reduce((sum, shift) => sum + Math.round(
+                    this.requireClosedShiftMoney(shift.endAmount, 'efectivo final', shift.id) * 100
+                ), 0);
             const linkedAmountCents = existingAmountCents + selectedAmountCents;
             const linkedAmount = linkedAmountCents / 100;
             const depositAmountCents = Math.round(Number(deposit.amount) * 100);
@@ -523,8 +561,12 @@ export class BankReconciliationService {
      * Generate reconciliation report
      */
     static async generateReport(companyId: number, month: number, year: number, branchId?: number) {
-        const startDate = new Date(year, month - 1, 1);
-        const endDate = new Date(year, month, 0, 23, 59, 59);
+        const timeZone = await SettingService.getTimezone(companyId);
+        // Noon on the middle of the requested month is safely inside that
+        // calendar month for every IANA offset; bounds are resolved in the
+        // tenant timezone, never in the host/container timezone.
+        const anchor = new Date(Date.UTC(year, month - 1, 15, 12));
+        const { start: startDate, endInclusive: endDate } = getZonedMonthBounds(timeZone, anchor);
 
         const status = await this.getReconciliationStatus(companyId, startDate, endDate, branchId);
 
@@ -534,7 +576,7 @@ export class BankReconciliationService {
                 title: `Reporte de Conciliación - ${month}/${year}`,
                 generatedAt: new Date().toISOString(),
                 summary: `
-                    Período: ${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}
+                    Período: ${zonedDateKey(startDate, timeZone)} - ${zonedDateKey(endDate, timeZone)}
                     Total de Turnos: ${status.shifts}
                     
                     VENTAS POR MÉTODO:

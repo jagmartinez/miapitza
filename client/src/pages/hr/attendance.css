@@ -28,9 +28,6 @@
 .hr-time-clock-action-panel { min-width: 0; }
 .hr-time-clock-action-panel > :is(.hr-punch-actions, .hr-punch-evidence, .hr-punch-result, .hr-biometric-required) { min-height: 100%; box-shadow: var(--shadow-sm); }
 
-.hr-time-clock-page > .my-hr-nav,
-.hr-biometrics-page > .my-hr-nav { margin-bottom: 0; }
-
 .hr-today-summary,
 .hr-punch-actions,
 .hr-punch-evidence,
@@ -278,6 +275,13 @@
 .hr-attendance-alert.warning {
     border-color: rgba(245, 158, 11, .38);
     background: rgba(245, 158, 11, .08);
+}
+
+.hr-attendance-alert.info {
+    border-color: rgba(59, 130, 246, .35);
+    background: rgba(59, 130, 246, .07);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-md);
 }
 
 .hr-challenge-expiry {

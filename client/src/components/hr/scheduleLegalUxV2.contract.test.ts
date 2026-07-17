@@ -11,14 +11,15 @@ const legalStyles = read('../../pages/hr/payroll-legal.css');
 
 describe('RH UX/UI V2 schedule and legal configuration contract', () => {
   it('keeps schedule actions in the filters toolbar without a redundant action bar', () => {
-    expect(schedules).toMatch(/filters-toolbar hr-schedule-filters[\s\S]*filter-actions[\s\S]*Copiar semana[\s\S]*Publicar semana/);
+    expect(schedules).toMatch(/filters-toolbar hr-schedule-filters[\s\S]*filter-actions[\s\S]*Copiar semana[\s\S]*Publicar semana[\s\S]*Cancelar semana/);
+    expect(schedules).toContain('scheduleClient.cancelSchedule');
     expect(schedules).not.toContain('hr-schedule-actions-bar');
     expect(scheduleStyles).not.toContain('hr-schedule-actions-bar');
   });
 
   it('gives schedule selects and wrapped actions practical responsive width', () => {
-    expect(scheduleStyles).toContain('flex: 1 1 270px');
-    expect(scheduleStyles).toContain('max-width: 380px');
+    expect(scheduleStyles).toContain('flex: 1 1 330px');
+    expect(scheduleStyles).toContain('max-width: 440px');
     expect(scheduleStyles).toContain('.hr-schedule-filters .filter-actions');
     expect(scheduleStyles).toContain('flex: 1 1 150px');
   });
@@ -41,5 +42,14 @@ describe('RH UX/UI V2 schedule and legal configuration contract', () => {
     expect(legalStyles).toContain(".hr-legal-settings-page input[type='number']");
     expect(legalStyles).toContain('.hr-legal-ir-readonly-table td:nth-child(n+2)');
     expect(legalStyles).toContain('font-variant-numeric: tabular-nums');
+  });
+
+  it('organizes legal settings as a control center with one selected-version workspace', () => {
+    expect(legalSettings).toContain('hr-legal-command-center');
+    expect(legalSettings).toContain('hr-legal-selected-shell');
+    expect(legalSettings).toContain('hr-legal-selected-aside');
+    expect(legalSettings).toContain('hr-legal-selected-main');
+    expect(legalStyles).toContain('grid-template-columns: minmax(320px, 370px) minmax(0, 1fr)');
+    expect(legalStyles).toContain('.hr-legal-readonly-operational dl');
   });
 });

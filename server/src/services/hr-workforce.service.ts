@@ -11,6 +11,7 @@ import {
     type VacationBalanceUnit,
 } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { scheduledWorkMinutes } from '../utils/hr-shift-minutes';
 import { isValidTimeZone, zonedDateKey, zonedDateTimeToUtc } from '../utils/timezone';
 import { AuditLogService } from './audit-log.service';
 import { availableActionsFrom } from './hr-attendance.service';
@@ -571,7 +572,7 @@ export class AttendanceDerivedService {
         const events = branchId ? allEffective.filter(event => event.branchId === branchId) : allEffective.filter(event => event.branchId === null);
         const worked = deriveWorkedMinutes(events, new Set(shifts.filter(shift => shift.paidBreak).map(shift => shift.id)));
         const scheduledMinutes = shifts.length
-            ? shifts.reduce((total, shift) => total + minutesBetween(shift.startAt, shift.endAt) - (shift.paidBreak ? 0 : shift.breakMinutes), 0)
+            ? shifts.reduce((total, shift) => total + scheduledWorkMinutes(shift), 0)
             : null;
         const shiftAssessments = shifts.map(shift => {
             const shiftEvents = events.filter(event => event.scheduledShiftId === shift.id || (
@@ -812,22 +813,59 @@ export class AttendanceIncidentService {
     }
 }
 
-async function periodWithCounts(id: number, companyId: number) {
+async function periodWithCounts(
+    id: number,
+    companyId: number,
+    scope: { branchId?: number; userId?: number } = {},
+) {
     const period = await prisma.attendancePeriod.findFirst({
         where: { id, companyId }, include: { _count: { select: { summaries: true } } },
     });
     if (!period) return null;
     const instants = periodInstantBounds(period.dateFrom, period.dateTo, period.timezone);
+    const branchId = scope.branchId;
+    const userId = scope.userId;
     const [unresolvedIncidentCount, pendingCorrectionCount, pendingOvertimeCount, pendingLeaveCount] = await Promise.all([
-        prisma.attendanceIncident.count({ where: { companyId, status: 'OPEN', date: { gte: period.dateFrom, lte: period.dateTo } } }),
-        prisma.attendanceCorrection.count({ where: { companyId, status: 'PENDING', OR: [
-            { dailySummary: { date: { gte: period.dateFrom, lte: period.dateTo } } },
-            { requestedOccurredAt: { gte: instants.start, lt: instants.end } },
-        ] } }),
-        prisma.overtimeRequest.count({ where: { companyId, status: 'PENDING', date: { gte: period.dateFrom, lte: period.dateTo } } }),
+        prisma.attendanceIncident.count({ where: {
+            companyId, status: 'OPEN', date: { gte: period.dateFrom, lte: period.dateTo },
+            branchId, userId,
+        } }),
+        prisma.attendanceCorrection.count({ where: {
+            companyId,
+            status: 'PENDING',
+            userId,
+            AND: [
+                {
+                    OR: [
+                        { dailySummary: { date: { gte: period.dateFrom, lte: period.dateTo } } },
+                        { requestedOccurredAt: { gte: instants.start, lt: instants.end } },
+                    ],
+                },
+                ...(branchId ? [{
+                    OR: [
+                        { requestedBranchId: branchId },
+                        { dailySummary: { is: { branchId } } },
+                    ],
+                }] : []),
+            ],
+        } }),
+        prisma.overtimeRequest.count({ where: {
+            companyId,
+            status: 'PENDING',
+            date: { gte: period.dateFrom, lte: period.dateTo },
+            userId,
+            ...(branchId ? {
+                OR: [
+                    { dailySummary: { is: { branchId } } },
+                    { user: employeeBranchScope(branchId, { from: period.dateFrom, to: period.dateTo })! },
+                ],
+            } : {}),
+        } }),
         prisma.leaveRequest.count({ where: {
             companyId,
             status: 'PENDING',
+            branchId,
+            userId,
             startDate: { lte: period.dateTo },
             endDate: { gte: period.dateFrom },
         } }),
@@ -836,7 +874,15 @@ async function periodWithCounts(id: number, companyId: number) {
 }
 
 export class AttendancePeriodService {
-    static async list(companyId: number, filters: { dateFrom?: string; dateTo?: string; status?: string; page?: number; limit?: number }) {
+    static async list(companyId: number, filters: {
+        dateFrom?: string;
+        dateTo?: string;
+        status?: string;
+        branchId?: number;
+        userId?: number;
+        page?: number;
+        limit?: number;
+    }) {
         const current = page(filters);
         const where: Prisma.AttendancePeriodWhereInput = {
             companyId,
@@ -848,7 +894,8 @@ export class AttendancePeriodService {
             prisma.attendancePeriod.findMany({ where, include: { _count: { select: { summaries: true } } }, orderBy: { dateFrom: 'desc' }, skip: current.skip, take: current.limit }),
             prisma.attendancePeriod.count({ where }),
         ]);
-        const items = await Promise.all(periods.map(period => periodWithCounts(period.id, companyId)));
+        const scope = { branchId: filters.branchId, userId: filters.userId };
+        const items = await Promise.all(periods.map(period => periodWithCounts(period.id, companyId, scope)));
         return { items: items.filter(Boolean), pagination: pagination(total, current) };
     }
 
@@ -1455,7 +1502,82 @@ function fractionValue(value: unknown): LeaveFraction {
     return fraction;
 }
 
-export function leaveAmount(from: Date, to: Date, fraction: LeaveFraction, startTime: string | null, endTime: string | null, unit: VacationBalanceUnit): number {
+export type LeaveUnitMinutes = {
+    dayMinutes: number;
+    hourMinutes: number;
+};
+
+/** Defaults match historical ledger and typical payroll paidLeaveUnitMinutes.DAYS/HOURS. */
+export const DEFAULT_LEAVE_UNIT_MINUTES: LeaveUnitMinutes = { dayMinutes: 480, hourMinutes: 60 };
+
+async function leaveUnitMinutesForCompany(companyId: number, asOf: Date, db: Db = prisma): Promise<LeaveUnitMinutes> {
+    const rule = await db.payrollRuleVersion.findFirst({
+        where: {
+            companyId,
+            status: 'ACTIVE',
+            effectiveFrom: { lte: asOf },
+            OR: [{ effectiveTo: null }, { effectiveTo: { gte: asOf } }],
+        },
+        include: { activeConfigurationRevision: { select: { configuration: true } } },
+        orderBy: { effectiveFrom: 'desc' },
+    });
+    const config = rule?.activeConfigurationRevision?.configuration;
+    if (!config || typeof config !== 'object' || Array.isArray(config)) return DEFAULT_LEAVE_UNIT_MINUTES;
+    const regular = (config as { regular?: { paidLeaveUnitMinutes?: Record<string, unknown> } }).regular;
+    const units = regular?.paidLeaveUnitMinutes;
+    const dayRaw = Number(units?.DAYS);
+    const hourRaw = Number(units?.HOURS);
+    if (!Number.isFinite(dayRaw) || dayRaw <= 0 || !Number.isFinite(hourRaw) || hourRaw <= 0) {
+        return DEFAULT_LEAVE_UNIT_MINUTES;
+    }
+    return { dayMinutes: dayRaw, hourMinutes: hourRaw };
+}
+
+async function resolveLeaveBranchId(companyId: number, userId: number, asOf: Date, fallbackBranchId: number | null, db: Db = prisma): Promise<number | null> {
+    const assignment = await db.employeeBranchAssignment.findFirst({
+        where: {
+            companyId,
+            employee: { companyId, userId },
+            effectiveFrom: { lte: asOf },
+            OR: [{ effectiveTo: null }, { effectiveTo: { gte: asOf } }],
+        },
+        orderBy: [{ isPrimary: 'desc' }, { effectiveFrom: 'desc' }],
+        select: { branchId: true },
+    });
+    return assignment?.branchId ?? fallbackBranchId;
+}
+
+export function employeeBranchScope(
+    branchId: number | undefined,
+    effective: { from: Date; to?: Date },
+): Prisma.UserWhereInput | undefined {
+    if (!branchId) return undefined;
+    const effectiveTo = effective.to ?? effective.from;
+    return {
+        employee: {
+            branchAssignments: {
+                some: {
+                    branchId,
+                    effectiveFrom: { lte: effectiveTo },
+                    OR: [{ effectiveTo: null }, { effectiveTo: { gte: effective.from } }],
+                },
+            },
+        },
+    };
+}
+
+export function leaveAmount(
+    from: Date,
+    to: Date,
+    fraction: LeaveFraction,
+    startTime: string | null,
+    endTime: string | null,
+    unit: VacationBalanceUnit,
+    units: LeaveUnitMinutes = DEFAULT_LEAVE_UNIT_MINUTES,
+): number {
+    const dayMinutes = units.dayMinutes;
+    const hourMinutes = units.hourMinutes;
+    const halfDayMinutes = dayMinutes / 2;
     const days = dateRangeKeys(from, to).length;
     let workDays: number;
     if (fraction === 'FULL_DAY') workDays = days;
@@ -1465,9 +1587,9 @@ export function leaveAmount(from: Date, to: Date, fraction: LeaveFraction, start
         }
         const [startH, startM] = startTime.split(':').map(Number);
         const [endH, endM] = endTime.split(':').map(Number);
-        const halfDayMinutes = endH * 60 + endM - (startH * 60 + startM);
-        if (halfDayMinutes !== 240) {
-            throw new HrWorkforceError('HALF_DAY debe indicar un intervalo exacto de 4 horas');
+        const intervalMinutes = endH * 60 + endM - (startH * 60 + startM);
+        if (intervalMinutes !== halfDayMinutes) {
+            throw new HrWorkforceError(`HALF_DAY debe indicar un intervalo exacto de ${halfDayMinutes} minutos`);
         }
         workDays = days * 0.5;
     } else {
@@ -1480,12 +1602,12 @@ export function leaveAmount(from: Date, to: Date, fraction: LeaveFraction, start
         const minutes = endH * 60 + endM - (startH * 60 + startM);
         if (minutes <= 0) throw new HrWorkforceError('endTime debe ser posterior a startTime');
         if (unit === 'MINUTES') return minutes;
-        if (unit === 'HOURS') return minutes / 60;
-        return minutes / 480;
+        if (unit === 'HOURS') return minutes / hourMinutes;
+        return minutes / dayMinutes;
     }
     if (unit === 'DAYS') return workDays;
-    if (unit === 'HOURS') return workDays * 8;
-    return workDays * 480;
+    if (unit === 'HOURS') return workDays * (dayMinutes / hourMinutes);
+    return workDays * dayMinutes;
 }
 
 function leaveRequestsOverlap(left: {
@@ -1623,7 +1745,8 @@ export class LeaveRequestService {
         const fraction = fractionValue(body.fraction);
         const startTime = optionalText(body.startTime, 5);
         const endTime = optionalText(body.endTime, 5);
-        const requestedAmount = leaveAmount(startDate, endDate, fraction, startTime, endTime, leaveType.unit);
+        const leaveUnits = await leaveUnitMinutesForCompany(companyId, startDate);
+        const requestedAmount = leaveAmount(startDate, endDate, fraction, startTime, endTime, leaveType.unit, leaveUnits);
         const reason = requiredText(body.reason, 'reason');
         await assertDatesOpen(companyId, startDate, endDate);
         const created = await prisma.$transaction(async tx => {
@@ -1633,8 +1756,9 @@ export class LeaveRequestService {
                 // accrue/adjust the balance without inventing a generic bucket.
                 await ensureBalance(companyId, userId, leaveTypeId, leaveType.unit, startDate, tx);
             }
+            const branchId = await resolveLeaveBranchId(companyId, userId, startDate, user.branchId, tx);
             const request = await tx.leaveRequest.create({ data: {
-                companyId, userId, branchId: user.branchId, leaveTypeId, startDate, endDate, fraction,
+                companyId, userId, branchId, leaveTypeId, startDate, endDate, fraction,
                 startTime, endTime, requestedAmount, balanceUnit: leaveType.unit, reason,
                 status: 'DRAFT', requestedById: actorId,
             }, include: leaveRequestInclude });
@@ -1816,10 +1940,13 @@ function vacationLedgerApi(entry: Prisma.VacationLedgerEntryGetPayload<Record<st
 export class VacationService {
     static async listBalances(companyId: number, filters: { userId?: number; branchId?: number; page?: number; limit?: number }) {
         const current = page(filters);
+        // Balances are a current snapshot, so branch membership is evaluated at
+        // today's date boundary (not at an implicit clock read inside the scope helper).
+        const asOf = dateValue(dateKey(new Date()), 'asOf');
         const where: Prisma.VacationBalanceWhereInput = {
             companyId,
             userId: filters.userId,
-            user: filters.branchId ? { branchId: filters.branchId } : undefined,
+            user: employeeBranchScope(filters.branchId, { from: asOf }),
         };
         const [balances, total] = await Promise.all([
             prisma.vacationBalance.findMany({
@@ -1878,13 +2005,38 @@ export class VacationService {
         limit?: number;
     }) {
         const current = page(filters);
+        const dateFrom = filters.dateFrom ? dateValue(filters.dateFrom, 'dateFrom') : new Date('1970-01-01T00:00:00.000Z');
+        const dateTo = filters.dateTo ? dateValue(filters.dateTo, 'dateTo') : new Date('9999-12-31T00:00:00.000Z');
+        let branchWindows: Prisma.VacationLedgerEntryWhereInput[] | undefined;
+        if (filters.branchId) {
+            const assignments = await prisma.employeeBranchAssignment.findMany({
+                where: {
+                    companyId,
+                    branchId: filters.branchId,
+                    effectiveFrom: { lte: dateTo },
+                    OR: [{ effectiveTo: null }, { effectiveTo: { gte: dateFrom } }],
+                },
+                select: {
+                    effectiveFrom: true,
+                    effectiveTo: true,
+                    employee: { select: { userId: true } },
+                },
+            });
+            branchWindows = assignments.map((assignment) => ({
+                userId: assignment.employee.userId,
+                effectiveDate: {
+                    gte: assignment.effectiveFrom > dateFrom ? assignment.effectiveFrom : dateFrom,
+                    lte: assignment.effectiveTo && assignment.effectiveTo < dateTo ? assignment.effectiveTo : dateTo,
+                },
+            }));
+        }
         const where: Prisma.VacationLedgerEntryWhereInput = {
             companyId,
             userId: filters.userId,
-            user: filters.branchId ? { branchId: filters.branchId } : undefined,
+            ...(branchWindows ? { OR: branchWindows } : {}),
             effectiveDate: {
-                gte: filters.dateFrom ? dateValue(filters.dateFrom, 'dateFrom') : undefined,
-                lte: filters.dateTo ? dateValue(filters.dateTo, 'dateTo') : undefined,
+                gte: filters.dateFrom ? dateFrom : undefined,
+                lte: filters.dateTo ? dateTo : undefined,
             },
         };
         const [items, total] = await Promise.all([

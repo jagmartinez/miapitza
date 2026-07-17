@@ -3,8 +3,10 @@ import type { CateringPaymentType, Prisma } from '@prisma/client';
 import { CateringStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { getErrorMessage } from '../utils/error';
+import { getZonedDayBounds, isValidTimeZone, zonedDateKey } from '../utils/timezone';
 import { UnitConversionService } from './unit-conversion.service';
 import { InventoryEngineService } from './inventory-engine.service';
+import { DEFAULT_COMPANY_SETTINGS, SettingService } from './setting.service';
 
 export interface CateringServiceLineDto {
     cateringServiceId: number | string;
@@ -46,6 +48,22 @@ export const CATERING_STATUS_TRANSITIONS: Record<CateringStatus, readonly Cateri
     FINISHED: [],
     CANCELLED: [],
 };
+
+function decomposeTaxInclusiveGross(gross: Decimal, settings: Record<string, string>) {
+    const configured = Number.parseFloat(settings.tax_rate || settings.taxRate || '');
+    const fallback = Number(DEFAULT_COMPANY_SETTINGS.tax_rate);
+    const taxRatePercent = Number.isFinite(configured) ? configured : fallback;
+    if (!Number.isFinite(taxRatePercent) || taxRatePercent < 0 || taxRatePercent > 100) {
+        throw new Error('La tasa fiscal de Catering no es válida');
+    }
+    const subtotal = gross.div(new Decimal(1).add(new Decimal(taxRatePercent).div(100))).toDecimalPlaces(2);
+    return {
+        fiscalSubtotal: subtotal,
+        fiscalTax: gross.sub(subtotal).toDecimalPlaces(2),
+        fiscalTaxRatePercent: new Decimal(taxRatePercent),
+        pricingSnapshotCapturedAt: new Date()
+    };
+}
 
 export class CateringService {
     private static async convertRecipeQuantityToBase(
@@ -116,7 +134,9 @@ export class CateringService {
                 },
                 payments: {
                     include: { paymentMethod: true }
-                }
+                },
+                fiscalInvoice: { select: { number: true, status: true, issuedAt: true } },
+                fiscalCreditNote: { select: { number: true, status: true, issuedAt: true, reason: true } }
             }
         });
 
@@ -261,6 +281,8 @@ export class CateringService {
             clauses: eventData.clauses
         };
 
+        const fiscalPricing = decomposeTaxInclusiveGross(totalAmount, await SettingService.getAll(companyId));
+
         try {
             // Create the event and (if it starts FINISHED) deduct inventory in the
             // SAME transaction so a deduction failure rolls back the event.
@@ -279,6 +301,7 @@ export class CateringService {
                         customer: customerId ? { connect: { id: customerId } } : undefined,
                         totalAmount,
                         balance: totalAmount,
+                        ...fiscalPricing,
                         services: { create: servicesToCreate },
                         menuItems: { create: menuItemsToCreate },
                         date: eventDate
@@ -344,7 +367,11 @@ export class CateringService {
                 customerId: true,
                 services: { select: { subtotal: true } },
                 menuItems: { select: { subtotal: true, menuItemId: true } },
-                payments: { select: { status: true } }
+                payments: { select: { status: true } },
+                fiscalSubtotal: true,
+                fiscalTax: true,
+                fiscalTaxRatePercent: true,
+                pricingSnapshotCapturedAt: true
             }
         });
 
@@ -364,6 +391,15 @@ export class CateringService {
             if (data.status !== 'FINISHED' || keys.some((key) => key !== 'status' && key !== 'warehouseId')) {
                 throw new Error('Un evento pagado solo puede marcarse como finalizado');
             }
+        }
+        // Fast fail before resolving foreign keys or mutable fiscal settings.
+        // The transaction repeats this check under lock to close the race where
+        // a payment is posted immediately after this snapshot.
+        if (
+            (services !== undefined || menuItems !== undefined)
+            && oldEvent.payments.some((payment) => payment.status === 'ACTIVE')
+        ) {
+            throw new Error('No se pueden modificar conceptos o totales de un evento con pagos activos; revierta los pagos primero');
         }
 
         // Validate status transition if status is changing
@@ -465,6 +501,9 @@ export class CateringService {
         for (const field of ['title', 'peopleCount', 'status', 'location', 'notes', 'clauses'] as const) {
             if (eventData[field] !== undefined) cleanEventData[field] = eventData[field];
         }
+        const fiscalPricing = services !== undefined || menuItems !== undefined
+            ? decomposeTaxInclusiveGross(totalAmount, await SettingService.getAll(companyId))
+            : null;
 
         try {
             const updatedEvent = await prisma.$transaction(async (tx) => {
@@ -494,6 +533,7 @@ export class CateringService {
                 const updateData = {
                     ...cleanEventData,
                     totalAmount,
+                    ...(fiscalPricing || {}),
                     updatedAt: new Date()
                 } as Prisma.CateringEventUpdateInput;
 
@@ -577,7 +617,9 @@ export class CateringService {
             }
         });
 
-        if (!event) return;
+        if (!event) {
+            throw new Error('Evento de catering no encontrado para descontar inventario');
+        }
 
         // IDEMPOTENCY GUARD: skip when this event's stock is already deducted.
         // Mirrors order consumption: net = OUT - reversal IN for the stable ref.
@@ -600,6 +642,13 @@ export class CateringService {
         });
 
         if (!warehouse) throw new Error('No se encontró almacén para la deducción de inventario');
+
+        const productIds = [...new Set(event.menuItems.flatMap((line) =>
+            line.menuItem.recipes.map((recipe) => recipe.productId)
+        ))].sort((a, b) => a - b);
+        for (const productId of productIds) {
+            await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${productId} AND companyId = ${companyId} FOR UPDATE`;
+        }
 
         for (const cMenuItem of event.menuItems) {
             for (const recipe of cMenuItem.menuItem.recipes) {
@@ -699,7 +748,8 @@ export class CateringService {
                 include: {
                     payments: {
                         include: { paymentMethod: { select: { type: true } } }
-                    }
+                    },
+                    fiscalInvoice: { select: { status: true } }
                 }
             });
 
@@ -869,7 +919,8 @@ export class CateringService {
                 include: {
                     payments: {
                         include: { paymentMethod: { select: { type: true } } }
-                    }
+                    },
+                    fiscalInvoice: { select: { status: true } }
                 }
             });
 
@@ -879,6 +930,9 @@ export class CateringService {
                 select: { id: true }
             });
             if (!actor) throw new Error('Usuario no válido para esta empresa');
+            if (event.fiscalInvoice) {
+                throw new Error('Una factura fiscal emitida solo puede revertirse mediante nota de crédito total');
+            }
             if (event.status === 'FINISHED') {
                 throw new Error('No se puede revertir un pago de un evento finalizado');
             }
@@ -952,6 +1006,97 @@ export class CateringService {
         });
     }
 
+    /**
+     * Transactional payment leg used exclusively by a full Catering fiscal
+     * credit note. The caller owns the event lock and the surrounding DB
+     * transaction; no payment can be left refunded without its fiscal document.
+     */
+    static async reverseAllPaymentsForFiscalCredit(
+        tx: Prisma.TransactionClient,
+        params: {
+            eventId: number;
+            companyId: number;
+            userId: number;
+            creditNoteNumber: string;
+            reason: string;
+            externalRefunds: Array<{ paymentId: number; reference: string }>;
+        }
+    ): Promise<Array<{
+        paymentId: number;
+        methodType: 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'OTHER';
+        amount: number;
+        reference: string;
+    }>> {
+        const event = await tx.cateringEvent.findFirst({
+            where: { id: params.eventId, companyId: params.companyId },
+            include: { payments: { where: { status: 'ACTIVE' }, orderBy: { id: 'asc' } } }
+        });
+        if (!event) throw new Error('Catering event not found');
+        if (event.payments.length === 0) throw new Error('La factura de catering no tiene pagos activos para reembolsar');
+
+        const refundMap = new Map(params.externalRefunds.map((refund) => [refund.paymentId, refund.reference]));
+        const nonCash = event.payments.filter((payment) => payment.methodType !== 'CASH');
+        for (const payment of nonCash) {
+            if (!refundMap.get(payment.id)) {
+                throw new Error(`Registre la referencia del reembolso externo para el pago #${payment.id}`);
+            }
+        }
+        if ([...refundMap.keys()].some((paymentId) => !nonCash.some((payment) => payment.id === paymentId))) {
+            throw new Error('Se recibió una referencia para un pago que no está activo o es efectivo');
+        }
+
+        const refunds: Array<{
+            paymentId: number;
+            methodType: 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'OTHER';
+            amount: number;
+            reference: string;
+        }> = [];
+        for (const payment of event.payments) {
+            let reference: string;
+            if (payment.methodType === 'CASH') {
+                await this.assertCashPaymentLedger(tx, {
+                    paymentId: payment.id,
+                    amount: payment.amount,
+                    companyId: params.companyId,
+                    branchId: event.branchId,
+                    expectCompensation: false
+                });
+                const shiftId = await this.lockActorCashShift(tx, {
+                    companyId: params.companyId,
+                    branchId: event.branchId,
+                    userId: params.userId,
+                    action: 'reverso'
+                });
+                reference = `REV-CAT-PAY-${payment.id}`;
+                await tx.cashMovement.create({ data: {
+                    shiftId,
+                    type: 'OUT',
+                    amount: payment.amount,
+                    description: `Nota de crédito ${params.creditNoteNumber} / Catering #${event.id}`,
+                    reference
+                } });
+            } else {
+                reference = refundMap.get(payment.id)!;
+            }
+            await tx.cateringPayment.update({
+                where: { id: payment.id },
+                data: {
+                    status: 'REVERSED',
+                    reversedAt: new Date(),
+                    reversedById: params.userId,
+                    reversalReason: `Nota de crédito ${params.creditNoteNumber}: ${params.reason}`
+                }
+            });
+            refunds.push({
+                paymentId: payment.id,
+                methodType: payment.methodType,
+                amount: Number(payment.amount),
+                reference
+            });
+        }
+        return refunds;
+    }
+
     private static async assertCashPaymentLedger(
         tx: Prisma.TransactionClient,
         params: {
@@ -1019,7 +1164,7 @@ export class CateringService {
                 endDate: null,
                 cashRegister: { branchId: params.branchId }
             },
-            select: { id: true }
+            select: { id: true, startDate: true }
         });
         if (!shift) {
             throw new Error(`Debe abrir un turno de caja en la sucursal del evento para registrar el ${params.action} en efectivo`);
@@ -1034,10 +1179,24 @@ export class CateringService {
                 endDate: null,
                 cashRegister: { branchId: params.branchId }
             },
-            select: { id: true }
+            select: { id: true, startDate: true }
         });
         if (!locked) {
             throw new Error(`El turno de caja fue cerrado durante el ${params.action}; vuelva a intentarlo`);
+        }
+        const settingName = `${params.companyId}_timezone`;
+        const setting = await tx.setting.findUnique({
+            where: { companyId_name: { companyId: params.companyId, name: settingName } },
+            select: { value: true }
+        });
+        const configuredTimezone = setting?.value?.trim();
+        const timezone = configuredTimezone && isValidTimeZone(configuredTimezone)
+            ? configuredTimezone
+            : DEFAULT_COMPANY_SETTINGS.timezone;
+        if (zonedDateKey(new Date(locked.startDate), timezone) !== zonedDateKey(new Date(), timezone)) {
+            throw new Error(
+                `Tiene un turno de caja de un día anterior; ciérrelo y abra uno nuevo antes de registrar el ${params.action} en efectivo`
+            );
         }
         return locked.id;
     }
@@ -1101,17 +1260,18 @@ export class CateringService {
     // Inventory check (Opportunity Cost)
     static async checkResourceAvailability(date: Date, companyId: number, branchId?: number) {
         if (Number.isNaN(date.getTime())) throw new Error('Fecha inválida');
-        const startOfDay = new Date(date);
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(date);
-        endOfDay.setHours(23, 59, 59, 999);
+        const timeZone = await SettingService.getTimezone(companyId);
+        const { start: startOfDay, endInclusive: endOfDay } = getZonedDayBounds(timeZone, date);
 
         const eventsOnDate = await prisma.cateringEvent.findMany({
             where: {
                 companyId,
                 ...(branchId ? { branchId } : {}),
                 date: { gte: startOfDay, lte: endOfDay },
-                status: { not: 'CANCELLED' }
+                // Forecast only demand that has not been physically consumed.
+                // FINISHED events already posted their inventory OUT movements;
+                // counting them again would double the requirement for the day.
+                status: { notIn: ['CANCELLED', 'FINISHED'] }
             },
             include: {
                 menuItems: {
@@ -1163,12 +1323,13 @@ export class CateringService {
             const totalStock = stocks.reduce((acc, s) => acc.add(new Decimal(s.quantity)), new Decimal(0));
 
             if (totalStock.lt(req.quantity)) {
+                const deficit = req.quantity.sub(totalStock);
                 alerts.push({
                     productId,
                     productName: req.name,
-                    required: req.quantity,
-                    available: totalStock,
-                    deficit: req.quantity.sub(totalStock)
+                    required: Number(req.quantity.toFixed(4)),
+                    available: Number(totalStock.toFixed(4)),
+                    deficit: Number(deficit.toFixed(4))
                 });
             }
         }

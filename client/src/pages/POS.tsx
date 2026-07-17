@@ -73,12 +73,17 @@ interface Brand {
 }
 
 interface POSSettings {
+    tax_rate?: string;
     taxRate?: string;
     tipRate?: string;
     tipEnabled?: string;
     currency_symbol?: string;
     enablePromotions?: string;
     [key: string]: string | undefined;
+}
+
+function resolveConfiguredTaxRate(settings: POSSettings): number {
+    return parseFloat(settings.tax_rate || settings.taxRate || '0');
 }
 
 interface FiscalCustomerForm {
@@ -694,7 +699,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                     Math.max(0, requestedDiscountOverride ?? (refreshedSubtotal * (requestedDiscountPercent / 100))),
                     refreshedSubtotal
                 );
-                const taxRate = parseFloat(settings.taxRate || '0');
+                const taxRate = resolveConfiguredTaxRate(settings);
                 const computedTax = Math.max(0, (refreshedSubtotal - computedDiscount) * (taxRate / 100));
                 const computedTipRate = parseFloat(settings.tipRate || '0');
                 const computedTip = requestedTipApplied
@@ -776,7 +781,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                     Math.max(0, requestedDiscountOverride ?? (refreshedSubtotal * (requestedDiscountPercent / 100))),
                     refreshedSubtotal
                 );
-                const taxRate = parseFloat(settings.taxRate || '0');
+                const taxRate = resolveConfiguredTaxRate(settings);
                 const computedTax = Math.max(0, (refreshedSubtotal - computedDiscount) * (taxRate / 100));
                 const computedTipRate = parseFloat(settings.tipRate || '0');
                 const computedTip = tipApplied ? Math.max(0, (refreshedSubtotal - computedDiscount) * (computedTipRate / 100)) : 0;
@@ -985,7 +990,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         Math.max(0, discountAmountOverride ?? (subtotal * (discount / 100))),
         subtotal
     );
-    const taxAmount = (subtotal - discountAmount) * (parseFloat(settings.taxRate || '0') / 100);
+    const taxAmount = (subtotal - discountAmount) * (resolveConfiguredTaxRate(settings) / 100);
     const tipRate = parseFloat(settings.tipRate || '0');
     const tipAmount = tipApplied ? (subtotal - discountAmount) * (tipRate / 100) : 0;
     const total = subtotal - discountAmount + taxAmount + tipAmount;
@@ -1266,7 +1271,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                     <OrderCart
                         cart={cart}
                         discount={discount}
-                        taxRate={parseFloat(settings.taxRate || '0')}
+                        taxRate={resolveConfiguredTaxRate(settings)}
                         tipRate={tipRate}
                         tipEnabled={tipApplied}
                         onUpdateQuantity={updateQuantity}

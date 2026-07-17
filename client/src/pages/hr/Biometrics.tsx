@@ -200,8 +200,7 @@ export default function Biometrics() {
 
     return (
         <div className="page-wrapper hr-biometrics-page my-hr-page">
-            <MyHrNav />
-            <PageHeader className="my-hr-page-header" title="Mi biometría" subtitle="Controla tu consentimiento y completa el enrolamiento de forma segura" icon={Fingerprint} />
+            <PageHeader className="my-hr-page-header" title="Mi biometría" subtitle="Controla tu consentimiento y completa el enrolamiento de forma segura" icon={Fingerprint} actions={<MyHrNav />} />
             {!online && <OnlineOnlyNotice online={false} />}
 
             {loading && <LoadingSpinner text="Cargando estado biométrico…" />}

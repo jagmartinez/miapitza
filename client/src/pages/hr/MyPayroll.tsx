@@ -101,12 +101,12 @@ export default function MyPayroll() {
 
   return (
     <div className="page-wrapper hr-payroll-page hr-my-payroll-page my-hr-page">
-      <MyHrNav />
       <PageHeader
         className="my-hr-page-header"
         title="Mis recibos"
         subtitle="Consulta y descarga el desglose exacto publicado por nómina"
         icon={WalletCards}
+        actions={<MyHrNav />}
       />
 
       {!online && <PayrollOnlineNotice online={false} />}

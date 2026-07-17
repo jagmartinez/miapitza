@@ -79,7 +79,8 @@ export class WasteReportService {
                 originalQuantity,
                 originalUnit,
                 conversionFactor,
-                productName: product.name
+                productName: product.name,
+                origin: 'WASTE'
             });
 
             return await tx.inventoryMovement.findUnique({ where: { id: result.movementId } });
@@ -96,9 +97,15 @@ export class WasteReportService {
         productId?: number;
         branchId?: number;
     }) {
+        const wasteOrigin: Prisma.InventoryMovementWhereInput = {
+            OR: [{ origin: 'WASTE' }, { reason: { startsWith: 'WASTE:' } }]
+        };
         const where: Prisma.InventoryMovementWhereInput = {
-            companyId, // Multi-tenant filter
-            reason: { startsWith: 'WASTE:' }
+            companyId,
+            OR: [
+                wasteOrigin,
+                { origin: 'REVERSAL', reversalOf: wasteOrigin }
+            ]
         };
 
         if (filters.warehouseId) {
@@ -130,34 +137,43 @@ export class WasteReportService {
                     }
                 },
                 warehouse: { select: { name: true } },
-                user: { select: { name: true } }
+                user: { select: { name: true } },
+                reversalOf: { select: { id: true, reason: true, origin: true } }
             },
             orderBy: { createdAt: 'desc' }
         });
 
-        // Value each waste line at its REAL base-unit cost. Prefer the cost the
-        // engine stored on the movement at OUT time; fall back to the product's
-        // current average cost and only then to the legacy `cost` field.
+        // Value each waste line at its immutable movement-time cost. A persisted
+        // zero is valid. Live product averages/reference costs are not historical
+        // evidence and must never be substituted for a legacy row with no cost.
         const lineCost = (m: (typeof movements)[number]): number => {
-            if (m.totalCost != null) return Number(m.totalCost);
-            const unitCost = Number(m.unitCost ?? m.product?.currentAverageCost ?? m.product?.cost ?? 0);
-            return Number(m.quantity) * unitCost;
+            const total = m.totalCost == null ? null : Number(m.totalCost);
+            if (total != null && Number.isFinite(total) && total >= 0) return total;
+            const unit = m.unitCost == null ? null : Number(m.unitCost);
+            const quantity = Number(m.quantity);
+            if (unit != null && Number.isFinite(unit) && unit >= 0 && Number.isFinite(quantity)) {
+                return quantity * unit;
+            }
+            throw new Error(
+                `La merma ${m.id} no tiene costo histórico total ni unitario íntegro; requiere remediación antes de reportar`
+            );
         };
 
         const movementUnit = (m: (typeof movements)[number]): string =>
             m.product?.baseUnit?.abbreviation || m.product?.unit || '';
         const movementReason = (m: (typeof movements)[number]): string =>
-            (m.reason ?? '').replace(/^WASTE:\s*/, '');
+            (m.reversalOf?.reason ?? m.reason ?? '').replace(/^WASTE:\s*/, '');
+        const sign = (m: (typeof movements)[number]): 1 | -1 => m.reversalOfId == null ? 1 : -1;
 
         // Quantities of different dimensions are never added together.  A report
         // containing 2 kg and 3 L must expose two physical totals, not "5 units".
         const quantityByUnitMap = new Map<string, number>();
         for (const movement of movements) {
             const unit = movementUnit(movement);
-            quantityByUnitMap.set(unit, (quantityByUnitMap.get(unit) || 0) + Number(movement.quantity));
+            quantityByUnitMap.set(unit, (quantityByUnitMap.get(unit) || 0) + sign(movement) * Number(movement.quantity));
         }
         const quantities = Array.from(quantityByUnitMap, ([unit, quantity]) => ({ unit, quantity }));
-        const totalCost = movements.reduce((sum, m) => sum + lineCost(m), 0);
+        const totalCost = movements.reduce((sum, m) => sum + sign(m) * lineCost(m), 0);
 
         type ReasonAgg = { reason: string; unit: string; count: number; quantity: number; cost: number };
         // Group by reason AND physical unit. This keeps every subtotal meaningful.
@@ -169,15 +185,17 @@ export class WasteReportService {
                 acc.set(key, { reason, unit, count: 0, quantity: 0, cost: 0 });
             }
             const row = acc.get(key)!;
-            row.count++;
-            row.quantity += Number(m.quantity);
-            row.cost += lineCost(m);
+            row.count += sign(m);
+            row.quantity += sign(m) * Number(m.quantity);
+            row.cost += sign(m) * lineCost(m);
             return acc;
         }, new Map<string, ReasonAgg>());
 
         return {
             summary: {
-                totalEntries: movements.length,
+                totalEntries: movements.filter((movement) => movement.reversalOfId == null).length,
+                reversedEntries: movements.filter((movement) => movement.reversalOfId != null).length,
+                netEntries: movements.reduce((sum, movement) => sum + sign(movement), 0),
                 quantities,
                 totalCost: Math.round(totalCost * 100) / 100
             },
@@ -189,13 +207,15 @@ export class WasteReportService {
                 id: m.id,
                 date: m.createdAt,
                 product: m.product?.name,
-                quantity: Number(m.quantity),
+                quantity: sign(m) * Number(m.quantity),
                 unit: movementUnit(m),
-                cost: Math.round(lineCost(m) * 100) / 100,
+                cost: Math.round(sign(m) * lineCost(m) * 100) / 100,
                 reason: movementReason(m),
                 reference: m.reference,
                 warehouse: m.warehouse?.name,
-                user: m.user?.name
+                user: m.user?.name,
+                reversalOfId: m.reversalOfId,
+                entryType: m.reversalOfId == null ? 'WASTE' : 'REVERSAL'
             }))
         };
     }

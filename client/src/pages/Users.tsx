@@ -91,7 +91,7 @@ export default function Users() {
             const [usersRes, branchesRes, rolesRes] = await Promise.all([
                 usersAPI.getAll(isSuperAdmin ? { companyId } : undefined),
                 branchesAPI.getAll(isSuperAdmin ? { companyId } : undefined),
-                rolesAPI.getAll()
+                rolesAPI.getAll(isSuperAdmin ? { companyId } : undefined)
             ]);
             setUsers(usersRes.data.data);
             setBranches(branchesRes.data.data);

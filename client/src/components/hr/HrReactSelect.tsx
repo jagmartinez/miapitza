@@ -23,6 +23,7 @@ interface HrReactSelectProps {
   className?: string;
   disabled?: boolean;
   required?: boolean;
+  isSearchable?: boolean;
   'aria-label'?: string;
 }
 
@@ -54,6 +55,7 @@ export default function HrReactSelect({
   className = '',
   disabled = false,
   required = false,
+  isSearchable,
   'aria-label': ariaLabel,
 }: HrReactSelectProps) {
   const options = optionsOf(children);
@@ -77,7 +79,7 @@ export default function HrReactSelect({
       value={selected}
       onChange={(option) => emitChange(option?.value ?? '')}
       isDisabled={disabled}
-      isSearchable={options.length > 8}
+      isSearchable={isSearchable ?? options.length > 8}
       isOptionDisabled={(option) => Boolean(option.isDisabled)}
       required={required}
     />

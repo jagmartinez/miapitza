@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Calendar, Users, Phone, Plus, CheckCircle, XCircle, Mail, MessageSquare, Grid3x3, CalendarDays, ChevronLeft, ChevronRight, List, Edit2 } from 'lucide-react';
+import { Calendar, Users, Phone, Plus, CheckCircle, XCircle, Mail, MessageSquare, Grid3x3, CalendarDays, ChevronLeft, ChevronRight, List, Edit2, UserX } from 'lucide-react';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
@@ -82,10 +82,11 @@ export default function Reservations() {
             setReservations(response.data.data);
         } catch (error) {
             console.error('Error loading reservations:', error);
+            showError('No se pudieron cargar las reservaciones.');
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [showError]);
 
     useEffect(() => {
         loadReservations();
@@ -153,6 +154,11 @@ export default function Reservations() {
         }
         if (status === 'CANCELLED') {
             if (!(await confirm('¿Cancelar esta reservación?', { variant: 'warning', confirmText: 'Sí, cancelar' }))) {
+                return;
+            }
+        }
+        if (status === 'NO_SHOW') {
+            if (!(await confirm('¿Marcar esta reservación como no asistió?', { variant: 'warning', confirmText: 'Sí, no asistió' }))) {
                 return;
             }
         }
@@ -474,6 +480,12 @@ export default function Reservations() {
                         >
                             Canceladas
                         </button>
+                        <button
+                            className={`filter-btn cancelled ${filterStatus === 'NO_SHOW' ? 'active' : ''}`}
+                            onClick={() => setFilterStatus('NO_SHOW')}
+                        >
+                            No asistió
+                        </button>
                     </div>
 
                     {/* Stats and Search */}
@@ -771,6 +783,13 @@ export default function Reservations() {
                                                 </button>
                                                 <button
                                                     className="action-btn-new delete"
+                                                    onClick={() => handleUpdateStatus(reservation.id, 'NO_SHOW')}
+                                                    title="No asistió"
+                                                >
+                                                    <UserX size={20} />
+                                                </button>
+                                                <button
+                                                    className="action-btn-new delete"
                                                     onClick={() => handleUpdateStatus(reservation.id, 'CANCELLED')}
                                                     title="Cancelar"
                                                 >
@@ -846,6 +865,9 @@ export default function Reservations() {
                                             <>
                                                 <button className="catalog-action-btn" onClick={() => handleUpdateStatus(r.id, 'COMPLETED')} title="Completar">
                                                     <Users size={16} />
+                                                </button>
+                                                <button className="catalog-action-btn danger" onClick={() => handleUpdateStatus(r.id, 'NO_SHOW')} title="No asistió">
+                                                    <UserX size={16} />
                                                 </button>
                                                 <button className="catalog-action-btn danger" onClick={() => handleUpdateStatus(r.id, 'CANCELLED')} title="Cancelar">
                                                     <XCircle size={16} />
@@ -1041,9 +1063,15 @@ export default function Reservations() {
                                                             return;
                                                         }
                                                     }
+                                                    if (option.value === 'NO_SHOW') {
+                                                        if (!(await confirm('¿Marcar esta reservación como no asistió?', { variant: 'warning', confirmText: 'Sí, no asistió' }))) {
+                                                            return;
+                                                        }
+                                                    }
                                                     try {
                                                         if (option.value === 'COMPLETED') {
                                                             await reservationsAPI.checkIn(editingReservation.id);
+                                                            success('Llegada registrada y orden POS creada');
                                                         } else {
                                                             await reservationsAPI.updateStatus(editingReservation.id, option.value);
                                                         }
@@ -1051,6 +1079,10 @@ export default function Reservations() {
                                                         setIsSidebarOpen(false);
                                                     } catch (err) {
                                                         console.error('Error updating status:', err);
+                                                        const apiMsg = typeof err === 'object' && err !== null && 'response' in err
+                                                            ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+                                                            : undefined;
+                                                        showError(apiMsg || 'Error al actualizar el estado');
                                                     }
                                                 }}
                                                 isSearchable={false}

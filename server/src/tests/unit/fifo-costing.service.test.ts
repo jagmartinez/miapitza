@@ -24,6 +24,8 @@ function makeTx(opts: {
 }) {
     const batchUpdates: Array<{ where: { id: number }; data: { remainingQty: number } }> = [];
     const movementCreates: Array<Record<string, unknown>> = [];
+    const productUpdates: Array<Record<string, unknown>> = [];
+    const liveBatches = (opts.batches ?? []).map((b) => ({ ...b }));
 
     const tx = {
         warehouse: {
@@ -38,17 +40,23 @@ function makeTx(opts: {
             findFirst: jest.fn(async () => ({
                 currentAverageCost: opts.avgCost ?? null,
                 cost: opts.cost ?? null
-            }))
+            })),
+            update: jest.fn(async (args: { data: Record<string, unknown> }) => {
+                productUpdates.push(args.data);
+                return {};
+            })
         },
         company: {
             findUnique: jest.fn(async () => ({ costingMethod: opts.costingMethod }))
         },
         inventoryBatch: {
-            findMany: jest.fn(async () => (opts.batches ?? []).map((b) => ({ ...b }))),
+            findMany: jest.fn(async () => liveBatches.filter((b) => b.remainingQty > 0).map((b) => ({ ...b }))),
             findFirst: jest.fn(async () => null),
             create: jest.fn(async () => ({})),
             update: jest.fn(async (args: { where: { id: number }; data: { remainingQty: number } }) => {
                 batchUpdates.push(args);
+                const row = liveBatches.find((b) => b.id === args.where.id);
+                if (row) row.remainingQty = args.data.remainingQty;
                 return {};
             })
         },
@@ -61,7 +69,7 @@ function makeTx(opts: {
         $queryRaw: jest.fn(async () => [])
     } as unknown as Tx;
 
-    return { tx, batchUpdates, movementCreates };
+    return { tx, batchUpdates, movementCreates, productUpdates };
 }
 
 describe('FIFO costing — engine OUT consumes layers oldest-first', () => {
@@ -97,6 +105,32 @@ describe('FIFO costing — engine OUT consumes layers oldest-first', () => {
         expect(batchUpdates[0].data.remainingQty).toBeCloseTo(0, 6);
         expect(batchUpdates[1].where.id).toBe(2);
         expect(batchUpdates[1].data.remainingQty).toBeCloseTo(2, 6);
+    });
+
+    it('refreshes currentAverageCost from remaining FIFO layers after OUT', async () => {
+        const { tx, productUpdates } = makeTx({
+            costingMethod: 'FIFO',
+            stockQuantity: 18,
+            avgCost: 100, // intentionally stale vs remaining layers
+            batches: [
+                { id: 1, unitCost: 6, remainingQty: 3 },
+                { id: 2, unitCost: 9, remainingQty: 5 },
+                { id: 3, unitCost: 12, remainingQty: 10 }
+            ]
+        });
+
+        // Consume 6 -> remaining 2@9 + 10@12 = 18 + 120 = 138 over 12 = 11.5
+        await InventoryEngineService.applyMovement(tx, {
+            type: 'OUT',
+            companyId: 1,
+            warehouseId: 1,
+            productId: 1,
+            userId: 1,
+            quantity: 6
+        });
+
+        expect(productUpdates).toHaveLength(1);
+        expect(Number(productUpdates[0].currentAverageCost)).toBeCloseTo(11.5, 6);
     });
 
     it('fails closed when FIFO layers do not reconcile with stock', async () => {

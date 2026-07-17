@@ -87,25 +87,6 @@ export default function ScheduleWeekView({
 
     return (
         <section className="hr-schedule-workspace" aria-label="Planificación semanal por colaborador y día">
-            <div className="hr-schedule-coverage" aria-labelledby="hr-schedule-coverage-title">
-                <header><div><span>Cobertura diaria</span><h2 id="hr-schedule-coverage-title">Lectura rápida de la semana</h2></div><small>Personas y turnos asignados por día</small></header>
-                <div className="hr-schedule-coverage-grid">
-                    {days.map((day) => {
-                        const items = groupedByDay.get(day) ?? [];
-                        const people = new Set(items.map((item) => item.userId)).size;
-                        const holiday = holidayFor(day);
-                        return (
-                            <article key={day} className={items.length === 0 ? 'is-empty' : undefined}>
-                                <span>{formatDay(day)}</span>
-                                <strong>{people}</strong>
-                                <small>{people === 1 ? 'persona' : 'personas'} · {items.length} {items.length === 1 ? 'turno' : 'turnos'}</small>
-                                {holiday && <em>{holiday.name}</em>}
-                            </article>
-                        );
-                    })}
-                </div>
-            </div>
-
             <div className="hr-schedule-matrix-wrap" role="region" tabIndex={0} aria-label="Matriz semanal por colaborador">
                 <div className="hr-schedule-matrix" role="table" aria-rowcount={employeeRows.length + 1} aria-colcount={8}>
                     <div className="hr-schedule-matrix-row is-header" role="row">

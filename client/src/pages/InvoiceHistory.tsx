@@ -89,6 +89,9 @@ export default function InvoiceHistory() {
     const [fiscalAction, setFiscalAction] = useState<'CANCEL' | 'CREDIT_NOTE' | null>(null);
     const [fiscalReason, setFiscalReason] = useState('');
     const [inventoryAction, setInventoryAction] = useState<'NO_RETURN' | 'RETURN_TO_STOCK'>('NO_RETURN');
+    const [creditMode, setCreditMode] = useState<'FULL' | 'PARTIAL'>('FULL');
+    const [creditOrderItems, setCreditOrderItems] = useState<Order['items']>([]);
+    const [creditQuantities, setCreditQuantities] = useState<Record<number, number>>({});
     const [externalRefundReferences, setExternalRefundReferences] = useState<Record<number, string>>({});
     const [fiscalWarehouses, setFiscalWarehouses] = useState<Warehouse[]>([]);
     const [fiscalWasteWarehouseId, setFiscalWasteWarehouseId] = useState<number | null>(null);
@@ -248,6 +251,9 @@ export default function InvoiceHistory() {
         setFiscalAction(null);
         setFiscalReason('');
         setInventoryAction('NO_RETURN');
+        setCreditMode('FULL');
+        setCreditOrderItems([]);
+        setCreditQuantities({});
         setExternalRefundReferences({});
         setFiscalWarehouses([]);
         setFiscalWasteWarehouseId(null);
@@ -260,16 +266,26 @@ export default function InvoiceHistory() {
         setFiscalAction(action);
         setFiscalReason('');
         setInventoryAction('NO_RETURN');
+        setCreditMode('FULL');
+        setCreditOrderItems([]);
+        setCreditQuantities({});
         setFiscalWasteWarehouseId(null);
         setFiscalWarehouses([]);
         setExternalRefundReferences({});
         setFiscalIdempotencyKey(globalThis.crypto?.randomUUID?.() || `fiscal-${invoice.id}-${Date.now()}`);
         setPaymentsLoading(true);
         try {
-            const paymentsResponse = await paymentsAPI.getByOrderId(invoice.id);
+            const [paymentsResponse, orderResponse] = await Promise.all([
+                paymentsAPI.getByOrderId(invoice.id),
+                action === 'CREDIT_NOTE' ? ordersAPI.getById(invoice.id) : Promise.resolve(null)
+            ]);
             const activePayments = (Array.isArray(paymentsResponse.data?.data) ? paymentsResponse.data.data : [])
                 .filter((payment: Payment) => payment.status !== 'REVERSED');
             setPayments(activePayments);
+            if (action === 'CREDIT_NOTE') {
+                const items = (orderResponse?.data?.data?.items || []) as Order['items'];
+                setCreditOrderItems(items);
+            }
             if (action === 'CANCEL' && invoice.orderStatus !== 'OPEN') {
                 const warehousesResponse = await warehousesAPI.getAll();
                 const warehouses = (Array.isArray(warehousesResponse.data?.data) ? warehousesResponse.data.data : [])
@@ -310,6 +326,13 @@ export default function InvoiceHistory() {
             return;
         }
         const nonCashPayments = payments.filter((payment) => payment.status !== 'REVERSED' && payment.paymentMethod?.type !== 'CASH');
+        const partialLines = creditOrderItems
+            .map((item) => ({ orderItemId: item.id, quantity: Math.trunc(creditQuantities[item.id] || 0) }))
+            .filter((line) => line.quantity > 0);
+        if (fiscalAction === 'CREDIT_NOTE' && creditMode === 'PARTIAL' && partialLines.length === 0) {
+            showWarning('Selecciona al menos una cantidad para la nota parcial.');
+            return;
+        }
         if (fiscalAction === 'CREDIT_NOTE' && nonCashPayments.some((payment) => !externalRefundReferences[payment.id]?.trim())) {
             showWarning('Cada pago no efectivo requiere la referencia real del reembolso externo.');
             return;
@@ -330,7 +353,8 @@ export default function InvoiceHistory() {
                     externalRefunds: nonCashPayments.map((payment) => ({
                         paymentId: payment.id,
                         reference: externalRefundReferences[payment.id].trim()
-                    }))
+                    })),
+                    ...(creditMode === 'PARTIAL' ? { lines: partialLines } : {})
                 });
             }
             await downloadCounterDocument(fiscalInvoice, fiscalAction);
@@ -484,6 +508,8 @@ export default function InvoiceHistory() {
                                             <span className={`invoice-payment-status ${invoice.fiscalStatus === 'ISSUED' ? 'is-active' : 'is-reversed'}`}>
                                                 {invoice.fiscalStatus === 'CREDITED'
                                                     ? `Acreditada · ${invoice.creditNoteNumber || ''}`
+                                                    : invoice.fiscalStatus === 'PARTIALLY_CREDITED'
+                                                        ? `Acreditada parcialmente · ${invoice.creditNoteNumber || ''}`
                                                     : invoice.fiscalStatus === 'CANCELLED'
                                                         ? 'Anulada'
                                                         : 'Emitida'}
@@ -521,13 +547,14 @@ export default function InvoiceHistory() {
                                                         <RotateCcw size={15} /> Anular factura
                                                     </Button>
                                                 )}
-                                                {invoice.fiscalStatus === 'ISSUED' && invoice.status === 'PAID'
+                                                {['ISSUED', 'PARTIALLY_CREDITED'].includes(invoice.fiscalStatus)
+                                                    && ['PAID', 'PARTIAL'].includes(invoice.status)
                                                     && invoice.orderStatus === 'DELIVERED' && mayIssueCreditNote && (
                                                     <Button variant="danger" size="sm" onClick={() => void openFiscalAction(invoice, 'CREDIT_NOTE')}>
-                                                        <RotateCcw size={15} /> Nota de crédito
+                                                        <RotateCcw size={15} /> {invoice.fiscalStatus === 'PARTIALLY_CREDITED' ? 'Otra nota' : 'Nota de crédito'}
                                                     </Button>
                                                 )}
-                                                {invoice.fiscalStatus === 'CREDITED' && (
+                                                {['PARTIALLY_CREDITED', 'CREDITED'].includes(invoice.fiscalStatus) && (
                                                     <Button variant="secondary" size="sm" onClick={() => void downloadCounterDocument(invoice, 'CREDIT_NOTE')}>
                                                         <Download size={15} /> Nota de crédito
                                                     </Button>
@@ -744,6 +771,43 @@ export default function InvoiceHistory() {
 
                         {fiscalAction === 'CREDIT_NOTE' && (
                             <>
+                                <label htmlFor="credit-note-scope">
+                                    Alcance de la nota
+                                    <select
+                                        id="credit-note-scope"
+                                        value={creditMode}
+                                        onChange={(event) => setCreditMode(event.target.value as 'FULL' | 'PARTIAL')}
+                                        disabled={fiscalProcessing}
+                                    >
+                                        <option value="FULL">Todo el saldo pendiente</option>
+                                        <option value="PARTIAL">Cantidades parciales por línea</option>
+                                    </select>
+                                </label>
+                                {creditMode === 'PARTIAL' && (
+                                    <div className="invoice-credit-note-lines">
+                                        {creditOrderItems.map((item) => (
+                                            <label key={item.id} htmlFor={`credit-line-${item.id}`}>
+                                                {item.menuItem?.name || `Artículo #${item.id}`} · facturado {item.quantity}
+                                                <input
+                                                    id={`credit-line-${item.id}`}
+                                                    type="number"
+                                                    min={0}
+                                                    max={item.quantity}
+                                                    step={1}
+                                                    value={creditQuantities[item.id] || ''}
+                                                    onChange={(event) => setCreditQuantities((current) => ({
+                                                        ...current,
+                                                        [item.id]: Math.max(0, Math.min(item.quantity, Math.trunc(Number(event.target.value) || 0)))
+                                                    }))}
+                                                    disabled={fiscalProcessing}
+                                                />
+                                            </label>
+                                        ))}
+                                        <p className="invoice-payment-reversal-audit">
+                                            El servidor valida el acumulado ya acreditado y rechazará cantidades que excedan la factura.
+                                        </p>
+                                    </div>
+                                )}
                                 <label htmlFor="credit-note-inventory-action">
                                     Hecho físico de inventario
                                     <select

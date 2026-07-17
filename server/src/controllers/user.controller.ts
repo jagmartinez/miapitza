@@ -1,41 +1,46 @@
 import { Request, Response, NextFunction } from 'express';
 import { UserService } from '../services/user.service';
 import { getErrorMessage } from '../utils/error';
+import {
+    isPlatformOperator,
+    parseCompanyIdInput,
+    resolveActingCompanyId,
+    TenantScopeError,
+} from '../utils/tenant-scope';
 
 export class UserController {
 
     static async getAll(req: Request, res: Response, next: NextFunction) {
         try {
-            let companyId = req.user!.companyId;
-            const userRoles = req.user?.roles || [req.user?.role];
-            if (userRoles.includes('SUPERADMIN') && req.query.companyId) {
-                companyId = parseInt(req.query.companyId as string);
-            }
+            const requested = parseCompanyIdInput(req.query?.companyId);
+            const companyId = await resolveActingCompanyId(req.user!, requested);
             const users = await UserService.getAll(companyId);
             res.json({
                 success: true,
                 data: users
             });
         } catch (error: unknown) {
+            if (error instanceof TenantScopeError) return next(error);
             next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
 
     static async getById(req: Request, res: Response, next: NextFunction) {
         try {
-            const id = parseInt(req.params.id);
+            const id = parseInt(req.params.id, 10);
             const actingRoles = req.user!.roles || [req.user!.role];
             const mayReadOtherUsers = actingRoles.some((role) => role === 'ADMIN' || role === 'SUPERADMIN');
             if (id !== req.user!.userId && !mayReadOtherUsers) {
                 return next({ statusCode: 403, message: 'No autorizado para consultar otro usuario' });
             }
-            const companyId = req.user!.companyId;
+            const companyId = await UserController.resolveUserCompany(req, id);
             const user = await UserService.getById(id, companyId);
             res.json({
                 success: true,
                 data: user
             });
         } catch (error: unknown) {
+            if (error instanceof TenantScopeError) return next(error);
             next({ statusCode: 404, message: getErrorMessage(error) });
         }
     }
@@ -51,8 +56,8 @@ export class UserController {
 
     static async update(req: Request, res: Response, next: NextFunction) {
         try {
-            const id = parseInt(req.params.id);
-            const companyId = req.user!.companyId;
+            const id = parseInt(req.params.id, 10);
+            const companyId = await UserController.resolveUserCompany(req, id);
             const actingRoles = req.user!.roles || [req.user!.role];
             const user = await UserService.update(
                 id,
@@ -67,6 +72,7 @@ export class UserController {
                 data: user
             });
         } catch (error: unknown) {
+            if (error instanceof TenantScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
@@ -102,25 +108,30 @@ export class UserController {
 
     static async delete(req: Request, res: Response, next: NextFunction) {
         try {
-            const id = parseInt(req.params.id);
-            const companyId = req.user!.companyId;
-            await UserService.delete(id, companyId);
+            const id = parseInt(req.params.id, 10);
+            const companyId = await UserController.resolveUserCompany(req, id);
+            await UserService.delete(
+                id,
+                companyId,
+                req.user!.roles || [req.user!.role],
+                req.user!.userId,
+            );
             res.json({
                 success: true,
                 message: 'Usuario eliminado exitosamente'
             });
         } catch (error: unknown) {
+            if (error instanceof TenantScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
 
     static async create(req: Request, res: Response, next: NextFunction) {
         try {
-            let companyId = req.user!.companyId;
-            const cRoles = req.user?.roles || [req.user?.role];
-            if (cRoles.includes('SUPERADMIN') && req.body.companyId) {
-                companyId = parseInt(req.body.companyId);
-            }
+            const requested = parseCompanyIdInput(req.body.companyId);
+            const companyId = await resolveActingCompanyId(req.user!, requested, {
+                requireActiveTarget: true,
+            });
             const actingRoles = req.user?.roles || [req.user?.role as string];
             const user = await UserService.create(
                 companyId,
@@ -133,7 +144,27 @@ export class UserController {
                 data: user
             });
         } catch (error: unknown) {
+            if (error instanceof TenantScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
+    }
+
+    /**
+     * Home-company actors are pinned to `req.user.companyId`.
+     * Platform operators may manage a user owned by another company by id.
+     */
+    private static async resolveUserCompany(req: Request, userId: number): Promise<number> {
+        if (!isPlatformOperator(req.user!)) {
+            return req.user!.companyId;
+        }
+        const requested = parseCompanyIdInput(req.query?.companyId ?? req.body?.companyId);
+        if (requested !== undefined) {
+            return resolveActingCompanyId(req.user!, requested);
+        }
+        const ownerCompanyId = await UserService.getCompanyIdById(userId);
+        if (ownerCompanyId == null) {
+            throw new TenantScopeError('Usuario no encontrado');
+        }
+        return resolveActingCompanyId(req.user!, ownerCompanyId);
     }
 }

@@ -275,13 +275,14 @@ export default function Employees() {
         {
             key: 'compensation',
             header: 'Compensación vigente',
+            align: 'right',
             render: (employee) => {
                 const compensation = currentCompensation(employee);
                 if (employee.compensation === undefined) return <span className="cell-sub">Acceso restringido</span>;
                 if (!compensation) return <span className="cell-sub">Sin compensación vigente</span>;
                 return (
                     <div className="catalog-cell-stack hr-employee-compensation-cell">
-                        <span className="cell-title">{formatHrMoney(compensation.currency, compensation.amount)}</span>
+                        <span className="cell-title hr-money">{formatHrMoney(compensation.currency, compensation.amount)}</span>
                         <span className="cell-sub">{compensation.compensationType === 'SALARY' ? 'Salario' : 'Por hora'} · {payFrequencyText(compensation.payFrequency)}</span>
                     </div>
                 );

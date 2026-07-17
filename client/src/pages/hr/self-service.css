@@ -8,8 +8,13 @@
   gap: var(--spacing-lg);
 }
 
-.my-hr-page > .my-hr-nav { margin-bottom: calc(var(--spacing-sm) * -1); }
 .my-hr-page > .my-hr-page-header { margin-bottom: 0; }
+
+.my-hr-page-header .page-header-actions {
+  margin-left: auto;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
 
 .my-hr-page-header .header-subtitle {
   max-width: 720px;

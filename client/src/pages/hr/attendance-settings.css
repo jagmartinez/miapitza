@@ -3,9 +3,9 @@
 }
 
 .hr-settings-scope {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(240px, .8fr) minmax(420px, 1.35fr) minmax(250px, .75fr);
+  align-items: center;
   gap: var(--spacing-lg);
   margin-bottom: var(--spacing-lg);
   padding: var(--spacing-lg);
@@ -58,14 +58,69 @@
   -webkit-appearance: none;
 }
 
-.hr-settings-scope label {
-  min-width: min(100%, 320px);
+.hr-settings-scope-intro {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  min-width: 0;
 }
 
-.hr-settings-scope p {
+.hr-settings-scope-intro > span {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-background));
+  color: var(--color-primary);
+}
+
+.hr-settings-scope-intro > div { display: grid; gap: 3px; }
+.hr-settings-scope-intro strong { color: var(--color-text); }
+.hr-settings-scope-intro p,
+.hr-settings-scope-note {
   margin: 0;
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
+  line-height: 1.45;
+}
+
+.hr-settings-scope-controls { display: grid; gap: var(--spacing-sm); min-width: 0; }
+.hr-settings-scope-controls label { width: 100%; min-width: 0; }
+
+.hr-settings-scope-mode {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-background);
+}
+
+.hr-settings-scope-mode button {
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.hr-settings-scope-mode button[aria-pressed='true'] {
+  background: var(--color-neutral-700);
+  color: white;
+}
+
+.hr-settings-scope-mode button:disabled { opacity: .45; cursor: not-allowed; }
+.hr-settings-scope-mode button:focus-visible { outline: 3px solid color-mix(in srgb, var(--color-primary) 32%, transparent); outline-offset: 1px; }
+
+.hr-settings-scope-note {
   text-align: right;
 }
 
@@ -447,6 +502,9 @@
 }
 
 @media (max-width: 1024px) {
+  .hr-settings-scope { grid-template-columns: 1fr 1.4fr; }
+  .hr-settings-scope-note { grid-column: 1 / -1; text-align: left; }
+
   .hr-settings-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -457,15 +515,13 @@
 }
 
 @media (max-width: 768px) {
-  .hr-settings-scope,
   .hr-settings-savebar {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .hr-settings-scope p {
-    text-align: left;
-  }
+  .hr-settings-scope { grid-template-columns: 1fr; }
+  .hr-settings-scope-note { grid-column: auto; text-align: left; }
 
   .hr-settings-summary,
   .hr-settings-columns,

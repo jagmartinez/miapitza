@@ -17,6 +17,7 @@ const listeners = new Set<(data: WebSocketMessage) => void>();
 const MAX_RECONNECT_ATTEMPTS = 20;
 const BASE_RECONNECT_DELAY = 5000; // 5 seconds
 const MAX_RECONNECT_DELAY = 60000; // 60 seconds
+const CONNECTION_ERROR_EVENT = 'WEBSOCKET_CONNECTION_ERROR';
 
 const resolveWebSocketUrl = () => {
     const envUrl = import.meta.env.VITE_WS_URL as string | undefined;
@@ -40,10 +41,41 @@ const notifyListeners = (data: WebSocketMessage) => {
     listeners.forEach((listener) => {
         try {
             listener(data);
-        } catch {
-            // Listener error silently caught
+        } catch (error) {
+            // Isolate subscribers so one broken view cannot stop the others,
+            // but keep the failure observable for operational diagnosis.
+            console.error('[WebSocket] subscriber failed while handling an event:', error);
         }
     });
+};
+
+const notifyConnectionIssue = (code: string, error?: unknown) => {
+    notifyListeners({
+        type: CONNECTION_ERROR_EVENT,
+        payload: {
+            code,
+            reconnectAttempts,
+            ...(error instanceof Error && error.message ? { message: error.message } : {}),
+        },
+    });
+};
+
+const scheduleReconnect = () => {
+    if (isManuallyClosed || listeners.size === 0 || reconnectTimer) return;
+
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        notifyConnectionIssue('RECONNECT_LIMIT_REACHED');
+        return;
+    }
+
+    const delay = Math.min(BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
+    reconnectAttempts++;
+    reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        if (!isManuallyClosed && listeners.size > 0) {
+            initializeWebSocket();
+        }
+    }, delay);
 };
 
 export const initializeWebSocket = (onMessage?: (data: WebSocketMessage) => void) => {
@@ -53,7 +85,7 @@ export const initializeWebSocket = (onMessage?: (data: WebSocketMessage) => void
 
     // Prevent duplicate connection attempts
     if (isConnecting) return socket;
-    if (socket && socket.readyState === WebSocket.OPEN) {
+    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
         return socket;
     }
 
@@ -64,59 +96,46 @@ export const initializeWebSocket = (onMessage?: (data: WebSocketMessage) => void
     try {
         isConnecting = true;
         // The browser sends the HttpOnly auth cookie with the handshake.
-        socket = new WebSocket(WS_URL);
+        const nextSocket = new WebSocket(WS_URL);
+        socket = nextSocket;
 
-        socket.onopen = () => {
+        nextSocket.onopen = () => {
+            if (socket !== nextSocket) return;
             isConnecting = false;
             reconnectAttempts = 0; // Reset on successful connection
             // Backward compatibility: explicit AUTH for legacy bearer flow.
         };
 
-        socket.onmessage = (event) => {
+        nextSocket.onmessage = (event) => {
+            if (socket !== nextSocket) return;
             try {
                 const data = JSON.parse(event.data);
                 notifyListeners(data);
-            } catch {
-                // Failed to parse WebSocket message
+            } catch (error) {
+                notifyConnectionIssue('INVALID_MESSAGE', error);
             }
         };
 
-        socket.onerror = () => {
+        nextSocket.onerror = () => {
+            if (socket !== nextSocket) return;
             isConnecting = false;
         };
 
-        socket.onclose = () => {
+        nextSocket.onclose = () => {
+            // An explicitly superseded socket must not clear or reconnect the
+            // replacement connection.
+            if (socket !== nextSocket) return;
             socket = null;
             isConnecting = false;
-
-            // Don't reconnect if manually closed (logout)
-            if (isManuallyClosed) return;
-
-            // Don't reconnect if max attempts reached
-            if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-                return;
-            }
-
-            // Clear any existing reconnect timer
-            if (reconnectTimer) {
-                clearTimeout(reconnectTimer);
-            }
-
-            // Exponential backoff: 5s, 10s, 20s, 40s... max 60s
-            const delay = Math.min(BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
-            reconnectAttempts++;
-
-            reconnectTimer = setTimeout(() => {
-                reconnectTimer = null;
-                if (listeners.size > 0) {
-                    initializeWebSocket();
-                }
-            }, delay);
+            scheduleReconnect();
         };
 
-        return socket;
-    } catch {
+        return nextSocket;
+    } catch (error) {
+        socket = null;
         isConnecting = false;
+        notifyConnectionIssue('CONSTRUCTION_FAILED', error);
+        scheduleReconnect();
         return null;
     }
 };
@@ -145,8 +164,13 @@ export const closeWebSocket = () => {
         reconnectTimer = null;
     }
     if (socket) {
-        socket.close();
+        const previousSocket = socket;
         socket = null;
+        // Prevent the superseded connection from scheduling a second retry or
+        // clearing the new connection when its close event arrives later.
+        previousSocket.onclose = null;
+        previousSocket.onerror = null;
+        previousSocket.close();
     }
     isConnecting = false;
     // Drop all subscribers so a manual close (logout/401) doesn't trigger a
@@ -168,8 +192,13 @@ export const reconnectWebSocket = (onMessage?: (data: WebSocketMessage) => void)
     }
 
     if (socket) {
-        socket.close();
+        const previousSocket = socket;
         socket = null;
+        // This close is a hand-off, not a transport failure. Its late events
+        // must not race with the replacement socket below.
+        previousSocket.onclose = null;
+        previousSocket.onerror = null;
+        previousSocket.close();
     }
 
     isConnecting = false;
@@ -188,4 +217,5 @@ export const WS_EVENTS = {
     ORDER_UPDATE: 'ORDER_UPDATE',
     TABLE_STATUS_CHANGED: 'TABLE_STATUS_CHANGED',
     KITCHEN_NOTIFICATION: 'KITCHEN_NOTIFICATION',
+    CONNECTION_ERROR: CONNECTION_ERROR_EVENT,
 };

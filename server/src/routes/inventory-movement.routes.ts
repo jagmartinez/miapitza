@@ -13,5 +13,6 @@ router.get('/product/:productId/kardex', InventoryMovementController.getKardex);
 router.get('/:id', validate(s.idParam), InventoryMovementController.getById);
 router.post('/', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.createInventoryMovement), InventoryMovementController.create);
 router.post('/transfer', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.transferInventory), InventoryMovementController.transfer);
+router.post('/:id/reverse', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.reverseInventoryMovement), InventoryMovementController.reverse);
 
 export default router;

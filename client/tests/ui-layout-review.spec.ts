@@ -44,6 +44,27 @@ async function mockApp(page: Page, activeUser = user) {
     let data: unknown = [];
     if (path.endsWith('/auth/me')) data = activeUser;
     if (path.endsWith('/settings')) data = { currency_symbol: 'C$' };
+    if (path.endsWith('/v1/hr/lookups')) {
+      data = {
+        branches: [
+          { id: 10, name: 'Sucursal QA' },
+          { id: 11, name: 'Sucursal Norte' },
+        ],
+        users: [
+          {
+            id: 902,
+            name: 'UI Review',
+            username: 'ui-review',
+            accountType: 'INTERNAL',
+            employeeId: 321,
+            employee: { id: 321, employeeCode: 'EMP-321', status: 'ACTIVE' },
+          },
+        ],
+        jobPositions: [{ id: 4, name: 'Supervisor QA' }],
+        departments: [],
+        costCenters: [],
+      };
+    }
     if (path.endsWith('/menu-items')) {
       data = [
         {
@@ -148,6 +169,32 @@ async function mockApp(page: Page, activeUser = user) {
         reason: 'Periodo visual QA',
       }];
     }
+    if (path.endsWith('/v1/hr/schedules')) {
+      data = [{
+        id: 61,
+        companyId: 7,
+        weekStart: '2026-07-13',
+        status: 'DRAFT',
+        version: 1,
+        revision: 1,
+        shifts: [{
+          id: 611,
+          scheduleId: 61,
+          userId: 902,
+          branchId: 10,
+          jobPositionId: 4,
+          date: '2026-07-16',
+          startTime: '08:00',
+          endTime: '17:00',
+          breakMinutes: 60,
+          paidBreak: false,
+          timezoneSnapshot: 'America/Managua',
+          user: { id: 902, name: 'UI Review', username: 'ui-review' },
+          branch: { id: 10, name: 'Sucursal QA' },
+          jobPosition: { id: 4, name: 'Supervisor QA' },
+        }],
+      }];
+    }
     if (path.endsWith('/v1/hr/payroll/runs')) data = [payrollRun];
     if (path.endsWith('/v1/hr/payroll/aguinaldo/runs')) data = [];
     if (path.endsWith('/v1/hr/payroll/runs/91')) data = payrollRun;
@@ -232,6 +279,42 @@ async function mockApp(page: Page, activeUser = user) {
         payroll: { activeRule: true, draftRuns: 1, reviewRuns: 0, approvedRuns: 0 },
       };
     }
+    if (path.endsWith('/tables')) {
+      data = [{
+        id: 77,
+        number: 'ABANICO',
+        capacity: 4,
+        status: 'OCCUPIED',
+        operationalState: 'PREPARING',
+        location: 'Salon principal',
+        branchId: 10,
+        mapX: 80,
+        mapY: 100,
+        mapWidth: 128,
+        mapHeight: 86,
+        mapRotation: 0,
+        mapVersion: 1,
+        mapShape: 'RECTANGLE',
+      }];
+    }
+    if (path.endsWith('/orders')) {
+      data = [{
+        id: 501,
+        branchId: 10,
+        tableId: 77,
+        userId: 902,
+        total: 2199,
+        status: 'IN_PREPARATION',
+        financialStatus: 'UNPAID',
+        createdAt: '2026-07-16T22:05:00.000Z',
+        user: activeUser,
+        items: [
+          { id: 1, orderId: 501, menuItemId: 101, quantity: 1, price: 300, subtotal: 300, status: 'PENDING', menuItem: { id: 101, name: 'Pinot Grigio Pasqua - Copa', price: 300 } },
+          { id: 2, orderId: 501, menuItemId: 102, quantity: 1, price: 350, subtotal: 350, status: 'IN_PROGRESS', menuItem: { id: 102, name: 'Verdejo Quintaluna - Copa', price: 350 } },
+          { id: 3, orderId: 501, menuItemId: 103, quantity: 1, price: 1549, subtotal: 1549, status: 'DONE', menuItem: { id: 103, name: 'Plato especial con un nombre deliberadamente largo', price: 1549 } },
+        ],
+      }];
+    }
     if (path.includes('/tables/plan/')) {
       data = {
         id: null,
@@ -240,7 +323,22 @@ async function mockApp(page: Page, activeUser = user) {
         canvasHeight: 900,
         version: 1,
         areas: [],
-        tables: [],
+        tables: [{
+          id: 77,
+          number: 'ABANICO',
+          capacity: 4,
+          status: 'OCCUPIED',
+          operationalState: 'PREPARING',
+          location: 'Salon principal',
+          branchId: 10,
+          mapX: 80,
+          mapY: 100,
+          mapWidth: 128,
+          mapHeight: 86,
+          mapRotation: 0,
+          mapVersion: 1,
+          mapShape: 'RECTANGLE',
+        }],
       };
     }
     await route.fulfill({
@@ -330,6 +428,49 @@ test('operational table map uses the complete viewport without lateral gutters',
   expect(Math.abs(geometry.viewportWidth - geometry.width)).toBeLessThanOrEqual(1);
   expect(geometry.paddingLeft).toBe('0px');
   expect(geometry.paddingRight).toBe('0px');
+});
+
+test('mobile table orders use the full viewport and keep prices and actions inside it', async ({
+  page,
+}) => {
+  await mockApp(page);
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto('/tables');
+
+  await page.getByRole('button', { name: /Mesa ABANICO/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Mesa ABANICO' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveCSS('transform', 'none');
+  await expect(dialog.getByRole('button', { name: 'Continuar pedido' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Imprimir cuenta' })).toBeVisible();
+
+  const geometry = await dialog.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const content = element.querySelector('.modal-tab-content-orders') as HTMLElement;
+    const footer = element.querySelector('.orders-modal-footer') as HTMLElement;
+    const hiddenClose = footer.querySelector('.btn-modal-secondary') as HTMLElement;
+    const lines = Array.from(element.querySelectorAll<HTMLElement>('.order-item-line'));
+    return {
+      top: box.top,
+      bottom: box.bottom,
+      right: box.right,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      contentOverflow: content.scrollWidth - content.clientWidth,
+      footerOverflow: footer.scrollWidth - footer.clientWidth,
+      itemOverflows: lines.map((line) => line.scrollWidth - line.clientWidth),
+      footerCloseDisplay: getComputedStyle(hiddenClose).display,
+    };
+  });
+
+  expect(Math.abs(geometry.top)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.viewportHeight - geometry.bottom)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.viewportWidth - geometry.right)).toBeLessThanOrEqual(1);
+  expect(geometry.contentOverflow).toBeLessThanOrEqual(1);
+  expect(geometry.footerOverflow).toBeLessThanOrEqual(1);
+  expect(geometry.itemOverflows.every((overflow) => overflow <= 1)).toBe(true);
+  expect(geometry.footerCloseDisplay).toBe('none');
+  await expect(dialog.getByRole('button', { name: 'Agregar productos' })).toBeHidden();
 });
 
 test('attendance settings activates only its exact navigation option', async ({ page }) => {
@@ -635,6 +776,67 @@ test('legal payroll settings is an independent RH view with one active navigatio
   await page.waitForLoadState('networkidle');
   expect(revisionRequests).toBeGreaterThan(0);
   expect(revisionRequests).toBeLessThanOrEqual(2);
+});
+
+test('weekly schedules keeps controls in one toolbar and removes redundant summaries', async ({ page }) => {
+  await mockApp(page);
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  await page.goto('/rh/horarios');
+
+  const filters = page.locator('.filters-toolbar.hr-schedule-filters');
+  await expect(filters).toBeVisible();
+  await expect(filters.getByRole('button', { name: 'Copiar semana' })).toBeVisible();
+  await expect(page.locator('.hr-schedule-actions-bar')).toHaveCount(0);
+  await expect(page.locator('.hr-schedule-kpis')).toHaveCount(0);
+  await expect(page.locator('.hr-schedule-coverage')).toHaveCount(0);
+
+  const widths = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('.filters-toolbar.hr-schedule-filters .filter-field'))
+      .map((control) => control.getBoundingClientRect().width)
+  );
+  expect(widths.length).toBe(3);
+  expect(widths.every((width) => width >= 300)).toBe(true);
+});
+
+test('attendance rules exposes an explicit searchable branch override', async ({ page }) => {
+  await mockApp(page);
+  await page.goto('/rh/asistencia/configuracion');
+
+  await expect(page.getByRole('button', { name: 'Regla general' })).toHaveAttribute('aria-pressed', 'true');
+  const branchMode = page.getByRole('button', { name: 'Por sucursal' });
+  await expect(branchMode).toBeEnabled();
+  await branchMode.click();
+  await expect(branchMode).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByLabel('Seleccionar sucursal para reglas de marcaje')).toBeVisible();
+  await expect(page.getByText('Al guardar se crea una versión exclusiva para esta sucursal.', { exact: false })).toBeVisible();
+});
+
+test('leave filters and personal benefits use the rebuilt operational layouts', async ({ page }) => {
+  await mockApp(page);
+  await page.setViewportSize({ width: 1600, height: 1000 });
+
+  await page.goto('/rh/ausencias');
+  const leaveToolbar = page.locator('.hr-workforce-filters.hr-operation-toolbar');
+  await expect(leaveToolbar.locator('.filters-toolbar.hr-admin-tab-toolbar')).toBeVisible();
+  await expect(leaveToolbar.getByLabel('Filtrar por empleado')).toBeVisible();
+
+  await page.goto('/rh/mi-portal/prestaciones');
+  const header = page.locator('.page-header-bar.my-hr-page-header');
+  await expect(header.locator('.my-hr-nav')).toBeVisible();
+  await expect(page.locator('.my-benefits-register')).toBeVisible();
+  await expect(page.locator('.inventory-table.my-benefits-table')).toBeVisible();
+  await expect(page.locator('.hr-benefits-list')).toHaveCount(0);
+});
+
+test('legal configuration uses the new control-center workspace', async ({ page }) => {
+  await mockApp(page);
+  await page.setViewportSize({ width: 1920, height: 1100 });
+  await page.goto('/rh/nomina/configuracion-legal');
+
+  await expect(page.locator('.hr-legal-command-center')).toBeVisible();
+  await expect(page.locator('.hr-legal-selected-shell')).toBeVisible();
+  await expect(page.locator('.hr-legal-selected-aside')).toBeVisible();
+  await expect(page.locator('.hr-legal-selected-main')).toBeVisible();
 });
 
 test('manual attendance punch uses one compact canonical modal body', async ({ page }) => {

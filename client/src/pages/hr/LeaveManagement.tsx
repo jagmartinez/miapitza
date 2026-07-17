@@ -325,6 +325,17 @@ export default function LeaveManagement() {
       />
       <OnlineOnlyNotice online={online} />
       <section className="hr-workforce-filters inventory-filters-row hr-operation-toolbar" aria-label="Filtros de permisos y vacaciones">
+        {!loading && !error && <div className="filters-toolbar hr-admin-tab-toolbar" role="tablist" aria-label="Bandejas de permisos y vacaciones">
+          {([
+            ['REQUESTS', 'Solicitudes', requests.filter((item) => item.status === 'PENDING').length],
+            ['CALENDAR', 'Calendario', calendar.length],
+            ['BALANCES', 'Saldos', balances.length],
+            ['TYPES', 'Tipos de ausencia', leaveTypes.length],
+            ['HISTORY', 'Movimientos', ledger.length],
+          ] as Array<[LeaveTable, string, number]>).map(([value, label, count]) => (
+            <button key={value} type="button" role="tab" id={`leave-tab-${value.toLowerCase()}`} aria-controls={`leave-panel-${value.toLowerCase()}`} aria-selected={activeTable === value} onClick={() => setActiveTable(value)}>{label} <span>{count}</span></button>
+          ))}
+        </div>}
         <label>
           Desde
           <input
@@ -344,7 +355,7 @@ export default function LeaveManagement() {
         </label>
         <label>
           Empleado
-          <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)}>
+          <HrReactSelect value={userId} onChange={(event) => setUserId(event.target.value)} isSearchable aria-label="Filtrar por empleado">
             <option value="">Todos</option>
             {users.map((user) => (
               <option key={user.id} value={user.id}>
@@ -357,18 +368,6 @@ export default function LeaveManagement() {
           <RefreshCw size={16} /> Actualizar
         </Button>
       </section>
-
-      {!loading && !error && <div className="filters-toolbar hr-admin-tab-toolbar" role="tablist" aria-label="Bandejas de permisos y vacaciones">
-        {([
-          ['REQUESTS', 'Solicitudes', requests.filter((item) => item.status === 'PENDING').length],
-          ['CALENDAR', 'Calendario', calendar.length],
-          ['BALANCES', 'Saldos', balances.length],
-          ['TYPES', 'Tipos de ausencia', leaveTypes.length],
-          ['HISTORY', 'Movimientos', ledger.length],
-        ] as Array<[LeaveTable, string, number]>).map(([value, label, count]) => (
-          <button key={value} type="button" role="tab" id={`leave-tab-${value.toLowerCase()}`} aria-controls={`leave-panel-${value.toLowerCase()}`} aria-selected={activeTable === value} onClick={() => setActiveTable(value)}>{label} <span>{count}</span></button>
-        ))}
-      </div>}
 
       {loading && <LoadingSpinner text="Cargando permisos y vacaciones…" />}
       {!loading && error && (

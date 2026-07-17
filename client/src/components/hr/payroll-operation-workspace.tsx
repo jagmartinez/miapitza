@@ -54,9 +54,10 @@ const ACTION_HELP: Partial<Record<HrPayrollAction, string>> = {
   MARK_PAID: 'Registra el pago y publica las colillas para cada empleado.',
 };
 
-function numberOf(value?: string | null) {
-  const parsed = Number(value ?? 0);
-  return Number.isFinite(parsed) ? parsed : 0;
+function moneyNumber(value?: string | null): number | null {
+  if (value == null || value.trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function formatDate(value?: string | null) {
@@ -75,10 +76,31 @@ function employeeName(item: { userId: number; user?: { name?: string | null; use
   return item.user?.name || item.user?.username || `Colaborador #${item.userId}`;
 }
 
-function componentsTotal(components: HrPayrollComponent[], type: 'INCOME' | 'DEDUCTION') {
+function componentsTotal(components: HrPayrollComponent[], type: 'INCOME' | 'DEDUCTION'): number | null {
   let total = 0;
-  for (const item of components) if (item.type === type) total += numberOf(item.amount);
+  for (const item of components) {
+    if (item.type !== type) continue;
+    const amount = moneyNumber(item.amount);
+    if (amount === null) return null;
+    total += amount;
+  }
   return total;
+}
+
+function formatRunTotal(currency: string, value?: string | null) {
+  if (value == null || value === '') return 'Pendiente de cálculo';
+  return formatHrMoney(currency, value);
+}
+
+function formatEmployeeMoney(currency: string, value: number | null) {
+  if (value === null) return 'Pendiente de cálculo';
+  return formatHrMoney(currency, value);
+}
+
+function authoritativeMoney(receiptValue: string | undefined | null, fallback: number | null) {
+  const receiptAmount = moneyNumber(receiptValue);
+  if (receiptAmount !== null) return receiptAmount;
+  return fallback;
 }
 
 interface PayrollOperationWorkspaceProps {
@@ -116,17 +138,28 @@ export default function PayrollOperationWorkspace({
     const statutory = run.statutoryCalculations.find((item) => item.userId === snapshot.userId);
     const anomalies = run.anomalies.filter((item) => item.userId === snapshot.userId || item.employeeId === snapshot.userId);
     const receipt = run.receipts.find((item) => item.userId === snapshot.userId);
-    const gross = componentsTotal(components, 'INCOME');
-    const deductions = componentsTotal(components, 'DEDUCTION');
+    // Prefer immutable receipt totals when published; otherwise sum server components (never invent statutory).
+    // A lifecycle status alone does not prove that the per-employee calculation
+    // payload arrived. With no components, show an explicit pending value instead
+    // of fabricating a fully reconciled C$0.00 row.
+    const hasCalculation = run.status !== 'DRAFT' && components.length > 0;
+    const componentGross = hasCalculation ? componentsTotal(components, 'INCOME') : null;
+    const componentDeductions = hasCalculation ? componentsTotal(components, 'DEDUCTION') : null;
+    const gross = authoritativeMoney(receipt?.grossIncome, componentGross);
+    const deductions = authoritativeMoney(receipt?.totalDeductions, componentDeductions);
+    const componentNet = componentGross === null || componentDeductions === null
+      ? null
+      : componentGross - componentDeductions;
+    const net = authoritativeMoney(receipt?.netPay, componentNet);
     return {
       userId: snapshot.userId,
       name: employeeName(snapshot),
       branch: snapshot.branch?.name,
       gross,
       deductions,
-      inss: numberOf(statutory?.employeeInss),
-      incomeTax: numberOf(statutory?.currentIncomeTaxWithheld),
-      net: gross - deductions,
+      inss: statutory ? moneyNumber(statutory.employeeInss) : null,
+      incomeTax: statutory ? moneyNumber(statutory.currentIncomeTaxWithheld) : null,
+      net,
       overtimeMinutes: snapshot.approvedOvertimeMinutes,
       components,
       statutory,
@@ -199,10 +232,10 @@ export default function PayrollOperationWorkspace({
 
       <dl className="payroll-operation-totals" aria-label="Resumen total de la nómina">
         <div><dt>Colaboradores</dt><dd>{run.totals?.employeeCount ?? run.snapshot.length}</dd></div>
-        <div><dt>Ingresos brutos</dt><dd>{formatHrMoney(currency, run.totals?.grossIncome ?? '0')}</dd></div>
-        <div><dt>Deducciones</dt><dd>{formatHrMoney(currency, run.totals?.totalDeductions ?? '0')}</dd></div>
-        <div><dt>Aportes patronales</dt><dd>{formatHrMoney(currency, run.totals?.employerContributions ?? '0')}</dd></div>
-        <div className="net"><dt>Neto a pagar</dt><dd>{formatHrMoney(currency, run.totals?.netPay ?? '0')}</dd></div>
+        <div><dt>Ingresos brutos</dt><dd>{formatRunTotal(currency, run.totals?.grossIncome)}</dd></div>
+        <div><dt>Deducciones</dt><dd>{formatRunTotal(currency, run.totals?.totalDeductions)}</dd></div>
+        <div><dt>Aportes patronales</dt><dd>{formatRunTotal(currency, run.totals?.employerContributions)}</dd></div>
+        <div className="net"><dt>Neto a pagar</dt><dd>{formatRunTotal(currency, run.totals?.netPay)}</dd></div>
       </dl>
 
       <section className="payroll-operation-reporting" aria-labelledby="payroll-deliverables-title">
@@ -260,11 +293,11 @@ export default function PayrollOperationWorkspace({
                     <FragmentRow key={row.userId}>
                       <tr className={row.anomalies.some((item) => item.blocking) ? 'has-blocker' : ''}>
                         <th scope="row"><strong>{row.name}</strong><small>{row.branch ?? `ID ${row.userId}`}</small></th>
-                        <td data-label="Ingresos">{formatHrMoney(currency, row.gross)}</td>
-                        <td data-label="INSS laboral">{formatHrMoney(currency, row.inss)}</td>
-                        <td data-label="IR laboral">{formatHrMoney(currency, row.incomeTax)}</td>
-                        <td data-label="Deducciones">{formatHrMoney(currency, row.deductions)}</td>
-                        <td data-label="Neto"><strong>{formatHrMoney(currency, row.net)}</strong></td>
+                        <td data-label="Ingresos">{formatEmployeeMoney(currency, row.gross)}</td>
+                        <td data-label="INSS laboral">{formatEmployeeMoney(currency, row.inss)}</td>
+                        <td data-label="IR laboral">{formatEmployeeMoney(currency, row.incomeTax)}</td>
+                        <td data-label="Deducciones">{formatEmployeeMoney(currency, row.deductions)}</td>
+                        <td data-label="Neto"><strong>{formatEmployeeMoney(currency, row.net)}</strong></td>
                         <td data-label="Incidencias">{row.anomalies.length ? <span className="payroll-operation-incident">{row.anomalies.length}</span> : <span className="payroll-operation-ok"><Check size={14} /> Sin incidencias</span>}</td>
                         <td><div className="payroll-employee-actions"><Button className="payroll-operation-detail-trigger" size="sm" variant="ghost" aria-expanded={expanded} aria-controls={`payroll-employee-detail-${row.userId}`} aria-label={`${expanded ? 'Cerrar' : 'Ver'} detalle de ${row.name}`} onClick={() => setExpandedUserId(expanded ? null : row.userId)}>Detalle <ChevronDown className={expanded ? 'is-open' : undefined} size={15} /></Button>{row.receipt && <Button size="sm" variant="ghost" onClick={() => onDownloadReceipt(row.receipt!.id)} disabled={!online || busy} title={`Descargar colilla de ${row.name}`}><Download size={14} /><span className="sr-only">Descargar colilla de {row.name}</span></Button>}</div></td>
                       </tr>
@@ -275,22 +308,22 @@ export default function PayrollOperationWorkspace({
                               <div className="payroll-operation-employee-avatar" aria-hidden="true"><UserRound size={22} /></div>
                               <div><span className="payroll-operation-eyebrow">Detalle individual</span><h4>{row.name}</h4><p>{row.branch ?? 'Sucursal no asignada'} · colaborador #{row.userId}</p></div>
                               <dl>
-                                <div><dt>Ingresos</dt><dd>{formatHrMoney(currency, row.gross)}</dd></div>
-                                <div><dt>Deducciones</dt><dd>{formatHrMoney(currency, row.deductions)}</dd></div>
-                                <div className="net"><dt>Neto</dt><dd>{formatHrMoney(currency, row.net)}</dd></div>
+                                <div><dt>Ingresos</dt><dd>{formatEmployeeMoney(currency, row.gross)}</dd></div>
+                                <div><dt>Deducciones</dt><dd>{formatEmployeeMoney(currency, row.deductions)}</dd></div>
+                                <div className="net"><dt>Neto</dt><dd>{formatEmployeeMoney(currency, row.net)}</dd></div>
                               </dl>
                             </header>
                             <section>
                               <div className="payroll-operation-detail-heading"><CircleDollarSign size={18} aria-hidden="true" /><div><h4>Ingresos</h4><small>{row.components.filter((item) => item.type === 'INCOME').length} concepto(s)</small></div></div>
                               {row.components.filter((item) => item.type === 'INCOME').map((item) => <Line key={item.id} label={item.name} note={item.source} amount={formatHrMoney(currency, item.amount)} />)}
                               {!row.components.some((item) => item.type === 'INCOME') && <p className="payroll-operation-detail-empty">Sin ingresos calculados.</p>}
-                              <footer><span>Total ingresos</span><strong>{formatHrMoney(currency, row.gross)}</strong></footer>
+                              <footer><span>Total ingresos</span><strong>{formatEmployeeMoney(currency, row.gross)}</strong></footer>
                             </section>
                             <section>
                               <div className="payroll-operation-detail-heading"><Minus size={18} aria-hidden="true" /><div><h4>Deducciones</h4><small>{row.components.filter((item) => item.type === 'DEDUCTION').length} concepto(s)</small></div></div>
                               {row.components.filter((item) => item.type === 'DEDUCTION').map((item) => <Line key={item.id} label={item.name} note={item.code} amount={formatHrMoney(currency, item.amount)} />)}
                               {!row.components.some((item) => item.type === 'DEDUCTION') && <p className="payroll-operation-detail-empty">Sin deducciones.</p>}
-                              <footer><span>Total deducciones</span><strong>{formatHrMoney(currency, row.deductions)}</strong></footer>
+                              <footer><span>Total deducciones</span><strong>{formatEmployeeMoney(currency, row.deductions)}</strong></footer>
                             </section>
                             <section>
                               <div className="payroll-operation-detail-heading"><Clock3 size={18} aria-hidden="true" /><div><h4>Control e incidencias</h4><small>{row.overtimeMinutes} min extra aprobados</small></div></div>

@@ -12,7 +12,10 @@ export const DEFAULT_COMPANY_SETTINGS: Readonly<Record<string, string>> = Object
     tax_rate: '15',
     timezone: 'America/Managua',
     kds_warning_minutes: '3',
-    kds_urgent_minutes: '10'
+    kds_urgent_minutes: '10',
+    // Compatibility default for tenants created before the reservation window
+    // became configurable. New/updated tenants may override it explicitly.
+    reservation_table_window_minutes: '120'
 });
 
 export function validateConfiguredFiscalTaxId(
@@ -68,7 +71,25 @@ export class SettingService {
             result.nif = company.ruc;
         }
 
+        // Canonical tax key is `tax_rate` (defaults / invoices). POS and Settings
+        // historically read `taxRate`. Expose both so clients cannot silently
+        // compute 0% IVA when only the snake_case default exists.
+        this.aliasSettingKeys(result, 'tax_rate', 'taxRate');
+        this.aliasSettingKeys(result, 'restaurant_name', 'companyName');
+
         return result;
+    }
+
+    /** Prefer the canonical key when both aliases exist; always mirror onto both. */
+    private static aliasSettingKeys(
+        settings: Record<string, string>,
+        canonical: string,
+        legacy: string
+    ): void {
+        const value = settings[canonical] ?? settings[legacy];
+        if (value === undefined) return;
+        settings[canonical] = value;
+        settings[legacy] = value;
     }
 
     private static validateSettingValue(name: string, value: string) {
@@ -111,6 +132,12 @@ export class SettingService {
                 throw new Error('Los umbrales KDS deben ser minutos enteros entre 1 y 240');
             }
         }
+        if (name === 'reservation_table_window_minutes') {
+            const minutes = Number(value);
+            if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+                throw new Error('La ventana de reservación debe ser un entero entre 1 y 1440 minutos');
+            }
+        }
         if (name === 'fiscal_jurisdiction') {
             const jurisdiction = value.trim();
             if (!/^[A-Za-z0-9_-]{2,32}$/.test(jurisdiction)) {
@@ -141,6 +168,16 @@ export class SettingService {
     static async getCurrencySymbol(companyId: number): Promise<string> {
         const settings = await this.getAll(companyId);
         return settings.currency_symbol?.trim() || DEFAULT_COMPANY_SETTINGS.currency_symbol;
+    }
+
+    /** Canonical IVA/tax percent for POS pricing and fiscal snapshots. */
+    static async getTaxRate(companyId: number): Promise<number> {
+        const settings = await this.getAll(companyId);
+        const configured = Number.parseFloat(settings.tax_rate || settings.taxRate || '');
+        if (Number.isFinite(configured) && configured >= 0 && configured <= 100) {
+            return configured;
+        }
+        return Number(DEFAULT_COMPANY_SETTINGS.tax_rate);
     }
 
     static async getTimezone(companyId: number): Promise<string> {
@@ -176,25 +213,55 @@ export class SettingService {
         return { warningMinutes, urgentMinutes };
     }
 
+    static async getReservationTableWindowMinutes(
+        companyId: number,
+        db: SettingClient = prisma
+    ): Promise<number> {
+        const name = `${companyId}_reservation_table_window_minutes`;
+        const setting = await db.setting.findUnique({
+            where: { companyId_name: { companyId, name } },
+            select: { value: true }
+        });
+        const raw = setting?.value ?? DEFAULT_COMPANY_SETTINGS.reservation_table_window_minutes;
+        const minutes = Number(raw);
+        if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+            throw new Error('La ventana de reservación configurada debe ser un entero entre 1 y 1440 minutos');
+        }
+        return minutes;
+    }
+
     static async update(companyId: number, data: Record<string, string>) {
         const prefix = `${companyId}_`;
+        const normalized = { ...data };
+
+        // Persist tax under the canonical `tax_rate` key only. Writing `taxRate`
+        // as a separate row lets POS and invoices diverge (0% vs configured IVA).
+        if (normalized.taxRate !== undefined && normalized.tax_rate === undefined) {
+            normalized.tax_rate = normalized.taxRate;
+        }
+        delete normalized.taxRate;
+
+        if (normalized.companyName !== undefined && normalized.restaurant_name === undefined) {
+            normalized.restaurant_name = normalized.companyName;
+        }
+        delete normalized.companyName;
 
         // Validate all values before starting transaction
-        for (const [name, value] of Object.entries(data)) {
+        for (const [name, value] of Object.entries(normalized)) {
             this.validateSettingValue(name, value);
         }
 
-        if (data.kds_warning_minutes !== undefined || data.kds_urgent_minutes !== undefined) {
+        if (normalized.kds_warning_minutes !== undefined || normalized.kds_urgent_minutes !== undefined) {
             const current = await this.getKdsTimingConfig(companyId);
-            const warningMinutes = Number(data.kds_warning_minutes ?? current.warningMinutes);
-            const urgentMinutes = Number(data.kds_urgent_minutes ?? current.urgentMinutes);
+            const warningMinutes = Number(normalized.kds_warning_minutes ?? current.warningMinutes);
+            const urgentMinutes = Number(normalized.kds_urgent_minutes ?? current.urgentMinutes);
             if (warningMinutes >= urgentMinutes) {
                 throw new Error('El umbral de advertencia KDS debe ser menor que el umbral urgente');
             }
         }
 
         await prisma.$transaction(async (tx) => {
-            for (const [name, value] of Object.entries(data)) {
+            for (const [name, value] of Object.entries(normalized)) {
                 const prefixedName = `${prefix}${name}`;
                 const existing = await tx.setting.findFirst({
                     where: { companyId, name: prefixedName }
@@ -212,9 +279,21 @@ export class SettingService {
                 }
             }
 
+            // Drop legacy duplicate keys so future reads cannot prefer a stale alias.
+            if (normalized.tax_rate !== undefined) {
+                await tx.setting.deleteMany({
+                    where: { companyId, name: `${prefix}taxRate` }
+                });
+            }
+            if (normalized.restaurant_name !== undefined) {
+                await tx.setting.deleteMany({
+                    where: { companyId, name: `${prefix}companyName` }
+                });
+            }
+
             // Keep the tax id unified: editing it here (nif/ruc) updates Company.ruc,
             // which is the source the invoices, tickets and reports read from.
-            const taxId = data.ruc ?? data.nif;
+            const taxId = normalized.ruc ?? normalized.nif;
             if (taxId !== undefined) {
                 await tx.company.update({
                     where: { id: companyId },
@@ -223,7 +302,7 @@ export class SettingService {
             }
         });
 
-        if (data.timezone !== undefined) this.timezoneCache.delete(companyId);
+        if (normalized.timezone !== undefined) this.timezoneCache.delete(companyId);
 
         return this.getAll(companyId);
     }

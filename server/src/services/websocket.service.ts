@@ -26,6 +26,8 @@ interface BroadcastCriteria {
     branchId?: number;
     roles?: string[];
     userIds?: number[];
+    /** Explicit escape hatch for intentionally platform-wide system events. */
+    allowCrossTenant?: boolean;
 }
 
 export class WebSocketService {
@@ -224,7 +226,7 @@ export class WebSocketService {
     }
 
     private static isClientAllowed(client: WebSocketClient, criteria: BroadcastCriteria): boolean {
-        if (!client.authenticated && client.companyId === undefined) {
+        if (client.authenticated !== true) {
             return false;
         }
 
@@ -303,6 +305,14 @@ export class WebSocketService {
     }
 
     static broadcast(message: WebSocketMessage, criteria: BroadcastCriteria = {}): void {
+        // A missing tenant criterion must never degrade into broadcasting
+        // restaurant data to every connected company. Platform-wide events
+        // must opt in explicitly at the call site.
+        if (criteria.companyId === undefined && criteria.allowCrossTenant !== true) {
+            console.error(`[WS] Blocked unscoped broadcast for event ${message.type}`);
+            return;
+        }
+
         const data = JSON.stringify(message);
 
         this.clients.forEach((client) => {

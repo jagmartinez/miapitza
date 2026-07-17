@@ -15,6 +15,7 @@ export default function LowStockAlert() {
     const navigate = useNavigate();
     const [lowStockItems, setLowStockItems] = useState<LowStockRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     useEffect(() => {
         loadLowStock();
@@ -22,16 +23,36 @@ export default function LowStockAlert() {
 
     const loadLowStock = async () => {
         try {
+            setLoadError(null);
             const response = await productsAPI.getLowStock();
             setLowStockItems(response.data.data || []);
         } catch (error) {
             console.error('Error loading low stock items:', error);
+            setLoadError(error instanceof Error ? error.message : 'No se pudieron consultar las alertas');
         } finally {
             setLoading(false);
         }
     };
 
     if (loading) return null;
+    if (loadError) {
+        return (
+            <Card className="low-stock-alert-card">
+                <div className="alert-header" role="alert">
+                    <div className="alert-title">
+                        <AlertTriangle size={20} />
+                        <div>
+                            <h3>Alertas de inventario no disponibles</h3>
+                            <span>No se puede afirmar que no haya stock bajo: {loadError}</span>
+                        </div>
+                    </div>
+                    <button type="button" className="view-all-btn" onClick={() => void loadLowStock()}>
+                        Reintentar
+                    </button>
+                </div>
+            </Card>
+        );
+    }
     if (lowStockItems.length === 0) return null;
 
     return (
@@ -49,7 +70,7 @@ export default function LowStockAlert() {
                         <Package size={16} />
                         <div className="item-info">
                             <span className="item-name">{item.name}</span>
-                            <span className="item-stock">Stock: {item.currentStock || 0}</span>
+                            <span className="item-stock">Stock: {item.currentStock ?? 'N/D'}</span>
                         </div>
                         <span className="item-status">Bajo</span>
                     </div>

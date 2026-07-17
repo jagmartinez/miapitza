@@ -179,6 +179,35 @@ export class MenuItemController {
         }
     }
 
+    static async replaceRecipes(req: Request, res: Response, next: NextFunction) {
+        try {
+            const menuItemId = parseInt(req.params.id);
+            const companyId = req.user!.companyId;
+            await MenuItemController.assertMenuItemBranch(req, menuItemId, false);
+            const menuItemData = req.body.menuItem ? { ...req.body.menuItem } : undefined;
+            if (menuItemData && req.body.menuItem.branchId !== undefined) {
+                menuItemData.branchId = resolveBranchScope(
+                    req.user!,
+                    Number(req.body.menuItem.branchId)
+                );
+            }
+            const result = await MenuItemService.replaceRecipes(
+                menuItemId,
+                companyId,
+                req.body.recipes,
+                menuItemData
+            );
+            res.json({
+                success: true,
+                message: 'Receta reemplazada exitosamente',
+                data: result
+            });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
     static async deleteRecipe(req: Request, res: Response, next: NextFunction) {
         try {
             const recipeId = parseInt(req.params.recipeId);

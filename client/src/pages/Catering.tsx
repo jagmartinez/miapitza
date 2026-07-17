@@ -59,6 +59,7 @@ interface CateringPaymentEntry {
     date?: string;
     amount: number;
     paymentMethod?: { name?: string };
+    methodType?: 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'OTHER';
     status?: 'ACTIVE' | 'REVERSED';
     reversedAt?: string | null;
     reversalReason?: string | null;
@@ -82,6 +83,9 @@ interface CateringEvent {
     status: 'QUOTED' | 'RESERVED' | 'PAID' | 'FINISHED' | 'CANCELLED';
     totalAmount: number;
     balance: number;
+    fiscalSubtotal?: number | null;
+    fiscalTax?: number | null;
+    fiscalTaxRatePercent?: number | null;
     location?: string;
     notes?: string;
     subtotal: number;
@@ -94,6 +98,8 @@ interface CateringEvent {
     services?: CateringServiceEntry[];
     menuItems?: CateringMenuEntry[];
     payments?: CateringPaymentEntry[];
+    fiscalInvoice?: { number: string; status: 'ISSUED' | 'CREDITED'; issuedAt: string } | null;
+    fiscalCreditNote?: { number: string; status: 'ISSUED'; issuedAt: string; reason: string } | null;
 }
 
 type CateringEventDetail = CateringEvent & {
@@ -105,11 +111,23 @@ type CateringEventDetail = CateringEvent & {
 type CateringViewMode = 'grid' | 'table' | 'calendar';
 type CateringTab = 'info' | 'logistics' | 'services' | 'menu' | 'clauses' | 'financial';
 
+interface InventoryAvailabilityAlert {
+    productId?: number;
+    productName: string;
+    required: number;
+    available: number;
+    deficit: number;
+}
+
+function formatAvailabilityAlert(alert: InventoryAvailabilityAlert): string {
+    return `${alert.productName}: requiere ${alert.required}, disponible ${alert.available}, déficit ${alert.deficit}`;
+}
+
 export default function Catering() {
     const { formatMoney } = useCurrency();
     const { user } = useAuth();
     const { confirm } = useConfirmDialog();
-    const { error: showError, warning: showWarning } = useAppToast();
+    const { error: showError, warning: showWarning, success: showSuccess } = useAppToast();
     const userRoleNames = getUserRoleNames(user);
     const canManageCatering = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [events, setEvents] = useState<CateringEvent[]>([]);
@@ -133,7 +151,7 @@ export default function Catering() {
     const [allBranches, setAllBranches] = useState<Branch[]>([]);
     const [allWarehouses, setAllWarehouses] = useState<Warehouse[]>([]);
     const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-    const [availabilityAlerts, setAvailabilityAlerts] = useState<string[]>([]);
+    const [availabilityAlerts, setAvailabilityAlerts] = useState<InventoryAvailabilityAlert[]>([]);
     const [settings, setSettings] = useState<CateringCompanySettings>({});
 
     const [formData, setFormData] = useState({
@@ -173,6 +191,20 @@ export default function Catering() {
         paymentIdempotencyKeyRef.current = newIdempotencyKey();
     }, [selectedEvent?.id, paymentData.amount, paymentData.paymentMethodId]);
     const [reversalReason, setReversalReason] = useState('');
+    const [fiscalCreditReason, setFiscalCreditReason] = useState('');
+    const [returnCateringInventory, setReturnCateringInventory] = useState(false);
+    const [externalRefundReferences, setExternalRefundReferences] = useState<Record<number, string>>({});
+    const [fiscalBusy, setFiscalBusy] = useState(false);
+    const invoiceIdempotencyKeyRef = useRef(newIdempotencyKey());
+    const creditNoteIdempotencyKeyRef = useRef(newIdempotencyKey());
+
+    useEffect(() => {
+        invoiceIdempotencyKeyRef.current = newIdempotencyKey();
+        creditNoteIdempotencyKeyRef.current = newIdempotencyKey();
+        setFiscalCreditReason('');
+        setReturnCateringInventory(false);
+        setExternalRefundReferences({});
+    }, [selectedEvent?.id]);
     const [finishWarehouseId, setFinishWarehouseId] = useState<number | null>(null);
 
     const menuCategoryOptions = useMemo(
@@ -385,15 +417,39 @@ export default function Catering() {
     };
 
     const checkAvailability = async () => {
+        if (!formData.date || !formData.time) {
+            showWarning('Selecciona fecha y hora para verificar inventario.');
+            return;
+        }
         try {
             const date = new Date(`${formData.date}T${formData.time}`).toISOString();
             const response = await cateringAPI.checkAvailability(
                 date,
                 formData.branchId ? Number(formData.branchId) : undefined
             );
-            setAvailabilityAlerts(response.data.data?.alerts || []);
+            const rawAlerts = response.data.data?.alerts || [];
+            const alerts: InventoryAvailabilityAlert[] = rawAlerts.map((alert: InventoryAvailabilityAlert | string) => {
+                if (typeof alert === 'string') {
+                    return { productName: alert, required: 0, available: 0, deficit: 0 };
+                }
+                return {
+                    productId: alert.productId,
+                    productName: alert.productName || 'Producto',
+                    required: Number(alert.required) || 0,
+                    available: Number(alert.available) || 0,
+                    deficit: Number(alert.deficit) || 0
+                };
+            });
+            setAvailabilityAlerts(alerts);
+            if (alerts.length === 0) {
+                showSuccess('Inventario suficiente para los eventos de esa fecha.');
+            }
         } catch (error) {
             console.error('Error checking availability:', error);
+            const message = typeof error === 'object' && error !== null && 'response' in error
+                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                : undefined;
+            showError(message || 'No se pudo verificar la disponibilidad de inventario.');
         }
     };
 
@@ -454,6 +510,66 @@ export default function Catering() {
                 ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
                 : undefined;
             showError(message || 'No se pudo revertir el pago');
+        }
+    };
+
+    const refreshSelectedCateringEvent = async (eventId: number) => {
+        const response = await cateringAPI.getEventById(eventId);
+        setSelectedEvent(response.data.data);
+        loadEvents();
+    };
+
+    const handleIssueFiscalInvoice = async () => {
+        if (!selectedEvent || !canManageCatering || fiscalBusy) return;
+        if (!(await confirm('¿Emitir la factura fiscal? Los conceptos, impuestos, pagos y datos del cliente quedarán congelados.', { confirmText: 'Emitir factura' }))) return;
+        setFiscalBusy(true);
+        try {
+            await cateringAPI.issueFiscalInvoice(selectedEvent.id, invoiceIdempotencyKeyRef.current);
+            await refreshSelectedCateringEvent(selectedEvent.id);
+            showSuccess('Factura fiscal de catering emitida');
+        } catch (error: unknown) {
+            const message = typeof error === 'object' && error !== null && 'response' in error
+                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                : undefined;
+            showError(message || 'No se pudo emitir la factura fiscal');
+        } finally {
+            setFiscalBusy(false);
+        }
+    };
+
+    const handleIssueFiscalCreditNote = async () => {
+        if (!selectedEvent || !canManageCatering || fiscalBusy) return;
+        if (fiscalCreditReason.trim().length < 5) {
+            showWarning('Indica un motivo fiscal de al menos 5 caracteres');
+            return;
+        }
+        const nonCashPayments = (selectedEvent.payments || []).filter((payment) =>
+            payment.status !== 'REVERSED' && payment.methodType && payment.methodType !== 'CASH'
+        );
+        if (nonCashPayments.some((payment) => !payment.id || !externalRefundReferences[payment.id]?.trim())) {
+            showWarning('Registra la referencia de cada reembolso externo');
+            return;
+        }
+        if (!(await confirm('¿Emitir nota de crédito total? Se revertirán todos los pagos y, si se indicó, el inventario consumido.', { variant: 'warning', confirmText: 'Emitir nota de crédito' }))) return;
+        setFiscalBusy(true);
+        try {
+            await cateringAPI.issueFiscalCreditNote(selectedEvent.id, {
+                reason: fiscalCreditReason.trim(),
+                inventoryAction: returnCateringInventory ? 'RETURN_TO_STOCK' : 'NO_RETURN',
+                externalRefunds: nonCashPayments.map((payment) => ({
+                    paymentId: payment.id,
+                    reference: externalRefundReferences[payment.id!].trim()
+                }))
+            }, creditNoteIdempotencyKeyRef.current);
+            await refreshSelectedCateringEvent(selectedEvent.id);
+            showSuccess('Nota de crédito total emitida y contraflujos conciliados');
+        } catch (error: unknown) {
+            const message = typeof error === 'object' && error !== null && 'response' in error
+                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                : undefined;
+            showError(message || 'No se pudo emitir la nota de crédito fiscal');
+        } finally {
+            setFiscalBusy(false);
         }
     };
 
@@ -675,7 +791,6 @@ export default function Catering() {
 
     const configuredTaxRate = Number(settings.tax_rate ?? settings.taxRate ?? 15);
     const taxRate = Number.isFinite(configuredTaxRate) && configuredTaxRate >= 0 ? configuredTaxRate : 15;
-    const taxDivisor = 1 + taxRate / 100;
 
     return (
         <div className="catering-page">
@@ -1421,7 +1536,9 @@ export default function Catering() {
                                         <div>
                                             <strong>Alertas de Inventario:</strong>
                                             <ul style={{ margin: '5px 0 0 20px', padding: 0 }}>
-                                                {availabilityAlerts.map((alert, i) => <li key={i}>{alert}</li>)}
+                                                {availabilityAlerts.map((alert, i) => (
+                                                    <li key={alert.productId ?? i}>{formatAvailabilityAlert(alert)}</li>
+                                                ))}
                                             </ul>
                                         </div>
                                     </div>
@@ -1574,11 +1691,11 @@ export default function Catering() {
                                     <div className="financial-secondary-row">
                                         <div className="summary-box-plain">
                                             <span className="label">Subtotal</span>
-                                            <span className="value">{formatMoney(Number(selectedEvent.totalAmount || 0) / taxDivisor)}</span>
+                                            <span className="value">{selectedEvent.fiscalSubtotal == null ? 'No certificado' : formatMoney(Number(selectedEvent.fiscalSubtotal))}</span>
                                         </div>
                                         <div className="summary-box-plain">
-                                            <span className="label">IVA ({taxRate}%)</span>
-                                            <span className="value">{formatMoney(Number(selectedEvent.totalAmount || 0) * (taxRate / 100) / taxDivisor)}</span>
+                                            <span className="label">IVA ({selectedEvent.fiscalTaxRatePercent == null ? taxRate : Number(selectedEvent.fiscalTaxRatePercent)}%)</span>
+                                            <span className="value">{selectedEvent.fiscalTax == null ? 'No certificado' : formatMoney(Number(selectedEvent.fiscalTax))}</span>
                                         </div>
                                     </div>
 
@@ -1596,6 +1713,66 @@ export default function Catering() {
                                             <span className="value">{formatMoney(Number(selectedEvent.balance || 0))}</span>
                                         </div>
                                     </div>
+                                </div>
+
+                                <div className="payment-form" style={{ padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px', marginBottom: '12px' }}>
+                                    <h3 style={{ marginBottom: '10px', fontSize: '0.95rem' }}>Documentos fiscales</h3>
+                                    {selectedEvent.fiscalInvoice ? (
+                                        <p style={{ margin: '0 0 10px' }}>
+                                            Factura <strong>{selectedEvent.fiscalInvoice.number}</strong> · {selectedEvent.fiscalInvoice.status === 'CREDITED' ? 'Acreditada' : 'Emitida'}
+                                        </p>
+                                    ) : (
+                                        <Button
+                                            type="button"
+                                            onClick={handleIssueFiscalInvoice}
+                                            disabled={!canManageCatering || fiscalBusy || !['PAID', 'FINISHED'].includes(selectedEvent.status)}
+                                        >
+                                            Emitir factura fiscal
+                                        </Button>
+                                    )}
+
+                                    {selectedEvent.fiscalCreditNote ? (
+                                        <p style={{ margin: '8px 0 0' }}>
+                                            Nota de crédito <strong>{selectedEvent.fiscalCreditNote.number}</strong> · {selectedEvent.fiscalCreditNote.reason}
+                                        </p>
+                                    ) : selectedEvent.fiscalInvoice?.status === 'ISSUED' && (
+                                        <div style={{ display: 'grid', gap: '10px', marginTop: '12px' }}>
+                                            <div className="modal-input-group" style={{ marginBottom: 0 }}>
+                                                <label>Motivo fiscal de devolución total</label>
+                                                <input
+                                                    className="modal-standard-input"
+                                                    value={fiscalCreditReason}
+                                                    onChange={(event) => setFiscalCreditReason(event.target.value)}
+                                                    placeholder="Ej. cancelación total autorizada"
+                                                />
+                                            </div>
+                                            {(selectedEvent.payments || []).filter((payment) =>
+                                                payment.status !== 'REVERSED' && payment.methodType && payment.methodType !== 'CASH'
+                                            ).map((payment) => (
+                                                <div className="modal-input-group" style={{ marginBottom: 0 }} key={payment.id}>
+                                                    <label>Referencia reembolso {payment.paymentMethod?.name || `pago #${payment.id}`}</label>
+                                                    <input
+                                                        className="modal-standard-input"
+                                                        value={payment.id ? externalRefundReferences[payment.id] || '' : ''}
+                                                        onChange={(event) => payment.id && setExternalRefundReferences((current) => ({ ...current, [payment.id!]: event.target.value }))}
+                                                    />
+                                                </div>
+                                            ))}
+                                            {selectedEvent.status === 'FINISHED' && (
+                                                <label style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={returnCateringInventory}
+                                                        onChange={(event) => setReturnCateringInventory(event.target.checked)}
+                                                    />
+                                                    La mercancía regresó físicamente: restaurar inventario y costo exactos
+                                                </label>
+                                            )}
+                                            <Button type="button" variant="secondary" onClick={handleIssueFiscalCreditNote} disabled={!canManageCatering || fiscalBusy}>
+                                                Emitir nota de crédito total
+                                            </Button>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="payment-form" style={{ padding: '10px', background: 'var(--bg-secondary)', borderRadius: '8px' }}>

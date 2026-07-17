@@ -73,6 +73,7 @@ export default function PayrollLegalSettings() {
     () => rules.find((rule) => String(rule.id) === selectedRuleId) ?? null,
     [rules, selectedRuleId]
   );
+  const activeRule = useMemo(() => rules.find((rule) => rule.status === 'ACTIVE') ?? null, [rules]);
 
   const loadRules = useCallback(async (preferredId?: string) => {
     setLoading(true);
@@ -235,17 +236,19 @@ export default function PayrollLegalSettings() {
       {!loading && error && <div className="state-placeholder" role="alert"><AlertTriangle size={44} /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadRules()}>Reintentar</Button></div>}
       {!loading && !error && rules.length === 0 && <div className="hr-payroll-legal-empty hr-legal-empty-state"><Scale size={42} /><strong>No hay una versión legal de nómina.</strong><span>Crea una vigencia para luego configurar tasas de INSS, INATEC y tramos de IR laboral.</span><Button onClick={() => { setCloneSource(null); setCreateOpen(true); }} disabled={!online || !companyTaxProfile?.ready}>Crear primera versión</Button></div>}
 
-      {!loading && !error && companyTaxProfile && <section className="hr-legal-company-master" aria-label="Perfil fiscal maestro de la empresa">
-        <div><span className="hr-legal-eyebrow">Perfil fiscal de Empresa</span><h2>{companyTaxProfile.companyName}</h2><p>Las nuevas versiones toman este perfil automáticamente y lo congelan para auditoría.</p></div>
-        <dl><div><dt>Régimen DGI</dt><dd>{companyTaxProfile.taxRegime === 'GENERAL' ? 'General' : companyTaxProfile.taxRegime === 'SIMPLIFIED_FIXED_QUOTA' ? 'Cuota fija / simplificado' : companyTaxProfile.taxRegime === 'SPECIAL' ? 'Especial' : companyTaxProfile.taxRegime === 'EXEMPT' ? 'Exento' : 'Otro'}</dd></div><div><dt>IR laboral</dt><dd>{companyTaxProfile.incomeTaxWithholding ? 'Retiene' : 'No retiene'}</dd></div><div><dt>Estado</dt><dd>{companyTaxProfile.ready ? 'Confirmado' : 'Pendiente'}</dd></div></dl>
-        <Link className="btn btn-secondary btn-sm" to="/companies">Editar en Empresas</Link>
+      {!loading && !error && companyTaxProfile && <section className="hr-legal-command-center" aria-label="Centro de control legal de nómina">
+        <div className="hr-legal-command-intro"><span className="hr-legal-command-icon"><Landmark size={24} aria-hidden="true" /></span><div><span className="hr-legal-eyebrow">Centro de control legal</span><h2>{companyTaxProfile.companyName}</h2><p>Administra en un solo flujo el perfil fiscal, las vigencias y los parámetros congelados que utiliza cada nómina.</p></div><Link className="btn btn-secondary btn-sm" to="/companies">Editar perfil fiscal</Link></div>
+        <dl className="hr-legal-command-facts">
+          <div><dt>Régimen DGI</dt><dd>{companyTaxProfile.taxRegime === 'GENERAL' ? 'General' : companyTaxProfile.taxRegime === 'SIMPLIFIED_FIXED_QUOTA' ? 'Cuota fija / simplificado' : companyTaxProfile.taxRegime === 'SPECIAL' ? 'Especial' : companyTaxProfile.taxRegime === 'EXEMPT' ? 'Exento' : 'Otro'}</dd><small>{companyTaxProfile.incomeTaxWithholding ? 'Retiene IR laboral' : 'No retiene IR laboral'}</small></div>
+          <div><dt>Perfil maestro</dt><dd>{companyTaxProfile.ready ? 'Confirmado' : 'Pendiente'}</dd><small>Fuente para nuevas versiones</small></div>
+          <div><dt>Versiones registradas</dt><dd>{rules.length}</dd><small>Histórico legal inmutable</small></div>
+          <div><dt>Versión activa</dt><dd>{activeRule ? `v${activeRule.version}` : 'Sin activar'}</dd><small>{activeRule?.name ?? 'Requiere configuración validada'}</small></div>
+        </dl>
       </section>}
 
       {!loading && !error && companyTaxProfile && !companyTaxProfile.ready && <div className="hr-legal-profile-warning" role="alert"><AlertTriangle size={20} /><div><strong>El perfil fiscal de la empresa está pendiente.</strong><p>Confirma régimen, retención de IR y respaldo en Empresas. Hasta entonces no se pueden validar reglas ni iniciar nuevas corridas.</p></div><Link className="btn btn-primary btn-sm" to="/companies">Completar perfil</Link></div>}
 
       {!loading && !error && selectedRule && companyTaxProfile && <>
-        <section className="hr-legal-purpose" aria-labelledby="legal-purpose-title"><div className="hr-legal-purpose-icon"><ShieldCheck size={24} aria-hidden="true" /></div><div><span className="hr-legal-eyebrow">Qué controla esta pantalla</span><h2 id="legal-purpose-title">Una versión legal es la receta que usa cada nómina</h2><p>Toma el perfil fiscal de Empresa y define tasas, bases, tramos y conceptos sujetos a cada obligación. Sólo afecta cálculos cuando queda <strong>validada</strong>, <strong>activa</strong> y dentro de su vigencia.</p></div></section>
-
         <section className="hr-legal-version-list pr-table-card" aria-labelledby="legal-version-list-title">
           <div className="hr-legal-version-table-toolbar">
             <div><span className="hr-legal-eyebrow">Registro legal</span><h2 id="legal-version-list-title">Versiones legales</h2><small>Abre una fila para consultar. Para modificar una versión activa, clónala como borrador.</small></div>
@@ -263,7 +266,9 @@ export default function PayrollLegalSettings() {
           })}</tbody></table></div>
         </section>
 
-        <section className="hr-legal-rule-toolbar" aria-label="Versión legal seleccionada"><div className="hr-legal-rule-title"><span className="hr-legal-eyebrow">Versión abierta</span><strong>{selectedRule.name} · v{selectedRule.version}</strong><small>Esta es la versión cuyo detalle y parámetros se muestran abajo.</small></div><div className="hr-legal-rule-meta"><PayrollStatusPill status={selectedRule.status} /><span><CalendarDays size={15} aria-hidden="true" /> {formatLegalDate(selectedRule.effectiveFrom)} – {formatLegalDate(selectedRule.effectiveTo).toLocaleLowerCase()}</span><small>Fuente: {selectedRule.sourceReference}</small>{selectedRule.activeConfigurationRevisionId && <Button type="button" size="sm" variant="ghost" disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(selectedRule); setCreateOpen(true); }}><Copy size={15} /> Clonar para editar</Button>}</div></section>
+        <section className="hr-legal-selected-shell" aria-label="Espacio de trabajo de la versión abierta">
+          <aside className="hr-legal-selected-aside">
+        <section className="hr-legal-rule-toolbar" aria-label="Versión legal seleccionada"><div className="hr-legal-rule-title"><span className="hr-legal-eyebrow">Versión abierta</span><strong>{selectedRule.name} · v{selectedRule.version}</strong><small>Contexto vigente para todos los parámetros mostrados.</small></div><div className="hr-legal-rule-meta"><PayrollStatusPill status={selectedRule.status} /><span><CalendarDays size={15} aria-hidden="true" /> {formatLegalDate(selectedRule.effectiveFrom)} – {formatLegalDate(selectedRule.effectiveTo).toLocaleLowerCase()}</span><small>Fuente: {selectedRule.sourceReference}</small>{selectedRule.activeConfigurationRevisionId && <Button type="button" size="sm" variant="ghost" disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(selectedRule); setCreateOpen(true); }}><Copy size={15} /> Clonar para editar</Button>}</div></section>
 
         {!selectedProfileIsCurrent && <div className="hr-legal-profile-warning" role="alert"><AlertTriangle size={20} /><div><strong>El perfil fiscal de Empresa cambió después de validar esta versión.</strong><p>La versión activa conserva su copia histórica. Clónala para crear un borrador con el régimen y la retención vigentes.</p></div><Button type="button" size="sm" disabled={!companyTaxProfile.ready} onClick={() => { setCloneSource(selectedRule); setCreateOpen(true); }}><Copy size={15} /> Clonar ahora</Button></div>}
 
@@ -285,10 +290,14 @@ export default function PayrollLegalSettings() {
           <article><span>IR laboral</span><strong>{statutory ? `${statutory.incomeTax.brackets.length} tramos` : 'Pendiente'}</strong><small>{statutory?.companyTaxRegime.incomeTaxApplicability === 'DOES_NOT_APPLY' ? 'No aplica por régimen' : `Régimen ${statutory?.companyTaxRegime.code ?? 'pendiente'}`}</small></article>
           <article><span>Uso en nómina</span><strong>{selectedRule.status === 'ACTIVE' ? 'En uso' : selectedRule.status === 'RETIRED' ? 'Retirada' : validatedRevision ? 'Lista para activar' : 'Aún no'}</strong><small>{activeRevision ? `Revisión ${activeRevision.revision} · ${activeRevision.status === 'VALIDATED' ? 'validada' : activeRevision.status === 'UPLOADED' ? 'en validación' : 'rechazada'}` : 'Requiere carga y validación'}</small></article>
         </div>
+          </aside>
+          <div className="hr-legal-selected-main">
 
         {selectedRule.status === 'DRAFT' && validatedRevision && <section className="hr-legal-activation" aria-labelledby="legal-activation-title"><div><span className="hr-legal-section-icon"><LockKeyhole size={20} aria-hidden="true" /></span><div><span className="hr-legal-eyebrow">Paso final</span><h2 id="legal-activation-title">Activar esta versión</h2><p>Al activarla, las nuevas corridas con fecha dentro de <strong>{selectedRule.effectiveFrom} – {selectedRule.effectiveTo ?? 'sin fecha fin'}</strong> podrán usar estos parámetros.</p></div></div><label>Motivo de activación<input value={activationReason} onChange={(event) => setActivationReason(event.target.value)} maxLength={900} /></label><label className="hr-payroll-confirm"><input type="checkbox" checked={activationConfirmed} onChange={(event) => setActivationConfirmed(event.target.checked)} /><span>Confirmo la vigencia y que esta versión debe quedar disponible para calcular nómina.</span></label><Button onClick={() => void activateRule()} disabled={!online || saving || !activationConfirmed || activationReason.trim().length < 3}>{saving ? 'Activando…' : 'Activar versión legal'}</Button></section>}
 
         <section className="hr-legal-configuration-workspace"><div className="hr-legal-workspace-heading"><div><ShieldCheck size={20} aria-hidden="true" /><div><h2>Parámetros de la versión</h2><p>Las tasas se muestran como porcentajes. Montos, fuentes y tramos quedan congelados después de validar.</p></div></div></div><PayrollRuleConfigurationPanel key={`${selectedRule.id}-${selectedRule.revision}-${revisions[0]?.id ?? 'new'}`} rule={selectedRule} revisions={revisions} loading={configurationLoading} saving={saving} online={online} companyTaxProfile={companyTaxProfile} onUpload={uploadConfiguration} onReview={reviewConfiguration} /></section>
+          </div>
+        </section>
       </>}
 
       <Sidebar isOpen={createOpen} onClose={() => { if (!saving) { setCreateOpen(false); setCloneSource(null); } }} title={cloneSource ? 'Clonar como nuevo borrador' : 'Nueva versión legal de nómina'} width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}><PayrollRuleForm key={cloneSource?.id ?? 'new'} initial={cloneSource ? { ...cloneSource, effectiveFrom: '', effectiveTo: null } : null} online={online} saving={saving} onSubmit={saveRule} onCancel={() => { setCreateOpen(false); setCloneSource(null); }} notice={cloneSource ? <div className="hr-payroll-info"><Copy size={18} /><span>Se copiarán tasas, tramos y conceptos. Define la nueva vigencia; el perfil fiscal se actualizará desde Empresa y la copia deberá validarse antes de activarse.</span></div> : undefined} /></Sidebar>

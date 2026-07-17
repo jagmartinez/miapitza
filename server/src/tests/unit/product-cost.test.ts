@@ -1,4 +1,4 @@
-import { effectiveUnitCost } from '../../utils/product-cost';
+import { effectiveUnitCost, resolveEffectiveUnitCost } from '../../utils/product-cost';
 
 describe('effectiveUnitCost', () => {
     it('prefers a positive weighted-average cost', () => {
@@ -13,5 +13,17 @@ describe('effectiveUnitCost', () => {
     it('never returns an invalid or negative cost', () => {
         expect(effectiveUnitCost(Number.NaN, -2)).toBe(0);
         expect(effectiveUnitCost('not-a-number', undefined)).toBe(0);
+    });
+
+    it('distinguishes an explicitly known zero from a missing zero', () => {
+        expect(resolveEffectiveUnitCost(0, 0)).toEqual({
+            value: 0, known: false, source: 'MISSING', anomaly: 'PRODUCT_COST_MISSING'
+        });
+        expect(resolveEffectiveUnitCost(0, 12, { averageCostKnown: true })).toEqual({
+            value: 0, known: true, source: 'AVERAGE', anomaly: null
+        });
+        expect(resolveEffectiveUnitCost(null, 0, { referenceCostKnown: true })).toEqual({
+            value: 0, known: true, source: 'REFERENCE', anomaly: null
+        });
     });
 });

@@ -1,19 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { DeliveryService, type DeliveryStatusUpdate } from '../services/delivery.service';
-
-function toPlatformApiStatus(mapped: string): DeliveryStatusUpdate['status'] {
-    switch (mapped) {
-        case 'ACCEPTED':
-        case 'PREPARING':
-        case 'READY_FOR_PICKUP':
-        case 'PICKED_UP':
-        case 'DELIVERED':
-        case 'CANCELLED':
-            return mapped;
-        default:
-            return 'ACCEPTED';
-    }
-}
+import { DeliveryService } from '../services/delivery.service';
 import { authMiddleware, requireRole } from '../middlewares/auth';
 import { OPERATIONS, ADMINS } from '../constants/roles';
 import { validate } from '../middlewares/validate';
@@ -39,7 +25,7 @@ const router = Router();
  */
 router.post('/webhook/:platform', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { platform } = req.params;
+        const platform = String(req.params.platform || '').trim().toLowerCase();
         const signature = req.headers['x-webhook-signature'] as string || '';
         const rawPayload = (req as Request & { rawBody?: string }).rawBody;
         const payload = rawPayload && rawPayload.trim().length > 0
@@ -57,25 +43,28 @@ router.post('/webhook/:platform', async (req: Request, res: Response, next: Next
             });
         }
 
-        // Validate the signature against the secret that belongs to THIS company.
-        // The branch is re-verified against the company inside processIncomingOrder.
-        if (!(await DeliveryService.validateWebhookSignature(platform, signature, payload, companyId))) {
-            return res.status(401).json({ error: 'Invalid signature' });
-        }
-
         // Map platform name to enum
-        type DeliveryPlatform = 'UBER_EATS' | 'RAPPI' | 'PEDIDOSYA' | 'OTHER';
+        type DeliveryPlatform = 'UBER_EATS' | 'RAPPI' | 'PEDIDOSYA';
         const platformMap: Record<string, DeliveryPlatform> = {
             'uber-eats': 'UBER_EATS',
             'rappi': 'RAPPI',
             'pedidosya': 'PEDIDOSYA'
         };
 
-        const platformEnum: DeliveryPlatform = platformMap[platform] ?? 'OTHER';
+        const platformEnum = platformMap[platform];
+        if (!platformEnum) {
+            return res.status(400).json({ error: 'Unsupported delivery platform' });
+        }
         if (platformEnum === 'PEDIDOSYA') {
             return res.status(410).json({
                 error: 'Use el webhook dedicado /api/v1/pedidosya/webhook/:companyId para PedidosYa.'
             });
+        }
+
+        // Validate the signature against the secret that belongs to THIS company.
+        // The branch is re-verified against the company inside processIncomingOrder.
+        if (!(await DeliveryService.validateWebhookSignature(platform, signature, payload, companyId))) {
+            return res.status(401).json({ error: 'Invalid signature' });
         }
 
         const deliveryOrder = {
@@ -128,10 +117,14 @@ router.put('/:orderId/status', authMiddleware, requireRole(...OPERATIONS), valid
         assertBranchAccess(req.user!, target.branchId);
 
         // Send status update to platform
+        const mappedStatus = DeliveryService.mapStatusToPlatform(platform, status);
+        if (!mappedStatus) {
+            throw new Error(`Unsupported delivery status mapping: ${platform}/${status}`);
+        }
         const result = await DeliveryService.sendStatusUpdate(
             platform,
             externalOrderId,
-            toPlatformApiStatus(DeliveryService.mapStatusToPlatform(platform, status))
+            mappedStatus
         );
 
         res.json({

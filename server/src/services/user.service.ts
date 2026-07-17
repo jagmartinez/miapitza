@@ -124,6 +124,16 @@ export class UserService {
         });
     }
 
+    /** Resolve owning company for a user id (platform-operator cross-tenant lookups). */
+    static async getCompanyIdById(id: number): Promise<number | null> {
+        if (!Number.isInteger(id) || id <= 0) return null;
+        const user = await prisma.user.findUnique({
+            where: { id },
+            select: { companyId: true },
+        });
+        return user?.companyId ?? null;
+    }
+
     static async getById(id: number, companyId: number) {
         const user = await prisma.user.findFirst({
             where: { id, companyId },
@@ -474,14 +484,32 @@ export class UserService {
         return result;
     }
 
-    static async delete(id: number, companyId: number) {
-        // Verify ownership
-        await this.getById(id, companyId);
+    static async delete(id: number, companyId: number, actingRoles: string[] = [], actorUserId?: number) {
+        const target = await this.getById(id, companyId);
+        const isSuperAdmin = actingRoles.includes(ROLES.SUPERADMIN);
+        const targetRoles = [target.role.name, ...target.userRoles.map((entry) => entry.role.name)];
+        if (actorUserId === id) throw new Error('No puede inhabilitar su propia cuenta');
+        if (targetRoles.includes(ROLES.SUPERADMIN) && !isSuperAdmin) {
+            throw new Error('No autorizado para inhabilitar un usuario SUPERADMIN');
+        }
 
-        // Soft delete by setting status to INACTIVE
-        return await prisma.user.update({
-            where: { id },
-            data: { status: 'INACTIVE' }
+        return prisma.$transaction(async (tx) => {
+            const user = await tx.user.update({ where: { id }, data: { status: 'INACTIVE' } });
+            await tx.userSession.updateMany({
+                where: { userId: id, revoked: false },
+                data: { revoked: true },
+            });
+            if (actorUserId) {
+                await AuditLogService.log({
+                    companyId,
+                    userId: actorUserId,
+                    entityType: 'User',
+                    entityId: id,
+                    action: 'UPDATE',
+                    details: { status: 'INACTIVE', operation: 'SOFT_DELETE' },
+                }, tx);
+            }
+            return user;
         });
     }
 }

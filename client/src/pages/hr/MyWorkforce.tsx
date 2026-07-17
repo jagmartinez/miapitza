@@ -246,25 +246,27 @@ export default function MyWorkforce() {
 
   return (
     <div className="page-wrapper hr-workforce-page my-hr-page">
-      <MyHrNav />
       <PageHeader
         className="my-hr-page-header"
         title="Mi gestión laboral"
         subtitle="Revisa tu asistencia y gestiona solicitudes, saldos y trazabilidad en una sola bandeja"
         icon={BriefcaseBusiness}
         actions={
-          <div className="hr-header-actions">
-            <Button
-              variant="secondary"
-              onClick={() => setPanel({ kind: 'correction' })}
-              disabled={!online}
-            >
-              <FilePenLine size={16} /> Corrección
-            </Button>
-            <Button onClick={() => setPanel({ kind: 'leave' })} disabled={!online || leaveTypes.length === 0} title={leaveTypes.length === 0 ? 'Los tipos de permiso no están disponibles' : undefined}>
-              <CalendarPlus size={16} /> Permiso
-            </Button>
-          </div>
+          <>
+            <div className="hr-header-actions">
+              <Button
+                variant="secondary"
+                onClick={() => setPanel({ kind: 'correction' })}
+                disabled={!online}
+              >
+                <FilePenLine size={16} /> Corrección
+              </Button>
+              <Button onClick={() => setPanel({ kind: 'leave' })} disabled={!online || leaveTypes.length === 0} title={leaveTypes.length === 0 ? 'Los tipos de permiso no están disponibles' : undefined}>
+                <CalendarPlus size={16} /> Permiso
+              </Button>
+            </div>
+            <MyHrNav />
+          </>
         }
       />
       {!online && <OnlineOnlyNotice online={false} />}

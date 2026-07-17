@@ -10,6 +10,7 @@ interface BatchRow {
     remainingQty: number;
     sourceRef?: string | null;
     sourceType?: string;
+    sourceMovementId?: number | null;
     createdAt?: Date;
 }
 
@@ -29,6 +30,7 @@ function makeTx(opts: {
     const batchUpdates: Array<{ where: { id: number }; data: { remainingQty: number } }> = [];
     const movementCreates: Array<Record<string, unknown>> = [];
     const stockUpdates: Array<Record<string, unknown>> = [];
+    const liveBatches = (opts.batches ?? []).map((b) => ({ ...b }));
 
     const tx = {
         warehouse: {
@@ -46,21 +48,41 @@ function makeTx(opts: {
             findFirst: jest.fn(async () => ({
                 currentAverageCost: opts.avgCost ?? null,
                 cost: opts.cost ?? null
-            }))
+            })),
+            update: jest.fn(async () => ({}))
         },
         company: {
             findUnique: jest.fn(async () => ({ costingMethod: opts.costingMethod }))
         },
         inventoryBatch: {
-            findMany: jest.fn(async () => (opts.batches ?? []).map((b) => ({ ...b }))),
+            findMany: jest.fn(async () => liveBatches.filter((b) => Number(b.remainingQty) > 0).map((b) => ({ ...b }))),
             findFirst: jest.fn(async () => null),
             create: jest.fn(async (args: { data: Record<string, unknown> }) => {
                 batchCreates.push(args.data);
-                return {};
+                const id = liveBatches.length + 1;
+                liveBatches.push({
+                    id,
+                    unitCost: Number(args.data.unitCost),
+                    remainingQty: Number(args.data.remainingQty ?? args.data.originalQty ?? 0),
+                    sourceRef: (args.data.sourceRef as string | null | undefined) ?? null,
+                    sourceType: args.data.sourceType as string | undefined,
+                    sourceMovementId: (args.data.sourceMovementId as number | null | undefined) ?? null,
+                    createdAt: args.data.createdAt as Date | undefined
+                });
+                return { id };
             }),
             update: jest.fn(async (args: { where: { id: number }; data: { remainingQty: number } }) => {
                 batchUpdates.push(args);
+                const row = liveBatches.find((b) => b.id === args.where.id);
+                if (row) row.remainingQty = args.data.remainingQty;
                 return {};
+            }),
+            updateMany: jest.fn(async (args: { where: { id: { in: number[] } }; data: { sourceMovementId: number } }) => {
+                for (const id of args.where.id.in) {
+                    const row = liveBatches.find((batch) => batch.id === id);
+                    if (row) row.sourceMovementId = args.data.sourceMovementId;
+                }
+                return { count: args.where.id.in.length };
             })
         },
         inventoryMovement: {
@@ -178,6 +200,10 @@ describe('InventoryEngineService.applyMovement — IN opens a FIFO layer', () =>
         expect(movementCreates).toHaveLength(1);
         expect(movementCreates[0].type).toBe('IN');
         expect(movementCreates[0].balanceQty).toBe(20);
+        expect(tx.inventoryBatch.updateMany).toHaveBeenCalledWith({
+            where: { id: { in: [1] } },
+            data: { sourceMovementId: 777 }
+        });
     });
 
     it('falls back to currentAverageCost when no entry cost is provided', async () => {
@@ -228,6 +254,28 @@ describe('InventoryEngineService.applyMovement — IN opens a FIFO layer', () =>
             originalQty: 3, remainingQty: 3, unitCost: 7,
             sourceRef: 'PO-2', sourceType: 'PURCHASE', createdAt: acquiredAt
         });
+    });
+
+    it('keeps financial WA value exact while restoring different FIFO layer costs', async () => {
+        const { tx, batchCreates, movementCreates } = makeTx({
+            costingMethod: 'WEIGHTED_AVERAGE', stockQuantity: 0, avgCost: 8
+        });
+
+        const result = await InventoryEngineService.applyMovement(tx, {
+            type: 'ADJUSTMENT', direction: 'IN', companyId: 1, warehouseId: 1,
+            productId: 1, userId: 1, quantity: 3, unitCost: 10,
+            inboundLayers: [
+                { quantity: 1, unitCost: 4, sourceRef: 'PO-1' },
+                { quantity: 2, unitCost: 7, sourceRef: 'PO-2' }
+            ],
+            reversalOfId: 55, reversalKey: 'reversal-key-55'
+        });
+
+        expect(result.totalCost).toBe(30);
+        expect(batchCreates.map((row) => row.unitCost)).toEqual([4, 7]);
+        expect(movementCreates[0]).toEqual(expect.objectContaining({
+            unitCost: 10, totalCost: 30, reversalOfId: 55, reversalKey: 'reversal-key-55'
+        }));
     });
 });
 
@@ -312,6 +360,24 @@ describe('InventoryEngineService.applyMovement — OUT consumes FIFO layers olde
         });
 
         expect(batchUpdates).toEqual([{ where: { id: 2 }, data: { remainingQty: 0 } }]);
+    });
+
+    it('consumes only batches opened by the original inbound movement', async () => {
+        const { tx, batchUpdates } = makeTx({
+            costingMethod: 'FIFO', stockQuantity: 6, avgCost: 5,
+            batches: [
+                { id: 1, unitCost: 4, remainingQty: 3, sourceMovementId: 90 },
+                { id: 2, unitCost: 6, remainingQty: 3, sourceMovementId: 91 }
+            ]
+        });
+
+        await InventoryEngineService.applyMovement(tx, {
+            type: 'ADJUSTMENT', direction: 'OUT', companyId: 1, warehouseId: 1,
+            productId: 1, userId: 1, quantity: 3, unitCost: 4,
+            consumeSourceMovementId: 90
+        });
+
+        expect(batchUpdates).toEqual([{ where: { id: 1 }, data: { remainingQty: 0 } }]);
     });
 
     it('rejects an exact reversal when its own layer was already consumed', async () => {

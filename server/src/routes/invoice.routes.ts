@@ -18,6 +18,8 @@ router.post('/:id/issue', canIssueInvoice, InvoiceController.issueInvoice);
 
 // Static report path must precede the parameterized invoice reads.
 router.get('/credit-notes', canViewInvoice, InvoiceController.listCreditNotes);
+router.get('/credit-notes/:creditNoteId', canViewInvoice, InvoiceController.getCreditNoteById);
+router.get('/credit-notes/:creditNoteId/pdf', canViewInvoice, InvoiceController.getCreditNotePDFById);
 router.get('/cancellations', canViewInvoice, InvoiceController.listInvoiceCancellations);
 
 // Fiscal mutation and its immutable reads are intentionally separate. GET never

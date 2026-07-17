@@ -69,7 +69,8 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(configuration).toContain("revision.status === 'UPLOADED'");
     expect(configuration).toContain("review(revision, 'VALIDATED')");
     expect(configuration).toContain('una persona distinta de quien cargó la revisión');
-    expect(legalSettings).toContain('Una versión legal es la receta que usa cada nómina');
+    expect(legalSettings).toContain('Administra en un solo flujo el perfil fiscal, las vigencias y los parámetros congelados');
+    expect(legalSettings).toContain('Centro de control legal');
     expect(legalSettings).toContain('Activar versión legal');
     expect(configuration).toContain('Régimen de la empresa');
     expect(configuration).toContain('Tramos progresivos de IR laboral');
@@ -205,5 +206,18 @@ describe('Phase 5 payroll UI safety and UX contract', () => {
     expect(operation).toContain('onDownloadReceiptBatch(receiptIds)');
     expect(management).toContain('downloadReceiptBatch');
     expect(management).toContain("payrollClient.exportRun(selected.kind, selected.id, format)");
+  });
+
+  it('never presents missing run totals as zero and prefers receipt totals when published', () => {
+    expect(operation).toContain('Pendiente de cálculo');
+    expect(operation).toContain('formatRunTotal(currency, run.totals?.grossIncome)');
+    expect(operation).toContain('formatRunTotal(currency, run.totals?.netPay)');
+    expect(operation).not.toContain("run.totals?.grossIncome ?? '0'");
+    expect(operation).toContain('authoritativeMoney(receipt?.netPay');
+    expect(operation).toContain("const hasCalculation = run.status !== 'DRAFT'");
+    expect(operation).toContain('formatEmployeeMoney(currency, row.gross)');
+    expect(operation).toContain('statutory ? moneyNumber(statutory.employeeInss) : null');
+    expect(operation).not.toContain('numberOf(statutory?.employeeInss)');
+    expect(operation).not.toContain('net: gross - deductions');
   });
 });

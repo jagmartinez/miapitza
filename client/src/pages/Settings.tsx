@@ -64,6 +64,7 @@ export default function Settings() {
 
         // System
         enablePromotions: 'false',
+        reservation_table_window_minutes: '120',
 
         // Security
         password_expiry_days: '90',
@@ -81,7 +82,7 @@ export default function Settings() {
             const settings = res.data.data;
             setFormData({
                 companyName: settings.companyName || '',
-                taxRate: settings.taxRate || '',
+                taxRate: settings.tax_rate || settings.taxRate || '',
                 tipRate: settings.tipRate || '',
                 cash_reconciliation_tolerance: settings.cash_reconciliation_tolerance || '1',
                 tipEnabled: settings.tipEnabled || 'false',
@@ -99,6 +100,7 @@ export default function Settings() {
                 fiscal_tax_id_length: settings.fiscal_tax_id_length || '',
                 fiscal_tax_id_charset: settings.fiscal_tax_id_charset || '',
                 enablePromotions: settings.enablePromotions || 'false',
+                reservation_table_window_minutes: settings.reservation_table_window_minutes || '120',
                 password_expiry_days: settings.password_expiry_days || '90',
                 session_timeout_minutes: settings.session_timeout_minutes || '30'
             });
@@ -537,6 +539,25 @@ export default function Settings() {
                                     <span style={{ marginLeft: '8px' }}>Habilitar Sistema de Promociones</span>
                                 </label>
                             </div>
+
+                            <h4 style={{ marginTop: '24px' }}>Reservas</h4>
+                            <div className="form-row">
+                                <Input
+                                    label="Ventana para reservar mesa (minutos)"
+                                    type="number"
+                                    min="1"
+                                    max="1440"
+                                    value={formData.reservation_table_window_minutes}
+                                    onChange={(e) => setFormData({
+                                        ...formData,
+                                        reservation_table_window_minutes: e.target.value
+                                    })}
+                                    placeholder="120"
+                                />
+                            </div>
+                            <p className="section-description" style={{ marginTop: '4px', fontSize: '12px', opacity: 0.7 }}>
+                                Define con cuánta anticipación una reserva bloquea una mesa física y el margen de llegada permitido.
+                            </p>
 
                             <h4 style={{ marginTop: '24px' }}>Seguridad</h4>
                             <div className="form-row">

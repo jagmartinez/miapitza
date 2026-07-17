@@ -19,6 +19,16 @@ export class BranchService {
         });
     }
 
+    /** Resolve owning company for a branch id (platform-operator cross-tenant lookups). */
+    static async getCompanyIdById(id: number): Promise<number | null> {
+        if (!Number.isInteger(id) || id <= 0) return null;
+        const branch = await prisma.branch.findUnique({
+            where: { id },
+            select: { companyId: true },
+        });
+        return branch?.companyId ?? null;
+    }
+
     static async getById(id: number, companyId: number) {
         const branch = await prisma.branch.findFirst({
             where: { id, companyId },

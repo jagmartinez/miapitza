@@ -149,4 +149,29 @@ export class InventoryMovementController {
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
+
+    static async reverse(req: Request, res: Response, next: NextFunction) {
+        try {
+            const rawKey = req.headers['x-idempotency-key'];
+            if (Array.isArray(rawKey)) throw new Error('Debe enviar una sola X-Idempotency-Key');
+            const result = await InventoryMovementService.reverse(
+                req.user!.companyId,
+                parseInt(req.params.id, 10),
+                {
+                    userId: req.user!.userId,
+                    reason: String(req.body.reason || ''),
+                    reversalKey: String(rawKey || ''),
+                    branchId: resolveBranchScope(req.user!)
+                }
+            );
+            res.status(result.idempotent ? 200 : 201).json({
+                success: true,
+                message: result.idempotent ? 'Reversa ya aplicada' : 'Reversa de inventario aplicada',
+                data: result
+            });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
 }

@@ -66,6 +66,7 @@ export const createProduct: ValidationSchema = {
         name: { type: 'string', required: true, min: 1, max: 200 },
         unit: { type: 'string', required: true },
         cost: { type: 'number', min: 0 },
+        referenceCostKnown: { type: 'boolean' },
     },
 };
 
@@ -74,6 +75,7 @@ export const updateProduct: ValidationSchema = {
     body: {
         name: { type: 'string', min: 1, max: 200 },
         cost: { type: 'number', min: 0 },
+        referenceCostKnown: { type: 'boolean' },
     },
 };
 
@@ -111,6 +113,18 @@ export const createMenuBrand: ValidationSchema = {
     body: {
         name: { type: 'string', required: true, min: 1, max: 100 },
         color: { type: 'string', required: false, max: 20 },
+        sortOrder: { type: 'number', required: false, integer: true },
+        active: { type: 'boolean', required: false },
+    },
+};
+
+export const updateMenuBrand: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1, integer: true } },
+    body: {
+        name: { type: 'string', min: 1, max: 100 },
+        color: { type: 'string', max: 20 },
+        sortOrder: { type: 'number', integer: true },
+        active: { type: 'boolean' },
     },
 };
 
@@ -138,6 +152,39 @@ export const updateRecipe: ValidationSchema = {
         quantity: { type: 'number', required: false, min: 0.001 },
         unit: { type: 'string', required: false, min: 1, max: 20 },
     },
+};
+
+export const replaceRecipes: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1, integer: true } },
+    body: {
+        recipes: {
+            type: 'array',
+            required: true,
+            max: 500,
+            items: {
+                type: 'object',
+                properties: {
+                    productId: { type: 'number', required: true, min: 1, integer: true },
+                    quantity: { type: 'number', required: true, min: 0.001 },
+                    unit: { type: 'string', required: true, min: 1, max: 20 }
+                }
+            }
+        },
+        menuItem: {
+            type: 'object',
+            required: false,
+            properties: {
+                name: { type: 'string', required: false, min: 1, max: 200 },
+                description: { type: 'string', required: false, max: 2000 },
+                price: { type: 'number', required: false, min: 0 },
+                categoryId: { type: 'number', required: false, min: 1, integer: true },
+                branchId: { type: 'number', required: false, min: 1, integer: true },
+                brandId: { type: 'number', required: false, min: 1, integer: true },
+                active: { type: 'boolean', required: false },
+                type: { type: 'string', required: false, enum: ['PREPARED', 'DIRECT'] }
+            }
+        }
+    }
 };
 
 // ── Tables ──
@@ -277,6 +324,15 @@ export const reverseCateringPayment: ValidationSchema = {
     body: { reason: { type: 'string', required: true, min: 3, max: 500 } },
 };
 
+export const issueCateringFiscalCreditNote: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1, integer: true } },
+    body: {
+        reason: { type: 'string', required: true, min: 5, max: 500 },
+        inventoryAction: { type: 'string', required: true, enum: ['NO_RETURN', 'RETURN_TO_STOCK'] },
+        externalRefunds: { type: 'array', max: 50 },
+    },
+};
+
 // ── Cash ──
 export const openShift: ValidationSchema = {
     body: {
@@ -329,6 +385,13 @@ export const transferInventory: ValidationSchema = {
         fromWarehouseId: { type: 'number', required: true, min: 1 },
         toWarehouseId: { type: 'number', required: true, min: 1 },
         quantity: { type: 'number', required: true, min: 0.000001 },
+    },
+};
+
+export const reverseInventoryMovement: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1, integer: true } },
+    body: {
+        reason: { type: 'string', required: true, min: 5, max: 500 },
     },
 };
 

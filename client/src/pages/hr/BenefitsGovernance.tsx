@@ -677,7 +677,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                           <th>Concepto</th>
                           <th>Base</th>
                           <th>Fuente</th>
-                          <th>Monto</th>
+                          <th className="hr-amount-cell">Monto</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -686,7 +686,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                             <td>{line.concept}</td>
                             <td>{line.formulaBasis}</td>
                             <td>{line.sourceReference}</td>
-                            <td>
+                            <td className="hr-amount-cell">
                               {preview.currency} {line.amount}
                             </td>
                           </tr>
@@ -757,7 +757,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                     <th scope="col">Empleado</th>
                     <th scope="col">Salida</th>
                     <th scope="col">Estado</th>
-                    <th scope="col">Neto</th>
+                    <th scope="col" className="hr-amount-cell">Neto</th>
                     <th scope="col">Acciones</th>
                   </tr>
                 </thead>
@@ -785,7 +785,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                             {statusLabel[row.status]}
                           </span>
                         </td>
-                        <td>
+                        <td className="hr-amount-cell">
                           {row.currency} {row.netPay}
                         </td>
                         <td>
@@ -1356,7 +1356,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                     <th scope="col">Concepto</th>
                     <th scope="col">Base/fórmula</th>
                     <th scope="col">Fuente</th>
-                    <th scope="col">Monto</th>
+                    <th scope="col" className="hr-amount-cell">Monto</th>
                     <th scope="col">Acción</th>
                   </tr>
                 </thead>
@@ -1404,8 +1404,9 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                           }
                         />
                       </td>
-                      <td>
+                      <td className="hr-amount-cell">
                         <input
+                          className="hr-money-input"
                           aria-label={`Monto del concepto ${index + 1}`}
                           value={line.amount}
                           onChange={(event) => updateDraftLine(index, 'amount', event.target.value)}
@@ -1544,7 +1545,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                 <tr>
                   <th>Concepto</th>
                   <th>Base/fuente</th>
-                  <th>Monto</th>
+                  <th className="hr-amount-cell">Monto</th>
                 </tr>
               </thead>
               <tbody>
@@ -1555,7 +1556,7 @@ export default function BenefitsGovernance({ embedded = false }: { embedded?: bo
                       {line.formulaBasis}
                       <small>{line.sourceReference}</small>
                     </td>
-                    <td>
+                    <td className="hr-amount-cell">
                       {selectedSettlement.currency} {line.amount}
                     </td>
                   </tr>

@@ -515,20 +515,21 @@ export default function BenefitsManagement() {
           </button>
         </div>
         <label className="hr-benefits-search">
-          Buscar
+          <span className="sr-only">Buscar</span>
           <span>
             <Search size={16} aria-hidden="true" />
             <input
               type="search"
+              aria-label="Buscar por código, empleado o detalle"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Código, empleado o detalle"
             />
           </span>
         </label>
-        <label>
-          Estado
-          <HrReactSelect value={status} onChange={(event) => setStatus(event.target.value)}>
+        <label className="hr-benefits-status-filter">
+          <span className="sr-only">Estado</span>
+          <HrReactSelect value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filtrar por estado">
             <option value="">Todos</option>
             {STATUS_OPTIONS[tab].map((option) => (
               <option key={option.value} value={option.value}>
@@ -571,7 +572,7 @@ export default function BenefitsManagement() {
                             ? 'Motivo'
                             : 'Deducción y vigencia'}
                       </th>
-                      <th scope="col">{tab === 'LOAN' ? 'Saldo' : 'Importe'}</th>
+                      <th scope="col" className="hr-amount-cell">{tab === 'LOAN' ? 'Saldo' : 'Importe'}</th>
                       <th scope="col">Estado</th>
                       <th scope="col">Siguiente paso</th>
                       <th scope="col" className="hr-admin-actions-col">Acción</th>
@@ -657,7 +658,7 @@ export default function BenefitsManagement() {
                             </td>
                             <td>{item.user?.name ?? `Usuario #${item.userId}`}</td>
                             <td>{description}</td>
-                            <td>
+                            <td className="hr-amount-cell">
                               <strong>{amount}</strong>
                             </td>
                             <td>
@@ -875,8 +876,8 @@ export default function BenefitsManagement() {
                             <tr>
                               <th scope="col">Fecha</th>
                               <th scope="col">Categoría</th>
-                              <th scope="col">Reclamado</th>
-                              <th scope="col">Reconocido</th>
+                              <th scope="col" className="hr-amount-cell">Reclamado</th>
+                              <th scope="col" className="hr-amount-cell">Reconocido</th>
                               <th scope="col">Soporte</th>
                               <th scope="col">Estado</th>
                             </tr>
@@ -914,9 +915,9 @@ export default function BenefitsManagement() {
                             <tr>
                               <th scope="col">#</th>
                               <th scope="col">Vence</th>
-                              <th scope="col">Programado</th>
-                              <th scope="col">Pagado</th>
-                              <th scope="col">Saldo cuota</th>
+                              <th scope="col" className="hr-amount-cell">Programado</th>
+                              <th scope="col" className="hr-amount-cell">Pagado</th>
+                              <th scope="col" className="hr-amount-cell">Saldo cuota</th>
                               <th scope="col">Estado</th>
                             </tr>
                           </thead>

@@ -8,7 +8,9 @@ function makeTx(
     layerQuantity: number,
     averageCost = 7,
     referenceCost = 5,
-    currentMethod: 'WEIGHTED_AVERAGE' | 'FIFO' = 'WEIGHTED_AVERAGE'
+    currentMethod: 'WEIGHTED_AVERAGE' | 'FIFO' = 'WEIGHTED_AVERAGE',
+    averageCostKnown = averageCost > 0,
+    referenceCostKnown = referenceCost > 0
 ) {
     const createdLayers: Array<Record<string, unknown>> = [];
     const tx = {
@@ -21,7 +23,12 @@ function makeTx(
                 warehouseId: 2,
                 productId: 3,
                 quantity: stockQuantity,
-                product: { currentAverageCost: averageCost, cost: referenceCost }
+                product: {
+                    currentAverageCost: averageCost,
+                    averageCostKnown,
+                    cost: referenceCost,
+                    referenceCostKnown
+                }
             }]))
         },
         inventoryBatch: {
@@ -74,7 +81,20 @@ describe('CostingService.updateCostingMethod', () => {
     it('refuses to invent a zero-valued FIFO opening layer', async () => {
         const { tx, createdLayers } = makeTx(4, 0, 0, 0, 'FIFO');
         jest.spyOn(prisma, '$transaction').mockImplementation((async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as never);
-        await expect(CostingService.updateCostingMethod(1, 'FIFO')).rejects.toThrow(/costo unitario positivo/i);
+        await expect(CostingService.updateCostingMethod(1, 'FIFO')).rejects.toThrow(/falta confirmar el costo unitario/i);
         expect(createdLayers).toHaveLength(0);
+    });
+
+    it('allows an explicitly confirmed zero-valued FIFO opening layer', async () => {
+        const { tx, createdLayers } = makeTx(4, 0, 0, 0, 'FIFO', true, false);
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as never
+        );
+
+        await CostingService.updateCostingMethod(1, 'FIFO');
+
+        expect(createdLayers).toEqual([expect.objectContaining({
+            productId: 3, originalQty: 4, remainingQty: 4, unitCost: 0
+        })]);
     });
 });

@@ -14,7 +14,7 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-describe('catering payment API contract', () => {
+describe('catering payment and fiscal API contract', () => {
     it('sends the caller-owned idempotency key unchanged on every retry', async () => {
         const post = vi.spyOn(api, 'post').mockResolvedValue({ data: {} });
         const key = 'cat-client-operation-123';
@@ -31,5 +31,26 @@ describe('catering payment API contract', () => {
                 { headers: { 'X-Idempotency-Key': key } }
             ]);
         }
+    });
+
+    it('keeps invoice issuance and full credit-note retries idempotent', async () => {
+        const post = vi.spyOn(api, 'post').mockResolvedValue({ data: {} });
+        await cateringAPI.issueFiscalInvoice(41, 'cat-invoice-operation-123');
+        await cateringAPI.issueFiscalCreditNote(41, {
+            reason: 'Cancelacion total',
+            inventoryAction: 'NO_RETURN',
+            externalRefunds: []
+        }, 'cat-credit-operation-123');
+
+        expect(post).toHaveBeenNthCalledWith(1,
+            '/catering/41/fiscal-invoice',
+            {},
+            { headers: { 'X-Idempotency-Key': 'cat-invoice-operation-123' } }
+        );
+        expect(post).toHaveBeenNthCalledWith(2,
+            '/catering/41/fiscal-credit-note',
+            expect.objectContaining({ inventoryAction: 'NO_RETURN' }),
+            { headers: { 'X-Idempotency-Key': 'cat-credit-operation-123' } }
+        );
     });
 });
