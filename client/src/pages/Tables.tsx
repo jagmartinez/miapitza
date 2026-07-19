@@ -10,7 +10,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { canCreatePayment, getUserRoleNames } from '../utils/authz';
-import { Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin, Building2, MapPinned } from 'lucide-react';
+import { Armchair, Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin, Building2, MapPinned } from 'lucide-react';
 import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
@@ -592,9 +592,9 @@ export default function Tables() {
                         }] : []),
                         {
                             key: 'capacity',
-                            header: 'Capacidad',
+                            header: 'Sillas / comensales',
                             align: 'center',
-                            render: (table) => `${table.capacity} pers.`,
+                            render: (table) => `${table.capacity} ${table.capacity === 1 ? 'silla' : 'sillas'} / ${table.capacity} ${table.capacity === 1 ? 'comensal' : 'comensales'}`,
                         },
                         {
                             key: 'location',
@@ -674,8 +674,8 @@ export default function Tables() {
 
                                 <div className="table-details-new">
                                     <div className="detail-item">
-                                        <Users size={16} />
-                                        <span>{table.capacity} personas</span>
+                                        <Armchair size={16} />
+                                        <span>{table.capacity} {table.capacity === 1 ? 'silla' : 'sillas'} · {table.capacity} {table.capacity === 1 ? 'comensal' : 'comensales'}</span>
                                     </div>
                                     {table.location && (
                                         <div className="detail-item">
@@ -826,16 +826,18 @@ export default function Tables() {
                                             />
                                         </div>
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="table-capacity">Capacidad (Personas)</label>
+                                            <label className="modal-input-label" htmlFor="table-capacity">Sillas / comensales (relación 1:1)</label>
                                             <input
                                                 id="table-capacity"
                                                 type="number"
                                                 className="modal-standard-input"
                                                 value={formData.capacity}
                                                 onChange={(e) => setFormData({ ...formData, capacity: e.target.value })}
+                                                aria-describedby="table-capacity-hint"
                                                 required
                                                 min="1"
                                             />
+                                            <small id="table-capacity-hint" className="table-capacity-hint">Cada silla representa un comensal y aparecerá automáticamente en el plano.</small>
                                         </div>
                                     </div>
                                 </div>

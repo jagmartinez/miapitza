@@ -432,6 +432,8 @@ test('operational table map uses the complete viewport without lateral gutters',
   const table = page.getByRole('button', { name: /Mesa ABANICO/ });
   await expect(table.locator('.map-table-surface')).toBeVisible();
   await expect(table.locator('.map-table-chair')).toHaveCount(4);
+  await expect(table).toHaveAttribute('data-chair-count', '4');
+  await expect(table).toHaveAccessibleName(/4 sillas, capacidad para 4 comensales/);
   await expect(page.locator('.table-map-legend')).toContainText('En preparación');
 
   const furnitureGeometry = await table.evaluate((element) => {

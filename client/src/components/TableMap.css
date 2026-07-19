@@ -303,6 +303,19 @@
 .inspector-heading > div { display: grid; gap: 2px; }
 .inspector-heading strong { font-size: var(--font-size-base); }
 .inspector-heading span { color: var(--color-text-secondary); font-size: var(--font-size-xs); }
+.inspector-capacity-relation {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 12px;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+    border-radius: var(--radius-md);
+    color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface));
+}
+.inspector-capacity-relation > div { min-width: 0; display: grid; gap: 2px; }
+.inspector-capacity-relation strong { color: var(--color-text); font-size: var(--font-size-sm); }
+.inspector-capacity-relation span { color: var(--color-text-secondary); font-size: 10px; line-height: 1.35; }
 .table-map-inspector label { display: grid; gap: 6px; color: var(--color-text-secondary); font-size: var(--font-size-xs); font-weight: 700; }
 .table-map-inspector input:not([type='range']):not([type='color']) {
     width: 100%;

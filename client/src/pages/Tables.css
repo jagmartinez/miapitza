@@ -257,6 +257,12 @@
     font-size: var(--font-size-xs);
 }
 
+.table-capacity-hint {
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    line-height: 1.4;
+}
+
 .order-count-badge {
     display: inline-flex;
     align-items: center;

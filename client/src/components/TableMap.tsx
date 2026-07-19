@@ -3,6 +3,7 @@ import { Armchair, CopyPlus, LayoutDashboard, Lock, Maximize2, Plus, RotateCw, S
 import type { SingleValue } from 'react-select';
 import type { FloorArea, FloorAreaKind, FloorAreaShape, Table, TableFloorPlan } from '../types';
 import Select from './Select';
+import { getChairPlacements } from './tableChairLayout';
 import './TableMap.css';
 
 interface PositionedTable extends Table {
@@ -66,8 +67,6 @@ type CanvasResize = {
 };
 
 type SelectOption<T extends string = string> = { value: T; label: string };
-type ChairSide = 'top' | 'right' | 'bottom' | 'left';
-type ChairPlacement = { side: ChairSide; offset: number };
 
 const FALLBACK_COLUMNS = 5;
 const FALLBACK_X_GAP = 165;
@@ -147,46 +146,6 @@ function resolveOperationalState(table: PositionedTable): NonNullable<Table['ope
 }
 
 function areaKey(area: EditableArea): string { return area.id ? `id:${area.id}` : area.clientKey; }
-
-function getChairPlacements(table: PositionedTable): ChairPlacement[] {
-    const capacity = Math.min(10, Math.max(1, Math.round(table.capacity || 1)));
-    const sides: Record<ChairSide, number> = { top: 0, right: 0, bottom: 0, left: 0 };
-
-    if (capacity === 1) {
-        sides.bottom = 1;
-    } else if (capacity === 2) {
-        if (table.mapHeight > table.mapWidth) {
-            sides.top = 1;
-            sides.bottom = 1;
-        } else {
-            sides.left = 1;
-            sides.right = 1;
-        }
-    } else if (capacity === 3) {
-        sides.top = 1;
-        sides.left = 1;
-        sides.right = 1;
-    } else if (table.mapHeight > table.mapWidth * 1.12) {
-        sides.top = 1;
-        sides.bottom = 1;
-        const remaining = capacity - 2;
-        sides.left = Math.ceil(remaining / 2);
-        sides.right = Math.floor(remaining / 2);
-    } else {
-        sides.left = 1;
-        sides.right = 1;
-        const remaining = capacity - 2;
-        sides.top = Math.ceil(remaining / 2);
-        sides.bottom = Math.floor(remaining / 2);
-    }
-
-    return (Object.entries(sides) as [ChairSide, number][]).flatMap(([side, count]) =>
-        Array.from({ length: count }, (_, index) => ({
-            side,
-            offset: ((index + 1) / (count + 1)) * 100
-        }))
-    );
-}
 
 export default function TableMap({
     plan,
@@ -452,7 +411,8 @@ export default function TableMap({
                                     <button key={table.id} type="button"
                                         className={`map-table state-${state.toLowerCase()} shape-${table.mapShape.toLowerCase()} ${selected ? 'selected' : ''} ${filteredOut ? 'filtered-out' : ''}`}
                                         style={{ left: table.mapX, top: table.mapY, width: table.mapWidth, height: table.mapHeight, transform: `rotate(${table.mapRotation}deg)` }}
-                                        aria-label={`Mesa ${table.number}, ${operationalLabel[state]}, capacidad ${table.capacity}`}
+                                        aria-label={`Mesa ${table.number}, ${operationalLabel[state]}, ${table.capacity} ${table.capacity === 1 ? 'silla' : 'sillas'}, capacidad para ${table.capacity} ${table.capacity === 1 ? 'comensal' : 'comensales'}`}
+                                        data-chair-count={chairs.length}
                                         aria-hidden={filteredOut}
                                         disabled={!editing && (state === 'DISABLED' || filteredOut)}
                                         onClick={(event) => { event.stopPropagation(); if (!editing && !filteredOut) onSelect(table); else if (editing) setSelection({ kind: 'table', key: table.id }); }}
@@ -468,7 +428,7 @@ export default function TableMap({
                                             <span className="map-table-state-dot" aria-hidden="true" />
                                             <span className="map-table-number">{table.number}</span>
                                             <span className="map-table-status">{operationalLabel[state]}</span>
-                                            <span className="map-table-capacity">{table.capacity} personas</span>
+                                            <span className="map-table-capacity">{table.capacity} {table.capacity === 1 ? 'silla' : 'sillas'}</span>
                                         </span>
                                         {editing && <span className="map-resize-handle" role="button" aria-label={`Redimensionar mesa ${table.number}`} onPointerDown={(event) => beginInteraction(event, { kind: 'table', key: table.id }, 'RESIZE')} />}
                                     </button>
@@ -494,6 +454,10 @@ export default function TableMap({
                         {selectedTable ? (
                             <>
                                 <div className="inspector-heading"><Armchair size={20} /><div><strong>Mesa {selectedTable.number}</strong><span>Forma y ubicación</span></div></div>
+                                <div className="inspector-capacity-relation">
+                                    <Armchair size={18} aria-hidden="true" />
+                                    <div><strong>{selectedTable.capacity} {selectedTable.capacity === 1 ? 'silla' : 'sillas'} = {selectedTable.capacity} {selectedTable.capacity === 1 ? 'comensal' : 'comensales'}</strong><span>Relación automática según la capacidad de la mesa.</span></div>
+                                </div>
                                 <Select<SelectOption>
                                     label="Salón"
                                     options={[{ value: '', label: 'Sin asignar' }, ...areas.map((area) => ({ value: areaKey(area), label: area.name }))]}

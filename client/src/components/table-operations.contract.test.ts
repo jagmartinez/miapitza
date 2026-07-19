@@ -8,6 +8,7 @@ const posSource = read('../pages/POS.tsx');
 const paymentSource = read('./PaymentModal.tsx');
 const ordersSource = read('../pages/Orders.tsx');
 const mapSource = read('./TableMap.tsx');
+const chairLayoutSource = read('./tableChairLayout.ts');
 const operationSource = read('./TableOperationModal.tsx');
 const kitchenSource = read('../pages/Kitchen.tsx');
 const layoutSource = read('./Layout.tsx');
@@ -49,6 +50,15 @@ describe('table operational center contract', () => {
         expect(mapSource).toContain("mapShape: 'ROUND'");
         expect(mapSource).toContain('Guardar plano');
         expect(tablesSource).toContain('tablesAPI.updateFloorPlan');
+    });
+
+    it('uses table capacity as the exact one-to-one chair and diner count', () => {
+        expect(mapSource).toContain('data-chair-count={chairs.length}');
+        expect(mapSource).toContain("'silla' : 'sillas'");
+        expect(mapSource).toContain("'comensal' : 'comensales'");
+        expect(chairLayoutSource).not.toContain('Math.min(10');
+        expect(tablesSource).toContain('Sillas / comensales (relación 1:1)');
+        expect(tablesSource).toContain('Cada silla representa un comensal');
     });
 
     it('keeps the map toolbar focused on filters and floor-plan actions', () => {
