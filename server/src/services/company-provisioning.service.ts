@@ -29,7 +29,7 @@ const BASE_PERMISSIONS = [
 
 const TABLE_PERMISSIONS = [
     'tables.map.view', 'tables.map.edit', 'tables.create', 'tables.edit',
-    'tables.status.manage', 'tables.delete', 'tables.transfer', 'tables.consolidate',
+    'tables.status.manage', 'tables.delete', 'tables.transfer', 'tables.consolidate', 'tables.group.manage',
 ];
 
 const KDS_PERMISSIONS = ['kds.view', 'kds.manage'];
@@ -73,7 +73,7 @@ const ROLE_PERMISSION_MAP: Record<string, string[]> = {
     ],
     [ROLES.MESERO]: [
         'view_orders', 'create_order', 'edit_order', 'view_menu',
-        'tables.map.view', 'tables.transfer', 'tables.status.manage',
+        'tables.map.view', 'tables.transfer', 'tables.status.manage', 'tables.group.manage',
         'orders.view', 'orders.create', 'orders.edit', 'orders.cancel', 'orders.deliver', 'bills.split',
         ...SELF_SERVICE_HR,
     ],
@@ -90,7 +90,7 @@ const ROLE_PERMISSION_MAP: Record<string, string[]> = {
         'orders.view', ...SELF_SERVICE_HR,
     ],
     [ROLES.HOST]: [
-        'view_orders', 'view_menu', 'tables.map.view', 'tables.edit', 'tables.status.manage',
+        'view_orders', 'view_menu', 'tables.map.view', 'tables.edit', 'tables.status.manage', 'tables.group.manage',
         'orders.view', ...SELF_SERVICE_HR,
     ],
 };

@@ -5,8 +5,58 @@ import { getErrorMessage } from '../utils/error';
 import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
 import { TableAccountService } from '../services/table-account.service';
 import { TableFloorPlanService } from '../services/table-floor-plan.service';
+import { TableGroupService } from '../services/table-group.service';
 
 export class TableController {
+    static async createGroup(req: Request, res: Response, next: NextFunction) {
+        try {
+            const ids = [Number(req.body.primaryTableId), ...(req.body.memberTableIds || []).map(Number)];
+            for (const id of ids) {
+                const table = await TableService.getById(id, req.user!.companyId);
+                assertBranchAccess(req.user!, table.branchId);
+            }
+            const group = await TableGroupService.create(
+                req.user!.companyId,
+                req.user!.userId,
+                { ...req.body, primaryTableId: ids[0], memberTableIds: ids.slice(1) }
+            );
+            if (!group) throw new Error('No se pudo crear el grupo de mesas');
+            for (const table of group.activeTables) {
+                WebSocketService.broadcastTableUpdate(table.id, 'GROUP_UPDATED', { groupId: group.id }, {
+                    companyId: req.user!.companyId,
+                    branchId: group.branchId
+                });
+            }
+            res.status(201).json({ success: true, message: 'Mesas unidas físicamente', data: group });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 409, message: getErrorMessage(error) });
+        }
+    }
+
+    static async closeGroup(req: Request, res: Response, next: NextFunction) {
+        try {
+            const existing = await TableGroupService.getById(req.user!.companyId, Number(req.params.id));
+            assertBranchAccess(req.user!, existing.branchId);
+            const group = await TableGroupService.close(
+                req.user!.companyId,
+                req.user!.userId,
+                existing.id,
+                req.body.reason
+            );
+            for (const table of group.tables) {
+                WebSocketService.broadcastTableUpdate(table.id, 'GROUP_UPDATED', { groupId: group.id, closed: true }, {
+                    companyId: req.user!.companyId,
+                    branchId: group.branchId
+                });
+            }
+            res.json({ success: true, message: 'Mesas separadas correctamente', data: group });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 409, message: getErrorMessage(error) });
+        }
+    }
+
     static async getFloorPlan(req: Request, res: Response, next: NextFunction) {
         try {
             const requestedBranchId = Number(req.params.branchId ?? req.user?.branchId);

@@ -16,6 +16,11 @@ describe('table operational map state', () => {
         expect(deriveTableOperationalState('RESERVED', [])).toBe('RESERVED');
     });
 
+    it('distinguishes an intentionally joined table from an unexplained occupied table', () => {
+        expect(deriveTableOperationalState('OCCUPIED', [], true)).toBe('JOINED');
+        expect(deriveTableOperationalState('OCCUPIED', [], false)).toBe('ATTENTION');
+    });
+
     it('distinguishes kitchen progression including partial readiness', () => {
         expect(deriveTableOperationalState('OCCUPIED', [order({ status: 'SENT_TO_KITCHEN' })])).toBe('WAITING_KITCHEN');
         expect(deriveTableOperationalState('OCCUPIED', [order({

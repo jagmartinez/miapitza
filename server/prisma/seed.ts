@@ -103,6 +103,7 @@ async function main() {
         'tables.delete',
         'tables.transfer',
         'tables.consolidate',
+        'tables.group.manage',
     ];
     const kdsPermissions = ['kds.view', 'kds.manage'];
     const operationalPermissions = [
@@ -148,7 +149,7 @@ async function main() {
         // Cashier: manage orders + read-only menu/reports
         CAJERO: ['view_orders', 'create_order', 'edit_order', 'view_menu', 'view_reports', 'tables.map.view', 'tables.consolidate', 'orders.view', 'orders.create', 'orders.deliver', 'invoices.issue', 'invoices.view', 'payments.process', 'bills.split', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
         // Waiter: take and edit orders
-        MESERO: ['view_orders', 'create_order', 'edit_order', 'view_menu', 'tables.map.view', 'tables.transfer', 'tables.status.manage', 'orders.view', 'orders.create', 'orders.edit', 'orders.cancel', 'orders.deliver', 'bills.split', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
+        MESERO: ['view_orders', 'create_order', 'edit_order', 'view_menu', 'tables.map.view', 'tables.transfer', 'tables.status.manage', 'tables.group.manage', 'orders.view', 'orders.create', 'orders.edit', 'orders.cancel', 'orders.deliver', 'bills.split', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
         // Kitchen: read orders only
         COCINA: ['view_orders', 'view_menu', 'orders.view', ...kdsPermissions, 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
         // Chef: kitchen execution plus recipe/menu and stock maintenance.
@@ -156,7 +157,7 @@ async function main() {
         // Warehouse: inventory custody without access to users, orders or destructive catalog operations.
         BODEGA: ['view_menu', 'view_inventory', 'create_inventory', 'edit_inventory', 'view_reports', 'orders.view', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
         // Host/receptionist: read orders + menu
-        HOST: ['view_orders', 'view_menu', 'tables.map.view', 'tables.edit', 'tables.status.manage', 'orders.view', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
+        HOST: ['view_orders', 'view_menu', 'tables.map.view', 'tables.edit', 'tables.status.manage', 'tables.group.manage', 'orders.view', 'hr.schedule.self', 'hr.attendance.self', 'hr.biometric.self', 'hr.workforce.self', 'hr.payroll.self', 'hr.benefits.self'],
     };
 
     for (const [roleName, permNames] of Object.entries(rolePermissionMap)) {

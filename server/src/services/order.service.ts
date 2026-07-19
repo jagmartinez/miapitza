@@ -6,6 +6,7 @@ import { DynamicPricingService } from './dynamic-pricing.service';
 import { calculatePromotionDiscount } from './promotion.service';
 import { DEFAULT_COMPANY_SETTINGS, SettingService } from './setting.service';
 import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
+import { closeInactiveTableGroupForTable } from './table-group.service';
 
 /** Valid state transitions for orders */
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -512,7 +513,7 @@ export class OrderService {
                 await tx.$queryRaw`SELECT id FROM \`Table\` WHERE id = ${data.tableId} AND companyId = ${companyId} FOR UPDATE`;
                 const table = await tx.table.findFirst({
                     where: { id: data.tableId, companyId },
-                    select: { id: true, branchId: true, status: true }
+                    select: { id: true, branchId: true, status: true, activeTableGroupId: true }
                 });
                 if (!table) {
                     throw new Error('Mesa no encontrada para esta empresa');
@@ -637,9 +638,9 @@ export class OrderService {
 
                 const table = await tx.table.findFirst({
                     where: { id: data.tableId, companyId },
-                    select: { status: true }
+                    select: { status: true, activeTableGroupId: true }
                 });
-                if (!table || table.status !== 'AVAILABLE') {
+                if (!table || (table.status !== 'AVAILABLE' && table.activeTableGroupId === null)) {
                     throw new Error('La mesa no está disponible para abrir una nueva orden');
                 }
 
@@ -1489,19 +1490,12 @@ export class OrderService {
                 }
             });
 
-            // Free table if assigned
+            // A physical table group remains occupied while any member still
+            // has an operational order. The last completion closes the group.
             if (order.tableId) {
-                const otherActiveOnTable = await tx.order.count({
-                    where: {
-                        companyId,
-                        tableId: order.tableId,
-                        id: { not: order.id },
-                        status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] }
-                    }
-                });
-                if (otherActiveOnTable === 0) {
-                    await tx.table.update({ where: { id: order.tableId }, data: { status: 'AVAILABLE' } });
-                }
+                await closeInactiveTableGroupForTable(
+                    tx, companyId, order.tableId, deliveredById, `Orden #${order.id} completada`
+                );
             }
 
             return updatedOrder;
@@ -1783,17 +1777,13 @@ export class OrderService {
             });
 
             if (order.tableId) {
-                const otherActiveOnTable = await tx.order.count({
-                    where: {
-                        companyId,
-                        tableId: order.tableId,
-                        id: { not: order.id },
-                        status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] }
-                    }
-                });
-                if (otherActiveOnTable === 0) {
-                    await tx.table.update({ where: { id: order.tableId }, data: { status: 'AVAILABLE' } });
-                }
+                await closeInactiveTableGroupForTable(
+                    tx,
+                    companyId,
+                    order.tableId,
+                    cancelledById ?? order.userId,
+                    `Orden #${order.id} cancelada`
+                );
             }
 
             if (cancelledById) {

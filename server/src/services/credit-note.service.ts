@@ -8,6 +8,7 @@ import { deserializeInvoiceSnapshot, type InvoiceData } from './invoice.service'
 import { InventoryConsumptionService } from './inventory-consumption.service';
 import { DEFAULT_COMPANY_SETTINGS, validateConfiguredFiscalTaxId } from './setting.service';
 import { UnitConversionService } from './unit-conversion.service';
+import { closeInactiveTableGroupForTable } from './table-group.service';
 
 export interface CreditNoteIssueInput {
     idempotencyKey?: unknown;
@@ -545,8 +546,9 @@ export class CreditNoteService {
                 } : { financialStatus: 'PAID', invoiceFiscalStatus: 'PARTIALLY_CREDITED' }
             });
             if (isFinal && order.tableId) {
-                const active = await tx.order.count({ where: { companyId, tableId: order.tableId, id: { not: order.id }, status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] } } });
-                if (active === 0) await tx.table.update({ where: { id: order.tableId }, data: { status: 'AVAILABLE' } });
+                await closeInactiveTableGroupForTable(
+                    tx, companyId, order.tableId, actor.id, `Nota de crédito final ${number}`
+                );
             }
             await tx.auditLog.create({ data: {
                 companyId, userId: actor.id, entityType: 'FiscalCreditNote', entityId: creditNote.id, action: 'ISSUE',

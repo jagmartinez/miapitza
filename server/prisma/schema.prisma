@@ -37,6 +37,7 @@ model Company {
   users                           User[]
   auditLogs                       AuditLog[]
   tables                          Table[]
+  tableGroups                     TableGroup[]
   floorAreas                      FloorArea[]
   tableFloorPlans                 TableFloorPlan[]
   reservations                    Reservation[]
@@ -184,6 +185,7 @@ model Branch {
   users                          User[]
   allowedUsers                   UserBranch[]
   tables                         Table[]
+  tableGroups                    TableGroup[]
   floorAreas                     FloorArea[]
   tableFloorPlans                TableFloorPlan[]
   reservations                   Reservation[]
@@ -427,6 +429,8 @@ model User {
   bankDepositsReversed              BankDeposit[]                      @relation("BankDepositReversedBy")
   paymentsRegistered                Payment[]                          @relation("PaymentRegisteredBy")
   paymentsReversed                  Payment[]                          @relation("PaymentReversedBy")
+  tableGroupsCreated                TableGroup[]                       @relation("TableGroupCreatedBy")
+  tableGroupsClosed                 TableGroup[]                       @relation("TableGroupClosedBy")
   fiscalCreditNotesIssued           FiscalCreditNote[]                 @relation("FiscalCreditNoteIssuedBy")
   fiscalInvoicesCancelled           FiscalInvoiceCancellation[]        @relation("FiscalInvoiceCancelledBy")
   cateringFiscalInvoicesIssued      CateringFiscalInvoice[]            @relation("CateringFiscalInvoiceIssuedBy")
@@ -2958,33 +2962,68 @@ model HrEmploymentSettlementLine {
 // ==========================================
 
 model Table {
-  id              Int         @id @default(autoincrement())
-  companyId       Int
-  branchId        Int
-  number          String
-  capacity        Int
-  status          TableStatus @default(AVAILABLE)
-  location        String? // Salon, Terraza, VIP
-  floorAreaId     Int?
-  mapX            Int         @default(0)
-  mapY            Int         @default(0)
-  mapWidth        Int         @default(120)
-  mapHeight       Int         @default(80)
-  mapShape        TableShape  @default(RECTANGLE)
-  mapRotation     Int         @default(0)
-  mapVersion      Int         @default(0)
-  layoutUpdatedAt DateTime    @default(now()) @updatedAt
+  id                 Int         @id @default(autoincrement())
+  companyId          Int
+  branchId           Int
+  number             String
+  capacity           Int
+  status             TableStatus @default(AVAILABLE)
+  location           String? // Salon, Terraza, VIP
+  floorAreaId        Int?
+  activeTableGroupId Int?
+  mapX               Int         @default(0)
+  mapY               Int         @default(0)
+  mapWidth           Int         @default(120)
+  mapHeight          Int         @default(80)
+  mapShape           TableShape  @default(RECTANGLE)
+  mapRotation        Int         @default(0)
+  mapVersion         Int         @default(0)
+  layoutUpdatedAt    DateTime    @default(now()) @updatedAt
 
-  company      Company       @relation(fields: [companyId], references: [id])
-  branch       Branch        @relation(fields: [branchId], references: [id])
-  floorArea    FloorArea?    @relation(fields: [floorAreaId], references: [id], onDelete: SetNull)
-  orders       Order[]
-  reservations Reservation[]
+  company          Company       @relation(fields: [companyId], references: [id])
+  branch           Branch        @relation(fields: [branchId], references: [id])
+  floorArea        FloorArea?    @relation(fields: [floorAreaId], references: [id], onDelete: SetNull)
+  activeTableGroup TableGroup?   @relation("ActiveTableGroup", fields: [activeTableGroupId], references: [id], onDelete: SetNull)
+  primaryForGroups TableGroup[]  @relation("TableGroupPrimaryTable")
+  orders           Order[]
+  reservations     Reservation[]
 
   @@unique([branchId, number])
   @@index([companyId])
   @@index([branchId])
   @@index([floorAreaId])
+  @@index([activeTableGroupId])
+}
+
+/// A physical seating arrangement. Financial orders may remain separate or be
+/// consolidated independently; memberTableIds preserves the historical shape
+/// after the active foreign keys are cleared.
+model TableGroup {
+  id             Int              @id @default(autoincrement())
+  companyId      Int
+  branchId       Int
+  primaryTableId Int?
+  memberTableIds Json
+  status         TableGroupStatus @default(ACTIVE)
+  reason         String?          @db.VarChar(500)
+  closeReason    String?          @db.VarChar(500)
+  createdById    Int
+  closedById     Int?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  closedAt       DateTime?
+
+  company      Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch       Branch  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  primaryTable Table?  @relation("TableGroupPrimaryTable", fields: [primaryTableId], references: [id], onDelete: SetNull)
+  activeTables Table[] @relation("ActiveTableGroup")
+  createdBy    User    @relation("TableGroupCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  closedBy     User?   @relation("TableGroupClosedBy", fields: [closedById], references: [id], onDelete: Restrict)
+
+  @@index([companyId, branchId, status])
+  @@index([primaryTableId])
+  @@index([createdById])
+  @@index([closedById])
 }
 
 model FloorArea {
@@ -3038,6 +3077,11 @@ enum TableStatus {
   OCCUPIED
   RESERVED
   OUT_OF_SERVICE
+}
+
+enum TableGroupStatus {
+  ACTIVE
+  CLOSED
 }
 
 enum TableShape {

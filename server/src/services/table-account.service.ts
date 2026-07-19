@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { assertCompatiblePhysicalGroups, keepGroupedTableOccupied } from './table-group.service';
 
 const ACTIVE_STATUSES = ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] as const;
 type ActiveStatus = typeof ACTIVE_STATUSES[number];
@@ -96,15 +97,7 @@ async function lockOrders(tx: Tx, companyId: number, ids: number[]) {
 }
 
 async function syncTableStatus(tx: Tx, companyId: number, tableId: number) {
-    const active = await tx.order.count({
-        where: { companyId, tableId, status: { in: [...ACTIVE_STATUSES] } }
-    });
-    const table = await tx.table.findUnique({ where: { id: tableId }, select: { status: true } });
-    if (!table || table.status === 'OUT_OF_SERVICE' || table.status === 'RESERVED') return;
-    await tx.table.update({
-        where: { id: tableId },
-        data: { status: active > 0 ? 'OCCUPIED' : 'AVAILABLE' }
-    });
+    await keepGroupedTableOccupied(tx, companyId, tableId);
 }
 
 function validateMutableOrder(order: {
@@ -229,6 +222,7 @@ export class TableAccountService {
         return prisma.$transaction(async (tx) => {
             const tables = await lockTables(tx, companyId, [destinationTableId, ...sourceTableIds]);
             const destination = tables.find((table) => table.id === destinationTableId)!;
+            assertCompatiblePhysicalGroups(tables, 'consolidar cuentas');
             if (destination.status === 'OUT_OF_SERVICE') throw new Error('La mesa destino está fuera de servicio');
             if (destination.status === 'RESERVED') throw new Error('La mesa destino está reservada');
             if (tables.some((table) => table.branchId !== destination.branchId)) {
@@ -358,6 +352,7 @@ export class TableAccountService {
             const tables = await lockTables(tx, companyId, [sourceTableId, destinationTableId]);
             const sourceTable = tables.find((table) => table.id === sourceTableId)!;
             const destination = tables.find((table) => table.id === destinationTableId)!;
+            assertCompatiblePhysicalGroups(tables, 'cambiar el consumo de mesa');
             if (sourceTable.branchId !== destination.branchId) throw new Error('El traslado debe realizarse dentro de la misma sucursal');
             if (destination.status === 'OUT_OF_SERVICE') throw new Error('La mesa destino está fuera de servicio');
             if (destination.status === 'RESERVED') throw new Error('La mesa destino está reservada');

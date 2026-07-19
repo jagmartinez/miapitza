@@ -66,6 +66,15 @@ export interface LoginResponse {
   };
 }
 
+export interface TableGroupSummary {
+  id: number;
+  primaryTableId: number;
+  memberTableIds: number[];
+  status: 'ACTIVE' | 'CLOSED';
+  createdAt: string;
+  primaryTable: { id: number; number: string };
+}
+
 export interface Table {
   id: number;
   number: string;
@@ -73,6 +82,9 @@ export interface Table {
   status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'OUT_OF_SERVICE';
   location?: string;
   floorAreaId?: number | null;
+  activeTableGroupId?: number | null;
+  activeTableGroup?: TableGroupSummary | null;
+  activeOrderCount?: number;
   mapX?: number;
   mapY?: number;
   mapWidth?: number;
@@ -82,7 +94,7 @@ export interface Table {
   mapShape?: 'RECTANGLE' | 'SQUARE' | 'ROUND';
   layoutUpdatedAt?: string;
   operationalState?: 'AVAILABLE' | 'RESERVED' | 'DISABLED' | 'OPEN_ORDER' | 'WAITING_KITCHEN'
-    | 'PREPARING' | 'PARTIALLY_READY' | 'READY' | 'INVOICED' | 'PARTIAL_PAYMENT' | 'PAID' | 'ATTENTION';
+    | 'PREPARING' | 'PARTIALLY_READY' | 'READY' | 'INVOICED' | 'PARTIAL_PAYMENT' | 'PAID' | 'ATTENTION' | 'JOINED';
   branchId: number;
   branch?: {
     id: number;

@@ -177,6 +177,11 @@
 .is-editing .map-table { cursor: move; touch-action: none; }
 .is-editing .map-table:hover { translate: none; }
 .map-table.selected { outline: 3px solid var(--color-primary); outline-offset: 4px; z-index: 4; }
+.table-group-connections { position: absolute; inset: 0; z-index: 2; overflow: visible; pointer-events: none; }
+.table-group-connections line { stroke: color-mix(in srgb, var(--color-primary) 72%, var(--color-text)); stroke-width: 4; stroke-dasharray: 10 7; stroke-linecap: round; filter: drop-shadow(0 1px 2px rgb(15 23 42 / .22)); }
+.table-group-connections circle { fill: var(--color-primary); stroke: var(--color-surface); stroke-width: 2; }
+.map-table.is-grouped .map-table-surface { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary) 18%, transparent), 0 4px 9px rgb(15 23 42 / 0.14); }
+.map-table.is-group-primary .map-table-surface { box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-primary) 28%, transparent), 0 6px 13px rgb(15 23 42 / .18); }
 .map-table.filtered-out { visibility: hidden; pointer-events: none; }
 .map-table:focus-visible { outline: 3px solid color-mix(in srgb, var(--table-state-color) 70%, white); outline-offset: 4px; }
 .map-table-surface {
@@ -260,6 +265,9 @@
 .map-table.state-ready .map-table-surface, .map-table.state-paid .map-table-surface { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 20%, transparent), 0 4px 9px rgb(15 23 42 / 0.14); }
 .map-table.state-attention { --table-state-color: var(--color-danger); }
 .map-table.state-attention .map-table-surface { border-style: dashed; }
+.map-table.state-joined { --table-state-color: var(--color-warning); }
+.map-table.state-joined .map-table-surface { border-style: dashed; }
+.map-table-group-badge { position: absolute; top: -17px; left: 50%; z-index: 5; max-width: calc(100% + 24px); display: inline-flex; align-items: center; gap: 3px; padding: 3px 6px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--color-primary) 55%, var(--color-border)); border-radius: 999px; color: var(--color-primary); background: var(--color-surface); box-shadow: 0 2px 5px rgb(15 23 42 / .16); font-size: 8px; font-weight: 850; line-height: 1; text-overflow: ellipsis; white-space: nowrap; transform: translateX(-50%); }
 .map-table-number {
     display: block;
     max-width: 100%;
@@ -361,6 +369,8 @@
 .table-map-legend i.state-open_order, .table-map-legend i.state-waiting_kitchen, .table-map-legend i.state-preparing, .table-map-legend i.state-partial_payment { background: var(--color-warning); }
 .table-map-legend i.state-reserved, .table-map-legend i.state-partially_ready, .table-map-legend i.state-invoiced { background: var(--color-primary); }
 .table-map-legend i.state-attention { background: var(--color-danger); }
+.table-map-legend i.state-joined { background: var(--color-warning); }
+.table-map-legend i.state-joined-link { width: 18px; height: 3px; border-radius: 0; background: repeating-linear-gradient(90deg, var(--color-primary) 0 5px, transparent 5px 8px); }
 
 @media (max-width: 900px) {
     .table-map-toolbar { align-items: flex-start; flex-direction: column; }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Armchair, CopyPlus, LayoutDashboard, Lock, Maximize2, Plus, RotateCw, Save, Shapes, Trash2, Unlock, ZoomIn, ZoomOut } from 'lucide-react';
+import { Armchair, CopyPlus, LayoutDashboard, Link2, Lock, Maximize2, Plus, RotateCw, Save, Shapes, Trash2, Unlock, ZoomIn, ZoomOut } from 'lucide-react';
 import type { SingleValue } from 'react-select';
 import type { FloorArea, FloorAreaKind, FloorAreaShape, Table, TableFloorPlan } from '../types';
 import Select from './Select';
@@ -135,7 +135,8 @@ function normalizeTable(table: Table, index: number, defaultArea?: EditableArea)
 const operationalLabel: Record<NonNullable<Table['operationalState']>, string> = {
     AVAILABLE: 'Disponible', RESERVED: 'Reservada', DISABLED: 'Inhabilitada', OPEN_ORDER: 'Orden abierta',
     WAITING_KITCHEN: 'Esperando cocina', PREPARING: 'En preparación', PARTIALLY_READY: 'Parcialmente lista',
-    READY: 'Lista para entregar', INVOICED: 'Facturada', PARTIAL_PAYMENT: 'Pago parcial', PAID: 'Pagada', ATTENTION: 'Atención'
+    READY: 'Lista para entregar', INVOICED: 'Facturada', PARTIAL_PAYMENT: 'Pago parcial', PAID: 'Pagada', ATTENTION: 'Atención',
+    JOINED: 'Mesa unida'
 };
 
 function resolveOperationalState(table: PositionedTable): NonNullable<Table['operationalState']> {
@@ -332,6 +333,23 @@ export default function TableMap({
     };
 
     const legendStates = useMemo(() => Array.from(new Set(layout.map(resolveOperationalState))), [layout]);
+    const groupConnections = useMemo(() => {
+        const groupIds = [...new Set(layout.map((table) => table.activeTableGroupId).filter((id): id is number => Boolean(id)))];
+        return groupIds.flatMap((groupId) => {
+            const members = layout.filter((table) => table.activeTableGroupId === groupId);
+            const primaryId = members[0]?.activeTableGroup?.primaryTableId;
+            const primary = members.find((table) => table.id === primaryId);
+            if (!primary) return [];
+            const start = { x: primary.mapX + primary.mapWidth / 2, y: primary.mapY + primary.mapHeight / 2 };
+            return members.filter((table) => table.id !== primary.id).map((table) => ({
+                key: `${groupId}-${table.id}`,
+                x1: start.x,
+                y1: start.y,
+                x2: table.mapX + table.mapWidth / 2,
+                y2: table.mapY + table.mapHeight / 2
+            }));
+        });
+    }, [layout]);
 
     return (
         <section className={`table-map-shell ${editing ? 'is-editing' : ''}`} aria-label="Mapa de mesas">
@@ -402,16 +420,33 @@ export default function TableMap({
                                     </div>
                                 );
                             })}
+                            {!editing && groupConnections.length > 0 && (
+                                <svg className="table-group-connections" width={canvasWidth} height={canvasHeight} aria-hidden="true">
+                                    {groupConnections.map((line) => (
+                                        <g key={line.key}>
+                                            <line x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />
+                                            <circle cx={line.x2} cy={line.y2} r="4" />
+                                        </g>
+                                    ))}
+                                </svg>
+                            )}
                             {layout.map((table) => {
                                 const state = resolveOperationalState(table);
                                 const filteredOut = Boolean(!editing && statusFilter && table.status !== statusFilter);
                                 const selected = selection?.kind === 'table' && selection.key === table.id;
                                 const chairs = getChairPlacements(table);
+                                const group = table.activeTableGroup;
+                                const isGroupPrimary = group?.primaryTableId === table.id;
+                                const groupMembers = group ? layout.filter((candidate) => candidate.activeTableGroupId === group.id) : [];
+                                const groupCapacity = groupMembers.reduce((sum, member) => sum + member.capacity, 0);
+                                const groupLabel = group
+                                    ? (isGroupPrimary ? `Principal de ${groupMembers.length} mesas` : `Unida a mesa ${group.primaryTable.number}`)
+                                    : '';
                                 return (
                                     <button key={table.id} type="button"
-                                        className={`map-table state-${state.toLowerCase()} shape-${table.mapShape.toLowerCase()} ${selected ? 'selected' : ''} ${filteredOut ? 'filtered-out' : ''}`}
+                                        className={`map-table state-${state.toLowerCase()} shape-${table.mapShape.toLowerCase()} ${group ? 'is-grouped' : ''} ${isGroupPrimary ? 'is-group-primary' : ''} ${selected ? 'selected' : ''} ${filteredOut ? 'filtered-out' : ''}`}
                                         style={{ left: table.mapX, top: table.mapY, width: table.mapWidth, height: table.mapHeight, transform: `rotate(${table.mapRotation}deg)` }}
-                                        aria-label={`Mesa ${table.number}, ${operationalLabel[state]}, ${table.capacity} ${table.capacity === 1 ? 'silla' : 'sillas'}, capacidad para ${table.capacity} ${table.capacity === 1 ? 'comensal' : 'comensales'}`}
+                                        aria-label={`Mesa ${table.number}, ${operationalLabel[state]}, ${table.capacity} ${table.capacity === 1 ? 'silla' : 'sillas'}, capacidad para ${table.capacity} ${table.capacity === 1 ? 'comensal' : 'comensales'}${group ? `, ${groupLabel}, ${groupCapacity} comensales en el grupo` : ''}`}
                                         data-chair-count={chairs.length}
                                         aria-hidden={filteredOut}
                                         disabled={!editing && (state === 'DISABLED' || filteredOut)}
@@ -426,9 +461,10 @@ export default function TableMap({
                                         </span>
                                         <span className="map-table-surface">
                                             <span className="map-table-state-dot" aria-hidden="true" />
+                                            {group && <span className="map-table-group-badge"><Link2 size={10} /> {isGroupPrimary ? `Principal · ${groupMembers.length}` : `Con ${group.primaryTable.number}`}</span>}
                                             <span className="map-table-number">{table.number}</span>
                                             <span className="map-table-status">{operationalLabel[state]}</span>
-                                            <span className="map-table-capacity">{table.capacity} {table.capacity === 1 ? 'silla' : 'sillas'}</span>
+                                            <span className="map-table-capacity">{isGroupPrimary ? `${groupCapacity} sillas en grupo` : `${table.capacity} ${table.capacity === 1 ? 'silla' : 'sillas'}`}</span>
                                         </span>
                                         {editing && <span className="map-resize-handle" role="button" aria-label={`Redimensionar mesa ${table.number}`} onPointerDown={(event) => beginInteraction(event, { kind: 'table', key: table.id }, 'RESIZE')} />}
                                     </button>
@@ -496,7 +532,7 @@ export default function TableMap({
                 )}
             </div>
 
-            {!editing && <div className="table-map-legend" aria-label="Leyenda de estados">{legendStates.map((state) => <span key={state}><i className={`state-${state.toLowerCase()}`} />{operationalLabel[state]}</span>)}</div>}
+            {!editing && <div className="table-map-legend" aria-label="Leyenda de estados">{legendStates.map((state) => <span key={state}><i className={`state-${state.toLowerCase()}`} />{operationalLabel[state]}</span>)}{groupConnections.length > 0 && <span><i className="state-joined-link" />Línea: mesas unidas</span>}</div>}
         </section>
     );
 }

@@ -4,7 +4,7 @@ import prisma from '../utils/prisma';
 export type TableOperationalState =
   | 'AVAILABLE' | 'RESERVED' | 'DISABLED' | 'OPEN_ORDER' | 'WAITING_KITCHEN'
   | 'PREPARING' | 'PARTIALLY_READY' | 'READY' | 'INVOICED'
-  | 'PARTIAL_PAYMENT' | 'PAID' | 'ATTENTION';
+  | 'PARTIAL_PAYMENT' | 'PAID' | 'ATTENTION' | 'JOINED';
 
 interface OperationalOrder {
   status: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'CANCELLED';
@@ -15,11 +15,15 @@ interface OperationalOrder {
 
 export function deriveTableOperationalState(
   tableStatus: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'OUT_OF_SERVICE',
-  orders: OperationalOrder[]
+  orders: OperationalOrder[],
+  isPhysicallyGrouped = false
 ): TableOperationalState {
   if (tableStatus === 'OUT_OF_SERVICE') return 'DISABLED';
   if (tableStatus === 'RESERVED') return 'RESERVED';
-  if (orders.length === 0) return tableStatus === 'OCCUPIED' ? 'ATTENTION' : 'AVAILABLE';
+  if (orders.length === 0) {
+    if (isPhysicallyGrouped) return 'JOINED';
+    return tableStatus === 'OCCUPIED' ? 'ATTENTION' : 'AVAILABLE';
+  }
   if (orders.some((order) => order.financialStatus === 'PARTIAL')) return 'PARTIAL_PAYMENT';
   if (orders.every((order) => order.financialStatus === 'PAID')) return 'PAID';
   if (orders.some((order) => Boolean(order.invoiceNumber))) return 'INVOICED';
@@ -48,6 +52,16 @@ export class TableService {
             code: true
           }
         },
+        activeTableGroup: {
+          select: {
+            id: true,
+            primaryTableId: true,
+            memberTableIds: true,
+            status: true,
+            createdAt: true,
+            primaryTable: { select: { id: true, number: true } }
+          }
+        },
         orders: {
           where: {
             OR: [
@@ -70,7 +84,8 @@ export class TableService {
     });
     return tables.map(({ orders, ...table }) => ({
       ...table,
-      operationalState: deriveTableOperationalState(table.status, orders)
+      activeOrderCount: orders.length,
+      operationalState: deriveTableOperationalState(table.status, orders, Boolean(table.activeTableGroup))
     }));
   }
 
@@ -84,6 +99,16 @@ export class TableService {
             name: true,
             code: true,
             address: true
+          }
+        },
+        activeTableGroup: {
+          select: {
+            id: true,
+            primaryTableId: true,
+            memberTableIds: true,
+            status: true,
+            createdAt: true,
+            primaryTable: { select: { id: true, number: true } }
           }
         },
         orders: {
@@ -192,6 +217,9 @@ export class TableService {
       if (!current) throw new Error('Table not found');
 
       if (data.status !== undefined && data.status !== current.status) {
+        if (current.activeTableGroupId && data.status !== 'OCCUPIED') {
+          throw new Error('Separe primero el grupo físico antes de cambiar el estado de esta mesa');
+        }
         const activeOrders = await tx.order.count({
           where: {
             companyId,
@@ -202,7 +230,7 @@ export class TableService {
         if (activeOrders > 0 && data.status !== 'OCCUPIED') {
           throw new Error('La mesa tiene una orden activa y debe permanecer ocupada');
         }
-        if (data.status === 'OCCUPIED' && activeOrders === 0) {
+        if (data.status === 'OCCUPIED' && activeOrders === 0 && !current.activeTableGroupId) {
           throw new Error('Una mesa solo puede marcarse ocupada mediante una orden activa');
         }
         if (data.status === 'OUT_OF_SERVICE') {
@@ -242,6 +270,12 @@ export class TableService {
   }
 
   static async delete(id: number, companyId: number) {
+    const grouped = await prisma.table.findFirst({
+      where: { id, companyId, activeTableGroupId: { not: null } },
+      select: { id: true }
+    });
+    if (grouped) throw new Error('Separe primero la mesa de su grupo activo antes de eliminarla');
+
     // Check if table has active orders
     const activeOrders = await prisma.order.findFirst({
       where: {

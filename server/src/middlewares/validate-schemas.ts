@@ -324,6 +324,19 @@ export const reverseCateringPayment: ValidationSchema = {
     body: { reason: { type: 'string', required: true, min: 3, max: 500 } },
 };
 
+export const createTableGroup: ValidationSchema = {
+    body: {
+        primaryTableId: { type: 'number', required: true, min: 1, integer: true },
+        memberTableIds: { type: 'array', required: true, min: 1, max: 19, items: { type: 'number', min: 1, integer: true } },
+        reason: { type: 'string', max: 500 }
+    }
+};
+
+export const closeTableGroup: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1, integer: true } },
+    body: { reason: { type: 'string', max: 500 } }
+};
+
 export const issueCateringFiscalCreditNote: ValidationSchema = {
     params: { id: { type: 'number', required: true, min: 1, integer: true } },
     body: {

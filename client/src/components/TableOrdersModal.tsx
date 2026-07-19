@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {
     X, Clock, FileText, Printer, ShoppingCart, Receipt,
     CreditCard, Scissors, ArrowRightLeft, Merge, ChefHat,
-    Users, CircleDollarSign
+    Users, CircleDollarSign, Link2, Unlink
 } from 'lucide-react';
 import type { Order, OrderItem, Table } from '../types';
 import { escapeHtml } from '../utils/escapeHtml';
@@ -25,12 +25,17 @@ interface TableOrdersModalProps {
     canOperatePOS: boolean;
     canTransfer: boolean;
     canConsolidate: boolean;
+    canGroup: boolean;
+    groupTotalCapacity?: number;
     onOpenPOS: (table: Table) => void;
     onIssueInvoice: (order: Order) => void;
     onPay: (order: Order) => void;
     onSplit: (order: Order) => void;
     onTransfer: (table: Table) => void;
     onConsolidate: (table: Table) => void;
+    onConsolidateAndPay: (table: Table) => void;
+    onGroup: (table: Table) => void;
+    onUngroup: (table: Table) => void;
 }
 
 export default function TableOrdersModal({
@@ -44,12 +49,17 @@ export default function TableOrdersModal({
     canOperatePOS,
     canTransfer,
     canConsolidate,
+    canGroup,
+    groupTotalCapacity,
     onOpenPOS,
     onIssueInvoice,
     onPay,
     onSplit,
     onTransfer,
-    onConsolidate
+    onConsolidate,
+    onConsolidateAndPay,
+    onGroup,
+    onUngroup
 }: TableOrdersModalProps) {
     const { formatMoney, symbol } = useCurrency();
     const { error: showError } = useAppToast();
@@ -175,18 +185,34 @@ export default function TableOrdersModal({
                 </div>
 
                 <section className="table-detail-summary" aria-label="Resumen de la mesa">
-                    <div><Users size={17} /><span><small>Capacidad</small><strong>{table.capacity} personas</strong></span></div>
+                    <div><Users size={17} /><span><small>Capacidad</small><strong>{table.capacity} sillas = {table.capacity} comensales</strong></span></div>
                     <div><FileText size={17} /><span><small>Órdenes activas</small><strong>{orders.length}</strong></span></div>
                     <div className="summary-total"><CircleDollarSign size={17} /><span><small>Consumo activo</small><strong>{formatMoney(totalAmount)}</strong></span></div>
                 </section>
 
-                {(canTransfer || canConsolidate) && (
+                {table.activeTableGroup && (
+                    <section className="table-active-group-banner" aria-label="Grupo físico activo">
+                        <Link2 size={19} />
+                        <div>
+                            <strong>{table.activeTableGroup.primaryTableId === table.id ? 'Mesa principal del grupo' : `Unida a mesa ${table.activeTableGroup.primaryTable.number}`}</strong>
+                            <span>{table.activeTableGroup.memberTableIds.length} mesas · {groupTotalCapacity ?? table.capacity} sillas/comensales en total · las cuentas siguen independientes</span>
+                        </div>
+                    </section>
+                )}
+
+                {(canTransfer || canConsolidate || canGroup) && (
                     <div className="table-command-strip" aria-label="Gestionar ubicación de la mesa">
                         {canTransfer && <button type="button" onClick={() => onTransfer(table)}>
                             <ArrowRightLeft size={18} /><span>Cambiar mesa</span>
                         </button>}
                         {canConsolidate && <button type="button" onClick={() => onConsolidate(table)}>
                             <Merge size={18} /><span>Consolidar</span>
+                        </button>}
+                        {canGroup && !table.activeTableGroup && ['AVAILABLE', 'OCCUPIED'].includes(table.status) && <button type="button" onClick={() => onGroup(table)}>
+                            <Link2 size={18} /><span>Unir mesas</span>
+                        </button>}
+                        {canGroup && table.activeTableGroup && <button type="button" onClick={() => onUngroup(table)}>
+                            <Unlink size={18} /><span>Separar mesas</span>
                         </button>}
                     </div>
                 )}
@@ -257,6 +283,11 @@ export default function TableOrdersModal({
                                                 >
                                                     <Receipt size={16} />
                                                     {busyOrderId === order.id ? 'Emitiendo…' : 'Emitir factura'}
+                                                </button>
+                                            )}
+                                            {!order.invoiceNumber && canIssueInvoice && canPay && canConsolidate && (
+                                                <button type="button" className="consolidate-pay" onClick={() => onConsolidateAndPay(table)}>
+                                                    <Merge size={16} /> Consolidar y cobrar
                                                 </button>
                                             )}
                                             {order.invoiceNumber && (

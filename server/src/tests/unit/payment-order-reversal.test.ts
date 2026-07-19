@@ -184,7 +184,10 @@ describe('OrderService.cancel paid-like states', () => {
                 findFirst: jest.fn(async () => ({ id: 4, usageCount: 1 })),
                 update: jest.fn(async (_args: unknown) => ({}))
             },
-            table: { update: jest.fn(async (_args: unknown) => ({})) },
+            table: {
+                findFirst: jest.fn(async () => ({ status: 'OCCUPIED', activeTableGroupId: null })),
+                update: jest.fn(async (_args: unknown) => ({}))
+            },
             auditLog: { create: jest.fn(async (_args: unknown) => ({})) }
         };
     }

@@ -10,6 +10,8 @@ const ordersSource = read('../pages/Orders.tsx');
 const mapSource = read('./TableMap.tsx');
 const chairLayoutSource = read('./tableChairLayout.ts');
 const operationSource = read('./TableOperationModal.tsx');
+const groupSource = read('./TableGroupModal.tsx');
+const groupStyles = read('./TableGroupModal.css');
 const kitchenSource = read('../pages/Kitchen.tsx');
 const layoutSource = read('./Layout.tsx');
 const bellSource = read('./KitchenNotificationBell.tsx');
@@ -103,6 +105,24 @@ describe('table operational center contract', () => {
         expect(mapSource).toContain('Select<SelectOption>');
         expect(operationSource).toContain('Buscar por mesa o salón');
         expect(operationSource).toContain('visibleConsolidationSources');
+    });
+
+    it('separates physical grouping from financial consolidation and shows both flows', () => {
+        expect(groupSource).toContain('Unión física, no financiera');
+        expect(groupSource).toContain('sillas =');
+        expect(groupStyles).toContain('.table-group-route');
+        expect(mapSource).toContain('table-group-connections');
+        expect(mapSource).toContain('Principal de');
+        expect(panelSource).toContain('Unir mesas');
+        expect(panelSource).toContain('Separar mesas');
+        expect(panelSource).toContain('Consolidar y cobrar');
+        expect(panelSource).toContain("['AVAILABLE', 'OCCUPIED'].includes(table.status)");
+        expect(groupSource).toContain('memberTableIds.length >= 19');
+        expect(operationSource).toContain('table-transfer-route');
+        expect(operationSource).toContain('Se libera al completar');
+        expect(operationSource).toContain('(table.activeTableGroupId ?? null) === (selectedTransferSource.activeTableGroupId ?? null)');
+        expect(tablesSource).toContain("setConsolidationIntent('PAY')");
+        expect(tablesSource).toContain('Las cuentas sí quedaron consolidadas');
     });
 
     it('keeps a single orders view without the removed Cuenta tab', () => {

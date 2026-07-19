@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from '@jest/globals';
 import { allocatePartialFinancials, TableAccountService } from '../../services/table-account.service';
+import { assertCompatiblePhysicalGroups, validateTableGroupSelection } from '../../services/table-group.service';
 
 describe('Table account operations', () => {
     it('rejects ambiguous or duplicate table selections before opening a transaction', async () => {
@@ -22,6 +23,25 @@ describe('Table account operations', () => {
         ])).rejects.toThrow(/repita mesas/i);
     });
 
+    it('rejects invalid physical groups and cross-group account moves before mutation', () => {
+        expect(() => validateTableGroupSelection({ primaryTableId: 1, memberTableIds: [] })).toThrow(/adicional/i);
+        expect(() => validateTableGroupSelection({ primaryTableId: 1, memberTableIds: [1] })).toThrow(/principal/i);
+        expect(() => validateTableGroupSelection({ primaryTableId: 1, memberTableIds: [2, 2] })).toThrow(/repita/i);
+        expect(validateTableGroupSelection({ primaryTableId: 3, memberTableIds: [2, 1] })).toEqual([1, 2, 3]);
+        expect(() => assertCompatiblePhysicalGroups([
+            { activeTableGroupId: 10 },
+            { activeTableGroupId: null }
+        ], 'cambiar el consumo')).toThrow(/separe primero/i);
+        expect(() => assertCompatiblePhysicalGroups([
+            { activeTableGroupId: 10 },
+            { activeTableGroupId: 11 }
+        ], 'consolidar')).toThrow(/separe primero/i);
+        expect(() => assertCompatiblePhysicalGroups([
+            { activeTableGroupId: 10 },
+            { activeTableGroupId: 10 }
+        ], 'consolidar')).not.toThrow();
+    });
+
     it('keeps the critical mutations behind granular backend permissions', () => {
         const routes = fs.readFileSync(path.resolve(__dirname, '../../routes/table.routes.ts'), 'utf8');
         expect(routes).toContain("requirePermission('tables.map.edit'");
@@ -39,6 +59,21 @@ describe('Table account operations', () => {
         expect(migration).toContain('`originOrderId` INTEGER NULL');
         expect(migration).toContain("'tables.transfer'");
         expect(migration).toContain('INSERT IGNORE INTO `_PermissionToRole`');
+    });
+
+    it('persists physical groups separately from financial consolidation and closes them from terminal order flows', () => {
+        const migration = fs.readFileSync(
+            path.resolve(__dirname, '../../../prisma/migrations/20260719_add_physical_table_groups/migration.sql'),
+            'utf8'
+        );
+        const groupService = fs.readFileSync(path.resolve(__dirname, '../../services/table-group.service.ts'), 'utf8');
+        const orderService = fs.readFileSync(path.resolve(__dirname, '../../services/order.service.ts'), 'utf8');
+        expect(migration).toContain('CREATE TABLE `TableGroup`');
+        expect(migration).toContain('`activeTableGroupId` INTEGER NULL');
+        expect(migration).toContain("'tables.group.manage'");
+        expect(groupService).toContain("action: 'TABLE_GROUP_CREATE'");
+        expect(groupService).toContain("action: 'TABLE_GROUP_CLOSE'");
+        expect(orderService).toContain('closeInactiveTableGroupForTable');
     });
 
     it('derives the moved total from independently rounded financial components', () => {

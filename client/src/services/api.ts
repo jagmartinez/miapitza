@@ -309,6 +309,12 @@ export const tablesAPI = {
     updateFloorPlan: (branchId: number, data: Record<string, unknown>, idempotencyKey: string) =>
         api.put(`/tables/plan/${branchId}`, data, { headers: { 'X-Idempotency-Key': idempotencyKey } }),
 
+    createGroup: (data: Record<string, unknown>, idempotencyKey: string) =>
+        api.post('/tables/groups', data, { headers: { 'X-Idempotency-Key': idempotencyKey } }),
+
+    closeGroup: (groupId: number, data: Record<string, unknown>, idempotencyKey: string) =>
+        api.post(`/tables/groups/${groupId}/close`, data, { headers: { 'X-Idempotency-Key': idempotencyKey } }),
+
     consolidate: (data: Record<string, unknown>, idempotencyKey: string) =>
         api.post('/tables/consolidate', data, { headers: { 'X-Idempotency-Key': idempotencyKey } }),
 

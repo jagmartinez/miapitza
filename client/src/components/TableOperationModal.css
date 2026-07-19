@@ -63,3 +63,21 @@
     .table-operation-source-toolbar { align-items: stretch; flex-direction: column; }
     .table-operation-source-toolbar > span { white-space: normal; }
 }
+.table-transfer-route { display: grid; grid-template-columns: minmax(0, 1fr) 42px minmax(0, 1fr); align-items: center; gap: 8px; padding: 12px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); }
+.table-transfer-route > div { min-width: 0; display: grid; gap: 2px; }
+.table-transfer-route > div:last-child { text-align: right; }
+.table-transfer-route > span { width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface)); }
+.table-transfer-route small { color: var(--color-text-secondary); font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.table-transfer-route strong { color: var(--color-text); }
+.table-transfer-route div span { color: var(--color-text-secondary); font-size: 10px; line-height: 1.3; }
+.table-transfer-route.mode-partial { border-style: dashed; border-color: var(--color-warning); }
+.table-transfer-route.mode-partial > span { color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface)); }
+.table-consolidation-preview { display: flex; align-items: center; gap: 9px; margin-top: 10px; padding: 10px 12px; border-radius: var(--radius-md); color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface)); }
+.table-consolidation-preview span { min-width: 0; display: grid; gap: 2px; }
+.table-consolidation-preview strong { color: var(--color-text); font-size: var(--font-size-xs); }
+.table-consolidation-preview small { color: var(--color-text-secondary); font-size: 10px; }
+@media (max-width: 600px) {
+    .table-transfer-route { grid-template-columns: 1fr; }
+    .table-transfer-route > span { justify-self: center; transform: rotate(90deg); }
+    .table-transfer-route > div:last-child { text-align: left; }
+}

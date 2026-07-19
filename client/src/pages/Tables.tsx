@@ -22,6 +22,7 @@ import './Tables.css';
 import TableMap, { type FloorPlanDraft } from '../components/TableMap';
 import { newIdempotencyKey } from '../utils/idempotency';
 import TableOperationModal from '../components/TableOperationModal';
+import TableGroupModal from '../components/TableGroupModal';
 import POS from './POS';
 import { hasUsableCashShift, type CashShiftScope } from '../utils/paymentAccess';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
@@ -59,6 +60,7 @@ export default function Tables() {
     const canEditMap = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const canTransfer = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'MESERO'].includes(role));
     const canConsolidate = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'CAJERO'].includes(role));
+    const canGroup = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'HOST', 'MESERO'].includes(role));
     const canIssueInvoice = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'CAJERO'].includes(role));
     const canPay = canCreatePayment(user);
     const canOperatePOS = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'].includes(role));
@@ -91,7 +93,10 @@ export default function Tables() {
     const [savingLayout, setSavingLayout] = useState(false);
     const [operation, setOperation] = useState<'TRANSFER' | 'CONSOLIDATE' | null>(null);
     const [operationTableId, setOperationTableId] = useState<number | null>(null);
+    const [consolidationIntent, setConsolidationIntent] = useState<'MANAGE' | 'PAY'>('MANAGE');
     const [submittingOperation, setSubmittingOperation] = useState(false);
+    const [groupTableId, setGroupTableId] = useState<number | null>(null);
+    const [submittingGroup, setSubmittingGroup] = useState(false);
     const [busyOrderId, setBusyOrderId] = useState<number | null>(null);
     const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
     const [paymentMode, setPaymentMode] = useState<'single' | 'split'>('single');
@@ -424,16 +429,66 @@ export default function Tables() {
     const handleConsolidate = async (data: { destinationTableId: number; sourceTableIds: number[]; reason?: string }) => {
         setSubmittingOperation(true);
         try {
-            await tablesAPI.consolidate(data, newIdempotencyKey());
+            const response = await tablesAPI.consolidate(data, newIdempotencyKey());
+            const consolidatedOrder = response.data.data as Order;
             setOperation(null);
             setOperationTableId(null);
             await loadTables();
             await loadFloorPlan();
-            showSuccess('Las cuentas fueron consolidadas en la mesa principal.');
+            if (consolidationIntent === 'PAY') {
+                try {
+                    const invoiceResponse = await invoicesAPI.issue(consolidatedOrder.id);
+                    const refreshed = await ordersAPI.getById(consolidatedOrder.id);
+                    const payableOrder = refreshed.data.data as Order;
+                    showSuccess(`Cuentas consolidadas y factura ${invoiceResponse.data?.data?.invoiceNumber || ''} emitida.`.trim());
+                    await openPayment(payableOrder, 'single');
+                } catch (error) {
+                    showError(`Las cuentas sí quedaron consolidadas, pero no se pudo abrir el cobro. ${extractApiError(error, 'Reabre la mesa principal para emitir la factura o continuar el pago.')}`);
+                }
+            } else {
+                showSuccess('Las cuentas fueron consolidadas en la mesa principal.');
+            }
         } catch (error) {
             showError(extractApiError(error, 'No se pudieron consolidar las cuentas'));
         } finally {
             setSubmittingOperation(false);
+        }
+    };
+
+    const handleCreateGroup = async (data: { primaryTableId: number; memberTableIds: number[]; reason?: string }) => {
+        setSubmittingGroup(true);
+        try {
+            await tablesAPI.createGroup(data, newIdempotencyKey());
+            setGroupTableId(null);
+            await loadTables();
+            await loadFloorPlan();
+            showSuccess(`Se unieron ${data.memberTableIds.length + 1} mesas. Cada silla sigue representando un comensal.`);
+        } catch (error) {
+            showError(extractApiError(error, 'No se pudieron unir las mesas'));
+        } finally {
+            setSubmittingGroup(false);
+        }
+    };
+
+    const handleCloseGroup = async (table: Table) => {
+        const group = table.activeTableGroup;
+        if (!group) return;
+        const accepted = await confirm(
+            'Las mesas se separarán físicamente. Las cuentas y productos no se moverán; cada cuenta permanecerá en su mesa actual.',
+            { title: 'Separar mesas' }
+        );
+        if (!accepted) return;
+        setIsOrdersModalOpen(false);
+        setSubmittingGroup(true);
+        try {
+            await tablesAPI.closeGroup(group.id, { reason: 'Separación manual desde el mapa operativo' }, newIdempotencyKey());
+            await loadTables();
+            await loadFloorPlan();
+            showSuccess('Las mesas se separaron. Las que conservan una orden siguen ocupadas.');
+        } catch (error) {
+            showError(extractApiError(error, 'No se pudieron separar las mesas'));
+        } finally {
+            setSubmittingGroup(false);
         }
     };
 
@@ -909,6 +964,10 @@ export default function Tables() {
                 canOperatePOS={canOperatePOS}
                 canTransfer={canTransfer}
                 canConsolidate={canConsolidate}
+                canGroup={canGroup}
+                groupTotalCapacity={selectedTable?.activeTableGroup
+                    ? tables.filter((table) => table.activeTableGroupId === selectedTable.activeTableGroupId).reduce((sum, table) => sum + table.capacity, 0)
+                    : undefined}
                 onOpenPOS={handleOpenPOS}
                 onIssueInvoice={(order) => void handleIssueInvoice(order)}
                 onPay={(order) => void openPayment(order, 'single')}
@@ -921,8 +980,20 @@ export default function Tables() {
                 onConsolidate={(table) => {
                     setIsOrdersModalOpen(false);
                     setOperationTableId(table.id);
+                    setConsolidationIntent('MANAGE');
                     setOperation('CONSOLIDATE');
                 }}
+                onConsolidateAndPay={(table) => {
+                    setIsOrdersModalOpen(false);
+                    setOperationTableId(table.id);
+                    setConsolidationIntent('PAY');
+                    setOperation('CONSOLIDATE');
+                }}
+                onGroup={(table) => {
+                    setIsOrdersModalOpen(false);
+                    setGroupTableId(table.id);
+                }}
+                onUngroup={(table) => void handleCloseGroup(table)}
             />
             {paymentOrder && (
                 <PaymentModal
@@ -945,10 +1016,19 @@ export default function Tables() {
                 operation={operation ?? 'TRANSFER'}
                 tables={mapBranchId ? tables.filter((table) => table.branchId === mapBranchId) : tables}
                 initialTableId={operationTableId}
+                intent={consolidationIntent}
                 submitting={submittingOperation}
                 onClose={() => { setOperation(null); setOperationTableId(null); }}
                 onTransfer={handleTransfer}
                 onConsolidate={handleConsolidate}
+            />
+            <TableGroupModal
+                isOpen={groupTableId !== null}
+                tables={mapBranchId ? tables.filter((table) => table.branchId === mapBranchId) : tables}
+                initialTableId={groupTableId}
+                submitting={submittingGroup}
+                onClose={() => setGroupTableId(null)}
+                onSubmit={handleCreateGroup}
             />
             {posTable && (
                 <div className="table-pos-workspace" role="dialog" aria-modal="true" aria-label={`Pedido de mesa ${posTable.number}`}>
