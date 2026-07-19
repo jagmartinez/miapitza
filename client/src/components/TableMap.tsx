@@ -66,6 +66,8 @@ type CanvasResize = {
 };
 
 type SelectOption<T extends string = string> = { value: T; label: string };
+type ChairSide = 'top' | 'right' | 'bottom' | 'left';
+type ChairPlacement = { side: ChairSide; offset: number };
 
 const FALLBACK_COLUMNS = 5;
 const FALLBACK_X_GAP = 165;
@@ -145,6 +147,46 @@ function resolveOperationalState(table: PositionedTable): NonNullable<Table['ope
 }
 
 function areaKey(area: EditableArea): string { return area.id ? `id:${area.id}` : area.clientKey; }
+
+function getChairPlacements(table: PositionedTable): ChairPlacement[] {
+    const capacity = Math.min(10, Math.max(1, Math.round(table.capacity || 1)));
+    const sides: Record<ChairSide, number> = { top: 0, right: 0, bottom: 0, left: 0 };
+
+    if (capacity === 1) {
+        sides.bottom = 1;
+    } else if (capacity === 2) {
+        if (table.mapHeight > table.mapWidth) {
+            sides.top = 1;
+            sides.bottom = 1;
+        } else {
+            sides.left = 1;
+            sides.right = 1;
+        }
+    } else if (capacity === 3) {
+        sides.top = 1;
+        sides.left = 1;
+        sides.right = 1;
+    } else if (table.mapHeight > table.mapWidth * 1.12) {
+        sides.top = 1;
+        sides.bottom = 1;
+        const remaining = capacity - 2;
+        sides.left = Math.ceil(remaining / 2);
+        sides.right = Math.floor(remaining / 2);
+    } else {
+        sides.left = 1;
+        sides.right = 1;
+        const remaining = capacity - 2;
+        sides.top = Math.ceil(remaining / 2);
+        sides.bottom = Math.floor(remaining / 2);
+    }
+
+    return (Object.entries(sides) as [ChairSide, number][]).flatMap(([side, count]) =>
+        Array.from({ length: count }, (_, index) => ({
+            side,
+            offset: ((index + 1) / (count + 1)) * 100
+        }))
+    );
+}
 
 export default function TableMap({
     plan,
@@ -337,7 +379,7 @@ export default function TableMap({
             <div className="table-map-toolbar">
                 <div className="table-map-title-block">
                     <strong>{editing ? 'Gestión de mesas · Editor del plano' : 'Gestión de mesas · Mapa operativo'}</strong>
-                    <span>{editing ? 'Selecciona un salón o mesa para cambiar tamaño, forma y rotación' : `${layout.length} mesas · ${areas.length} salones · selecciona una mesa para operarla`}</span>
+                    <span>{editing ? 'Selecciona un salón o mesa para cambiar tamaño, forma y rotación' : `${layout.length} ${layout.length === 1 ? 'mesa' : 'mesas'} · ${areas.length} ${areas.length === 1 ? 'salón' : 'salones'} · selecciona una mesa para operarla`}</span>
                 </div>
                 <div className="table-map-actions">
                     {!editing && <Select<SelectOption>
@@ -405,6 +447,7 @@ export default function TableMap({
                                 const state = resolveOperationalState(table);
                                 const filteredOut = Boolean(!editing && statusFilter && table.status !== statusFilter);
                                 const selected = selection?.kind === 'table' && selection.key === table.id;
+                                const chairs = getChairPlacements(table);
                                 return (
                                     <button key={table.id} type="button"
                                         className={`map-table state-${state.toLowerCase()} shape-${table.mapShape.toLowerCase()} ${selected ? 'selected' : ''} ${filteredOut ? 'filtered-out' : ''}`}
@@ -415,10 +458,18 @@ export default function TableMap({
                                         onClick={(event) => { event.stopPropagation(); if (!editing && !filteredOut) onSelect(table); else if (editing) setSelection({ kind: 'table', key: table.id }); }}
                                         onPointerDown={(event) => beginInteraction(event, { kind: 'table', key: table.id }, 'MOVE')}
                                         onPointerMove={moveInteraction} onPointerUp={endInteraction} onPointerCancel={endInteraction}>
-                                        <Armchair size={16} aria-hidden="true" />
-                                        <span className="map-table-number">{table.number}</span>
-                                        <span className="map-table-status">{operationalLabel[state]}</span>
-                                        <span className="map-table-capacity">{table.capacity} personas</span>
+                                        <span className="map-table-chairs" aria-hidden="true">
+                                            {chairs.map((chair, index) => (
+                                                <span key={`${chair.side}-${index}`} className={`map-table-chair side-${chair.side}`}
+                                                    style={(chair.side === 'top' || chair.side === 'bottom') ? { left: `${chair.offset}%` } : { top: `${chair.offset}%` }} />
+                                            ))}
+                                        </span>
+                                        <span className="map-table-surface">
+                                            <span className="map-table-state-dot" aria-hidden="true" />
+                                            <span className="map-table-number">{table.number}</span>
+                                            <span className="map-table-status">{operationalLabel[state]}</span>
+                                            <span className="map-table-capacity">{table.capacity} personas</span>
+                                        </span>
                                         {editing && <span className="map-resize-handle" role="button" aria-label={`Redimensionar mesa ${table.number}`} onPointerDown={(event) => beginInteraction(event, { kind: 'table', key: table.id }, 'RESIZE')} />}
                                     </button>
                                 );

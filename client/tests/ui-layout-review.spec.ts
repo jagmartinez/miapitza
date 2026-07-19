@@ -428,6 +428,25 @@ test('operational table map uses the complete viewport without lateral gutters',
   expect(Math.abs(geometry.viewportWidth - geometry.width)).toBeLessThanOrEqual(1);
   expect(geometry.paddingLeft).toBe('0px');
   expect(geometry.paddingRight).toBe('0px');
+
+  const table = page.getByRole('button', { name: /Mesa ABANICO/ });
+  await expect(table.locator('.map-table-surface')).toBeVisible();
+  await expect(table.locator('.map-table-chair')).toHaveCount(4);
+  await expect(page.locator('.table-map-legend')).toContainText('En preparación');
+
+  const furnitureGeometry = await table.evaluate((element) => {
+    const tableBox = element.getBoundingClientRect();
+    const surfaceBox = element.querySelector('.map-table-surface')!.getBoundingClientRect();
+    return {
+      tableWidth: tableBox.width,
+      tableHeight: tableBox.height,
+      surfaceWidth: surfaceBox.width,
+      surfaceHeight: surfaceBox.height,
+    };
+  });
+
+  expect(furnitureGeometry.surfaceWidth).toBeLessThan(furnitureGeometry.tableWidth);
+  expect(furnitureGeometry.surfaceHeight).toBeLessThan(furnitureGeometry.tableHeight);
 });
 
 test('mobile table orders use the full viewport and keep prices and actions inside it', async ({
