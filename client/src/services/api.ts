@@ -312,6 +312,9 @@ export const tablesAPI = {
     createGroup: (data: Record<string, unknown>, idempotencyKey: string) =>
         api.post('/tables/groups', data, { headers: { 'X-Idempotency-Key': idempotencyKey } }),
 
+    updateGroup: (groupId: number, data: Record<string, unknown>, idempotencyKey: string) =>
+        api.patch(`/tables/groups/${groupId}`, data, { headers: { 'X-Idempotency-Key': idempotencyKey } }),
+
     closeGroup: (groupId: number, data: Record<string, unknown>, idempotencyKey: string) =>
         api.post(`/tables/groups/${groupId}/close`, data, { headers: { 'X-Idempotency-Key': idempotencyKey } }),
 

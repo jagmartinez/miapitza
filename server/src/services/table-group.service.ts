@@ -9,6 +9,14 @@ type GroupSelection = {
     memberTableIds: number[];
 };
 
+type GroupMembershipUpdate = {
+    primaryTableId: number;
+    expectedPrimaryTableId: number;
+    memberTableIds: number[];
+    expectedMemberTableIds: number[];
+    reason: string;
+};
+
 function positiveId(value: unknown, label: string): number {
     const parsed = Number(value);
     if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`${label} debe ser un entero mayor a 0`);
@@ -26,6 +34,28 @@ export function validateTableGroupSelection(input: GroupSelection): number[] {
     return [primaryTableId, ...memberIds].sort((a, b) => a - b);
 }
 
+export function validateUpdatedGroupMembers(memberTableIds: unknown, primaryTableId: number, label = 'memberTableIds'): number[] {
+    if (!Array.isArray(memberTableIds) || memberTableIds.length < 2) {
+        throw new Error('El grupo debe conservar al menos dos mesas');
+    }
+    if (memberTableIds.length > 20) throw new Error('No se pueden unir más de 20 mesas en un grupo');
+    const ids = memberTableIds.map((id) => positiveId(id, label));
+    if (new Set(ids).size !== ids.length) throw new Error('No repita mesas en el grupo');
+    if (!ids.includes(primaryTableId)) throw new Error('La mesa principal debe permanecer en el grupo');
+    return [...ids].sort((a, b) => a - b);
+}
+
+function sameIds(left: number[], right: number[]): boolean {
+    return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
+const activeAccountWhere = {
+    OR: [
+        { status: { in: [...ACTIVE_ORDER_STATUSES] } },
+        { status: 'DELIVERED' as const, financialStatus: { not: 'PAID' as const } }
+    ]
+};
+
 async function lockTables(tx: Tx, companyId: number, ids: number[]) {
     for (const id of [...new Set(ids)].sort((a, b) => a - b)) {
         await tx.$queryRaw`SELECT id FROM \`Table\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
@@ -37,7 +67,7 @@ async function lockTables(tx: Tx, companyId: number, ids: number[]) {
 
 async function syncStandaloneTable(tx: Tx, companyId: number, tableId: number) {
     const activeOrders = await tx.order.count({
-        where: { companyId, tableId, status: { in: [...ACTIVE_ORDER_STATUSES] } }
+        where: { companyId, tableId, ...activeAccountWhere }
     });
     const table = await tx.table.findFirst({ where: { id: tableId, companyId }, select: { status: true, activeTableGroupId: true } });
     if (!table || table.activeTableGroupId || table.status === 'RESERVED' || table.status === 'OUT_OF_SERVICE') return;
@@ -114,7 +144,7 @@ export async function closeInactiveTableGroupForTable(
     const tableIds = group.activeTables.map((member) => member.id);
     await lockTables(tx, companyId, tableIds);
     const activeOrders = await tx.order.count({
-        where: { companyId, tableId: { in: tableIds }, status: { in: [...ACTIVE_ORDER_STATUSES] } }
+        where: { companyId, tableId: { in: tableIds }, ...activeAccountWhere }
     });
     if (activeOrders > 0) {
         await tx.table.updateMany({
@@ -220,6 +250,98 @@ export class TableGroupService {
                 actorId,
                 reason?.trim() || 'Separación manual de mesas'
             );
+        });
+    }
+
+    static async updateMembership(
+        companyId: number,
+        actorId: number,
+        groupIdValue: number,
+        data: GroupMembershipUpdate
+    ) {
+        const groupId = positiveId(groupIdValue, 'groupId');
+        const reason = data.reason?.trim();
+        if (!reason || reason.length < 3) throw new Error('Indique un motivo para modificar el grupo');
+
+        return prisma.$transaction(async (tx) => {
+            const actor = await tx.user.findFirst({ where: { id: actorId, companyId, status: 'ACTIVE' }, select: { id: true } });
+            if (!actor) throw new Error('Usuario no válido para esta empresa');
+            await tx.$queryRaw`SELECT id FROM \`TableGroup\` WHERE id = ${groupId} AND companyId = ${companyId} FOR UPDATE`;
+            const group = await tx.tableGroup.findFirst({
+                where: { id: groupId, companyId },
+                include: { activeTables: { select: { id: true }, orderBy: { id: 'asc' } } }
+            });
+            if (!group) throw new Error('Grupo de mesas no encontrado');
+            if (group.status !== 'ACTIVE') throw new Error('El grupo de mesas ya fue separado');
+            if (!group.primaryTableId) throw new Error('El grupo activo no tiene una mesa principal válida');
+
+            const currentIds = group.activeTables.map((table) => table.id).sort((a, b) => a - b);
+            const storedIds = validateUpdatedGroupMembers(group.memberTableIds, group.primaryTableId, 'storedMemberTableId');
+            if (!sameIds(currentIds, storedIds)) throw new Error('El grupo activo está inconsistente; recargue antes de continuar');
+
+            const expectedPrimaryTableId = positiveId(data.expectedPrimaryTableId, 'expectedPrimaryTableId');
+            if (expectedPrimaryTableId !== group.primaryTableId) throw new Error('La mesa principal cambió desde que se abrió. Recargue e intente nuevamente');
+            const expectedIds = validateUpdatedGroupMembers(data.expectedMemberTableIds, group.primaryTableId, 'expectedMemberTableId');
+            if (!sameIds(currentIds, expectedIds)) throw new Error('El grupo cambió desde que se abrió. Recargue e intente nuevamente');
+
+            const desiredPrimaryTableId = positiveId(data.primaryTableId, 'primaryTableId');
+            const desiredIds = validateUpdatedGroupMembers(data.memberTableIds, desiredPrimaryTableId);
+            if (sameIds(currentIds, desiredIds) && desiredPrimaryTableId === group.primaryTableId) throw new Error('Seleccione un cambio real en las mesas del grupo');
+
+            const affectedIds = [...new Set([...currentIds, ...desiredIds])].sort((a, b) => a - b);
+            const tables = await lockTables(tx, companyId, affectedIds);
+            const byId = new Map(tables.map((table) => [table.id, table]));
+            for (const tableId of desiredIds) {
+                const table = byId.get(tableId);
+                if (!table || table.branchId !== group.branchId) throw new Error('Solo se pueden unir mesas de la misma sucursal');
+                if (table.status === 'OUT_OF_SERVICE') throw new Error('No se puede unir una mesa fuera de servicio');
+                if (table.status === 'RESERVED') throw new Error('No se puede unir una mesa reservada; complete o cancele la reservación');
+                if (table.activeTableGroupId !== null && table.activeTableGroupId !== group.id) {
+                    throw new Error('Una de las mesas ya pertenece a otro grupo activo');
+                }
+            }
+
+            const removedIds = currentIds.filter((id) => !desiredIds.includes(id));
+            const addedIds = desiredIds.filter((id) => !currentIds.includes(id));
+            if (removedIds.length) {
+                const removed = await tx.table.updateMany({
+                    where: { companyId, id: { in: removedIds }, activeTableGroupId: group.id },
+                    data: { activeTableGroupId: null }
+                });
+                if (removed.count !== removedIds.length) throw new Error('Las mesas cambiaron durante la edición; recargue e intente nuevamente');
+                for (const tableId of removedIds) await syncStandaloneTable(tx, companyId, tableId);
+            }
+            if (addedIds.length) {
+                const added = await tx.table.updateMany({
+                    where: { companyId, id: { in: addedIds }, activeTableGroupId: null },
+                    data: { activeTableGroupId: group.id, status: 'OCCUPIED' }
+                });
+                if (added.count !== addedIds.length) throw new Error('Las mesas cambiaron durante la edición; recargue e intente nuevamente');
+            }
+            await tx.table.updateMany({
+                where: { companyId, id: { in: desiredIds }, activeTableGroupId: group.id },
+                data: { status: 'OCCUPIED' }
+            });
+            await tx.tableGroup.update({
+                where: { id: group.id },
+                data: { primaryTableId: desiredPrimaryTableId, memberTableIds: desiredIds as Prisma.InputJsonValue }
+            });
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    entityType: 'TableGroup',
+                    entityId: group.id,
+                    action: 'TABLE_GROUP_UPDATE',
+                    userId: actorId,
+                    details: { branchId: group.branchId, beforePrimaryTableId: group.primaryTableId, afterPrimaryTableId: desiredPrimaryTableId, beforeTableIds: currentIds, afterTableIds: desiredIds, addedTableIds: addedIds, removedTableIds: removedIds, reason }
+                }
+            });
+            const updated = await tx.tableGroup.findUnique({
+                where: { id: group.id },
+                include: { primaryTable: true, activeTables: { orderBy: { number: 'asc' } } }
+            });
+            if (!updated) throw new Error('No se pudo recargar el grupo actualizado');
+            return { group: updated, affectedTableIds: affectedIds };
         });
     }
 }

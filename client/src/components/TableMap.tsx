@@ -66,6 +66,21 @@ type CanvasResize = {
     startHeight: number;
 };
 
+type TableGroupConnectionLine = {
+    key: string;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+};
+
+type TableGroupConnection = {
+    key: string;
+    count: number;
+    hub: { x: number; y: number } | null;
+    lines: TableGroupConnectionLine[];
+};
+
 type SelectOption<T extends string = string> = { value: T; label: string };
 
 const FALLBACK_COLUMNS = 5;
@@ -369,24 +384,49 @@ export default function TableMap({
         () => [...new Set(layout.map((table) => table.activeTableGroupId).filter((id): id is number => Boolean(id)))],
         [layout]
     );
-    const groupConnections = useMemo(() => {
-        return activeGroupIds.flatMap((groupId) => {
+    const groupConnections = useMemo<TableGroupConnection[]>(() => {
+        return activeGroupIds.flatMap<TableGroupConnection>((groupId) => {
             const members = layout.filter((table) => table.activeTableGroupId === groupId);
-            // A single connector is unambiguous for a pair. Three or more
-            // tables use numbered badges instead, avoiding a misleading chain
-            // that can look as if an unrelated table were included.
-            if (members.length !== 2) return [];
             const primaryId = members[0]?.activeTableGroup?.primaryTableId;
             const primary = members.find((table) => table.id === primaryId);
-            if (!primary) return [];
-            const start = { x: primary.mapX + primary.mapWidth / 2, y: primary.mapY + primary.mapHeight / 2 };
-            return members.filter((table) => table.id !== primary.id).map((table) => ({
-                key: `${groupId}-${table.id}`,
-                x1: start.x,
-                y1: start.y,
-                x2: table.mapX + table.mapWidth / 2,
-                y2: table.mapY + table.mapHeight / 2
-            }));
+            if (!primary || members.length < 2) return [];
+            const primaryCenter = { x: primary.mapX + primary.mapWidth / 2, y: primary.mapY + primary.mapHeight / 2 };
+            if (members.length === 2) {
+                const other = members.find((table) => table.id !== primary.id)!;
+                return [{
+                    key: `group-${groupId}`,
+                    count: 2,
+                    hub: null,
+                    lines: [{
+                        key: `${groupId}-${other.id}`,
+                        x1: primaryCenter.x,
+                        y1: primaryCenter.y,
+                        x2: other.mapX + other.mapWidth / 2,
+                        y2: other.mapY + other.mapHeight / 2
+                    }]
+                }];
+            }
+
+            // Three or more tables use a fan-shaped hub above (or below) the
+            // primary table. Every member gets its own arm, so the connector
+            // cannot be mistaken for a chain that includes an unrelated table.
+            const hubAbove = primary.mapY - 25;
+            const hub = {
+                x: primaryCenter.x,
+                y: hubAbove >= 22 ? hubAbove : primary.mapY + primary.mapHeight + 25
+            };
+            return [{
+                key: `group-${groupId}`,
+                count: members.length,
+                hub,
+                lines: members.map((table) => ({
+                    key: `${groupId}-${table.id}`,
+                    x1: hub.x,
+                    y1: hub.y,
+                    x2: table.mapX + table.mapWidth / 2,
+                    y2: table.mapY + table.mapHeight / 2
+                }))
+            }];
         });
     }, [activeGroupIds, layout]);
 
@@ -472,10 +512,16 @@ export default function TableMap({
                             })}
                             {!editing && groupConnections.length > 0 && (
                                 <svg className="table-group-connections" width={canvasWidth} height={canvasHeight} aria-hidden="true">
-                                    {groupConnections.map((line) => (
-                                        <g key={line.key}>
-                                            <line x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />
-                                            <circle cx={line.x2} cy={line.y2} r="4" />
+                                    {groupConnections.map((group) => (
+                                        <g key={group.key}>
+                                            {group.lines.map((line) => <g key={line.key}>
+                                                <line x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />
+                                                <circle className="table-group-endpoint" cx={line.x2} cy={line.y2} r="4" />
+                                            </g>)}
+                                            {group.hub && <>
+                                                <circle className="table-group-hub" cx={group.hub.x} cy={group.hub.y} r="11" />
+                                                <text className="table-group-hub-count" x={group.hub.x} y={group.hub.y}>{group.count}</text>
+                                            </>}
                                         </g>
                                     ))}
                                 </svg>

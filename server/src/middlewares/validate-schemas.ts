@@ -332,6 +332,17 @@ export const createTableGroup: ValidationSchema = {
     }
 };
 
+export const updateTableGroup: ValidationSchema = {
+    params: { id: { type: 'number', required: true, min: 1, integer: true } },
+    body: {
+        primaryTableId: { type: 'number', required: true, min: 1, integer: true },
+        expectedPrimaryTableId: { type: 'number', required: true, min: 1, integer: true },
+        memberTableIds: { type: 'array', required: true, min: 2, max: 20, items: { type: 'number', min: 1, integer: true } },
+        expectedMemberTableIds: { type: 'array', required: true, min: 2, max: 20, items: { type: 'number', min: 1, integer: true } },
+        reason: { type: 'string', required: true, min: 3, max: 500 }
+    }
+};
+
 export const closeTableGroup: ValidationSchema = {
     params: { id: { type: 'number', required: true, min: 1, integer: true } },
     body: { reason: { type: 'string', max: 500 } }

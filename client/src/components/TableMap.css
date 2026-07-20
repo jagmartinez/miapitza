@@ -197,6 +197,8 @@
 .table-group-connections { position: absolute; inset: 0; z-index: 2; overflow: visible; pointer-events: none; }
 .table-group-connections line { stroke: color-mix(in srgb, var(--color-primary) 72%, var(--color-text)); stroke-width: 4; stroke-dasharray: 10 7; stroke-linecap: round; filter: drop-shadow(0 1px 2px rgb(15 23 42 / .22)); }
 .table-group-connections circle { fill: var(--color-primary); stroke: var(--color-surface); stroke-width: 2; }
+.table-group-connections .table-group-hub { fill: var(--color-primary); stroke-width: 3; filter: drop-shadow(0 2px 4px rgb(15 23 42 / .3)); }
+.table-group-hub-count { fill: white; font-size: 10px; font-weight: 900; text-anchor: middle; dominant-baseline: central; }
 .map-table.is-grouped .map-table-surface { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary) 18%, transparent), 0 4px 9px rgb(15 23 42 / 0.14); }
 .map-table.is-group-primary .map-table-surface { box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-primary) 28%, transparent), 0 6px 13px rgb(15 23 42 / .18); }
 .map-table.filtered-out { visibility: hidden; pointer-events: none; }

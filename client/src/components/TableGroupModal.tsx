@@ -5,64 +5,122 @@ import Modal from './Modal';
 import Button from './Button';
 import './TableGroupModal.css';
 
+export type TableGroupFormData =
+    | { mode: 'CREATE'; primaryTableId: number; memberTableIds: number[]; reason?: string }
+    | { mode: 'EDIT'; groupId: number; primaryTableId: number; expectedPrimaryTableId: number; memberTableIds: number[]; expectedMemberTableIds: number[]; reason: string };
+
 interface Props {
     isOpen: boolean;
     tables: Table[];
     initialTableId?: number | null;
     submitting: boolean;
     onClose: () => void;
-    onSubmit: (data: { primaryTableId: number; memberTableIds: number[]; reason?: string }) => Promise<void>;
+    onSubmit: (data: TableGroupFormData) => Promise<void>;
 }
+
+const sortedIds = (ids: number[]) => [...ids].sort((left, right) => left - right);
 
 export default function TableGroupModal({
     isOpen, tables, initialTableId, submitting, onClose, onSubmit
 }: Props) {
     const [memberTableIds, setMemberTableIds] = useState<number[]>([]);
+    const [primaryTableId, setPrimaryTableId] = useState<number | null>(null);
     const [search, setSearch] = useState('');
     const [reason, setReason] = useState('');
-    const primary = tables.find((table) => table.id === initialTableId) ?? null;
+    const initialTable = tables.find((table) => table.id === initialTableId) ?? null;
+    const activeGroup = initialTable?.activeTableGroup ?? null;
+    const editing = Boolean(activeGroup);
+    const primary = tables.find((table) => table.id === primaryTableId) ?? null;
 
     useEffect(() => {
         if (!isOpen) return;
-        setMemberTableIds([]);
+        setPrimaryTableId(activeGroup?.primaryTableId ?? initialTable?.id ?? null);
+        setMemberTableIds(activeGroup ? activeGroup.memberTableIds : []);
         setSearch('');
-        setReason('');
-    }, [initialTableId, isOpen]);
+        setReason(activeGroup ? 'Ajuste manual del grupo desde el mapa operativo' : '');
+    }, [activeGroup?.id, activeGroup?.primaryTableId, initialTable?.id, initialTableId, isOpen]);
 
     const eligible = useMemo(() => {
-        if (!primary) return [];
+        const branchTable = primary ?? initialTable;
+        if (!branchTable) return [];
         const query = search.trim().toLocaleLowerCase('es');
         return tables.filter((table) => {
-            if (table.id === primary.id || table.branchId !== primary.branchId) return false;
-            if (table.activeTableGroupId || !['AVAILABLE', 'OCCUPIED'].includes(table.status)) return false;
+            if ((!editing && table.id === branchTable.id) || table.branchId !== branchTable.branchId) return false;
+            const belongsToCurrentGroup = Boolean(activeGroup && table.activeTableGroupId === activeGroup.id);
+            if (table.activeTableGroupId && !belongsToCurrentGroup) return false;
+            if (!belongsToCurrentGroup && !['AVAILABLE', 'OCCUPIED'].includes(table.status)) return false;
             return !query || `mesa ${table.number} ${table.location || 'salón principal'}`.toLocaleLowerCase('es').includes(query);
         });
-    }, [primary, search, tables]);
+    }, [activeGroup, editing, initialTable, primary, search, tables]);
 
-    const selectedTables = tables.filter((table) => memberTableIds.includes(table.id));
-    const totalCapacity = (primary?.capacity ?? 0) + selectedTables.reduce((sum, table) => sum + table.capacity, 0);
-    const groupTableCount = memberTableIds.length + 1;
+    const desiredIds = primary
+        ? sortedIds(editing ? memberTableIds : [primary.id, ...memberTableIds])
+        : [];
+    const selectedTables = tables.filter((table) => desiredIds.includes(table.id));
+    const additionalTables = selectedTables.filter((table) => table.id !== primary?.id);
+    const totalCapacity = selectedTables.reduce((sum, table) => sum + table.capacity, 0);
+    const groupTableCount = desiredIds.length;
     const groupTableLabel = `${groupTableCount} ${groupTableCount === 1 ? 'mesa' : 'mesas'}`;
+    const expectedIds = activeGroup ? sortedIds(activeGroup.memberTableIds) : [];
+    const hasChanges = !editing
+        || desiredIds.join(',') !== expectedIds.join(',')
+        || primary?.id !== activeGroup?.primaryTableId;
+    const canSubmit = Boolean(primary)
+        && (editing ? desiredIds.length >= 2 : memberTableIds.length > 0)
+        && !submitting
+        && (!editing || (hasChanges && reason.trim().length >= 3));
+
+    const toggleMember = (tableId: number, checked: boolean) => {
+        const limit = editing ? 20 : 19;
+        const next = checked
+            ? memberTableIds.length < limit ? [...memberTableIds, tableId] : memberTableIds
+            : memberTableIds.filter((id) => id !== tableId);
+        setMemberTableIds(next);
+        if (editing && !checked && primaryTableId === tableId) setPrimaryTableId(next[0] ?? null);
+        if (editing && checked && primaryTableId === null) setPrimaryTableId(tableId);
+    };
+
+    const submit = () => {
+        if (!primary || !canSubmit) return;
+        if (activeGroup) {
+            void onSubmit({
+                mode: 'EDIT',
+                groupId: activeGroup.id,
+                primaryTableId: primary.id,
+                expectedPrimaryTableId: activeGroup.primaryTableId,
+                memberTableIds: desiredIds,
+                expectedMemberTableIds: expectedIds,
+                reason: reason.trim()
+            });
+            return;
+        }
+        void onSubmit({
+            mode: 'CREATE',
+            primaryTableId: primary.id,
+            memberTableIds,
+            reason: reason.trim() || undefined
+        });
+    };
 
     return (
         <Modal
             isOpen={isOpen}
             onClose={submitting ? () => undefined : onClose}
-            title="Unir mesas físicamente"
+            title={editing ? 'Editar mesas unidas' : 'Unir mesas físicamente'}
             size="lg"
-            description="Cada mesa conserva sus sillas y su cuenta. El mapa las mostrará como un solo grupo ocupado."
+            description={editing
+                ? 'Marca exactamente las mesas que permanecerán unidas. Las cuentas y productos no se moverán.'
+                : 'Cada mesa conserva sus sillas y su cuenta. El mapa las mostrará como un solo grupo ocupado.'}
             footer={<>
                 <Button type="button" variant="ghost" disabled={submitting} onClick={onClose}>Cancelar</Button>
-                <Button
-                    type="button"
-                    disabled={!primary || memberTableIds.length === 0 || submitting}
-                    onClick={() => primary && void onSubmit({
-                        primaryTableId: primary.id,
-                        memberTableIds,
-                        reason: reason.trim() || undefined
-                    })}
-                >
-                    {submitting ? 'Uniendo…' : memberTableIds.length === 0 ? 'Selecciona otra mesa' : `Unir ${groupTableLabel}`}
+                <Button type="button" disabled={!canSubmit} onClick={submit}>
+                    {submitting
+                        ? editing ? 'Guardando…' : 'Uniendo…'
+                        : groupTableCount < 2
+                            ? 'Debe quedar otra mesa'
+                            : editing && !hasChanges
+                                ? 'Sin cambios'
+                                : editing ? `Guardar ${groupTableLabel}` : `Unir ${groupTableLabel}`}
                 </Button>
             </>}
         >
@@ -70,9 +128,15 @@ export default function TableGroupModal({
                 {primary && (
                     <div className="table-group-route" aria-label="Vista previa de la unión">
                         <div className="table-group-primary-card">
-                            <small>Mesa principal</small>
+                            <small>Mesa principal — referencia visual</small>
                             <strong>Mesa {primary.number}</strong>
                             <span><Armchair size={15} /> {primary.capacity} {primary.capacity === 1 ? 'silla' : 'sillas'}</span>
+                            {editing && <label className="table-group-primary-select">
+                                Principal del grupo
+                                <select value={primary.id} onChange={(event) => setPrimaryTableId(Number(event.target.value))}>
+                                    {selectedTables.map((table) => <option key={table.id} value={table.id}>Mesa {table.number}</option>)}
+                                </select>
+                            </label>}
                         </div>
                         <span className="table-group-link-icon"><Link2 size={22} /></span>
                         <div className="table-group-total-card">
@@ -83,44 +147,38 @@ export default function TableGroupModal({
                     </div>
                 )}
 
-                <div className="table-group-callout">
-                    <strong>Unión física, no financiera</strong>
-                    <span>Las cuentas no se mezclan hasta usar “Consolidar” o “Consolidar y cobrar”.</span>
-                </div>
-
                 <div className="table-group-selection-summary" aria-live="polite">
-                    <strong>{memberTableIds.length === 0 ? 'Aún no has agregado otra mesa' : `Selección exacta: ${groupTableLabel}`}</strong>
+                    <strong>{groupTableCount < 2 ? 'El grupo necesita otra mesa' : `Selección exacta: ${groupTableLabel}`}</strong>
                     <span>
                         {primary ? `Principal: Mesa ${primary.number}` : 'Sin mesa principal'}
-                        {selectedTables.map((table) => ` + Mesa ${table.number}`).join('')}
+                        {additionalTables.map((table) => ` + Mesa ${table.number}`).join('')}
                     </span>
                     <small>{totalCapacity} sillas = {totalCapacity} comensales</small>
                 </div>
 
                 <fieldset className="table-group-members">
-                    <legend>Mesas que se acercarán a la principal</legend>
+                    <legend>{editing ? 'Mesas que permanecerán unidas' : 'Mesas que se acercarán a la principal'}</legend>
                     <label className="table-group-search">
                         <Search size={17} aria-hidden="true" />
                         <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por mesa o salón" />
                     </label>
                     <div className="table-group-grid">
                         {eligible.map((table) => {
-                            const selected = memberTableIds.includes(table.id);
+                            const selected = editing ? desiredIds.includes(table.id) : memberTableIds.includes(table.id);
+                            const currentMember = Boolean(activeGroup && activeGroup.memberTableIds.includes(table.id));
                             return (
-                                <label key={table.id} className={selected ? 'selected' : ''}>
+                                <label key={table.id} className={`${selected ? 'selected' : ''} ${currentMember ? 'current-member' : ''}`}>
                                     <input
                                         type="checkbox"
                                         aria-label={`${selected ? 'Quitar' : 'Agregar'} mesa ${table.number} del grupo`}
                                         checked={selected}
-                                        disabled={!selected && memberTableIds.length >= 19}
-                                        onChange={(event) => setMemberTableIds((current) => event.target.checked
-                                            ? current.length < 19 ? [...current, table.id] : current
-                                            : current.filter((id) => id !== table.id))}
+                                        disabled={!selected && memberTableIds.length >= (editing ? 20 : 19)}
+                                        onChange={(event) => toggleMember(table.id, event.target.checked)}
                                     />
                                     <span>
                                         <strong>Mesa {table.number}</strong>
                                         <small>{table.location || 'Salón principal'} · {table.capacity} sillas</small>
-                                        <em>{table.activeOrderCount ? 'Con cuenta activa' : 'Sin cuenta'}</em>
+                                        <em>{table.id === primary?.id ? 'Principal del grupo' : currentMember ? 'Integrante actual' : table.activeOrderCount ? 'Con cuenta activa' : 'Sin cuenta'}</em>
                                     </span>
                                 </label>
                             );
@@ -129,9 +187,16 @@ export default function TableGroupModal({
                     </div>
                 </fieldset>
 
+                <div className="table-group-callout">
+                    <strong>{editing ? 'Editar la unión no mezcla las cuentas' : 'Unión física, no financiera'}</strong>
+                    <span>{editing
+                        ? 'Una mesa retirada conserva su pedido y quedará ocupada si aún tiene una cuenta activa.'
+                        : 'Las cuentas no se mezclan hasta usar “Consolidar” o “Consolidar y cobrar”.'}</span>
+                </div>
+
                 <label className="table-group-reason">
-                    Motivo (opcional)
-                    <textarea rows={3} maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Ej.: grupo de 10 comensales" />
+                    {editing ? 'Motivo del cambio' : 'Motivo (opcional)'}
+                    <textarea rows={3} maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} placeholder={editing ? 'Ej.: retirar una mesa agregada por error' : 'Ej.: grupo de 10 comensales'} />
                 </label>
             </div>
         </Modal>

@@ -57,6 +57,38 @@ export class TableController {
         }
     }
 
+    static async updateGroup(req: Request, res: Response, next: NextFunction) {
+        try {
+            const existing = await TableGroupService.getById(req.user!.companyId, Number(req.params.id));
+            assertBranchAccess(req.user!, existing.branchId);
+            const result = await TableGroupService.updateMembership(
+                req.user!.companyId,
+                req.user!.userId,
+                existing.id,
+                {
+                    primaryTableId: req.body.primaryTableId,
+                    expectedPrimaryTableId: req.body.expectedPrimaryTableId,
+                    memberTableIds: req.body.memberTableIds,
+                    expectedMemberTableIds: req.body.expectedMemberTableIds,
+                    reason: req.body.reason
+                }
+            );
+            for (const tableId of result.affectedTableIds) {
+                WebSocketService.broadcastTableUpdate(tableId, 'GROUP_UPDATED', {
+                    groupId: result.group.id,
+                    memberTableIds: result.group.memberTableIds
+                }, {
+                    companyId: req.user!.companyId,
+                    branchId: result.group.branchId
+                });
+            }
+            res.json({ success: true, message: 'Grupo de mesas actualizado', data: result.group });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 409, message: getErrorMessage(error) });
+        }
+    }
+
     static async getFloorPlan(req: Request, res: Response, next: NextFunction) {
         try {
             const requestedBranchId = Number(req.params.branchId ?? req.user?.branchId);

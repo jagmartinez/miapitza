@@ -16,6 +16,7 @@ const kitchenSource = read('../pages/Kitchen.tsx');
 const layoutSource = read('./Layout.tsx');
 const bellSource = read('./KitchenNotificationBell.tsx');
 const panelStyles = read('./TableOrdersModal.css');
+const apiSource = read('../services/api.ts');
 
 describe('table operational center contract', () => {
     it('opens the real POS workspace with the selected table', () => {
@@ -114,10 +115,10 @@ describe('table operational center contract', () => {
         expect(mapSource).toContain('table-group-connections');
         expect(mapSource).toContain('Principal de');
         expect(panelSource).toContain('Unir mesas');
-        expect(panelSource).toContain('Separar mesas');
+        expect(panelSource).toContain('Separar todas');
         expect(panelSource).toContain('Consolidar y cobrar');
         expect(panelSource).toContain("['AVAILABLE', 'OCCUPIED'].includes(table.status)");
-        expect(groupSource).toContain('memberTableIds.length >= 19');
+        expect(groupSource).toContain('const limit = editing ? 20 : 19');
         expect(operationSource).toContain('table-transfer-route');
         expect(operationSource).toContain('Se libera al completar');
         expect(operationSource).toContain('(table.activeTableGroupId ?? null) === (selectedTransferSource.activeTableGroupId ?? null)');
@@ -150,12 +151,25 @@ describe('table operational center contract', () => {
         expect(tablesSource).toContain('table-map-fixed-branch');
     });
 
-    it('makes physical group size explicit and only draws an unambiguous pair connector', () => {
-        expect(mapSource).toContain('members.length !== 2');
+    it('makes physical group size explicit and draws a radial connector for larger groups', () => {
+        expect(mapSource).toContain('members.length === 2');
+        expect(mapSource).toContain('table-group-hub');
+        expect(mapSource).toContain('members.map((table)');
         expect(mapSource).toContain('Grupo de ${groupMembers.length} mesas');
         expect(mapSource).toContain('Mesa ${groupPosition}/${groupMembers.length}');
         expect(mapSource).toContain('Etiqueta: cantidad exacta del grupo');
         expect(groupSource).toContain('Selección exacta: ${groupTableLabel}');
+    });
+
+    it('edits one group member without closing the whole physical group', () => {
+        expect(panelSource).toContain('Editar grupo');
+        expect(groupSource).toContain("mode: 'EDIT'");
+        expect(groupSource).toContain('expectedMemberTableIds');
+        expect(groupSource).toContain('expectedPrimaryTableId');
+        expect(groupSource).toContain('setPrimaryTableId(next[0] ?? null)');
+        expect(groupSource).toContain('Mesas que permanecerán unidas');
+        expect(tablesSource).toContain('tablesAPI.updateGroup');
+        expect(apiSource).toContain("api.patch(`/tables/groups/${groupId}`");
     });
 
     it('limits kitchen fullscreen and administration navigation to the KDS rules', () => {

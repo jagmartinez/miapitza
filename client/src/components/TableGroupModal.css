@@ -24,6 +24,9 @@
 .table-group-grid { max-height: 290px; overflow: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 2px; }
 .table-group-grid > label { min-width: 0; display: flex; align-items: flex-start; gap: 9px; padding: 11px; border: 1px solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; background: var(--color-surface); }
 .table-group-grid > label.selected { border-color: var(--color-primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 14%, transparent); background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface)); }
+.table-group-grid > label.current-member em { color: var(--color-success); }
+.table-group-primary-select { display: grid; gap: 4px; margin-top: 6px; font-size: 11px; font-weight: 700; }
+.table-group-primary-select select { min-width: 150px; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); color: var(--color-text); background: var(--color-surface); font: inherit; }
 .table-group-grid > label:has(input:disabled) { cursor: not-allowed; opacity: .55; }
 .table-group-grid input { margin-top: 3px; accent-color: var(--color-primary); }
 .table-group-grid label span { min-width: 0; display: grid; gap: 2px; }
@@ -33,7 +36,10 @@
 .table-group-reason { display: grid; gap: 6px; color: var(--color-text-secondary); font-size: var(--font-size-xs); font-weight: 750; }
 .table-group-reason textarea { resize: vertical; padding: 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text); background: var(--color-background); }
 @media (max-width: 620px) {
-    .table-group-route { grid-template-columns: 1fr; }
-    .table-group-link-icon { justify-self: center; transform: rotate(90deg); }
+    .table-group-route { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: stretch; }
+    .table-group-primary-card,
+    .table-group-total-card { padding: 10px; }
+    .table-group-link-icon { display: none; }
+    .table-group-primary-select select { width: 100%; min-width: 0; }
     .table-group-grid { grid-template-columns: 1fr; }
 }

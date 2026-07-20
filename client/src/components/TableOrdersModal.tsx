@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {
     X, Clock, FileText, Printer, ShoppingCart, Receipt,
     CreditCard, Scissors, ArrowRightLeft, Merge, ChefHat,
-    Users, CircleDollarSign, Link2, Unlink, Loader2
+    Users, CircleDollarSign, Link2, Unlink, Loader2, Pencil
 } from 'lucide-react';
 import type { Order, OrderItem, Table } from '../types';
 import { escapeHtml } from '../utils/escapeHtml';
@@ -36,6 +36,7 @@ interface TableOrdersModalProps {
     onConsolidate: (table: Table) => void;
     onConsolidateAndPay: (table: Table) => void;
     onGroup: (table: Table) => void;
+    onEditGroup: (table: Table) => void;
     onUngroup: (table: Table) => void;
 }
 
@@ -61,6 +62,7 @@ export default function TableOrdersModal({
     onConsolidate,
     onConsolidateAndPay,
     onGroup,
+    onEditGroup,
     onUngroup
 }: TableOrdersModalProps) {
     const { formatMoney, symbol } = useCurrency();
@@ -213,9 +215,14 @@ export default function TableOrdersModal({
                         {canGroup && !table.activeTableGroup && ['AVAILABLE', 'OCCUPIED'].includes(table.status) && <button type="button" onClick={() => onGroup(table)}>
                             <Link2 size={18} /><span>Unir mesas</span>
                         </button>}
-                        {canGroup && table.activeTableGroup && <button type="button" onClick={() => onUngroup(table)}>
-                            <Unlink size={18} /><span>Separar mesas</span>
-                        </button>}
+                        {canGroup && table.activeTableGroup && <>
+                            <button type="button" onClick={() => onEditGroup(table)}>
+                                <Pencil size={18} /><span>Editar grupo</span>
+                            </button>
+                            <button type="button" onClick={() => onUngroup(table)}>
+                                <Unlink size={18} /><span>Separar todas</span>
+                            </button>
+                        </>}
                     </div>
                 )}
 

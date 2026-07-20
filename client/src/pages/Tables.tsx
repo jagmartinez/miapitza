@@ -23,7 +23,7 @@ import './Tables.css';
 import TableMap, { type FloorPlanDraft } from '../components/TableMap';
 import { newIdempotencyKey } from '../utils/idempotency';
 import TableOperationModal from '../components/TableOperationModal';
-import TableGroupModal from '../components/TableGroupModal';
+import TableGroupModal, { type TableGroupFormData } from '../components/TableGroupModal';
 import POS from './POS';
 import { hasUsableCashShift, type CashShiftScope } from '../utils/paymentAccess';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
@@ -474,16 +474,33 @@ export default function Tables() {
         }
     };
 
-    const handleCreateGroup = async (data: { primaryTableId: number; memberTableIds: number[]; reason?: string }) => {
+    const handleSaveGroup = async (data: TableGroupFormData) => {
         setSubmittingGroup(true);
         try {
-            await tablesAPI.createGroup(data, newIdempotencyKey());
+            if (data.mode === 'EDIT') {
+                await tablesAPI.updateGroup(data.groupId, {
+                    primaryTableId: data.primaryTableId,
+                    expectedPrimaryTableId: data.expectedPrimaryTableId,
+                    memberTableIds: data.memberTableIds,
+                    expectedMemberTableIds: data.expectedMemberTableIds,
+                    reason: data.reason
+                }, newIdempotencyKey());
+            } else {
+                await tablesAPI.createGroup({
+                    primaryTableId: data.primaryTableId,
+                    memberTableIds: data.memberTableIds,
+                    reason: data.reason
+                }, newIdempotencyKey());
+            }
             setGroupTableId(null);
             await loadTables();
             await loadFloorPlan();
-            showSuccess(`Se unieron ${data.memberTableIds.length + 1} mesas. Cada silla sigue representando un comensal.`);
+            const tableCount = data.mode === 'EDIT' ? data.memberTableIds.length : data.memberTableIds.length + 1;
+            showSuccess(data.mode === 'EDIT'
+                ? `Grupo actualizado: permanecen ${tableCount} mesas. Las cuentas conservaron su mesa.`
+                : `Se unieron ${tableCount} mesas. Cada silla sigue representando un comensal.`);
         } catch (error) {
-            showError(extractApiError(error, 'No se pudieron unir las mesas'));
+            showError(extractApiError(error, data.mode === 'EDIT' ? 'No se pudo actualizar el grupo de mesas' : 'No se pudieron unir las mesas'));
         } finally {
             setSubmittingGroup(false);
         }
@@ -1018,6 +1035,10 @@ export default function Tables() {
                     setIsOrdersModalOpen(false);
                     setGroupTableId(table.id);
                 }}
+                onEditGroup={(table) => {
+                    setIsOrdersModalOpen(false);
+                    setGroupTableId(table.id);
+                }}
                 onUngroup={(table) => void handleCloseGroup(table)}
             />
             {paymentOrder && (
@@ -1053,7 +1074,7 @@ export default function Tables() {
                 initialTableId={groupTableId}
                 submitting={submittingGroup}
                 onClose={() => setGroupTableId(null)}
-                onSubmit={handleCreateGroup}
+                onSubmit={handleSaveGroup}
             />
             {posTable && (
                 <div className="table-pos-workspace" role="dialog" aria-modal="true" aria-label={`Pedido de mesa ${posTable.number}`}>

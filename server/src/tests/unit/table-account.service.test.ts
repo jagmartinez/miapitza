@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from '@jest/globals';
 import { allocatePartialFinancials, TableAccountService } from '../../services/table-account.service';
-import { assertCompatiblePhysicalGroups, validateTableGroupSelection } from '../../services/table-group.service';
+import { assertCompatiblePhysicalGroups, validateTableGroupSelection, validateUpdatedGroupMembers } from '../../services/table-group.service';
 
 describe('Table account operations', () => {
     it('rejects ambiguous or duplicate table selections before opening a transaction', async () => {
@@ -40,6 +40,10 @@ describe('Table account operations', () => {
             { activeTableGroupId: 10 },
             { activeTableGroupId: 10 }
         ], 'consolidar')).not.toThrow();
+        expect(() => validateUpdatedGroupMembers([2], 2)).toThrow(/dos mesas/i);
+        expect(() => validateUpdatedGroupMembers([2, 3], 1)).toThrow(/principal/i);
+        expect(() => validateUpdatedGroupMembers([1, 2, 2], 1)).toThrow(/repita/i);
+        expect(validateUpdatedGroupMembers([3, 1, 2], 1)).toEqual([1, 2, 3]);
     });
 
     it('keeps the critical mutations behind granular backend permissions', () => {
@@ -47,6 +51,7 @@ describe('Table account operations', () => {
         expect(routes).toContain("requirePermission('tables.map.edit'");
         expect(routes).toContain("requirePermission('tables.transfer'");
         expect(routes).toContain("requirePermission('tables.consolidate'");
+        expect(routes).toContain("router.patch('/groups/:id', requirePermission('tables.group.manage'");
         expect(routes).not.toContain('router.post(\'/consolidate\', requireRole');
     });
 
@@ -73,6 +78,9 @@ describe('Table account operations', () => {
         expect(migration).toContain("'tables.group.manage'");
         expect(groupService).toContain("action: 'TABLE_GROUP_CREATE'");
         expect(groupService).toContain("action: 'TABLE_GROUP_CLOSE'");
+        expect(groupService).toContain("action: 'TABLE_GROUP_UPDATE'");
+        expect(groupService).toContain('expectedMemberTableIds');
+        expect(groupService).toContain('expectedPrimaryTableId');
         expect(orderService).toContain('closeInactiveTableGroupForTable');
     });
 
