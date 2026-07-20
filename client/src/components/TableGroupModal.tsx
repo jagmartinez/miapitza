@@ -88,6 +88,15 @@ export default function TableGroupModal({
                     <span>Las cuentas no se mezclan hasta usar “Consolidar” o “Consolidar y cobrar”.</span>
                 </div>
 
+                <div className="table-group-selection-summary" aria-live="polite">
+                    <strong>{memberTableIds.length === 0 ? 'Aún no has agregado otra mesa' : `Selección exacta: ${groupTableLabel}`}</strong>
+                    <span>
+                        {primary ? `Principal: Mesa ${primary.number}` : 'Sin mesa principal'}
+                        {selectedTables.map((table) => ` + Mesa ${table.number}`).join('')}
+                    </span>
+                    <small>{totalCapacity} sillas = {totalCapacity} comensales</small>
+                </div>
+
                 <fieldset className="table-group-members">
                     <legend>Mesas que se acercarán a la principal</legend>
                     <label className="table-group-search">
@@ -101,6 +110,7 @@ export default function TableGroupModal({
                                 <label key={table.id} className={selected ? 'selected' : ''}>
                                     <input
                                         type="checkbox"
+                                        aria-label={`${selected ? 'Quitar' : 'Agregar'} mesa ${table.number} del grupo`}
                                         checked={selected}
                                         disabled={!selected && memberTableIds.length >= 19}
                                         onChange={(event) => setMemberTableIds((current) => event.target.checked

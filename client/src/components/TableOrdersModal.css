@@ -395,6 +395,10 @@
 .btn-modal-primary:hover {
     background: var(--color-primary-dark);
 }
+.btn-modal-primary:disabled { opacity: .7; cursor: wait; }
+.button-spinner,
+.table-orders-loading > svg { animation: tableOrdersSpin .85s linear infinite; }
+@keyframes tableOrdersSpin { to { transform: rotate(360deg); } }
 
 /* Scrollbar */
 .orders-list::-webkit-scrollbar {
@@ -889,6 +893,10 @@
         white-space: nowrap;
     }
 
+    .table-detail-summary > div:first-child strong {
+        white-space: normal;
+    }
+
     .table-detail-summary .summary-total { grid-column: auto; }
 
     .table-command-strip {
@@ -1035,3 +1043,45 @@
 .table-active-group-banner strong { color: var(--color-text); font-size: var(--font-size-sm); }
 .table-active-group-banner span { color: var(--color-text-secondary); font-size: 10px; line-height: 1.35; }
 .table-order-actions .consolidate-pay { border-color: color-mix(in srgb, var(--color-primary) 58%, var(--color-border)); color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface)); }
+
+@media (max-width: 600px) {
+    .modal-overlay-orders {
+        align-items: flex-end;
+        background: var(--dialog-overlay, rgba(15, 23, 42, 0.58));
+        backdrop-filter: blur(3px);
+    }
+
+    .orders-modal {
+        width: 100%;
+        height: 90vh;
+        height: 90dvh;
+        max-height: 90vh;
+        max-height: 90dvh;
+        border: 1px solid var(--dialog-panel-border, var(--color-border));
+        border-bottom: 0;
+        border-radius: 20px 20px 0 0;
+        box-shadow: 0 -14px 40px rgba(0, 0, 0, .28);
+    }
+
+    .orders-modal-header { padding-top: 20px; }
+    .orders-modal-header::before {
+        content: '';
+        position: absolute;
+        top: 7px;
+        left: 50%;
+        width: 42px;
+        height: 4px;
+        border-radius: 999px;
+        background: var(--color-border);
+        transform: translateX(-50%);
+    }
+
+    .table-active-group-banner { margin: 0 12px 10px; padding: 8px 10px; }
+    .orders-modal-footer.single-action { grid-template-columns: 1fr; }
+    .orders-modal-footer.single-action .btn-modal-primary { grid-column: 1 / -1; }
+}
+
+@media (max-width: 600px) and (max-height: 620px) {
+    .orders-modal { height: 96dvh; max-height: 96dvh; }
+    .table-detail-summary { display: none; }
+}

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {
     X, Clock, FileText, Printer, ShoppingCart, Receipt,
     CreditCard, Scissors, ArrowRightLeft, Merge, ChefHat,
-    Users, CircleDollarSign, Link2, Unlink
+    Users, CircleDollarSign, Link2, Unlink, Loader2
 } from 'lucide-react';
 import type { Order, OrderItem, Table } from '../types';
 import { escapeHtml } from '../utils/escapeHtml';
@@ -19,6 +19,7 @@ interface TableOrdersModalProps {
     onClose: () => void;
     table: Table | null;
     orders: Order[];
+    loading?: boolean;
     busyOrderId?: number | null;
     canIssueInvoice: boolean;
     canPay: boolean;
@@ -43,6 +44,7 @@ export default function TableOrdersModal({
     onClose,
     table,
     orders,
+    loading = false,
     busyOrderId,
     canIssueInvoice,
     canPay,
@@ -218,8 +220,14 @@ export default function TableOrdersModal({
                 )}
 
                 <div className="modal-tab-content-orders">
-                    <div className="orders-list animate-slide-in">
-                            {orders.length === 0 ? (
+                    <div className="orders-list animate-slide-in" aria-busy={loading}>
+                            {loading ? (
+                                <div className="no-orders-message table-orders-loading" role="status">
+                                    <Loader2 size={36} />
+                                    <p>Cargando pedido…</p>
+                                    <small>Validando la cuenta activa antes de continuar</small>
+                                </div>
+                            ) : orders.length === 0 ? (
                                 <div className="no-orders-message">
                                     <FileText size={48} />
                                     <p>No hay órdenes activas</p>
@@ -312,7 +320,7 @@ export default function TableOrdersModal({
                     </div>
                 </div>
 
-                <div className="orders-modal-footer">
+                <div className={`orders-modal-footer ${orders.length === 0 ? 'single-action' : ''}`}>
                     <button type="button" className="btn-modal-secondary" onClick={onClose}>
                         Cerrar
                     </button>
@@ -322,9 +330,9 @@ export default function TableOrdersModal({
                             Imprimir cuenta
                         </button>
                     )}
-                    {canOperatePOS && <button type="button" className="btn-modal-primary" onClick={() => onOpenPOS(table)}>
-                        <ShoppingCart size={18} />
-                        {orders.length > 0 ? 'Continuar pedido' : 'Abrir pedido'}
+                    {canOperatePOS && <button type="button" className="btn-modal-primary" disabled={loading} onClick={() => onOpenPOS(table)}>
+                        {loading ? <Loader2 className="button-spinner" size={18} /> : <ShoppingCart size={18} />}
+                        {loading ? 'Cargando…' : orders.length > 0 ? 'Continuar pedido' : 'Abrir pedido'}
                     </button>}
                 </div>
             </div>

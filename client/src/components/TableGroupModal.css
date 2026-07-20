@@ -13,6 +13,10 @@
 .table-group-callout { display: grid; gap: 3px; padding: 11px 13px; border-left: 4px solid var(--color-primary); border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface)); }
 .table-group-callout strong { font-size: var(--font-size-sm); }
 .table-group-callout span { color: var(--color-text-secondary); font-size: var(--font-size-xs); line-height: 1.45; }
+.table-group-selection-summary { display: grid; gap: 3px; padding: 11px 13px; border: 1px solid color-mix(in srgb, var(--color-primary) 40%, var(--color-border)); border-radius: var(--radius-md); background: var(--color-background); }
+.table-group-selection-summary strong { color: var(--color-text); font-size: var(--font-size-sm); }
+.table-group-selection-summary span { overflow-wrap: anywhere; color: var(--color-primary); font-size: var(--font-size-xs); font-weight: 750; }
+.table-group-selection-summary small { color: var(--color-text-secondary); font-size: 10px; }
 .table-group-members { min-width: 0; display: grid; gap: 10px; padding: 0; border: 0; }
 .table-group-members legend { margin-bottom: 8px; font-size: var(--font-size-sm); font-weight: 800; }
 .table-group-search { min-height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text-secondary); background: var(--color-background); }

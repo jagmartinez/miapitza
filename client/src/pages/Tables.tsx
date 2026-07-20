@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { tablesAPI, ordersAPI, branchesAPI, invoicesAPI, cashShiftsAPI } from '../services/api';
 import Button from '../components/Button';
@@ -9,7 +9,8 @@ import PaymentModal from '../components/PaymentModal';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
-import { canCreatePayment, getUserRoleNames } from '../utils/authz';
+import { canCreatePayment } from '../utils/authz';
+import { getTableAccess } from '../utils/tableAccess';
 import { Armchair, Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin, Building2, MapPinned } from 'lucide-react';
 import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
@@ -53,19 +54,19 @@ export default function Tables() {
     const { symbol: currencySymbol } = useCurrency();
     const { confirm } = useConfirmDialog();
     const { error: showError, warning: showWarning, success: showSuccess } = useAppToast();
-    const userRoleNames = getUserRoleNames(user);
-    const canCreateTable = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
-    const canEditTable = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'HOST'].includes(role));
-    const canDeleteTable = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
-    const canEditMap = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
-    const canTransfer = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'MESERO'].includes(role));
-    const canConsolidate = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'CAJERO'].includes(role));
-    const canGroup = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'HOST', 'MESERO'].includes(role));
-    const canIssueInvoice = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'CAJERO'].includes(role));
+    const {
+        canCreateTable,
+        canEditTable,
+        canDeleteTable,
+        canEditMap,
+        canTransfer,
+        canConsolidate,
+        canGroup,
+        canIssueInvoice,
+        canOperatePOS,
+        canChooseBranch,
+    } = getTableAccess(user);
     const canPay = canCreatePayment(user);
-    const canOperatePOS = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'].includes(role));
-    // Managers (company-wide) may create/list tables across branches of their company.
-    const canChooseBranch = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [tables, setTables] = useState<Table[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
     const [branchFilter, setBranchFilter] = useState<number | null>(() => user?.branchId ?? null);
@@ -88,6 +89,8 @@ export default function Tables() {
     const [isOrdersModalOpen, setIsOrdersModalOpen] = useState(false);
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
     const [tableOrders, setTableOrders] = useState<Order[]>([]);
+    const [loadingTableOrders, setLoadingTableOrders] = useState(false);
+    const tableOrderRequestRef = useRef(0);
     const { viewMode, setViewMode } = useViewMode('tables');
     const [showMap, setShowMap] = useState(true);
     const [savingLayout, setSavingLayout] = useState(false);
@@ -106,6 +109,14 @@ export default function Tables() {
 
     const loadedBranchIds = Array.from(new Set(tables.map((table) => table.branchId)));
     const mapBranchId = branchFilter ?? (loadedBranchIds.length === 1 ? loadedBranchIds[0] : undefined);
+    const mapBranchName = user?.branch?.name
+        || tables.find((table) => table.branchId === mapBranchId)?.branch?.name
+        || 'Sucursal asignada';
+
+    useEffect(() => {
+        if (canChooseBranch) return;
+        setBranchFilter(user?.branchId ?? null);
+    }, [canChooseBranch, user?.branchId]);
 
     const loadTables = useCallback(async () => {
         setLoading(true);
@@ -254,6 +265,8 @@ export default function Tables() {
     };
 
     const loadTableOrders = useCallback(async (table: Table) => {
+        const requestId = ++tableOrderRequestRef.current;
+        setLoadingTableOrders(true);
         try {
             const response = await ordersAPI.getAll({
                 tableId: table.id,
@@ -262,15 +275,21 @@ export default function Tables() {
                 ACTIVE_ORDER_STATUSES.includes(o.status)
                 || (o.status === 'DELIVERED' && o.financialStatus !== 'PAID')
             );
-            setTableOrders(active);
+            if (requestId === tableOrderRequestRef.current) setTableOrders(active);
         } catch (error) {
             console.error('Error loading table orders:', error);
-            showError('No se pudieron cargar las órdenes de esta mesa.');
+            if (requestId === tableOrderRequestRef.current) {
+                setTableOrders([]);
+                showError('No se pudieron cargar las órdenes de esta mesa.');
+            }
+        } finally {
+            if (requestId === tableOrderRequestRef.current) setLoadingTableOrders(false);
         }
     }, [showError]);
 
     const handleViewOrders = async (table: Table) => {
         setSelectedTable(table);
+        setTableOrders([]);
         setIsOrdersModalOpen(true);
         await loadTableOrders(table);
     };
@@ -621,6 +640,11 @@ export default function Tables() {
                                 isSearchable={branches.length > 6}
                             />
                         </div>
+                    ) : !canChooseBranch ? (
+                        <div className="table-map-fixed-branch" aria-label={`Sucursal activa: ${mapBranchName}`}>
+                            <MapPin size={16} aria-hidden="true" />
+                            <span><small>Sucursal activa</small><strong>{mapBranchName}</strong></span>
+                        </div>
                     ) : undefined}
                 />
             )}
@@ -958,6 +982,7 @@ export default function Tables() {
                 onClose={() => setIsOrdersModalOpen(false)}
                 table={selectedTable}
                 orders={tableOrders}
+                loading={loadingTableOrders}
                 busyOrderId={busyOrderId}
                 canIssueInvoice={canIssueInvoice}
                 canPay={canPay}

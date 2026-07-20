@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Armchair, CopyPlus, LayoutDashboard, Link2, Lock, Maximize2, Plus, RotateCw, Save, Shapes, Trash2, Unlock, ZoomIn, ZoomOut } from 'lucide-react';
 import type { SingleValue } from 'react-select';
 import type { FloorArea, FloorAreaKind, FloorAreaShape, Table, TableFloorPlan } from '../types';
@@ -178,6 +178,8 @@ export default function TableMap({
     const [dirty, setDirty] = useState(false);
     const [selection, setSelection] = useState<Selection | null>(null);
     const [deletedAreaIds, setDeletedAreaIds] = useState<number[]>([]);
+    const [focusedAreaKey, setFocusedAreaKey] = useState(() => initial.areas[0] ? areaKey(initial.areas[0]) : '');
+    const viewportRef = useRef<HTMLDivElement>(null);
     const interactionRef = useRef<Interaction | null>(null);
     const canvasResizeRef = useRef<CanvasResize | null>(null);
     const dirtyRef = useRef(dirty);
@@ -332,11 +334,48 @@ export default function TableMap({
         setEditing((value) => !value);
     };
 
+    const focusArea = useCallback((key: string) => {
+        const area = areas.find((candidate) => areaKey(candidate) === key);
+        const viewport = viewportRef.current;
+        if (!area || !viewport) return;
+
+        const availableWidth = Math.max(280, viewport.clientWidth - 24);
+        // Keep table targets large enough for touch. Wide salons may require a
+        // short horizontal pan, but never shrink a 120x80 table below an
+        // approximately 78x52 px target.
+        const nextZoom = Math.min(1.15, Math.max(0.65, availableWidth / (area.mapWidth + 36)));
+        setFocusedAreaKey(key);
+        setZoom(nextZoom);
+        window.requestAnimationFrame(() => {
+            viewport.scrollTo({
+                left: Math.max(0, area.mapX * nextZoom - 12),
+                top: Math.max(0, area.mapY * nextZoom - 12),
+                behavior: 'smooth',
+            });
+        });
+    }, [areas]);
+
+    useEffect(() => {
+        if (editing || !areas.length || !window.matchMedia('(max-width: 600px)').matches) return;
+        const validKey = areas.some((area) => areaKey(area) === focusedAreaKey)
+            ? focusedAreaKey
+            : areaKey(areas[0]);
+        const timer = window.setTimeout(() => focusArea(validKey), 0);
+        return () => window.clearTimeout(timer);
+    }, [areas, editing, focusArea, focusedAreaKey]);
+
     const legendStates = useMemo(() => Array.from(new Set(layout.map(resolveOperationalState))), [layout]);
+    const activeGroupIds = useMemo(
+        () => [...new Set(layout.map((table) => table.activeTableGroupId).filter((id): id is number => Boolean(id)))],
+        [layout]
+    );
     const groupConnections = useMemo(() => {
-        const groupIds = [...new Set(layout.map((table) => table.activeTableGroupId).filter((id): id is number => Boolean(id)))];
-        return groupIds.flatMap((groupId) => {
+        return activeGroupIds.flatMap((groupId) => {
             const members = layout.filter((table) => table.activeTableGroupId === groupId);
+            // A single connector is unambiguous for a pair. Three or more
+            // tables use numbered badges instead, avoiding a misleading chain
+            // that can look as if an unrelated table were included.
+            if (members.length !== 2) return [];
             const primaryId = members[0]?.activeTableGroup?.primaryTableId;
             const primary = members.find((table) => table.id === primaryId);
             if (!primary) return [];
@@ -349,7 +388,7 @@ export default function TableMap({
                 y2: table.mapY + table.mapHeight / 2
             }));
         });
-    }, [layout]);
+    }, [activeGroupIds, layout]);
 
     return (
         <section className={`table-map-shell ${editing ? 'is-editing' : ''}`} aria-label="Mapa de mesas">
@@ -383,18 +422,29 @@ export default function TableMap({
                             placeholder="Seleccionar salón…"
                         />
                     )}
-                    <span className="table-map-action-divider" aria-hidden="true" />
-                    <button type="button" onClick={() => setZoom((value) => Math.max(0.45, value - 0.1))} aria-label="Alejar plano"><ZoomOut size={18} /></button>
-                    <output aria-label="Nivel de zoom">{Math.round(zoom * 100)}%</output>
-                    <button type="button" onClick={() => setZoom((value) => Math.min(1.8, value + 0.1))} aria-label="Acercar plano"><ZoomIn size={18} /></button>
+                    <span className="table-map-action-divider table-map-zoom-only" aria-hidden="true" />
+                    <div className="table-map-zoom-controls">
+                        <button type="button" onClick={() => setZoom((value) => Math.max(0.35, value - 0.1))} aria-label="Alejar plano"><ZoomOut size={18} /></button>
+                        <output aria-label="Nivel de zoom">{Math.round(zoom * 100)}%</output>
+                        <button type="button" onClick={() => setZoom((value) => Math.min(1.8, value + 0.1))} aria-label="Acercar plano"><ZoomIn size={18} /></button>
+                    </div>
                     {editing && <button type="button" onClick={addArea}><CopyPlus size={18} /> Agregar salón</button>}
                     {canEdit && <button type="button" className={editing ? 'active' : ''} onClick={toggleEditing}>{editing ? <Unlock size={18} /> : <Lock size={18} />}{editing ? 'Salir' : 'Editar plano'}</button>}
                     {editing && <button type="button" className="primary" disabled={saving || !dirty} onClick={() => void save()}><Save size={18} /> {saving ? 'Guardando…' : 'Guardar plano'}</button>}
                 </div>
             </div>
 
+            {!editing && areas.length > 0 && (
+                <nav className="table-map-mobile-areas" aria-label="Enfocar salón">
+                    {areas.map((area) => {
+                        const key = areaKey(area);
+                        return <button key={key} type="button" className={focusedAreaKey === key ? 'active' : ''} onClick={() => focusArea(key)}>{area.name}</button>;
+                    })}
+                </nav>
+            )}
+
             <div className="table-map-workspace">
-                <div className="table-map-viewport">
+                <div ref={viewportRef} className="table-map-viewport">
                     <div className="table-map-canvas" style={{ width: canvasWidth * zoom, height: canvasHeight * zoom }}>
                         <div className="table-map-scale" style={{ width: canvasWidth, height: canvasHeight, transform: `scale(${zoom})` }} onClick={() => editing && setSelection(null)}>
                             <div className="table-map-floor-outline" aria-hidden="true" />
@@ -439,6 +489,10 @@ export default function TableMap({
                                 const isGroupPrimary = group?.primaryTableId === table.id;
                                 const groupMembers = group ? layout.filter((candidate) => candidate.activeTableGroupId === group.id) : [];
                                 const groupCapacity = groupMembers.reduce((sum, member) => sum + member.capacity, 0);
+                                const orderedGroupMembers = group
+                                    ? [...groupMembers].sort((left, right) => group.memberTableIds.indexOf(left.id) - group.memberTableIds.indexOf(right.id))
+                                    : [];
+                                const groupPosition = orderedGroupMembers.findIndex((member) => member.id === table.id) + 1;
                                 const groupLabel = group
                                     ? (isGroupPrimary ? `Principal de ${groupMembers.length} mesas` : `Unida a mesa ${group.primaryTable.number}`)
                                     : '';
@@ -448,6 +502,7 @@ export default function TableMap({
                                         style={{ left: table.mapX, top: table.mapY, width: table.mapWidth, height: table.mapHeight, transform: `rotate(${table.mapRotation}deg)` }}
                                         aria-label={`Mesa ${table.number}, ${operationalLabel[state]}, ${table.capacity} ${table.capacity === 1 ? 'silla' : 'sillas'}, capacidad para ${table.capacity} ${table.capacity === 1 ? 'comensal' : 'comensales'}${group ? `, ${groupLabel}, ${groupCapacity} comensales en el grupo` : ''}`}
                                         data-chair-count={chairs.length}
+                                        data-group-size={groupMembers.length || undefined}
                                         aria-hidden={filteredOut}
                                         disabled={!editing && (state === 'DISABLED' || filteredOut)}
                                         onClick={(event) => { event.stopPropagation(); if (!editing && !filteredOut) onSelect(table); else if (editing) setSelection({ kind: 'table', key: table.id }); }}
@@ -461,10 +516,10 @@ export default function TableMap({
                                         </span>
                                         <span className="map-table-surface">
                                             <span className="map-table-state-dot" aria-hidden="true" />
-                                            {group && <span className="map-table-group-badge"><Link2 size={10} /> {isGroupPrimary ? `Principal · ${groupMembers.length}` : `Con ${group.primaryTable.number}`}</span>}
+                                            {group && <span className="map-table-group-badge"><Link2 size={10} /> {isGroupPrimary ? `Grupo de ${groupMembers.length} mesas` : `Mesa ${groupPosition}/${groupMembers.length}`}</span>}
                                             <span className="map-table-number">{table.number}</span>
                                             <span className="map-table-status">{operationalLabel[state]}</span>
-                                            <span className="map-table-capacity">{isGroupPrimary ? `${groupCapacity} sillas en grupo` : `${table.capacity} ${table.capacity === 1 ? 'silla' : 'sillas'}`}</span>
+                                            <span className="map-table-capacity">{table.capacity} {table.capacity === 1 ? 'silla' : 'sillas'}</span>
                                         </span>
                                         {editing && <span className="map-resize-handle" role="button" aria-label={`Redimensionar mesa ${table.number}`} onPointerDown={(event) => beginInteraction(event, { kind: 'table', key: table.id }, 'RESIZE')} />}
                                     </button>
@@ -532,7 +587,7 @@ export default function TableMap({
                 )}
             </div>
 
-            {!editing && <div className="table-map-legend" aria-label="Leyenda de estados">{legendStates.map((state) => <span key={state}><i className={`state-${state.toLowerCase()}`} />{operationalLabel[state]}</span>)}{groupConnections.length > 0 && <span><i className="state-joined-link" />Línea: mesas unidas</span>}</div>}
+            {!editing && <div className="table-map-legend" aria-label="Leyenda de estados">{legendStates.map((state) => <span key={state}><i className={`state-${state.toLowerCase()}`} />{operationalLabel[state]}</span>)}{activeGroupIds.length > 0 && <span><i className="state-joined-link" />Etiqueta: cantidad exacta del grupo</span>}</div>}
         </section>
     );
 }

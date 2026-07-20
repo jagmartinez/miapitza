@@ -45,6 +45,7 @@
 .table-map-actions button.primary { background: var(--color-primary); border-color: var(--color-primary); color: white; }
 .table-map-actions button:disabled { opacity: .5; cursor: not-allowed; }
 .table-map-actions output { min-width: 48px; text-align: center; color: var(--color-text-secondary); font-size: var(--font-size-xs); }
+.table-map-zoom-controls { display: inline-flex; align-items: center; gap: 7px; }
 .table-map-action-divider { width: 1px; height: 30px; background: var(--color-border); margin: 0 2px; }
 .table-map-status-filter,
 .table-map-area-selector {
@@ -67,6 +68,22 @@
 .table-map-branch-control { width: 178px; min-width: 150px; flex: 0 0 178px; }
 .table-map-branch-control .select-group.standard .react-select__control { min-height: 40px; background: var(--color-background); }
 .table-map-branch-control .react-select__value-container { padding: 0 8px; }
+.table-map-fixed-branch {
+    min-width: 154px;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-primary);
+    background: var(--color-background);
+}
+.table-map-fixed-branch > span { min-width: 0; display: grid; gap: 1px; }
+.table-map-fixed-branch small { color: var(--color-text-secondary); font-size: 8px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.table-map-fixed-branch strong { max-width: 150px; overflow: hidden; color: var(--color-text); font-size: 12px; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.table-map-mobile-areas { display: none; }
 
 .table-map-workspace { min-height: 0; flex: 1; display: flex; position: relative; }
 .table-map-viewport {
@@ -386,7 +403,51 @@
 }
 
 @media (max-width: 600px) {
-    .table-map-actions button { min-height: 44px; }
-    .table-map-actions output { order: -1; }
+    .table-map-toolbar {
+        gap: 8px;
+        padding: max(9px, env(safe-area-inset-top)) 10px 9px;
+    }
+    .table-map-title-block { min-width: 0; width: 100%; }
+    .table-map-title-block strong { font-size: 14px; }
+    .table-map-title-block span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .table-map-actions { display: grid; grid-template-columns: minmax(105px, 1fr) minmax(105px, 1fr) 42px; gap: 6px; }
+    .table-map-actions > .table-map-status-filter { width: auto; min-width: 0; flex: none; }
+    .table-map-actions > .table-map-fixed-branch { min-width: 0; }
+    .table-map-fixed-branch strong { max-width: 96px; }
+    .table-map-actions > :not(.table-map-status-filter):not(.table-map-fixed-branch):not(.kitchen-notification-bell):not(.table-map-inline-notifications) { grid-column: auto; }
+    .table-map-actions button { min-height: 42px; }
+    .table-map-zoom-controls,
+    .table-map-zoom-only { display: none; }
+    .table-map-mobile-areas {
+        flex: 0 0 auto;
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        padding: 7px 10px;
+        border-bottom: 1px solid var(--color-border);
+        background: var(--color-surface);
+        scrollbar-width: none;
+    }
+    .table-map-mobile-areas::-webkit-scrollbar { display: none; }
+    .table-map-mobile-areas button {
+        flex: 0 0 auto;
+        min-height: 36px;
+        padding: 0 13px;
+        border: 1px solid var(--color-border);
+        border-radius: 999px;
+        color: var(--color-text-secondary);
+        background: var(--color-background);
+        font-size: 11px;
+        font-weight: 750;
+    }
+    .table-map-mobile-areas button.active { border-color: var(--color-primary); color: white; background: var(--color-primary); }
+    .table-map-viewport { scroll-behavior: smooth; }
+    .map-table-number { font-size: 18px; }
+    .map-table-status { font-size: 12px; }
+    .map-table-capacity { font-size: 11px; }
+    .map-table-group-badge { font-size: 10px; }
+    .table-map-legend { flex-wrap: nowrap; gap: 11px; overflow-x: auto; padding: 7px 10px max(7px, env(safe-area-inset-bottom)); white-space: nowrap; scrollbar-width: none; }
+    .table-map-legend::-webkit-scrollbar { display: none; }
+    .table-map-legend span { flex: 0 0 auto; font-size: 10px; }
     .table-map-inspector { max-height: 44vh; }
 }

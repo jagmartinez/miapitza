@@ -132,13 +132,30 @@ describe('table operational center contract', () => {
         expect(panelSource).not.toContain('role="tablist"');
     });
 
-    it('uses a full-height, non-overflowing mobile order workspace', () => {
-        expect(panelStyles).toContain('height: 100dvh');
+    it('uses a bottom-sheet mobile order workspace with a fixed safe primary action', () => {
+        expect(panelStyles).toContain('height: 90dvh');
         expect(panelStyles).toContain('grid-template-columns: minmax(0, 1fr) max-content');
         expect(panelStyles).toContain('overscroll-behavior: contain');
         expect(panelStyles).toContain('.orders-modal-footer .btn-modal-secondary:first-child { display: none; }');
         expect(panelStyles).toContain('.table-order-add-products { display: none !important; }');
         expect(panelStyles).toContain('env(safe-area-inset-bottom)');
+        expect(panelStyles).toContain('.orders-modal-footer.single-action');
+        expect(panelSource).toContain("loading ? 'Cargando…'");
+    });
+
+    it('uses effective table permissions and locks operational users to their active branch', () => {
+        expect(tablesSource).toContain('getTableAccess(user)');
+        expect(tablesSource).toContain('Sucursal activa');
+        expect(tablesSource).toContain('setBranchFilter(user?.branchId ?? null)');
+        expect(tablesSource).toContain('table-map-fixed-branch');
+    });
+
+    it('makes physical group size explicit and only draws an unambiguous pair connector', () => {
+        expect(mapSource).toContain('members.length !== 2');
+        expect(mapSource).toContain('Grupo de ${groupMembers.length} mesas');
+        expect(mapSource).toContain('Mesa ${groupPosition}/${groupMembers.length}');
+        expect(mapSource).toContain('Etiqueta: cantidad exacta del grupo');
+        expect(groupSource).toContain('Selección exacta: ${groupTableLabel}');
     });
 
     it('limits kitchen fullscreen and administration navigation to the KDS rules', () => {
