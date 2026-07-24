@@ -40,8 +40,8 @@ const emptyBranchForm = (timezone = resolvedBrowserTimezone()): BranchFormData =
     status: 'ACTIVE',
     latitude: '',
     longitude: '',
-    geofenceRadiusM: '',
-    maxLocationAccuracyM: '',
+    geofenceRadiusM: '100',
+    maxLocationAccuracyM: '30',
     timezone,
     attendanceEnabled: false,
 });
@@ -763,7 +763,7 @@ export default function Branches() {
                                             />
                                         </div>
                                         <div className="modal-input-group">
-                                            <label className="modal-input-label" htmlFor="branch-max-accuracy">Precisión GPS máxima (m)</label>
+                                            <label className="modal-input-label" htmlFor="branch-max-accuracy">Margen máximo de error GPS (m)</label>
                                             <input
                                                 id="branch-max-accuracy"
                                                 type="number"
@@ -778,6 +778,19 @@ export default function Branches() {
                                             />
                                         </div>
                                     </div>
+
+                                    {formData.attendanceEnabled && Number(formData.maxLocationAccuracyM) < 10 && (
+                                        <div className="branch-geofence-warning" role="status">
+                                            <AlertTriangle size={17} aria-hidden="true" />
+                                            <span><strong>Configuración GPS demasiado estricta.</strong> Los teléfonos normalmente no garantizan menos de 10 m. Usa 20–30 m como punto de partida y valida en el local.</span>
+                                        </div>
+                                    )}
+                                    {formData.attendanceEnabled && Number(formData.geofenceRadiusM) < 50 && (
+                                        <div className="branch-geofence-warning" role="status">
+                                            <AlertTriangle size={17} aria-hidden="true" />
+                                            <span><strong>Geocerca muy pequeña.</strong> Un radio menor de 50 m puede rechazar personal dentro del local por deriva GPS. El valor inicial recomendado es 100 m.</span>
+                                        </div>
+                                    )}
 
                                     <div className="modal-input-group">
                                         <label className="modal-input-label" htmlFor="branch-timezone">Zona horaria IANA</label>

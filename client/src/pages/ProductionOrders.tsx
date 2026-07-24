@@ -7,6 +7,7 @@ import Sidebar from '../components/Sidebar';
 import Select from '../components/Select';
 import Input from '../components/Input';
 import Modal from '../components/Modal';
+import LoadErrorState from '../components/LoadErrorState';
 import { useAuth } from '../hooks/useAuth';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
@@ -72,6 +73,7 @@ export default function ProductionOrders() {
 
     const [orders, setOrders] = useState<ProductionOrder[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [settings, setSettings] = useState<CurrencySettings>({});
     const [statusFilter, setStatusFilter] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
@@ -105,12 +107,14 @@ export default function ProductionOrders() {
     const [cancelling, setCancelling] = useState(false);
 
     const loadOrders = useCallback(async () => {
+        setLoading(true);
         try {
             const res = await productionOrdersAPI.getAll();
             setOrders(Array.isArray(res.data.data) ? res.data.data : []);
+            setLoadError(null);
         } catch (error) {
             console.error('Error loading production orders:', error);
-            setOrders([]);
+            setLoadError('No se pudieron cargar las órdenes de producción. No se mostrará un estado vacío hasta confirmar la respuesta del servidor.');
         } finally {
             setLoading(false);
         }
@@ -365,6 +369,7 @@ export default function ProductionOrders() {
 
     return (
         <div className="inventory-page production-orders-page">
+            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadOrders(); }} retrying={loading} />}
             <div className="inventory-header-new">
                 <div className="header-title-section">
                     <h1><Factory size={32} /> Órdenes de Producción</h1>

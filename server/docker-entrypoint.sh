@@ -15,7 +15,26 @@ if [ -z "$DATABASE_URL" ]; then
     _password="${MYSQLPASSWORD:-${MYSQL_PASSWORD:-}}"
     _database="${MYSQLDATABASE:-${MYSQL_DATABASE:-}}"
     if [ -n "$_host" ] && [ -n "$_user" ] && [ -n "$_database" ]; then
-      DATABASE_URL="mysql://${_user}:${_password}@${_host}:${_port}/${_database}"
+      # URL-encode credentials/database exactly as the runtime Prisma helper
+      # does. Raw reserved characters in plugin credentials would otherwise
+      # make `prisma migrate deploy` parse a different host or password.
+      DATABASE_URL="$(
+        MYSQL_URL_HOST="$_host" \
+        MYSQL_URL_PORT="$_port" \
+        MYSQL_URL_USER="$_user" \
+        MYSQL_URL_PASSWORD="$_password" \
+        MYSQL_URL_DATABASE="$_database" \
+        node -e '
+          const encode = encodeURIComponent;
+          const host = process.env.MYSQL_URL_HOST.includes(":")
+            ? `[${process.env.MYSQL_URL_HOST.replace(/^\[|\]$/g, "")}]`
+            : process.env.MYSQL_URL_HOST;
+          process.stdout.write(
+            `mysql://${encode(process.env.MYSQL_URL_USER)}:${encode(process.env.MYSQL_URL_PASSWORD)}` +
+            `@${host}:${process.env.MYSQL_URL_PORT}/${encode(process.env.MYSQL_URL_DATABASE)}`
+          );
+        '
+      )"
     fi
   fi
 fi
@@ -34,7 +53,11 @@ export DATABASE_URL
 # as the unprivileged node user. Local/non-root containers remain unchanged.
 if [ "$(id -u)" = "0" ]; then
   _storage_dir="${STORAGE_DIR:-/app/storage}"
-  mkdir -p "$_storage_dir/uploads/invoices" "$_storage_dir/backups"
+  mkdir -p \
+    "$_storage_dir/uploads/invoices" \
+    "$_storage_dir/uploads/hr-documents" \
+    "$_storage_dir/backups" \
+    "$_storage_dir/.readiness"
   chown -R node:node "$_storage_dir"
 fi
 

@@ -6,6 +6,7 @@ import Sidebar from '../components/Sidebar';
 import Select from '../components/Select';
 import Input from '../components/Input';
 import Card from '../components/Card';
+import LoadErrorState from '../components/LoadErrorState';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
@@ -79,6 +80,7 @@ export default function ProductionRecipes() {
     const [products, setProducts] = useState<Product[]>([]);
     const [units, setUnits] = useState<UnitOfMeasure[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [viewingRecipe, setViewingRecipe] = useState<ProductionRecipe | null>(null);
     const [detailLoading, setDetailLoading] = useState(false);
 
@@ -158,6 +160,7 @@ export default function ProductionRecipes() {
     }, [isSidebarOpen, productId, yieldQuantity, yieldUnitId, rows]);
 
     const loadAll = async () => {
+        setLoading(true);
         try {
             const [recipesRes, productsRes, unitsRes] = await Promise.all([
                 productionRecipesAPI.getAll(),
@@ -167,9 +170,10 @@ export default function ProductionRecipes() {
             setRecipes(Array.isArray(recipesRes.data.data) ? recipesRes.data.data : []);
             setProducts(Array.isArray(productsRes.data.data) ? productsRes.data.data : []);
             setUnits(Array.isArray(unitsRes.data.data) ? unitsRes.data.data : []);
+            setLoadError(null);
         } catch (error) {
             console.error('Error loading production recipes:', error);
-            setRecipes([]);
+            setLoadError('No se pudieron cargar las recetas y sus catálogos. Los resultados vacíos quedan suspendidos hasta reintentar.');
         } finally {
             setLoading(false);
         }
@@ -179,8 +183,10 @@ export default function ProductionRecipes() {
         try {
             const res = await productionRecipesAPI.getAll();
             setRecipes(Array.isArray(res.data.data) ? res.data.data : []);
+            setLoadError(null);
         } catch (error) {
             console.error('Error reloading production recipes:', error);
+            setLoadError('No se pudo actualizar el listado de recetas. Se conserva la última información disponible.');
         }
     };
 
@@ -489,6 +495,7 @@ export default function ProductionRecipes() {
 
     return (
         <div className="inventory-page production-recipes-page">
+            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadAll(); }} retrying={loading} />}
             <div className="inventory-header-new">
                 <div className="header-title-section">
                     <h1><FlaskConical size={32} /> Recetas de Producción</h1>

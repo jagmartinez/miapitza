@@ -148,7 +148,9 @@ async function unauthenticatedWebSocketCloses(url: string): Promise<number> {
 }
 
 async function main(): Promise<void> {
+  const explicitDatabaseUrl = process.env.RELEASE_HARNESS_DATABASE_URL?.trim();
   dotenv.config({ path: process.env.RELEASE_HARNESS_ENV || '.env.test', override: true });
+  if (explicitDatabaseUrl) process.env.DATABASE_URL = explicitDatabaseUrl;
   assertSafeEnvironment();
 
   const requests = integerFlag('--requests', 300, 10, 5_000);

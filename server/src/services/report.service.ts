@@ -1467,7 +1467,7 @@ export class ReportService {
             if (!isInPeriod) continue;
             const movementCost = movement.totalCost == null ? null : Number(movement.totalCost);
             if (movementCost == null || !Number.isFinite(movementCost) || movementCost < 0) {
-                throw new Error(`El movimiento ORD ${movement.id} no tiene costo histÃ³rico Ã­ntegro; requiere remediaciÃ³n antes de reportar`);
+                throw new Error(`El movimiento ORD ${movement.id} no tiene costo histórico íntegro; requiere remediación antes de reportar`);
             }
             estimatedCOGS += movement.type === 'OUT' ? movementCost : -movementCost;
         }

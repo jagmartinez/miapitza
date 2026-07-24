@@ -588,12 +588,16 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         if (cart.length === 0) {
             return {
                 orderId: currentOrderId,
-                offlineQueued: false
+                offlineQueued: false,
+                dependencyKey: null,
             };
         }
 
         if (currentOrderId) {
             let offlineQueued = false;
+            const operationGroupKey = `order-${currentOrderId}-kitchen-${typeof crypto !== 'undefined' && crypto.randomUUID
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`}`;
 
             for (const item of cart) {
                 const response = await ordersAPI.addItem(currentOrderId, {
@@ -602,7 +606,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                     notes: item.notes || '',
                     modifierIds: item.modifiers.map(mod => mod.id)
                 }, {
-                    operationType: 'ADD_ORDER_ITEM'
+                    operationType: 'ADD_ORDER_ITEM',
+                    entityTempId: operationGroupKey,
                 });
 
                 if ((response.data as OfflineResponse)._offline) {
@@ -619,7 +624,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
             return {
                 orderId: currentOrderId,
-                offlineQueued
+                offlineQueued,
+                dependencyKey: offlineQueued ? operationGroupKey : null,
             };
         }
 
@@ -631,7 +637,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         if ((createResponse.data as OfflineResponse)._offline) {
             return {
                 orderId: null,
-                offlineQueued: true
+                offlineQueued: true,
+                dependencyKey: null,
             };
         }
 
@@ -642,7 +649,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
         return {
             orderId: createdOrder.id,
-            offlineQueued: false
+            offlineQueued: false,
+            dependencyKey: null,
         };
     }, [activeTableOrder?.customerName, buildOrderPayload, cart, clearDraftCart, currentOrderId, syncOrderContext]);
 
@@ -668,7 +676,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             const requestedDiscountOverride = discountAmountOverride;
             const requestedPromotionCode = appliedPromotionCode;
             const requestedTipApplied = tipApplied;
-            const { orderId, offlineQueued } = await persistCartToOrder();
+            const { orderId, offlineQueued, dependencyKey } = await persistCartToOrder();
 
             if (!orderId) {
                 warning('La orden quedó pendiente, pero no puede enviarse a cocina hasta existir en el servidor.');
@@ -715,7 +723,9 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             }
 
             const response = await ordersAPI.sendToKitchen(orderId, {
-                operationType: 'SEND_TO_KITCHEN'
+                operationType: 'SEND_TO_KITCHEN',
+                dependencyKey,
+                forceQueue: Boolean(dependencyKey),
             });
             const queuedOffline = Boolean((response.data as OfflineResponse)._offline);
 

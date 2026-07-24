@@ -181,7 +181,10 @@ describe('Order to Invoice Flow & Multi-tenancy Isolation', () => {
         await prisma.menuItem.deleteMany({ where: { id: menuItemId } });
         await prisma.category.deleteMany({ where: { id: categoryId } });
         await prisma.invoiceSequence.deleteMany({ where: { companyId: { in: [998, 999] } } });
-        await prisma.user.deleteMany({ where: { id: { in: [user1Id, user2Id] } } });
+        const testUserIds = [user1Id, user2Id];
+        await prisma.userSession.deleteMany({ where: { userId: { in: testUserIds } } });
+        await prisma.auditLog.deleteMany({ where: { userId: { in: testUserIds } } });
+        await prisma.user.deleteMany({ where: { id: { in: testUserIds } } });
         await prisma.branch.deleteMany({ where: { id: { in: [998, 999] } } });
         await prisma.company.deleteMany({ where: { id: { in: [998, 999] } } });
     });

@@ -127,7 +127,14 @@ export function availableActionsFrom(events: Array<{ action: string }>): Action[
 }
 
 type EffectiveBranchAssignment = Prisma.EmployeeBranchAssignmentGetPayload<{
-    include: { branch: { select: { id: true; name: true; code: true; timezone: true; status: true } } };
+    include: {
+        branch: {
+            select: {
+                id: true; name: true; code: true; timezone: true; status: true;
+                attendanceEnabled: true; geofenceRadiusM: true; maxLocationAccuracyM: true;
+            };
+        };
+    };
 }>;
 
 function assignmentCovers(
@@ -144,7 +151,14 @@ function assignmentCovers(
 async function employeeBranchAssignments(companyId: number, userId: number): Promise<EffectiveBranchAssignment[]> {
     return prisma.employeeBranchAssignment.findMany({
         where: { companyId, employee: { companyId, userId } },
-        include: { branch: { select: { id: true, name: true, code: true, timezone: true, status: true } } },
+        include: {
+            branch: {
+                select: {
+                    id: true, name: true, code: true, timezone: true, status: true,
+                    attendanceEnabled: true, geofenceRadiusM: true, maxLocationAccuracyM: true,
+                },
+            },
+        },
         orderBy: [{ isPrimary: 'desc' }, { effectiveFrom: 'desc' }],
     });
 }
@@ -459,12 +473,16 @@ export function evaluateGeofence(input: { latitude: number | null; longitude: nu
     };
     const accuracyLimit = Math.min(policy.maxLocationAccuracyM, branch.maxLocationAccuracyM || policy.maxLocationAccuracyM);
     const distanceM = haversineDistanceM(input.latitude, input.longitude, Number(branch.latitude), Number(branch.longitude));
+    const geofenceFits = distanceM + input.accuracyM <= branch.geofenceRadiusM;
+    const centerIsInside = distanceM <= branch.geofenceRadiusM;
     return {
         // Conservative acceptance: the full reported accuracy circle must fit
         // inside the configured radius, not merely its center point.
-        geofence: distanceM + input.accuracyM <= branch.geofenceRadiusM
+        geofence: geofenceFits
             ? check('PASSED', 'Ubicación dentro de la geocerca', undefined, distanceM, branch.geofenceRadiusM)
-            : check('FAILED', 'Ubicación o incertidumbre fuera de la geocerca', 'OUTSIDE_GEOFENCE', distanceM + input.accuracyM, branch.geofenceRadiusM),
+            : centerIsInside
+                ? check('FAILED', 'La ubicación es demasiado imprecisa para confirmar la geocerca', 'GEOFENCE_UNCERTAIN', distanceM, branch.geofenceRadiusM)
+                : check('FAILED', 'Ubicación fuera de la geocerca', 'OUTSIDE_GEOFENCE', distanceM, branch.geofenceRadiusM),
         locationAccuracy: input.accuracyM <= accuracyLimit
             ? check('PASSED', 'Precisión de ubicación aceptable', undefined, input.accuracyM, accuracyLimit)
             : check('FAILED', 'Precisión insuficiente', 'LOCATION_ACCURACY_TOO_LOW', input.accuracyM, accuracyLimit),
@@ -661,6 +679,15 @@ export class AttendanceService {
                 || scheduledShift?.branch
                 || await prisma.branch.findFirst({ where: { id: targetBranchId, companyId }, select: { id: true, name: true, code: true, timezone: true, status: true } })
             : null;
+        const branchAccuracyLimit = targetBranch && 'maxLocationAccuracyM' in targetBranch && typeof targetBranch.maxLocationAccuracyM === 'number'
+            ? targetBranch.maxLocationAccuracyM
+            : null;
+        const branchGeofenceRadius = targetBranch && 'geofenceRadiusM' in targetBranch && typeof targetBranch.geofenceRadiusM === 'number'
+            ? targetBranch.geofenceRadiusM
+            : null;
+        const effectiveAccuracyLimit = branchAccuracyLimit
+            ? Math.min(policy.maxLocationAccuracyM, branchAccuracyLimit)
+            : policy.maxLocationAccuracyM;
         const sessionEvents = open?.[1]
             || (scheduledShift ? history.filter((event) => event.scheduledShiftId === scheduledShift.id) : []);
         const stale = staleOpenSession(open, openShift, policy, now);
@@ -675,6 +702,10 @@ export class AttendanceService {
             serverTime: now, timezone: policy.timezone, availableActions,
             policy: effectivePolicySnapshot(policy),
             targetBranch: targetBranch ? { id: targetBranch.id, name: targetBranch.name, code: targetBranch.code } : null,
+            locationRequirements: policy.requireGeolocation ? {
+                maxAccuracyM: effectiveAccuracyLimit,
+                geofenceRadiusM: branchGeofenceRadius ?? null,
+            } : null,
             blockingIssue: stale && open ? {
                 code: 'STALE_OPEN_ATTENDANCE' as const,
                 message: 'Existe una entrada anterior sin salida fuera de su ventana válida. Solicita una corrección antes de iniciar otra jornada.',
@@ -896,12 +927,17 @@ export class AttendanceService {
         };
         let decision: 'ACCEPTED' | 'REVIEW' | 'REJECTED' = 'ACCEPTED';
         const reasonCodes: string[] = [];
+        const primaryReasonCodes: string[] = [];
         const addReason = (value?: string | null) => { if (value && !reasonCodes.includes(value)) reasonCodes.push(value); };
-        if (challengeError) { decision = 'REJECTED'; addReason(challengeError.code); }
-        if (sequence.status === 'FAILED') { decision = 'REJECTED'; addReason(sequence.reasonCode); }
-        if (deviceCheck.status === 'FAILED') { decision = 'REJECTED'; addReason(deviceCheck.reasonCode); }
-        if (branchAuthorization.status === 'FAILED') { decision = 'REJECTED'; addReason(branchAuthorization.reasonCode); }
-        if (branchStatus.status === 'FAILED') { decision = 'REJECTED'; addReason(branchStatus.reasonCode); }
+        const addPrimaryReason = (value?: string | null) => {
+            addReason(value);
+            if (value && !primaryReasonCodes.includes(value)) primaryReasonCodes.push(value);
+        };
+        if (challengeError) { decision = 'REJECTED'; addPrimaryReason(challengeError.code); }
+        if (sequence.status === 'FAILED') { decision = 'REJECTED'; addPrimaryReason(sequence.reasonCode); }
+        if (deviceCheck.status === 'FAILED') { decision = 'REJECTED'; addPrimaryReason(deviceCheck.reasonCode); }
+        if (branchAuthorization.status === 'FAILED') { decision = 'REJECTED'; addPrimaryReason(branchAuthorization.reasonCode); }
+        if (branchStatus.status === 'FAILED') { decision = 'REJECTED'; addPrimaryReason(branchStatus.reasonCode); }
         const scheduleMode = !shift ? (policy.allowUnscheduledPunch ? policy.unscheduledViolationMode : 'BLOCK') : policy.scheduleViolationMode;
         decision = decisionForViolation(decision, schedule.status, scheduleMode);
         // Identidad y ubicación son evidencia constitutiva del auto-marcaje. Una
@@ -914,9 +950,15 @@ export class AttendanceService {
         // Infrastructure failures are never effective, even when the business
         // policy is WARN. The immutable attempt remains reviewable and returns 503.
         if ((providerStatus === 'UNAVAILABLE' || providerStatus === 'ERROR') && decision !== 'REJECTED') decision = 'REVIEW';
-        [schedule, geo.geofence, geo.locationAccuracy, freshness, biometric].forEach((entry) => {
+        [geo.geofence, geo.locationAccuracy, freshness, biometric, schedule].forEach((entry) => {
             if (entry.status === 'FAILED' || entry.status === 'REVIEW') addReason(entry.reasonCode);
         });
+        [geo.geofence, geo.locationAccuracy, freshness, biometric].forEach((entry) => {
+            if (entry.status === 'FAILED' || entry.status === 'REVIEW') addPrimaryReason(entry.reasonCode);
+        });
+        if ((schedule.status === 'FAILED' || schedule.status === 'REVIEW') && scheduleMode !== 'WARN') {
+            addPrimaryReason(schedule.reasonCode);
+        }
         const sequenceKey = decision === 'ACCEPTED' ? `${sessionKey}:${sessionEvents.length}` : null;
         const eventData: Prisma.AttendanceEventUncheckedCreateInput = {
             companyId: input.companyId, userId: input.userId, actorUserId: input.userId,
@@ -930,7 +972,7 @@ export class AttendanceService {
             locationAccuracyM: accuracyM === null ? null : new Prisma.Decimal(accuracyM),
             distanceM: geo.distanceM === null ? null : new Prisma.Decimal(geo.distanceM),
             faceStatus, livenessStatus, providerStatus, providerScore: providerScore === null ? null : new Prisma.Decimal(providerScore),
-            decision, reasonCode: reasonCodes[0] || null, reasonCodes: json(reasonCodes),
+            decision, reasonCode: decision === 'ACCEPTED' ? null : primaryReasonCodes[0] || reasonCodes[0] || null, reasonCodes: json(reasonCodes),
             message: decision === 'ACCEPTED'
                 ? 'Marcaje aceptado'
                 : decision === 'REVIEW'

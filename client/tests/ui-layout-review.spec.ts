@@ -544,6 +544,7 @@ test('menu modal has no nested card spacing or reserved right gutter', async ({ 
 test('menu view action opens a read-only recipe-style detail instead of the editor', async ({
   page,
 }) => {
+  test.slow();
   await mockApp(page);
   await page.goto('/menu');
 

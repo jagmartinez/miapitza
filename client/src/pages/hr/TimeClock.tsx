@@ -60,6 +60,7 @@ export default function TimeClock() {
 
     const biometricBlocked = policy?.requireBiometric && biometrics?.status !== 'ACTIVE';
     const nextAction = today?.availableActions[0];
+    const effectiveMaxAccuracyM = today?.locationRequirements?.maxAccuracyM ?? policy?.maxLocationAccuracyM;
 
     return (
         <div className="page-wrapper hr-time-clock-page my-hr-page">
@@ -80,7 +81,7 @@ export default function TimeClock() {
                     <section className="hr-today-summary" aria-labelledby="hr-today-title">
                         <div className="hr-panel-heading"><span className="hr-attendance-icon"><Clock3 size={22} aria-hidden="true" /></span><div><span className="hr-section-kicker">JORNADA DE HOY</span><h2 id="hr-today-title">Tu registro de asistencia</h2><p>Hora oficial del servidor: <time dateTime={today.serverTime}>{new Intl.DateTimeFormat('es-NI', { dateStyle: 'medium', timeStyle: 'short', timeZone: today.timezone }).format(new Date(today.serverTime))}</time></p></div></div>
                         <div className="hr-policy-chips">
-                            <span><MapPin size={15} /> Precisión máxima ±{policy.maxLocationAccuracyM} m</span>
+                            <span><MapPin size={15} /> Precisión máxima ±{effectiveMaxAccuracyM} m</span>
                             <span><Fingerprint size={15} /> {policy.requireBiometric ? 'Verificación facial requerida' : 'Biometría no requerida'}</span>
                         </div>
                         {today.scheduledShift ? <div className="hr-shift-summary"><CalendarClock size={18} aria-hidden="true" /><div><span>Turno programado</span><strong>{new Intl.DateTimeFormat('es-NI', { timeStyle: 'short', timeZone: today.timezone }).format(new Date(today.scheduledShift.startAt))}–{new Intl.DateTimeFormat('es-NI', { timeStyle: 'short', timeZone: today.timezone }).format(new Date(today.scheduledShift.endAt))}</strong><small>{today.scheduledShift.branch?.name ?? `Sucursal #${today.scheduledShift.branchId}`}</small></div></div> : <div className="hr-shift-summary muted"><CalendarClock size={18} aria-hidden="true" /><div><span>Turno programado</span><strong>Sin turno publicado</strong><small>El servidor validará la política aplicable al intentar marcar.</small></div></div>}

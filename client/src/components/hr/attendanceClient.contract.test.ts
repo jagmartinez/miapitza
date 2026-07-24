@@ -48,6 +48,7 @@ describe('Phase 3 attendance API contract', () => {
     const captureSources = [
       './CameraCapture.tsx',
       './AttendancePunchWizard.tsx',
+      './attendanceRules.ts',
       '../../pages/hr/Biometrics.tsx',
     ]
       .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))

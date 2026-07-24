@@ -17,6 +17,10 @@ router.post('/groups', requirePermission('tables.group.manage', 'SUPERADMIN', 'A
 router.patch('/groups/:id', requirePermission('tables.group.manage', 'SUPERADMIN', 'ADMIN', 'HOST', 'MESERO'), validate(s.updateTableGroup), TableController.updateGroup);
 router.post('/groups/:id/close', requirePermission('tables.group.manage', 'SUPERADMIN', 'ADMIN', 'HOST', 'MESERO'), validate(s.closeTableGroup), TableController.closeGroup);
 router.post('/consolidate', requirePermission('tables.consolidate', 'SUPERADMIN', 'ADMIN', 'CAJERO'), validate(s.consolidateTables), TableController.consolidate);
+router.get('/consolidations/legacy-inventory', requirePermission('tables.consolidate', 'SUPERADMIN', 'ADMIN', 'CAJERO'), validate(s.legacyTableConsolidationInventory), TableController.getLegacyConsolidationInventory);
+router.post('/consolidations/legacy-inventory/:candidateKey/mark', requirePermission('tables.consolidate', 'SUPERADMIN', 'ADMIN', 'CAJERO'), validate(s.markLegacyTableConsolidation), TableController.markLegacyConsolidation);
+router.get('/consolidations/active', requirePermission('tables.consolidate', 'SUPERADMIN', 'ADMIN', 'CAJERO'), validate(s.activeTableConsolidation), TableController.getActiveConsolidation);
+router.post('/consolidations/:id/reverse', requirePermission('tables.consolidate', 'SUPERADMIN', 'ADMIN', 'CAJERO'), validate(s.reverseTableConsolidation), TableController.reverseConsolidation);
 router.post('/transfer', requirePermission('tables.transfer', 'SUPERADMIN', 'ADMIN', 'MESERO'), validate(s.transferTableConsumption), TableController.transfer);
 router.get('/:id', requirePermission('tables.map.view', 'SUPERADMIN', 'ADMIN', 'HOST', 'MESERO', 'CAJERO'), validate(s.idParam), TableController.getById);
 router.post('/', requirePermission('tables.create', 'SUPERADMIN', 'ADMIN'), validate(s.createTable), TableController.create);

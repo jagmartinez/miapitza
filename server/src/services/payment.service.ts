@@ -2,6 +2,7 @@ import prisma from '../utils/prisma';
 import type { PaymentMethodType, Prisma } from '@prisma/client';
 import { DEFAULT_COMPANY_SETTINGS } from './setting.service';
 import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
+import { OrderService } from './order.service';
 
 export class PaymentService {
     private static normalizeMoney(value: unknown): { amount: number; cents: number } {
@@ -111,10 +112,20 @@ export class PaymentService {
         reference?: string;
         payerName?: string;
         idempotencyKey?: string;
+        warehouseId?: number;
     }, userId: number) {
         const { amount, cents: amountCents } = this.normalizeMoney(data.amount);
         if (!Number.isInteger(data.orderId) || data.orderId <= 0) throw new Error('Invalid order id');
         if (!Number.isInteger(data.paymentMethodId) || data.paymentMethodId <= 0) throw new Error('Invalid payment method id');
+        const settlementWarehouseId = data.warehouseId === undefined
+            ? null
+            : Number(data.warehouseId);
+        if (
+            settlementWarehouseId !== null
+            && (!Number.isInteger(settlementWarehouseId) || settlementWarehouseId <= 0)
+        ) {
+            throw new Error('warehouseId válido es requerido para cerrar la mesa con el pago');
+        }
         const reference = this.normalizeOptionalText(data.reference, 'Reference');
         const payerName = this.normalizeOptionalText(data.payerName, 'Payer name');
         const idempotencyKey = this.normalizeOptionalText(data.idempotencyKey, 'Idempotency key');
@@ -151,7 +162,8 @@ export class PaymentService {
                     const sameRequest = Math.round(Number(existing.amount) * 100) === amountCents
                         && existing.paymentMethodId === data.paymentMethodId
                         && (existing.reference || null) === reference
-                        && (existing.payerName || null) === payerName;
+                        && (existing.payerName || null) === payerName
+                        && (existing.settlementWarehouseId ?? null) === settlementWarehouseId;
                     if (!sameRequest) throw new Error('Idempotency key reused with different payment data');
                     if (existing.methodType === 'CASH') {
                         await this.assertActiveCashLedger(tx, existing, companyId, order.branchId);
@@ -203,6 +215,17 @@ export class PaymentService {
             if (amountCents > remainingCents) {
                 throw new Error(`Amount exceeds remaining balance. Remaining: ${(remainingCents / 100).toFixed(2)}`);
             }
+            if (settlementWarehouseId !== null) {
+                if (amountCents !== remainingCents) {
+                    throw new Error('La entrega automática solo puede solicitarse con el último pago de la orden');
+                }
+                if (!order.tableId) {
+                    throw new Error('La entrega automática solo aplica a órdenes asociadas a una mesa');
+                }
+                if (order.status !== 'READY') {
+                    throw new Error('La orden debe estar lista en cocina antes de cobrar y liberar la mesa');
+                }
+            }
 
             const payment = await tx.payment.create({
                 data: {
@@ -213,6 +236,7 @@ export class PaymentService {
                     reference,
                     payerName,
                     idempotencyKey,
+                    settlementWarehouseId,
                     registeredById: userId
                 },
                 include: {
@@ -302,9 +326,29 @@ export class PaymentService {
                     }
                 }
 
-                // Payment is a financial fact only. Physical stock is consumed
-                // exactly once by the operational DELIVERED/complete workflow,
-                // which receives an explicit warehouse instead of guessing one.
+                if (settlementWarehouseId !== null) {
+                    // The last payment, stock consumption, operational delivery,
+                    // audit and table release share this transaction. A failure in
+                    // any step rolls the payment and its cash movement back too.
+                    await OrderService.completeWithTransaction(
+                        tx,
+                        order.id,
+                        companyId,
+                        settlementWarehouseId,
+                        userId
+                    );
+                } else if (order.tableId && order.status === 'DELIVERED') {
+                    // Delivery-before-payment keeps the table occupied until the
+                    // financial balance reaches zero. Reconcile it here as the
+                    // second terminal fact arrives.
+                    await OrderService.reconcileTableAfterSettlement(
+                        tx,
+                        companyId,
+                        order.tableId,
+                        userId,
+                        `Orden #${order.id} pagada después de entrega`
+                    );
+                }
             } else {
                 await tx.order.update({
                     where: { id: data.orderId },
@@ -424,6 +468,16 @@ export class PaymentService {
                     ...(becomesUnderpaid ? { closedAt: null } : {})
                 }
             });
+
+            if (payment.order.tableId && payment.order.status === 'DELIVERED' && becomesUnderpaid) {
+                await OrderService.reconcileTableAfterSettlement(
+                    tx,
+                    companyId,
+                    payment.order.tableId,
+                    userId,
+                    `Pago #${payment.id} revertido; la cuenta de la orden #${payment.orderId} quedó pendiente`
+                );
+            }
 
             await tx.auditLog.create({
                 data: {

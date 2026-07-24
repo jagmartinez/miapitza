@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { describe, expect, it } from '@jest/globals';
 import { collectEnvironmentErrors } from '../../utils/env-validation';
 
@@ -7,6 +8,8 @@ const validProductionEnv = {
     TWO_FA_ENCRYPTION_KEY: 'a'.repeat(64),
     CLIENT_URL: 'https://restaurant.example.com',
     PLATFORM_TENANCY_MODE: 'single',
+    STORAGE_DIR: path.resolve(process.cwd(), 'storage-production-test'),
+    STORAGE_SHARED_ID: 'restaurant-production-primary',
 } as NodeJS.ProcessEnv;
 
 describe('production environment validation', () => {
@@ -73,6 +76,8 @@ describe('production environment validation', () => {
             HR_FACE_PROVIDER: 'http',
             HR_FACE_PROVIDER_BASE_URL: 'https://faces.internal.example',
             HR_FACE_PROVIDER_TOKEN: 'provider-token-with-at-least-32-bytes',
+            HR_FACE_PROVIDER_MODEL: 'buffalo_l',
+            HR_FACE_PROVIDER_VERSION: '1.2.3',
             HR_FACE_PROVIDER_TIMEOUT_MS: '5000',
             HR_BIOMETRIC_ENCRYPTION_KEY: 'b'.repeat(64),
         })).toEqual([]);
@@ -114,6 +119,8 @@ describe('production environment validation', () => {
             HR_FACE_PROVIDER_BASE_URL: 'http://face-provider.railway.internal:8080',
             HR_FACE_PROVIDER_ALLOW_HTTP_INTERNAL: 'true',
             HR_FACE_PROVIDER_TOKEN: 'provider-token-with-at-least-32-bytes',
+            HR_FACE_PROVIDER_MODEL: 'buffalo_l',
+            HR_FACE_PROVIDER_VERSION: '1.2.3',
             HR_BIOMETRIC_ENCRYPTION_KEY: 'b'.repeat(64),
         })).toEqual([]);
     });
@@ -126,5 +133,38 @@ describe('production environment validation', () => {
             HR_FACE_PROVIDER_TOKEN: 'short-token',
             HR_BIOMETRIC_ENCRYPTION_KEY: 'b'.repeat(64),
         })).toContain('HR_FACE_PROVIDER_TOKEN must contain at least 32 bytes.');
+    });
+
+    it('requires an absolute durable root and a stable shared identity in production', () => {
+        const missing = { ...validProductionEnv };
+        delete missing.STORAGE_DIR;
+        delete missing.STORAGE_SHARED_ID;
+        expect(collectEnvironmentErrors(missing)).toEqual(expect.arrayContaining([
+            'STORAGE_DIR is required in production.',
+            'STORAGE_SHARED_ID is required in production.',
+        ]));
+
+        expect(collectEnvironmentErrors({
+            ...validProductionEnv,
+            STORAGE_DIR: 'relative/storage',
+            STORAGE_SHARED_ID: 'short',
+        })).toEqual(expect.arrayContaining([
+            'STORAGE_DIR must be an absolute path when set.',
+            'STORAGE_SHARED_ID must contain 8-128 alphanumeric, dot, dash or underscore characters.',
+        ]));
+    });
+
+    it('requires pinned face model and provider version for production HTTP readiness', () => {
+        const errors = collectEnvironmentErrors({
+            ...validProductionEnv,
+            HR_FACE_PROVIDER: 'http',
+            HR_FACE_PROVIDER_BASE_URL: 'https://faces.internal.example',
+            HR_FACE_PROVIDER_TOKEN: 'provider-token-with-at-least-32-bytes',
+            HR_BIOMETRIC_ENCRYPTION_KEY: 'b'.repeat(64),
+        });
+        expect(errors).toEqual(expect.arrayContaining([
+            'HR_FACE_PROVIDER_MODEL is required for the http face provider in production.',
+            'HR_FACE_PROVIDER_VERSION is required for the http face provider in production.',
+        ]));
     });
 });

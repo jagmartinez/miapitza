@@ -16,6 +16,7 @@ router.delete('/services/:id', requireRole('SUPERADMIN', 'ADMIN'), validate(s.id
 router.get('/availability', CateringController.checkAvailability);
 
 router.get('/', CateringController.getAllEvents);
+router.get('/:id/contract', validate(s.idParam), CateringController.downloadContract);
 router.get('/:id', validate(s.idParam), CateringController.getEventById);
 router.post('/', requireRole('SUPERADMIN', 'ADMIN'), validate(s.createCateringEvent), CateringController.createEvent);
 router.put('/:id', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), CateringController.updateEvent);

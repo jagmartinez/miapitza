@@ -116,7 +116,7 @@ const TicketPrintModal: React.FC<TicketPrintModalProps> = ({
   const handlePrint = () => {
     setPrintError(null);
     if (!ticketData || loadError) {
-      setPrintError('El ticket no estÃ¡ disponible; vuelve a cargarlo antes de imprimir');
+      setPrintError('El ticket no está disponible; vuelve a cargarlo antes de imprimir');
       return;
     }
     const printWindow = window.open('', '_blank');

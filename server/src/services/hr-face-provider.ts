@@ -56,6 +56,7 @@ export interface FaceVerificationResult {
 export interface FaceProviderHealth {
     provider: string;
     model: string;
+    version?: string;
     status: 'AVAILABLE' | 'UNAVAILABLE';
     checkedAt: string;
     detail?: string;
@@ -159,11 +160,13 @@ class HttpFaceProvider implements FaceVerificationProvider {
     private readonly baseUrl: URL;
     private readonly token: string;
     private readonly timeoutMs: number;
+    private readonly expectedVersion: string;
 
     constructor(env: NodeJS.ProcessEnv) {
         const rawUrl = env.HR_FACE_PROVIDER_BASE_URL?.trim();
         this.token = env.HR_FACE_PROVIDER_TOKEN?.trim() || '';
         this.model = env.HR_FACE_PROVIDER_MODEL?.trim() || 'external-unspecified';
+        this.expectedVersion = env.HR_FACE_PROVIDER_VERSION?.trim() || '';
         const timeout = Number(env.HR_FACE_PROVIDER_TIMEOUT_MS || 5000);
         if (!rawUrl || !this.token) throw new FaceProviderUnavailableError('El proveedor facial HTTP requiere URL y token');
         if (Buffer.byteLength(this.token, 'utf8') < 32) {
@@ -220,9 +223,58 @@ class HttpFaceProvider implements FaceVerificationProvider {
         try {
             const response = await this.request('health');
             const available = response.status === 'ok' || response.status === 'available';
-            return { provider: this.name, model: this.model, status: available ? 'AVAILABLE' : 'UNAVAILABLE', checkedAt: new Date().toISOString(), detail: available ? undefined : 'El proveedor no reportó disponibilidad' };
+            const reportedModel = response.model === undefined && this.model === 'external-unspecified'
+                ? this.model
+                : responseText(response.model, 'model', 100);
+            const reportedVersion = response.version === undefined && !this.expectedVersion
+                ? undefined
+                : responseText(response.version, 'version', 100);
+            if (!available) {
+                return {
+                    provider: this.name,
+                    model: reportedModel,
+                    version: reportedVersion,
+                    status: 'UNAVAILABLE',
+                    checkedAt: new Date().toISOString(),
+                    detail: 'El proveedor no reportó disponibilidad',
+                };
+            }
+            if (this.model !== 'external-unspecified' && reportedModel !== this.model) {
+                return {
+                    provider: this.name,
+                    model: reportedModel,
+                    version: reportedVersion,
+                    status: 'UNAVAILABLE',
+                    checkedAt: new Date().toISOString(),
+                    detail: 'El modelo facial remoto no coincide con la configuración esperada',
+                };
+            }
+            if (this.expectedVersion && reportedVersion !== this.expectedVersion) {
+                return {
+                    provider: this.name,
+                    model: reportedModel,
+                    version: reportedVersion,
+                    status: 'UNAVAILABLE',
+                    checkedAt: new Date().toISOString(),
+                    detail: 'La versión facial remota no coincide con la configuración esperada',
+                };
+            }
+            return {
+                provider: this.name,
+                model: reportedModel,
+                version: reportedVersion,
+                status: 'AVAILABLE',
+                checkedAt: new Date().toISOString(),
+            };
         } catch (error) {
-            return { provider: this.name, model: this.model, status: 'UNAVAILABLE', checkedAt: new Date().toISOString(), detail: error instanceof Error ? error.message : 'Proveedor no disponible' };
+            return {
+                provider: this.name,
+                model: this.model,
+                version: this.expectedVersion || undefined,
+                status: 'UNAVAILABLE',
+                checkedAt: new Date().toISOString(),
+                detail: error instanceof Error ? error.message : 'Proveedor no disponible',
+            };
         }
     }
 

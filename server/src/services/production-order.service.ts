@@ -266,7 +266,7 @@ export class ProductionOrderService {
                 warehouseId: data.warehouseId
             }, tx);
             const code = await this.generateCode(companyId, tx);
-            return tx.productionOrder.create({
+            const created = await tx.productionOrder.create({
                 data: {
                     companyId,
                     branchId: data.branchId,
@@ -293,13 +293,18 @@ export class ProductionOrderService {
                 },
                 include: this.orderInclude()
             });
+            await AuditLogService.log({
+                companyId, userId, entityType: 'ProductionOrder', entityId: created.id,
+                action: 'CREATE',
+                details: {
+                    code: created.code,
+                    productId: data.productId,
+                    plannedQuantity: data.plannedQuantity,
+                    status: created.status
+                }
+            }, tx);
+            return created;
         });
-
-        AuditLogService.log({
-            companyId, userId, entityType: 'ProductionOrder', entityId: order.id,
-            action: 'CREATE',
-            details: { code: order.code, productId: data.productId, plannedQuantity: data.plannedQuantity, status: order.status }
-        }).catch((err) => console.error('[ProductionOrderService] audit log failed:', err));
 
         return order;
     }
@@ -316,7 +321,7 @@ export class ProductionOrderService {
             throw new Error('Solo se pueden editar órdenes en estado Borrador o Pendiente.');
         }
 
-        const applied = await prisma.$transaction(async (tx) => {
+        await prisma.$transaction(async (tx) => {
             await tx.$queryRaw`SELECT id FROM \`ProductionOrder\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
             const lockedOrder = await tx.productionOrder.findFirst({ where: { id, companyId } });
             if (!lockedOrder) throw new Error('Orden de producción no encontrada');
@@ -363,13 +368,13 @@ export class ProductionOrderService {
                     }
                 }
             });
-            return { plannedQuantity, warehouseId };
+            const applied = { plannedQuantity, warehouseId };
+            await AuditLogService.log({
+                companyId, userId, entityType: 'ProductionOrder', entityId: id,
+                action: 'UPDATE', details: applied
+            }, tx);
+            return applied;
         });
-
-        AuditLogService.log({
-            companyId, userId, entityType: 'ProductionOrder', entityId: id,
-            action: 'UPDATE', details: applied
-        }).catch((err) => console.error('[ProductionOrderService] audit log failed:', err));
 
         return this.getById(id, companyId);
     }
@@ -395,12 +400,11 @@ export class ProductionOrderService {
             const updateData: Prisma.ProductionOrderUpdateInput = { status };
             if (status === 'IN_PROGRESS' && !order.startedAt) updateData.startedAt = new Date();
             await tx.productionOrder.update({ where: { id }, data: updateData });
+            await AuditLogService.log({
+                companyId, userId, entityType: 'ProductionOrder', entityId: id,
+                action: 'UPDATE', details: { status }
+            }, tx);
         });
-
-        AuditLogService.log({
-            companyId, userId, entityType: 'ProductionOrder', entityId: id,
-            action: 'UPDATE', details: { status }
-        }).catch((err) => console.error('[ProductionOrderService] audit log failed:', err));
 
         return this.getById(id, companyId);
     }
@@ -647,10 +651,23 @@ export class ProductionOrderService {
                     realCost,
                     realUnitCost,
                     finishedAt: new Date(),
+                    finishedById: userId,
                     notes: payload.notes === undefined ? undefined : payload.notes
                 },
                 include: this.orderInclude()
             });
+
+            await AuditLogService.log({
+                companyId, userId, entityType: 'ProductionOrder', entityId: id,
+                action: 'UPDATE',
+                details: {
+                    status: 'FINISHED',
+                    plannedQuantity: Number(lockedOrder.plannedQuantity),
+                    producedQuantity,
+                    realCost,
+                    realUnitCost
+                }
+            }, tx);
 
             return {
                 updated,
@@ -660,18 +677,6 @@ export class ProductionOrderService {
                 plannedQuantity: Number(lockedOrder.plannedQuantity)
             };
         });
-
-        AuditLogService.log({
-            companyId, userId, entityType: 'ProductionOrder', entityId: id,
-            action: 'UPDATE',
-            details: {
-                status: 'FINISHED',
-                plannedQuantity: result.plannedQuantity,
-                producedQuantity: result.producedQuantity,
-                realCost: result.realCost,
-                realUnitCost: result.realUnitCost
-            }
-        }).catch((err) => console.error('[ProductionOrderService] audit log failed:', err));
 
         return result.updated;
     }
@@ -689,7 +694,7 @@ export class ProductionOrderService {
         if (!order) throw new Error('Orden de producción no encontrada');
         if (order.status === 'CANCELLED') throw new Error('La orden ya está anulada.');
 
-        const cancelResult = await prisma.$transaction(async (tx) => {
+        await prisma.$transaction(async (tx) => {
             await tx.$queryRaw`SELECT id FROM \`ProductionOrder\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
             const lockedOrder = await tx.productionOrder.findFirst({
                 where: { id, companyId },
@@ -844,13 +849,12 @@ export class ProductionOrderService {
                     cancelReason
                 }
             });
+            await AuditLogService.log({
+                companyId, userId, entityType: 'ProductionOrder', entityId: id,
+                action: 'CANCEL', details: { reason: cancelReason, wasFinished }
+            }, tx);
             return { wasFinished };
         });
-
-        AuditLogService.log({
-            companyId, userId, entityType: 'ProductionOrder', entityId: id,
-            action: 'CANCEL', details: { reason: cancelReason, wasFinished: cancelResult.wasFinished }
-        }).catch((err) => console.error('[ProductionOrderService] audit log failed:', err));
 
         return this.getById(id, companyId);
     }

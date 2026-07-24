@@ -225,6 +225,7 @@ export const createPayment: ValidationSchema = {
         paymentMethodId: { type: 'number', required: true, min: 1, integer: true },
         reference: { type: 'string', max: 191 },
         payerName: { type: 'string', max: 191 },
+        warehouseId: { type: 'number', min: 1, integer: true },
     },
 };
 
@@ -293,6 +294,53 @@ export const consolidateTables: ValidationSchema = {
         sourceTableIds: { type: 'array', required: true, min: 1, max: 50 },
         primaryOrderId: { type: 'number', min: 1, integer: true },
         reason: { type: 'string', max: 500 }
+    }
+};
+
+export const reverseTableConsolidation: ValidationSchema = {
+    params: {
+        id: { type: 'number', required: true, min: 1, integer: true }
+    },
+    body: {
+        expectedVersion: { type: 'number', required: true, min: 0, integer: true },
+        reversalKey: { type: 'string', required: true, min: 8, max: 191 },
+        reason: { type: 'string', required: true, min: 3, max: 500 }
+    }
+};
+
+export const activeTableConsolidation: ValidationSchema = {
+    query: {
+        orderId: { type: 'number', min: 1, integer: true },
+        tableId: { type: 'number', min: 1, integer: true }
+    }
+};
+
+export const legacyTableConsolidationInventory: ValidationSchema = {
+    query: {
+        branchId: { type: 'number', min: 1, integer: true }
+    }
+};
+
+export const markLegacyTableConsolidation: ValidationSchema = {
+    params: {
+        candidateKey: { type: 'string', required: true, pattern: /^[a-f0-9]{64}$/ }
+    },
+    body: {
+        expectedEvidenceHash: {
+            type: 'string',
+            required: true,
+            pattern: /^[a-f0-9]{64}$/
+        },
+        resolutionKey: { type: 'string', required: true, min: 8, max: 191 },
+        outcome: {
+            type: 'string',
+            required: true,
+            enum: [
+                'ACKNOWLEDGED_NO_AUTOMATIC_REVERSAL',
+                'EXTERNAL_EVIDENCE_REQUIRED'
+            ]
+        },
+        note: { type: 'string', required: true, min: 5, max: 1000 }
     }
 };
 
@@ -371,6 +419,14 @@ export const addCashMovement: ValidationSchema = {
         amount: { type: 'number', required: true },
         type: { type: 'string', required: true, enum: ['IN', 'OUT'] },
         description: { type: 'string', required: true, min: 1 },
+        reference: { type: 'string', max: 191 },
+        documentDate: { type: 'date' },
+        documentType: {
+            type: 'string',
+            enum: ['FACTURA', 'RECIBO_GASTO', 'RECIBO_CAJA', 'NOTA_CREDITO', 'NOTA_DEBITO']
+        },
+        documentNumber: { type: 'string', max: 191 },
+        supplierId: { type: 'number', min: 1, integer: true },
     },
 };
 
@@ -750,11 +806,12 @@ export const closeShift: ValidationSchema = {
     params: { shiftId: { type: 'number', required: true, min: 1 } },
     body: {
         endAmount: { type: 'number', required: true, min: 0 },
-        bills: { type: 'array' },
-        coins: { type: 'array' },
+        bills: { type: 'array', required: true },
+        coins: { type: 'array', required: true },
         usdBills: { type: 'array' },
         exchangeRate: { type: 'number', min: 0 },
         forceClose: { type: 'boolean' },
+        notes: { type: 'string', max: 2000 },
     },
 };
 

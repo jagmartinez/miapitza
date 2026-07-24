@@ -79,7 +79,8 @@ describe('table operational center contract', () => {
         expect(mapSource).not.toContain('<span>Estado</span>');
         expect(mapSource).toContain('canvas-resize-handle');
         expect(mapSource.indexOf('Nueva mesa')).toBeLessThan(mapSource.indexOf('Administración'));
-        expect(tablesSource).toContain('themeControl={<KitchenNotificationBell inline />}');
+        expect(tablesSource).toContain('themeControl={(');
+        expect(tablesSource).toContain('<KitchenNotificationBell inline />');
     });
 
     it('allows selecting a floor area by pointer, keyboard or the editor selector', () => {
@@ -126,6 +127,23 @@ describe('table operational center contract', () => {
         expect(tablesSource).toContain('Las cuentas sí quedaron consolidadas');
     });
 
+    it('rediscovers and reverses only an ACTIVE financial consolidation', () => {
+        expect(apiSource).toContain("api.get('/tables/consolidations/active'");
+        expect(apiSource).toContain("api.post(`/tables/consolidations/${id}/reverse`");
+        expect(apiSource).toContain("headers: { 'X-Idempotency-Key': data.reversalKey }");
+        expect(tablesSource).toContain("discovered?.status === 'ACTIVE' ? discovered : null");
+        expect(tablesSource).toContain('getIdempotentAttempt(reversalAttemptRef.current, fingerprint)');
+        expect(tablesSource).toContain('expectedVersion: activeConsolidation.version');
+        expect(tablesSource).toContain('loadActiveConsolidation(selectedTable.id)');
+        expect(panelSource).toContain('Motivo obligatorio');
+        expect(panelSource).toContain('Confirmar reverso de consolidación');
+        expect(panelSource).toContain('pagos, factura, entrega, cambios en productos u otra ocupación');
+        expect(panelSource).toContain("activeConsolidation?.status === 'ACTIVE'");
+        expect(panelSource).toContain('El estado ACTIVE no garantiza que el reverso siga siendo posible');
+        expect(panelSource).toContain('El reverso no se completó');
+        expect(tablesSource).toContain('setConsolidationReversalError(message)');
+    });
+
     it('keeps a single orders view without the removed Cuenta tab', () => {
         expect(panelSource).toContain('Órdenes activas');
         expect(panelSource).not.toContain('orders-section-heading');
@@ -134,7 +152,7 @@ describe('table operational center contract', () => {
     });
 
     it('uses a bottom-sheet mobile order workspace with a fixed safe primary action', () => {
-        expect(panelStyles).toContain('height: 90dvh');
+        expect(panelStyles).toContain('height: 100dvh');
         expect(panelStyles).toContain('grid-template-columns: minmax(0, 1fr) max-content');
         expect(panelStyles).toContain('overscroll-behavior: contain');
         expect(panelStyles).toContain('.orders-modal-footer .btn-modal-secondary:first-child { display: none; }');

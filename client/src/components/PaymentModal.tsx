@@ -17,8 +17,8 @@ import {
     Users,
     X,
 } from 'lucide-react';
-import { paymentsAPI, splitBillAPI } from '../services/api';
-import type { Order, PaymentMethodType } from '../types';
+import { paymentsAPI, splitBillAPI, warehousesAPI } from '../services/api';
+import type { Order, PaymentMethodType, Warehouse } from '../types';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import { isCashPaymentMethodType } from '../utils/paymentAccess';
 import { newIdempotencyKey } from '../utils/idempotency';
@@ -40,6 +40,7 @@ import './PaymentModal.css';
 type PaymentMode = 'single' | 'mixed' | 'split';
 type SplitStrategy = 'evenly' | 'by-items' | 'by-amount';
 type MethodOption = { value: number; label: string };
+type WarehouseOption = { value: number; label: string };
 
 interface PaymentMethodRow {
     id: number;
@@ -124,6 +125,10 @@ export default function PaymentModal({
     const [error, setError] = useState('');
     const [notice, setNotice] = useState('');
     const [queuedPayment, setQueuedPayment] = useState(false);
+    const [settlementWarehouses, setSettlementWarehouses] = useState<Warehouse[]>([]);
+    const [settlementWarehouseId, setSettlementWarehouseId] = useState<number | null>(null);
+    const [settlementWarehouseLoading, setSettlementWarehouseLoading] = useState(false);
+    const [settlementWarehouseError, setSettlementWarehouseError] = useState('');
 
     const [singleMethodId, setSingleMethodId] = useState<number | null>(null);
     const [singleReference, setSingleReference] = useState('');
@@ -176,6 +181,14 @@ export default function PaymentModal({
     );
 
     const orderItems = useMemo(() => order?.items || [], [order]);
+    const completesReadyTable = Boolean(order?.tableId && order.status === 'READY');
+    const settlementWarehouseOptions = useMemo<WarehouseOption[]>(
+        () => settlementWarehouses.map((warehouse) => ({
+            value: warehouse.id,
+            label: `${warehouse.name} (${warehouse.code})`,
+        })),
+        [settlementWarehouses],
+    );
     const totalCents = moneyToCents(balance);
 
     const isCash = useCallback(
@@ -190,6 +203,8 @@ export default function PaymentModal({
     useEffect(() => {
         if (!isOpen) return;
         let cancelled = false;
+        setMethods([]);
+        setSingleMethodId(null);
         setMethodsLoading(true);
         setMethodsError('');
         paymentsAPI.getPaymentMethods()
@@ -201,13 +216,61 @@ export default function PaymentModal({
                 if (active.length === 0) setMethodsError('No hay métodos de pago activos configurados.');
             })
             .catch((requestError: unknown) => {
-                if (!cancelled) setMethodsError(apiErrorMessage(requestError, 'No se pudieron cargar los métodos de pago.'));
+                if (!cancelled) {
+                    setMethods([]);
+                    setSingleMethodId(null);
+                    setMethodsError(apiErrorMessage(requestError, 'No se pudieron cargar los métodos de pago.'));
+                }
             })
             .finally(() => {
                 if (!cancelled) setMethodsLoading(false);
             });
         return () => { cancelled = true; };
     }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen || !completesReadyTable || !order?.branchId) {
+            setSettlementWarehouses([]);
+            setSettlementWarehouseId(null);
+            setSettlementWarehouseLoading(false);
+            setSettlementWarehouseError('');
+            return;
+        }
+
+        let cancelled = false;
+        setSettlementWarehouseLoading(true);
+        setSettlementWarehouseError('');
+        void warehousesAPI.getAll({ branchId: order.branchId, type: 'BRANCH' })
+            .then((response) => {
+                if (cancelled) return;
+                const warehouses = ((response.data?.data || []) as Warehouse[]).filter(
+                    (warehouse) => warehouse.type === 'BRANCH' && warehouse.branchId === order.branchId,
+                );
+                setSettlementWarehouses(warehouses);
+                setSettlementWarehouseId(warehouses.length === 1 ? warehouses[0].id : null);
+                if (warehouses.length === 0) {
+                    setSettlementWarehouseError(
+                        'La sucursal no tiene una bodega operativa. El pago no puede cerrar la mesa sin registrar el consumo.',
+                    );
+                }
+            })
+            .catch((loadError: unknown) => {
+                if (cancelled) return;
+                setSettlementWarehouses([]);
+                setSettlementWarehouseId(null);
+                setSettlementWarehouseError(apiErrorMessage(
+                    loadError,
+                    'No se pudieron consultar las bodegas para cerrar la mesa.',
+                ));
+            })
+            .finally(() => {
+                if (!cancelled) setSettlementWarehouseLoading(false);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [completesReadyTable, isOpen, order?.branchId]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -473,20 +536,46 @@ export default function PaymentModal({
     }, [balance, hasUsableCashShift, isCash]);
     const splitValid = splitPayerNamesUnique && itemAssignmentsComplete && itemPreviewReady && splitLegsArePayable(splitLegs);
 
+    const validateSettlementPrecondition = () => {
+        if (!completesReadyTable) return true;
+        if (settlementWarehouseLoading) {
+            setError('Espera a que termine la consulta de bodegas antes de confirmar el pago.');
+            return false;
+        }
+        if (!settlementWarehouseId) {
+            setError(
+                settlementWarehouseError
+                || 'Selecciona la bodega que registrará el consumo antes de confirmar el pago.',
+            );
+            return false;
+        }
+        return true;
+    };
+
     const submitPayment = async (
         leg: PaymentLeg,
         idempotencyKey: string,
         payerName?: string,
+        settleReadyTable = false,
     ): Promise<'confirmed' | 'queued'> => {
         if (!orderId || !leg.paymentMethodId) throw new Error('La orden o el método de pago no están disponibles.');
         const amount = parseField(leg.amount);
         if (amount === null || amount <= 0) throw new Error('El monto del pago es inválido.');
+        if (settleReadyTable && completesReadyTable && !settlementWarehouseId) {
+            throw new Error(
+                settlementWarehouseError
+                || 'Selecciona la bodega que registrará el consumo antes de confirmar el último pago.',
+            );
+        }
         const response = await paymentsAPI.create({
             orderId,
             paymentMethodId: leg.paymentMethodId,
             amount,
             reference: leg.reference.trim() || undefined,
             payerName,
+            ...(settleReadyTable && completesReadyTable && settlementWarehouseId
+                ? { warehouseId: settlementWarehouseId }
+                : {}),
         }, {
             operationType: 'CREATE_PAYMENT',
             entityTempId: `payment-${orderId}-${leg.id}`,
@@ -500,6 +589,7 @@ export default function PaymentModal({
         if (singleIsCash && (singleTendered === null || moneyToCents(singleTendered) < totalCents)) {
             return setError('El efectivo recibido es menor que el saldo.');
         }
+        if (!validateSettlementPrecondition()) return;
         setLoading(true);
         setError('');
         setNotice('');
@@ -507,7 +597,7 @@ export default function PaymentModal({
             const result = await submitPayment({
                 ...createLeg(singleMethodId, balance),
                 reference: singleReference,
-            }, singleKeyRef.current);
+            }, singleKeyRef.current, undefined, true);
             if (result === 'queued') {
                 setQueuedPayment(true);
                 setNotice('Sin conexión: el pago quedó en cola. La orden permanecerá abierta hasta su confirmación.');
@@ -524,17 +614,20 @@ export default function PaymentModal({
 
     const handleMixedPayment = async () => {
         if (!mixedValid) return setError('Distribuye el saldo exacto entre 2 o 3 métodos distintos.');
+        if (!validateSettlementPrecondition()) return;
         setLoading(true);
         setError('');
         setNotice('');
         setMixedAttempted(true);
         const succeeded = [...mixedSucceeded];
         try {
-            for (const leg of mixedLegs) {
-                if (succeeded.includes(leg.id)) continue;
+            const pendingLegs = mixedLegs.filter((leg) => !succeeded.includes(leg.id));
+            for (const [index, leg] of pendingLegs.entries()) {
                 const result = await submitPayment(
                     leg,
                     mixedKeysRef.current[leg.id] ||= newIdempotencyKey(),
+                    undefined,
+                    index === pendingLegs.length - 1,
                 );
                 if (result === 'queued') {
                     setQueuedPayment(true);
@@ -557,6 +650,7 @@ export default function PaymentModal({
 
     const handleSplitPayment = async () => {
         if (!itemAssignmentsComplete) return setError('Asigna todas las unidades y al menos una a cada comensal.');
+        if (!validateSettlementPrecondition()) return;
         const effective = splitAttempted ? splitLegs : await rebuildSplitPreview();
         if (!effective) return;
         if (!splitLegsArePayable(effective)) return setError('Revisa métodos, importes y efectivo recibido; la suma debe coincidir exactamente con el saldo.');
@@ -566,12 +660,13 @@ export default function PaymentModal({
         setSplitAttempted(true);
         const succeeded = [...splitSucceeded];
         try {
-            for (const leg of effective) {
-                if (succeeded.includes(leg.id)) continue;
+            const pendingLegs = effective.filter((leg) => !succeeded.includes(leg.id));
+            for (const [index, leg] of pendingLegs.entries()) {
                 const result = await submitPayment(
                     leg,
                     splitKeysRef.current[leg.id] ||= newIdempotencyKey(),
                     normalizePayerName(leg.payerName),
+                    index === pendingLegs.length - 1,
                 );
                 if (result === 'queued') {
                     setQueuedPayment(true);
@@ -610,7 +705,9 @@ export default function PaymentModal({
 
     if (!isOpen) return null;
 
-    const busy = loading || previewLoading || balanceLoading;
+    const busy = loading || previewLoading || balanceLoading || settlementWarehouseLoading;
+    const settlementUnavailable = completesReadyTable
+        && (!settlementWarehouseId || Boolean(settlementWarehouseError));
     const modeHelp = mode === 'single'
         ? { step: 'Cobro directo', title: 'Un solo método', detail: 'Registra el saldo completo y confirma el cambio antes de cobrar.' }
         : mode === 'mixed'
@@ -720,6 +817,36 @@ export default function PaymentModal({
 
                     {methodsLoading && <div className="payment-state">Cargando métodos de pago…</div>}
                     {methodsError && <div className="payment-alert error" role="alert">{methodsError}</div>}
+                    {completesReadyTable && (
+                        <section className="payment-panel">
+                            <div className="payment-section-heading">
+                                <div>
+                                    <h3>Cierre operativo de la mesa</h3>
+                                    <p>El último pago entregará la orden, registrará el consumo y liberará la mesa en una sola operación.</p>
+                                </div>
+                            </div>
+                            <label className="payment-field">
+                                <span>Bodega de consumo</span>
+                                <CustomSelect<WarehouseOption>
+                                    inputId="settlement-warehouse"
+                                    variant="modal"
+                                    value={settlementWarehouseOptions.find(
+                                        (option) => option.value === settlementWarehouseId,
+                                    ) ?? null}
+                                    options={settlementWarehouseOptions}
+                                    onChange={(option: SingleValue<WarehouseOption>) =>
+                                        setSettlementWarehouseId(option?.value ?? null)}
+                                    isDisabled={busy || settlementWarehouseOptions.length <= 1}
+                                    isSearchable={settlementWarehouseOptions.length > 6}
+                                    placeholder={settlementWarehouseLoading ? 'Consultando bodegas…' : 'Selecciona bodega'}
+                                    noOptionsMessage={() => 'Sin bodegas operativas'}
+                                />
+                            </label>
+                            {settlementWarehouseError && (
+                                <div className="payment-alert error" role="alert">{settlementWarehouseError}</div>
+                            )}
+                        </section>
+                    )}
 
                     {!methodsLoading && !methodsError && mode === 'single' && (
                         <div className="payment-panel single-panel">
@@ -927,7 +1054,7 @@ export default function PaymentModal({
                     {!hasUsableCashShift && methods.some((method) => isCashPaymentMethodType(method.type)) && <div className="payment-cash-note"><Banknote size={16} /> Efectivo oculto: no hay turno vigente en la sucursal.</div>}
                     <div className="payment-footer-actions">
                         <button type="button" className="secondary" onClick={close} disabled={busy}>Cancelar</button>
-                        <button type="button" className="primary" onClick={() => void (mode === 'single' ? handleSinglePayment() : mode === 'mixed' ? handleMixedPayment() : handleSplitPayment())} disabled={busy || queuedPayment || Boolean(balanceError) || balance <= 0 || (mode === 'single' && (!singleMethodId || (singleIsCash && (singleTendered === null || moneyToCents(singleTendered) < totalCents)))) || (mode === 'mixed' && !mixedValid) || (mode === 'split' && !splitValid)}>
+                        <button type="button" className="primary" onClick={() => void (mode === 'single' ? handleSinglePayment() : mode === 'mixed' ? handleMixedPayment() : handleSplitPayment())} disabled={busy || settlementUnavailable || queuedPayment || Boolean(methodsError) || Boolean(balanceError) || balance <= 0 || (mode === 'single' && (!singleMethodId || (singleIsCash && (singleTendered === null || moneyToCents(singleTendered) < totalCents)))) || (mode === 'mixed' && !mixedValid) || (mode === 'split' && !splitValid)}>
                             {loading ? 'Procesando…' : previewLoading ? 'Calculando…' : mode === 'single' ? 'Confirmar pago' : mode === 'mixed' ? `Confirmar ${mixedLegs.length} tramos` : `Confirmar ${splitLegs.length} pagos`}
                         </button>
                     </div>

@@ -6,6 +6,7 @@ import PageHeader from '../components/PageHeader';
 import Select from '../components/Select';
 import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
+import LoadErrorState from '../components/LoadErrorState';
 import { useViewMode } from '../hooks/useViewMode';
 import { ToastContainer } from '../components/Toast';
 import { useToast } from '../hooks/useToast';
@@ -62,6 +63,7 @@ export default function Warehouses() {
     const [branches, setBranches] = useState<Branch[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [warehouseTypeFilter, setWarehouseTypeFilter] = useState<'ALL' | 'CENTRAL' | 'BRANCH'>('ALL');
     const { viewMode, setViewMode } = useViewMode('warehouses');
 
@@ -92,6 +94,7 @@ export default function Warehouses() {
     useEffect(() => { loadData(); }, []);
 
     const loadData = async () => {
+        setLoading(true);
         try {
             const [whRes, brRes, prRes] = await Promise.all([
                 warehousesAPI.getAll(),
@@ -101,8 +104,10 @@ export default function Warehouses() {
             setWarehouses(whRes.data.data);
             setBranches(brRes.data.data);
             setProducts(prRes.data.data || []);
+            setLoadError(null);
         } catch (e) {
             console.error(e);
+            setLoadError('No se pudieron cargar las bodegas y sus catálogos. No se asumirá que el inventario está vacío.');
         } finally {
             setLoading(false);
         }
@@ -265,6 +270,7 @@ export default function Warehouses() {
     return (
         <div className="inventory-page">
             <ToastContainer toasts={toasts} onRemove={removeToast} />
+            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadData(); }} retrying={loading} />}
 
             <PageHeader
                 title="Gestión de Bodegas"
@@ -482,7 +488,7 @@ export default function Warehouses() {
                                             <div className="stock-item-value">
                                                 {Number(s.quantity).toFixed(2)} {s.product.baseUnit?.abbreviation || s.product.unit}
                                             </div>
-                                            <div className="stock-item-min">MÃ­n. agregado: {Number(s.product.minStock)}</div>
+                                            <div className="stock-item-min">Mín. agregado: {Number(s.product.minStock)}</div>
                                         </div>
                                     </div>
                                 );

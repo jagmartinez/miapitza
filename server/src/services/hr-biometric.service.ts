@@ -24,6 +24,13 @@ const ACTIONS = ['CHECK_IN', 'BREAK_START', 'BREAK_END', 'CHECK_OUT'] as const;
 const PURPOSES = ['ATTENDANCE_PUNCH', 'BIOMETRIC_ENROLLMENT'] as const;
 const MODES = ['BLOCK', 'REVIEW', 'WARN'] as const;
 
+function logBiometricCompensationFailure(operation: string, error: unknown): void {
+    console.error('[Biometric] Compensation failed', {
+        operation,
+        errorType: error instanceof Error ? error.name : typeof error,
+    });
+}
+
 async function assertInternalEmployee(companyId: number, userId: number) {
     const user = await prisma.user.findFirst({
         where: {
@@ -358,14 +365,22 @@ export class BiometricService {
         } as const;
         const enrolled = await provider.enroll(input.evidence, providerContext);
         if (policy.requireLiveness && !enrolled.livenessPassed) {
-            try { await provider.revokeTemplate(enrolled.templateRef, providerContext); } catch { /* provider reconciliation remains operational */ }
+            try {
+                await provider.revokeTemplate(enrolled.templateRef, providerContext);
+            } catch (error) {
+                logBiometricCompensationFailure('revoke-after-liveness-failure', error);
+            }
             throw new HrAttendanceError('La prueba de vida no fue superada', 422, 'LIVENESS_FAILED');
         }
         let encryptedTemplate: string;
         try {
             encryptedTemplate = encryptBiometricTemplate(enrolled.templateRef);
         } catch (error) {
-            try { await provider.revokeTemplate(enrolled.templateRef, providerContext); } catch { /* best-effort compensation */ }
+            try {
+                await provider.revokeTemplate(enrolled.templateRef, providerContext);
+            } catch (compensationError) {
+                logBiometricCompensationFailure('revoke-after-encryption-failure', compensationError);
+            }
             throw error;
         }
         const now = new Date();
@@ -420,11 +435,19 @@ export class BiometricService {
                 return { saved, purgeId: purge?.id || null };
             });
             if (result.purgeId) {
-                try { await this.processPurgeRequest(result.purgeId, provider); } catch { /* durable outbox will retry */ }
+                try {
+                    await this.processPurgeRequest(result.purgeId, provider);
+                } catch (purgeError) {
+                    logBiometricCompensationFailure('process-reenrollment-purge', purgeError);
+                }
             }
             return mapBiometricProfile(result.saved);
         } catch (error) {
-            try { await provider.revokeTemplate(enrolled.templateRef, providerContext); } catch { /* best-effort compensation */ }
+            try {
+                await provider.revokeTemplate(enrolled.templateRef, providerContext);
+            } catch (compensationError) {
+                logBiometricCompensationFailure('revoke-after-enrollment-persistence-failure', compensationError);
+            }
             throw error;
         }
     }
@@ -473,7 +496,11 @@ export class BiometricService {
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
         if (!result) return { status: 'NOT_ENROLLED' as const, canEnroll: true };
         if (result.purgeId) {
-            try { await this.processPurgeRequest(result.purgeId, provider); } catch { /* durable outbox will retry */ }
+            try {
+                await this.processPurgeRequest(result.purgeId, provider);
+            } catch (purgeError) {
+                logBiometricCompensationFailure('process-revocation-purge', purgeError);
+            }
         }
         return mapBiometricProfile(result.profile);
     }
@@ -578,27 +605,56 @@ export class BiometricService {
     }
 
     static async runScheduledMaintenance(now = new Date()) {
-        const candidates = await prisma.user.findMany({
-            where: {
-                companyId: { not: null }, status: 'ACTIVE',
-                OR: [
-                    { role: { name: 'SUPERADMIN' } },
-                    { userRoles: { some: { role: { name: 'SUPERADMIN' } } } },
-                ],
-            },
-            select: { id: true, companyId: true },
-            orderBy: { id: 'asc' },
-        });
-        const actorByCompany = new Map<number, number>();
-        for (const candidate of candidates) {
-            if (candidate.companyId && !actorByCompany.has(candidate.companyId)) {
-                actorByCompany.set(candidate.companyId, candidate.id);
-            }
-        }
+        const [expiredProfiles, pendingPurges] = await Promise.all([
+            prisma.biometricProfile.findMany({
+                where: { status: 'ACTIVE', retentionExpiresAt: { lte: now } },
+                select: { companyId: true },
+                distinct: ['companyId'],
+            }),
+            prisma.biometricPurgeRequest.findMany({
+                where: {
+                    status: { in: ['PENDING', 'FAILED'] },
+                    OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
+                },
+                select: { companyId: true },
+                distinct: ['companyId'],
+            }),
+        ]);
+        const companyIds = Array.from(new Set(
+            [...expiredProfiles, ...pendingPurges].map((entry) => entry.companyId),
+        )).sort((left, right) => left - right);
         const results: Array<{ companyId: number; ok: boolean; error?: string }> = [];
-        for (const [companyId, actorUserId] of actorByCompany) {
+        for (const companyId of companyIds) {
             try {
-                await this.runRetentionMaintenance(companyId, actorUserId, createFaceVerificationProvider(), now);
+                const actor = await prisma.user.findFirst({
+                    where: {
+                        companyId,
+                        status: 'ACTIVE',
+                        OR: [
+                            { role: { permissions: { some: { name: 'hr.biometric.manage' } } } },
+                            {
+                                userRoles: {
+                                    some: {
+                                        role: {
+                                            permissions: { some: { name: 'hr.biometric.manage' } },
+                                        },
+                                    },
+                                },
+                            },
+                        ],
+                    },
+                    select: { id: true },
+                    orderBy: { id: 'asc' },
+                });
+                if (!actor) {
+                    results.push({
+                        companyId,
+                        ok: false,
+                        error: 'No active user has hr.biometric.manage for maintenance audit',
+                    });
+                    continue;
+                }
+                await this.runRetentionMaintenance(companyId, actor.id, createFaceVerificationProvider(), now);
                 results.push({ companyId, ok: true });
             } catch (error) {
                 results.push({

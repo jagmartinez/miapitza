@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { createHash } from 'crypto';
 import prisma from '../utils/prisma';
 import { assertCompatiblePhysicalGroups, keepGroupedTableOccupied } from './table-group.service';
 
@@ -23,6 +24,31 @@ interface TransferSlice {
 
 type Tx = Prisma.TransactionClient;
 
+const ACTIVE_ACCOUNT_WHERE = {
+    OR: [
+        { status: { in: [...ACTIVE_STATUSES] } },
+        { status: 'DELIVERED' as const, financialStatus: { not: 'PAID' as const } }
+    ]
+};
+
+type ConsolidationFingerprintItem = {
+    id: number;
+    quantity: number;
+    price: Prisma.Decimal | number | string;
+    subtotal: Prisma.Decimal | number | string;
+    notes: string | null;
+    status: string;
+    sentAt: Date | null;
+    startedAt: Date | null;
+    finishedAt: Date | null;
+    modifiers: Array<{
+        id: number;
+        modifierId: number;
+        name: string;
+        price: Prisma.Decimal | number | string;
+    }>;
+};
+
 function toCents(value: Prisma.Decimal | number | string): number {
     const normalized = typeof value === 'object' && 'toFixed' in value
         ? value.toFixed(2)
@@ -39,6 +65,33 @@ function fromCents(value: number): Prisma.Decimal {
 
 function sumCents(values: Array<Prisma.Decimal | number | string>): number {
     return values.reduce<number>((total, value) => total + toCents(value), 0);
+}
+
+function itemFingerprint(item: ConsolidationFingerprintItem): string {
+    const canonical = {
+        id: item.id,
+        quantity: item.quantity,
+        price: toCents(item.price),
+        subtotal: toCents(item.subtotal),
+        notes: item.notes,
+        status: item.status,
+        sentAt: item.sentAt?.toISOString() ?? null,
+        startedAt: item.startedAt?.toISOString() ?? null,
+        finishedAt: item.finishedAt?.toISOString() ?? null,
+        modifiers: [...item.modifiers]
+            .sort((left, right) => left.id - right.id)
+            .map((modifier) => ({
+                id: modifier.id,
+                modifierId: modifier.modifierId,
+                name: modifier.name,
+                price: toCents(modifier.price)
+            }))
+    };
+    return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+function sameInstant(left: Date, right: Date): boolean {
+    return left.getTime() === right.getTime();
 }
 
 export function allocatePartialFinancials(input: {
@@ -235,7 +288,28 @@ export class TableAccountService {
                     tableId: { in: [destinationTableId, ...sourceTableIds] },
                     status: { in: [...ACTIVE_STATUSES] }
                 },
-                include: { payments: { where: { status: 'ACTIVE' }, select: { id: true } }, items: { select: { id: true } } }
+                include: {
+                    payments: { where: { status: 'ACTIVE' }, select: { id: true } },
+                    items: {
+                        select: {
+                            id: true,
+                            quantity: true,
+                            price: true,
+                            subtotal: true,
+                            notes: true,
+                            status: true,
+                            sentAt: true,
+                            startedAt: true,
+                            finishedAt: true,
+                            originOrderId: true,
+                            originTableId: true,
+                            modifiers: {
+                                select: { id: true, modifierId: true, name: true, price: true },
+                                orderBy: { id: 'asc' }
+                            }
+                        }
+                    }
+                }
             });
             const orderTableIds = new Set(orders.map((order) => order.tableId));
             for (const sourceId of sourceTableIds) {
@@ -256,7 +330,23 @@ export class TableAccountService {
                 ?? orders.find((order) => order.tableId === destinationTableId)
                 ?? orders[0];
             const secondary = orders.filter((order) => order.id !== primary.id);
+            const orderIds = orders.map((order) => order.id);
+            const activeConsolidation = await tx.tableConsolidation.findFirst({
+                where: {
+                    companyId,
+                    status: 'ACTIVE',
+                    OR: [
+                        { primaryOrderId: { in: orderIds } },
+                        { orderSnapshots: { some: { orderId: { in: orderIds } } } }
+                    ]
+                },
+                select: { id: true }
+            });
+            if (activeConsolidation) {
+                throw new Error(`La consolidación #${activeConsolidation.id} debe revertirse antes de volver a consolidar estas órdenes`);
+            }
             const movedItemIds: number[] = [];
+            const postUpdateByOrderId = new Map<number, Date>();
 
             for (const source of secondary) {
                 const itemIds = source.items.map((item) => item.id);
@@ -275,7 +365,7 @@ export class TableAccountService {
                         data: { orderId: primary.id }
                     });
                 }
-                await tx.order.update({
+                const updatedSource = await tx.order.update({
                     where: { id: source.id },
                     data: {
                         status: 'CANCELLED',
@@ -292,6 +382,7 @@ export class TableAccountService {
                         cancelReason: `Consolidada en orden #${primary.id}`
                     }
                 });
+                postUpdateByOrderId.set(source.id, updatedSource.updatedAt);
             }
 
             const updatedPrimary = await tx.order.update({
@@ -308,6 +399,54 @@ export class TableAccountService {
                 },
                 include: { table: true, items: { include: { menuItem: true, modifiers: true } } }
             });
+            postUpdateByOrderId.set(primary.id, updatedPrimary.updatedAt);
+
+            const consolidation = await tx.tableConsolidation.create({
+                data: {
+                    companyId,
+                    branchId: destination.branchId,
+                    primaryOrderId: primary.id,
+                    destinationTableId,
+                    reason: data.reason?.trim() || null,
+                    createdById: actorId,
+                    orderSnapshots: {
+                        create: orders.map((order) => {
+                            if (order.tableId === null) throw new Error(`La orden #${order.id} no conserva una mesa de origen`);
+                            const postConsolidationUpdatedAt = postUpdateByOrderId.get(order.id);
+                            if (!postConsolidationUpdatedAt) throw new Error(`No se pudo versionar la orden #${order.id}`);
+                            return {
+                                orderId: order.id,
+                                originalTableId: order.tableId,
+                                isPrimary: order.id === primary.id,
+                                originalStatus: order.status,
+                                originalFinancialStatus: order.financialStatus,
+                                originalTotal: order.total,
+                                originalDiscount: order.discount,
+                                originalTax: order.tax,
+                                originalTipAmount: order.tipAmount,
+                                originalChannelCommission: order.channelCommission,
+                                originalChannelMarkup: order.channelMarkup,
+                                originalConsolidatedIntoId: order.consolidatedIntoOrderId,
+                                originalCancelledById: order.cancelledById,
+                                originalCancelledAt: order.cancelledAt,
+                                originalClosedAt: order.closedAt,
+                                originalCancelReason: order.cancelReason,
+                                postConsolidationUpdatedAt
+                            };
+                        })
+                    },
+                    itemSnapshots: {
+                        create: orders.flatMap((order) => order.items.map((item) => ({
+                            orderItemId: item.id,
+                            sourceOrderId: order.id,
+                            previousOriginOrderId: item.originOrderId,
+                            previousOriginTableId: item.originTableId,
+                            itemFingerprint: itemFingerprint(item)
+                        })))
+                    }
+                },
+                select: { id: true, version: true }
+            });
 
             await syncTableStatus(tx, companyId, destinationTableId);
             for (const sourceId of sourceTableIds) await syncTableStatus(tx, companyId, sourceId);
@@ -322,13 +461,342 @@ export class TableAccountService {
                         destinationTableId,
                         sourceTableIds,
                         primaryOrderId: primary.id,
+                        consolidationId: consolidation.id,
                         absorbedOrderIds: secondary.map((order) => order.id),
                         movedItemIds,
                         reason: data.reason?.trim() || null
                     }
                 }
             });
-            return updatedPrimary;
+            return {
+                ...updatedPrimary,
+                consolidationId: consolidation.id,
+                consolidationVersion: consolidation.version
+            };
+        });
+    }
+
+    static async getConsolidation(companyId: number, consolidationIdValue: number) {
+        const consolidationId = assertPositiveInteger(consolidationIdValue, 'consolidationId');
+        const consolidation = await prisma.tableConsolidation.findFirst({
+            where: { id: consolidationId, companyId },
+            include: {
+                orderSnapshots: { orderBy: { orderId: 'asc' } },
+                itemSnapshots: { orderBy: { orderItemId: 'asc' } }
+            }
+        });
+        if (!consolidation) throw new Error('Consolidación de mesas no encontrada');
+        return consolidation;
+    }
+
+    static async findActiveConsolidation(
+        companyId: number,
+        query: { orderId?: number; tableId?: number }
+    ) {
+        const hasOrderId = query.orderId !== undefined;
+        const hasTableId = query.tableId !== undefined;
+        if (hasOrderId === hasTableId) {
+            throw new Error('Indique exactamente orderId o tableId para buscar la consolidación');
+        }
+
+        const orderId = hasOrderId ? assertPositiveInteger(query.orderId, 'orderId') : undefined;
+        const tableId = hasTableId ? assertPositiveInteger(query.tableId, 'tableId') : undefined;
+        const consolidation = await prisma.tableConsolidation.findFirst({
+            where: {
+                companyId,
+                status: 'ACTIVE',
+                ...(orderId !== undefined
+                    ? {
+                        OR: [
+                            { primaryOrderId: orderId },
+                            { orderSnapshots: { some: { orderId } } }
+                        ]
+                    }
+                    : {
+                        OR: [
+                            { destinationTableId: tableId! },
+                            { orderSnapshots: { some: { originalTableId: tableId! } } }
+                        ]
+                    })
+            },
+            select: {
+                id: true,
+                branchId: true,
+                primaryOrderId: true,
+                destinationTableId: true,
+                status: true,
+                version: true,
+                reason: true,
+                createdAt: true,
+                orderSnapshots: {
+                    select: { orderId: true, originalTableId: true },
+                    orderBy: { orderId: 'asc' }
+                }
+            },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
+        });
+        if (!consolidation) return null;
+
+        return {
+            id: consolidation.id,
+            branchId: consolidation.branchId,
+            primaryOrderId: consolidation.primaryOrderId,
+            destinationTableId: consolidation.destinationTableId,
+            status: consolidation.status,
+            version: consolidation.version,
+            reason: consolidation.reason,
+            createdAt: consolidation.createdAt,
+            affectedOrderIds: consolidation.orderSnapshots.map((snapshot) => snapshot.orderId),
+            originalTableIds: [...new Set(consolidation.orderSnapshots.map((snapshot) => snapshot.originalTableId))]
+        };
+    }
+
+    static async reverseConsolidation(
+        companyId: number,
+        actorId: number,
+        consolidationIdValue: number,
+        data: { expectedVersion: number; reversalKey: string; reason: string }
+    ) {
+        const consolidationId = assertPositiveInteger(consolidationIdValue, 'consolidationId');
+        const expectedVersion = Number(data.expectedVersion);
+        if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+            throw new Error('expectedVersion debe ser un entero mayor o igual a 0');
+        }
+        const reversalKey = data.reversalKey?.trim();
+        if (!reversalKey || reversalKey.length < 8 || reversalKey.length > 191) {
+            throw new Error('La clave idempotente de reversión no es válida');
+        }
+        const reason = data.reason?.trim();
+        if (!reason || reason.length < 3 || reason.length > 500) {
+            throw new Error('El motivo de reversión debe tener entre 3 y 500 caracteres');
+        }
+
+        return prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`TableConsolidation\` WHERE id = ${consolidationId} AND companyId = ${companyId} FOR UPDATE`;
+            const consolidation = await tx.tableConsolidation.findFirst({
+                where: { id: consolidationId, companyId },
+                include: {
+                    orderSnapshots: { orderBy: { orderId: 'asc' } },
+                    itemSnapshots: { orderBy: { orderItemId: 'asc' } }
+                }
+            });
+            if (!consolidation) throw new Error('Consolidación de mesas no encontrada');
+
+            if (consolidation.status === 'REVERSED') {
+                if (consolidation.reversalKey !== reversalKey || consolidation.reversalReason !== reason) {
+                    throw new Error('La consolidación ya fue revertida con otra clave o motivo');
+                }
+                const orders = await tx.order.findMany({
+                    where: { companyId, id: { in: consolidation.orderSnapshots.map((snapshot) => snapshot.orderId) } },
+                    orderBy: { id: 'asc' }
+                });
+                return {
+                    idempotent: true,
+                    consolidationId,
+                    version: consolidation.version,
+                    primaryOrderId: consolidation.primaryOrderId,
+                    affectedTableIds: [...new Set(consolidation.orderSnapshots.map((snapshot) => snapshot.originalTableId))],
+                    orders
+                };
+            }
+            if (consolidation.version !== expectedVersion) {
+                throw new Error('La consolidación cambió en otro proceso; recargue antes de revertir');
+            }
+
+            const reusedKey = await tx.tableConsolidation.findFirst({
+                where: { companyId, reversalKey, id: { not: consolidationId } },
+                select: { id: true }
+            });
+            if (reusedKey) throw new Error(`La clave de reversión ya fue usada por la consolidación #${reusedKey.id}`);
+
+            const orderIds = consolidation.orderSnapshots.map((snapshot) => snapshot.orderId);
+            const tableIds = [...new Set([
+                consolidation.destinationTableId,
+                ...consolidation.orderSnapshots.map((snapshot) => snapshot.originalTableId)
+            ])];
+            const tables = await lockTables(tx, companyId, tableIds);
+            if (tables.some((table) => table.branchId !== consolidation.branchId)) {
+                throw new Error('Las mesas históricas ya no pertenecen a la sucursal de la consolidación');
+            }
+            if (tables.some((table) => table.status === 'RESERVED' || table.status === 'OUT_OF_SERVICE')) {
+                throw new Error('No se puede revertir hacia una mesa reservada o fuera de servicio');
+            }
+
+            await lockOrders(tx, companyId, orderIds);
+            const currentOrders = await tx.order.findMany({
+                where: { companyId, id: { in: orderIds } },
+                include: { payments: { select: { id: true } } }
+            });
+            if (currentOrders.length !== orderIds.length) {
+                throw new Error('Una de las órdenes históricas ya no existe o pertenece a otra empresa');
+            }
+            const currentById = new Map(currentOrders.map((order) => [order.id, order]));
+            const primarySnapshot = consolidation.orderSnapshots.find((snapshot) => snapshot.isPrimary);
+            if (!primarySnapshot || primarySnapshot.orderId !== consolidation.primaryOrderId) {
+                throw new Error('La consolidación no conserva una orden principal íntegra');
+            }
+
+            for (const snapshot of consolidation.orderSnapshots) {
+                const current = currentById.get(snapshot.orderId)!;
+                if (!sameInstant(current.updatedAt, snapshot.postConsolidationUpdatedAt)) {
+                    throw new Error(`La orden #${current.id} cambió después de consolidarse`);
+                }
+                if (current.payments.length > 0 || current.financialStatus !== 'UNPAID') {
+                    throw new Error(`La orden #${current.id} tiene historial de pago y no puede separarse`);
+                }
+                if (current.invoiceNumber || current.invoicedAt || current.invoiceFiscalStatus !== 'NOT_ISSUED') {
+                    throw new Error(`La orden #${current.id} ya tiene historia fiscal y no puede separarse`);
+                }
+                if (snapshot.isPrimary) {
+                    if (current.status === 'DELIVERED') {
+                        throw new Error('No se puede revertir una consolidación después de entregar la cuenta, aunque siga pendiente de pago');
+                    }
+                    if (!ACTIVE_STATUSES.includes(current.status as ActiveStatus)) {
+                        throw new Error('La orden principal ya no está en un estado operativo reversible');
+                    }
+                } else if (
+                    current.status !== 'CANCELLED'
+                    || current.consolidatedIntoOrderId !== consolidation.primaryOrderId
+                    || toCents(current.total) !== 0
+                ) {
+                    throw new Error(`La orden absorbida #${current.id} ya no conserva el estado de consolidación`);
+                }
+            }
+
+            const competingAccount = await tx.order.findFirst({
+                where: {
+                    companyId,
+                    tableId: { in: tableIds },
+                    id: { notIn: orderIds },
+                    ...ACTIVE_ACCOUNT_WHERE
+                },
+                select: { id: true, tableId: true, status: true, financialStatus: true }
+            });
+            if (competingAccount) {
+                throw new Error(`La mesa #${competingAccount.tableId} ya tiene otra cuenta activa o entregada pendiente (#${competingAccount.id})`);
+            }
+
+            const itemIds = consolidation.itemSnapshots.map((snapshot) => snapshot.orderItemId);
+            const currentItems = await tx.orderItem.findMany({
+                where: { id: { in: itemIds } },
+                include: {
+                    modifiers: {
+                        select: { id: true, modifierId: true, name: true, price: true },
+                        orderBy: { id: 'asc' }
+                    }
+                }
+            });
+            const primaryItemCount = await tx.orderItem.count({
+                where: { orderId: consolidation.primaryOrderId }
+            });
+            if (currentItems.length !== itemIds.length || primaryItemCount !== itemIds.length) {
+                throw new Error('Los productos de la cuenta cambiaron después de consolidarse');
+            }
+            const itemById = new Map(currentItems.map((item) => [item.id, item]));
+            const sourceTableByOrderId = new Map(
+                consolidation.orderSnapshots.map((snapshot) => [snapshot.orderId, snapshot.originalTableId])
+            );
+            for (const snapshot of consolidation.itemSnapshots) {
+                const item = itemById.get(snapshot.orderItemId);
+                const expectedOriginOrderId = snapshot.sourceOrderId === consolidation.primaryOrderId
+                    ? snapshot.previousOriginOrderId
+                    : snapshot.previousOriginOrderId ?? snapshot.sourceOrderId;
+                const expectedOriginTableId = snapshot.sourceOrderId === consolidation.primaryOrderId
+                    ? snapshot.previousOriginTableId
+                    : snapshot.previousOriginTableId ?? sourceTableByOrderId.get(snapshot.sourceOrderId) ?? null;
+                if (
+                    !item
+                    || item.orderId !== consolidation.primaryOrderId
+                    || item.originOrderId !== expectedOriginOrderId
+                    || item.originTableId !== expectedOriginTableId
+                    || itemFingerprint(item) !== snapshot.itemFingerprint
+                ) {
+                    throw new Error(`El producto #${snapshot.orderItemId} cambió después de consolidarse`);
+                }
+            }
+
+            for (const snapshot of consolidation.itemSnapshots) {
+                if (snapshot.sourceOrderId === consolidation.primaryOrderId) continue;
+                const moved = await tx.orderItem.updateMany({
+                    where: { id: snapshot.orderItemId, orderId: consolidation.primaryOrderId },
+                    data: {
+                        orderId: snapshot.sourceOrderId,
+                        originOrderId: snapshot.previousOriginOrderId,
+                        originTableId: snapshot.previousOriginTableId
+                    }
+                });
+                if (moved.count !== 1) throw new Error(`Conflicto al restaurar el producto #${snapshot.orderItemId}`);
+            }
+
+            for (const snapshot of consolidation.orderSnapshots) {
+                await tx.order.update({
+                    where: { id: snapshot.orderId },
+                    data: {
+                        tableId: snapshot.originalTableId,
+                        status: snapshot.originalStatus,
+                        financialStatus: snapshot.originalFinancialStatus,
+                        total: snapshot.originalTotal,
+                        discount: snapshot.originalDiscount,
+                        tax: snapshot.originalTax,
+                        tipAmount: snapshot.originalTipAmount,
+                        channelCommission: snapshot.originalChannelCommission,
+                        channelMarkup: snapshot.originalChannelMarkup,
+                        consolidatedIntoOrderId: snapshot.originalConsolidatedIntoId,
+                        cancelledById: snapshot.originalCancelledById,
+                        cancelledAt: snapshot.originalCancelledAt,
+                        closedAt: snapshot.originalClosedAt,
+                        cancelReason: snapshot.originalCancelReason
+                    }
+                });
+            }
+
+            const claimed = await tx.tableConsolidation.updateMany({
+                where: { id: consolidationId, companyId, status: 'ACTIVE', version: expectedVersion },
+                data: {
+                    status: 'REVERSED',
+                    version: { increment: 1 },
+                    reversedById: actorId,
+                    reversedAt: new Date(),
+                    reversalReason: reason,
+                    reversalKey
+                }
+            });
+            if (claimed.count !== 1) throw new Error('Conflicto de concurrencia al revertir la consolidación');
+
+            for (const tableId of tableIds) await syncTableStatus(tx, companyId, tableId);
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    entityType: 'TableConsolidation',
+                    entityId: consolidationId,
+                    action: 'TABLE_CONSOLIDATION_REVERSE',
+                    userId: actorId,
+                    details: {
+                        primaryOrderId: consolidation.primaryOrderId,
+                        restoredOrderIds: orderIds,
+                        restoredItemIds: itemIds,
+                        tableIds,
+                        reversalKey,
+                        reason,
+                        fromVersion: expectedVersion,
+                        toVersion: expectedVersion + 1
+                    }
+                }
+            });
+
+            const orders = await tx.order.findMany({
+                where: { companyId, id: { in: orderIds } },
+                include: { table: true, items: { include: { menuItem: true, modifiers: true } } },
+                orderBy: { id: 'asc' }
+            });
+            return {
+                idempotent: false,
+                consolidationId,
+                version: expectedVersion + 1,
+                primaryOrderId: consolidation.primaryOrderId,
+                affectedTableIds: tableIds,
+                orders
+            };
         });
     }
 

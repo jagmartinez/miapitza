@@ -267,7 +267,7 @@ export class WebSocketService {
         }
 
         const [sessionIsValid, user] = await Promise.all([
-            SessionService.isHashValid(client.sessionTokenHash),
+            SessionService.isHashValid(client.sessionTokenHash, { touch: false }),
             prisma.user.findUnique({
                 where: { id: client.userId },
                 select: {

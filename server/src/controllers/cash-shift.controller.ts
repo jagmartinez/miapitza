@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../utils/prisma';
 import { CashShiftService } from '../services/cash-shift.service';
-import { CashArqueoService } from '../services/cash-arqueo.service';
 import { getErrorMessage } from '../utils/error';
 import { assertBranchAccess, isCompanyWide, resolveBranchScope } from '../utils/branch-scope';
 
@@ -158,34 +157,14 @@ export class CashShiftController {
         }
     }
 
-    static async close(req: Request, res: Response, next: NextFunction) {
-        try {
-            const id = parseInt(req.params.id);
-            const companyId = req.user!.companyId;
-            const { closingBalance, notes } = req.body;
-
-            if (closingBalance === undefined) {
-                return next({ statusCode: 400, message: 'closingBalance es requerido' });
-            }
-
-            await CashShiftController.assertShiftBranchAccess(req, id);
-            const shift = await CashArqueoService.closeShiftWithArqueo(
-                id,
-                companyId,
-                Number(closingBalance),
-                req.user!.roles || [req.user!.role],
-                notes,
-                undefined,
-                { forceClose: req.body.forceClose === true }
-            );
-            res.json({
-                success: true,
-                message: 'Turno de caja cerrado exitosamente',
-                data: shift
-            });
-        } catch (error: unknown) {
-            next({ statusCode: 400, message: getErrorMessage(error) });
-        }
+    static async close(req: Request, res: Response, _next: NextFunction) {
+        const id = parseInt(req.params.id);
+        res.setHeader('Deprecation', 'true');
+        res.setHeader('Link', `</api/cash-arqueo/${id}/close>; rel="successor-version"`);
+        res.status(410).json({
+            success: false,
+            message: 'Este cierre directo fue retirado porque no registra el arqueo físico. Use el cierre de caja con denominaciones.'
+        });
     }
 
     static async addMovement(req: Request, res: Response, next: NextFunction) {

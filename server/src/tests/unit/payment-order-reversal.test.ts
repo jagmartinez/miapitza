@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 describe('PaymentService.delete financial-state reversal', () => {
-    it('reverses the financial ledger without restocking a delivered order', async () => {
+    it('reverses the financial ledger, reopens the table account, and does not restock a delivered order', async () => {
         jest.spyOn(prisma.payment, 'findFirst').mockResolvedValue({ orderId: 7 } as never);
         const reverse = jest.spyOn(InventoryConsumptionService, 'reverseForOrder')
             .mockResolvedValue({ reversed: true });
@@ -47,8 +47,14 @@ describe('PaymentService.delete financial-state reversal', () => {
             cashShift: { findFirst: jest.fn(async () => ({ id: 8, startDate: new Date() })) },
             setting: { findUnique: jest.fn(async () => null) },
             user: { findFirst: jest.fn(async () => ({ id: 9 })) },
-            order: { update: jest.fn(async (_args: unknown) => ({})) },
-            table: { update: jest.fn(async (_args: unknown) => ({})) },
+            order: {
+                update: jest.fn(async (_args: unknown) => ({})),
+                count: jest.fn(async () => 1)
+            },
+            table: {
+                findFirst: jest.fn(async () => ({ activeTableGroupId: null, status: 'AVAILABLE' })),
+                update: jest.fn(async (_args: unknown) => ({}))
+            },
             promotion: {
                 findFirst: jest.fn(async () => ({ id: 4, usageCount: 1 })),
                 update: jest.fn(async (_args: unknown) => ({}))
@@ -65,7 +71,10 @@ describe('PaymentService.delete financial-state reversal', () => {
         }));
         expect(tx.order.update).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: expect.anything() }) }));
         expect(reverse).not.toHaveBeenCalled();
-        expect(tx.table.update).not.toHaveBeenCalled();
+        expect(tx.table.update).toHaveBeenCalledWith({
+            where: { id: 3 },
+            data: { status: 'OCCUPIED' }
+        });
         expect(tx.promotion.update).toHaveBeenCalledWith({ where: { id: 4 }, data: { usageCount: { decrement: 1 } } });
         expect(tx.cashMovement.create).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({ shiftId: 8, type: 'OUT', reference: 'REV-PAY-11' })

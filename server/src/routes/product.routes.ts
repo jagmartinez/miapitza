@@ -1,13 +1,12 @@
 import { Router } from 'express';
-import multer from 'multer';
 import { ProductController } from '../controllers/product.controller';
 import { ProductImportController } from '../controllers/product-import.controller';
 import { CostingController } from '../controllers/costing.controller';
 import { authMiddleware, requireRole } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
+import { excelImportUpload, validateExcelUpload } from '../middlewares/upload-security';
 
-const upload = multer();
 const router = Router();
 
 router.use(authMiddleware);
@@ -17,7 +16,13 @@ router.get('/low-stock', ProductController.getLowStock);
 
 // Excel import/export — must be before /:id to avoid param capture
 router.get('/import/template', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), ProductImportController.getTemplate);
-router.post('/import/validate', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), upload.single('file'), ProductImportController.validate);
+router.post(
+    '/import/validate',
+    requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'),
+    excelImportUpload.single('file'),
+    validateExcelUpload,
+    ProductImportController.validate,
+);
 router.post('/import/confirm', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), ProductImportController.confirm);
 
 router.get('/:id', validate(s.idParam), ProductController.getById);

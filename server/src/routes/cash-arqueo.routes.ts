@@ -125,6 +125,7 @@ router.post('/:shiftId/close', validate(s.closeShift), async (req: Request, res:
             companyId,
             endAmount,
             req.user!.roles || [req.user!.role],
+            req.user!.userId,
             notes,
             { bills, coins, usdBills, exchangeRate },
             { forceClose }

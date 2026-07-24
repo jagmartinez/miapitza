@@ -12,7 +12,10 @@ import { shouldQueueOfflineMutation } from './offlinePolicy';
 import { closeWebSocket } from '../utils/websocket';
 import { resolveApiBaseUrl } from '../utils/runtime-routing';
 
-type OfflineRequestMeta = Pick<SyncItem, 'operationType' | 'dependencyKey' | 'entityTempId'>;
+type OfflineRequestMeta = Pick<SyncItem, 'operationType' | 'dependencyKey' | 'entityTempId'> & {
+    /** Preserve causal ordering when an earlier operation in the same group was already queued. */
+    forceQueue?: boolean;
+};
 
 declare module 'axios' {
     export interface AxiosRequestConfig {
@@ -148,7 +151,7 @@ api.interceptors.request.use(
         // destructive/admin workflows appear committed when they were not.
         if (shouldQueueOfflineMutation(
             requestConfig.method,
-            offlineManager.getStatus(),
+            offlineManager.getStatus() && !requestConfig.offlineMeta?.forceQueue,
             isAuthRequest,
             Boolean(requestConfig.offlineMeta),
         )) {
@@ -160,6 +163,9 @@ api.interceptors.request.use(
                 dependencyKey: requestConfig.offlineMeta?.dependencyKey || null,
                 entityTempId: requestConfig.offlineMeta?.entityTempId || null,
             });
+            if (offlineManager.getStatus()) {
+                void offlineManager.processSyncQueue();
+            }
 
             // The response interceptor exposes `_offline`; opted-in callers must
             // present it as pending rather than as a server-confirmed mutation.
@@ -321,6 +327,34 @@ export const tablesAPI = {
     consolidate: (data: Record<string, unknown>, idempotencyKey: string) =>
         api.post('/tables/consolidate', data, { headers: { 'X-Idempotency-Key': idempotencyKey } }),
 
+    getActiveConsolidation: (query: { orderId?: number; tableId?: number }) =>
+        api.get('/tables/consolidations/active', { params: query }),
+
+    getLegacyConsolidationInventory: (branchId?: number) =>
+        api.get('/tables/consolidations/legacy-inventory', {
+            params: branchId ? { branchId } : undefined,
+        }),
+
+    markLegacyConsolidation: (
+        candidateKey: string,
+        data: {
+            expectedEvidenceHash: string;
+            resolutionKey: string;
+            outcome: 'ACKNOWLEDGED_NO_AUTOMATIC_REVERSAL' | 'EXTERNAL_EVIDENCE_REQUIRED';
+            note: string;
+        },
+    ) => api.post(
+        `/tables/consolidations/legacy-inventory/${encodeURIComponent(candidateKey)}/mark`,
+        data,
+    ),
+
+    reverseConsolidation: (
+        id: number,
+        data: { expectedVersion: number; reversalKey: string; reason: string }
+    ) => api.post(`/tables/consolidations/${id}/reverse`, data, {
+        headers: { 'X-Idempotency-Key': data.reversalKey }
+    }),
+
     transfer: (data: Record<string, unknown>, idempotencyKey: string) =>
         api.post('/tables/transfer', data, { headers: { 'X-Idempotency-Key': idempotencyKey } }),
 };
@@ -382,14 +416,14 @@ export const ordersAPI = {
 
     create: (
         data: Record<string, unknown>,
-        offlineMeta?: Pick<SyncItem, 'operationType' | 'dependencyKey' | 'entityTempId'>
+        offlineMeta?: OfflineRequestMeta
     ) =>
         api.post('/orders', data, { offlineMeta }),
 
     addItem: (
         orderId: number,
         data: Record<string, unknown>,
-        offlineMeta?: Pick<SyncItem, 'operationType' | 'dependencyKey' | 'entityTempId'>
+        offlineMeta?: OfflineRequestMeta
     ) =>
         api.post(`/orders/${orderId}/items`, data, { offlineMeta }),
 
@@ -398,7 +432,7 @@ export const ordersAPI = {
 
     sendToKitchen: (
         orderId: number,
-        offlineMeta?: Pick<SyncItem, 'operationType' | 'dependencyKey' | 'entityTempId'>
+        offlineMeta?: OfflineRequestMeta
     ) =>
         api.post(`/orders/${orderId}/send-to-kitchen`, undefined, { offlineMeta }),
 
@@ -737,11 +771,15 @@ export const purchaseOrdersAPI = {
     removeItem: (itemId: number) =>
         api.delete(`/purchase-orders/items/${itemId}`),
 
-    receive: (id: number, warehouseId: number) =>
-        api.post(`/purchase-orders/${id}/receive`, { warehouseId }),
+    receive: (id: number, warehouseId: number, idempotencyKey: string) =>
+        api.post(`/purchase-orders/${id}/receive`, { warehouseId }, {
+            headers: { 'X-Idempotency-Key': idempotencyKey },
+        }),
 
-    reverseReceipt: (id: number, reason: string) =>
-        api.post(`/purchase-orders/${id}/reverse-receipt`, { reason }),
+    reverseReceipt: (id: number, reason: string, idempotencyKey: string) =>
+        api.post(`/purchase-orders/${id}/reverse-receipt`, { reason }, {
+            headers: { 'X-Idempotency-Key': idempotencyKey },
+        }),
 
     getImportTemplate: () => api.get('/purchase-orders/import/template', { responseType: 'blob' }),
 
@@ -758,11 +796,15 @@ export const purchaseOrdersAPI = {
     getPayments: (orderId: number) =>
         api.get(`/purchase-orders/${orderId}/payments`),
 
-    addPayment: (orderId: number, data: { amount: number; date?: string; bank?: string; referenceNumber?: string; observations?: string }) =>
-        api.post(`/purchase-orders/${orderId}/payments`, data),
+    addPayment: (orderId: number, data: { amount: number; date?: string; bank?: string; referenceNumber?: string; observations?: string }, idempotencyKey: string) =>
+        api.post(`/purchase-orders/${orderId}/payments`, data, {
+            headers: { 'X-Idempotency-Key': idempotencyKey },
+        }),
 
-    reversePayment: (orderId: number, paymentId: number, reason: string) =>
-        api.post(`/purchase-orders/${orderId}/payments/${paymentId}/reverse`, { reason }),
+    reversePayment: (orderId: number, paymentId: number, reason: string, idempotencyKey: string) =>
+        api.post(`/purchase-orders/${orderId}/payments/${paymentId}/reverse`, { reason }, {
+            headers: { 'X-Idempotency-Key': idempotencyKey },
+        }),
 };
 
 export const kitchenNotificationsAPI = {
@@ -803,9 +845,6 @@ export const cashShiftsAPI = {
 
     open: (data: Record<string, unknown>) =>
         api.post('/cash-shifts/open', data),
-
-    close: (id: number, data: Record<string, unknown>) =>
-        api.post(`/cash-shifts/${id}/close`, data),
 
     addMovement: (id: number, data: Record<string, unknown>) =>
         api.post(`/cash-shifts/${id}/movements`, data),
@@ -1239,6 +1278,12 @@ export const cateringAPI = {
 
     getEventById: (id: number) =>
         api.get(`/catering/${id}`),
+
+    downloadContract: (id: number) =>
+        api.get(`/catering/${id}/contract`, {
+            responseType: 'blob',
+            skipOfflineCache: true,
+        }),
 
     createEvent: (data: Record<string, unknown>) =>
         api.post('/catering', data),

@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 const WEAK_JWT_SECRETS = new Set([
     'change-me-in-production',
     'change-me-to-a-long-random-secret',
@@ -14,6 +16,15 @@ function isInternalHostname(hostname: string): boolean {
     return Boolean(private172 && Number(private172[1]) >= 16 && Number(private172[1]) <= 31);
 }
 
+function isValidOperationalIdentifier(value: string, minLength: number, maxLength: number): boolean {
+    return value.length >= minLength
+        && value.length <= maxLength
+        && Array.from(value).every(character => {
+            const code = character.codePointAt(0) || 0;
+            return code >= 32 && code !== 127;
+        });
+}
+
 export function collectEnvironmentErrors(env: NodeJS.ProcessEnv): string[] {
     const errors: string[] = [];
     const isProduction = env.NODE_ENV === 'production';
@@ -24,6 +35,8 @@ export function collectEnvironmentErrors(env: NodeJS.ProcessEnv): string[] {
     const tenancyMode = env.PLATFORM_TENANCY_MODE?.trim().toLowerCase();
     const platformCompanyRaw = env.PLATFORM_ADMIN_COMPANY_ID?.trim();
     const platformCompanyId = platformCompanyRaw ? Number(platformCompanyRaw) : null;
+    const storageDir = env.STORAGE_DIR?.trim();
+    const storageSharedId = env.STORAGE_SHARED_ID?.trim();
 
     if (!jwtSecret || jwtSecret.trim() === '') {
         errors.push('JWT_SECRET is required but not set.');
@@ -45,6 +58,8 @@ export function collectEnvironmentErrors(env: NodeJS.ProcessEnv): string[] {
     if (faceProvider === 'http') {
         const rawUrl = env.HR_FACE_PROVIDER_BASE_URL?.trim();
         const token = env.HR_FACE_PROVIDER_TOKEN?.trim();
+        const model = env.HR_FACE_PROVIDER_MODEL?.trim();
+        const version = env.HR_FACE_PROVIDER_VERSION?.trim();
         const timeout = Number(env.HR_FACE_PROVIDER_TIMEOUT_MS || 5000);
         if (!rawUrl) {
             errors.push('HR_FACE_PROVIDER_BASE_URL is required for the http face provider.');
@@ -73,6 +88,16 @@ export function collectEnvironmentErrors(env: NodeJS.ProcessEnv): string[] {
         if (!Number.isInteger(timeout) || timeout < 500 || timeout > 15000) {
             errors.push('HR_FACE_PROVIDER_TIMEOUT_MS must be between 500 and 15000.');
         }
+        if (isProduction && !model) {
+            errors.push('HR_FACE_PROVIDER_MODEL is required for the http face provider in production.');
+        } else if (model && !isValidOperationalIdentifier(model, 1, 100)) {
+            errors.push('HR_FACE_PROVIDER_MODEL must be a printable 1-100 character identifier.');
+        }
+        if (isProduction && !version) {
+            errors.push('HR_FACE_PROVIDER_VERSION is required for the http face provider in production.');
+        } else if (version && !isValidOperationalIdentifier(version, 1, 100)) {
+            errors.push('HR_FACE_PROVIDER_VERSION must be a printable 1-100 character identifier.');
+        }
     }
     if (faceProvider !== 'disabled') {
         const biometricKey = env.HR_BIOMETRIC_ENCRYPTION_KEY;
@@ -94,7 +119,23 @@ export function collectEnvironmentErrors(env: NodeJS.ProcessEnv): string[] {
         errors.push('PLATFORM_ADMIN_COMPANY_ID is required in multi tenancy mode.');
     }
 
+    if (storageDir && !path.isAbsolute(storageDir)) {
+        errors.push('STORAGE_DIR must be an absolute path when set.');
+    }
+    if (storageSharedId && !/^[A-Za-z0-9][A-Za-z0-9._-]{7,127}$/.test(storageSharedId)) {
+        errors.push('STORAGE_SHARED_ID must contain 8-128 alphanumeric, dot, dash or underscore characters.');
+    }
+    if (storageSharedId && !storageDir) {
+        errors.push('STORAGE_DIR is required when STORAGE_SHARED_ID is set.');
+    }
+
     if (isProduction) {
+        if (!storageDir) {
+            errors.push('STORAGE_DIR is required in production.');
+        }
+        if (!storageSharedId) {
+            errors.push('STORAGE_SHARED_ID is required in production.');
+        }
         if (!tenancyMode || !['single', 'multi'].includes(tenancyMode)) {
             errors.push('PLATFORM_TENANCY_MODE is required in production (single or multi).');
         }

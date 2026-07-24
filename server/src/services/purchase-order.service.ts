@@ -2,10 +2,26 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
 import { AuditLogService } from './audit-log.service';
+import { fileCleanupService } from './file-cleanup.service';
 
 type Tx = Prisma.TransactionClient;
 
 export class PurchaseOrderService {
+    private static invoiceStorageKey(invoiceUrl?: string | null): string | null {
+        const match = invoiceUrl?.match(/^\/uploads\/invoices\/(invoice-\d+-\d+\.(?:pdf|jpg|png|webp))$/i);
+        return match?.[1] ?? null;
+    }
+
+    private static async processInvoiceDeletion(companyId: number, storageKey: string | null): Promise<void> {
+        if (!storageKey) return;
+        await fileCleanupService.processByStorageKey(companyId, 'INVOICE', storageKey).catch((error) => {
+            console.error('[PurchaseOrderInvoice] Immediate cleanup dispatch failed; outbox retained', {
+                companyId,
+                errorType: error instanceof Error ? error.name : typeof error,
+            });
+        });
+    }
+
     private static roundMoney(value: number): number {
         return Math.round((value + Number.EPSILON) * 100) / 100;
     }
@@ -247,6 +263,15 @@ export class PurchaseOrderService {
                     status: 'DRAFT'
                 }
             });
+            const invoiceStorageKey = this.invoiceStorageKey(data.invoicePdf);
+            if (invoiceStorageKey) {
+                await fileCleanupService.cancelReservation(
+                    tx,
+                    companyId,
+                    'INVOICE',
+                    invoiceStorageKey,
+                );
+            }
 
             // Create order items with unit conversion
             for (const item of data.items) {
@@ -328,7 +353,8 @@ export class PurchaseOrderService {
             if (!supplier) throw new Error('Proveedor no encontrado para esta empresa');
         }
 
-        return await prisma.$transaction(async (tx: Tx) => {
+        let replacedInvoiceKey: string | null = null;
+        const updated = await prisma.$transaction(async (tx: Tx) => {
             await tx.$queryRaw`SELECT id FROM \`PurchaseOrder\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
             const existing = await tx.purchaseOrder.findFirst({ where: { id, companyId } });
             if (!existing) throw new Error('Purchase order not found');
@@ -382,6 +408,22 @@ export class PurchaseOrderService {
                 updateData.paymentStatus = 'PENDING';
             }
 
+            const newInvoiceKey = this.invoiceStorageKey(data.invoicePdf);
+            if (newInvoiceKey) {
+                await fileCleanupService.cancelReservation(tx, companyId, 'INVOICE', newInvoiceKey);
+            }
+            const previousInvoiceKey = this.invoiceStorageKey(existing.invoicePdf);
+            if (previousInvoiceKey && previousInvoiceKey !== newInvoiceKey && data.invoicePdf !== undefined) {
+                await fileCleanupService.requestDeletion(
+                    tx,
+                    companyId,
+                    'INVOICE',
+                    previousInvoiceKey,
+                    'PURCHASE_ORDER_INVOICE_REPLACED',
+                );
+                replacedInvoiceKey = previousInvoiceKey;
+            }
+
             return tx.purchaseOrder.update({
                 where: { id },
                 data: updateData,
@@ -392,14 +434,27 @@ export class PurchaseOrderService {
                 }
             });
         });
+        await this.processInvoiceDeletion(companyId, replacedInvoiceKey);
+        return updated;
     }
 
     static async delete(id: number, companyId: number) {
-        return await prisma.$transaction(async (tx: Tx) => {
+        let invoiceKey: string | null = null;
+        const deleted = await prisma.$transaction(async (tx: Tx) => {
             await tx.$queryRaw`SELECT id FROM \`PurchaseOrder\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
             const order = await tx.purchaseOrder.findFirst({ where: { id, companyId } });
             if (!order) throw new Error('Purchase order not found');
             if (order.status !== 'DRAFT') throw new Error('Can only delete draft purchase orders');
+            invoiceKey = this.invoiceStorageKey(order.invoicePdf);
+            if (invoiceKey) {
+                await fileCleanupService.requestDeletion(
+                    tx,
+                    companyId,
+                    'INVOICE',
+                    invoiceKey,
+                    'PURCHASE_ORDER_DELETED',
+                );
+            }
 
             // Delete items first
             await tx.purchaseOrderItem.deleteMany({
@@ -411,6 +466,8 @@ export class PurchaseOrderService {
                 where: { id }
             });
         });
+        await this.processInvoiceDeletion(companyId, invoiceKey);
+        return deleted;
     }
 
     // Receive purchase order (update inventory)
@@ -909,17 +966,17 @@ export class PurchaseOrderService {
                 where: { id },
                 data: { status: 'CANCELLED', paidAmount: 0, paymentStatus: 'PENDING' }
             });
-            return { updated, warehouseId: warehouseIds[0], products: quantityByProduct.size };
+            const result = { updated, warehouseId: warehouseIds[0], products: quantityByProduct.size };
+            await AuditLogService.log({
+                companyId,
+                userId,
+                entityType: 'PurchaseOrder',
+                entityId: id,
+                action: 'REVERSE_RECEIPT',
+                details: { reason, warehouseId: result.warehouseId, products: result.products }
+            }, tx);
+            return result;
         });
-
-        AuditLogService.log({
-            companyId,
-            userId,
-            entityType: 'PurchaseOrder',
-            entityId: id,
-            action: 'REVERSE_RECEIPT',
-            details: { reason, warehouseId: result.warehouseId, products: result.products }
-        }).catch((error) => console.error('[PurchaseOrderService] receipt reversal audit failed:', error));
 
         return result.updated;
     }
@@ -999,17 +1056,17 @@ export class PurchaseOrderService {
                 data: { paidAmount, paymentStatus }
             });
 
-            return { reversed, paidAmount, paymentStatus };
+            const result = { reversed, paidAmount, paymentStatus };
+            await AuditLogService.log({
+                companyId,
+                userId,
+                entityType: 'PurchaseOrderPayment',
+                entityId: paymentId,
+                action: 'REVERSE',
+                details: { purchaseOrderId, amount: result.reversed.amount, reason }
+            }, tx);
+            return result;
         });
-
-        AuditLogService.log({
-            companyId,
-            userId,
-            entityType: 'PurchaseOrderPayment',
-            entityId: paymentId,
-            action: 'REVERSE',
-            details: { purchaseOrderId, amount: result.reversed.amount, reason }
-        }).catch((error) => console.error('[PurchaseOrderService] payment reversal audit failed:', error));
 
         return result;
     }

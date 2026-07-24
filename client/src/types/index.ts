@@ -75,6 +75,58 @@ export interface TableGroupSummary {
   primaryTable: { id: number; number: string };
 }
 
+export interface ActiveTableConsolidation {
+  id: number;
+  branchId: number;
+  primaryOrderId: number;
+  destinationTableId: number;
+  status: 'ACTIVE';
+  version: number;
+  reason?: string | null;
+  createdAt: string;
+  affectedOrderIds: number[];
+  originalTableIds: number[];
+}
+
+export interface LegacyTableConsolidationReview {
+  id: number;
+  revision: number;
+  evidenceHash: string;
+  classification: string;
+  outcome: string;
+  note: string;
+  resolutionKey: string;
+  reviewedById: number;
+  reviewedAt: string;
+  evidenceChangedAfterReview: boolean;
+}
+
+export interface LegacyTableConsolidationCandidate {
+  candidateKey: string;
+  evidenceHash: string;
+  classification: 'NOT_REVERSIBLE' | 'AMBIGUOUS';
+  reversible: false;
+  branchId: number | null;
+  primaryOrderId: number | null;
+  absorbedOrderIds: number[];
+  auditLogId: number | null;
+  reasons: string[];
+  reviewHistoryCount: number;
+  currentEvidenceReviewed: boolean;
+  review: LegacyTableConsolidationReview | null;
+}
+
+export interface LegacyTableConsolidationInventory {
+  summary: {
+    reversible: 0;
+    notReversible: number;
+    ambiguous: number;
+    reviewed: number;
+    evidenceChangedAfterReview: number;
+  };
+  candidates: LegacyTableConsolidationCandidate[];
+}
+
 export interface Table {
   id: number;
   number: string;

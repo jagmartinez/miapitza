@@ -133,6 +133,10 @@ export interface HrTodayAttendance {
   timezone: string;
   policy: HrAttendancePolicy;
   targetBranch: HrNamedEntity | null;
+  locationRequirements: {
+    maxAccuracyM: number;
+    geofenceRadiusM: number | null;
+  } | null;
   availableActions: HrAttendanceAction[];
   punches: HrAttendancePunch[];
   blockingIssue: {

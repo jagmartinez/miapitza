@@ -42,6 +42,8 @@ class OfflineManager {
     private isOnline: boolean = navigator.onLine;
     private listeners: ((online: boolean) => void)[] = [];
     private syncInFlight: Promise<void> | null = null;
+    private retryTimer: ReturnType<typeof setTimeout> | null = null;
+    private retryScheduledAt: number | null = null;
 
     constructor() {
         window.addEventListener('online', () => this.handleStatusChange(true));
@@ -86,6 +88,7 @@ class OfflineManager {
             retryCount: 0,
             lastError: null,
             idempotencyKey: generateIdempotencyKey(),
+            nextAttemptAt: null,
         });
     }
 
@@ -146,6 +149,7 @@ class OfflineManager {
             status: 'pending',
             retryCount: 0,
             lastError: null,
+            nextAttemptAt: null,
         });
         await this.processSyncQueue();
     }
@@ -176,6 +180,48 @@ class OfflineManager {
             if (this.syncInFlight === run) this.syncInFlight = null;
         });
         return run;
+    }
+
+    private scheduleRetry(ownerKey: string, nextAttemptAt: number) {
+        if (!this.isOnline) return;
+        if (this.retryTimer && this.retryScheduledAt !== null && this.retryScheduledAt <= nextAttemptAt) {
+            return;
+        }
+        if (this.retryTimer) clearTimeout(this.retryTimer);
+
+        this.retryScheduledAt = nextAttemptAt;
+        this.retryTimer = setTimeout(() => {
+            this.retryTimer = null;
+            this.retryScheduledAt = null;
+            if (getCurrentOfflineOwnerKey() === ownerKey && this.isOnline) {
+                void this.processSyncQueue();
+            }
+        }, Math.max(0, nextAttemptAt - Date.now()));
+    }
+
+    private async failDependents(
+        ownerKey: string,
+        dependencyKey: string,
+        cause: string,
+        visited = new Set<string>(),
+    ): Promise<void> {
+        if (visited.has(dependencyKey)) return;
+        visited.add(dependencyKey);
+        const dependents = await db.syncQueue
+            .where('ownerKey').equals(ownerKey)
+            .filter((candidate) => candidate.dependencyKey === dependencyKey && candidate.status !== 'failed')
+            .toArray();
+
+        for (const dependent of dependents) {
+            await db.syncQueue.update(dependent.id!, {
+                status: 'failed',
+                nextAttemptAt: null,
+                lastError: `Dependencia fallida (${dependencyKey}): ${cause}`,
+            });
+            if (dependent.entityTempId) {
+                await this.failDependents(ownerKey, dependent.entityTempId, cause, visited);
+            }
+        }
     }
 
     private async runSyncQueue() {
@@ -217,17 +263,36 @@ class OfflineManager {
 
             // Check dependency resolution
             if (item.dependencyKey) {
-                const dependencyPending = await db.syncQueue
+                const dependencies = await db.syncQueue
                     .where('ownerKey').equals(ownerKey)
-                    .filter(candidate => candidate.entityTempId === item.dependencyKey && candidate.id !== item.id && candidate.status !== 'failed')
-                    .count();
+                    .filter(candidate => candidate.entityTempId === item.dependencyKey && candidate.id !== item.id)
+                    .toArray();
 
-                if (dependencyPending > 0) {
+                const failedDependency = dependencies.find((candidate) => candidate.status === 'failed');
+                if (failedDependency) {
+                    const cause = failedDependency.lastError || 'La operación previa no pudo sincronizarse';
+                    await db.syncQueue.update(item.id!, {
+                        status: 'failed',
+                        nextAttemptAt: null,
+                        lastError: `Dependencia fallida (${item.dependencyKey}): ${cause}`,
+                    });
+                    if (item.entityTempId) {
+                        await this.failDependents(ownerKey, item.entityTempId, cause);
+                    }
+                    continue;
+                }
+
+                if (dependencies.length > 0) {
                     if (item.status !== 'blocked') {
                         await db.syncQueue.update(item.id!, { status: 'blocked' });
                     }
                     continue;
                 }
+            }
+
+            if (item.nextAttemptAt && item.nextAttemptAt > Date.now()) {
+                this.scheduleRetry(ownerKey, item.nextAttemptAt);
+                continue;
             }
 
             if (item.status === 'blocked') {
@@ -258,24 +323,30 @@ class OfflineManager {
                 const isClientError = httpStatus && httpStatus >= 400 && httpStatus < 500 && httpStatus !== 408 && httpStatus !== 429;
 
                 if (retryCount >= MAX_RETRIES || isClientError) {
+                    const terminalError = isClientError ? `[${httpStatus}] ${lastError}` : lastError;
                     await db.syncQueue.update(item.id!, {
                         retryCount,
                         status: 'failed',
-                        lastError: isClientError ? `[${httpStatus}] ${lastError}` : lastError,
+                        lastError: terminalError,
+                        nextAttemptAt: null,
                     });
+                    if (item.entityTempId) {
+                        await this.failDependents(ownerKey, item.entityTempId, terminalError);
+                    }
                     // Continue processing other items instead of stopping
                     continue;
                 }
 
+                const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+                const nextAttemptAt = Date.now() + delay;
                 await db.syncQueue.update(item.id!, {
                     retryCount,
                     status: 'pending',
                     lastError,
+                    nextAttemptAt,
                 });
 
-                // Exponential backoff: wait before next retry
-                const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
-                await new Promise(resolve => setTimeout(resolve, delay));
+                this.scheduleRetry(ownerKey, nextAttemptAt);
             }
         }
     }

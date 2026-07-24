@@ -4,6 +4,10 @@ import { CateringService } from '../services/catering.service';
 import { getErrorMessage } from '../utils/error';
 import { resolveBranchScope, assertBranchAccess, isCompanyWide, BranchScopeError } from '../utils/branch-scope';
 import { CateringFiscalService } from '../services/catering-fiscal.service';
+import {
+    CateringContractService,
+    CateringContractValidationError,
+} from '../services/catering-contract.service';
 
 const CATERING_STATUSES: readonly CateringStatus[] = [
     'QUOTED',
@@ -142,6 +146,27 @@ export class CateringController {
         } catch (error: unknown) {
             if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
+    static async downloadContract(req: Request, res: Response, next: NextFunction) {
+        try {
+            const eventId = Number(req.params.id);
+            await CateringController.assertEventBranch(req, eventId);
+            const pdf = await CateringContractService.generateContractPdf(eventId, req.user!.companyId);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Cache-Control', 'private, no-store');
+            res.setHeader(
+                'Content-Disposition',
+                `attachment; filename="contrato-catering-EVT-${String(eventId).padStart(5, '0')}.pdf"`
+            );
+            res.send(pdf);
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            if (error instanceof CateringContractValidationError) {
+                return next({ statusCode: 409, message: error.message });
+            }
+            next({ statusCode: 500, message: getErrorMessage(error) });
         }
     }
 

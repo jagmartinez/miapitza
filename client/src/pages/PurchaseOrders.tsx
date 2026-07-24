@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { purchaseOrdersAPI, autoPurchaseOrdersAPI, branchesAPI, suppliersAPI } from '../services/api';
 import api from '../services/api';
@@ -9,6 +9,7 @@ import Select from '../components/Select';
 import Input from '../components/Input';
 import PurchaseOrderForm from './PurchaseOrderForm';
 import PurchaseOrderImport from '../components/PurchaseOrderImport';
+import LoadErrorState from '../components/LoadErrorState';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
@@ -16,6 +17,7 @@ import { getUserRoleNames } from '../utils/authz';
 import { Plus, Eye, Zap, X, ShoppingCart, FileDown, FileText, CreditCard, DollarSign, Info, Save, AlertTriangle, History, Undo2 } from 'lucide-react';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
+import { getIdempotentAttempt, type IdempotentAttempt } from '../utils/idempotency';
 import { BANK_OPTIONS, type StrOption } from '../constants/purchaseOrderOptions';
 import type { SingleValue } from 'react-select';
 import type { AutoPurchaseSuggestion, Branch, PurchaseOrder, PurchaseOrderPayment, Supplier } from '../types';
@@ -52,6 +54,7 @@ export default function PurchaseOrders() {
     const navigate = useNavigate();
     const [orders, setOrders] = useState<PurchaseOrder[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [statusFilter, setStatusFilter] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [showSuggestionsSidebar, setShowSuggestionsSidebar] = useState(false);
@@ -76,6 +79,9 @@ export default function PurchaseOrders() {
     const [reversalPaymentId, setReversalPaymentId] = useState<number | null>(null);
     const [reversalReason, setReversalReason] = useState('');
     const [reversingPayment, setReversingPayment] = useState(false);
+    const reverseReceiptAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const addPaymentAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const reversePaymentAttemptRef = useRef<IdempotentAttempt | null>(null);
     // Pagination and Filters state
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
@@ -103,12 +109,14 @@ export default function PurchaseOrders() {
     };
 
     const loadOrders = async () => {
+        setLoading(true);
         try {
             const res = await purchaseOrdersAPI.getAll();
             setOrders(Array.isArray(res.data.data) ? res.data.data : []);
+            setLoadError(null);
         } catch (error) {
             console.error('Error loading purchase orders:', error);
-            setOrders([]);
+            setLoadError('No se pudieron cargar las órdenes de compra. Se conserva la última información disponible y no se mostrará un estado vacío falso.');
         } finally {
             setLoading(false);
         }
@@ -340,7 +348,10 @@ export default function PurchaseOrders() {
         );
         if (!accepted) return;
         try {
-            await purchaseOrdersAPI.reverseReceipt(order.id, reason);
+            const attempt = getIdempotentAttempt(reverseReceiptAttemptRef.current, `reverse-receipt:${order.id}:${reason}`);
+            reverseReceiptAttemptRef.current = attempt;
+            await purchaseOrdersAPI.reverseReceipt(order.id, reason, attempt.key);
+            reverseReceiptAttemptRef.current = null;
             showSuccess('Recepción revertida correctamente');
             loadOrders();
         } catch (error: unknown) {
@@ -368,31 +379,40 @@ export default function PurchaseOrders() {
         if (!paymentModalOrder) return;
         const amount = parseFloat(paymentForm.amount);
         if (!amount || amount <= 0) { showError('El monto debe ser mayor a 0'); return; }
+        const paymentData = {
+            amount,
+            date: paymentForm.date,
+            bank: paymentForm.bank || undefined,
+            referenceNumber: paymentForm.referenceNumber || undefined,
+            observations: paymentForm.observations || undefined
+        };
+        const fingerprint = `add-payment:${paymentModalOrder.id}:${JSON.stringify(paymentData)}`;
+        const attempt = getIdempotentAttempt(addPaymentAttemptRef.current, fingerprint);
+        addPaymentAttemptRef.current = attempt;
         setSavingPayment(true);
         try {
-            await purchaseOrdersAPI.addPayment(paymentModalOrder.id, {
-                amount,
-                date: paymentForm.date,
-                bank: paymentForm.bank || undefined,
-                referenceNumber: paymentForm.referenceNumber || undefined,
-                observations: paymentForm.observations || undefined
-            });
+            await purchaseOrdersAPI.addPayment(paymentModalOrder.id, paymentData, attempt.key);
+            addPaymentAttemptRef.current = null;
             showSuccess('Pago registrado correctamente.');
-            const [paymentsRes, orderRes] = await Promise.all([
-                purchaseOrdersAPI.getPayments(paymentModalOrder.id),
-                purchaseOrdersAPI.getById(paymentModalOrder.id),
-            ]);
-            const updatedOrder = orderRes.data.data as PurchaseOrder;
-            setPaymentModalOrder(updatedOrder);
-            setPaymentHistory(Array.isArray(paymentsRes.data.data) ? paymentsRes.data.data : []);
-            const balance = Number(updatedOrder.total) - Number(updatedOrder.paidAmount || 0);
-            setPaymentForm((prev) => ({
-                ...prev,
-                amount: balance > 0 ? balance.toFixed(2) : '',
-                bank: '',
-                referenceNumber: '',
-                observations: '',
-            }));
+            try {
+                const [paymentsRes, orderRes] = await Promise.all([
+                    purchaseOrdersAPI.getPayments(paymentModalOrder.id),
+                    purchaseOrdersAPI.getById(paymentModalOrder.id),
+                ]);
+                const updatedOrder = orderRes.data.data as PurchaseOrder;
+                setPaymentModalOrder(updatedOrder);
+                setPaymentHistory(Array.isArray(paymentsRes.data.data) ? paymentsRes.data.data : []);
+                const balance = Number(updatedOrder.total) - Number(updatedOrder.paidAmount || 0);
+                setPaymentForm((prev) => ({
+                    ...prev,
+                    amount: balance > 0 ? balance.toFixed(2) : '',
+                    bank: '',
+                    referenceNumber: '',
+                    observations: '',
+                }));
+            } catch {
+                showWarning('El pago fue registrado, pero no se pudo actualizar el detalle. Recarga antes de registrar otro abono.');
+            }
             loadOrders();
         } catch (error: unknown) {
             showError(errMsg(error, 'Error al registrar pago'));
@@ -416,13 +436,23 @@ export default function PurchaseOrders() {
 
         setReversingPayment(true);
         try {
-            await purchaseOrdersAPI.reversePayment(paymentModalOrder.id, payment.id, reason);
-            const [paymentsRes, orderRes] = await Promise.all([
-                purchaseOrdersAPI.getPayments(paymentModalOrder.id),
-                purchaseOrdersAPI.getById(paymentModalOrder.id),
-            ]);
-            setPaymentModalOrder(orderRes.data.data as PurchaseOrder);
-            setPaymentHistory(Array.isArray(paymentsRes.data.data) ? paymentsRes.data.data : []);
+            const attempt = getIdempotentAttempt(
+                reversePaymentAttemptRef.current,
+                `reverse-payment:${paymentModalOrder.id}:${payment.id}:${reason}`,
+            );
+            reversePaymentAttemptRef.current = attempt;
+            await purchaseOrdersAPI.reversePayment(paymentModalOrder.id, payment.id, reason, attempt.key);
+            reversePaymentAttemptRef.current = null;
+            try {
+                const [paymentsRes, orderRes] = await Promise.all([
+                    purchaseOrdersAPI.getPayments(paymentModalOrder.id),
+                    purchaseOrdersAPI.getById(paymentModalOrder.id),
+                ]);
+                setPaymentModalOrder(orderRes.data.data as PurchaseOrder);
+                setPaymentHistory(Array.isArray(paymentsRes.data.data) ? paymentsRes.data.data : []);
+            } catch {
+                showWarning('El reverso fue aplicado, pero no se pudo actualizar el historial. Recarga la orden para conciliarlo.');
+            }
             setReversalPaymentId(null);
             setReversalReason('');
             showSuccess('Pago revertido correctamente');
@@ -457,6 +487,7 @@ export default function PurchaseOrders() {
 
     return (
         <div className="inventory-page purchase-orders-page">
+            {loadError && <LoadErrorState message={loadError} onRetry={() => { void loadOrders(); }} retrying={loading} />}
             <div className="inventory-header-new">
                 <div className="header-title-section">
                     <h1><ShoppingCart size={32} /> Órdenes de Compra</h1>

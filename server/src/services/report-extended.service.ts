@@ -196,7 +196,7 @@ export class ReportExtendedService {
             if (!inWindow) continue;
             const value = movement.totalCost == null ? null : Number(movement.totalCost);
             if (value == null || !Number.isFinite(value) || value < 0) {
-                throw new Error(`El movimiento ORD ${movement.id} no tiene costo histÃ³rico Ã­ntegro; requiere remediaciÃ³n antes de reportar`);
+                throw new Error(`El movimiento ORD ${movement.id} no tiene costo histórico íntegro; requiere remediación antes de reportar`);
             }
             const signed = movement.type === 'OUT' ? value : -value;
             periodByOrderId.set(orderId, (periodByOrderId.get(orderId) || 0) + signed);
@@ -739,7 +739,7 @@ export class ReportExtendedService {
         }
         for (const credit of credits) {
             for (const line of credit.lines) {
-                const brandName = line.orderItem.menuItem.brand?.name || 'Sin Marca (ComÃºn)';
+                const brandName = line.orderItem.menuItem.brand?.name || 'Sin Marca (Común)';
                 if (!brandMap[brandName]) brandMap[brandName] = { brandName, totalSales: 0, itemCount: 0, unitsSold: 0 };
                 brandMap[brandName].totalSales -= Number(line.grossSubtotal);
                 brandMap[brandName].unitsSold -= line.quantity;

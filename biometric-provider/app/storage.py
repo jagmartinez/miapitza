@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -32,6 +33,12 @@ class FaceTemplate(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+@dataclass(frozen=True, slots=True)
+class LoadedTemplate:
+    embedding: np.ndarray
+    model_name: str
 
 
 class TemplateStore:
@@ -99,7 +106,9 @@ class TemplateStore:
             existing = session.scalar(select(FaceTemplate).where(FaceTemplate.challenge_hash == challenge_hash))
             if existing:
                 if existing.tenant_hash != tenant_hash or existing.subject_hash != subject_hash:
-                    raise BiometricError("CHALLENGE_CONFLICT", "El reto ya pertenece a otra identidad", status_code=409, retryable=False)
+                    raise BiometricError(
+                        "CHALLENGE_CONFLICT", "El reto ya pertenece a otra identidad", status_code=409, retryable=False
+                    )
                 if existing.enrollment_fingerprint_hash != fingerprint_hash:
                     raise BiometricError(
                         "CHALLENGE_IDEMPOTENCY_MISMATCH",
@@ -108,7 +117,16 @@ class TemplateStore:
                         retryable=False,
                     )
                 if not existing.active:
-                    raise BiometricError("TEMPLATE_REVOKED", "La plantilla idempotente ya fue revocada", status_code=409, retryable=False)
+                    raise BiometricError(
+                        "TEMPLATE_REVOKED", "La plantilla idempotente ya fue revocada", status_code=409, retryable=False
+                    )
+                if existing.model_name != model_name:
+                    raise BiometricError(
+                        "TEMPLATE_MODEL_MISMATCH",
+                        "La plantilla idempotente pertenece a otro modelo; use un reto nuevo",
+                        status_code=409,
+                        retryable=False,
+                    )
                 return existing.public_ref
             public_ref = str(uuid4())
             encrypted = self._cipher.encrypt(public_ref, model_name, embedding)
@@ -140,17 +158,35 @@ class TemplateStore:
                             status_code=409,
                             retryable=False,
                         ) from exc
+                    if raced.model_name != model_name:
+                        raise BiometricError(
+                            "TEMPLATE_MODEL_MISMATCH",
+                            "La plantilla idempotente pertenece a otro modelo; use un reto nuevo",
+                            status_code=409,
+                            retryable=False,
+                        ) from exc
                     if raced.active:
                         return raced.public_ref
-                raise BiometricError("ENROLLMENT_CONFLICT", "El enrolamiento cambio concurrentemente", status_code=409) from exc
+                raise BiometricError(
+                    "ENROLLMENT_CONFLICT", "El enrolamiento cambio concurrentemente", status_code=409
+                ) from exc
             return public_ref
 
     def load(self, *, template_ref: str, tenant_ref: str, subject_ref: str) -> np.ndarray:
+        return self.load_record(
+            template_ref=template_ref,
+            tenant_ref=tenant_ref,
+            subject_ref=subject_ref,
+        ).embedding
+
+    def load_record(self, *, template_ref: str, tenant_ref: str, subject_ref: str) -> LoadedTemplate:
         tenant_hash, subject_hash = self._hashes(tenant_ref, subject_ref)
         with Session(self._engine) as session:
             item = session.scalar(select(FaceTemplate).where(FaceTemplate.public_ref == template_ref))
             if not item or item.tenant_hash != tenant_hash or item.subject_hash != subject_hash:
-                raise BiometricError("TEMPLATE_NOT_FOUND", "Plantilla no encontrada para la identidad", status_code=404, retryable=False)
+                raise BiometricError(
+                    "TEMPLATE_NOT_FOUND", "Plantilla no encontrada para la identidad", status_code=404, retryable=False
+                )
             now = datetime.now(UTC)
             expires_at = item.expires_at.replace(tzinfo=UTC) if item.expires_at.tzinfo is None else item.expires_at
             if not item.active or item.revoked_at is not None:
@@ -160,7 +196,10 @@ class TemplateStore:
                 item.revoked_at = now
                 session.commit()
                 raise BiometricError("TEMPLATE_EXPIRED", "La plantilla expiro", status_code=410, retryable=False)
-            return self._cipher.decrypt(item.public_ref, item.model_name, item.encrypted_embedding)
+            return LoadedTemplate(
+                embedding=self._cipher.decrypt(item.public_ref, item.model_name, item.encrypted_embedding),
+                model_name=item.model_name,
+            )
 
     def revoke(self, *, template_ref: str, tenant_ref: str, subject_ref: str) -> bool:
         tenant_hash, subject_hash = self._hashes(tenant_ref, subject_ref)

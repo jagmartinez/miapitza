@@ -38,7 +38,7 @@ import cateringRoutes from './routes/catering.routes';
 import categoryRoutes from './routes/category.routes';
 import menuBrandRoutes from './routes/menu-brand.routes';
 import { errorHandler } from './middlewares/errorHandler';
-import { idempotency } from './middlewares/idempotency';
+import { idempotency, preAuthenticateIdempotentRequest } from './middlewares/idempotency';
 import { csrfProtection } from './middlewares/csrf';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './utils/swagger';
@@ -99,6 +99,7 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use('/api', csrfProtection);
 
 // Idempotency — deduplicates POST/PUT/PATCH with X-Idempotency-Key header
+app.use('/api', preAuthenticateIdempotentRequest);
 app.use('/api', idempotency);
 
 // Protect uploads with authentication — require valid JWT to access uploaded files

@@ -93,6 +93,8 @@ describe('Order API Integration Tests', () => {
             await prisma.order.deleteMany({ where: { id: createdOrderId } });
         }
 
+        await prisma.userSession.deleteMany({ where: { userId: testUserId } });
+        await prisma.auditLog.deleteMany({ where: { userId: testUserId } });
         await prisma.user.deleteMany({ where: { id: testUserId } });
         await prisma.role.deleteMany({ where: { id: adminRoleId } });
         await prisma.branch.deleteMany({ where: { id: testBranchId } });

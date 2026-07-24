@@ -10,6 +10,7 @@ import {
     HrEmploymentContractService,
     type HrDocumentStorage,
 } from '../../services/hr-employment-records.service';
+import { fileCleanupService } from '../../services/file-cleanup.service';
 
 function employee(overrides: Record<string, unknown> = {}) {
     return {
@@ -94,6 +95,52 @@ describe('HR employment records and document custody', () => {
         expect(result).toEqual(expect.objectContaining({ examined: 1, newlyExpired: 0, purged: 1, failures: [] }));
         expect(storage.deleted).toEqual(['4/7/file.pdf']);
         expect(update).not.toHaveBeenCalled();
+    });
+
+    it('commits filesystem revocation and its cleanup task atomically before dispatch', async () => {
+        jest.spyOn(prisma.employee, 'findFirst').mockResolvedValue(employee() as never);
+        const storageKey = '4/7/00000000-0000-0000-0000-000000000031.pdf';
+        jest.spyOn(prisma.employeeDocument, 'findFirst').mockResolvedValue({
+            id: 31,
+            companyId: 4,
+            employeeId: 7,
+            storageKey,
+            status: 'ACTIVE',
+            contentHash: 'a'.repeat(64),
+        } as never);
+        const tx = {
+            employeeDocument: {
+                updateMany: jest.fn().mockResolvedValue({ count: 1 } as never),
+            },
+            auditLog: { create: jest.fn().mockResolvedValue({ id: 1 } as never) },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as never,
+        );
+        const enqueue = jest.spyOn(fileCleanupService, 'requestDeletion').mockResolvedValue();
+        const dispatch = jest.spyOn(fileCleanupService, 'processByStorageKey').mockResolvedValue(false);
+        const storage = memoryStorage(Buffer.from('%PDF-old'));
+        Object.defineProperty(storage, 'provider', { value: 'filesystem' });
+
+        await expect(HrEmployeeDocumentService.revoke(
+            4,
+            7,
+            31,
+            3,
+            'Documento sustituido',
+            undefined,
+            storage,
+        )).resolves.toEqual({ id: 31, status: 'REVOKED' });
+
+        expect(storage.deleted).toEqual([]);
+        expect(enqueue).toHaveBeenCalledWith(
+            tx as never,
+            4,
+            'HR_DOCUMENT',
+            storageKey,
+            'DOCUMENT_REVOKED',
+        );
+        expect(dispatch.mock.invocationCallOrder[0]).toBeGreaterThan(enqueue.mock.invocationCallOrder[0]);
     });
 
     it('serializes and closes the previous compensation before appending the next version', async () => {

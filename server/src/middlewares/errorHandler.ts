@@ -59,6 +59,10 @@ function isSafeMessage(msg: string): boolean {
         'La orden tiene pagos existentes',
         'Estado de orden inválido',
         'Solo órdenes con estado',
+        'La referencia ',
+        'Campos no permitidos en movimiento manual',
+        'La fecha del documento ',
+        'Tipo de documento inválido',
         // Legacy English prefixes for service-layer errors not yet translated
         'Amount exceeds',
         'Remaining:',

@@ -29,6 +29,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
+import { activateOnKeyboard } from '../utils/keyboardActivation';
 import './Users.css';
 
 function toApiPayload(payload: UserSavePayload): Record<string, unknown> {
@@ -469,7 +470,7 @@ export default function Users() {
                             ? user.userRoles.map(ur => ur.role.name)
                             : [user.role?.name || ''];
                         return (
-                        <div key={user.id} className="user-card" onClick={() => handleOpenSidebar(user)}>
+                        <div key={user.id} className="user-card" role="button" tabIndex={0} aria-label={`Editar usuario ${user.name}`} onClick={() => handleOpenSidebar(user)} onKeyDown={(event) => activateOnKeyboard(event, () => handleOpenSidebar(user))}>
                             {/* Role Badges */}
                             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', position: 'absolute', top: '12px', right: '12px', zIndex: 1 }}>
                                 {userAllRoles.map((rn, i) => (

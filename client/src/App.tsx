@@ -13,8 +13,9 @@ import { ThemeProvider } from './context/ThemeContext';
 import './pages/hr/hr-ui.css';
 import { LanguageProvider } from './context/LanguageContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { getUserRoleNames } from './utils/authz';
+import { getUserRoleNames, hasPermission } from './utils/authz';
 import {
+    ROLES,
     ADMIN,
     PLATFORM_ADMIN,
     OPS,
@@ -28,19 +29,24 @@ import {
 } from './constants/roles';
 
 /** Route guard: redirects to /dashboard if none of the user's roles are in the allowed list */
-function RoleGuard({ roles, children }: { roles: string[]; children: React.ReactNode }) {
+function RoleGuard({ roles, permission, children }: { roles: string[]; permission?: string; children: React.ReactNode }) {
     const { user } = useAuth();
     if (!user) return <Navigate to="/dashboard" replace />;
     const userRoleNames = getUserRoleNames(user);
-    const hasAccess = userRoleNames.some(rn => roles.includes(rn));
+    const hasAccess = permission
+        ? hasPermission(user, permission, roles)
+        : userRoleNames.some(rn => roles.includes(rn));
     if (!hasAccess) return <Navigate to="/dashboard" replace />;
     return <>{children}</>;
 }
 
 /** Self-service is only meaningful for users with a persisted employee profile. */
-function InternalEmployeeGuard({ children }: { children: React.ReactNode }) {
+function InternalEmployeeGuard({ permission, children }: { permission?: string; children: React.ReactNode }) {
     const { user } = useAuth();
     if (!user || user.accountType !== 'INTERNAL' || !user.employeeId) {
+        return <Navigate to="/dashboard" replace />;
+    }
+    if (permission && !hasPermission(user, permission, Object.values(ROLES))) {
         return <Navigate to="/dashboard" replace />;
     }
     return <>{children}</>;
@@ -110,7 +116,7 @@ function App() {
             <LanguageProvider>
                 <AuthProvider>
                     <CurrencyProvider>
-                    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+                    <BrowserRouter>
                       <Suspense fallback={<LoadingSpinner />}>
                         <Routes>
                             <Route path="/login" element={<Login />} />
@@ -125,67 +131,67 @@ function App() {
                                 <Route path="/dashboard" element={<Dashboard />} />
                                 <Route path="/profile" element={<Profile />} />
                                 <Route path="/rh/mi-portal" element={<InternalEmployeeGuard><Navigate to="/profile?tab=hr" replace /></InternalEmployeeGuard>} />
-                                <Route path="/rh/mi-portal/horario" element={<InternalEmployeeGuard><MySchedule /></InternalEmployeeGuard>} />
-                                <Route path="/rh/marcaje" element={<InternalEmployeeGuard><TimeClock /></InternalEmployeeGuard>} />
-                                <Route path="/rh/biometria" element={<InternalEmployeeGuard><Biometrics /></InternalEmployeeGuard>} />
+                                <Route path="/rh/mi-portal/horario" element={<InternalEmployeeGuard permission="hr.schedule.self"><MySchedule /></InternalEmployeeGuard>} />
+                                <Route path="/rh/marcaje" element={<InternalEmployeeGuard permission="hr.attendance.self"><TimeClock /></InternalEmployeeGuard>} />
+                                <Route path="/rh/biometria" element={<InternalEmployeeGuard permission="hr.biometric.self"><Biometrics /></InternalEmployeeGuard>} />
                                 <Route path="/rh/mi-portal/biometria" element={<Navigate to="/rh/biometria" replace />} />
-                                <Route path="/rh/mi-portal/gestion" element={<InternalEmployeeGuard><MyWorkforce /></InternalEmployeeGuard>} />
-                                <Route path="/rh/mi-portal/nomina" element={<InternalEmployeeGuard><MyPayroll /></InternalEmployeeGuard>} />
-                                <Route path="/rh/mi-portal/prestaciones" element={<InternalEmployeeGuard><MyBenefits /></InternalEmployeeGuard>} />
+                                <Route path="/rh/mi-portal/gestion" element={<InternalEmployeeGuard permission="hr.workforce.self"><MyWorkforce /></InternalEmployeeGuard>} />
+                                <Route path="/rh/mi-portal/nomina" element={<InternalEmployeeGuard permission="hr.payroll.self"><MyPayroll /></InternalEmployeeGuard>} />
+                                <Route path="/rh/mi-portal/prestaciones" element={<InternalEmployeeGuard permission="hr.benefits.self"><MyBenefits /></InternalEmployeeGuard>} />
                                 <Route path="/manual" element={<Navigate to="/manual-usuario.html" replace />} />
 
                                 {/* Human Resources – Owner administration + authenticated self-service */}
-                                <Route path="/rh" element={<RoleGuard roles={HR_OWNER}><HrDashboard /></RoleGuard>} />
-                                <Route path="/rh/personal" element={<RoleGuard roles={HR_OWNER}><Employees /></RoleGuard>} />
-                                <Route path="/rh/personal/:employeeId" element={<RoleGuard roles={HR_OWNER}><EmployeeDetail /></RoleGuard>} />
-                                <Route path="/rh/horarios" element={<RoleGuard roles={HR_OWNER}><Schedules /></RoleGuard>} />
-                                <Route path="/rh/asistencia" element={<RoleGuard roles={HR_OWNER}><AttendanceReview /></RoleGuard>} />
-                                <Route path="/rh/asistencia/configuracion" element={<RoleGuard roles={HR_OWNER}><AttendanceSettings /></RoleGuard>} />
-                                <Route path="/rh/jornadas" element={<RoleGuard roles={HR_OWNER}><AttendanceManagement /></RoleGuard>} />
-                                <Route path="/rh/ausencias" element={<RoleGuard roles={HR_OWNER}><LeaveManagement /></RoleGuard>} />
-                                <Route path="/rh/nomina" element={<RoleGuard roles={HR_OWNER}><PayrollManagement /></RoleGuard>} />
-                                <Route path="/rh/nomina/configuracion-legal" element={<RoleGuard roles={HR_OWNER}><PayrollLegalSettings /></RoleGuard>} />
-                                <Route path="/rh/prestaciones" element={<RoleGuard roles={HR_OWNER}><BenefitsManagement /></RoleGuard>} />
+                                <Route path="/rh" element={<RoleGuard roles={HR_OWNER} permission="hr.dashboard.read"><HrDashboard /></RoleGuard>} />
+                                <Route path="/rh/personal" element={<RoleGuard roles={HR_OWNER} permission="hr.employee.read"><Employees /></RoleGuard>} />
+                                <Route path="/rh/personal/:employeeId" element={<RoleGuard roles={HR_OWNER} permission="hr.employee.read"><EmployeeDetail /></RoleGuard>} />
+                                <Route path="/rh/horarios" element={<RoleGuard roles={HR_OWNER} permission="hr.schedule.read"><Schedules /></RoleGuard>} />
+                                <Route path="/rh/asistencia" element={<RoleGuard roles={HR_OWNER} permission="hr.attendance.review"><AttendanceReview /></RoleGuard>} />
+                                <Route path="/rh/asistencia/configuracion" element={<RoleGuard roles={HR_OWNER} permission="hr.attendance.manage"><AttendanceSettings /></RoleGuard>} />
+                                <Route path="/rh/jornadas" element={<RoleGuard roles={HR_OWNER} permission="hr.workforce.read"><AttendanceManagement /></RoleGuard>} />
+                                <Route path="/rh/ausencias" element={<RoleGuard roles={HR_OWNER} permission="hr.workforce.read"><LeaveManagement /></RoleGuard>} />
+                                <Route path="/rh/nomina" element={<RoleGuard roles={HR_OWNER} permission="hr.payroll.read"><PayrollManagement /></RoleGuard>} />
+                                <Route path="/rh/nomina/configuracion-legal" element={<RoleGuard roles={HR_OWNER} permission="hr.payroll.manage"><PayrollLegalSettings /></RoleGuard>} />
+                                <Route path="/rh/prestaciones" element={<RoleGuard roles={HR_OWNER} permission="hr.benefits.read"><BenefitsManagement /></RoleGuard>} />
 
                                 {/* Operations – role-restricted */}
                                 <Route path="/pos" element={<Navigate to="/tables" replace />} />
-                                <Route path="/tables" element={<RoleGuard roles={WAITER_TABLE}><Tables /></RoleGuard>} />
-                                <Route path="/kitchen" element={<RoleGuard roles={KITCHEN_ROLES}><Kitchen /></RoleGuard>} />
-                                <Route path="/kds" element={<RoleGuard roles={KITCHEN_ROLES}><Kitchen displayMode /></RoleGuard>} />
-                                <Route path="/orders" element={<RoleGuard roles={OPS}><Orders /></RoleGuard>} />
+                                <Route path="/tables" element={<RoleGuard roles={WAITER_TABLE} permission="tables.map.view"><Tables /></RoleGuard>} />
+                                <Route path="/kitchen" element={<RoleGuard roles={KITCHEN_ROLES} permission="kds.view"><Kitchen /></RoleGuard>} />
+                                <Route path="/kds" element={<RoleGuard roles={KITCHEN_ROLES} permission="kds.view"><Kitchen displayMode /></RoleGuard>} />
+                                <Route path="/orders" element={<RoleGuard roles={OPS} permission="orders.view"><Orders /></RoleGuard>} />
                                 <Route path="/reservations" element={<RoleGuard roles={HOST_ROLES}><Reservations /></RoleGuard>} />
                                 <Route path="/cash-registers" element={<RoleGuard roles={CASHIER}><CashRegisters /></RoleGuard>} />
                                 <Route path="/cash-shifts/:id" element={<RoleGuard roles={CASHIER}><CashShiftPage /></RoleGuard>} />
-                                <Route path="/invoices" element={<RoleGuard roles={CASHIER}><InvoiceHistory /></RoleGuard>} />
+                                <Route path="/invoices" element={<RoleGuard roles={CASHIER} permission="invoices.view"><InvoiceHistory /></RoleGuard>} />
 
                                 {/* Management – admin + chef */}
-                                <Route path="/menu" element={<RoleGuard roles={CHEF_MGMT}><Menu /></RoleGuard>} />
+                                <Route path="/menu" element={<RoleGuard roles={CHEF_MGMT} permission="view_menu"><Menu /></RoleGuard>} />
                                 <Route path="/catering" element={<RoleGuard roles={CASHIER}><Catering /></RoleGuard>} />
                                 <Route path="/catering-services" element={<RoleGuard roles={CASHIER}><CateringServices /></RoleGuard>} />
-                                <Route path="/categories" element={<RoleGuard roles={CHEF_MGMT}><Categories /></RoleGuard>} />
-                                <Route path="/menu-brands" element={<RoleGuard roles={CHEF_MGMT}><Brands /></RoleGuard>} />
+                                <Route path="/categories" element={<RoleGuard roles={CHEF_MGMT} permission="view_menu"><Categories /></RoleGuard>} />
+                                <Route path="/menu-brands" element={<RoleGuard roles={CHEF_MGMT} permission="view_menu"><Brands /></RoleGuard>} />
                                 <Route path="/promotions" element={<RoleGuard roles={ADMIN}><Promotions /></RoleGuard>} />
-                                <Route path="/inventory" element={<RoleGuard roles={WAREHOUSE}><Inventory /></RoleGuard>} />
-                                <Route path="/production-dashboard" element={<RoleGuard roles={WAREHOUSE}><ProductionDashboard /></RoleGuard>} />
-                                <Route path="/production-recipes" element={<RoleGuard roles={WAREHOUSE}><ProductionRecipes /></RoleGuard>} />
-                                <Route path="/production-orders" element={<RoleGuard roles={WAREHOUSE}><ProductionOrders /></RoleGuard>} />
-                                <Route path="/units-of-measure" element={<RoleGuard roles={WAREHOUSE}><UnitsOfMeasure /></RoleGuard>} />
-                                <Route path="/inventory/:productId/units" element={<RoleGuard roles={WAREHOUSE}><ProductUnitSettings /></RoleGuard>} />
-                                <Route path="/kardex" element={<RoleGuard roles={WAREHOUSE}><Kardex /></RoleGuard>} />
-                                <Route path="/suppliers" element={<RoleGuard roles={WAREHOUSE}><Suppliers /></RoleGuard>} />
-                                <Route path="/purchase-orders" element={<RoleGuard roles={WAREHOUSE}><PurchaseOrders /></RoleGuard>} />
-                                <Route path="/purchase-orders/new" element={<RoleGuard roles={WAREHOUSE}><PurchaseOrderForm /></RoleGuard>} />
-                                <Route path="/purchase-orders/:id" element={<RoleGuard roles={WAREHOUSE}><PurchaseOrderForm /></RoleGuard>} />
-                                <Route path="/warehouses" element={<RoleGuard roles={WAREHOUSE}><WarehousesPage /></RoleGuard>} />
-                                <Route path="/cost-report" element={<RoleGuard roles={ADMIN}><CostReport /></RoleGuard>} />
-                                <Route path="/reporteria" element={<RoleGuard roles={ADMIN}><Reports /></RoleGuard>} />
-                                <Route path="/reporteria/:reportId" element={<RoleGuard roles={ADMIN}><Reports /></RoleGuard>} />
-                                <Route path="/users" element={<RoleGuard roles={ADMIN}><Users /></RoleGuard>} />
-                                <Route path="/waste-report" element={<RoleGuard roles={ADMIN}><WasteReport /></RoleGuard>} />
-                                <Route path="/bank-reconciliation" element={<RoleGuard roles={ADMIN}><BankReconciliation /></RoleGuard>} />
+                                <Route path="/inventory" element={<RoleGuard roles={WAREHOUSE} permission="view_inventory"><Inventory /></RoleGuard>} />
+                                <Route path="/production-dashboard" element={<RoleGuard roles={WAREHOUSE} permission="view_inventory"><ProductionDashboard /></RoleGuard>} />
+                                <Route path="/production-recipes" element={<RoleGuard roles={WAREHOUSE} permission="view_inventory"><ProductionRecipes /></RoleGuard>} />
+                                <Route path="/production-orders" element={<RoleGuard roles={WAREHOUSE} permission="view_inventory"><ProductionOrders /></RoleGuard>} />
+                                <Route path="/units-of-measure" element={<RoleGuard roles={WAREHOUSE} permission="view_inventory"><UnitsOfMeasure /></RoleGuard>} />
+                                <Route path="/inventory/:productId/units" element={<RoleGuard roles={WAREHOUSE} permission="view_inventory"><ProductUnitSettings /></RoleGuard>} />
+                                <Route path="/kardex" element={<RoleGuard roles={WAREHOUSE} permission="view_inventory"><Kardex /></RoleGuard>} />
+                                <Route path="/suppliers" element={<RoleGuard roles={WAREHOUSE} permission="view_inventory"><Suppliers /></RoleGuard>} />
+                                <Route path="/purchase-orders" element={<RoleGuard roles={WAREHOUSE} permission="view_inventory"><PurchaseOrders /></RoleGuard>} />
+                                <Route path="/purchase-orders/new" element={<RoleGuard roles={WAREHOUSE} permission="view_inventory"><PurchaseOrderForm /></RoleGuard>} />
+                                <Route path="/purchase-orders/:id" element={<RoleGuard roles={WAREHOUSE} permission="view_inventory"><PurchaseOrderForm /></RoleGuard>} />
+                                <Route path="/warehouses" element={<RoleGuard roles={WAREHOUSE} permission="view_inventory"><WarehousesPage /></RoleGuard>} />
+                                <Route path="/cost-report" element={<RoleGuard roles={ADMIN} permission="view_reports"><CostReport /></RoleGuard>} />
+                                <Route path="/reporteria" element={<RoleGuard roles={ADMIN} permission="view_reports"><Reports /></RoleGuard>} />
+                                <Route path="/reporteria/:reportId" element={<RoleGuard roles={ADMIN} permission="view_reports"><Reports /></RoleGuard>} />
+                                <Route path="/users" element={<RoleGuard roles={ADMIN} permission="view_users"><Users /></RoleGuard>} />
+                                <Route path="/waste-report" element={<RoleGuard roles={ADMIN} permission="view_reports"><WasteReport /></RoleGuard>} />
+                                <Route path="/bank-reconciliation" element={<RoleGuard roles={ADMIN} permission="view_reports"><BankReconciliation /></RoleGuard>} />
 
                                 {/* Configuration – admin/superadmin */}
-                                <Route path="/branches" element={<RoleGuard roles={ADMIN}><Branches /></RoleGuard>} />
+                                <Route path="/branches" element={<RoleGuard roles={ADMIN} permission="view_branches"><Branches /></RoleGuard>} />
                                 <Route path="/integraciones/pedidosya" element={<RoleGuard roles={ADMIN}><PedidosYaIntegration /></RoleGuard>} />
                                 <Route path="/settings" element={<RoleGuard roles={ADMIN}><Settings /></RoleGuard>} />
                                 <Route path="/roles-permissions" element={<RoleGuard roles={ADMIN}><RolesPermissions /></RoleGuard>} />

@@ -7,6 +7,31 @@ import fs from 'fs';
 import { getUploadsDir } from '../utils/storage';
 
 export class PurchaseOrderController {
+    private static invoicePath(invoiceUrl?: string | null): string | null {
+        if (!invoiceUrl?.startsWith('/uploads/invoices/')) return null;
+        const filename = path.basename(invoiceUrl);
+        if (!/^invoice-\d+-\d+\.(pdf|jpg|png|webp)$/i.test(filename)) return null;
+        const root = path.resolve(getUploadsDir('invoices'));
+        const resolved = path.resolve(root, filename);
+        return resolved.startsWith(`${root}${path.sep}`) ? resolved : null;
+    }
+
+    private static async removeInvoiceFile(invoiceUrl?: string | null, context = 'cleanup'): Promise<void> {
+        const filePath = PurchaseOrderController.invoicePath(invoiceUrl);
+        if (!filePath) return;
+        try {
+            await fs.promises.unlink(filePath);
+        } catch (error) {
+            const code = (error as NodeJS.ErrnoException).code;
+            if (code !== 'ENOENT') {
+                console.error('[PurchaseOrderInvoice] File cleanup failed', {
+                    context,
+                    filename: path.basename(filePath),
+                    code,
+                });
+            }
+        }
+    }
 
     /** Load a purchase order and assert the caller's branch may access it. */
     private static async assertOrderBranch(req: Request, orderId: number) {
@@ -82,7 +107,7 @@ export class PurchaseOrderController {
             if (!absolutePath.startsWith(`${uploadsRoot}${path.sep}`) || !fs.existsSync(absolutePath)) {
                 return next({ statusCode: 404, message: 'Archivo de factura no encontrado' });
             }
-            res.sendFile(absolutePath);
+            res.download(absolutePath, `Factura-${id}${path.extname(relativeName).toLowerCase()}`);
         } catch (error: unknown) {
             if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 404, message: getErrorMessage(error) });
@@ -90,6 +115,7 @@ export class PurchaseOrderController {
     }
 
     static async create(req: Request, res: Response, next: NextFunction) {
+        let invoicePersisted = false;
         try {
             const companyId = req.user!.companyId;
 
@@ -100,6 +126,10 @@ export class PurchaseOrderController {
                 try {
                     req.body.items = JSON.parse(req.body.items);
                 } catch {
+                    await PurchaseOrderController.removeInvoiceFile(
+                        req.file ? `/uploads/invoices/${req.file.filename}` : null,
+                        'create-invalid-items',
+                    );
                     return next({ statusCode: 400, message: 'Formato de artículos inválido' });
                 }
             }
@@ -119,30 +149,46 @@ export class PurchaseOrderController {
             const requestedBranch = req.body.branchId ? Number(req.body.branchId) : req.user?.branchId;
             const branchId = resolveBranchScope(req.user!, requestedBranch);
             if (!branchId) {
+                await PurchaseOrderController.removeInvoiceFile(
+                    req.file ? `/uploads/invoices/${req.file.filename}` : null,
+                    'create-missing-branch',
+                );
                 return next({ statusCode: 400, message: 'ID de sucursal requerido' });
             }
             req.body.branchId = branchId;
 
+            // Attachment ownership is server-generated; never accept a client
+            // supplied path that could point this tenant at another invoice.
+            delete req.body.invoicePdf;
             if (req.file) {
                 req.body.invoicePdf = `/uploads/invoices/${req.file.filename}`;
             }
 
             const order = await PurchaseOrderService.create(companyId, req.body);
+            invoicePersisted = true;
             res.status(201).json({
                 success: true,
                 message: 'Orden de compra creada exitosamente',
                 data: order
             });
         } catch (error: unknown) {
+            if (!invoicePersisted) {
+                await PurchaseOrderController.removeInvoiceFile(
+                    req.file ? `/uploads/invoices/${req.file.filename}` : null,
+                    'create-failed',
+                );
+            }
             if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
 
     static async update(req: Request, res: Response, next: NextFunction) {
+        let invoicePersisted = false;
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
+            await PurchaseOrderController.assertOrderBranch(req, id);
 
             // Parse fields if they come as strings
             if (req.body.branchId && typeof req.body.branchId === 'string') req.body.branchId = parseInt(req.body.branchId);
@@ -151,6 +197,10 @@ export class PurchaseOrderController {
                 try {
                     req.body.items = JSON.parse(req.body.items);
                 } catch {
+                    await PurchaseOrderController.removeInvoiceFile(
+                        req.file ? `/uploads/invoices/${req.file.filename}` : null,
+                        'update-invalid-items',
+                    );
                     return next({ statusCode: 400, message: 'Formato de artículos inválido' });
                 }
             }
@@ -166,22 +216,29 @@ export class PurchaseOrderController {
                 }));
             }
 
+            delete req.body.invoicePdf;
             if (req.file) {
                 req.body.invoicePdf = `/uploads/invoices/${req.file.filename}`;
             }
 
-            await PurchaseOrderController.assertOrderBranch(req, id);
             // A branch-scoped user cannot move a PO to another branch.
             if (req.body.branchId !== undefined) {
                 assertBranchAccess(req.user!, Number(req.body.branchId));
             }
             const order = await PurchaseOrderService.update(id, companyId, req.body);
+            invoicePersisted = true;
             res.json({
                 success: true,
                 message: 'Orden de compra actualizada exitosamente',
                 data: order
             });
         } catch (error: unknown) {
+            if (!invoicePersisted) {
+                await PurchaseOrderController.removeInvoiceFile(
+                    req.file ? `/uploads/invoices/${req.file.filename}` : null,
+                    'update-failed',
+                );
+            }
             if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }

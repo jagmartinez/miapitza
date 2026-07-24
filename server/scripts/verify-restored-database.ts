@@ -1,4 +1,11 @@
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
 import mysql, { RowDataPacket } from 'mysql2/promise';
+import {
+  compareMigrationLedger,
+  loadExpectedMigrations,
+  type MigrationLedgerRow,
+} from '../src/utils/migration-ledger';
 
 type ForeignKeyRow = RowDataPacket & {
   TABLE_NAME: string;
@@ -17,17 +24,25 @@ function quoteIdentifier(value: string): string {
 async function main() {
   const databaseIndex = process.argv.indexOf('--target-database');
   const targetDatabase = databaseIndex >= 0 ? process.argv[databaseIndex + 1] : undefined;
+  const productionReadonly = process.argv.includes('--production-readonly')
+    && process.env.ALLOW_PRODUCTION_READONLY_AUDIT === 'true';
   let databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error('DATABASE_URL is required');
   if (targetDatabase) {
-    if (!/^[A-Za-z0-9_]+_restore_test$/.test(targetDatabase)) throw new Error('Invalid restore database name');
+    if (!/^[A-Za-z0-9_]+_(?:restore|master_only)_test$/.test(targetDatabase)) {
+      throw new Error('Invalid restore database name');
+    }
     const derived = new URL(databaseUrl);
     derived.pathname = `/${targetDatabase}`;
     databaseUrl = derived.toString();
   }
   const database = decodeURIComponent(new URL(databaseUrl).pathname.replace(/^\//, ''));
-  if (!database.endsWith('_restore_test')) {
-    throw new Error('Verification is restricted to a database ending in _restore_test');
+  if (
+    !productionReadonly
+    && !database.endsWith('_restore_test')
+    && !database.endsWith('_master_only_test')
+  ) {
+    throw new Error('Verification is restricted to a disposable restore/master-only test database');
   }
 
   const connection = await mysql.createConnection({ uri: databaseUrl });
@@ -167,12 +182,46 @@ async function main() {
       if (count > 0) issues.push({ check, count });
     }
 
-    const [migrationRows] = await connection.query<RowDataPacket[]>(`
-      SELECT COUNT(*) AS total,
-             SUM(CASE WHEN finished_at IS NULL AND rolled_back_at IS NULL THEN 1 ELSE 0 END) AS unresolved,
-             SUM(CASE WHEN rolled_back_at IS NOT NULL THEN 1 ELSE 0 END) AS rolledBack
+    const [migrationRows] = await connection.query<Array<RowDataPacket & MigrationLedgerRow>>(`
+      SELECT migration_name, checksum, finished_at, rolled_back_at
       FROM _prisma_migrations
+      ORDER BY started_at, id
     `);
+    const migrationsDirectory = path.resolve(__dirname, '../prisma/migrations');
+    const migrationLedger = compareMigrationLedger(
+      loadExpectedMigrations(migrationsDirectory),
+      migrationRows,
+    );
+    issues.push(...migrationLedger.issues);
+
+    const prismaCli = require.resolve('prisma/build/index.js');
+    const schemaDiff = spawnSync(process.execPath, [
+      prismaCli,
+      'migrate',
+      'diff',
+      '--from-url',
+      databaseUrl,
+      '--to-schema-datamodel',
+      path.resolve(__dirname, '../prisma/schema.prisma'),
+      '--exit-code',
+    ], {
+      cwd: path.resolve(__dirname, '..'),
+      env: process.env,
+      encoding: 'utf8',
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    if (schemaDiff.error) throw schemaDiff.error;
+    if (schemaDiff.status !== 0) {
+      const summary = `${schemaDiff.stdout || ''}\n${schemaDiff.stderr || ''}`
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 1000);
+      issues.push({
+        check: 'restored-schema-drift',
+        count: 1,
+        detail: summary || `prisma migrate diff terminó con código ${schemaDiff.status ?? 'desconocido'}`,
+      });
+    }
 
     let invalidActivePaymentSamples: RowDataPacket[] = [];
     if (issues.some(issue => issue.check === 'negative-active-payment' || issue.check === 'zero-active-payment')) {
@@ -294,9 +343,11 @@ async function main() {
       foreignKeysChecked: foreignKeys.length,
       invariantsChecked: invariantQueries.length,
       migrations: {
-        total: Number(migrationRows[0].total),
-        unresolved: Number(migrationRows[0].unresolved),
-        rolledBack: Number(migrationRows[0].rolledBack),
+        ledgerRows: migrationRows.length,
+        expected: migrationLedger.expected,
+        successful: migrationLedger.successful,
+        unresolved: migrationLedger.unresolved,
+        rolledBack: migrationLedger.rolledBack,
       },
       issues,
       invalidActivePaymentSamples,

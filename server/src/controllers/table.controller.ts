@@ -6,6 +6,7 @@ import { resolveBranchScope, assertBranchAccess, BranchScopeError } from '../uti
 import { TableAccountService } from '../services/table-account.service';
 import { TableFloorPlanService } from '../services/table-floor-plan.service';
 import { TableGroupService } from '../services/table-group.service';
+import { LegacyTableConsolidationReviewService } from '../services/legacy-table-consolidation-review.service';
 
 export class TableController {
     static async createGroup(req: Request, res: Response, next: NextFunction) {
@@ -172,6 +173,104 @@ export class TableController {
         } catch (error: unknown) {
             if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
+    static async reverseConsolidation(req: Request, res: Response, next: NextFunction) {
+        try {
+            const companyId = req.user!.companyId;
+            const consolidationId = Number(req.params.id);
+            const existing = await TableAccountService.getConsolidation(companyId, consolidationId);
+            assertBranchAccess(req.user!, existing.branchId);
+
+            const result = await TableAccountService.reverseConsolidation(
+                companyId,
+                req.user!.userId,
+                consolidationId,
+                req.body
+            );
+            for (const order of result.orders) {
+                WebSocketService.broadcastOrderUpdate(order.id, 'TABLE_CONSOLIDATION_REVERSED', order, {
+                    companyId,
+                    branchId: existing.branchId
+                });
+            }
+            for (const tableId of result.affectedTableIds) {
+                WebSocketService.broadcastTableUpdate(tableId, 'TABLE_CONSOLIDATION_REVERSED', {
+                    consolidationId,
+                    idempotent: result.idempotent
+                }, {
+                    companyId,
+                    branchId: existing.branchId
+                });
+            }
+            res.json({
+                success: true,
+                message: result.idempotent
+                    ? 'La consolidación ya había sido revertida'
+                    : 'Consolidación de mesas revertida correctamente',
+                data: result
+            });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 409, message: getErrorMessage(error) });
+        }
+    }
+
+    static async getActiveConsolidation(req: Request, res: Response, next: NextFunction) {
+        try {
+            const consolidation = await TableAccountService.findActiveConsolidation(
+                req.user!.companyId,
+                {
+                    orderId: req.query.orderId === undefined ? undefined : Number(req.query.orderId),
+                    tableId: req.query.tableId === undefined ? undefined : Number(req.query.tableId)
+                }
+            );
+            if (consolidation) assertBranchAccess(req.user!, consolidation.branchId);
+            res.json({ success: true, data: consolidation });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
+    static async getLegacyConsolidationInventory(req: Request, res: Response, next: NextFunction) {
+        try {
+            const requestedBranchId = req.query.branchId === undefined
+                ? undefined
+                : Number(req.query.branchId);
+            const branchId = resolveBranchScope(req.user!, requestedBranchId);
+            const inventory = await LegacyTableConsolidationReviewService.inventory(
+                req.user!.companyId,
+                branchId
+            );
+            res.json({ success: true, data: inventory });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
+    static async markLegacyConsolidation(req: Request, res: Response, next: NextFunction) {
+        try {
+            const branchId = resolveBranchScope(req.user!);
+            const result = await LegacyTableConsolidationReviewService.mark(
+                req.user!.companyId,
+                req.user!.userId,
+                branchId,
+                req.params.candidateKey,
+                req.body
+            );
+            res.json({
+                success: true,
+                message: result.idempotent
+                    ? 'La revisión histórica ya había sido registrada'
+                    : 'Revisión histórica registrada sin modificar órdenes ni productos',
+                data: result
+            });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 409, message: getErrorMessage(error) });
         }
     }
 

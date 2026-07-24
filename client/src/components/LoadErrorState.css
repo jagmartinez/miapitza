@@ -1,0 +1,35 @@
+.load-error-state {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    width: 100%;
+    margin: var(--spacing-lg) 0;
+    padding: var(--spacing-lg);
+    border: 1px solid color-mix(in srgb, var(--color-danger) 48%, var(--color-border));
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface));
+    color: var(--color-danger);
+}
+
+.load-error-state-copy {
+    min-width: 0;
+    flex: 1;
+    display: grid;
+    gap: 3px;
+}
+
+.load-error-state-copy span {
+    color: var(--color-text-secondary);
+    line-height: 1.45;
+}
+
+@media (max-width: 600px) {
+    .load-error-state {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .load-error-state .btn {
+        width: 100%;
+    }
+}

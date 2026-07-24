@@ -46,7 +46,34 @@ Los errores tienen `{ code, message, retryable, requestId }`. Un HTTP 422 descri
 - `/metrics` requiere autenticacion y expone conteos/latencias, nunca imagenes, embeddings ni identificadores.
 - Los umbrales son configurables, pero deben calibrarse con camaras, iluminacion y poblacion reales antes de ampliar el uso.
 
-`scripts/calibrate_threshold.py` calcula FAR/FRR global y por cohorte desde un CSV de scores etiquetados, sin tocar produccion. `scripts/load_test.py` ejecuta verificacion concurrente contra staging usando `FACE_LOAD_TEST_TOKEN`; no imprime cuerpos ni respuestas biometricas. El archivo temporal de evidencia debe eliminarse al finalizar la prueba.
+`scripts/calibrate_threshold.py` calcula FAR/FRR global y por cohorte desde un CSV
+de scores etiquetados, sin tocar producción. El modo normal es únicamente
+informativo. Antes de habilitar cámaras reales se debe ejecutar como gate,
+declarando los límites y tamaños de muestra aprobados para la operación:
+
+```bash
+python scripts/calibrate_threshold.py evidence/scores.csv \
+  --gate \
+  --threshold "$FACE_MATCH_THRESHOLD" \
+  --max-far 0.001 \
+  --max-frr <limite-aprobado> \
+  --min-genuine <muestras-aprobadas> \
+  --min-impostor <muestras-aprobadas> \
+  --min-cohort-genuine <muestras-por-camara-o-cohorte> \
+  --min-cohort-impostor <muestras-por-camara-o-cohorte> \
+  --out evidence/calibration-result.json
+```
+
+El comando termina con código 2 si el umbral que se desplegará incumple en el
+total o en una sola cohorte. La evidencia separa el umbral sugerido del umbral
+evaluado y contiene el SHA-256 del dataset, pero no capturas ni identificadores.
+Los valores entre `<...>` deben provenir de una política aprobada; el repositorio
+no inventa esos umbrales.
+
+`scripts/load_test.py` ejecuta verificación concurrente contra staging usando
+`FACE_LOAD_TEST_TOKEN`; no imprime cuerpos ni respuestas biométricas. Los
+archivos temporales de evidencia deben protegerse y eliminarse al finalizar la
+prueba según la política de retención aplicable.
 
 ## Modelos y licencias
 

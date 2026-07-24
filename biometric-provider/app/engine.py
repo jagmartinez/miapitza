@@ -16,7 +16,6 @@ from .config import Settings
 from .errors import BiometricError
 from .schemas import CaptureFrame
 
-
 MODEL_FILES = {
     "detector": "face_detection_yunet_2023mar.onnx",
     "recognizer": "face_recognition_sface_2021dec.onnx",
@@ -108,7 +107,9 @@ class FaceEngine:
         tensor = np.transpose(rgb.astype(np.float32) / 255.0, (2, 0, 1))[None, ...]
         logits = np.asarray(self._antispoof.run(None, {self._antispoof_input: tensor})[0]).reshape(-1)
         if logits.size < 2 or not np.all(np.isfinite(logits[:2])):
-            raise BiometricError("LIVENESS_MODEL_ERROR", "El modelo de vida devolvio un resultado invalido", status_code=503)
+            raise BiometricError(
+                "LIVENESS_MODEL_ERROR", "El modelo de vida devolvio un resultado invalido", status_code=503
+            )
         shifted = logits[:2] - np.max(logits[:2])
         probabilities = np.exp(shifted) / np.sum(np.exp(shifted))
         return float(probabilities[0])
@@ -118,7 +119,9 @@ class FaceEngine:
         flat = np.asarray(vector, dtype=np.float32).reshape(-1)
         norm = float(np.linalg.norm(flat))
         if not math.isfinite(norm) or norm <= 1e-8:
-            raise BiometricError("EMBEDDING_INVALID", "El modelo facial devolvio una plantilla invalida", status_code=503)
+            raise BiometricError(
+                "EMBEDDING_INVALID", "El modelo facial devolvio una plantilla invalida", status_code=503
+            )
         return flat / norm
 
     def _analyze_frame(self, image: np.ndarray) -> FrameAnalysis:
@@ -172,7 +175,9 @@ class FaceEngine:
         reference = analyses[0].embedding
         cross_scores = [float(np.dot(reference, item.embedding)) for item in analyses[1:]]
         if cross_scores and min(cross_scores) < self.settings.cross_frame_match_threshold:
-            raise BiometricError("IDENTITY_CHANGED_DURING_CAPTURE", "El rostro cambio durante la secuencia", retryable=False)
+            raise BiometricError(
+                "IDENTITY_CHANGED_DURING_CAPTURE", "El rostro cambio durante la secuencia", retryable=False
+            )
         passive_scores = [item.passive_score for item in analyses]
         passive_passes = sum(score >= self.settings.passive_liveness_threshold for score in passive_scores)
         passive_ratio = passive_passes / len(passive_scores)
@@ -192,7 +197,9 @@ class FaceEngine:
                     "ACTIVE_LIVENESS_WRONG_DIRECTION",
                     "Se detecto un giro hacia el lado contrario; sigue la flecha mostrada en la camara",
                 )
-            raise BiometricError("ACTIVE_LIVENESS_FAILED", "No se detecto el giro solicitado desde una posicion frontal")
+            raise BiometricError(
+                "ACTIVE_LIVENESS_FAILED", "No se detecto el giro solicitado desde una posicion frontal"
+            )
         aggregate = self._normalize(np.mean(np.stack([item.embedding for item in analyses], axis=0), axis=0))
         return EvidenceAnalysis(
             embedding=aggregate,

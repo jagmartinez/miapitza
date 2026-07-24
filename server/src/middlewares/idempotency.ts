@@ -1,8 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
-import jwt from 'jsonwebtoken';
 import prisma from '../utils/prisma';
+import { auth } from './auth';
 
 const RESPONSE_TTL_MS = 24 * 60 * 60 * 1000;
 const PROCESSING_TTL_MS = 2 * 60 * 1000;
@@ -21,7 +21,9 @@ function extractAuthToken(req: Request): string | null {
     if (!cookieHeader) return null;
     for (const rawCookie of cookieHeader.split(';')) {
         const [name, ...valueParts] = rawCookie.trim().split('=');
-        if (name === 'auth_token' && valueParts.length) return valueParts.join('=');
+        if (name === 'auth_token' && valueParts.length) {
+            return decodeURIComponent(valueParts.join('='));
+        }
     }
     return null;
 }
@@ -35,17 +37,19 @@ function credentialNamespace(prefix: string, credential: string): string {
     return `${prefix}:${crypto.createHash('sha256').update(credential).digest('hex').slice(0, 60)}`;
 }
 
-function resolveNamespace(req: Request): string {
-    if (req.user?.companyId) return `c:${req.user.companyId}`;
+export function resolveIdempotencyNamespace(req: Request): string {
     const token = extractAuthToken(req);
-    const secret = process.env.JWT_SECRET;
-    if (token && secret) {
-        try {
-            const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as { companyId?: number };
-            if (decoded.companyId) return `c:${decoded.companyId}`;
-        } catch {
-            // Authentication middleware remains authoritative; isolate invalid tokens below.
-        }
+    if (token && req.user && req.authContextValidated === true) {
+        const authorizationContext = JSON.stringify({
+            userId: req.user.userId,
+            companyId: req.user.companyId,
+            branchId: req.user.branchId ?? null,
+            role: req.user.role,
+            roles: [...req.user.roles].sort(),
+            permissions: [...req.user.permissions].sort(),
+            accountType: req.user.accountType ?? null,
+        });
+        return credentialNamespace('s', `${token}\0${authorizationContext}`);
     }
     if (token) return credentialNamespace('t', token);
     // API-key auth runs on the route after this global middleware. Hash the
@@ -62,6 +66,23 @@ function resolveNamespace(req: Request): string {
         || singleHeader(req, 'x-webhook-signature');
     if (webhookSignature) return credentialNamespace('w', webhookSignature);
     return 'anon';
+}
+
+/**
+ * Authenticate JWT/cookie requests before a completed idempotency record can
+ * short-circuit route middleware. API-key/webhook routes remain route-owned.
+ */
+export function preAuthenticateIdempotentRequest(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+) {
+    const key = req.headers['x-idempotency-key'];
+    const path = req.originalUrl.split('?')[0].replace(/\/+$/, '') || '/';
+    if (!key || req.method === 'GET' || path === '/api/auth/login' || !extractAuthToken(req)) {
+        return next();
+    }
+    return auth(req, res, next);
 }
 
 function canonicalize(value: unknown): unknown {
@@ -86,8 +107,12 @@ export async function idempotency(req: Request, res: Response, next: NextFunctio
         res.status(400).json({ success: false, message: 'Clave de idempotencia demasiado larga' });
         return;
     }
+    // Never replay before the credential's authoritative route middleware has
+    // run. JWT/cookie requests are pre-authenticated by app.ts. API-key and
+    // signed-webhook routes keep their route/domain idempotency instead.
+    if (req.authContextValidated !== true || !req.user) return next();
 
-    const namespace = resolveNamespace(req);
+    const namespace = resolveIdempotencyNamespace(req);
     const path = req.originalUrl.split('?')[0].replace(/\/+$/, '') || '/';
     const scope = `${req.method.toUpperCase()}:${path}`;
     const fingerprint = crypto.createHash('sha256')

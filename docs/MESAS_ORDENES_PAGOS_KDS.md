@@ -1,5 +1,11 @@
 # Mesas, órdenes, facturación, pagos y KDS
 
+> **Documento histórico.** Refleja el estado del 14 de julio de 2026. Las
+> afirmaciones sobre ausencia de anulación o nota de crédito fueron válidas para
+> ese corte, pero el árbol actual ya contiene contraflujos fiscales posteriores.
+> Para el estado vigente, evidencia y riesgos residuales consulte
+> [`CORRECCION_HALLAZGOS_AUDITORIA_E2E_2026-07-22.md`](CORRECCION_HALLAZGOS_AUDITORIA_E2E_2026-07-22.md).
+
 Estado documentado: 14 de julio de 2026. Este documento describe exclusivamente el código presente en el árbol de trabajo de `C:\restaurant` en esa fecha. No certifica despliegue ni migración en producción.
 
 ## Revisión UX y plano persistente — 14 de julio de 2026

@@ -71,7 +71,10 @@ function assignmentFixture(overrides: Record<string, unknown> = {}) {
         id: 4, companyId: 4, employeeId: 6, branchId: 10, isPrimary: true,
         effectiveFrom: new Date('2025-01-01T00:00:00.000Z'), effectiveTo: null,
         createdAt: new Date(), updatedAt: new Date(),
-        branch: { id: 10, name: 'Centro', code: 'CTR', timezone: 'America/Managua', status: 'ACTIVE' },
+        branch: {
+            id: 10, name: 'Centro', code: 'CTR', timezone: 'America/Managua', status: 'ACTIVE',
+            attendanceEnabled: true, geofenceRadiusM: 100, maxLocationAccuracyM: 30,
+        },
         ...overrides,
     };
 }
@@ -139,6 +142,55 @@ describe('HR attendance security and invariants', () => {
         )).rejects.toMatchObject({
             code: 'ACTIVE_LIVENESS_FAILED', statusCode: 422,
         } satisfies Partial<FaceEvidenceRejectedError>);
+    });
+
+    it('fails provider readiness when the remote model or version differs from the pinned deployment', async () => {
+        const fetchSpy = jest.spyOn(global, 'fetch')
+            .mockResolvedValueOnce(new Response(JSON.stringify({
+                status: 'ok',
+                provider: 'mia-face-provider',
+                model: 'unexpected-model',
+                version: '1.2.3',
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+            .mockResolvedValueOnce(new Response(JSON.stringify({
+                status: 'ok',
+                provider: 'mia-face-provider',
+                model: 'buffalo_l',
+                version: '9.9.9',
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+            .mockResolvedValueOnce(new Response(JSON.stringify({
+                status: 'ok',
+                provider: 'mia-face-provider',
+                model: 'buffalo_l',
+                version: '1.2.3',
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+        const provider = createFaceVerificationProvider({
+            NODE_ENV: 'production',
+            HR_FACE_PROVIDER: 'http',
+            HR_FACE_PROVIDER_BASE_URL: 'https://faces.internal.example',
+            HR_FACE_PROVIDER_TOKEN: 's'.repeat(32),
+            HR_FACE_PROVIDER_MODEL: 'buffalo_l',
+            HR_FACE_PROVIDER_VERSION: '1.2.3',
+        });
+
+        await expect(provider.healthCheck?.()).resolves.toEqual(expect.objectContaining({
+            status: 'UNAVAILABLE',
+            model: 'unexpected-model',
+            version: '1.2.3',
+            detail: expect.stringContaining('modelo facial remoto'),
+        }));
+        await expect(provider.healthCheck?.()).resolves.toEqual(expect.objectContaining({
+            status: 'UNAVAILABLE',
+            model: 'buffalo_l',
+            version: '9.9.9',
+            detail: expect.stringContaining('versión facial remota'),
+        }));
+        await expect(provider.healthCheck?.()).resolves.toEqual(expect.objectContaining({
+            status: 'AVAILABLE',
+            model: 'buffalo_l',
+            version: '1.2.3',
+        }));
+        expect(fetchSpy).toHaveBeenCalledTimes(3);
     });
 
     it('derives the active liveness action deterministically from the secret nonce', () => {
@@ -253,7 +305,8 @@ describe('HR attendance security and invariants', () => {
             latitude: new Prisma.Decimal('12.1364000'), longitude: new Prisma.Decimal('-86.2514000'),
             geofenceRadiusM: 100, maxLocationAccuracyM: 100,
         }, { ...policy, requireGeolocation: true, maxLocationAccuracyM: 100 } as never);
-        expect(uncertainEdge.geofence).toEqual(expect.objectContaining({ status: 'FAILED', reasonCode: 'OUTSIDE_GEOFENCE' }));
+        expect(uncertainEdge.geofence).toEqual(expect.objectContaining({ status: 'FAILED', reasonCode: 'GEOFENCE_UNCERTAIN' }));
+        expect(uncertainEdge.geofence.measuredValue).toBeLessThan(uncertainEdge.geofence.limitValue as number);
     });
 
     it('rejects stale and future geolocation evidence', () => {
@@ -349,7 +402,7 @@ describe('HR attendance security and invariants', () => {
     it('treats an RH branch assignment effectiveTo as inclusive for its local date', async () => {
         const now = new Date('2026-07-14T20:00:00Z');
         jest.spyOn(prisma.user, 'findFirst').mockResolvedValue({ id: 8 } as never);
-        jest.spyOn(AttendancePolicyService, 'getCurrent').mockResolvedValue(policy as never);
+        jest.spyOn(AttendancePolicyService, 'getCurrent').mockResolvedValue({ ...policy, requireGeolocation: true } as never);
         jest.spyOn(prisma.scheduledShift, 'findMany').mockResolvedValue([] as never);
         jest.spyOn(prisma.attendanceEvent, 'findMany').mockResolvedValue([] as never);
         jest.spyOn(prisma.employeeBranchAssignment, 'findMany').mockResolvedValue([
@@ -361,6 +414,7 @@ describe('HR attendance security and invariants', () => {
         expect(result.availableActions).toEqual(['CHECK_IN']);
         expect(result.targetBranch).toEqual(expect.objectContaining({ id: 10, name: 'Centro' }));
         expect(result.policy).toEqual(expect.objectContaining({ id: 2, branchId: 10, requireBiometric: true }));
+        expect(result.locationRequirements).toEqual({ maxAccuracyM: 30, geofenceRadiusM: 100 });
     });
 
     it('persists a provider failure as a non-effective immutable review without capture/template leakage', async () => {
@@ -414,7 +468,11 @@ describe('HR attendance security and invariants', () => {
 
         expect(result).toEqual(expect.objectContaining({ decision: 'REVIEW_REQUIRED', serviceUnavailable: true }));
         const stored = create.mock.calls[0][0].data;
-        expect(stored).toEqual(expect.objectContaining({ decision: 'REVIEW', providerStatus: 'UNAVAILABLE' }));
+        expect(stored).toEqual(expect.objectContaining({
+            decision: 'REVIEW',
+            providerStatus: 'UNAVAILABLE',
+            reasonCode: 'FACE_PROVIDER_UNAVAILABLE',
+        }));
         expect(stored.sequenceKey).toBeNull();
         expect(stored).not.toHaveProperty('capture');
         expect(stored).not.toHaveProperty('faceImage');

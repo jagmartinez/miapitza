@@ -30,6 +30,10 @@ export const auth = async (
     res: Response,
     next: NextFunction
 ) => {
+    if (req.authContextValidated === true && req.user) {
+        return next();
+    }
+
     let token: string | null;
     try {
         token = extractAuthToken(req);
@@ -182,6 +186,7 @@ export const auth = async (
             });
         }
 
+        req.authContextValidated = true;
         return next();
     } catch (error) {
         // Database/session/settings failures must not masquerade as invalid JWTs.

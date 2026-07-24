@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 def _required(name: str, env: dict[str, str]) -> str:
@@ -72,7 +73,7 @@ class Settings:
     purge_interval_seconds: int
 
     @classmethod
-    def from_env(cls, source: dict[str, str] | None = None) -> "Settings":
+    def from_env(cls, source: dict[str, str] | None = None) -> Settings:
         env = dict(os.environ if source is None else source)
         environment = env.get("FACE_ENV", "production").strip().lower()
         if environment not in {"development", "test", "production"}:
@@ -95,7 +96,14 @@ class Settings:
         max_frames = _integer("FACE_MAX_FRAMES", 6, 3, 8, env)
         min_liveness_frames = _integer("FACE_MIN_LIVENESS_FRAMES", 4, 3, max_frames, env)
         database_url = env.get("FACE_DATABASE_URL", "sqlite:///./data/biometric-templates.db").strip()
-        if environment == "production" and database_url.startswith("sqlite:"):
+        production_database_schemes = {
+            "mysql",
+            "mysql+pymysql",
+            "postgres",
+            "postgresql",
+            "postgresql+psycopg",
+        }
+        if environment == "production" and urlsplit(database_url).scheme.lower() not in production_database_schemes:
             raise ValueError("FACE_DATABASE_URL debe usar MySQL o PostgreSQL en produccion multi-replica")
         return cls(
             environment=environment,

@@ -442,3 +442,24 @@
         transform: translateY(0);
     }
 }
+
+.branch-geofence-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: .6rem;
+    padding: .7rem .8rem;
+    border: 1px solid color-mix(in srgb, var(--color-warning) 45%, var(--color-border));
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-warning) 9%, var(--color-surface));
+    color: var(--color-text-secondary);
+    font-size: .82rem;
+    line-height: 1.45;
+}
+
+.branch-geofence-warning svg {
+    flex: 0 0 auto;
+    margin-top: .1rem;
+    color: var(--color-warning);
+}
+
+.branch-geofence-warning strong { color: var(--color-text); }

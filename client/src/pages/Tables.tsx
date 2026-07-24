@@ -5,23 +5,36 @@ import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import PageHeader from '../components/PageHeader';
 import TableOrdersModal from '../components/TableOrdersModal';
+import LegacyConsolidationReview from '../components/LegacyConsolidationReview';
 import PaymentModal from '../components/PaymentModal';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { canCreatePayment } from '../utils/authz';
 import { getTableAccess } from '../utils/tableAccess';
-import { Armchair, Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin, Building2, MapPinned } from 'lucide-react';
+import { Armchair, Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin, Building2, MapPinned, History } from 'lucide-react';
 import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
 import { useViewMode } from '../hooks/useViewMode';
-import type { Table, Order, Branch, TableFloorPlan } from '../types';
+import type {
+    ActiveTableConsolidation,
+    LegacyTableConsolidationCandidate,
+    LegacyTableConsolidationInventory,
+    Table,
+    Order,
+    Branch,
+    TableFloorPlan,
+} from '../types';
 import type { SingleValue } from 'react-select';
 import Select from '../components/Select';
 import { ACTIVE_ORDER_STATUSES } from '../utils/orderStatus';
 import './Tables.css';
 import TableMap, { type FloorPlanDraft } from '../components/TableMap';
-import { newIdempotencyKey } from '../utils/idempotency';
+import {
+    getIdempotentAttempt,
+    newIdempotencyKey,
+    type IdempotentAttempt,
+} from '../utils/idempotency';
 import TableOperationModal from '../components/TableOperationModal';
 import TableGroupModal, { type TableGroupFormData } from '../components/TableGroupModal';
 import POS from './POS';
@@ -91,6 +104,20 @@ export default function Tables() {
     const [tableOrders, setTableOrders] = useState<Order[]>([]);
     const [loadingTableOrders, setLoadingTableOrders] = useState(false);
     const tableOrderRequestRef = useRef(0);
+    const consolidationLookupRequestRef = useRef(0);
+    const reversalAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const [activeConsolidation, setActiveConsolidation] = useState<ActiveTableConsolidation | null>(null);
+    const [loadingConsolidation, setLoadingConsolidation] = useState(false);
+    const [consolidationLookupError, setConsolidationLookupError] = useState<string | null>(null);
+    const [consolidationReversalError, setConsolidationReversalError] = useState<string | null>(null);
+    const [reversingConsolidation, setReversingConsolidation] = useState(false);
+    const legacyReviewAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const [isLegacyReviewOpen, setIsLegacyReviewOpen] = useState(false);
+    const [legacyInventory, setLegacyInventory] = useState<LegacyTableConsolidationInventory | null>(null);
+    const [loadingLegacyInventory, setLoadingLegacyInventory] = useState(false);
+    const [legacyInventoryError, setLegacyInventoryError] = useState<string | null>(null);
+    const [legacyReviewActionError, setLegacyReviewActionError] = useState<string | null>(null);
+    const [markingLegacyCandidateKey, setMarkingLegacyCandidateKey] = useState<string | null>(null);
     const { viewMode, setViewMode } = useViewMode('tables');
     const [showMap, setShowMap] = useState(true);
     const [savingLayout, setSavingLayout] = useState(false);
@@ -287,11 +314,136 @@ export default function Tables() {
         }
     }, [showError]);
 
+    const loadActiveConsolidation = useCallback(async (
+        tableId: number,
+    ): Promise<ActiveTableConsolidation | null | undefined> => {
+        const requestId = ++consolidationLookupRequestRef.current;
+        if (!canConsolidate) {
+            setActiveConsolidation(null);
+            setConsolidationLookupError(null);
+            setLoadingConsolidation(false);
+            return null;
+        }
+
+        setLoadingConsolidation(true);
+        setConsolidationLookupError(null);
+        try {
+            const response = await tablesAPI.getActiveConsolidation({ tableId });
+            const discovered = response.data.data as ActiveTableConsolidation | null;
+            const active = discovered?.status === 'ACTIVE' ? discovered : null;
+            if (requestId === consolidationLookupRequestRef.current) {
+                setActiveConsolidation(active);
+            }
+            return active;
+        } catch (error) {
+            console.error('Error loading active table consolidation:', error);
+            if (requestId === consolidationLookupRequestRef.current) {
+                setActiveConsolidation(null);
+                setConsolidationLookupError(extractApiError(
+                    error,
+                    'No se pudo verificar si esta cuenta proviene de una consolidación.',
+                ));
+            }
+            return undefined;
+        } finally {
+            if (requestId === consolidationLookupRequestRef.current) {
+                setLoadingConsolidation(false);
+            }
+        }
+    }, [canConsolidate]);
+
     const handleViewOrders = async (table: Table) => {
         setSelectedTable(table);
         setTableOrders([]);
+        setActiveConsolidation(null);
+        setConsolidationLookupError(null);
+        setConsolidationReversalError(null);
         setIsOrdersModalOpen(true);
-        await loadTableOrders(table);
+        await Promise.all([
+            loadTableOrders(table),
+            loadActiveConsolidation(table.id),
+        ]);
+    };
+
+    const loadLegacyInventory = useCallback(async () => {
+        if (!canConsolidate) {
+            setLegacyInventory(null);
+            return;
+        }
+        setLoadingLegacyInventory(true);
+        setLegacyInventoryError(null);
+        try {
+            const response = await tablesAPI.getLegacyConsolidationInventory(
+                branchFilter ?? undefined,
+            );
+            setLegacyInventory(response.data.data as LegacyTableConsolidationInventory);
+        } catch (error) {
+            console.error('Error loading legacy table consolidations:', error);
+            setLegacyInventory(null);
+            setLegacyInventoryError(extractApiError(
+                error,
+                'No se pudo cargar el inventario de consolidaciones históricas.',
+            ));
+        } finally {
+            setLoadingLegacyInventory(false);
+        }
+    }, [branchFilter, canConsolidate]);
+
+    const openLegacyReview = () => {
+        if (!canConsolidate) return;
+        setIsLegacyReviewOpen(true);
+        setLegacyReviewActionError(null);
+        void loadLegacyInventory();
+    };
+
+    const markLegacyConsolidation = async (
+        candidate: LegacyTableConsolidationCandidate,
+        note: string,
+    ): Promise<boolean> => {
+        if (
+            !canConsolidate
+            || candidate.reversible !== false
+            || candidate.currentEvidenceReviewed
+        ) return false;
+        const outcome = candidate.classification === 'NOT_REVERSIBLE'
+            ? 'ACKNOWLEDGED_NO_AUTOMATIC_REVERSAL' as const
+            : 'EXTERNAL_EVIDENCE_REQUIRED' as const;
+        const fingerprint = [
+            'review-legacy-table-consolidation',
+            candidate.candidateKey,
+            candidate.evidenceHash,
+            outcome,
+            note,
+        ].join(':');
+        const attempt = getIdempotentAttempt(legacyReviewAttemptRef.current, fingerprint);
+        legacyReviewAttemptRef.current = attempt;
+        setLegacyReviewActionError(null);
+        setMarkingLegacyCandidateKey(candidate.candidateKey);
+        try {
+            const response = await tablesAPI.markLegacyConsolidation(candidate.candidateKey, {
+                expectedEvidenceHash: candidate.evidenceHash,
+                resolutionKey: attempt.key,
+                outcome,
+                note,
+            });
+            legacyReviewAttemptRef.current = null;
+            showSuccess(
+                response.data.message
+                || 'Revisión histórica registrada sin modificar órdenes ni productos.',
+            );
+            void loadLegacyInventory();
+            return true;
+        } catch (error) {
+            const message = extractApiError(
+                error,
+                'No se pudo registrar la revisión histórica.',
+            );
+            setLegacyReviewActionError(message);
+            showError(message);
+            return false;
+        } finally {
+            setMarkingLegacyCandidateKey(null);
+        }
     };
 
     const handleOpenPOS = (table: Table) => {
@@ -362,9 +514,12 @@ export default function Tables() {
             ].includes(message.type)) return;
             void loadTables();
             void loadFloorPlan();
-            if (selectedTable) void loadTableOrders(selectedTable);
+            if (selectedTable) {
+                void loadTableOrders(selectedTable);
+                void loadActiveConsolidation(selectedTable.id);
+            }
         });
-    }, [loadFloorPlan, loadTableOrders, loadTables, selectedTable]);
+    }, [loadActiveConsolidation, loadFloorPlan, loadTableOrders, loadTables, selectedTable]);
 
     const filteredTables = statusFilter
         ? tables.filter(t => t.status === statusFilter)
@@ -474,6 +629,55 @@ export default function Tables() {
         }
     };
 
+    const handleReverseConsolidation = async (reason: string): Promise<boolean> => {
+        if (!canConsolidate || !activeConsolidation || activeConsolidation.status !== 'ACTIVE') {
+            showWarning('No existe una consolidación activa y autorizada para revertir.');
+            return false;
+        }
+
+        const fingerprint = [
+            'reverse-table-consolidation',
+            activeConsolidation.id,
+            activeConsolidation.version,
+            reason.trim(),
+        ].join(':');
+        const attempt = getIdempotentAttempt(reversalAttemptRef.current, fingerprint);
+        reversalAttemptRef.current = attempt;
+        setConsolidationReversalError(null);
+        setReversingConsolidation(true);
+
+        try {
+            await tablesAPI.reverseConsolidation(activeConsolidation.id, {
+                expectedVersion: activeConsolidation.version,
+                reversalKey: attempt.key,
+                reason: reason.trim(),
+            });
+            reversalAttemptRef.current = null;
+
+            const selected = selectedTable;
+            await Promise.all([
+                loadTables(),
+                loadFloorPlan(),
+                selected ? loadTableOrders(selected) : Promise.resolve(),
+                selected ? loadActiveConsolidation(selected.id) : Promise.resolve(null),
+            ]);
+            setConsolidationReversalError(null);
+            showSuccess('Consolidación revertida. Las cuentas regresaron a sus mesas originales.');
+            return true;
+        } catch (error) {
+            const message = extractApiError(
+                error,
+                'No se pudo revertir la consolidación. Verifica que no existan pagos, factura, entrega, cambios u otra ocupación.',
+            );
+            setConsolidationReversalError(message);
+            showError(message);
+            if (selectedTable) await loadActiveConsolidation(selectedTable.id);
+            return false;
+        } finally {
+            setReversingConsolidation(false);
+        }
+    };
+
     const handleSaveGroup = async (data: TableGroupFormData) => {
         setSubmittingGroup(true);
         try {
@@ -556,6 +760,15 @@ export default function Tables() {
                 actions={(
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <ThemeToggle />
+                        {canConsolidate && (
+                            <button
+                                type="button"
+                                className="tables-map-toggle"
+                                onClick={openLegacyReview}
+                            >
+                                <History size={18} /> Históricos
+                            </button>
+                        )}
                         <button
                             type="button"
                             className="tables-map-toggle"
@@ -642,7 +855,16 @@ export default function Tables() {
                     onSave={handleSaveLayout}
                     onCreateTable={canCreateTable ? () => handleOpenSidebar() : undefined}
                     onReturnToAdministration={canEditMap ? () => navigate('/dashboard') : undefined}
-                    themeControl={<KitchenNotificationBell inline />}
+                    themeControl={(
+                        <div className="table-map-utility-controls">
+                            {canConsolidate && (
+                                <button type="button" onClick={openLegacyReview}>
+                                    <History size={18} /> Históricos
+                                </button>
+                            )}
+                            <KitchenNotificationBell inline />
+                        </div>
+                    )}
                     branchControl={canChooseBranch && branches.length > 1 ? (
                         <div className="table-map-branch-control">
                             <Select
@@ -840,6 +1062,24 @@ export default function Tables() {
 
             {/* Create/Edit Sidebar */}
             <Sidebar
+                isOpen={isLegacyReviewOpen}
+                onClose={() => setIsLegacyReviewOpen(false)}
+                title="Consolidaciones históricas"
+                width="wide"
+                description="Inventario de operaciones anteriores al registro transaccional reversible."
+            >
+                <LegacyConsolidationReview
+                    inventory={legacyInventory}
+                    loading={loadingLegacyInventory}
+                    error={legacyInventoryError}
+                    actionError={legacyReviewActionError}
+                    markingCandidateKey={markingLegacyCandidateKey}
+                    onRetry={() => void loadLegacyInventory()}
+                    onMark={markLegacyConsolidation}
+                />
+            </Sidebar>
+
+            <Sidebar
                 isOpen={isSidebarOpen}
                 onClose={() => setIsSidebarOpen(false)}
                 title={editingTable ? 'Editar Mesa' : 'Nueva Mesa'}
@@ -1007,6 +1247,11 @@ export default function Tables() {
                 canTransfer={canTransfer}
                 canConsolidate={canConsolidate}
                 canGroup={canGroup}
+                activeConsolidation={activeConsolidation}
+                loadingConsolidation={loadingConsolidation}
+                consolidationLookupError={consolidationLookupError}
+                consolidationReversalError={consolidationReversalError}
+                reversingConsolidation={reversingConsolidation}
                 groupTotalCapacity={selectedTable?.activeTableGroup
                     ? tables.filter((table) => table.activeTableGroupId === selectedTable.activeTableGroupId).reduce((sum, table) => sum + table.capacity, 0)
                     : undefined}
@@ -1040,6 +1285,11 @@ export default function Tables() {
                     setGroupTableId(table.id);
                 }}
                 onUngroup={(table) => void handleCloseGroup(table)}
+                onRetryConsolidationLookup={() => {
+                    setConsolidationReversalError(null);
+                    if (selectedTable) void loadActiveConsolidation(selectedTable.id);
+                }}
+                onReverseConsolidation={handleReverseConsolidation}
             />
             {paymentOrder && (
                 <PaymentModal

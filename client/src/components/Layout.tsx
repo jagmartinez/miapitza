@@ -50,7 +50,7 @@ import {
     Landmark,
     type LucideIcon
 } from 'lucide-react';
-import { getUserAccentColor, getUserRoleNames } from '../utils/authz';
+import { getUserAccentColor, getUserRoleNames, hasPermission } from '../utils/authz';
 import {
     ROLES,
     ADMIN,
@@ -67,7 +67,7 @@ import {
 import './Layout.css';
 
 // Role-based navigation items
-type NavItem = { to: string; icon: LucideIcon; label: string; roles?: string[] };
+type NavItem = { to: string; icon: LucideIcon; label: string; roles?: string[]; permission?: string };
 type NavSection = { section: string; items: NavItem[] };
 
 const ALL_ROLES: string[] = Object.values(ROLES);
@@ -75,10 +75,10 @@ const ALL_ROLES: string[] = Object.values(ROLES);
 // Quick-access bottom nav for mobile (max 6 items, role-filtered)
 const MOBILE_QUICK_NAV: NavItem[] = [
     { to: '/dashboard', icon: BarChart3, label: 'BI', roles: ALL_ROLES },
-    { to: '/tables', icon: Utensils, label: 'Mesas', roles: WAITER_TABLE },
-    { to: '/kitchen', icon: ChefHat, label: 'Cocina', roles: KITCHEN_ROLES },
+    { to: '/tables', icon: Utensils, label: 'Mesas', roles: WAITER_TABLE, permission: 'tables.map.view' },
+    { to: '/kitchen', icon: ChefHat, label: 'Cocina', roles: KITCHEN_ROLES, permission: 'kds.view' },
     { to: '/reservations', icon: Calendar, label: 'Reservaciones', roles: HOST_ROLES },
-    { to: '/orders', icon: ShoppingCart, label: 'Órdenes', roles: OPS },
+    { to: '/orders', icon: ShoppingCart, label: 'Órdenes', roles: OPS, permission: 'orders.view' },
     // { to: '/menu', icon: UtensilsCrossed, label: 'Menú', roles: CHEF_MGMT },
 ];
 
@@ -87,57 +87,57 @@ const NAV_SECTIONS: NavSection[] = [
         section: 'Operaciones',
         items: [
             { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ALL_ROLES },
-            { to: '/tables', icon: Utensils, label: 'Mesas', roles: WAITER_TABLE },
-            { to: '/kitchen', icon: ChefHat, label: 'Cocina', roles: KITCHEN_ROLES },
+            { to: '/tables', icon: Utensils, label: 'Mesas', roles: WAITER_TABLE, permission: 'tables.map.view' },
+            { to: '/kitchen', icon: ChefHat, label: 'Cocina', roles: KITCHEN_ROLES, permission: 'kds.view' },
             { to: '/reservations', icon: Calendar, label: 'Reservaciones', roles: HOST_ROLES },
             { to: '/catering', icon: ConciergeBell, label: 'Catering', roles: CASHIER },
-            { to: '/orders', icon: ShoppingCart, label: 'Órdenes', roles: OPS },
+            { to: '/orders', icon: ShoppingCart, label: 'Órdenes', roles: OPS, permission: 'orders.view' },
             { to: '/cash-registers', icon: Wallet, label: 'Caja', roles: CASHIER },
         ],
     },
     {
         section: 'Gestión',
         items: [
-            { to: '/menu', icon: UtensilsCrossed, label: 'Menú', roles: CHEF_MGMT },
+            { to: '/menu', icon: UtensilsCrossed, label: 'Menú', roles: CHEF_MGMT, permission: 'view_menu' },
             { to: '/catering-services', icon: Library, label: 'Catálogo Catering', roles: CASHIER },
-            { to: '/categories', icon: Tag, label: 'Categorías', roles: CHEF_MGMT },
-            { to: '/menu-brands', icon: Tags, label: 'Marcas', roles: CHEF_MGMT },
+            { to: '/categories', icon: Tag, label: 'Categorías', roles: CHEF_MGMT, permission: 'view_menu' },
+            { to: '/menu-brands', icon: Tags, label: 'Marcas', roles: CHEF_MGMT, permission: 'view_menu' },
             { to: '/promotions', icon: Ticket, label: 'Promociones', roles: ADMIN },
-            { to: '/inventory', icon: Package, label: 'Inventario', roles: WAREHOUSE },
-            { to: '/production-recipes', icon: FlaskConical, label: 'Recetas de Producción', roles: WAREHOUSE },
-            { to: '/production-orders', icon: Factory, label: 'Producción', roles: WAREHOUSE },
-            { to: '/production-dashboard', icon: BarChart3, label: 'Panel de Producción', roles: WAREHOUSE },
-            { to: '/units-of-measure', icon: Ruler, label: 'Unidades de Medida', roles: WAREHOUSE },
-            { to: '/suppliers', icon: Truck, label: 'Proveedores', roles: WAREHOUSE },
-            { to: '/purchase-orders', icon: ShoppingBag, label: 'Órdenes de Compra', roles: WAREHOUSE },
-            { to: '/warehouses', icon: Warehouse, label: 'Bodegas', roles: WAREHOUSE },
-            { to: '/cost-report', icon: BarChart3, label: 'Reporte Costos', roles: ADMIN },
-            { to: '/waste-report', icon: TrendingDown, label: 'Reporte Mermas', roles: ADMIN },
-            { to: '/bank-reconciliation', icon: Wallet, label: 'Conciliación Bancaria', roles: ADMIN },
-            { to: '/invoices', icon: FileText, label: 'Facturas', roles: CASHIER },
-            { to: '/reporteria', icon: ClipboardList, label: 'Reportería', roles: ADMIN },
-            { to: '/users', icon: Users, label: 'Usuarios', roles: ADMIN },
+            { to: '/inventory', icon: Package, label: 'Inventario', roles: WAREHOUSE, permission: 'view_inventory' },
+            { to: '/production-recipes', icon: FlaskConical, label: 'Recetas de Producción', roles: WAREHOUSE, permission: 'view_inventory' },
+            { to: '/production-orders', icon: Factory, label: 'Producción', roles: WAREHOUSE, permission: 'view_inventory' },
+            { to: '/production-dashboard', icon: BarChart3, label: 'Panel de Producción', roles: WAREHOUSE, permission: 'view_inventory' },
+            { to: '/units-of-measure', icon: Ruler, label: 'Unidades de Medida', roles: WAREHOUSE, permission: 'view_inventory' },
+            { to: '/suppliers', icon: Truck, label: 'Proveedores', roles: WAREHOUSE, permission: 'view_inventory' },
+            { to: '/purchase-orders', icon: ShoppingBag, label: 'Órdenes de Compra', roles: WAREHOUSE, permission: 'view_inventory' },
+            { to: '/warehouses', icon: Warehouse, label: 'Bodegas', roles: WAREHOUSE, permission: 'view_inventory' },
+            { to: '/cost-report', icon: BarChart3, label: 'Reporte Costos', roles: ADMIN, permission: 'view_reports' },
+            { to: '/waste-report', icon: TrendingDown, label: 'Reporte Mermas', roles: ADMIN, permission: 'view_reports' },
+            { to: '/bank-reconciliation', icon: Wallet, label: 'Conciliación Bancaria', roles: ADMIN, permission: 'view_reports' },
+            { to: '/invoices', icon: FileText, label: 'Facturas', roles: CASHIER, permission: 'invoices.view' },
+            { to: '/reporteria', icon: ClipboardList, label: 'Reportería', roles: ADMIN, permission: 'view_reports' },
+            { to: '/users', icon: Users, label: 'Usuarios', roles: ADMIN, permission: 'view_users' },
         ],
     },
     {
         section: 'Recursos Humanos',
         items: [
-            { to: '/rh', icon: Briefcase, label: 'Panel RH', roles: HR_OWNER },
-            { to: '/rh/personal', icon: Users, label: 'Personal', roles: HR_OWNER },
-            { to: '/rh/horarios', icon: Calendar, label: 'Horarios', roles: HR_OWNER },
-            { to: '/rh/asistencia', icon: ClipboardList, label: 'Asistencia', roles: HR_OWNER },
-            { to: '/rh/jornadas', icon: ClipboardList, label: 'Jornadas y extras', roles: HR_OWNER },
-            { to: '/rh/ausencias', icon: Calendar, label: 'Solicitudes y vacaciones', roles: HR_OWNER },
-            { to: '/rh/nomina', icon: Wallet, label: 'Nómina y aguinaldo', roles: HR_OWNER },
-            { to: '/rh/nomina/configuracion-legal', icon: Landmark, label: 'Reglas IR, INSS e INATEC', roles: HR_OWNER },
-            { to: '/rh/prestaciones', icon: BadgeDollarSign, label: 'Préstamos y viáticos', roles: HR_OWNER },
-            { to: '/rh/asistencia/configuracion', icon: SlidersHorizontal, label: 'Configurar asistencia', roles: HR_OWNER },
+            { to: '/rh', icon: Briefcase, label: 'Panel RH', roles: HR_OWNER, permission: 'hr.dashboard.read' },
+            { to: '/rh/personal', icon: Users, label: 'Personal', roles: HR_OWNER, permission: 'hr.employee.read' },
+            { to: '/rh/horarios', icon: Calendar, label: 'Horarios', roles: HR_OWNER, permission: 'hr.schedule.read' },
+            { to: '/rh/asistencia', icon: ClipboardList, label: 'Asistencia', roles: HR_OWNER, permission: 'hr.attendance.review' },
+            { to: '/rh/jornadas', icon: ClipboardList, label: 'Jornadas y extras', roles: HR_OWNER, permission: 'hr.workforce.read' },
+            { to: '/rh/ausencias', icon: Calendar, label: 'Solicitudes y vacaciones', roles: HR_OWNER, permission: 'hr.workforce.read' },
+            { to: '/rh/nomina', icon: Wallet, label: 'Nómina y aguinaldo', roles: HR_OWNER, permission: 'hr.payroll.read' },
+            { to: '/rh/nomina/configuracion-legal', icon: Landmark, label: 'Reglas IR, INSS e INATEC', roles: HR_OWNER, permission: 'hr.payroll.manage' },
+            { to: '/rh/prestaciones', icon: BadgeDollarSign, label: 'Préstamos y viáticos', roles: HR_OWNER, permission: 'hr.benefits.read' },
+            { to: '/rh/asistencia/configuracion', icon: SlidersHorizontal, label: 'Configurar asistencia', roles: HR_OWNER, permission: 'hr.attendance.manage' },
         ],
     },
     {
         section: 'Configuración',
         items: [
-            { to: '/branches', icon: MapPin, label: 'Sucursales', roles: ADMIN },
+            { to: '/branches', icon: MapPin, label: 'Sucursales', roles: ADMIN, permission: 'view_branches' },
             { to: '/integraciones/pedidosya', icon: Zap, label: 'PedidosYa', roles: ADMIN },
             { to: '/companies', icon: Building2, label: 'Empresas', roles: PLATFORM_ADMIN },
             { to: '/roles-permissions', icon: Users, label: 'Roles y Permisos', roles: ADMIN },
@@ -168,7 +168,7 @@ export default function Layout() {
     const isInternalEmployee = user?.accountType === 'INTERNAL' && Boolean(user.employeeId);
 
     const handleLogout = () => {
-        logout();
+        void logout();
         navigate('/login');
     };
 
@@ -183,7 +183,9 @@ export default function Layout() {
     const renderNavSections = (onNavigate?: () => void) =>
         NAV_SECTIONS.map((section, sIdx) => {
             const visibleItems = section.items.filter(item =>
-                !item.roles || userRoleNames.some(r => item.roles!.includes(r))
+                item.permission
+                    ? hasPermission(user, item.permission, item.roles)
+                    : !item.roles || userRoleNames.some(r => item.roles!.includes(r))
             );
             if (visibleItems.length === 0) return null;
             return (
@@ -282,7 +284,9 @@ export default function Layout() {
 
             {(() => {
                 const visibleQuickItems = MOBILE_QUICK_NAV.filter(item =>
-                    !item.roles || userRoleNames.some(r => item.roles!.includes(r))
+                    item.permission
+                        ? hasPermission(user, item.permission, item.roles)
+                        : !item.roles || userRoleNames.some(r => item.roles!.includes(r))
                 );
                 if (visibleQuickItems.length === 0) return null;
                 return (

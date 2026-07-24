@@ -14,6 +14,7 @@ import type { SingleValue } from 'react-select';
 import { useCurrency } from '../hooks/useCurrency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import { BANK_OPTIONS, INVOICE_TYPE_OPTIONS, type StrOption } from '../constants/purchaseOrderOptions';
+import { getIdempotentAttempt, type IdempotentAttempt } from '../utils/idempotency';
 import './PurchaseOrderForm.css';
 
 interface NewOrderLineDraft {
@@ -74,6 +75,7 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
     const [itemUnits, setItemUnits] = useState<ProductAllowedUnit[]>([]);
     const [importing, setImporting] = useState(false);
     const importInputRef = useRef<HTMLInputElement>(null);
+    const receiveAttemptRef = useRef<IdempotentAttempt | null>(null);
 
     // Receive Modal
     const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
@@ -410,7 +412,11 @@ export default function PurchaseOrderForm({ sidebarId, onClose, onSaved }: Purch
             return;
         }
         try {
-            await purchaseOrdersAPI.receive(Number(effectiveId), Number(selectedWarehouseId));
+            const fingerprint = `receive:${effectiveId}:${selectedWarehouseId}`;
+            const attempt = getIdempotentAttempt(receiveAttemptRef.current, fingerprint);
+            receiveAttemptRef.current = attempt;
+            await purchaseOrdersAPI.receive(Number(effectiveId), Number(selectedWarehouseId), attempt.key);
+            receiveAttemptRef.current = null;
             setIsReceiveModalOpen(false);
             loadOrder(Number(effectiveId));
             success('Orden recibida e inventario actualizado');

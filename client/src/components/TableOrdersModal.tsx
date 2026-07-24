@@ -1,17 +1,18 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
     X, Clock, FileText, Printer, ShoppingCart, Receipt,
     CreditCard, Scissors, ArrowRightLeft, Merge, ChefHat,
-    Users, CircleDollarSign, Link2, Unlink, Loader2, Pencil
+    Users, CircleDollarSign, Link2, Unlink, Loader2, Pencil, Undo2, AlertTriangle
 } from 'lucide-react';
-import type { Order, OrderItem, Table } from '../types';
+import type { ActiveTableConsolidation, Order, OrderItem, Table } from '../types';
 import { escapeHtml } from '../utils/escapeHtml';
 import { getUserAccentColor } from '../utils/authz';
 import { getOrderStatusClassName, getOrderStatusLabel } from '../utils/orderStatus';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import { useCurrency } from '../hooks/useCurrency';
 import { useAppToast } from '../context/ToastContext';
+import { useConfirmDialog } from '../context/ConfirmContext';
 import './TableOrdersModal.css';
 
 interface TableOrdersModalProps {
@@ -27,6 +28,11 @@ interface TableOrdersModalProps {
     canTransfer: boolean;
     canConsolidate: boolean;
     canGroup: boolean;
+    activeConsolidation?: ActiveTableConsolidation | null;
+    loadingConsolidation?: boolean;
+    consolidationLookupError?: string | null;
+    consolidationReversalError?: string | null;
+    reversingConsolidation?: boolean;
     groupTotalCapacity?: number;
     onOpenPOS: (table: Table) => void;
     onIssueInvoice: (order: Order) => void;
@@ -38,6 +44,8 @@ interface TableOrdersModalProps {
     onGroup: (table: Table) => void;
     onEditGroup: (table: Table) => void;
     onUngroup: (table: Table) => void;
+    onRetryConsolidationLookup: () => void;
+    onReverseConsolidation: (reason: string) => Promise<boolean>;
 }
 
 export default function TableOrdersModal({
@@ -53,6 +61,11 @@ export default function TableOrdersModal({
     canTransfer,
     canConsolidate,
     canGroup,
+    activeConsolidation,
+    loadingConsolidation = false,
+    consolidationLookupError,
+    consolidationReversalError,
+    reversingConsolidation = false,
     groupTotalCapacity,
     onOpenPOS,
     onIssueInvoice,
@@ -63,12 +76,25 @@ export default function TableOrdersModal({
     onConsolidateAndPay,
     onGroup,
     onEditGroup,
-    onUngroup
+    onUngroup,
+    onRetryConsolidationLookup,
+    onReverseConsolidation,
 }: TableOrdersModalProps) {
     const { formatMoney, symbol } = useCurrency();
     const { error: showError } = useAppToast();
+    const { confirm } = useConfirmDialog();
     const containerRef = useRef<HTMLDivElement>(null);
     const { titleId } = useDialogA11y(isOpen, onClose, containerRef);
+    const [showReversalForm, setShowReversalForm] = useState(false);
+    const [reversalReason, setReversalReason] = useState('');
+    const [reversalValidationError, setReversalValidationError] = useState<string | null>(null);
+
+    useEffect(() => {
+        setShowReversalForm(false);
+        setReversalReason('');
+        setReversalValidationError(null);
+    }, [activeConsolidation?.id, isOpen]);
+
     if (!isOpen || !table) return null;
 
     const tableNumber = table.number;
@@ -93,6 +119,29 @@ export default function TableOrdersModal({
         if (status === 'DONE') return 'Listo';
         if (status === 'IN_PROGRESS') return 'Preparando';
         return 'Pendiente';
+    };
+
+    const submitConsolidationReversal = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!activeConsolidation || activeConsolidation.status !== 'ACTIVE') return;
+        const reason = reversalReason.trim();
+        if (reason.length < 3) {
+            setReversalValidationError('Escribe un motivo de al menos 3 caracteres.');
+            return;
+        }
+
+        setReversalValidationError(null);
+        const accepted = await confirm(
+            `¿Revertir la consolidación #${activeConsolidation.id} y devolver ${activeConsolidation.affectedOrderIds.length} cuentas a ${activeConsolidation.originalTableIds.length} mesas originales? La operación será rechazada si hubo pagos, factura, entrega, cambios en productos u otra ocupación.`,
+            { title: 'Confirmar reverso de consolidación' },
+        );
+        if (!accepted) return;
+
+        const reversed = await onReverseConsolidation(reason);
+        if (reversed) {
+            setShowReversalForm(false);
+            setReversalReason('');
+        }
     };
 
     const handlePrintBill = () => {
@@ -201,6 +250,115 @@ export default function TableOrdersModal({
                             <strong>{table.activeTableGroup.primaryTableId === table.id ? 'Mesa principal del grupo' : `Unida a mesa ${table.activeTableGroup.primaryTable.number}`}</strong>
                             <span>{table.activeTableGroup.memberTableIds.length} mesas · {groupTotalCapacity ?? table.capacity} sillas/comensales en total · las cuentas siguen independientes</span>
                         </div>
+                    </section>
+                )}
+
+                {canConsolidate && loadingConsolidation && (
+                    <section className="table-consolidation-lookup" role="status" aria-live="polite">
+                        <Loader2 className="button-spinner" size={18} />
+                        <span>Verificando si existe una consolidación activa…</span>
+                    </section>
+                )}
+
+                {canConsolidate && !loadingConsolidation && consolidationLookupError && (
+                    <section className="table-consolidation-lookup error" role="alert">
+                        <AlertTriangle size={19} />
+                        <div>
+                            <strong>No se pudo verificar el historial de consolidación</strong>
+                            <span>{consolidationLookupError}</span>
+                        </div>
+                        <button type="button" onClick={onRetryConsolidationLookup}>
+                            Reintentar
+                        </button>
+                    </section>
+                )}
+
+                {canConsolidate && !loadingConsolidation && activeConsolidation?.status === 'ACTIVE' && (
+                    <section className="table-consolidation-reversal" aria-label="Consolidación activa">
+                        <div className="table-consolidation-reversal-heading">
+                            <Undo2 size={20} />
+                            <div>
+                                <strong>Consolidación activa #{activeConsolidation.id}</strong>
+                                <span>
+                                    {activeConsolidation.affectedOrderIds.length} cuentas · {activeConsolidation.originalTableIds.length} mesas originales
+                                </span>
+                            </div>
+                        </div>
+                        <p>
+                            El servidor volverá a validar versión, pagos, factura, entrega, productos y ocupación antes de restaurar las cuentas.
+                            El estado ACTIVE no garantiza que el reverso siga siendo posible.
+                        </p>
+                        {consolidationReversalError && (
+                            <div className="table-consolidation-reversal-blocked" role="alert">
+                                <AlertTriangle size={18} aria-hidden="true" />
+                                <div>
+                                    <strong>El reverso no se completó</strong>
+                                    <span>{consolidationReversalError}</span>
+                                    <small>
+                                        La consolidación continúa activa. Corrige el bloqueo indicado o vuelve a verificar el estado antes de reintentar.
+                                    </small>
+                                </div>
+                                <button type="button" onClick={onRetryConsolidationLookup}>
+                                    Volver a verificar
+                                </button>
+                            </div>
+                        )}
+                        {!showReversalForm ? (
+                            <button
+                                type="button"
+                                className="table-consolidation-reversal-open"
+                                onClick={() => setShowReversalForm(true)}
+                            >
+                                <Undo2 size={17} /> Solicitar reverso
+                            </button>
+                        ) : (
+                            <form className="table-consolidation-reversal-form" onSubmit={(event) => void submitConsolidationReversal(event)}>
+                                <label htmlFor={`consolidation-reversal-reason-${activeConsolidation.id}`}>
+                                    Motivo obligatorio
+                                </label>
+                                <textarea
+                                    id={`consolidation-reversal-reason-${activeConsolidation.id}`}
+                                    value={reversalReason}
+                                    onChange={(event) => {
+                                        setReversalReason(event.target.value);
+                                        if (reversalValidationError) setReversalValidationError(null);
+                                    }}
+                                    minLength={3}
+                                    maxLength={500}
+                                    rows={3}
+                                    disabled={reversingConsolidation}
+                                    placeholder="Ej.: Las cuentas se consolidaron en la mesa equivocada"
+                                    required
+                                />
+                                {reversalValidationError && (
+                                    <span className="table-consolidation-reversal-error" role="alert">
+                                        {reversalValidationError}
+                                    </span>
+                                )}
+                                <div className="table-consolidation-reversal-actions">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowReversalForm(false);
+                                            setReversalReason('');
+                                            setReversalValidationError(null);
+                                        }}
+                                        disabled={reversingConsolidation}
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="danger"
+                                        disabled={reversingConsolidation || reversalReason.trim().length < 3}
+                                    >
+                                        {reversingConsolidation
+                                            ? <><Loader2 className="button-spinner" size={17} /> Revirtiendo…</>
+                                            : <><Undo2 size={17} /> Confirmar reverso</>}
+                                    </button>
+                                </div>
+                            </form>
+                        )}
                     </section>
                 )}
 

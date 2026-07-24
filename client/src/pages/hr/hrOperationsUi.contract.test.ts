@@ -13,6 +13,8 @@ const myPayroll = read('./MyPayroll.tsx');
 const myWorkforce = read('./MyWorkforce.tsx');
 const adminCss = read('./admin-tables.css');
 const attendanceCss = read('./attendance.css');
+const punchWizard = read('../../components/hr/AttendancePunchWizard.tsx');
+const geolocationCapture = read('../../components/hr/GeolocationCapture.tsx');
 
 const adminOperationalPages = [
   attendanceReview,
@@ -89,6 +91,15 @@ describe('RH operational UI contract', () => {
     expect(attendanceCss).toContain('@media (max-width: 1080px)');
     expect(attendanceCss).toContain('.hr-time-clock-action-panel { order: -1; }');
     expect(attendanceCss).toContain('.hr-time-clock-page > .hr-time-clock-workspace { order: 1; }');
+  });
+
+  it('prevents a guaranteed GPS rejection and keeps internal snapshots out of the result UI', () => {
+    expect(timeClock).toContain('today?.locationRequirements?.maxAccuracyM');
+    expect(punchWizard).toContain('today.locationRequirements?.maxAccuracyM');
+    expect(geolocationCapture).toContain('onCapture(evidence.accuracyM <= maxAccuracyM ? evidence : null)');
+    expect(punchWizard).toContain('presentAttendanceChecks(result.checks)');
+    expect(punchWizard).not.toContain('Object.entries(result.checks)');
+    expect(attendanceCss).toContain('.hr-result-technical');
   });
 
   it('keeps react-select and grouped money in financial self-service views', () => {

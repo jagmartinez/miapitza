@@ -3,6 +3,25 @@ import prisma from '../utils/prisma';
 import { SettingService } from './setting.service';
 import { zonedDateKey } from '../utils/timezone';
 
+const MANUAL_MOVEMENT_FIELDS = new Set([
+    'type',
+    'amount',
+    'description',
+    'reference',
+    'documentDate',
+    'documentType',
+    'documentNumber',
+    'supplierId'
+]);
+
+const RESERVED_CASH_REFERENCE_PREFIXES = [
+    'PAY-',
+    'CAT-PAY-',
+    'REV-PAY-',
+    'REV-CAT-PAY-',
+    'CN-REF-'
+];
+
 export class CashShiftService {
     static async getAll(companyId: number, filters?: {
         cashRegisterId?: number;
@@ -280,6 +299,12 @@ export class CashShiftService {
         documentNumber?: string;
         supplierId?: number;
     }) {
+        const unknownFields = Object.keys(data as Record<string, unknown>)
+            .filter((field) => !MANUAL_MOVEMENT_FIELDS.has(field));
+        if (unknownFields.length > 0) {
+            throw new Error(`Campos no permitidos en movimiento manual: ${unknownFields.join(', ')}`);
+        }
+
         // Validate amount and type
         if (!Number.isFinite(data.amount) || data.amount <= 0) {
             throw new Error('El monto debe ser mayor a 0');
@@ -287,6 +312,20 @@ export class CashShiftService {
         const amount = Math.round(data.amount * 100) / 100;
         if (!['IN', 'OUT'].includes(data.type)) {
             throw new Error('Tipo de movimiento inválido');
+        }
+        if (data.reference !== undefined && typeof data.reference !== 'string') {
+            throw new Error('La referencia debe ser una cadena de texto');
+        }
+        const normalizedReference = data.reference?.trim() || undefined;
+        if (normalizedReference && normalizedReference.length > 191) {
+            throw new Error('La referencia no puede exceder 191 caracteres');
+        }
+        const upperReference = normalizedReference?.toUpperCase();
+        if (
+            upperReference
+            && RESERVED_CASH_REFERENCE_PREFIXES.some((prefix) => upperReference.startsWith(prefix))
+        ) {
+            throw new Error('La referencia utiliza un namespace reservado para movimientos automáticos');
         }
 
         // If a supplier is referenced, it must belong to this company.
@@ -304,12 +343,16 @@ export class CashShiftService {
             type: data.type,
             amount,
             description: data.description,
-            reference: data.reference
+            reference: normalizedReference
         };
 
         // Add optional document fields
         if (data.documentDate) {
-            createData.documentDate = new Date(data.documentDate);
+            const documentDate = new Date(data.documentDate);
+            if (Number.isNaN(documentDate.getTime())) {
+                throw new Error('La fecha del documento no es válida');
+            }
+            createData.documentDate = documentDate;
         }
         if (data.documentType) {
             const docTypes: DocumentType[] = [
@@ -319,9 +362,10 @@ export class CashShiftService {
                 'NOTA_CREDITO',
                 'NOTA_DEBITO'
             ];
-            if (docTypes.includes(data.documentType as DocumentType)) {
-                createData.documentType = data.documentType as DocumentType;
+            if (!docTypes.includes(data.documentType as DocumentType)) {
+                throw new Error('Tipo de documento inválido');
             }
+            createData.documentType = data.documentType as DocumentType;
         }
         if (data.documentNumber) {
             createData.documentNumber = data.documentNumber;

@@ -33,10 +33,35 @@ async function main() {
   try {
     await connection.query('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
     await connection.query('START TRANSACTION WITH CONSISTENT SNAPSHOT');
+    const [unsupportedObjects] = await connection.query<RowDataPacket[]>(`
+      SELECT
+        (SELECT COUNT(*) FROM information_schema.VIEWS WHERE TABLE_SCHEMA = DATABASE()) AS views,
+        (SELECT COUNT(*) FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = DATABASE()) AS routines,
+        (SELECT COUNT(*) FROM information_schema.EVENTS WHERE EVENT_SCHEMA = DATABASE()) AS events
+    `);
+    if (
+      Number(unsupportedObjects[0].views) > 0
+      || Number(unsupportedObjects[0].routines) > 0
+      || Number(unsupportedObjects[0].events) > 0
+    ) {
+      throw new Error('Backup refuses schemas with views, routines or events until those objects are supported');
+    }
     const [tables] = await connection.query<RowDataPacket[]>("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'");
     const tableKey = tables.length > 0 ? Object.keys(tables[0])[0] : '';
     const names = tables.map(row => String(row[tableKey])).sort();
-    await writeLine(gzip, { type: 'header', format: 1, createdAt: new Date().toISOString(), tables: names.length });
+    const [triggerRows] = await connection.query<RowDataPacket[]>(`
+      SELECT TRIGGER_NAME
+      FROM information_schema.TRIGGERS
+      WHERE TRIGGER_SCHEMA = DATABASE()
+      ORDER BY TRIGGER_NAME
+    `);
+    await writeLine(gzip, {
+      type: 'header',
+      format: 2,
+      createdAt: new Date().toISOString(),
+      tables: names.length,
+      triggers: triggerRows.length,
+    });
 
     for (const table of names) {
       const [createRows] = await connection.query<RowDataPacket[]>(`SHOW CREATE TABLE \`${table.replace(/`/g, '``')}\``);
@@ -51,15 +76,36 @@ async function main() {
       }
       await writeLine(gzip, { type: 'tableEnd', name: table, rows: rows.length });
     }
+    for (const triggerRow of triggerRows) {
+      const name = String(triggerRow.TRIGGER_NAME);
+      const [createRows] = await connection.query<RowDataPacket[]>(
+        `SHOW CREATE TRIGGER \`${name.replace(/`/g, '``')}\``,
+      );
+      const createSql = createRows[0]['SQL Original Statement'] || createRows[0]['Create Trigger'];
+      if (typeof createSql !== 'string' || !createSql.trim()) {
+        throw new Error(`SHOW CREATE TRIGGER returned no SQL for ${name}`);
+      }
+      await writeLine(gzip, { type: 'trigger', name, createSql });
+    }
     await connection.query('COMMIT');
-    await writeLine(gzip, { type: 'footer', counts });
+    await writeLine(gzip, {
+      type: 'footer',
+      counts,
+      schemaObjects: { triggers: triggerRows.length, views: 0, routines: 0, events: 0 },
+    });
     gzip.end();
     await new Promise<void>((resolve, reject) => {
       destination.on('close', resolve);
       destination.on('error', reject);
       gzip.on('error', reject);
     });
-    console.log(JSON.stringify({ out, tables: Object.keys(counts).length, rows: Object.values(counts).reduce((a, b) => a + b, 0), counts }));
+    console.log(JSON.stringify({
+      out,
+      tables: Object.keys(counts).length,
+      triggers: triggerRows.length,
+      rows: Object.values(counts).reduce((a, b) => a + b, 0),
+      counts,
+    }));
   } catch (error) {
     await connection.query('ROLLBACK').catch(() => undefined);
     gzip.destroy();

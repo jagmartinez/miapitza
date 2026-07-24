@@ -11,7 +11,13 @@ import type {
     HrTodayAttendance,
 } from '../../types/hr-attendance';
 import { attendanceClient, createAttendanceIdempotencyKey, getAttendanceErrorMessage } from './attendanceClient';
-import { ATTENDANCE_ACTION_LABELS, ATTENDANCE_DECISION_LABELS, checkClass, isChallengeExpired } from './attendanceRules';
+import {
+    ATTENDANCE_ACTION_LABELS,
+    ATTENDANCE_DECISION_LABELS,
+    checkClassForPolicy,
+    isChallengeExpired,
+    presentAttendanceChecks,
+} from './attendanceRules';
 import CameraCapture from './CameraCapture';
 import GeolocationCapture from './GeolocationCapture';
 
@@ -35,18 +41,6 @@ const ACTION_HELP: Record<HrAttendanceAction, string> = {
     BREAK_START: 'Inicia el descanso de tu jornada abierta.',
     BREAK_END: 'Finaliza el descanso que está en curso.',
     CHECK_OUT: 'Cierra la jornada que ya está abierta.',
-};
-
-const CHECK_LABELS: Record<string, string> = {
-    schedule: 'Horario',
-    geofence: 'Geocerca de la sucursal',
-    locationAccuracy: 'Precisión de ubicación',
-    locationFreshness: 'Vigencia de ubicación',
-    biometric: 'Reconocimiento facial',
-    sequence: 'Secuencia del marcaje',
-    device: 'Dispositivo',
-    branchAuthorization: 'Sucursal asignada',
-    branchStatus: 'Estado de la sucursal',
 };
 
 export default function AttendancePunchWizard({ policy, today, onCompleted, onRequestCorrection, onViewSchedule }: AttendancePunchWizardProps) {
@@ -126,7 +120,17 @@ export default function AttendancePunchWizard({ policy, today, onCompleted, onRe
     };
 
     if (result) {
-        const checks = Object.entries(result.checks).filter((entry): entry is [string, NonNullable<typeof entry[1]>] => Boolean(entry[1]));
+        const checks = presentAttendanceChecks(result.checks);
+        const issues = checks.filter(({ check }) => check.status === 'FAILED' || check.status === 'REVIEW');
+        const passedCount = checks.filter(({ check }) => check.status === 'PASSED').length;
+        const shownChecks = issues.length > 0 ? issues : checks.filter(({ check }) => check.status === 'PASSED');
+        const blockingCount = issues.filter(({ key, check }) => checkClassForPolicy(key, check, policy) === 'danger').length;
+        const reviewCount = issues.filter(({ key, check }) => checkClassForPolicy(key, check, policy) === 'warning').length;
+        const hasScheduleIssue = issues.some(({ key }) => key === 'schedule');
+        const supportCodes = Array.from(new Set([
+            result.reasonCode,
+            ...issues.map(({ check }) => check.reasonCode),
+        ].filter((code): code is string => Boolean(code))));
         const ResultIcon = result.decision === 'ACCEPTED'
             ? CheckCircle2
             : result.decision === 'REVIEW_REQUIRED'
@@ -134,18 +138,54 @@ export default function AttendancePunchWizard({ policy, today, onCompleted, onRe
                 : XCircle;
         return (
             <section className={`hr-punch-result ${result.decision.toLowerCase()}`} aria-live="polite">
-                <ResultIcon size={42} aria-hidden="true" />
-                <h2>{ATTENDANCE_DECISION_LABELS[result.decision]}</h2>
-                <p>{result.message}</p>
-                {result.reasonCode && <small>Referencia: <code>{result.reasonCode}</code></small>}
-                {checks.length > 0 && (
+                <div className="hr-punch-result-heading">
+                    <ResultIcon size={38} aria-hidden="true" />
+                    <div>
+                        <h2>{ATTENDANCE_DECISION_LABELS[result.decision]}</h2>
+                        <p>{result.decision === 'REJECTED'
+                            ? blockingCount > 0
+                                ? `${blockingCount} validación${blockingCount === 1 ? '' : 'es'} ${blockingCount === 1 ? 'impidió' : 'impidieron'} registrar el marcaje${reviewCount ? ` y ${reviewCount} novedad${reviewCount === 1 ? '' : 'es'} quedó para revisión` : ''}.`
+                                : result.message
+                            : result.message}</p>
+                    </div>
+                </div>
+                {shownChecks.length > 0 && (
                     <dl className="hr-attendance-checks">
-                        {checks.map(([name, check]) => (
-                            <div key={name} className={checkClass(check)}><dt>{CHECK_LABELS[name] ?? name}</dt><dd>{check.message}</dd></div>
-                        ))}
+                        {shownChecks.map(({ key, label, check, guidance, measurement }) => {
+                            const visualClass = checkClassForPolicy(key, check, policy);
+                            return (
+                                <div key={key} className={visualClass}>
+                                    <dt><span>{label}</span>{visualClass === 'danger' && <small>Bloquea</small>}{visualClass === 'warning' && <small>Revisión</small>}</dt>
+                                    <dd>
+                                        <strong>{check.message}</strong>
+                                        {guidance && <span>{guidance}</span>}
+                                        {measurement && <small>{measurement}</small>}
+                                    </dd>
+                                </div>
+                            );
+                        })}
                     </dl>
                 )}
-                <Button type="button" variant="secondary" onClick={restart}><RefreshCw size={17} /> {result.decision === 'ACCEPTED' ? 'Volver al marcaje' : 'Corregir e intentar de nuevo'}</Button>
+                {issues.length > 0 && passedCount > 0 && (
+                    <p className="hr-checks-passed"><CheckCircle2 size={16} aria-hidden="true" /> {passedCount} control{passedCount === 1 ? '' : 'es'} superado{passedCount === 1 ? '' : 's'}; no requieren atención.</p>
+                )}
+                {supportCodes.length > 0 && (
+                    <details className="hr-result-technical">
+                        <summary>Códigos para soporte</summary>
+                        <code>{supportCodes.join(' · ')}</code>
+                    </details>
+                )}
+                <div className="hr-result-actions">
+                    {hasScheduleIssue && onViewSchedule && (
+                        <Button type="button" variant="ghost" onClick={onViewSchedule}><Clock3 size={17} /> Ver mi horario</Button>
+                    )}
+                    {result.decision === 'REVIEW_REQUIRED' && onRequestCorrection && (
+                        <Button type="button" variant="ghost" onClick={onRequestCorrection}>Ver seguimiento</Button>
+                    )}
+                    <Button type="button" variant={result.decision === 'REJECTED' ? 'primary' : 'secondary'} onClick={restart}>
+                        <RefreshCw size={17} /> {result.decision === 'REJECTED' ? 'Intentar nuevamente' : 'Volver al marcaje'}
+                    </Button>
+                </div>
             </section>
         );
     }
@@ -244,7 +284,7 @@ export default function AttendancePunchWizard({ policy, today, onCompleted, onRe
                     intervalMs={challenge.captureIntervalMs}
                 />
             )}
-            {policy.requireGeolocation && <GeolocationCapture maxAccuracyM={policy.maxLocationAccuracyM} onCapture={handleLocationCapture} disabled={submitting} />}
+            {policy.requireGeolocation && <GeolocationCapture maxAccuracyM={today.locationRequirements?.maxAccuracyM ?? policy.maxLocationAccuracyM} onCapture={handleLocationCapture} disabled={submitting} />}
             {error && <div className="hr-attendance-alert danger" role="alert">{error}</div>}
             <div className="hr-confirmation-summary" role="status" aria-live="polite">
                 <span className={biometricReady ? 'complete' : ''}><Fingerprint size={17} aria-hidden="true" /> Rostro {policy.requireBiometric ? (biometricReady ? 'listo' : 'pendiente') : 'no requerido'}</span>

@@ -25,17 +25,17 @@ export class InventoryMovementService {
             throw new Error('REVERSAL_PROVENANCE_MISSING: el movimiento no conserva sus capas de costo consumidas');
         }
         if (!Array.isArray(value) || value.length === 0) {
-            throw new Error('REVERSAL_PROVENANCE_MISSING: las capas consumidas no tienen un formato vÃ¡lido');
+            throw new Error('REVERSAL_PROVENANCE_MISSING: las capas consumidas no tienen un formato válido');
         }
         return value.map((raw) => {
             if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-                throw new Error('REVERSAL_PROVENANCE_MISSING: existe una capa consumida invÃ¡lida');
+                throw new Error('REVERSAL_PROVENANCE_MISSING: existe una capa consumida inválida');
             }
             const layer = raw as Record<string, Prisma.JsonValue>;
             const quantity = Number(layer.quantity);
             const unitCost = Number(layer.unitCost);
             if (!(quantity > 0) || !Number.isFinite(unitCost) || unitCost < 0) {
-                throw new Error('REVERSAL_PROVENANCE_MISSING: cantidad o costo de capa invÃ¡lido');
+                throw new Error('REVERSAL_PROVENANCE_MISSING: cantidad o costo de capa inválido');
             }
             const sourceType = typeof layer.sourceType === 'string'
                 && ['PURCHASE', 'PRODUCTION', 'ADJUSTMENT', 'TRANSFER', 'OPENING'].includes(layer.sourceType)
@@ -292,12 +292,12 @@ export class InventoryMovementService {
                 );
             }
 
-            AuditLogService.log({
+            await AuditLogService.log({
                 companyId, userId: data.userId,
                 entityType: 'InventoryMovement', entityId: result.movementId,
                 action: 'CREATE',
                 details: { type: data.type, productId: data.productId, warehouseId: data.warehouseId, quantity: baseQuantity, reason }
-            }).catch((err) => console.error('[InventoryMovementService] Failed to write audit log:', err));
+            }, tx);
 
             // Re-read with the same includes callers expect.
             return await tx.inventoryMovement.findUnique({
@@ -337,7 +337,7 @@ export class InventoryMovementService {
             throw new Error('X-Idempotency-Key es requerido y debe tener entre 8 y 191 caracteres');
         }
         if (!Number.isInteger(movementId) || movementId <= 0) {
-            throw new Error('Movimiento invÃ¡lido');
+            throw new Error('Movimiento inválido');
         }
 
         return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -363,7 +363,7 @@ export class InventoryMovementService {
                 include: { warehouse: { select: { branchId: true } } },
                 orderBy: { id: 'asc' }
             });
-            if (originals.length !== ids.length) throw new Error('El grupo de movimiento cambiÃ³ durante la reversa');
+            if (originals.length !== ids.length) throw new Error('El grupo de movimiento cambió durante la reversa');
 
             for (const original of originals) {
                 if (original.reversalOfId != null || original.origin === 'REVERSAL') {
@@ -500,7 +500,7 @@ export class InventoryMovementService {
                         });
                         const previousGlobalStock = Number(global._sum.quantity ?? 0) - Number(original.quantity);
                         if (previousGlobalStock < -1e-9) {
-                            throw new Error('MOVEMENT_STOCK_INTEGRITY_ERROR: el saldo global previo a la reversa es invÃ¡lido');
+                            throw new Error('MOVEMENT_STOCK_INTEGRITY_ERROR: el saldo global previo a la reversa es inválido');
                         }
                         await CostingService.applyProductionCost(
                             tx,

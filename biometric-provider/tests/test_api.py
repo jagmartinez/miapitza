@@ -162,3 +162,37 @@ def test_cross_tenant_template_revocation_is_a_safe_noop(tmp_path: Path) -> None
             json={**payload("challenge-0005"), "templateRef": template_ref},
         )
         assert verified.json()["matched"] is True
+
+
+def test_verify_rejects_same_dimension_template_from_another_model(tmp_path: Path) -> None:
+    current = settings(tmp_path)
+    store = TemplateStore(
+        current.database_url,
+        TemplateCipher(current.template_encryption_key),
+        current.identifier_hash_key,
+    )
+    store.initialize()
+    template_ref = store.enroll(
+        tenant_ref="tenant-a",
+        subject_ref="user-1",
+        challenge_ref="legacy-enrollment",
+        model_name="legacy-model-v1",
+        embedding=np.asarray([1.0, 0.0], dtype=np.float32),
+        retention_days=30,
+        evidence_fingerprint="legacy-evidence",
+    )
+    app = create_app(
+        current,
+        engine=FakeEngine([np.asarray([1.0, 0.0], dtype=np.float32)]),
+        store=store,
+    )  # type: ignore[arg-type]
+
+    with TestClient(app) as api:
+        response = api.post(
+            "/v1/verify-one-to-one",
+            headers=auth(),
+            json={**payload("model-upgrade-check"), "templateRef": template_ref},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "TEMPLATE_MODEL_MISMATCH"

@@ -7,6 +7,26 @@ import prisma from '../../utils/prisma';
 function instance(counters: { success: number; failure: number }) {
     const app = express();
     app.use(express.json());
+    app.use((req, _res, next) => {
+        const routeOwnedCredential = req.headers['x-api-key']
+            || req.headers['x-webhook-signature']
+            || req.headers['x-pedidosya-signature'];
+        if (!routeOwnedCredential) {
+            req.headers.authorization = 'Bearer integration-test-session';
+            req.authContextValidated = true;
+            req.user = {
+                userId: 1,
+                companyId: 1,
+                branchId: 1,
+                role: 'ADMIN',
+                roles: ['ADMIN'],
+                timezone: 'America/Managua',
+                permissions: ['payments.create'],
+                accountType: 'INTERNAL',
+            };
+        }
+        next();
+    });
     app.use(idempotency);
     app.post('/payments', async (req, res) => {
         counters.success += 1;
@@ -28,7 +48,7 @@ describe('durable idempotency across application instances', () => {
         await prisma.idempotencyRecord.deleteMany({
             where: {
                 OR: [
-                    { namespace: 'anon' },
+                    { namespace: { startsWith: 's:' } },
                     { namespace: { startsWith: 'k:' } },
                     { namespace: { startsWith: 'w:' } }
                 ]
@@ -59,7 +79,9 @@ describe('durable idempotency across application instances', () => {
         await request(secondInstance).post('/payments').set('X-Idempotency-Key', key).send({ amount: 11 }).expect(409);
         // Scope is part of the unique identity, so the same client key is safe on another endpoint.
         await request(secondInstance).post('/refunds').set('X-Idempotency-Key', key).send({ amount: 10 }).expect(201);
-        const rows = await prisma.idempotencyRecord.findMany({ where: { namespace: 'anon', key } });
+        const rows = await prisma.idempotencyRecord.findMany({
+            where: { namespace: { startsWith: 's:' }, key },
+        });
         expect(rows).toHaveLength(2);
         expect(rows.every((row) => /^[a-f0-9]{64}$/.test(row.fingerprint))).toBe(true);
         expect(JSON.stringify(rows)).not.toContain('metadata');
@@ -76,7 +98,7 @@ describe('durable idempotency across application instances', () => {
         expect([failure1.body.execution, failure2.body.execution]).toEqual([3, 4]);
     });
 
-    it('isolates identical keys used by different API keys and webhook signatures', async () => {
+    it('never caches API-key or webhook responses before route authentication', async () => {
         const key = `credentials-${Date.now()}`;
         const before = counters.success;
         await request(firstInstance).post('/payments').set('X-Api-Key', 'integration-a').set('X-Idempotency-Key', key).send({ amount: 10 }).expect(201);
@@ -87,11 +109,10 @@ describe('durable idempotency across application instances', () => {
 
         await request(secondInstance).post('/payments').set('X-Api-Key', 'integration-a').set('X-Idempotency-Key', key).send({ amount: 10 }).expect(201);
         await request(secondInstance).post('/payments').set('X-Webhook-Signature', 'signature-a').set('X-Idempotency-Key', key).send({ amount: 10 }).expect(201);
-        expect(counters.success - before).toBe(4);
+        expect(counters.success - before).toBe(6);
 
         const rows = await prisma.idempotencyRecord.findMany({ where: { key } });
-        expect(rows).toHaveLength(4);
-        expect(new Set(rows.map((row) => row.namespace)).size).toBe(4);
+        expect(rows).toHaveLength(0);
         expect(JSON.stringify(rows)).not.toContain('integration-a');
         expect(JSON.stringify(rows)).not.toContain('signature-a');
     });
@@ -104,8 +125,8 @@ describe('durable idempotency across application instances', () => {
 
         expect(response.status).toBe(201);
         expect(response.body.amount).toBe(77);
-        const record = await prisma.idempotencyRecord.findUnique({
-            where: { namespace_scope_key: { namespace: 'anon', scope: 'POST:/payments', key } }
+        const record = await prisma.idempotencyRecord.findFirst({
+            where: { namespace: { startsWith: 's:' }, scope: 'POST:/payments', key }
         });
         expect(record?.status).toBe('PROCESSING');
     });

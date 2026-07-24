@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
+import { afterAll, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -8,6 +8,7 @@ import { PaymentService } from '../../services/payment.service';
 import { InvoiceService } from '../../services/invoice.service';
 import { ProductionRecipeService } from '../../services/production-recipe.service';
 import { ProductionOrderService } from '../../services/production-order.service';
+import { AuditLogService } from '../../services/audit-log.service';
 import { InventoryEngineService } from '../../services/inventory-engine.service';
 import { runDemoCleanup } from '../../scripts/cleanup-demo-data';
 
@@ -419,6 +420,16 @@ describe('Recipe inventory flows (integration)', () => {
             userId
         );
         productionOrderId = order.id;
+        const audit = jest.spyOn(AuditLogService, 'log')
+            .mockRejectedValueOnce(new Error('forced production audit failure'));
+        await expect(
+            ProductionOrderService.setStatus(productionOrderId, companyId, 'IN_PROGRESS', userId)
+        ).rejects.toThrow('forced production audit failure');
+        audit.mockRestore();
+        expect((await prisma.productionOrder.findUniqueOrThrow({
+            where: { id: productionOrderId }
+        })).status).toBe('PENDING');
+
         await ProductionOrderService.setStatus(productionOrderId, companyId, 'IN_PROGRESS', userId);
 
         const finished = await ProductionOrderService.finish(
@@ -429,6 +440,7 @@ describe('Recipe inventory flows (integration)', () => {
         );
 
         expect(finished.status).toBe('FINISHED');
+        expect(finished.finishedById).toBe(userId);
         expect(await quantity(productionIngredientId)).toBeCloseTo(80, 6);
         expect(await quantity(outputProductId)).toBeCloseTo(7, 6);
         expect(Number(finished.realCost)).toBeCloseTo(40, 6);
@@ -436,6 +448,9 @@ describe('Recipe inventory flows (integration)', () => {
         expect(await prisma.productCostHistory.count({
             where: { companyId, productionOrderId }
         })).toBe(1);
+        expect(await prisma.auditLog.count({
+            where: { companyId, entityType: 'ProductionOrder', entityId: productionOrderId }
+        })).toBe(3);
 
         const cancelled = await ProductionOrderService.cancel(
             productionOrderId,

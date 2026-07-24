@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const request = vi.fn();
 vi.mock('axios', () => ({
@@ -33,6 +33,10 @@ beforeEach(async () => {
     request.mockReset();
     await db.caches.clear();
     await db.syncQueue.clear();
+});
+
+afterEach(() => {
+    vi.useRealTimers();
 });
 
 function login(companyId: number, id: number) {
@@ -86,6 +90,45 @@ describe('offline ownership and single-flight', () => {
         expect(request.mock.calls.map((call) => call[0].url)).toEqual(['/orders', '/orders/tmp/items']);
     });
 
+    it('propagates a terminal parent failure and never sends its dependent request', async () => {
+        login(1, 10);
+        await offlineManager.enqueueRequest({
+            url: '/orders/7/items',
+            method: 'POST',
+            data: {},
+            operationType: 'ADD_ORDER_ITEM',
+            entityTempId: 'order-7-kitchen-attempt',
+        });
+        await offlineManager.enqueueRequest({
+            url: '/orders/7/send-to-kitchen',
+            method: 'POST',
+            data: {},
+            operationType: 'SEND_TO_KITCHEN',
+            dependencyKey: 'order-7-kitchen-attempt',
+        });
+        request.mockRejectedValueOnce({ response: { status: 409, data: { message: 'item rejected' } } });
+
+        await offlineManager.processSyncQueue();
+
+        expect(request).toHaveBeenCalledTimes(1);
+        const failed = await offlineManager.getFailedItems();
+        expect(failed).toHaveLength(2);
+        expect(failed.find((item) => item.operationType === 'SEND_TO_KITCHEN')?.lastError)
+            .toContain('Dependencia fallida');
+    });
+
+    it('counts pending records only for the authenticated owner', async () => {
+        login(1, 10);
+        await offlineManager.enqueueRequest({ url: '/orders/1', method: 'POST', data: {}, operationType: 'CREATE_ORDER' });
+        login(2, 20);
+        await offlineManager.enqueueRequest({ url: '/orders/2', method: 'POST', data: {}, operationType: 'CREATE_ORDER' });
+        await offlineManager.enqueueRequest({ url: '/orders/3', method: 'POST', data: {}, operationType: 'CREATE_ORDER' });
+
+        expect(await offlineManager.getPendingCount()).toBe(2);
+        login(1, 10);
+        expect(await offlineManager.getPendingCount()).toBe(1);
+    });
+
     it.each([401, 409])('marks HTTP %s as terminal without retry', async (status) => {
         login(1, 10);
         await offlineManager.enqueueRequest({ url: '/orders', method: 'POST', data: {}, operationType: 'CREATE_ORDER' });
@@ -95,14 +138,18 @@ describe('offline ownership and single-flight', () => {
         expect((await offlineManager.getFailedItems())[0]?.retryCount).toBe(1);
     });
 
-    it('keeps 429 retryable with the same idempotency key', async () => {
+    it('automatically retries 429 with backoff and the same idempotency key', async () => {
         login(1, 10);
         await offlineManager.enqueueRequest({ url: '/orders', method: 'POST', data: {}, operationType: 'CREATE_ORDER' });
-        request.mockRejectedValueOnce({ response: { status: 429, data: { message: 'retry' } } });
+        request
+            .mockRejectedValueOnce({ response: { status: 429, data: { message: 'retry' } } })
+            .mockResolvedValueOnce({});
         await offlineManager.processSyncQueue();
         const firstKey = request.mock.calls[0][0].headers['X-Idempotency-Key'];
-        request.mockResolvedValueOnce({});
-        await offlineManager.processSyncQueue();
+        expect(request).toHaveBeenCalledTimes(1);
+
+        await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2), { timeout: 4000 });
         expect(request.mock.calls[1][0].headers['X-Idempotency-Key']).toBe(firstKey);
+        expect(await offlineManager.getPendingCount()).toBe(0);
     }, 10_000);
 });

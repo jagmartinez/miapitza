@@ -1340,12 +1340,12 @@ export class OrderService {
         return result;
     }
 
-    static async complete(
+    static async completeWithTransaction(
+        tx: Prisma.TransactionClient,
         id: number,
         companyId: number,
         warehouseId: number,
-        deliveredById: number,
-        options?: { syncExternal?: boolean }
+        deliveredById: number
     ) {
         if (!Number.isInteger(warehouseId) || warehouseId <= 0) {
             throw new Error('warehouseId válido es requerido para entregar la orden');
@@ -1354,7 +1354,6 @@ export class OrderService {
             throw new Error('Usuario de entrega inválido');
         }
 
-        const updatedOrder = await prisma.$transaction(async (tx) => {
             // Reversal/payment/cancellation all lock the order. Completion must use
             // the same lock and re-read its consumable graph inside the transaction.
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
@@ -1499,7 +1498,38 @@ export class OrderService {
             }
 
             return updatedOrder;
-        });
+    }
+
+    static async reconcileTableAfterSettlement(
+        tx: Prisma.TransactionClient,
+        companyId: number,
+        tableId: number,
+        actorId: number,
+        reason: string
+    ) {
+        return closeInactiveTableGroupForTable(
+            tx,
+            companyId,
+            tableId,
+            actorId,
+            reason
+        );
+    }
+
+    static async complete(
+        id: number,
+        companyId: number,
+        warehouseId: number,
+        deliveredById: number,
+        options?: { syncExternal?: boolean }
+    ) {
+        const updatedOrder = await prisma.$transaction((tx) => this.completeWithTransaction(
+            tx,
+            id,
+            companyId,
+            warehouseId,
+            deliveredById
+        ));
 
         if (options?.syncExternal !== false) {
             this.syncPedidosYaStatus(companyId, updatedOrder);

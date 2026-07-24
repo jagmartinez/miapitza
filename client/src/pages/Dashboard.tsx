@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { reportsAPI, reservationsAPI, productsAPI } from '../services/api';
 import { hasAnyRole } from '../utils/authz';
 import { getOrderStatusLabel } from '../utils/orderStatus';
+import { activateOnKeyboard } from '../utils/keyboardActivation';
 import type { Order } from '../types';
 import { ADMIN } from '../constants/roles';
 import { useCurrency } from '../hooks/useCurrency';
@@ -824,7 +825,7 @@ export default function Dashboard() {
                                     />
                                 </div>
                             ) : myStats.myOrders.map((ord: RecentOrder) => (
-                                <div key={ord.id} className="ord-row clickable" onClick={() => setSelectedOrder(ord)}>
+                                <div key={ord.id} className="ord-row clickable" role="button" tabIndex={0} aria-label={`Ver orden ${ord.id}`} onClick={() => setSelectedOrder(ord)} onKeyDown={(event) => activateOnKeyboard(event, () => setSelectedOrder(ord))}>
                                     <div className="ord-meta"><span className="ord-id">{ord.id}</span><span className="ord-table">{ord.table}</span></div>
                                     <div className="ord-right"><span className="ord-total">{formatCurrency(ord.total)}</span><span className={`ord-status status-${ord.status}`}>{ord.status}</span></div>
                                 </div>
@@ -911,7 +912,7 @@ export default function Dashboard() {
 
                     <div className="header-meta-group">
                         {stockAlerts.length > 0 && (
-                            <div className="compact-alert-ticker" onClick={() => navigate('/inventory')} title="Ver inventario con stock bajo">
+                            <div className="compact-alert-ticker" role="button" tabIndex={0} onClick={() => navigate('/inventory')} onKeyDown={(event) => activateOnKeyboard(event, () => navigate('/inventory'))} title="Ver inventario con stock bajo">
                                 <AlertCircle size={16} className="text-danger" />
                                 <span className="ticker-label text-danger">Stock bajo</span>
                                 <span className="ticker-count">{stockAlerts.length}</span>
@@ -1169,7 +1170,7 @@ export default function Dashboard() {
                     </div>
                     <div className="leaderboard-compact-list">
                         {topProducts.slice(0, 5).map((p, i) => (
-                            <div key={p.menuItemId} className="lb-compact-row clickable" onClick={() => setSelectedProduct(p)}>
+                            <div key={p.menuItemId} className="lb-compact-row clickable" role="button" tabIndex={0} aria-label={`Ver producto ${p.name}`} onClick={() => setSelectedProduct(p)} onKeyDown={(event) => activateOnKeyboard(event, () => setSelectedProduct(p))}>
                                 <div className={`lb-rank rank-${i + 1}`}>{i + 1}</div>
                                 <div className="lb-info">
                                     <span className="lb-name">{p.name}</span>
@@ -1196,7 +1197,7 @@ export default function Dashboard() {
                                 />
                             </div>
                         ) : recentOrders.slice(ordersPage * WIDGET_PAGE_SIZE, (ordersPage + 1) * WIDGET_PAGE_SIZE).map(ord => (
-                            <div key={ord.id} className="ord-row clickable" onClick={() => setSelectedOrder(ord)}>
+                            <div key={ord.id} className="ord-row clickable" role="button" tabIndex={0} aria-label={`Ver orden ${ord.id}`} onClick={() => setSelectedOrder(ord)} onKeyDown={(event) => activateOnKeyboard(event, () => setSelectedOrder(ord))}>
                                 <div className="ord-meta">
                                     <span className="ord-id">{ord.id}</span>
                                     <span className="ord-table">{ord.table}</span>
@@ -1232,7 +1233,7 @@ export default function Dashboard() {
                                 />
                             </div>
                         ) : recentInvoices.slice(invoicesPage * WIDGET_PAGE_SIZE, (invoicesPage + 1) * WIDGET_PAGE_SIZE).map(inv => (
-                            <div key={inv.id} className="invoice-row clickable" onClick={() => setSelectedInvoice(inv)}>
+                            <div key={inv.id} className="invoice-row clickable" role="button" tabIndex={0} aria-label={`Ver factura ${inv.id}`} onClick={() => setSelectedInvoice(inv)} onKeyDown={(event) => activateOnKeyboard(event, () => setSelectedInvoice(inv))}>
                                 <div className="invoice-info">
                                     <span className="inv-id">{inv.id}</span>
                                     <span className="inv-meta">{inv.time}</span>
@@ -1268,7 +1269,7 @@ export default function Dashboard() {
                                 />
                             </div>
                         ) : todaysReservations.slice(reservationsPage * WIDGET_PAGE_SIZE, (reservationsPage + 1) * WIDGET_PAGE_SIZE).map(res => (
-                            <div key={res.id} className="res-row clickable" onClick={() => setSelectedReservation(res)}>
+                            <div key={res.id} className="res-row clickable" role="button" tabIndex={0} aria-label={`Ver reservación ${res.id}`} onClick={() => setSelectedReservation(res)} onKeyDown={(event) => activateOnKeyboard(event, () => setSelectedReservation(res))}>
                                 <div className="res-time">{res.day || res.time}</div>
                                 <div className="res-info">
                                     <span className="res-name">{res.name}</span>

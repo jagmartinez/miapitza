@@ -36,6 +36,21 @@ def test_production_requires_shared_database() -> None:
         Settings.from_env(env)
 
 
+def test_production_rejects_sqlite_driver_variants() -> None:
+    env = base_env()
+    env["FACE_ENV"] = "production"
+    env["FACE_DATABASE_URL"] = "sqlite+pysqlite:///data.db"
+    with pytest.raises(ValueError, match="MySQL o PostgreSQL"):
+        Settings.from_env(env)
+
+
+def test_production_accepts_explicit_shared_database_driver() -> None:
+    env = base_env()
+    env["FACE_ENV"] = "production"
+    env["FACE_DATABASE_URL"] = "mysql+pymysql://face:secret@db/templates"
+    assert Settings.from_env(env).database_url == env["FACE_DATABASE_URL"]
+
+
 def test_parses_multiple_rotation_tokens() -> None:
     env = base_env()
     env["FACE_AUTH_TOKENS"] = f"{'a' * 32},{'b' * 40}"

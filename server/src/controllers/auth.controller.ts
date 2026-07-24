@@ -1,7 +1,16 @@
 import { Request, Response, NextFunction } from 'express';
+import { createHash } from 'node:crypto';
 import { AuthService } from '../services/auth.service';
 import { SessionService } from '../services/session.service';
 import { TwoFactorService } from '../services/twoFactor.service';
+import { AuditLogService } from '../services/audit-log.service';
+import prisma from '../utils/prisma';
+import {
+    isPlatformOperator,
+    parseCompanyIdInput,
+    resolveActingCompanyId,
+    TenantScopeError,
+} from '../utils/tenant-scope';
 
 export class AuthController {
     private static extractToken(req: Request): string {
@@ -59,12 +68,16 @@ export class AuthController {
             if (!roleId || typeof roleId !== 'number') {
                 return next({ statusCode: 400, message: 'roleId válido requerido' });
             }
-            const isSuperAdmin = requestUser.roles?.includes('SUPERADMIN') || requestUser.role === 'SUPERADMIN';
-            const resolvedCompanyId = isSuperAdmin ? companyId : requestUser.companyId;
+            const requestedCompanyId = parseCompanyIdInput(companyId);
+            const resolvedCompanyId = await resolveActingCompanyId(
+                requestUser,
+                requestedCompanyId,
+                { requireActiveTarget: true },
+            );
             if (!resolvedCompanyId || typeof resolvedCompanyId !== 'number') {
                 return next({ statusCode: 400, message: 'companyId válido requerido' });
             }
-            const actingRoles = requestUser.roles || [requestUser.role];
+            const canAssignGlobalRoles = isPlatformOperator(requestUser);
             // Only pass allowed fields — prevent mass assignment
             const user = await AuthService.register({
                 name,
@@ -74,14 +87,16 @@ export class AuthController {
                 roleId,
                 branchId,
                 companyId: resolvedCompanyId
-            }, actingRoles);
+            }, canAssignGlobalRoles);
             res.status(201).json({
                 success: true,
                 message: 'Usuario registrado exitosamente',
                 data: user
             });
         } catch (error) {
-            next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
+            next(error instanceof TenantScopeError
+                ? error
+                : { statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
         }
     }
 
@@ -117,6 +132,20 @@ export class AuthController {
             res.json({ success: true, message: 'Inicio de sesión exitoso', data: result });
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
+            const attemptedUsername = typeof req.body?.username === 'string'
+                ? req.body.username.trim().toLocaleLowerCase('en-US')
+                : '';
+            console.warn('[AUTH] Login rejected', {
+                usernameHash: attemptedUsername
+                    ? createHash('sha256').update(attemptedUsername).digest('hex').slice(0, 16)
+                    : null,
+                ipAddress: req.ip || null,
+                reason: msg.includes('JWT_SECRET')
+                    ? 'CONFIGURATION'
+                    : /prisma|ECONNREFUSED|P1001|P1017|can.t reach database/i.test(msg)
+                        ? 'DATABASE_UNAVAILABLE'
+                        : 'AUTHENTICATION_FAILED',
+            });
             if (msg.includes('JWT_SECRET')) {
                 // Missing server configuration is not a client auth failure.
                 return next({ statusCode: 503, message: 'Servicio no disponible: configuración del servidor incompleta' });
@@ -154,7 +183,17 @@ export class AuthController {
         try {
             const token = AuthController.extractToken(req);
             if (token) {
-                await SessionService.revokeByToken(token);
+                await prisma.$transaction(async (tx) => {
+                    await SessionService.revokeByToken(token, tx);
+                    await AuditLogService.log({
+                        companyId: req.user!.companyId,
+                        userId: req.user!.userId,
+                        entityType: 'UserSession',
+                        entityId: req.user!.userId,
+                        action: 'LOGOUT',
+                        details: { currentSession: true },
+                    }, tx);
+                });
             }
             res.clearCookie('auth_token', { path: '/' });
             res.json({ success: true, message: 'Sesión cerrada' });

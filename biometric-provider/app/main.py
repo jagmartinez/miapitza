@@ -178,7 +178,14 @@ def create_app(
         response.headers["X-Request-Id"] = request_id
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Cache-Control"] = "no-store"
-        _log("request_complete", requestId=request_id, route=route_name, method=request.method, status=status, durationMs=round(elapsed * 1000, 2))
+        _log(
+            "request_complete",
+            requestId=request_id,
+            route=route_name,
+            method=request.method,
+            status=status,
+            durationMs=round(elapsed * 1000, 2),
+        )
         return response
 
     @app.exception_handler(BiometricError)
@@ -263,14 +270,21 @@ def create_app(
     async def verify(payload: VerifyRequest) -> VerifyResponse:
         try:
             analysis = await analyze_evidence(payload)
-            enrolled_embedding = await asyncio.to_thread(
-                resolved_store.load,
+            enrolled_template = await asyncio.to_thread(
+                resolved_store.load_record,
                 template_ref=payload.template_ref,
                 tenant_ref=payload.tenant_ref,
                 subject_ref=payload.subject_ref,
             )
+            if enrolled_template.model_name != resolved.model_name:
+                raise BiometricError(
+                    "TEMPLATE_MODEL_MISMATCH", "La plantilla requiere reenrolamiento", status_code=409, retryable=False
+                )
+            enrolled_embedding = enrolled_template.embedding
             if enrolled_embedding.shape != analysis.embedding.shape:
-                raise BiometricError("TEMPLATE_MODEL_MISMATCH", "La plantilla requiere reenrolamiento", status_code=409, retryable=False)
+                raise BiometricError(
+                    "TEMPLATE_MODEL_MISMATCH", "La plantilla requiere reenrolamiento", status_code=409, retryable=False
+                )
             cosine = float(np.dot(enrolled_embedding, analysis.embedding))
             score = min(1.0, max(0.0, cosine))
             matched = cosine >= resolved.match_threshold

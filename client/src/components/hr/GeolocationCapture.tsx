@@ -32,7 +32,10 @@ export default function GeolocationCapture({ maxAccuracyM, onCapture, disabled =
                     capturedAt: new Date(position.timestamp).toISOString(),
                 };
                 setLocation(evidence);
-                onCapture(evidence);
+                // Do not enable confirmation with a sample the server is
+                // guaranteed to reject. The server still validates the final
+                // evidence and remains authoritative.
+                onCapture(evidence.accuracyM <= maxAccuracyM ? evidence : null);
                 setLoading(false);
             },
             (positionError) => {
@@ -63,15 +66,19 @@ export default function GeolocationCapture({ maxAccuracyM, onCapture, disabled =
                     {acceptable ? <LocateFixed size={20} aria-hidden="true" /> : <AlertTriangle size={20} aria-hidden="true" />}
                     <div>
                         <strong>Ubicación capturada · precisión ±{Math.round(location.accuracyM)} m</strong>
-                        <span>{acceptable ? `Precisión dentro del máximo de ${maxAccuracyM} m.` : `Supera el máximo de ${maxAccuracyM} m; el servidor aplicará la política configurada.`}</span>
-                        <small>La distancia y la geocerca de tu sucursal se validan al confirmar.</small>
+                        <span>{acceptable ? `Precisión dentro del máximo de ${maxAccuracyM} m.` : `Necesitas ±${maxAccuracyM} m o menos antes de confirmar.`}</span>
+                        <small>{acceptable
+                            ? 'La distancia y la geocerca de tu sucursal se validan al confirmar.'
+                            : maxAccuracyM < 10
+                                ? 'La sucursal tiene un límite excepcionalmente estricto. Solicita al administrador revisar la configuración.'
+                                : 'Activa la ubicación precisa, desactiva el ahorro de batería y vuelve a intentarlo cerca de una ventana.'}</small>
                     </div>
                 </div>
             )}
             {error && <div className="hr-attendance-alert danger" role="alert">{error}</div>}
             <Button type="button" variant="secondary" onClick={capture} disabled={disabled || loading}>
                 {location ? <RefreshCw size={17} /> : <LocateFixed size={17} />}
-                {loading ? 'Obteniendo ubicación…' : location ? 'Actualizar ubicación' : 'Capturar ubicación'}
+                {loading ? 'Obteniendo ubicación…' : location ? (acceptable ? 'Actualizar ubicación' : 'Mejorar ubicación') : 'Capturar ubicación'}
             </Button>
         </section>
     );

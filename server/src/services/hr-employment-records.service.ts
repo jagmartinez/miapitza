@@ -5,6 +5,7 @@ import { Prisma, type EmployeeDocumentStatus, type EmploymentContractStatus } fr
 import prisma from '../utils/prisma';
 import { AuditLogService } from './audit-log.service';
 import { HrDomainError } from './hr.service';
+import { fileCleanupService } from './file-cleanup.service';
 
 const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 const ALLOWED_DOCUMENTS = {
@@ -74,8 +75,19 @@ class FilesystemHrDocumentStorage implements HrDocumentStorage {
             await writeFile(probe, Buffer.alloc(0), { flag: 'wx', mode: 0o600 });
             await unlink(probe);
             return { provider: this.provider, status: 'AVAILABLE' as const, checkedAt: new Date().toISOString() };
-        } catch {
-            await unlink(probe).catch(() => undefined);
+        } catch (error) {
+            await unlink(probe).catch((cleanupError) => {
+                const code = (cleanupError as NodeJS.ErrnoException).code;
+                if (code !== 'ENOENT') {
+                    console.error('[HrDocumentStorage] Health probe cleanup failed', {
+                        errorType: cleanupError instanceof Error ? cleanupError.name : typeof cleanupError,
+                        code,
+                    });
+                }
+            });
+            console.error('[HrDocumentStorage] Health check failed', {
+                errorType: error instanceof Error ? error.name : typeof error,
+            });
             return { provider: this.provider, status: 'UNAVAILABLE' as const, checkedAt: new Date().toISOString(), detail: 'Directorio no disponible' };
         }
     }
@@ -88,7 +100,15 @@ class FilesystemHrDocumentStorage implements HrDocumentStorage {
             await writeFile(temporary, content, { flag: 'wx', mode: 0o600 });
             await rename(temporary, destination);
         } catch (error) {
-            await unlink(temporary).catch(() => undefined);
+            await unlink(temporary).catch((cleanupError) => {
+                const code = (cleanupError as NodeJS.ErrnoException).code;
+                if (code !== 'ENOENT') {
+                    console.error('[HrDocumentStorage] Temporary file cleanup failed', {
+                        errorType: cleanupError instanceof Error ? cleanupError.name : typeof cleanupError,
+                        code,
+                    });
+                }
+            });
             throw new HrDocumentStorageUnavailableError(error instanceof Error ? `No fue posible custodiar el documento: ${error.message}` : undefined);
         }
     }
@@ -182,6 +202,27 @@ const documentSelect = {
     uploadedBy: { select: { id: true, name: true, username: true } },
 } satisfies Prisma.EmployeeDocumentSelect;
 
+async function dispatchDocumentCleanup(
+    companyId: number,
+    storageKey: string,
+    context: string,
+): Promise<boolean> {
+    try {
+        return await fileCleanupService.processByStorageKey(
+            companyId,
+            'HR_DOCUMENT',
+            storageKey,
+        );
+    } catch (error) {
+        console.error('[HrDocumentStorage] Immediate cleanup dispatch failed; outbox retained', {
+            companyId,
+            context,
+            errorType: error instanceof Error ? error.name : typeof error,
+        });
+        return false;
+    }
+}
+
 export class HrEmployeeDocumentService {
     static async list(companyId: number, employeeId: number, branchId?: number) {
         await assertEmployeeScope(companyId, employeeId, branchId);
@@ -206,6 +247,10 @@ export class HrEmployeeDocumentService {
         if (expiresAt && expiresAt <= new Date()) throw new HrDomainError('expiresAt debe ser una fecha futura');
         const contentHash = createHash('sha256').update(input.content).digest('hex');
         const storageKey = `${input.companyId}/${input.employeeId}/${randomUUID()}${format.extension}`;
+        const durableFilesystem = storage.provider === 'filesystem';
+        if (durableFilesystem) {
+            await fileCleanupService.reserveUpload(input.companyId, 'HR_DOCUMENT', storageKey);
+        }
         await storage.put(storageKey, input.content);
         try {
             return await prisma.$transaction(async (tx) => {
@@ -221,10 +266,42 @@ export class HrEmployeeDocumentService {
                     companyId: input.companyId, userId: input.actorUserId, entityType: 'EmployeeDocument', entityId: document.id,
                     action: 'CREATE', details: { employeeId: input.employeeId, documentType, contentHash, sizeBytes: input.content.length, expiresAt: expiresAt?.toISOString().slice(0, 10) ?? null, storageProvider: storage.provider },
                 }, tx);
+                if (durableFilesystem) {
+                    await fileCleanupService.cancelReservation(
+                        tx,
+                        input.companyId,
+                        'HR_DOCUMENT',
+                        storageKey,
+                    );
+                }
                 return document;
             });
         } catch (error) {
-            await storage.delete(storageKey).catch(() => undefined);
+            if (durableFilesystem) {
+                await fileCleanupService.requestDeletion(
+                    prisma,
+                    input.companyId,
+                    'HR_DOCUMENT',
+                    storageKey,
+                    'DOCUMENT_PERSISTENCE_FAILED',
+                ).then(() => dispatchDocumentCleanup(
+                    input.companyId,
+                    storageKey,
+                    'upload-persistence-failed',
+                )).catch((cleanupError) => {
+                    console.error('[HrDocumentStorage] Failed to dispatch durable cleanup', {
+                        companyId: input.companyId,
+                        errorType: cleanupError instanceof Error ? cleanupError.name : typeof cleanupError,
+                    });
+                });
+            } else {
+                await storage.delete(storageKey).catch((cleanupError) => {
+                    console.error('[HrDocumentStorage] Provider compensation failed', {
+                        provider: storage.provider,
+                        errorType: cleanupError instanceof Error ? cleanupError.name : typeof cleanupError,
+                    });
+                });
+            }
             throw error;
         }
     }
@@ -235,8 +312,48 @@ export class HrEmployeeDocumentService {
         if (!document) throw new HrDomainError('Documento no encontrado', 404);
         if (document.status !== 'ACTIVE') throw new HrDomainError('El documento ya no está activo', 410);
         if (document.expiresAt && document.expiresAt <= new Date()) {
-            await prisma.employeeDocument.updateMany({ where: { id: document.id, companyId, status: 'ACTIVE' }, data: { status: 'EXPIRED' } });
-            await storage.delete(document.storageKey);
+            if (storage.provider === 'filesystem') {
+                const queued = await prisma.$transaction(async (tx) => {
+                    const changed = await tx.employeeDocument.updateMany({
+                        where: { id: document.id, companyId, status: 'ACTIVE' },
+                        data: { status: 'EXPIRED' },
+                    });
+                    if (changed.count !== 1) return false;
+                    await fileCleanupService.requestDeletion(
+                        tx,
+                        companyId,
+                        'HR_DOCUMENT',
+                        document.storageKey,
+                        'DOCUMENT_EXPIRED_ON_DOWNLOAD',
+                    );
+                    await AuditLogService.log({
+                        companyId,
+                        userId: actorUserId,
+                        entityType: 'EmployeeDocument',
+                        entityId: document.id,
+                        action: 'DELETE',
+                        details: {
+                            operation: 'EXPIRE_AND_SCHEDULE_PURGE',
+                            employeeId,
+                            contentHash: document.contentHash,
+                        },
+                    }, tx);
+                    return true;
+                });
+                if (queued) {
+                    await dispatchDocumentCleanup(
+                        companyId,
+                        document.storageKey,
+                        'expired-on-download',
+                    );
+                }
+            } else {
+                await prisma.employeeDocument.updateMany({
+                    where: { id: document.id, companyId, status: 'ACTIVE' },
+                    data: { status: 'EXPIRED' },
+                });
+                await storage.delete(document.storageKey);
+            }
             throw new HrDomainError('El documento expiró y fue retirado de custodia', 410);
         }
         const content = await storage.get(document.storageKey);
@@ -256,12 +373,31 @@ export class HrEmployeeDocumentService {
         const reason = requiredText(reasonValue, 'reason', 500);
         const document = await prisma.employeeDocument.findFirst({ where: { id: documentId, companyId, employeeId, status: 'ACTIVE' } });
         if (!document) throw new HrDomainError('Documento activo no encontrado', 404);
-        await storage.delete(document.storageKey);
+        const durableFilesystem = storage.provider === 'filesystem';
+        if (!durableFilesystem) {
+            await storage.delete(document.storageKey);
+        }
         await prisma.$transaction(async (tx) => {
             const changed = await tx.employeeDocument.updateMany({ where: { id: document.id, companyId, status: 'ACTIVE' }, data: { status: 'REVOKED' } });
+            if (durableFilesystem) {
+                await fileCleanupService.requestDeletion(
+                    tx,
+                    companyId,
+                    'HR_DOCUMENT',
+                    document.storageKey,
+                    'DOCUMENT_REVOKED',
+                );
+            }
             if (changed.count !== 1) throw new HrDomainError('El documento cambió concurrentemente', 409);
             await AuditLogService.log({ companyId, userId: actorUserId, entityType: 'EmployeeDocument', entityId: document.id, action: 'DELETE', details: { operation: 'REVOKE_AND_PURGE', employeeId, reason, contentHash: document.contentHash } }, tx);
         });
+        if (durableFilesystem) {
+            await dispatchDocumentCleanup(
+                companyId,
+                document.storageKey,
+                'revoke',
+            );
+        }
         return { id: document.id, status: 'REVOKED' as EmployeeDocumentStatus };
     }
 
@@ -271,6 +407,55 @@ export class HrEmployeeDocumentService {
         let purged = 0;
         let newlyExpired = 0;
         for (const document of due) {
+            if (storage.provider === 'filesystem') {
+                let becameExpired = false;
+                const queued = await prisma.$transaction(async (tx) => {
+                    if (document.status === 'ACTIVE') {
+                        const changed = await tx.employeeDocument.updateMany({
+                            where: { id: document.id, companyId, status: 'ACTIVE' },
+                            data: { status: 'EXPIRED' },
+                        });
+                        if (changed.count !== 1) return false;
+                        becameExpired = true;
+                    }
+                    await fileCleanupService.requestDeletion(
+                        tx,
+                        companyId,
+                        'HR_DOCUMENT',
+                        document.storageKey,
+                        'DOCUMENT_RETENTION_EXPIRED',
+                    );
+                    await AuditLogService.log({
+                        companyId,
+                        userId: actorUserId,
+                        entityType: 'EmployeeDocument',
+                        entityId: document.id,
+                        action: 'DELETE',
+                        details: {
+                            operation: 'RETENTION_EXPIRED',
+                            purgeScheduled: true,
+                            contentHash: document.contentHash,
+                        },
+                    }, tx);
+                    return true;
+                });
+                if (!queued) continue;
+                if (becameExpired) newlyExpired += 1;
+                const completed = await dispatchDocumentCleanup(
+                    companyId,
+                    document.storageKey,
+                    'retention',
+                );
+                if (completed) {
+                    purged += 1;
+                } else {
+                    failures.push({
+                        id: document.id,
+                        message: 'Purga pendiente de reintento durable',
+                    });
+                }
+                continue;
+            }
             if (document.status === 'ACTIVE') {
                 const changed = await prisma.employeeDocument.updateMany({ where: { id: document.id, companyId, status: 'ACTIVE' }, data: { status: 'EXPIRED' } });
                 if (changed.count !== 1) continue;

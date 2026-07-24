@@ -7,6 +7,19 @@ import { SettingService } from './setting.service';
  * Detailed cash counting and reconciliation
  */
 export class CashArqueoService {
+    private static hasPhysicalBreakdown(breakdown?: {
+        bills?: { denomination: number; count: number }[];
+        coins?: { denomination: number; count: number }[];
+        usdBills?: { denomination: number; count: number }[];
+    }): boolean {
+        return breakdown !== undefined
+            && (
+                Array.isArray(breakdown.bills)
+                || Array.isArray(breakdown.coins)
+                || Array.isArray(breakdown.usdBills)
+            );
+    }
+
     // Acceptable cash count difference (in córdobas) before a shift is flagged.
     private static calculateCountedAmount(breakdown: {
         bills?: { denomination: number; count: number }[];
@@ -73,6 +86,12 @@ export class CashArqueoService {
                         name: true
                     }
                 },
+                closedBy: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                },
                 movements: {
                     orderBy: { createdAt: 'desc' }
                 }
@@ -113,6 +132,11 @@ export class CashArqueoService {
                 user: shift.user.name,
                 startDate: shift.startDate,
                 endDate: shift.endDate,
+                closedBy: shift.closedBy,
+                forceClosed: shift.forceClosed,
+                closingExchangeRate: shift.closingExchangeRate !== null
+                    ? Number(shift.closingExchangeRate)
+                    : null,
                 status: shift.endDate ? 'CERRADO' : 'ABIERTO'
             },
             amounts: {
@@ -160,9 +184,17 @@ export class CashArqueoService {
         if (!Number.isFinite(closeData.endAmount) || Number(closeData.endAmount) < 0) {
             throw new Error('El monto contado debe ser un número finito mayor o igual a cero');
         }
-        const details = await this.getShiftDetails(shiftId, companyId);
         const counted = this.calculateCountedAmount(closeData);
-        const endAmount = closeData.endAmount ?? counted.totalCounted;
+        const endAmount = Number(closeData.endAmount);
+        if (
+            this.hasPhysicalBreakdown(closeData)
+            && Math.round(endAmount * 100) !== Math.round(counted.totalCounted * 100)
+        ) {
+            throw new Error(
+                `El monto contado (${endAmount.toFixed(2)}) no coincide con el total de denominaciones (${counted.totalCounted.toFixed(2)})`
+            );
+        }
+        const details = await this.getShiftDetails(shiftId, companyId);
         const tolerance = await SettingService.getCashReconciliationTolerance(companyId);
         const differenceSummary = this.classifyDifference(endAmount - details.amounts.expectedEndAmount, tolerance);
 
@@ -235,6 +267,7 @@ export class CashArqueoService {
         companyId: number,
         endAmount: number,
         actorRoles: string[],
+        actorId: number,
         notes?: string,
         breakdown?: {
             bills?: { denomination: number; count: number }[];
@@ -249,14 +282,18 @@ export class CashArqueoService {
         if (!Number.isFinite(endAmount) || endAmount < 0) {
             throw new Error('El monto de cierre debe ser un número finito mayor o igual a cero');
         }
+        if (!Number.isInteger(actorId) || actorId <= 0) {
+            throw new Error('El actor de cierre no es válido');
+        }
         const normalizedEndAmount = Math.round(endAmount * 100) / 100;
+        const hasPhysicalBreakdown = this.hasPhysicalBreakdown(breakdown);
         const preview = await this.previewClose(shiftId, companyId, {
             endAmount: normalizedEndAmount,
             notes,
-            bills: breakdown?.bills,
-            coins: breakdown?.coins,
-            usdBills: breakdown?.usdBills,
-            exchangeRate: breakdown?.exchangeRate
+            bills: hasPhysicalBreakdown ? breakdown?.bills : undefined,
+            coins: hasPhysicalBreakdown ? breakdown?.coins : undefined,
+            usdBills: hasPhysicalBreakdown ? breakdown?.usdBills : undefined,
+            exchangeRate: hasPhysicalBreakdown ? breakdown?.exchangeRate : undefined
         });
         const difference = preview.difference;
         const isAdminOverride = actorRoles.some((role) => role === 'ADMIN' || role === 'SUPERADMIN');
@@ -311,11 +348,18 @@ export class CashArqueoService {
                     endDate: new Date(),
                     endAmount: normalizedEndAmount,
                     difference: currentSummary.difference,
+                    closedById: actorId,
+                    forceClosed: currentSummary.exceedsTolerance
+                        && options?.forceClose === true
+                        && isAdminOverride,
+                    closingExchangeRate: hasPhysicalBreakdown && preview.countedBreakdown.usdBills > 0
+                        ? preview.countedBreakdown.exchangeRate
+                        : null,
                     notes: notes || 'Cuadrado'
                 }
             });
 
-            if (breakdown) {
+            if (hasPhysicalBreakdown && breakdown) {
                 // Delete existing counts if any
                 await tx.cashCount.deleteMany({ where: { shiftId } });
 

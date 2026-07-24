@@ -66,6 +66,21 @@
     border-left: 1px solid var(--color-border);
 }
 
+.catering-contract-status {
+    margin: 0 0 1rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.75rem;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.catering-contract-status.error {
+    border-color: var(--color-danger);
+    color: var(--color-danger);
+}
+
 .catering-header .view-toggle {
     height: 44px;
     min-height: 44px;

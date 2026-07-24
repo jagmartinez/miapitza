@@ -45,23 +45,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (logoutInFlight.current) return logoutInFlight.current;
 
         const operation = (async () => {
-            try {
-                await authAPI.logout();
-            } catch {
-                // Local logout must remain available during network/API outages.
-            } finally {
-                closeWebSocket();
-                await offlineManager.clearSessionData();
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
-                localStorage.removeItem('authFlags');
-                setUser(null);
-                setMustChangePassword(false);
-                setPasswordExpired(false);
+            const remoteLogout = authAPI.logout().catch(() => {
+                // Local logout remains authoritative during network/API outages.
+            });
 
-                if (inactivityTimer.current) {
-                    clearTimeout(inactivityTimer.current);
-                }
+            closeWebSocket();
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            localStorage.removeItem('authFlags');
+            setUser(null);
+            setMustChangePassword(false);
+            setPasswordExpired(false);
+
+            if (inactivityTimer.current) {
+                clearTimeout(inactivityTimer.current);
+                inactivityTimer.current = null;
+            }
+
+            try {
+                await offlineManager.clearSessionData();
+            } finally {
+                await remoteLogout;
             }
         })();
 
@@ -77,7 +81,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
         if (user && sessionTimeout > 0) {
             inactivityTimer.current = setTimeout(() => {
-                logout();
+                void logout();
                 window.location.href = '/login';
             }, sessionTimeout * 60 * 1000);
         }

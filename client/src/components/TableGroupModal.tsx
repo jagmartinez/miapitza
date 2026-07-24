@@ -30,15 +30,18 @@ export default function TableGroupModal({
     const initialTable = tables.find((table) => table.id === initialTableId) ?? null;
     const activeGroup = initialTable?.activeTableGroup ?? null;
     const editing = Boolean(activeGroup);
+    const activeGroupId = activeGroup?.id ?? null;
+    const activeGroupPrimaryTableId = activeGroup?.primaryTableId ?? null;
+    const activeGroupMemberTableIds = activeGroup?.memberTableIds ?? null;
     const primary = tables.find((table) => table.id === primaryTableId) ?? null;
 
     useEffect(() => {
         if (!isOpen) return;
-        setPrimaryTableId(activeGroup?.primaryTableId ?? initialTable?.id ?? null);
-        setMemberTableIds(activeGroup ? activeGroup.memberTableIds : []);
+        setPrimaryTableId(activeGroupPrimaryTableId ?? initialTable?.id ?? null);
+        setMemberTableIds(activeGroupMemberTableIds ?? []);
         setSearch('');
-        setReason(activeGroup ? 'Ajuste manual del grupo desde el mapa operativo' : '');
-    }, [activeGroup?.id, activeGroup?.primaryTableId, initialTable?.id, initialTableId, isOpen]);
+        setReason(activeGroupId !== null ? 'Ajuste manual del grupo desde el mapa operativo' : '');
+    }, [activeGroupId, activeGroupMemberTableIds, activeGroupPrimaryTableId, initialTable?.id, initialTableId, isOpen]);
 
     const eligible = useMemo(() => {
         const branchTable = primary ?? initialTable;

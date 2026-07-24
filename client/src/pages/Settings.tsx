@@ -4,6 +4,7 @@ import { settingsAPI, uploadAPI, backupAPI, salesChannelsAPI } from '../services
 import Card from '../components/Card';
 import Button from '../components/Button';
 import Input from '../components/Input';
+import LoadErrorState from '../components/LoadErrorState';
 import { Settings as SettingsIcon, Building2, FileText, Users, Database, Upload, Truck } from 'lucide-react';
 import { useAppToast } from '../context/ToastContext';
 import { useCurrency } from '../hooks/useCurrency';
@@ -31,6 +32,8 @@ export default function Settings() {
     const { refresh: refreshCurrency } = useCurrency();
     const [activeTab, setActiveTab] = useState<SettingsTab>('general');
     const [loading, setLoading] = useState(true);
+    const [settingsLoaded, setSettingsLoaded] = useState(false);
+    const [settingsLoadError, setSettingsLoadError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string>('');
@@ -77,6 +80,8 @@ export default function Settings() {
     }, []);
 
     const loadSettings = async () => {
+        setLoading(true);
+        setSettingsLoadError(null);
         try {
             const res = await settingsAPI.getAll();
             const settings = res.data.data;
@@ -107,8 +112,10 @@ export default function Settings() {
             if (settings.logoUrl) {
                 setLogoPreview(resolveAssetUrl(settings.logoUrl));
             }
+            setSettingsLoaded(true);
         } catch (error) {
             console.error('Error loading settings:', error);
+            setSettingsLoadError('No fue posible recuperar la configuración vigente. El guardado permanecerá bloqueado para proteger los valores existentes.');
         } finally {
             setLoading(false);
         }
@@ -167,6 +174,10 @@ export default function Settings() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!settingsLoaded || settingsLoadError) {
+            showError('Recarga la configuración vigente antes de guardar cambios.');
+            return;
+        }
         setSaving(true);
         try {
             // If there's a logo file, upload it first
@@ -212,7 +223,7 @@ export default function Settings() {
         { id: 'system' as SettingsTab, label: 'Sistema', icon: <Database size={18} /> }
     ];
 
-    if (loading) return <div>Cargando...</div>;
+    if (loading && !settingsLoaded) return <div>Cargando...</div>;
 
     return (
         <div className="settings-page">
@@ -237,6 +248,15 @@ export default function Settings() {
                 ))}
             </div>
 
+            {settingsLoadError && (
+                <LoadErrorState
+                    message={settingsLoadError}
+                    onRetry={() => { void loadSettings(); }}
+                    retrying={loading}
+                />
+            )}
+
+            {settingsLoaded && (
             <Card>
                 <form onSubmit={handleSubmit} className="settings-form">
                     {activeTab === 'general' && (
@@ -284,18 +304,20 @@ export default function Settings() {
                                 />
                                 <div className="input-group">
                                     <label className="input-label">Propina habilitada</label>
-                                    <div
+                                    <button
+                                        type="button"
                                         role="switch"
                                         aria-checked={formData.tipEnabled === 'true'}
                                         className={`settings-toggle ${formData.tipEnabled === 'true' ? 'active' : ''}`}
                                         onClick={() => setFormData({ ...formData, tipEnabled: formData.tipEnabled === 'true' ? 'false' : 'true' })}
+                                        disabled={Boolean(settingsLoadError)}
                                         style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'var(--color-background)', borderRadius: '8px', border: '1px solid var(--color-border)', marginTop: '4px' }}
                                     >
                                         <div className="toggle-switch">
                                             <div className={`toggle-dot ${formData.tipEnabled === 'true' ? 'active' : ''}`} />
                                         </div>
                                         <span style={{ fontSize: '14px' }}>{formData.tipEnabled === 'true' ? 'Incluir propina en facturas' : 'Propina deshabilitada'}</span>
-                                    </div>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -600,12 +622,13 @@ export default function Settings() {
                     )}
 
                     <div className="form-actions">
-                        <Button type="submit" variant="primary" disabled={saving}>
+                        <Button type="submit" variant="primary" disabled={saving || Boolean(settingsLoadError)}>
                             {saving ? 'Guardando...' : 'Guardar Configuración'}
                         </Button>
                     </div>
                 </form>
             </Card>
+            )}
         </div>
     );
 }

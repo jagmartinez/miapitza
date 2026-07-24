@@ -227,6 +227,33 @@ describe('ProductionOrderService numeric invariants', () => {
 });
 
 describe('Production order lifecycle invariants', () => {
+    it('propagates an audit failure inside a status transaction so the transition can roll back', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            productionOrder: {
+                findFirst: jest.fn(async () => ({
+                    id: 8,
+                    companyId: 1,
+                    status: 'DRAFT',
+                    startedAt: null
+                })),
+                update: jest.fn(async (_args: unknown) => ({ id: 8, status: 'PENDING' }))
+            }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+        jest.spyOn(AuditLogService, 'log').mockRejectedValue(new Error('audit unavailable'));
+
+        await expect(ProductionOrderService.setStatus(8, 1, 'PENDING', 9))
+            .rejects.toThrow('audit unavailable');
+
+        expect(AuditLogService.log).toHaveBeenCalledWith(
+            expect.objectContaining({ entityType: 'ProductionOrder', entityId: 8 }),
+            tx as never
+        );
+    });
+
     it('does not allow a draft order to bypass start and finish directly', async () => {
         jest.spyOn(prisma.productionOrder, 'findFirst').mockResolvedValue({
             id: 8,
@@ -279,7 +306,7 @@ describe('Production order lifecycle invariants', () => {
             $queryRaw: jest.fn(async () => []),
             productionOrder: {
                 findFirst: jest.fn(async () => order),
-                update: jest.fn(async () => ({ ...order, status: 'FINISHED' }))
+                update: jest.fn(async (_args: unknown) => ({ ...order, status: 'FINISHED' }))
             },
             productionOrderItem: { update: itemUpdate },
             product: { findFirst: jest.fn(async ({ where }: { where: { id: number } }) => ({ id: where.id, name: `P${where.id}` })) },
@@ -308,6 +335,20 @@ describe('Production order lifecycle invariants', () => {
         expect(itemUpdate).toHaveBeenCalledWith(expect.objectContaining({
             where: { id: 1 }, data: { consumedQuantity: 0, totalCost: 0 }
         }));
+        expect(tx.productionOrder.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                status: 'FINISHED',
+                finishedById: 9
+            })
+        }));
+        expect(AuditLogService.log).toHaveBeenCalledWith(
+            expect.objectContaining({
+                entityType: 'ProductionOrder',
+                entityId: 8,
+                details: expect.objectContaining({ status: 'FINISHED' })
+            }),
+            tx as never
+        );
     });
 });
 

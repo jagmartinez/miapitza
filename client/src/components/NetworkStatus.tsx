@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Wifi, WifiOff, RefreshCw } from 'lucide-react';
 import { offlineManager } from '../services/offlineManager';
-import { db } from '../services/db';
 
 export default function NetworkStatus() {
     const [isOnline, setIsOnline] = useState(offlineManager.getStatus());
@@ -13,11 +12,15 @@ export default function NetworkStatus() {
         });
 
         const checkPending = async () => {
-            const count = await db.syncQueue.count();
-            setPendingCount(count);
+            try {
+                setPendingCount(await offlineManager.getPendingCount());
+            } catch {
+                setPendingCount(0);
+            }
         };
 
-        checkPending();
+        void offlineManager.processSyncQueue();
+        void checkPending();
         const interval = setInterval(checkPending, 5000);
 
         return () => {

@@ -13,6 +13,7 @@ import Select from '../components/Select';
 import type { SingleValue } from 'react-select';
 import type { Branch } from '../types';
 import { formatLocalDateInput } from '../utils/dateInput';
+import { activateOnKeyboard } from '../utils/keyboardActivation';
 import './Reservations.css';
 
 interface Reservation {
@@ -716,7 +717,7 @@ export default function Reservations() {
                     ) : (
                         <div className="reservations-grid">
                             {sortedReservations.map(reservation => (
-                                <div key={reservation.id} className={`reservation-card status-${reservation.status.toLowerCase()}`} onClick={() => handleOpenSidebar(reservation)}>
+                                <div key={reservation.id} className={`reservation-card status-${reservation.status.toLowerCase()}`} role="button" tabIndex={0} aria-label={`Ver reservación de ${reservation.customerName}`} onClick={() => handleOpenSidebar(reservation)} onKeyDown={(event) => activateOnKeyboard(event, () => handleOpenSidebar(reservation))}>
                                     {/* Status Badge */}
                                     <div className={`status-badge-new status-${reservation.status.toLowerCase()}`}>
                                         <span>{getStatusText(reservation.status)}</span>

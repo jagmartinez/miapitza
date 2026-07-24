@@ -3,6 +3,7 @@ import request from 'supertest';
 import app from '../../app';
 import prisma from '../../utils/prisma';
 import bcrypt from 'bcryptjs';
+import { LoginAttemptService } from '../../services/login-attempt.service';
 
 describe('Auth API Integration Tests', () => {
     const testUser = {
@@ -50,6 +51,14 @@ describe('Auth API Integration Tests', () => {
 
     afterAll(async () => {
         // Cleanup
+        const user = await prisma.user.findUnique({
+            where: { username: testUser.username },
+            select: { id: true },
+        });
+        if (user) {
+            await prisma.userSession.deleteMany({ where: { userId: user.id } });
+            await prisma.auditLog.deleteMany({ where: { userId: user.id } });
+        }
         await prisma.user.deleteMany({ where: { username: testUser.username } });
         await prisma.role.deleteMany({ where: { name: 'TEST_ROLE', companyId: testCompanyId } });
         await prisma.company.delete({ where: { id: testCompanyId } });
@@ -79,6 +88,33 @@ describe('Auth API Integration Tests', () => {
             expect(response.body.data.token).toBeDefined();
             expect(response.body.data.user).toBeDefined();
             expect(response.body.data.user.username).toBe(testUser.username);
+        });
+
+        it('shares the authoritative lockout across independent service instances', async () => {
+            const user = await prisma.user.findUniqueOrThrow({
+                where: { username: testUser.username },
+                select: { id: true },
+            });
+            const replicaA = new LoginAttemptService();
+            const replicaB = new LoginAttemptService();
+
+            await Promise.all([
+                replicaA.recordFailure(user.id),
+                replicaB.recordFailure(user.id),
+                replicaA.recordFailure(user.id),
+                replicaB.recordFailure(user.id),
+                replicaA.recordFailure(user.id),
+            ]);
+
+            await expect(replicaB.assertAllowed(user.id)).rejects.toThrow('temporarily locked');
+            const response = await request(app)
+                .post('/api/auth/login')
+                .send({
+                    username: testUser.username,
+                    password: testUser.password,
+                });
+            expect(response.status).toBe(401);
+            expect(response.body.message).toMatch(/temporarily locked/i);
         });
     });
 });

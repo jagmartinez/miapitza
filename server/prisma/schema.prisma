@@ -38,6 +38,8 @@ model Company {
   auditLogs                       AuditLog[]
   tables                          Table[]
   tableGroups                     TableGroup[]
+  tableConsolidations             TableConsolidation[]
+  legacyTableConsolidationReviews LegacyTableConsolidationReview[]
   floorAreas                      FloorArea[]
   tableFloorPlans                 TableFloorPlan[]
   reservations                    Reservation[]
@@ -88,6 +90,7 @@ model Company {
   compensationHistory             CompensationHistory[]
   geofenceVersions                BranchGeofenceVersion[]
   employeeDocuments               EmployeeDocument[]
+  fileCleanupTasks                FileCleanupTask[]
   shiftTemplates                  ShiftTemplate[]
   weeklySchedules                 WeeklySchedule[]
   scheduledShifts                 ScheduledShift[]
@@ -181,43 +184,45 @@ model Branch {
   updatedAt            DateTime     @updatedAt
 
   // Relations
-  company                        Company                     @relation(fields: [companyId], references: [id])
-  users                          User[]
-  allowedUsers                   UserBranch[]
-  tables                         Table[]
-  tableGroups                    TableGroup[]
-  floorAreas                     FloorArea[]
-  tableFloorPlans                TableFloorPlan[]
-  reservations                   Reservation[]
-  warehouses                     Warehouse[]
-  purchaseOrders                 PurchaseOrder[]
-  orders                         Order[]
-  cashRegisters                  CashRegister[]
-  menuItems                      MenuItem[] // Optional: if menu varies by branch
-  menuItemPrices                 MenuItemBranchPrice[]
-  cateringEvents                 CateringEvent[]
-  invoiceSequences               InvoiceSequence[]
-  fiscalCreditNotes              FiscalCreditNote[]
-  fiscalInvoiceCancellations     FiscalInvoiceCancellation[]
-  cateringFiscalInvoices         CateringFiscalInvoice[]
-  cateringFiscalCreditNotes      CateringFiscalCreditNote[]
-  pedidosYaConfigs               PedidosYaConfig[]
-  productionOrders               ProductionOrder[]
-  employeeAssignments            EmployeeBranchAssignment[]
-  geofenceVersions               BranchGeofenceVersion[]
-  shiftTemplates                 ShiftTemplate[]
-  scheduledShifts                ScheduledShift[]
-  holidays                       Holiday[]
-  attendancePolicies             AttendancePolicy[]
-  attendanceDevices              AttendanceDevice[]
-  attendanceEvents               AttendanceEvent[]
-  attendanceDailySummaries       AttendanceDailySummary[]
-  attendanceIncidents            AttendanceIncident[]
-  requestedAttendanceCorrections AttendanceCorrection[]
-  leaveRequests                  LeaveRequest[]
-  payrollSnapshots               PayrollSnapshotLine[]
-  kitchenNotifications           KitchenNotification[]
-  travelRequests                 HrTravelRequest[]
+  company                         Company                          @relation(fields: [companyId], references: [id])
+  users                           User[]
+  allowedUsers                    UserBranch[]
+  tables                          Table[]
+  tableGroups                     TableGroup[]
+  tableConsolidations             TableConsolidation[]
+  legacyTableConsolidationReviews LegacyTableConsolidationReview[]
+  floorAreas                      FloorArea[]
+  tableFloorPlans                 TableFloorPlan[]
+  reservations                    Reservation[]
+  warehouses                      Warehouse[]
+  purchaseOrders                  PurchaseOrder[]
+  orders                          Order[]
+  cashRegisters                   CashRegister[]
+  menuItems                       MenuItem[] // Optional: if menu varies by branch
+  menuItemPrices                  MenuItemBranchPrice[]
+  cateringEvents                  CateringEvent[]
+  invoiceSequences                InvoiceSequence[]
+  fiscalCreditNotes               FiscalCreditNote[]
+  fiscalInvoiceCancellations      FiscalInvoiceCancellation[]
+  cateringFiscalInvoices          CateringFiscalInvoice[]
+  cateringFiscalCreditNotes       CateringFiscalCreditNote[]
+  pedidosYaConfigs                PedidosYaConfig[]
+  productionOrders                ProductionOrder[]
+  employeeAssignments             EmployeeBranchAssignment[]
+  geofenceVersions                BranchGeofenceVersion[]
+  shiftTemplates                  ShiftTemplate[]
+  scheduledShifts                 ScheduledShift[]
+  holidays                        Holiday[]
+  attendancePolicies              AttendancePolicy[]
+  attendanceDevices               AttendanceDevice[]
+  attendanceEvents                AttendanceEvent[]
+  attendanceDailySummaries        AttendanceDailySummary[]
+  attendanceIncidents             AttendanceIncident[]
+  requestedAttendanceCorrections  AttendanceCorrection[]
+  leaveRequests                   LeaveRequest[]
+  payrollSnapshots                PayrollSnapshotLine[]
+  kitchenNotifications            KitchenNotification[]
+  travelRequests                  HrTravelRequest[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -323,10 +328,10 @@ model FiscalCreditNoteLine {
   total              Decimal  @db.Decimal(10, 2)
   createdAt          DateTime @default(now())
 
-  fiscalCreditNote FiscalCreditNote @relation(fields: [fiscalCreditNoteId], references: [id], onDelete: Restrict)
-  orderItem        OrderItem        @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  fiscalCreditNote FiscalCreditNote @relation(fields: [fiscalCreditNoteId], references: [id], onDelete: Restrict, map: "FiscalCreditNoteLine_credit_fkey")
+  orderItem        OrderItem        @relation(fields: [orderItemId], references: [id], onDelete: Restrict, map: "FiscalCreditNoteLine_item_fkey")
 
-  @@unique([fiscalCreditNoteId, orderItemId])
+  @@unique([fiscalCreditNoteId, orderItemId], map: "FiscalCreditNoteLine_credit_item_key")
   @@index([orderItemId])
 }
 
@@ -338,12 +343,12 @@ model FiscalCreditNotePaymentRefund {
   reference          String   @db.VarChar(191)
   createdAt          DateTime @default(now())
 
-  fiscalCreditNote FiscalCreditNote @relation(fields: [fiscalCreditNoteId], references: [id], onDelete: Restrict)
-  payment          Payment          @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  fiscalCreditNote FiscalCreditNote @relation(fields: [fiscalCreditNoteId], references: [id], onDelete: Restrict, map: "FiscalCNRefund_credit_fkey")
+  payment          Payment          @relation(fields: [paymentId], references: [id], onDelete: Restrict, map: "FiscalCNRefund_payment_fkey")
 
-  @@unique([fiscalCreditNoteId, paymentId])
-  @@index([paymentId, createdAt])
-  @@index([reference])
+  @@unique([fiscalCreditNoteId, paymentId], map: "FiscalCNRefund_credit_payment_key")
+  @@index([paymentId, createdAt], map: "FiscalCNRefund_payment_created_idx")
+  @@index([reference], map: "FiscalCNRefund_reference_idx")
 }
 
 model FiscalInvoiceCancellation {
@@ -408,6 +413,7 @@ model User {
   role            Role          @relation(fields: [roleId], references: [id])
   branch          Branch?       @relation(fields: [branchId], references: [id])
   sessions        UserSession[]
+  loginAttempt    LoginAttempt?
   userRoles       UserRole[]
   allowedBranches UserBranch[] // Branches a SUPERADMIN permits this user to be assigned to
   employee        Employee?
@@ -418,12 +424,14 @@ model User {
   kitchenStarts                     Order[]                            @relation("OrderKitchenStartedBy")
   kitchenReleases                   Order[]                            @relation("OrderKitchenReleasedBy")
   kitchenNotifications              KitchenNotification[]              @relation("KitchenNotificationRecipient")
-  cashShifts                        CashShift[]
+  cashShifts                        CashShift[]                        @relation("CashShiftOpenedBy")
+  cashShiftsClosed                  CashShift[]                        @relation("CashShiftClosedBy")
   movements                         InventoryMovement[]
   auditLogs                         AuditLog[]
   apiKeys                           ApiKey[]                           @relation("ApiKeyCreator")
   productionRecipesCreated          ProductionRecipe[]                 @relation("ProductionRecipeCreatedBy")
   productionOrders                  ProductionOrder[]                  @relation("ProductionOrderUser")
+  finishedProductionOrders          ProductionOrder[]                  @relation("ProductionOrderFinishedBy")
   cancelledProductionOrders         ProductionOrder[]                  @relation("ProductionOrderCancelledBy")
   bankDepositsCreated               BankDeposit[]                      @relation("BankDepositCreatedBy")
   bankDepositsReversed              BankDeposit[]                      @relation("BankDepositReversedBy")
@@ -431,6 +439,9 @@ model User {
   paymentsReversed                  Payment[]                          @relation("PaymentReversedBy")
   tableGroupsCreated                TableGroup[]                       @relation("TableGroupCreatedBy")
   tableGroupsClosed                 TableGroup[]                       @relation("TableGroupClosedBy")
+  tableConsolidationsCreated        TableConsolidation[]               @relation("TableConsolidationCreatedBy")
+  tableConsolidationsReversed       TableConsolidation[]               @relation("TableConsolidationReversedBy")
+  legacyTableConsolidationReviews   LegacyTableConsolidationReview[]   @relation("LegacyTableConsolidationReviewedBy")
   fiscalCreditNotesIssued           FiscalCreditNote[]                 @relation("FiscalCreditNoteIssuedBy")
   fiscalInvoicesCancelled           FiscalInvoiceCancellation[]        @relation("FiscalInvoiceCancelledBy")
   cateringFiscalInvoicesIssued      CateringFiscalInvoice[]            @relation("CateringFiscalInvoiceIssuedBy")
@@ -544,20 +555,39 @@ model UserBranch {
 }
 
 model UserSession {
-  id        String   @id @default(uuid())
-  userId    Int
-  tokenHash String   @unique
-  ipAddress String?
-  userAgent String?
-  device    String?
-  createdAt DateTime @default(now())
-  expiresAt DateTime
-  revoked   Boolean  @default(false)
+  id                 String   @id @default(uuid())
+  userId             Int
+  tokenHash          String   @unique
+  ipAddress          String?
+  userAgent          String?
+  device             String?
+  createdAt          DateTime @default(now())
+  lastActivityAt     DateTime @default(now())
+  idleTimeoutMinutes Int      @default(30)
+  expiresAt          DateTime
+  revoked            Boolean  @default(false)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+/// Authoritative, cross-replica login lockout state. Unknown usernames are not
+/// materialized: the HTTP rate limiter remains the bounded first line of defense
+/// while known accounts are serialized by userId.
+model LoginAttempt {
+  userId        Int       @id
+  failedCount   Int       @default(0)
+  lockedUntil   DateTime?
+  lastAttemptAt DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([lockedUntil])
+  @@index([lastAttemptAt])
 }
 
 enum UserStatus {
@@ -889,6 +919,55 @@ enum EmployeeDocumentStatus {
   ACTIVE
   EXPIRED
   REVOKED
+}
+
+enum FileStorageArea {
+  INVOICE
+  LOGO
+  HR_DOCUMENT
+}
+
+enum FileCleanupStatus {
+  PENDING
+  PROCESSING
+  FAILED
+  COMPLETED
+  CANCELLED
+}
+
+/// Durable filesystem reconciliation outbox. Domain mutations enqueue or
+/// cancel tasks in the same MySQL transaction as their database reference.
+model FileCleanupTask {
+  id            String            @id @default(uuid())
+  companyId     Int
+  area          FileStorageArea
+  storageKey    String            @db.VarChar(500)
+  status        FileCleanupStatus @default(PENDING)
+  reason        String            @db.VarChar(100)
+  attempts      Int               @default(0)
+  nextAttemptAt DateTime?
+  leaseUntil    DateTime?
+  claimToken    String?           @db.VarChar(36)
+  lastError     String?           @db.VarChar(1000)
+  completedAt   DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, area, storageKey])
+  @@index([status, nextAttemptAt])
+  @@index([leaseUntil])
+}
+
+/// One authoritative durable-volume fingerprint per database. The migration
+/// constrains singletonKey to PRIMARY; STORAGE_SHARED_ID lives only inside the
+/// filesystem marker/fingerprint, so alternate IDs cannot register extra rows.
+model StorageIdentity {
+  singletonKey String   @id @db.VarChar(32)
+  fingerprint  String   @unique @db.Char(64)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 // ==========================================
@@ -2065,11 +2144,11 @@ model PayrollAguinaldoSourceDependency {
   capturedRunReversed       Boolean
   capturedAt                DateTime             @default(now())
 
-  company         Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  targetRun       PayrollRun       @relation("PayrollAguinaldoTargetRun", fields: [targetRunId], references: [id], onDelete: Restrict)
-  sourceRun       PayrollRun       @relation("PayrollAguinaldoSourceRun", fields: [sourceRunId], references: [id], onDelete: Restrict)
-  sourceComponent PayrollComponent @relation(fields: [sourceComponentId], references: [id], onDelete: Restrict)
-  sourceReceipt   PayrollReceipt   @relation(fields: [sourceReceiptId], references: [id], onDelete: Restrict)
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Restrict, map: "PayrollAguinaldoDependency_company_fkey")
+  targetRun       PayrollRun       @relation("PayrollAguinaldoTargetRun", fields: [targetRunId], references: [id], onDelete: Restrict, map: "PayrollAguinaldoDependency_target_run_fkey")
+  sourceRun       PayrollRun       @relation("PayrollAguinaldoSourceRun", fields: [sourceRunId], references: [id], onDelete: Restrict, map: "PayrollAguinaldoDependency_source_run_fkey")
+  sourceComponent PayrollComponent @relation(fields: [sourceComponentId], references: [id], onDelete: Restrict, map: "PayrollAguinaldoDependency_component_fkey")
+  sourceReceipt   PayrollReceipt   @relation(fields: [sourceReceiptId], references: [id], onDelete: Restrict, map: "PayrollAguinaldoDependency_receipt_fkey")
 
   @@unique([targetRunId, calculationRevision, sourceComponentId], map: "PayrollAguinaldoDependency_target_revision_component_key")
   @@index([companyId, targetRunId, calculationRevision], map: "PayrollAguinaldoDependency_target_idx")
@@ -2200,7 +2279,7 @@ model PayrollComponent {
   reversal                    PayrollComponentReversal?
   aguinaldoSourceDependencies PayrollAguinaldoSourceDependency[]
 
-  @@index([companyId, runId, userId])
+  @@index([companyId, runId, userId], map: "PayrollComponent_companyId_runId_userId_idx")
   @@index([receiptId])
 }
 
@@ -2218,12 +2297,12 @@ model PayrollEmployerContribution {
   traceReference      String?  @db.VarChar(500)
   createdAt           DateTime @default(now())
 
-  company Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  run     PayrollRun @relation(fields: [runId], references: [id], onDelete: Restrict)
-  user    User       @relation("PayrollEmployerContributionSubject", fields: [userId], references: [id], onDelete: Restrict)
+  company Company    @relation(fields: [companyId], references: [id], onDelete: Restrict, map: "PayrollEmployerContribution_company_fkey")
+  run     PayrollRun @relation(fields: [runId], references: [id], onDelete: Restrict, map: "PayrollEmployerContribution_run_fkey")
+  user    User       @relation("PayrollEmployerContributionSubject", fields: [userId], references: [id], onDelete: Restrict, map: "PayrollEmployerContribution_user_fkey")
 
   @@unique([runId, calculationRevision, userId, code], map: "PayrollEmployerContribution_run_rev_user_code_key")
-  @@index([companyId, runId, userId])
+  @@index([companyId, runId, userId], map: "PayrollEmployerContribution_company_run_user_idx")
 }
 
 model PayrollStatutoryCalculation {
@@ -2277,14 +2356,14 @@ model PayrollStatutoryCalculation {
   historyFingerprint               String   @db.Char(64)
   createdAt                        DateTime @default(now())
 
-  company               Company                          @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  run                   PayrollRun                       @relation(fields: [runId], references: [id], onDelete: Restrict)
-  user                  User                             @relation("PayrollStatutoryCalculationSubject", fields: [userId], references: [id], onDelete: Restrict)
-  configurationRevision PayrollRuleConfigurationRevision @relation(fields: [configurationRevisionId], references: [id], onDelete: Restrict)
+  company               Company                          @relation(fields: [companyId], references: [id], onDelete: Restrict, map: "PayrollStatutoryCalculation_company_fkey")
+  run                   PayrollRun                       @relation(fields: [runId], references: [id], onDelete: Restrict, map: "PayrollStatutoryCalculation_run_fkey")
+  user                  User                             @relation("PayrollStatutoryCalculationSubject", fields: [userId], references: [id], onDelete: Restrict, map: "PayrollStatutoryCalculation_user_fkey")
+  configurationRevision PayrollRuleConfigurationRevision @relation(fields: [configurationRevisionId], references: [id], onDelete: Restrict, map: "PayrollStatutoryCalculation_config_fkey")
 
   @@unique([runId, calculationRevision, userId], map: "PayrollStatutoryCalculation_run_rev_user_key")
-  @@index([companyId, userId, createdAt])
-  @@index([configurationRevisionId])
+  @@index([companyId, userId, createdAt], map: "PayrollStatutoryCalculation_company_user_idx")
+  @@index([configurationRevisionId], map: "PayrollStatutoryCalculation_config_idx")
 }
 
 model PayrollComponentReversal {
@@ -2980,13 +3059,15 @@ model Table {
   mapVersion         Int         @default(0)
   layoutUpdatedAt    DateTime    @default(now()) @updatedAt
 
-  company          Company       @relation(fields: [companyId], references: [id])
-  branch           Branch        @relation(fields: [branchId], references: [id])
-  floorArea        FloorArea?    @relation(fields: [floorAreaId], references: [id], onDelete: SetNull)
-  activeTableGroup TableGroup?   @relation("ActiveTableGroup", fields: [activeTableGroupId], references: [id], onDelete: SetNull)
-  primaryForGroups TableGroup[]  @relation("TableGroupPrimaryTable")
-  orders           Order[]
-  reservations     Reservation[]
+  company                   Company                   @relation(fields: [companyId], references: [id])
+  branch                    Branch                    @relation(fields: [branchId], references: [id])
+  floorArea                 FloorArea?                @relation(fields: [floorAreaId], references: [id], onDelete: SetNull)
+  activeTableGroup          TableGroup?               @relation("ActiveTableGroup", fields: [activeTableGroupId], references: [id], onDelete: SetNull)
+  primaryForGroups          TableGroup[]              @relation("TableGroupPrimaryTable")
+  consolidationDestinations TableConsolidation[]      @relation("TableConsolidationDestination")
+  consolidationOrderOrigins TableConsolidationOrder[] @relation("TableConsolidationOriginalTable")
+  orders                    Order[]
+  reservations              Reservation[]
 
   @@unique([branchId, number])
   @@index([companyId])
@@ -3024,6 +3105,132 @@ model TableGroup {
   @@index([primaryTableId])
   @@index([createdById])
   @@index([closedById])
+}
+
+/// Immutable, reversible financial consolidation. Physical TableGroup rows are
+/// independent and are never rewritten by this counterflow.
+model TableConsolidation {
+  id                 Int                      @id @default(autoincrement())
+  companyId          Int
+  branchId           Int
+  primaryOrderId     Int
+  destinationTableId Int
+  status             TableConsolidationStatus @default(ACTIVE)
+  version            Int                      @default(0)
+  reason             String?                  @db.VarChar(500)
+  createdById        Int
+  createdAt          DateTime                 @default(now())
+  reversedById       Int?
+  reversedAt         DateTime?
+  reversalReason     String?                  @db.VarChar(500)
+  reversalKey        String?                  @db.VarChar(191)
+
+  company          Company                   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch           Branch                    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  primaryOrder     Order                     @relation("TableConsolidationPrimaryOrder", fields: [primaryOrderId], references: [id], onDelete: Restrict)
+  destinationTable Table                     @relation("TableConsolidationDestination", fields: [destinationTableId], references: [id], onDelete: Restrict)
+  createdBy        User                      @relation("TableConsolidationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  reversedBy       User?                     @relation("TableConsolidationReversedBy", fields: [reversedById], references: [id], onDelete: Restrict)
+  orderSnapshots   TableConsolidationOrder[]
+  itemSnapshots    TableConsolidationItem[]
+
+  @@unique([companyId, reversalKey])
+  @@index([companyId, primaryOrderId, status])
+  @@index([branchId, status])
+  @@index([destinationTableId])
+  @@index([createdById])
+  @@index([reversedById])
+}
+
+model TableConsolidationOrder {
+  id                         Int                  @id @default(autoincrement())
+  tableConsolidationId       Int
+  orderId                    Int
+  originalTableId            Int
+  isPrimary                  Boolean
+  originalStatus             OrderStatus
+  originalFinancialStatus    OrderFinancialStatus
+  originalTotal              Decimal              @db.Decimal(10, 2)
+  originalDiscount           Decimal              @db.Decimal(10, 2)
+  originalTax                Decimal              @db.Decimal(10, 2)
+  originalTipAmount          Decimal              @db.Decimal(10, 2)
+  originalChannelCommission  Decimal              @db.Decimal(10, 2)
+  originalChannelMarkup      Decimal              @db.Decimal(10, 2)
+  originalConsolidatedIntoId Int?
+  originalCancelledById      Int?
+  originalCancelledAt        DateTime?
+  originalClosedAt           DateTime?
+  originalCancelReason       String?
+  postConsolidationUpdatedAt DateTime
+
+  consolidation TableConsolidation @relation(fields: [tableConsolidationId], references: [id], onDelete: Restrict)
+  order         Order              @relation("TableConsolidationSnapshotOrder", fields: [orderId], references: [id], onDelete: Restrict)
+  originalTable Table              @relation("TableConsolidationOriginalTable", fields: [originalTableId], references: [id], onDelete: Restrict)
+
+  @@unique([tableConsolidationId, orderId])
+  @@index([orderId])
+  @@index([originalTableId])
+}
+
+model TableConsolidationItem {
+  id                    Int    @id @default(autoincrement())
+  tableConsolidationId  Int
+  orderItemId           Int
+  sourceOrderId         Int
+  previousOriginOrderId Int?
+  previousOriginTableId Int?
+  itemFingerprint       String @db.Char(64)
+
+  consolidation TableConsolidation @relation(fields: [tableConsolidationId], references: [id], onDelete: Restrict)
+  orderItem     OrderItem          @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  sourceOrder   Order              @relation("TableConsolidationItemSourceOrder", fields: [sourceOrderId], references: [id], onDelete: Restrict)
+
+  @@unique([tableConsolidationId, orderItemId])
+  @@index([orderItemId])
+  @@index([sourceOrderId])
+}
+
+enum TableConsolidationStatus {
+  ACTIVE
+  REVERSED
+}
+
+/// Administrative disposition for legacy consolidations that predate durable
+/// snapshots. This records reviewed evidence; it never changes orders or items.
+model LegacyTableConsolidationReview {
+  id               Int                                    @id @default(autoincrement())
+  companyId        Int
+  branchId         Int?
+  candidateKey     String                                 @db.Char(64)
+  evidenceHash     String                                 @db.Char(64)
+  revision         Int
+  classification   LegacyTableConsolidationClassification
+  outcome          LegacyTableConsolidationReviewOutcome
+  note             String                                 @db.VarChar(1000)
+  resolutionKey    String                                 @db.VarChar(191)
+  evidenceSnapshot Json
+  reviewedById     Int
+  reviewedAt       DateTime                               @default(now())
+
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch     Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  reviewedBy User    @relation("LegacyTableConsolidationReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, candidateKey, evidenceHash], map: "LegacyTableConsolidationReview_company_candidate_evidence_key")
+  @@unique([companyId, candidateKey, revision], map: "LegacyTableConsolidationReview_company_candidate_revision_key")
+  @@unique([companyId, resolutionKey], map: "LegacyTableConsolidationReview_company_resolution_key")
+  @@index([companyId, branchId, classification], map: "LegacyTableConsolidationReview_company_branch_class_idx")
+  @@index([reviewedById], map: "LegacyTableConsolidationReview_reviewedById_idx")
+}
+
+enum LegacyTableConsolidationClassification {
+  NOT_REVERSIBLE
+  AMBIGUOUS
+}
+
+enum LegacyTableConsolidationReviewOutcome {
+  ACKNOWLEDGED_NO_AUTOMATIC_REVERSAL
+  EXTERNAL_EVIDENCE_REQUIRED
 }
 
 model FloorArea {
@@ -3414,6 +3621,7 @@ model Warehouse {
   ProductionOrder            ProductionOrder[]
   fiscalCreditNotes          FiscalCreditNote[]
   fiscalInvoiceCancellations FiscalInvoiceCancellation[]
+  settlementPayments         Payment[]                    @relation("PaymentSettlementWarehouse")
 
   @@unique([companyId, code])
   @@unique([companyId, branchId, name])
@@ -3474,7 +3682,7 @@ model InventoryMovement {
   product             Product             @relation(fields: [productId], references: [id])
   user                User                @relation(fields: [userId], references: [id])
   company             Company             @relation(fields: [companyId], references: [id])
-  reversalOf          InventoryMovement?  @relation("InventoryMovementReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversalOf          InventoryMovement?  @relation("InventoryMovementReversal", fields: [reversalOfId], references: [id], onDelete: Restrict, map: "InvMove_reversalOf_fkey")
   reversal            InventoryMovement?  @relation("InventoryMovementReversal")
   openedBatches       InventoryBatch[]    @relation("InventoryMovementBatches")
   costHistory         ProductCostHistory? @relation("InventoryMovementCostHistory")
@@ -3517,7 +3725,7 @@ model InventoryBatch {
   company        Company            @relation(fields: [companyId], references: [id])
   warehouse      Warehouse          @relation(fields: [warehouseId], references: [id])
   product        Product            @relation(fields: [productId], references: [id])
-  sourceMovement InventoryMovement? @relation("InventoryMovementBatches", fields: [sourceMovementId], references: [id], onDelete: Restrict)
+  sourceMovement InventoryMovement? @relation("InventoryMovementBatches", fields: [sourceMovementId], references: [id], onDelete: Restrict, map: "InvBatch_sourceMovement_fkey")
 
   @@index([companyId, productId, warehouseId, createdAt])
   @@index([warehouseId, productId])
@@ -3662,8 +3870,8 @@ model ProductCostHistory {
   product           Product            @relation(fields: [productId], references: [id])
   purchaseOrderItem PurchaseOrderItem? @relation(fields: [purchaseOrderItemId], references: [id])
   productionOrder   ProductionOrder?   @relation(fields: [productionOrderId], references: [id])
-  inventoryMovement InventoryMovement? @relation("InventoryMovementCostHistory", fields: [inventoryMovementId], references: [id], onDelete: Restrict)
-  reversalMovement  InventoryMovement? @relation("InventoryMovementCostHistoryReversal", fields: [reversalMovementId], references: [id], onDelete: Restrict)
+  inventoryMovement InventoryMovement? @relation("InventoryMovementCostHistory", fields: [inventoryMovementId], references: [id], onDelete: Restrict, map: "ProdCostHist_inventoryMove_fkey")
+  reversalMovement  InventoryMovement? @relation("InventoryMovementCostHistoryReversal", fields: [reversalMovementId], references: [id], onDelete: Restrict, map: "ProdCostHist_reversalMove_fkey")
   company           Company            @relation(fields: [companyId], references: [id])
 
   @@unique([inventoryMovementId], map: "ProdCostHist_inventoryMove_key")
@@ -3736,12 +3944,15 @@ model Order {
   kitchenStartedBy  User?        @relation("OrderKitchenStartedBy", fields: [kitchenStartedById], references: [id], onDelete: SetNull)
   kitchenReleasedBy User?        @relation("OrderKitchenReleasedBy", fields: [kitchenReleasedById], references: [id], onDelete: SetNull)
 
-  items                     OrderItem[]
-  payments                  Payment[]
-  pedidosYaSyncs            PedidosYaOrderSync[]
-  kitchenNotifications      KitchenNotification[]
-  fiscalCreditNotes         FiscalCreditNote[]
-  fiscalInvoiceCancellation FiscalInvoiceCancellation?
+  items                         OrderItem[]
+  payments                      Payment[]
+  pedidosYaSyncs                PedidosYaOrderSync[]
+  kitchenNotifications          KitchenNotification[]
+  fiscalCreditNotes             FiscalCreditNote[]
+  fiscalInvoiceCancellation     FiscalInvoiceCancellation?
+  primaryTableConsolidations    TableConsolidation[]       @relation("TableConsolidationPrimaryOrder")
+  tableConsolidationSnapshots   TableConsolidationOrder[]  @relation("TableConsolidationSnapshotOrder")
+  tableConsolidationItemSources TableConsolidationItem[]   @relation("TableConsolidationItemSourceOrder")
 
   @@index([companyId, branchId])
   @@index([companyId, status])
@@ -3799,10 +4010,11 @@ model OrderItem {
   originOrderId Int?
   originTableId Int?
 
-  order                 Order                  @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  menuItem              MenuItem               @relation(fields: [menuItemId], references: [id])
-  modifiers             OrderItemModifier[]
-  fiscalCreditNoteLines FiscalCreditNoteLine[]
+  order                       Order                    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  menuItem                    MenuItem                 @relation(fields: [menuItemId], references: [id])
+  modifiers                   OrderItemModifier[]
+  fiscalCreditNoteLines       FiscalCreditNoteLine[]
+  tableConsolidationSnapshots TableConsolidationItem[]
 
   @@index([orderId])
   @@index([menuItemId])
@@ -3886,6 +4098,7 @@ model Payment {
   reference       String?
   payerName       String? // Name of the person paying (for split bills)
   idempotencyKey  String?            @db.VarChar(191)
+  settlementWarehouseId Int?
   registeredById  Int? // User (cashier) who registered the payment
   createdAt       DateTime           @default(now())
   status          SalesPaymentStatus @default(ACTIVE)
@@ -3896,6 +4109,7 @@ model Payment {
 
   order                   Order                           @relation(fields: [orderId], references: [id], onDelete: Restrict)
   paymentMethod           PaymentMethod                   @relation(fields: [paymentMethodId], references: [id])
+  settlementWarehouse     Warehouse?                      @relation("PaymentSettlementWarehouse", fields: [settlementWarehouseId], references: [id], onDelete: Restrict)
   registeredBy            User?                           @relation("PaymentRegisteredBy", fields: [registeredById], references: [id], onDelete: Restrict)
   reversedBy              User?                           @relation("PaymentReversedBy", fields: [reversedById], references: [id], onDelete: Restrict)
   fiscalCreditNoteRefunds FiscalCreditNotePaymentRefund[]
@@ -3903,6 +4117,7 @@ model Payment {
   @@unique([orderId, idempotencyKey])
   @@index([orderId])
   @@index([paymentMethodId])
+  @@index([settlementWarehouseId])
   @@index([methodType, createdAt])
   @@index([registeredById])
   @@index([reversedById])
@@ -3940,26 +4155,31 @@ enum CashRegisterStatus {
 }
 
 model CashShift {
-  id             Int       @id @default(autoincrement())
-  companyId      Int
-  cashRegisterId Int
-  userId         Int
-  startDate      DateTime  @default(now())
-  endDate        DateTime?
-  startAmount    Decimal   @db.Decimal(10, 2)
-  endAmount      Decimal?  @db.Decimal(10, 2)
-  difference     Decimal?  @db.Decimal(10, 2) // Surplus/Deficit
-  notes          String?
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  cashRegisterId      Int
+  userId              Int
+  closedById          Int?
+  startDate           DateTime  @default(now())
+  endDate             DateTime?
+  startAmount         Decimal   @db.Decimal(10, 2)
+  endAmount           Decimal?  @db.Decimal(10, 2)
+  difference          Decimal?  @db.Decimal(10, 2) // Surplus/Deficit
+  forceClosed         Boolean   @default(false)
+  closingExchangeRate Decimal?  @db.Decimal(18, 6)
+  notes               String?
 
   company      Company            @relation(fields: [companyId], references: [id])
   cashRegister CashRegister       @relation(fields: [cashRegisterId], references: [id])
-  user         User               @relation(fields: [userId], references: [id])
+  user         User               @relation("CashShiftOpenedBy", fields: [userId], references: [id])
+  closedBy     User?              @relation("CashShiftClosedBy", fields: [closedById], references: [id], onDelete: Restrict)
   movements    CashMovement[]
   counts       CashCount[]
   depositLinks BankDepositShift[]
 
   @@index([companyId, cashRegisterId])
   @@index([userId])
+  @@index([closedById])
   @@index([cashRegisterId])
 }
 
@@ -4295,7 +4515,7 @@ model CateringPayment {
   event         CateringEvent @relation(fields: [cateringEventId], references: [id], onDelete: Restrict)
   paymentMethod PaymentMethod @relation(fields: [paymentMethodId], references: [id])
   registeredBy  User?         @relation("CateringPaymentRegisteredBy", fields: [registeredById], references: [id], onDelete: Restrict)
-  reversedBy    User?         @relation("CateringPaymentReversedBy", fields: [reversedById], references: [id], onDelete: Restrict)
+  reversedBy    User?         @relation("CateringPaymentReversedBy", fields: [reversedById], references: [id], onDelete: SetNull, map: "CateringPayment_reversedById_fkey")
 
   @@unique([cateringEventId, idempotencyKey])
   @@index([cateringEventId])
@@ -4331,7 +4551,7 @@ model CateringFiscalInvoice {
 
   company    Company                   @relation(fields: [companyId], references: [id], onDelete: Restrict)
   branch     Branch                    @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  event      CateringEvent             @relation(fields: [cateringEventId], references: [id], onDelete: Restrict)
+  event      CateringEvent             @relation(fields: [cateringEventId], references: [id], onDelete: Restrict, map: "CateringFiscalInvoice_eventId_fkey")
   issuedBy   User                      @relation("CateringFiscalInvoiceIssuedBy", fields: [issuedById], references: [id], onDelete: Restrict)
   creditNote CateringFiscalCreditNote?
 
@@ -4368,12 +4588,12 @@ model CateringFiscalCreditNote {
 
   company  Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
   branch   Branch                @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  event    CateringEvent         @relation(fields: [cateringEventId], references: [id], onDelete: Restrict)
-  invoice  CateringFiscalInvoice @relation(fields: [cateringFiscalInvoiceId], references: [id], onDelete: Restrict)
+  event    CateringEvent         @relation(fields: [cateringEventId], references: [id], onDelete: Restrict, map: "CateringFiscalCreditNote_eventId_fkey")
+  invoice  CateringFiscalInvoice @relation(fields: [cateringFiscalInvoiceId], references: [id], onDelete: Restrict, map: "CateringFiscalCreditNote_invoiceId_fkey")
   issuedBy User                  @relation("CateringFiscalCreditNoteIssuedBy", fields: [issuedById], references: [id], onDelete: Restrict)
 
   @@unique([companyId, idempotencyKey])
-  @@unique([companyId, branchId, series, sequenceNumber])
+  @@unique([companyId, branchId, series, sequenceNumber], map: "CateringFiscalCreditNote_company_branch_series_seq_key")
   @@index([companyId, branchId, issuedAt])
   @@index([originalInvoiceNumber])
   @@index([issuedById])
@@ -4638,6 +4858,7 @@ model ProductionOrder {
   date              DateTime              @default(now())
   startedAt         DateTime?
   finishedAt        DateTime?
+  finishedById      Int?
   cancelledAt       DateTime?
   cancelledById     Int?
   cancelReason      String?
@@ -4650,6 +4871,7 @@ model ProductionOrder {
   recipe      ProductionRecipe?     @relation(fields: [recipeId], references: [id])
   warehouse   Warehouse             @relation(fields: [warehouseId], references: [id])
   user        User                  @relation("ProductionOrderUser", fields: [userId], references: [id])
+  finishedBy  User?                 @relation("ProductionOrderFinishedBy", fields: [finishedById], references: [id], onDelete: Restrict)
   cancelledBy User?                 @relation("ProductionOrderCancelledBy", fields: [cancelledById], references: [id])
   items       ProductionOrderItem[]
   costHistory ProductCostHistory[]
@@ -4659,6 +4881,7 @@ model ProductionOrder {
   @@index([companyId, status])
   @@index([productId])
   @@index([recipeId])
+  @@index([finishedById])
 }
 
 model ProductionOrderItem {

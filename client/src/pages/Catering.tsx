@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import axios from 'axios';
 import {
     Calendar, Users, Plus, MapPin, FileText,
     Download,
@@ -24,6 +25,7 @@ import { useCurrency } from '../hooks/useCurrency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import { newIdempotencyKey } from '../utils/idempotency';
 import { filterMenuItemsByCategory, getMenuCategoryOptions } from '../utils/cateringMenuFilter';
+import { activateOnKeyboard } from '../utils/keyboardActivation';
 import './CateringMod.css';
 
 interface CateringClausesForm {
@@ -123,6 +125,39 @@ function formatAvailabilityAlert(alert: InventoryAvailabilityAlert): string {
     return `${alert.productName}: requiere ${alert.required}, disponible ${alert.available}, déficit ${alert.deficit}`;
 }
 
+async function contractDownloadError(error: unknown): Promise<string> {
+    const fallback = 'Error al generar el contrato en PDF';
+    if (!axios.isAxiosError(error)) {
+        return error instanceof Error && error.message ? `${fallback}: ${error.message}` : fallback;
+    }
+    const responseData: unknown = error.response?.data;
+    if (responseData instanceof Blob) {
+        try {
+            const parsed = JSON.parse(await responseData.text()) as { message?: unknown };
+            if (typeof parsed.message === 'string' && parsed.message.trim()) return parsed.message.trim();
+        } catch {
+            // An opaque proxy/body failure has no safe domain message to expose.
+        }
+    } else if (
+        responseData
+        && typeof responseData === 'object'
+        && 'message' in responseData
+        && typeof responseData.message === 'string'
+        && responseData.message.trim()
+    ) {
+        return responseData.message.trim();
+    }
+    return fallback;
+}
+
+function contractFilename(contentDisposition: unknown, eventId: number): string {
+    const fallback = `contrato-catering-EVT-${String(eventId).padStart(5, '0')}.pdf`;
+    if (typeof contentDisposition !== 'string') return fallback;
+    const match = /filename="?([^";]+)"?/i.exec(contentDisposition);
+    const candidate = match?.[1]?.trim().replace(/[\\/:*?"<>|]/g, '_');
+    return candidate?.toLowerCase().endsWith('.pdf') ? candidate : fallback;
+}
+
 export default function Catering() {
     const { formatMoney } = useCurrency();
     const { user } = useAuth();
@@ -153,6 +188,8 @@ export default function Catering() {
     const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
     const [availabilityAlerts, setAvailabilityAlerts] = useState<InventoryAvailabilityAlert[]>([]);
     const [settings, setSettings] = useState<CateringCompanySettings>({});
+    const [contractPdfBusyId, setContractPdfBusyId] = useState<number | null>(null);
+    const [contractPdfError, setContractPdfError] = useState<string | null>(null);
 
     const [formData, setFormData] = useState({
         title: '',
@@ -217,30 +254,35 @@ export default function Catering() {
     );
 
     const handleDownloadContract = useCallback(async (event: CateringEvent) => {
-        try {
-            const [{ pdf }, { default: ContractPDF }] = await Promise.all([
-                import('@react-pdf/renderer'),
-                import('../components/ContractPDF')
-            ]);
+        if (contractPdfBusyId !== null) return;
 
-            const contractEvent = {
-                ...event,
-                customer: event.customer || undefined
-            };
-            const blob = await pdf(<ContractPDF event={contractEvent} settings={settings} />).toBlob();
+        setContractPdfBusyId(event.id);
+        setContractPdfError(null);
+        try {
+            const response = await cateringAPI.downloadContract(event.id);
+            const contentType = String(response.headers['content-type'] || '').toLowerCase();
+            const blob = response.data as Blob;
+            if (!contentType.includes('application/pdf') || !(blob instanceof Blob) || blob.size === 0) {
+                throw new Error('El servidor no devolvió un PDF válido');
+            }
             const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `Contrato_${event.title.replace(/\s+/g, '_')}.pdf`;
+            link.download = contractFilename(response.headers['content-disposition'], event.id);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
+            window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+            showSuccess('Contrato PDF descargado');
         } catch (error) {
             console.error('Error generating contract PDF:', error);
-            showError('Error al generar el contrato en PDF');
+            const message = await contractDownloadError(error);
+            setContractPdfError(message);
+            showError(message);
+        } finally {
+            setContractPdfBusyId(null);
         }
-    }, [settings, showError]);
+    }, [contractPdfBusyId, showError, showSuccess]);
 
     const loadEvents = useCallback(async () => {
         try {
@@ -693,8 +735,12 @@ export default function Catering() {
                         type="button"
                         className="catalog-action-btn"
                         onClick={() => void handleDownloadContract(event)}
-                        title="Descargar contrato PDF"
-                        aria-label={`Descargar contrato de ${event.title}`}
+                        disabled={contractPdfBusyId !== null}
+                        aria-busy={contractPdfBusyId === event.id}
+                        title={contractPdfBusyId === event.id ? 'Generando contrato PDF' : 'Descargar contrato PDF'}
+                        aria-label={contractPdfBusyId === event.id
+                            ? `Generando contrato de ${event.title}`
+                            : `Descargar contrato de ${event.title}`}
                     >
                         <Download size={16} />
                     </button>
@@ -898,6 +944,17 @@ export default function Catering() {
                 </div>
             )}
 
+            {contractPdfBusyId !== null && (
+                <p className="catering-contract-status" role="status" aria-live="polite">
+                    Preparando contrato PDF…
+                </p>
+            )}
+            {contractPdfError && (
+                <p className="catering-contract-status error" role="alert">
+                    {contractPdfError}
+                </p>
+            )}
+
             {loading ? (
                 <LoadingSpinner text="Cargando eventos..." />
             ) : viewMode === 'calendar' ? (
@@ -1007,7 +1064,7 @@ export default function Catering() {
                                             </div>
                                             <div className="week-day-events">
                                                 {dayEvents.map(e => (
-                                                    <div key={e.id} className={`week-event-item status-${e.status.toLowerCase()}`} onClick={() => handleOpenSidebar(e)}>
+                                                    <div key={e.id} className={`week-event-item status-${e.status.toLowerCase()}`} role="button" tabIndex={0} aria-label={`Ver evento ${e.title}`} onClick={() => handleOpenSidebar(e)} onKeyDown={(event) => activateOnKeyboard(event, () => handleOpenSidebar(e))}>
                                                         <div className="year-event-time">{new Date(e.date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</div>
                                                         <div className="week-event-name">{e.title}</div>
                                                     </div>
@@ -1030,7 +1087,7 @@ export default function Catering() {
                                         <div className="day-hour-label">{hour}:00</div>
                                         <div className="day-hour-content">
                                             {dayEvents.map(e => (
-                                                <div key={e.id} className={`day-event-item status-${e.status.toLowerCase()}`} onClick={() => handleOpenSidebar(e)}>
+                                                <div key={e.id} className={`day-event-item status-${e.status.toLowerCase()}`} role="button" tabIndex={0} aria-label={`Ver evento ${e.title}`} onClick={() => handleOpenSidebar(e)} onKeyDown={(event) => activateOnKeyboard(event, () => handleOpenSidebar(e))}>
                                                     <div className="day-event-info">
                                                         <span className="day-event-time">{new Date(e.date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
                                                         <span className="day-event-name">{e.title}</span>
@@ -1061,7 +1118,7 @@ export default function Catering() {
             ) : (
                 <div className="catering-grid">
                     {filteredEvents.map(event => (
-                        <div key={event.id} className={`table-card-new status-${event.status.toLowerCase()}`} onClick={() => handleOpenSidebar(event)}>
+                        <div key={event.id} className={`table-card-new status-${event.status.toLowerCase()}`} role="button" tabIndex={0} aria-label={`Ver evento ${event.title}`} onClick={() => handleOpenSidebar(event)} onKeyDown={(keyboardEvent) => activateOnKeyboard(keyboardEvent, () => handleOpenSidebar(event))}>
                             {/* Status Badge */}
                             <div className={`status-badge-new status-${event.status.toLowerCase()}`}>
                                 <span>{getStatusText(event.status)}</span>
@@ -1118,11 +1175,17 @@ export default function Catering() {
                                 </button>
 
                                 <button
+                                    type="button"
                                     className="action-btn-new"
                                     onClick={() => void handleDownloadContract(event)}
+                                    disabled={contractPdfBusyId !== null}
+                                    aria-busy={contractPdfBusyId === event.id}
+                                    aria-label={contractPdfBusyId === event.id
+                                        ? `Generando contrato de ${event.title}`
+                                        : `Descargar contrato de ${event.title}`}
                                 >
                                     <Download size={20} />
-                                    <span>PDF</span>
+                                    <span>{contractPdfBusyId === event.id ? 'Generando…' : 'PDF'}</span>
                                 </button>
 
                                 {canManageCatering && (

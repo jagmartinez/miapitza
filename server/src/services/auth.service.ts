@@ -9,58 +9,26 @@ import {
     BCRYPT_ROUNDS
 } from '../utils/password-policy';
 import { collectPermissionNames } from '../utils/permission-names';
+import { AuditLogService } from './audit-log.service';
+import { loginAttemptService } from './login-attempt.service';
 
 export { BCRYPT_ROUNDS, PASSWORD_REGEX } from '../utils/password-policy';
 
-/** In-memory login attempt tracker for account lockout */
-const loginAttempts = new Map<string, { count: number; lockedUntil: number }>();
-const MAX_LOGIN_ATTEMPTS = 5;
-const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
-
-function checkLoginLockout(username: string): void {
-    const record = loginAttempts.get(username);
-    if (record && record.lockedUntil > Date.now()) {
-        const minutesLeft = Math.ceil((record.lockedUntil - Date.now()) / 60000);
-        throw new Error(`Account temporarily locked. Try again in ${minutesLeft} minutes`);
-    }
-}
-
-function recordFailedAttempt(username: string): void {
-    const record = loginAttempts.get(username) || { count: 0, lockedUntil: 0 };
-    record.count += 1;
-    if (record.count >= MAX_LOGIN_ATTEMPTS) {
-        record.lockedUntil = Date.now() + LOCKOUT_DURATION_MS;
-        record.count = 0;
-    }
-    loginAttempts.set(username, record);
-}
-
-function clearFailedAttempts(username: string): void {
-    loginAttempts.delete(username);
-}
-
+// Cost 12, aligned with BCRYPT_ROUNDS. Comparing against this immutable hash
+// keeps the unknown-user path from returning before the expensive verifier.
+const DUMMY_PASSWORD_HASH = '$2a$12$m7N0cnrKHlL.SDwMiWxrC.RygLI/H8rmiroe/0eEp15SO752w7zl6';
 
 /**
- * Periodic cleanup of expired in-memory entries.
- * - Removes stale login-attempt records whose lockout has long passed (> 30 min old)
- * Runs every 5 minutes.
+ * Periodic cleanup of expired shared lockout rows.
  */
-const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 
 function cleanupExpiredEntries(): void {
-    const now = Date.now();
-
-    // Purge stale login-attempt records (lockout expired more than 30 min ago)
-    const STALE_THRESHOLD_MS = 30 * 60 * 1000;
-    for (const [username, record] of loginAttempts) {
-        // If locked out and lockout expired long ago, remove
-        if (record.lockedUntil > 0 && record.lockedUntil + STALE_THRESHOLD_MS < now) {
-            loginAttempts.delete(username);
-        }
-        // If not locked out and has some attempts but no activity for a long time,
-        // we can't know the last-activity time, so leave it — the map size is bounded
-        // by unique usernames which is inherently limited.
-    }
+    loginAttemptService.purgeStale().catch((error) => {
+        console.error('[AUTH] Failed to purge stale login attempts', {
+            errorType: error instanceof Error ? error.name : typeof error,
+        });
+    });
 }
 
 const cleanupTimer = setInterval(cleanupExpiredEntries, CLEANUP_INTERVAL_MS);
@@ -81,7 +49,7 @@ export class AuthService {
         roleId: number;
         branchId?: number;
         companyId?: number;
-    }, actingRoles: string[] = []) {
+    }, canAssignGlobalRoles = false) {
         // Validate password strength on registration
         assertStrongPassword(data.password);
 
@@ -93,18 +61,23 @@ export class AuthService {
             throw new Error('Role not found');
         }
 
-        // Privilege guard: only a SUPERADMIN caller may assign global (companyId === null)
-        // roles such as SUPERADMIN. Without a SUPERADMIN context, the role must belong to
-        // the same company and must not be the SUPERADMIN role.
-        const isSuperAdmin = actingRoles.includes(ROLES.SUPERADMIN);
+        // Privilege guard: only the explicitly pinned platform operator may
+        // assign global roles, and their holder remains in the platform company.
         if (role.companyId === null) {
-            if (!isSuperAdmin) {
+            if (!canAssignGlobalRoles) {
                 throw new Error('No autorizado para asignar un rol global');
+            }
+            const platformCompanyId = Number.parseInt(
+                process.env.PLATFORM_ADMIN_COMPANY_ID?.trim() || '',
+                10,
+            );
+            if (!Number.isInteger(platformCompanyId) || data.companyId !== platformCompanyId) {
+                throw new Error('Los roles globales solo pueden pertenecer a la empresa operadora');
             }
         } else if (role.companyId !== data.companyId) {
             throw new Error('Role does not belong to the target company');
         }
-        if (role.name === ROLES.SUPERADMIN && !isSuperAdmin) {
+        if (role.name === ROLES.SUPERADMIN && !canAssignGlobalRoles) {
             throw new Error('No autorizado para asignar el rol SUPERADMIN');
         }
 
@@ -138,9 +111,6 @@ export class AuthService {
     }
 
     static async login(username: string, password: string, twoFactorCode?: string, ip?: string, userAgent?: string) {
-        // Check lockout before any DB access
-        checkLoginLockout(username);
-
         const user = await prisma.user.findUnique({
             where: { username },
             include: {
@@ -170,11 +140,14 @@ export class AuthService {
         });
 
         if (!user) {
-            recordFailedAttempt(username);
+            // Unknown usernames are intentionally not materialized in the DB:
+            // the bounded HTTP limiter protects this path from row-exhaustion.
+            await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
             throw new Error('Credenciales inválidas');
         }
+        await loginAttemptService.assertAllowed(user.id);
         if (user.status !== 'ACTIVE') {
-            recordFailedAttempt(username);
+            await loginAttemptService.recordFailure(user.id);
             throw new Error('Credenciales inválidas'); // Don't reveal account status
         }
 
@@ -184,20 +157,20 @@ export class AuthService {
         ])).filter((name) => name !== ROLES.SUPERADMIN || user.role.name === ROLES.SUPERADMIN);
         const isSuperAdmin = authoritativeRoleNames.includes(ROLES.SUPERADMIN);
         if ((!user.company?.active || (user.branchId && user.branch?.status !== 'ACTIVE')) && !isSuperAdmin) {
-            recordFailedAttempt(username);
+            await loginAttemptService.recordFailure(user.id);
             throw new Error('Credenciales inválidas');
         }
         if (
             !isSuperAdmin && user.branchId && user.allowedBranches.length > 0 &&
             !user.allowedBranches.some((entry) => entry.branchId === user.branchId)
         ) {
-            recordFailedAttempt(username);
+            await loginAttemptService.recordFailure(user.id);
             throw new Error('Credenciales inválidas');
         }
 
         const isValidPassword = await bcrypt.compare(password, user.password);
         if (!isValidPassword) {
-            recordFailedAttempt(username);
+            await loginAttemptService.recordFailure(user.id);
             throw new Error('Credenciales inválidas');
         }
 
@@ -213,12 +186,12 @@ export class AuthService {
                 valid2FA = await TwoFactorService.validateRecoveryCode(user.id, twoFactorCode);
             }
             if (!valid2FA) {
-                recordFailedAttempt(username);
+                await loginAttemptService.recordFailure(user.id);
                 throw new Error('Código 2FA inválido');
             }
         }
 
-        clearFailedAttempts(username);
+        await loginAttemptService.recordSuccess(user.id);
 
         // Check password expiry
         let passwordExpired = false;
@@ -239,7 +212,12 @@ export class AuthService {
             const timeoutSetting = await prisma.setting.findFirst({
                 where: { companyId: user.companyId, name: `${user.companyId}_session_timeout_minutes` }
             });
-            if (timeoutSetting) sessionTimeoutMinutes = parseInt(timeoutSetting.value) || 30;
+            if (timeoutSetting) {
+                const parsedTimeout = Number.parseInt(timeoutSetting.value, 10);
+                if (Number.isInteger(parsedTimeout) && parsedTimeout > 0) {
+                    sessionTimeoutMinutes = Math.min(parsedTimeout, 24 * 60);
+                }
+            }
         }
 
         const JWT_SECRET = process.env.JWT_SECRET;
@@ -259,7 +237,31 @@ export class AuthService {
         );
 
         // Track session — failure means token cannot be validated later
-        await SessionService.create(user.id, token, ip, userAgent);
+        if (!user.companyId) {
+            throw new Error('Credenciales inválidas');
+        }
+        await prisma.$transaction(async (tx) => {
+            const session = await SessionService.create(
+                user.id,
+                token,
+                ip,
+                userAgent,
+                sessionTimeoutMinutes,
+                tx,
+            );
+            await AuditLogService.log({
+                companyId: user.companyId!,
+                userId: user.id,
+                entityType: 'UserSession',
+                entityId: user.id,
+                action: 'LOGIN',
+                details: {
+                    sessionId: session.id,
+                    ipAddress: ip || null,
+                    device: session.device,
+                },
+            }, tx);
+        });
 
         return {
             token,
@@ -291,14 +293,22 @@ export class AuthService {
         }
 
         const hashed = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-        await prisma.user.update({
-            where: { id: userId },
-            data: { password: hashed, mustChangePassword: false, passwordChangedAt: new Date() }
-        });
+        if (!user.companyId) throw new Error('El usuario no está asociado a una empresa');
+        await prisma.$transaction(async (tx) => {
+            await tx.user.update({
+                where: { id: userId },
+                data: { password: hashed, mustChangePassword: false, passwordChangedAt: new Date() }
+            });
 
-        // A password change invalidates all existing sessions; force re-authentication
-        // everywhere. The controller also clears the current auth cookie.
-        await SessionService.revokeAll(userId);
+            await SessionService.revokeAll(userId, tx);
+            await AuditLogService.log({
+                companyId: user.companyId!,
+                userId,
+                entityType: 'User',
+                entityId: userId,
+                action: 'PASSWORD_CHANGE',
+            }, tx);
+        });
 
         return { success: true };
     }

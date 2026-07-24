@@ -19,6 +19,7 @@ import { useCurrency } from '../hooks/useCurrency';
 import { hasUsableCashShift } from '../utils/paymentAccess';
 import type { SingleValue } from 'react-select';
 import { getOrderStatusClassName, getOrderStatusLabel } from '../utils/orderStatus';
+import { activateOnKeyboard } from '../utils/keyboardActivation';
 import { useAppToast } from '../context/ToastContext';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
 import './Orders.css';
@@ -565,7 +566,15 @@ export default function Orders() {
             <div className={`orders-grid ${filteredOrders.length === 0 ? 'empty' : ''}`}>
                 {filteredOrders.length > 0 ? (
                     filteredOrders.map(order => (
-                        <div key={order.id} className={`modern-order-card ${getStatusClass(order.status)}`} onClick={() => handleViewDetails(order)}>
+                        <div
+                            key={order.id}
+                            className={`modern-order-card ${getStatusClass(order.status)}`}
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`Ver detalle de la orden ${order.id}`}
+                            onClick={() => handleViewDetails(order)}
+                            onKeyDown={(event) => activateOnKeyboard(event, () => handleViewDetails(order))}
+                        >
                             <div className="card-header">
                                 <div className="order-meta">
                                     <span className="order-hashtag">#{order.id}</span>
