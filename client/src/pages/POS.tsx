@@ -30,6 +30,7 @@ import type { MenuItem, ModifierGroupWithModifiers, ModifierOption, Order, Table
 import { useCurrency } from '../hooks/useCurrency';
 import { hasUsableCashShift } from '../utils/paymentAccess';
 import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
+import { DeliveryAttemptGate } from '../utils/deliveryAttempt';
 import './POS.css';
 
 interface OfflineResponse {
@@ -165,6 +166,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const [branchWarehouses, setBranchWarehouses] = useState<Warehouse[]>([]);
     const [warehouseAction, setWarehouseAction] = useState<'DELIVER' | 'CANCEL' | null>(null);
     const [operationalWarehouseId, setOperationalWarehouseId] = useState<number | null>(null);
+    const [processingWarehouseAction, setProcessingWarehouseAction] = useState(false);
+    const warehouseActionGateRef = useRef(new DeliveryAttemptGate());
     const warehouseOptions = useMemo<WarehouseOption[]>(() => branchWarehouses.map((warehouse) => ({
         value: warehouse.id,
         label: `${warehouse.name} (${warehouse.code})`,
@@ -202,7 +205,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         setActiveTableOrder(null);
     }, [clearDraftCart]);
 
-    const loadData = useCallback(async () => {
+    const loadData = useCallback(async (notifyOnError = true): Promise<boolean> => {
         setLoadError(null);
         try {
             const effectiveBranchId = selectedTable?.branchId ?? user?.branchId;
@@ -234,10 +237,14 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             setTipApplied(settingsRes.data.data.tipEnabled === 'true');
             setCategories(categoriesRes.data.data);
             setBrands(brandsRes.data.data || []);
+            return true;
         } catch {
             const message = 'No se pudieron cargar los datos del POS (mesas, menú o configuración). Revisa tu conexión e inténtalo de nuevo.';
             setLoadError(message);
-            showError(message);
+            if (notifyOnError) {
+                showError(message);
+            }
+            return false;
         } finally {
             setLoading(false);
         }
@@ -911,25 +918,42 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             warning('Selecciona una bodega de la sucursal.');
             return;
         }
-        try {
-            if (warehouseAction === 'DELIVER') {
-                await ordersAPI.complete(activeTableOrder.id, operationalWarehouseId);
-                await loadData();
+
+        const action = warehouseAction;
+        const orderId = activeTableOrder.id;
+        const warehouseId = operationalWarehouseId;
+        const cancelReason = pendingCancelReason;
+        await warehouseActionGateRef.current.execute({
+            request: async () => {
+                if (action === 'DELIVER') {
+                    await ordersAPI.complete(orderId, warehouseId);
+                    return;
+                }
+                await ordersAPI.cancel(orderId, cancelReason, warehouseId);
+            },
+            onSuccess: async () => {
+                const refreshed = await loadData(false);
                 clearTableContext();
-                success(`Orden #${activeTableOrder.id} marcada como entregada.`);
-            } else {
-                await ordersAPI.cancel(activeTableOrder.id, pendingCancelReason, operationalWarehouseId);
-                await loadData();
-                clearTableContext();
-                success(`Orden #${activeTableOrder.id} cancelada correctamente.`);
-            }
-            setWarehouseAction(null);
-            setOperationalWarehouseId(null);
-            setPendingCancelReason(undefined);
-        } catch (error: unknown) {
-            const axiosErr = error as { response?: { data?: { message?: string } } };
-            showError(axiosErr.response?.data?.message || 'No se pudo completar la operación de inventario.');
-        }
+                success(action === 'DELIVER'
+                    ? `Orden #${orderId} marcada como entregada.`
+                    : `Orden #${orderId} cancelada correctamente.`);
+                setWarehouseAction(null);
+                setOperationalWarehouseId(null);
+                setPendingCancelReason(undefined);
+                if (!refreshed) {
+                    throw new Error('La operación se aplicó, pero el POS no pudo actualizarse.');
+                }
+            },
+            onError: (message) => showError(message),
+            onSuccessError: (error) => {
+                console.error('Warehouse operation completed but POS refresh failed:', error);
+                showError(action === 'DELIVER'
+                    ? 'La orden fue entregada, pero el POS no pudo actualizarse. Recarga la página.'
+                    : 'La orden fue cancelada, pero el POS no pudo actualizarse. Recarga la página.');
+            },
+            onPendingChange: setProcessingWarehouseAction,
+            fallbackMessage: 'No se pudo completar la operación de inventario.',
+        });
     }, [activeTableOrder, clearTableContext, loadData, operationalWarehouseId, pendingCancelReason, showError, success, warehouseAction, warning]);
     const handleApplyPromotion = async (code: string) => {
         try {
@@ -1430,6 +1454,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 <Modal
                     isOpen
                     onClose={() => {
+                        if (processingWarehouseAction) return;
                         setWarehouseAction(null);
                         setOperationalWarehouseId(null);
                         setPendingCancelReason(undefined);
@@ -1441,12 +1466,27 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                         : 'La orden ya fue enviada a cocina. Selecciona la bodega donde se registrará el desperdicio.'}
                     footer={(
                         <>
-                            <Button type="button" variant="ghost" onClick={() => {
-                                setWarehouseAction(null);
-                                setOperationalWarehouseId(null);
-                                setPendingCancelReason(undefined);
-                            }}>Volver</Button>
-                            <Button type="button" disabled={!operationalWarehouseId} onClick={() => void handleWarehouseAction()}>Confirmar</Button>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                disabled={processingWarehouseAction}
+                                onClick={() => {
+                                    setWarehouseAction(null);
+                                    setOperationalWarehouseId(null);
+                                    setPendingCancelReason(undefined);
+                                }}
+                            >
+                                Volver
+                            </Button>
+                            <Button
+                                type="button"
+                                disabled={!operationalWarehouseId || processingWarehouseAction}
+                                onClick={() => void handleWarehouseAction()}
+                            >
+                                {processingWarehouseAction
+                                    ? (warehouseAction === 'DELIVER' ? 'Entregando…' : 'Procesando…')
+                                    : 'Confirmar'}
+                            </Button>
                         </>
                     )}
                 >

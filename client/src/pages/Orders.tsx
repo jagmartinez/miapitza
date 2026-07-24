@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { ordersAPI, invoicesAPI, cashShiftsAPI, warehousesAPI } from '../services/api';
 import { canSendOrderToKitchen, canCancelOrder, canCreatePayment, canOperateKitchenLineItems } from '../utils/authz';
@@ -22,6 +22,7 @@ import { getOrderStatusClassName, getOrderStatusLabel } from '../utils/orderStat
 import { activateOnKeyboard } from '../utils/keyboardActivation';
 import { useAppToast } from '../context/ToastContext';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
+import { DeliveryAttemptGate } from '../utils/deliveryAttempt';
 import './Orders.css';
 
 interface ActiveShiftStatus {
@@ -71,6 +72,8 @@ export default function Orders() {
     const [deliveryWarehouseId, setDeliveryWarehouseId] = useState<number | null>(null);
     const [deliveryWarehouses, setDeliveryWarehouses] = useState<Warehouse[]>([]);
     const [loadingWarehouses, setLoadingWarehouses] = useState(false);
+    const [completingDelivery, setCompletingDelivery] = useState(false);
+    const deliveryAttemptGateRef = useRef(new DeliveryAttemptGate());
 
     const loadOrders = useCallback(async () => {
         try {
@@ -107,8 +110,10 @@ export default function Orders() {
                 endDate
             });
             setOrders(response.data.data);
+            return true;
         } catch (error) {
             console.error('Error loading orders:', error);
+            return false;
         } finally {
             setLoading(false);
         }
@@ -328,17 +333,32 @@ export default function Orders() {
             showWarning('Selecciona la bodega de la que se descontará el inventario.');
             return;
         }
-        try {
-            await ordersAPI.complete(deliveryOrder.id, deliveryWarehouseId);
-            await loadOrders();
-            setIsSidebarOpen(false);
-            setShowDeliveryModal(false);
-            setDeliveryOrder(null);
-            setDeliveryWarehouseId(null);
-        } catch (error) {
-            console.error('Error completing delivery:', error);
-            showError('No se pudo entregar la orden ni descontar el inventario.');
-        }
+
+        const orderId = deliveryOrder.id;
+        const warehouseId = deliveryWarehouseId;
+        await deliveryAttemptGateRef.current.execute({
+            request: () => ordersAPI.complete(orderId, warehouseId),
+            onSuccess: async () => {
+                const refreshed = await loadOrders();
+                setIsSidebarOpen(false);
+                setShowDeliveryModal(false);
+                setDeliveryOrder(null);
+                setDeliveryWarehouseId(null);
+                if (!refreshed) {
+                    throw new Error('La entrega se aplicó, pero la lista de órdenes no pudo actualizarse.');
+                }
+            },
+            onError: (message, error) => {
+                console.error('Error completing delivery:', error);
+                showError(message);
+            },
+            onSuccessError: (error) => {
+                console.error('Delivery completed but order refresh failed:', error);
+                showError('La orden fue entregada, pero no se pudo actualizar la lista. Recarga la página.');
+            },
+            onPendingChange: setCompletingDelivery,
+            fallbackMessage: 'No se pudo entregar la orden ni descontar el inventario.',
+        });
     };
 
     const getStatusColor = (status: string) => {
@@ -803,7 +823,12 @@ export default function Orders() {
 
             <Modal
                 isOpen={showDeliveryModal}
-                onClose={() => { setShowDeliveryModal(false); setDeliveryOrder(null); setDeliveryWarehouseId(null); }}
+                onClose={() => {
+                    if (completingDelivery) return;
+                    setShowDeliveryModal(false);
+                    setDeliveryOrder(null);
+                    setDeliveryWarehouseId(null);
+                }}
                 title={`Entregar Orden #${deliveryOrder?.id ?? ''}`}
                 size="sm"
             >
@@ -820,16 +845,21 @@ export default function Orders() {
                     noOptionsMessage={() => 'No hay bodegas de sucursal disponibles'}
                 />
                 <div className="problem-modal-actions">
-                    <button type="button" className="btn-cancel-problem" onClick={() => setShowDeliveryModal(false)}>
+                    <button
+                        type="button"
+                        className="btn-cancel-problem"
+                        onClick={() => setShowDeliveryModal(false)}
+                        disabled={completingDelivery}
+                    >
                         Volver
                     </button>
                     <button
                         type="button"
                         className="btn-submit-problem"
                         onClick={() => void handleCompleteDelivery()}
-                        disabled={!deliveryWarehouseId || loadingWarehouses}
+                        disabled={!deliveryWarehouseId || loadingWarehouses || completingDelivery}
                     >
-                        Confirmar Entrega
+                        {completingDelivery ? 'Entregando…' : 'Confirmar Entrega'}
                     </button>
                 </div>
             </Modal>
