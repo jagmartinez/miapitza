@@ -202,7 +202,7 @@ export class InvoiceController {
             const companyId = req.user!.companyId;
             const order = await OrderService.getById(id, companyId);
             assertBranchAccess(req.user!, order.branchId);
-            const invoiceData = await InvoiceService.generateInvoice(id, companyId);
+            const invoiceData = await InvoiceService.generateInvoice(id, companyId, req.user!.userId);
 
             res.status(201).json({ success: true, data: invoiceData });
         } catch (error: unknown) {

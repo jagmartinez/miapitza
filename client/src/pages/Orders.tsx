@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { ordersAPI, invoicesAPI, cashShiftsAPI, warehousesAPI } from '../services/api';
-import { canSendOrderToKitchen, canCancelOrder, canCreatePayment, canOperateKitchenLineItems } from '../utils/authz';
+import { canSendOrderToKitchen, canCancelOrder, canCreatePayment, canDeliverOrder, canOperateKitchenLineItems } from '../utils/authz';
 import { useDebounce } from '../utils/useDebounce';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
@@ -23,6 +23,7 @@ import { activateOnKeyboard } from '../utils/keyboardActivation';
 import { useAppToast } from '../context/ToastContext';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
 import { DeliveryAttemptGate } from '../utils/deliveryAttempt';
+import { buildInvoiceReleaseMessage } from '../utils/posOrderBucket';
 import './Orders.css';
 
 interface ActiveShiftStatus {
@@ -34,11 +35,12 @@ interface ActiveShiftStatus {
 export default function Orders() {
     const { user } = useAuth();
     const { formatMoney, symbol: currencySymbol } = useCurrency();
-    const { error: showError, warning: showWarning } = useAppToast();
+    const { success, error: showError, warning: showWarning } = useAppToast();
     const canSendKitchen = canSendOrderToKitchen(user);
     const canManageKitchen = canOperateKitchenLineItems(user);
     const canCancel = canCancelOrder(user);
     const canPayOrder = canCreatePayment(user);
+    const canDeliver = canDeliverOrder(user);
 
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
@@ -194,10 +196,35 @@ export default function Orders() {
         try {
             // Keep the same fiscal invariant as POS and the table command center:
             // an official invoice must exist before PaymentModal can collect.
-            await invoicesAPI.issue(order.id);
-            const refreshed = await ordersAPI.getById(order.id);
-            setPaymentOrder(refreshed.data.data as Order);
+            const invoiceResponse = await invoicesAPI.issue(order.id);
+            const invoiceNumber = invoiceResponse.data?.data?.invoiceNumber as string | undefined;
+            if (!invoiceNumber) {
+                throw new Error('La factura no devolvió un número fiscal.');
+            }
+
+            let payableOrder: Order = {
+                ...order,
+                invoiceNumber,
+                invoicedAt: invoiceResponse.data?.data?.issuedAt || order.invoicedAt,
+                invoiceFiscalStatus: 'ISSUED',
+            };
+            try {
+                const refreshed = await ordersAPI.getById(order.id);
+                payableOrder = refreshed.data.data as Order;
+            } catch (refreshError) {
+                console.error('Invoice issued but order refresh failed:', refreshError);
+                showWarning('La factura fue emitida, pero el detalle no pudo actualizarse. El cobro usará la última información disponible.');
+            }
+
+            await loadOrders();
+            setPaymentOrder(payableOrder);
             setShowPaymentModal(true);
+            success(buildInvoiceReleaseMessage({
+                invoiceNumber,
+                orderId: payableOrder.id,
+                tableNumber: payableOrder.table?.number ?? order.table?.number,
+                financialStatus: payableOrder.financialStatus,
+            }));
         } catch (error: unknown) {
             const message = typeof error === 'object' && error !== null && 'response' in error
                 ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
@@ -344,6 +371,7 @@ export default function Orders() {
                 setShowDeliveryModal(false);
                 setDeliveryOrder(null);
                 setDeliveryWarehouseId(null);
+                success(`Orden #${orderId} entregada. El inventario fue descontado de la bodega seleccionada.`);
                 if (!refreshed) {
                     throw new Error('La entrega se aplicó, pero la lista de órdenes no pudo actualizarse.');
                 }
@@ -392,7 +420,7 @@ export default function Orders() {
             );
         }
 
-        if (order.status === 'READY' && (order.financialStatus === 'PAID' || Math.round(Number(order.total) * 100) === 0)) {
+        if (canDeliver && order.status === 'READY' && (order.financialStatus === 'PAID' || Math.round(Number(order.total) * 100) === 0)) {
             buttons.push(
                 <Button key="delivered" variant="primary" onClick={() => void openDeliveryModal(order)}>
                     <Package size={16} /> Entregar
@@ -832,7 +860,10 @@ export default function Orders() {
                 title={`Entregar Orden #${deliveryOrder?.id ?? ''}`}
                 size="sm"
             >
-                <p>Selecciona la bodega de la sucursal de la que se descontará el inventario.</p>
+                <p>
+                    La orden seguirá visible como pendiente hasta confirmar la entrega.
+                    Selecciona la bodega de la sucursal: al entregar se descontará allí el inventario.
+                </p>
                 <Select
                     variant="modal"
                     isLoading={loadingWarehouses}

@@ -20,6 +20,7 @@ describe('POS operational flow', () => {
         'orders.edit',
         'orders.cancel',
         'orders.deliver',
+        'kds.view',
         'kds.manage',
         'invoices.issue',
         'invoices.view',
@@ -202,7 +203,7 @@ describe('POS operational flow', () => {
         await prisma.company.deleteMany({ where: { id: companyId } });
     });
 
-    it('keeps a prepaid prepared order operational through KDS until paid delivery', async () => {
+    it('closes the table account at invoice while keeping the order operational through KDS and explicit delivery', async () => {
         const opened = await request(app).post('/api/cash-shifts/open').set('Authorization', `Bearer ${token}`)
             .send({ cashRegisterId: registerId, startAmount: 50 });
         expect(opened.status).toBe(201);
@@ -235,6 +236,18 @@ describe('POS operational flow', () => {
         const issuedInvoice = await request(app).post(`/api/invoices/${paidOrderId}/issue`).set('Authorization', `Bearer ${token}`);
         expect(issuedInvoice.status).toBe(201);
         expect(issuedInvoice.body.data.invoiceNumber).toMatch(/^FAC-/);
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('AVAILABLE');
+        expect(await prisma.inventoryMovement.count({
+            where: { companyId, reference: `ORD-${paidOrderId}`, type: 'OUT' }
+        })).toBe(0);
+        expect(await prisma.auditLog.count({
+            where: { companyId, entityType: 'Order', entityId: paidOrderId, action: 'DELIVER' }
+        })).toBe(0);
+        const activeAfterInvoice = await request(app).get('/api/orders/active')
+            .set('Authorization', `Bearer ${token}`).query({ branchId });
+        expect(activeAfterInvoice.status).toBe(200);
+        expect(activeAfterInvoice.body.data.map((order: { id: number }) => order.id))
+            .not.toContain(paidOrderId);
 
         const paid = await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
             .send({ orderId: paidOrderId, paymentMethodId, amount: 103.5 });
@@ -243,13 +256,16 @@ describe('POS operational flow', () => {
             status: 'OPEN',
             financialStatus: 'PAID'
         }));
-        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('OCCUPIED');
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('AVAILABLE');
         const activeAfterPrepay = await request(app).get('/api/orders/active').set('Authorization', `Bearer ${token}`)
             .query({ branchId });
         expect(activeAfterPrepay.status).toBe(200);
-        expect(activeAfterPrepay.body.data.map((order: { id: number }) => order.id)).toContain(paidOrderId);
+        expect(activeAfterPrepay.body.data.map((order: { id: number }) => order.id)).not.toContain(paidOrderId);
         expect((await prisma.promotion.findFirst({ where: { companyId, code: 'POS10' } }))?.usageCount).toBe(1);
         expect(await prisma.cashMovement.count({ where: { shiftId, reference: `PAY-${paid.body.data.id}` } })).toBe(1);
+        expect(await prisma.inventoryMovement.count({
+            where: { companyId, reference: `ORD-${paidOrderId}`, type: 'OUT' }
+        })).toBe(0);
 
         const invoice = await request(app).get(`/api/invoices/${paidOrderId}`).set('Authorization', `Bearer ${token}`);
         expect(invoice.status).toBe(200);
@@ -262,7 +278,15 @@ describe('POS operational flow', () => {
             status: 'READY',
             financialStatus: 'PAID'
         }));
-        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('OCCUPIED');
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('AVAILABLE');
+        const historicalReady = await request(app).get('/api/orders').set('Authorization', `Bearer ${token}`)
+            .query({ branchId, status: 'READY' });
+        expect(historicalReady.status).toBe(200);
+        expect(historicalReady.body.data.map((order: { id: number }) => order.id)).toContain(paidOrderId);
+        const kitchenReady = await request(app).get('/api/orders/kitchen/queue')
+            .set('Authorization', `Bearer ${token}`).query({ branchId });
+        expect(kitchenReady.status).toBe(200);
+        expect(kitchenReady.body.data.map((order: { id: number }) => order.id)).toContain(paidOrderId);
 
         await request(app).post(`/api/orders/${paidOrderId}/complete`).set('Authorization', `Bearer ${token}`)
             .send({ warehouseId }).expect(200);
@@ -271,9 +295,15 @@ describe('POS operational flow', () => {
             financialStatus: 'PAID'
         }));
         expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('AVAILABLE');
+        expect(await prisma.inventoryMovement.count({
+            where: { companyId, reference: `ORD-${paidOrderId}`, type: 'OUT' }
+        })).toBeGreaterThan(0);
+        expect(await prisma.auditLog.count({
+            where: { companyId, entityType: 'Order', entityId: paidOrderId, action: 'DELIVER' }
+        })).toBe(1);
     });
 
-    it('atomically pays, consumes, delivers and releases a ready table order', async () => {
+    it('keeps payment financial-only and prevents an old delivery from releasing a new table account', async () => {
         const created = await request(app).post('/api/orders').set('Authorization', `Bearer ${token}`)
             .send({ branchId, tableId, orderType: 'DINE_IN' });
         expect(created.status).toBe(201);
@@ -291,22 +321,80 @@ describe('POS operational flow', () => {
         const ready = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
         atomicSettlementTotal = Number(ready.total);
         expect(ready.status).toBe('READY');
-        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('OCCUPIED');
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('AVAILABLE');
 
-        const settled = await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
-            .set('X-Idempotency-Key', `settle-ready-${orderId}`)
+        const legacySettlement = await request(app).post('/api/payments')
+            .set('Authorization', `Bearer ${token}`)
+            .set('X-Idempotency-Key', `legacy-settle-ready-${orderId}`)
             .send({
                 orderId,
                 paymentMethodId: cardPaymentMethodId,
                 amount: Number(ready.total),
                 warehouseId
             });
+        expect(legacySettlement.status).toBe(400);
+        expect(legacySettlement.body.message).toMatch(/No se puede incluir warehouseId.*Entregar/i);
+        expect(await prisma.payment.count({ where: { orderId } })).toBe(0);
+
+        const settled = await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
+            .set('X-Idempotency-Key', `settle-ready-${orderId}`)
+            .send({
+                orderId,
+                paymentMethodId: cardPaymentMethodId,
+                amount: Number(ready.total)
+            });
         expect(settled.status).toBe(201);
+        expect(await prisma.order.findUnique({ where: { id: orderId } })).toEqual(expect.objectContaining({
+            status: 'READY',
+            financialStatus: 'PAID'
+        }));
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('AVAILABLE');
+        expect(await prisma.inventoryMovement.count({
+            where: { companyId, reference: `ORD-${orderId}`, warehouseId, type: 'OUT' }
+        })).toBe(0);
+        expect(await prisma.auditLog.count({
+            where: { companyId, entityType: 'Order', entityId: orderId, action: 'DELIVER' }
+        })).toBe(0);
+
+        // Reversing money does not erase the immutable invoice boundary.
+        await request(app).delete(`/api/payments/${settled.body.data.id}`).set('Authorization', `Bearer ${token}`)
+            .send({ reason: 'Atomic settlement reversal coverage' }).expect(200);
+        expect(await prisma.order.findUnique({ where: { id: orderId } })).toEqual(expect.objectContaining({
+            status: 'READY',
+            financialStatus: 'UNPAID'
+        }));
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('AVAILABLE');
+        expect(await prisma.inventoryMovement.count({
+            where: { companyId, reference: `ORD-${orderId}`, warehouseId, type: 'OUT' }
+        })).toBe(0);
+
+        await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
+            .set('X-Idempotency-Key', `resettle-ready-${orderId}`)
+            .send({
+                orderId,
+                paymentMethodId: cardPaymentMethodId,
+                amount: Number(ready.total)
+            }).expect(201);
+        expect(await prisma.order.findUnique({ where: { id: orderId } })).toEqual(expect.objectContaining({
+            status: 'READY',
+            financialStatus: 'PAID'
+        }));
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('AVAILABLE');
+
+        const newAccount = await request(app).post('/api/orders').set('Authorization', `Bearer ${token}`)
+            .send({ branchId, tableId, orderType: 'DINE_IN' });
+        expect(newAccount.status).toBe(201);
+        const newAccountOrderId = newAccount.body.data.id as number;
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('OCCUPIED');
+
+        await request(app).post(`/api/orders/${orderId}/complete`).set('Authorization', `Bearer ${token}`)
+            .send({ warehouseId }).expect(200);
         expect(await prisma.order.findUnique({ where: { id: orderId } })).toEqual(expect.objectContaining({
             status: 'DELIVERED',
             financialStatus: 'PAID'
         }));
-        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('AVAILABLE');
+        // Completing the old invoiced order must not release the new account.
+        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('OCCUPIED');
         expect(await prisma.inventoryMovement.count({
             where: { companyId, reference: `ORD-${orderId}`, warehouseId, type: 'OUT' }
         })).toBeGreaterThan(0);
@@ -314,34 +402,10 @@ describe('POS operational flow', () => {
             where: { companyId, entityType: 'Order', entityId: orderId, action: 'DELIVER' }
         })).toBe(1);
 
-        // Financial reversal preserves the already-delivered physical fact and
-        // stock, but reopens the table account until the balance is paid again.
-        await request(app).delete(`/api/payments/${settled.body.data.id}`).set('Authorization', `Bearer ${token}`)
-            .send({ reason: 'Atomic settlement reversal coverage' }).expect(200);
-        expect(await prisma.order.findUnique({ where: { id: orderId } })).toEqual(expect.objectContaining({
-            status: 'DELIVERED',
-            financialStatus: 'UNPAID'
-        }));
-        expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('OCCUPIED');
-        expect(await prisma.inventoryMovement.count({
-            where: { companyId, reference: `ORD-${orderId}`, warehouseId, type: 'OUT' }
-        })).toBeGreaterThan(0);
-
-        await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
-            .set('X-Idempotency-Key', `resettle-delivered-${orderId}`)
-            .send({
-                orderId,
-                paymentMethodId: cardPaymentMethodId,
-                amount: Number(ready.total)
-            }).expect(201);
-        expect(await prisma.order.findUnique({ where: { id: orderId } })).toEqual(expect.objectContaining({
-            status: 'DELIVERED',
-            financialStatus: 'PAID'
-        }));
+        await request(app).post(`/api/orders/${newAccountOrderId}/cancel`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ reason: 'Cleanup new account concurrency coverage' }).expect(200);
         expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('AVAILABLE');
-        expect(await prisma.inventoryMovement.count({
-            where: { companyId, reference: `ORD-${orderId}`, warehouseId, type: 'OUT' }
-        })).toBeGreaterThan(0);
     });
 
     it('cancels an occupied table order without leaving an orphan state', async () => {

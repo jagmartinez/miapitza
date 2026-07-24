@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { User } from '../types';
-import { canCreatePayment, canOperateKitchenLineItems, canReversePayment, canUpdateWholeOrderStatus, getPrimaryRoleName, getRoleColor, getUserAccentColor, getUserRoleNames, hasAnyRole, hasPermission } from './authz';
+import { canCreatePayment, canDeliverOrder, canOperateKitchenLineItems, canReversePayment, canUpdateWholeOrderStatus, getPrimaryRoleName, getRoleColor, getUserAccentColor, getUserRoleNames, hasAnyRole, hasPermission } from './authz';
 
 const buildUser = (overrides: Partial<User> = {}): User => ({
     id: 1,
@@ -78,5 +78,19 @@ describe('authz utils', () => {
         });
 
         expect(canReversePayment(customRole)).toBe(true);
+    });
+
+    it('shows delivery only to users with the effective orders.deliver permission', () => {
+        const allowed = buildUser({
+            role: { id: 9, name: 'DESPACHO' },
+            permissions: ['orders.deliver'],
+        });
+        const deniedAdmin = buildUser({
+            role: { id: 2, name: 'ADMIN' },
+            permissions: ['orders.view'],
+        });
+
+        expect(canDeliverOrder(allowed)).toBe(true);
+        expect(canDeliverOrder(deniedAdmin)).toBe(false);
     });
 });

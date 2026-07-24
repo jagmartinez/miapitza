@@ -262,7 +262,7 @@ describe('Recipe inventory flows (integration)', () => {
         });
         if (!order) throw new Error('OrderService.create returned null in recipe E2E fixture.');
         orderId = order.id;
-        await InvoiceService.generateInvoice(orderId, companyId);
+        await InvoiceService.generateInvoice(orderId, companyId, userId);
 
         const firstPayment = await PaymentService.create(
             companyId,
@@ -351,7 +351,7 @@ describe('Recipe inventory flows (integration)', () => {
             where: { id: order.id },
             data: { discountCode: promotion.code }
         });
-        await InvoiceService.generateInvoice(order.id, companyId);
+        await InvoiceService.generateInvoice(order.id, companyId, userId);
 
         await PaymentService.create(
             companyId,

@@ -117,14 +117,14 @@ export class PaymentService {
         const { amount, cents: amountCents } = this.normalizeMoney(data.amount);
         if (!Number.isInteger(data.orderId) || data.orderId <= 0) throw new Error('Invalid order id');
         if (!Number.isInteger(data.paymentMethodId) || data.paymentMethodId <= 0) throw new Error('Invalid payment method id');
-        const settlementWarehouseId = data.warehouseId === undefined
+        const requestedWarehouseId = data.warehouseId === undefined
             ? null
             : Number(data.warehouseId);
         if (
-            settlementWarehouseId !== null
-            && (!Number.isInteger(settlementWarehouseId) || settlementWarehouseId <= 0)
+            requestedWarehouseId !== null
+            && (!Number.isInteger(requestedWarehouseId) || requestedWarehouseId <= 0)
         ) {
-            throw new Error('warehouseId válido es requerido para cerrar la mesa con el pago');
+            throw new Error('warehouseId inválido');
         }
         const reference = this.normalizeOptionalText(data.reference, 'Reference');
         const payerName = this.normalizeOptionalText(data.payerName, 'Payer name');
@@ -163,13 +163,21 @@ export class PaymentService {
                         && existing.paymentMethodId === data.paymentMethodId
                         && (existing.reference || null) === reference
                         && (existing.payerName || null) === payerName
-                        && (existing.settlementWarehouseId ?? null) === settlementWarehouseId;
+                        && (existing.settlementWarehouseId ?? null) === requestedWarehouseId;
                     if (!sameRequest) throw new Error('Idempotency key reused with different payment data');
                     if (existing.methodType === 'CASH') {
                         await this.assertActiveCashLedger(tx, existing, companyId, order.branchId);
                     }
                     return existing;
                 }
+            }
+
+            // Backward-compatible retries of historical pay-and-deliver rows
+            // return above. No new payment may couple finance to delivery.
+            if (requestedWarehouseId !== null) {
+                throw new Error(
+                    'No se puede incluir warehouseId al registrar pagos; entregue la orden mediante la acción Entregar'
+                );
             }
 
             if (!order.invoiceNumber?.trim()) {
@@ -215,18 +223,6 @@ export class PaymentService {
             if (amountCents > remainingCents) {
                 throw new Error(`Amount exceeds remaining balance. Remaining: ${(remainingCents / 100).toFixed(2)}`);
             }
-            if (settlementWarehouseId !== null) {
-                if (amountCents !== remainingCents) {
-                    throw new Error('La entrega automática solo puede solicitarse con el último pago de la orden');
-                }
-                if (!order.tableId) {
-                    throw new Error('La entrega automática solo aplica a órdenes asociadas a una mesa');
-                }
-                if (order.status !== 'READY') {
-                    throw new Error('La orden debe estar lista en cocina antes de cobrar y liberar la mesa');
-                }
-            }
-
             const payment = await tx.payment.create({
                 data: {
                     orderId: data.orderId,
@@ -236,7 +232,9 @@ export class PaymentService {
                     reference,
                     payerName,
                     idempotencyKey,
-                    settlementWarehouseId,
+                    // Payment rows are financial facts only. Physical stock
+                    // consumption belongs exclusively to explicit delivery.
+                    settlementWarehouseId: null,
                     registeredById: userId
                 },
                 include: {
@@ -326,27 +324,16 @@ export class PaymentService {
                     }
                 }
 
-                if (settlementWarehouseId !== null) {
-                    // The last payment, stock consumption, operational delivery,
-                    // audit and table release share this transaction. A failure in
-                    // any step rolls the payment and its cash movement back too.
-                    await OrderService.completeWithTransaction(
-                        tx,
-                        order.id,
-                        companyId,
-                        settlementWarehouseId,
-                        userId
-                    );
-                } else if (order.tableId && order.status === 'DELIVERED') {
-                    // Delivery-before-payment keeps the table occupied until the
-                    // financial balance reaches zero. Reconcile it here as the
-                    // second terminal fact arrives.
+                if (order.tableId) {
+                    // Invoice issuance already closes the table account. Re-run
+                    // the shared derivation as an idempotent repair in case an
+                    // older deployment left the physical table stale.
                     await OrderService.reconcileTableAfterSettlement(
                         tx,
                         companyId,
                         order.tableId,
                         userId,
-                        `Orden #${order.id} pagada después de entrega`
+                        `Orden facturada #${order.id} conciliada después del pago`
                     );
                 }
             } else {
@@ -469,7 +456,10 @@ export class PaymentService {
                 }
             });
 
-            if (payment.order.tableId && payment.order.status === 'DELIVERED' && becomesUnderpaid) {
+            if (payment.order.tableId && becomesUnderpaid) {
+                // Reversing money does not erase the immutable invoice boundary.
+                // The shared policy keeps the table available while the fiscal
+                // counterflow is resolved.
                 await OrderService.reconcileTableAfterSettlement(
                     tx,
                     companyId,

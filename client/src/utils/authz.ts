@@ -83,6 +83,10 @@ export const canSendOrderToKitchen = (user: User | null | undefined): boolean =>
 export const canCancelOrder = (user: User | null | undefined): boolean =>
     hasPermission(user, 'orders.cancel', [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.MESERO]);
 
+/** POST /orders/:id/complete */
+export const canDeliverOrder = (user: User | null | undefined): boolean =>
+    hasPermission(user, 'orders.deliver', [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.MESERO, ROLES.CAJERO]);
+
 /** POST /payments (registrar cobro) */
 export const canCreatePayment = (user: User | null | undefined): boolean =>
     hasPermission(user, 'payments.process', [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.CAJERO]);

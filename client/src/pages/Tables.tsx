@@ -43,6 +43,7 @@ import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/web
 import { useCurrency } from '../hooks/useCurrency';
 import ThemeToggle from '../components/ThemeToggle';
 import KitchenNotificationBell from '../components/KitchenNotificationBell';
+import { buildInvoiceReleaseMessage, isEligibleForPosOrderBucket } from '../utils/posOrderBucket';
 import { useNavigate } from 'react-router-dom';
 
 interface ApiValidationError { field?: string; message?: string }
@@ -299,8 +300,11 @@ export default function Tables() {
                 tableId: table.id,
             });
             const active = response.data.data.filter((o: Order) =>
-                ACTIVE_ORDER_STATUSES.includes(o.status)
-                || (o.status === 'DELIVERED' && o.financialStatus !== 'PAID')
+                isEligibleForPosOrderBucket(o)
+                && (
+                    ACTIVE_ORDER_STATUSES.includes(o.status)
+                    || (o.status === 'DELIVERED' && o.financialStatus !== 'PAID')
+                )
             );
             if (requestId === tableOrderRequestRef.current) setTableOrders(active);
         } catch (error) {
@@ -470,12 +474,30 @@ export default function Tables() {
         try {
             const response = await invoicesAPI.issue(order.id);
             const invoiceNumber = response.data?.data?.invoiceNumber as string | undefined;
-            const refreshed = await ordersAPI.getById(order.id);
-            const nextOrder = refreshed.data.data as Order;
+            if (!invoiceNumber) {
+                throw new Error('La factura no devolvió un número fiscal.');
+            }
+            let nextOrder: Order = {
+                ...order,
+                invoiceNumber,
+                invoicedAt: response.data?.data?.issuedAt || order.invoicedAt,
+                invoiceFiscalStatus: 'ISSUED',
+            };
+            try {
+                const refreshed = await ordersAPI.getById(order.id);
+                nextOrder = refreshed.data.data as Order;
+            } catch (refreshError) {
+                console.error('Invoice issued but table order refresh failed:', refreshError);
+                showWarning('La factura fue emitida, pero el detalle de la orden no pudo actualizarse. Recarga si necesitas revisarlo.');
+            }
             setTableOrders((current) => current.map((item) => item.id === nextOrder.id ? nextOrder : item));
-            await loadTables();
-            await loadFloorPlan();
-            showSuccess(`Factura ${invoiceNumber || ''} emitida correctamente.`.trim());
+            await refreshOperationalTable();
+            showSuccess(buildInvoiceReleaseMessage({
+                invoiceNumber,
+                orderId: nextOrder.id,
+                tableNumber: nextOrder.table?.number ?? order.table?.number,
+                financialStatus: nextOrder.financialStatus,
+            }));
         } catch (error) {
             showError(extractApiError(error, 'No se pudo emitir la factura.'));
         } finally {
@@ -612,9 +634,31 @@ export default function Tables() {
             if (consolidationIntent === 'PAY') {
                 try {
                     const invoiceResponse = await invoicesAPI.issue(consolidatedOrder.id);
-                    const refreshed = await ordersAPI.getById(consolidatedOrder.id);
-                    const payableOrder = refreshed.data.data as Order;
-                    showSuccess(`Cuentas consolidadas y factura ${invoiceResponse.data?.data?.invoiceNumber || ''} emitida.`.trim());
+                    const invoiceNumber = invoiceResponse.data?.data?.invoiceNumber as string | undefined;
+                    if (!invoiceNumber) {
+                        throw new Error('La factura consolidada no devolvió un número fiscal.');
+                    }
+                    let payableOrder: Order = {
+                        ...consolidatedOrder,
+                        invoiceNumber,
+                        invoicedAt: invoiceResponse.data?.data?.issuedAt || consolidatedOrder.invoicedAt,
+                        invoiceFiscalStatus: 'ISSUED',
+                    };
+                    try {
+                        const refreshed = await ordersAPI.getById(consolidatedOrder.id);
+                        payableOrder = refreshed.data.data as Order;
+                    } catch (refreshError) {
+                        console.error('Consolidated invoice issued but order refresh failed:', refreshError);
+                        showWarning('La factura consolidada fue emitida, pero el detalle no pudo actualizarse. El cobro usará la última información disponible.');
+                    }
+                    await loadTables();
+                    await loadFloorPlan();
+                    showSuccess(`Cuentas consolidadas. ${buildInvoiceReleaseMessage({
+                        invoiceNumber,
+                        orderId: payableOrder.id,
+                        tableNumber: payableOrder.table?.number,
+                        financialStatus: payableOrder.financialStatus,
+                    })}`);
                     await openPayment(payableOrder, 'single');
                 } catch (error) {
                     showError(`Las cuentas sí quedaron consolidadas, pero no se pudo abrir el cobro. ${extractApiError(error, 'Reabre la mesa principal para emitir la factura o continuar el pago.')}`);

@@ -60,14 +60,13 @@ describe('PaymentModal contract', () => {
         expect(source).not.toContain('payment-footer-mode');
     });
 
-    it('settles a ready table only on the last confirmed payment leg with an explicit warehouse', () => {
-        expect(source).toContain("order?.tableId && order.status === 'READY'");
-        expect(source).toContain("warehousesAPI.getAll({ branchId: order.branchId, type: 'BRANCH' })");
-        expect(source).toContain('warehouseId: settlementWarehouseId');
-        expect(source).toContain('index === pendingLegs.length - 1');
-        expect(source).toContain('El último pago entregará la orden, registrará el consumo y liberará la mesa');
-        expect(source).toContain('if (!validateSettlementPrecondition()) return');
-        expect(source).toContain('busy || settlementUnavailable || queuedPayment');
+    it('keeps payment financial-only and contains no delivery or warehouse coupling', () => {
+        expect(source).not.toContain('settleReadyTableOnPayment');
+        expect(source).not.toContain('settlementWarehouse');
+        expect(source).not.toContain('warehousesAPI');
+        expect(source).not.toContain('warehouseId');
+        expect(source).not.toContain('entregará la orden');
+        expect(source).toContain('busy || queuedPayment');
         expect(source).toContain('Boolean(methodsError)');
     });
 });

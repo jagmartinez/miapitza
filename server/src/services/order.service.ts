@@ -7,6 +7,7 @@ import { calculatePromotionDiscount } from './promotion.service';
 import { DEFAULT_COMPANY_SETTINGS, SettingService } from './setting.service';
 import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
 import { closeInactiveTableGroupForTable } from './table-group.service';
+import { tableOperationalOrderWhere } from './table-occupancy-policy';
 
 /** Valid state transitions for orders */
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -16,7 +17,7 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
     'SENT_TO_KITCHEN': ['READY'],
     'IN_PREPARATION': ['READY'],
     // Delivery has a dedicated operation because it atomically consumes stock
-    // from an explicit warehouse and releases the table.
+    // from an explicit warehouse. Fiscal issuance owns table-account release.
     'READY': [],
     'DELIVERED': [],
     'CANCELLED': [], // terminal
@@ -530,7 +531,7 @@ export class OrderService {
                     where: {
                         companyId,
                         tableId: data.tableId,
-                        status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] },
+                        ...tableOperationalOrderWhere(),
                         branchId: data.branchId
                     },
                     include: {
@@ -1948,9 +1949,7 @@ export class OrderService {
     static async getActiveOrders(companyId: number, branchId?: number) {
         const where: Prisma.OrderWhereInput = {
             companyId,
-            status: {
-                in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY']
-            }
+            ...tableOperationalOrderWhere()
         };
 
         if (branchId) {

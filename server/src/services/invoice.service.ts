@@ -3,6 +3,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import prisma from '../utils/prisma';
 import { DEFAULT_COMPANY_SETTINGS, SettingService, validateConfiguredFiscalTaxId } from './setting.service';
+import { closeInactiveTableGroupForTable } from './table-group.service';
 
 export interface InvoiceData {
     orderId: number;
@@ -227,19 +228,42 @@ function buildInvoiceData(
 
 export class InvoiceService {
     /**
-     * Issues once under an order row lock and persists the exact rendering
-     * payload together with the fiscal number. Concurrent retries return the
-     * first snapshot and never consume another sequence number.
+     * Issues once under the shared Table -> Order lock order and persists the
+     * exact rendering payload together with the fiscal number. Concurrent
+     * retries return the first snapshot and never consume another sequence.
      */
-    static async generateInvoice(orderId: number, companyId: number): Promise<InvoiceData> {
+    static async generateInvoice(orderId: number, companyId: number, actorUserId: number): Promise<InvoiceData> {
+        if (!Number.isInteger(actorUserId) || actorUserId <= 0) {
+            throw new Error('Invalid invoice actor');
+        }
+        // Preflight outside the transaction avoids creating a repeatable-read
+        // snapshot before the locking reads below.
+        const candidate = await prisma.order.findFirst({
+            where: { id: orderId, companyId },
+            select: { id: true, tableId: true },
+        });
+        if (!candidate) throw new Error('Order not found or unauthorized');
+        const candidateTableId = candidate.tableId ?? null;
         const settings = await SettingService.getAll(companyId);
 
         return prisma.$transaction(async (tx) => {
-            const locked = await tx.$queryRaw<Array<{ id: number }>>`
+            // Every table/order mutation follows the Table -> Order lock order
+            // used by order creation.
+            if (candidateTableId !== null) {
+                const lockedTable = await tx.$queryRaw<Array<{ id: number }>>`
+                    SELECT \`id\` FROM \`Table\`
+                    WHERE \`id\` = ${candidateTableId} AND \`companyId\` = ${companyId}
+                    FOR UPDATE`;
+                if (lockedTable.length === 0) {
+                    throw new Error('La mesa asociada a la orden ya no está disponible');
+                }
+            }
+
+            const lockedOrder = await tx.$queryRaw<Array<{ id: number }>>`
                 SELECT \`id\` FROM \`Order\`
                 WHERE \`id\` = ${orderId} AND \`companyId\` = ${companyId}
                 FOR UPDATE`;
-            if (locked.length === 0) throw new Error('Order not found or unauthorized');
+            if (lockedOrder.length === 0) throw new Error('Order not found or unauthorized');
 
             const order = await tx.order.findUnique({
                 where: { id: orderId },
@@ -248,11 +272,29 @@ export class InvoiceService {
             if (!order || order.companyId !== companyId) {
                 throw new Error('Order not found or unauthorized');
             }
+            if ((order.tableId ?? null) !== candidateTableId) {
+                throw new Error('La mesa asociada a la orden cambió durante la emisión; vuelva a intentarlo');
+            }
+            const actor = await tx.user.findFirst({
+                where: { id: actorUserId, companyId, status: 'ACTIVE' },
+                select: { id: true },
+            });
+            if (!actor) throw new Error('Invalid invoice actor for this company');
+
             if (order.invoiceSnapshot !== null) {
                 if (!order.invoiceNumber) throw new Error('Invoice snapshot exists without an invoice number');
                 const persisted = deserializeInvoiceSnapshot(order.invoiceSnapshot);
                 if (persisted.orderId !== order.id || persisted.invoiceNumber !== order.invoiceNumber) {
                     throw new Error('Invoice snapshot does not match its order');
+                }
+                if (order.tableId) {
+                    await closeInactiveTableGroupForTable(
+                        tx,
+                        companyId,
+                        order.tableId,
+                        actor.id,
+                        `Factura ${order.invoiceNumber} ya emitida; conciliación idempotente de mesa`,
+                    );
                 }
                 return persisted;
             }
@@ -292,6 +334,30 @@ export class InvoiceService {
                     invoiceFiscalStatus: 'ISSUED',
                 },
             });
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    entityType: 'Order',
+                    entityId: order.id,
+                    action: 'INVOICE_ISSUED',
+                    userId: actor.id,
+                    details: {
+                        invoiceNumber,
+                        previousStatus: order.status,
+                        financialStatus: order.financialStatus,
+                        tableId: order.tableId,
+                    },
+                },
+            });
+            if (order.tableId) {
+                await closeInactiveTableGroupForTable(
+                    tx,
+                    companyId,
+                    order.tableId,
+                    actor.id,
+                    `Factura ${invoiceNumber} emitida`,
+                );
+            }
             return invoiceData;
         });
     }

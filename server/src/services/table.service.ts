@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { tableOpenAccountWhere, tableOperationalOrderWhere } from './table-occupancy-policy';
 
 export type TableOperationalState =
   | 'AVAILABLE' | 'RESERVED' | 'DISABLED' | 'OPEN_ORDER' | 'WAITING_KITCHEN'
@@ -63,12 +64,7 @@ export class TableService {
           }
         },
         orders: {
-          where: {
-            OR: [
-              { status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] } },
-              { status: 'DELIVERED', financialStatus: { not: 'PAID' } }
-            ]
-          },
+          where: tableOpenAccountWhere(),
           select: {
             status: true,
             financialStatus: true,
@@ -113,10 +109,8 @@ export class TableService {
         },
         orders: {
           where: {
-            status: {
-              in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY']
-            },
-            companyId
+            companyId,
+            ...tableOperationalOrderWhere()
           },
           select: {
             id: true,
@@ -224,7 +218,7 @@ export class TableService {
           where: {
             companyId,
             tableId: id,
-            status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] }
+            ...tableOperationalOrderWhere()
           }
         });
         if (activeOrders > 0 && data.status !== 'OCCUPIED') {
@@ -281,9 +275,7 @@ export class TableService {
       where: {
         tableId: id,
         companyId,
-        status: {
-          in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY']
-        }
+        ...tableOperationalOrderWhere()
       }
     });
 

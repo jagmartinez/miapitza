@@ -2,9 +2,15 @@ import { Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import prisma from '../utils/prisma';
 import { assertCompatiblePhysicalGroups, keepGroupedTableOccupied } from './table-group.service';
+import {
+    TABLE_OPERATIONAL_ORDER_STATUSES,
+    tableOpenAccountWhere,
+    tableOperationalOrderWhere,
+    type TableOperationalOrderStatus,
+} from './table-occupancy-policy';
 
-const ACTIVE_STATUSES = ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] as const;
-type ActiveStatus = typeof ACTIVE_STATUSES[number];
+const ACTIVE_STATUSES = TABLE_OPERATIONAL_ORDER_STATUSES;
+type ActiveStatus = TableOperationalOrderStatus;
 
 interface LayoutInput {
     id: number;
@@ -23,13 +29,6 @@ interface TransferSlice {
 }
 
 type Tx = Prisma.TransactionClient;
-
-const ACTIVE_ACCOUNT_WHERE = {
-    OR: [
-        { status: { in: [...ACTIVE_STATUSES] } },
-        { status: 'DELIVERED' as const, financialStatus: { not: 'PAID' as const } }
-    ]
-};
 
 type ConsolidationFingerprintItem = {
     id: number;
@@ -286,7 +285,7 @@ export class TableAccountService {
                 where: {
                     companyId,
                     tableId: { in: [destinationTableId, ...sourceTableIds] },
-                    status: { in: [...ACTIVE_STATUSES] }
+                    ...tableOperationalOrderWhere()
                 },
                 include: {
                     payments: { where: { status: 'ACTIVE' }, select: { id: true } },
@@ -668,7 +667,7 @@ export class TableAccountService {
                     companyId,
                     tableId: { in: tableIds },
                     id: { notIn: orderIds },
-                    ...ACTIVE_ACCOUNT_WHERE
+                    ...tableOpenAccountWhere()
                 },
                 select: { id: true, tableId: true, status: true, financialStatus: true }
             });
@@ -874,7 +873,7 @@ export class TableAccountService {
             if (sourceSubtotalCents <= 0 || movedSubtotalCents <= 0) throw new Error('El traslado parcial debe tener un importe positivo');
 
             const destinationOrders = await tx.order.findMany({
-                where: { companyId, tableId: destinationTableId, status: { in: [...ACTIVE_STATUSES] } },
+                where: { companyId, tableId: destinationTableId, ...tableOperationalOrderWhere() },
                 include: { payments: { where: { status: 'ACTIVE' }, select: { id: true } } }
             });
             if (destinationOrders.length > 1) throw new Error('Consolide primero las órdenes activas de la mesa destino');

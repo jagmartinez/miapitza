@@ -125,14 +125,15 @@ describe('operational UX contracts', () => {
 
         expect(orders).toContain('ordersAPI.markKitchenReady(orderId)');
         expect(orders).toContain('canManageKitchen &&');
-        expect(pos).toContain('ordersAPI.complete(orderId, warehouseId)');
+        expect(orders).toContain('ordersAPI.complete(orderId, warehouseId)');
+        expect(pos).not.toContain('ordersAPI.complete(');
         expect(pos).toContain('ordersAPI.cancel(orderId, cancelReason, warehouseId)');
         expect(pos).not.toContain("ordersAPI.updateStatus(activeTableOrder.id, 'DELIVERED')");
         expect(pos.match(/ordersAPI\.updatePricing\(orderId/g)).toHaveLength(2);
         expect(pos).toContain('La orden no se enviará a cocina hasta sincronizar el precio.');
     });
 
-    it('wires delivery attempts through the executable gate and clears context only on success', () => {
+    it('wires delivery attempts through the executable gate and preserves explicit feedback', () => {
         const orders = read('./Orders.tsx');
         const pos = read('./POS.tsx');
 
@@ -140,11 +141,60 @@ describe('operational UX contracts', () => {
         expect(orders).toContain("showError(message)");
         expect(orders).toContain("completingDelivery ? 'Entregando…' : 'Confirmar Entrega'");
         expect(orders).toContain('La orden fue entregada, pero no se pudo actualizar la lista.');
-        expect(pos).toContain('warehouseActionGateRef.current.execute');
-        expect(pos).toContain("ordersAPI.complete(orderId, warehouseId)");
-        expect(pos).toContain('onSuccess: async () => {');
-        expect(pos).toContain('clearTableContext()');
-        expect(pos).toContain('La orden fue entregada, pero el POS no pudo actualizarse.');
+        expect(pos).not.toContain('handleMarkDelivered');
+        expect(pos).not.toContain("setWarehouseAction('DELIVER')");
+        expect(pos).not.toContain('>Entregar</button>');
         expect(pos).not.toContain('syncOrderContext(activeTableOrder.id)');
+    });
+
+    it('releases the POS bucket at confirmed invoicing and never re-adopts fiscal orders', () => {
+        const pos = read('./POS.tsx');
+        const paymentFlow = pos.slice(
+            pos.indexOf('const handlePayment = async () => {'),
+            pos.indexOf('handlePaymentRef.current = handlePayment;'),
+        );
+        const postInvoiceFlow = paymentFlow.slice(paymentFlow.indexOf('const invoiceResponse'));
+        const paymentCompleteFlow = pos.slice(
+            pos.indexOf('const handlePaymentComplete = async'),
+            pos.indexOf('const handleCancelActiveOrder = useCallback'),
+        );
+
+        expect(pos).toContain('findPosOrderBucketForTable(response.data.data as Order[], table.id)');
+        expect(pos).toContain('if (!isEligibleForPosOrderBucket(refreshedOrder))');
+        expect(postInvoiceFlow).toContain('setPaymentOrder(invoicedPaymentOrder)');
+        expect(postInvoiceFlow).toContain('releaseAfterConfirmedInvoice(');
+        expect(postInvoiceFlow).toContain('clearTableContext');
+        expect(postInvoiceFlow).not.toContain('syncOrderContext(orderId)');
+        expect(paymentCompleteFlow).not.toContain('clearTableContext');
+        expect(pos).toContain('orderId={paymentOrder?.id ?? null}');
+        expect(pos).toContain('order={paymentOrder}');
+        expect(paymentFlow.indexOf('if (offlineQueued)')).toBeLessThan(
+            paymentFlow.indexOf('const invoiceResponse'),
+        );
+    });
+
+    it('communicates the delivery handoff and exposes it only with orders.deliver', () => {
+        const orders = read('./Orders.tsx');
+        const pos = read('./POS.tsx');
+        const tables = read('./Tables.tsx');
+        const kitchen = read('./Kitchen.tsx');
+
+        expect(pos).toContain('buildInvoiceReleaseMessage({');
+        expect(pos).not.toContain('settleReadyTableOnPayment');
+        expect(orders).toContain("const canDeliver = canDeliverOrder(user)");
+        expect(orders).toContain("if (canDeliver && order.status === 'READY'");
+        expect(orders).toContain('success(buildInvoiceReleaseMessage({');
+        expect(orders).toContain('await loadOrders();');
+        expect(orders).toContain('La orden seguirá visible como pendiente hasta confirmar la entrega.');
+        expect(orders).toContain('al entregar se descontará allí el inventario.');
+        expect(orders).toContain('El inventario fue descontado de la bodega seleccionada.');
+        expect(orders).not.toContain('settleReadyTableOnPayment');
+        expect(orders).toContain('setOrders(response.data.data)');
+        expect(kitchen).toContain('ordersAPI.getKitchenQueue()');
+        expect(tables).toContain('showSuccess(buildInvoiceReleaseMessage({');
+        expect(tables).toContain('await refreshOperationalTable();');
+        expect(tables).toContain('Cuentas consolidadas. ${buildInvoiceReleaseMessage({');
+        expect(tables).not.toContain('settleReadyTableOnPayment');
+        expect(tables).toContain('isEligibleForPosOrderBucket(o)');
     });
 });

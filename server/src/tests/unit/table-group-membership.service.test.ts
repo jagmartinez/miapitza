@@ -13,7 +13,7 @@ const activeGroup = {
 };
 
 describe('TableGroupService.updateMembership', () => {
-    it('can remove the current primary, reassign it and preserve delivered-unpaid occupancy', async () => {
+    it('can remove the current primary, reassign it and preserve only uninvoiced delivered-unpaid occupancy', async () => {
         const updateMany = jest.fn()
             .mockResolvedValueOnce({ count: 1 } as never)
             .mockResolvedValueOnce({ count: 2 } as never);
@@ -55,13 +55,21 @@ describe('TableGroupService.updateMembership', () => {
             where: { companyId: 1, id: { in: [11] }, activeTableGroupId: 7 },
             data: { activeTableGroupId: null }
         });
-        expect(orderCount).toHaveBeenCalledWith(expect.objectContaining({
-            where: expect.objectContaining({
-                companyId: 1,
-                tableId: 11,
-                OR: expect.arrayContaining([
-                    expect.objectContaining({ status: 'DELIVERED', financialStatus: { not: 'PAID' } })
-                ])
+        const occupancyWhere = (orderCount.mock.calls[0]?.[0] as {
+            where: {
+                companyId: number;
+                tableId: number;
+                AND: Array<Record<string, unknown>>;
+            };
+        }).where;
+        expect(occupancyWhere).toEqual(expect.objectContaining({ companyId: 1, tableId: 11 }));
+        expect(occupancyWhere.AND[0].OR).toEqual(expect.arrayContaining([
+            expect.objectContaining({ status: 'DELIVERED', financialStatus: { not: 'PAID' } })
+        ]));
+        expect(occupancyWhere.AND[1]).toEqual(expect.objectContaining({
+            NOT: expect.objectContaining({
+                invoiceNumber: { not: null },
+                invoiceFiscalStatus: { not: 'NOT_ISSUED' }
             })
         }));
         expect(update).toHaveBeenCalledWith({ where: { id: 11 }, data: { status: 'OCCUPIED' } });

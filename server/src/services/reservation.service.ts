@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { getZonedDayBounds } from '../utils/timezone';
 import { SettingService } from './setting.service';
+import { tableOperationalOrderWhere } from './table-occupancy-policy';
 
 export class ReservationService {
     private static async getAvailableTablesWithClient(
@@ -364,7 +365,7 @@ export class ReservationService {
                     companyId,
                     branchId: reservation.branchId,
                     tableId: reservation.tableId,
-                    status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] }
+                    ...tableOperationalOrderWhere()
                 },
                 select: { id: true }
             });

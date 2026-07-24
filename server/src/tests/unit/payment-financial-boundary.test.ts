@@ -42,7 +42,7 @@ describe('PaymentService financial/physical boundary and domain replay', () => {
         expect(consume).not.toHaveBeenCalled();
     });
 
-    it('atomically completes a ready table order when the last payment selects a warehouse', async () => {
+    it('rejects a new pay-and-deliver request without creating financial or physical rows', async () => {
         const tx = {
             $queryRaw: jest.fn(async () => []),
             order: {
@@ -51,68 +51,32 @@ describe('PaymentService financial/physical boundary and domain replay', () => {
                     financialStatus: 'UNPAID', status: 'READY', cashRegisterId: null,
                     discountCode: null, invoiceNumber: 'FAC-2-000009', invoiceFiscalStatus: 'ISSUED', payments: []
                 })),
-                update: jest.fn(async (_args: unknown) => ({}))
-            },
-            user: { findFirst: jest.fn(async () => ({ id: 7 })) },
-            paymentMethod: { findFirst: jest.fn(async () => ({ id: 3, type: 'CARD' })) },
-            payment: {
-                create: jest.fn(async () => ({ id: 44, orderId: 9, amount: 10, methodType: 'CARD' }))
-            },
-            cashMovement: { create: jest.fn() },
-            promotion: { findFirst: jest.fn(), updateMany: jest.fn() }
-        };
-        jest.spyOn(prisma, '$transaction').mockImplementation(
-            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
-        );
-        const complete = jest.spyOn(OrderService, 'completeWithTransaction').mockResolvedValue({
-            id: 9, status: 'DELIVERED'
-        } as never);
-
-        await PaymentService.create(1, {
-            orderId: 9,
-            paymentMethodId: 3,
-            amount: 10,
-            warehouseId: 8
-        }, 7);
-
-        expect(complete).toHaveBeenCalledTimes(1);
-        expect(complete.mock.calls[0]?.[0]).toBe(tx as never);
-        expect(complete.mock.calls[0]?.slice(1)).toEqual([9, 1, 8, 7]);
-        expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
-            data: expect.objectContaining({ financialStatus: 'PAID' })
-        }));
-    });
-
-    it('rejects an operational warehouse on a partial payment before creating ledger rows', async () => {
-        const tx = {
-            $queryRaw: jest.fn(async () => []),
-            order: {
-                findFirst: jest.fn(async () => ({
-                    id: 9, companyId: 1, branchId: 2, tableId: 5, total: 20,
-                    financialStatus: 'UNPAID', status: 'READY', cashRegisterId: null,
-                    discountCode: null, invoiceNumber: 'FAC-2-000009', invoiceFiscalStatus: 'ISSUED', payments: []
-                })),
                 update: jest.fn()
             },
             user: { findFirst: jest.fn(async () => ({ id: 7 })) },
-            paymentMethod: { findFirst: jest.fn(async () => ({ id: 3, type: 'CARD' })) },
-            payment: { create: jest.fn() }
+            payment: { findUnique: jest.fn(async () => null), create: jest.fn() },
+            paymentMethod: { findFirst: jest.fn() }
         };
         jest.spyOn(prisma, '$transaction').mockImplementation(
             (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
         );
+        const complete = jest.spyOn(OrderService, 'completeWithTransaction');
 
         await expect(PaymentService.create(1, {
             orderId: 9,
             paymentMethodId: 3,
             amount: 10,
+            idempotencyKey: 'new-pay-deliver',
             warehouseId: 8
-        }, 7)).rejects.toThrow(/último pago/i);
+        }, 7)).rejects.toThrow(/No se puede incluir warehouseId.*Entregar/i);
+
         expect(tx.payment.create).not.toHaveBeenCalled();
         expect(tx.order.update).not.toHaveBeenCalled();
+        expect(tx.paymentMethod.findFirst).not.toHaveBeenCalled();
+        expect(complete).not.toHaveBeenCalled();
     });
 
-    it('releases a delivered table when its final payment arrives later', async () => {
+    it('reconciles a stale physical table from the immutable invoice boundary after payment', async () => {
         const tx = {
             $queryRaw: jest.fn(async () => []),
             order: {
@@ -141,7 +105,7 @@ describe('PaymentService financial/physical boundary and domain replay', () => {
         expect(release).toHaveBeenCalledTimes(1);
         expect(release.mock.calls[0]?.[0]).toBe(tx as never);
         expect(release.mock.calls[0]?.slice(1)).toEqual([
-            1, 5, 7, 'Orden #9 pagada después de entrega'
+            1, 5, 7, 'Orden facturada #9 conciliada después del pago'
         ]);
     });
 

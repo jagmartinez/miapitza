@@ -3,6 +3,7 @@ import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
 import { effectiveUnitCost } from '../utils/product-cost';
 import { SettingService } from './setting.service';
+import { tableOperationalOrderWhere } from './table-occupancy-policy';
 import {
     getZonedDayBounds,
     getZonedDaysBounds,
@@ -42,9 +43,7 @@ function fiscalGrossWhere(closedAt?: Prisma.DateTimeNullableFilter): Prisma.Orde
         closedAt: closedAt ? { not: null, ...closedAt } : { not: null }
     };
 }
-const ACTIVE_ORDER_WHERE: Prisma.OrderWhereInput = {
-    status: { in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] }
-};
+const ACTIVE_ORDER_WHERE: Prisma.OrderWhereInput = tableOperationalOrderWhere();
 export type ReportPeriod = 'today' | 'week' | 'month' | 'year';
 
 const reportCents = (value: unknown, label: string): number => {

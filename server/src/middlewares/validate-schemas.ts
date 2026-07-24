@@ -225,7 +225,6 @@ export const createPayment: ValidationSchema = {
         paymentMethodId: { type: 'number', required: true, min: 1, integer: true },
         reference: { type: 'string', max: 191 },
         payerName: { type: 'string', max: 191 },
-        warehouseId: { type: 'number', min: 1, integer: true },
     },
 };
 

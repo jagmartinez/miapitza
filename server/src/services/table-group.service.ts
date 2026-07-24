@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { tableOpenAccountWhere } from './table-occupancy-policy';
 
-const ACTIVE_ORDER_STATUSES = ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] as const;
 type Tx = Prisma.TransactionClient;
 
 type GroupSelection = {
@@ -49,13 +49,6 @@ function sameIds(left: number[], right: number[]): boolean {
     return left.length === right.length && left.every((id, index) => id === right[index]);
 }
 
-const activeAccountWhere = {
-    OR: [
-        { status: { in: [...ACTIVE_ORDER_STATUSES] } },
-        { status: 'DELIVERED' as const, financialStatus: { not: 'PAID' as const } }
-    ]
-};
-
 async function lockTables(tx: Tx, companyId: number, ids: number[]) {
     for (const id of [...new Set(ids)].sort((a, b) => a - b)) {
         await tx.$queryRaw`SELECT id FROM \`Table\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
@@ -67,7 +60,7 @@ async function lockTables(tx: Tx, companyId: number, ids: number[]) {
 
 async function syncStandaloneTable(tx: Tx, companyId: number, tableId: number) {
     const activeOrders = await tx.order.count({
-        where: { companyId, tableId, ...activeAccountWhere }
+        where: { companyId, tableId, ...tableOpenAccountWhere() }
     });
     const table = await tx.table.findFirst({ where: { id: tableId, companyId }, select: { status: true, activeTableGroupId: true } });
     if (!table || table.activeTableGroupId || table.status === 'RESERVED' || table.status === 'OUT_OF_SERVICE') return;
@@ -126,6 +119,9 @@ export async function closeInactiveTableGroupForTable(
     actorId: number,
     reason: string
 ): Promise<boolean> {
+    // Invoice, delivery, payment reversal and group mutations all serialize on
+    // the physical table before deriving whether its account is still open.
+    await tx.$queryRaw`SELECT id FROM \`Table\` WHERE id = ${tableId} AND companyId = ${companyId} FOR UPDATE`;
     const table = await tx.table.findFirst({ where: { id: tableId, companyId }, select: { activeTableGroupId: true } });
     if (!table?.activeTableGroupId) {
         await syncStandaloneTable(tx, companyId, tableId);
@@ -144,7 +140,7 @@ export async function closeInactiveTableGroupForTable(
     const tableIds = group.activeTables.map((member) => member.id);
     await lockTables(tx, companyId, tableIds);
     const activeOrders = await tx.order.count({
-        where: { companyId, tableId: { in: tableIds }, ...activeAccountWhere }
+        where: { companyId, tableId: { in: tableIds }, ...tableOpenAccountWhere() }
     });
     if (activeOrders > 0) {
         await tx.table.updateMany({

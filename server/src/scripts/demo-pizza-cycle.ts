@@ -292,7 +292,7 @@ async function runFullSaleWithKitchen(
         })),
     });
 
-    const invoice = await InvoiceService.generateInvoice(saleOrder.id, companyId);
+    const invoice = await InvoiceService.generateInvoice(saleOrder.id, companyId, userId);
     step('Factura', 'Número fiscal asignado', {
         orderId: saleOrder.id,
         invoiceNumber: invoice.invoiceNumber,
