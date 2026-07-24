@@ -131,4 +131,18 @@ describe('operational UX contracts', () => {
         expect(pos.match(/ordersAPI\.updatePricing\(orderId/g)).toHaveLength(2);
         expect(pos).toContain('La orden no se enviará a cocina hasta sincronizar el precio.');
     });
+
+    it('clears the paid table context after a successful manual delivery', () => {
+        const pos = read('./POS.tsx');
+        const deliverBranch = pos.match(
+            /if \(warehouseAction === 'DELIVER'\) \{([\s\S]*?)\} else \{/,
+        )?.[1] ?? '';
+
+        expect(deliverBranch).toContain(
+            'await ordersAPI.complete(activeTableOrder.id, operationalWarehouseId)',
+        );
+        expect(deliverBranch).toContain('await loadData()');
+        expect(deliverBranch).toContain('clearTableContext()');
+        expect(deliverBranch).not.toContain('syncOrderContext(activeTableOrder.id)');
+    });
 });

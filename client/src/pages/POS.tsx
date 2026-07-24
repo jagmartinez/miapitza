@@ -914,8 +914,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         try {
             if (warehouseAction === 'DELIVER') {
                 await ordersAPI.complete(activeTableOrder.id, operationalWarehouseId);
-                await syncOrderContext(activeTableOrder.id);
                 await loadData();
+                clearTableContext();
                 success(`Orden #${activeTableOrder.id} marcada como entregada.`);
             } else {
                 await ordersAPI.cancel(activeTableOrder.id, pendingCancelReason, operationalWarehouseId);
@@ -930,7 +930,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             const axiosErr = error as { response?: { data?: { message?: string } } };
             showError(axiosErr.response?.data?.message || 'No se pudo completar la operación de inventario.');
         }
-    }, [activeTableOrder, clearTableContext, loadData, operationalWarehouseId, pendingCancelReason, showError, success, syncOrderContext, warehouseAction, warning]);
+    }, [activeTableOrder, clearTableContext, loadData, operationalWarehouseId, pendingCancelReason, showError, success, warehouseAction, warning]);
     const handleApplyPromotion = async (code: string) => {
         try {
             const res = await promotionsAPI.validate(code, subtotal);

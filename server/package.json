@@ -28,6 +28,7 @@
     "db:merge-bamboo": "tsx prisma/merge-bamboo-branches.ts",
     "db:dedupe-catalog": "tsx prisma/dedupe-catalog.ts",
     "audit:empty-orders": "ts-node src/scripts/remediate-empty-orders.ts",
+    "normalize:zero-reference-costs": "ts-node src/scripts/normalize-zero-reference-costs.ts",
     "audit:channels": "ts-node scripts/audit-channel-readiness.ts",
     "audit:catering-cash-ledger": "ts-node src/scripts/audit-catering-cash-ledger.ts",
     "db:backup": "ts-node scripts/mysql-logical-backup.ts",
