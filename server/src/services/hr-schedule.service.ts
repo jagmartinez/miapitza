@@ -452,6 +452,87 @@ interface NormalizedScheduledShift {
 }
 
 export class WeeklyScheduleService {
+    static async listLookups(companyId: number, weekStart: string, scopeBranchId?: number) {
+        const week = parseWeekStart(weekStart);
+        const weekEnd = parseDateKey(addDateKey(week.key, 6), 'weekEnd').date;
+        const activeAssignment = {
+            effectiveFrom: { lte: weekEnd },
+            OR: [{ effectiveTo: null }, { effectiveTo: { gte: week.date } }],
+            ...(scopeBranchId ? { branchId: scopeBranchId } : {}),
+        };
+        const operationalBranchAccess = scopeBranchId ? {
+            OR: [
+                { branchId: scopeBranchId },
+                { allowedBranches: { some: { branchId: scopeBranchId } } },
+            ],
+        } : {};
+
+        const [users, branches, positions] = await Promise.all([
+            prisma.user.findMany({
+                where: {
+                    companyId,
+                    status: 'ACTIVE',
+                    accountType: 'INTERNAL',
+                    ...operationalBranchAccess,
+                    employee: {
+                        is: {
+                            status: 'ACTIVE',
+                            branchAssignments: { some: activeAssignment },
+                        },
+                    },
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    username: true,
+                    status: true,
+                    accountType: true,
+                    branchId: true,
+                    branch: { select: { id: true, name: true, code: true, status: true } },
+                    allowedBranches: {
+                        select: {
+                            branch: { select: { id: true, name: true, code: true, status: true } },
+                        },
+                    },
+                    employee: {
+                        select: {
+                            id: true,
+                            employeeCode: true,
+                            status: true,
+                            jobPositionId: true,
+                            branchAssignments: {
+                                where: activeAssignment,
+                                select: {
+                                    branchId: true,
+                                    isPrimary: true,
+                                    effectiveFrom: true,
+                                    effectiveTo: true,
+                                },
+                            },
+                        },
+                    },
+                },
+                orderBy: [{ name: 'asc' }, { id: 'asc' }],
+            }),
+            prisma.branch.findMany({
+                where: {
+                    companyId,
+                    status: 'ACTIVE',
+                    ...(scopeBranchId ? { id: scopeBranchId } : {}),
+                },
+                select: { id: true, name: true, code: true, status: true },
+                orderBy: [{ name: 'asc' }, { id: 'asc' }],
+            }),
+            prisma.jobPosition.findMany({
+                where: { companyId, active: true },
+                select: { id: true, name: true, code: true, active: true, departmentId: true },
+                orderBy: [{ name: 'asc' }, { id: 'asc' }],
+            }),
+        ]);
+
+        return { users, branches, positions };
+    }
+
     static async list(companyId: number, filters: {
         weekStart?: string; status?: string; branchId?: number; userId?: number; jobPositionId?: number;
     } = {}, scopeBranchId?: number) {
@@ -951,6 +1032,52 @@ export class WeeklyScheduleService {
             publishedAt: schedule.publishedAt,
             acknowledgedAt: schedule.acknowledgements.find((entry) => entry.userId === userId)?.acknowledgedAt || null,
             shifts: effective.sort((left, right) => left.startAt.getTime() - right.startAt.getTime()),
+        };
+    }
+
+    static async getTeamSchedule(
+        companyId: number,
+        viewerUserId: number,
+        weekStart: string,
+        scopeBranchId?: number,
+    ) {
+        await ensureSchedulableUser(companyId, viewerUserId);
+        const week = parseWeekStart(weekStart);
+        const schedule = await prisma.weeklySchedule.findFirst({
+            where: { companyId, weekStart: week.date, status: 'PUBLISHED' },
+            include: {
+                ...scheduleInclude,
+                shifts: {
+                    ...scheduleInclude.shifts,
+                    where: {
+                        status: 'SCHEDULED',
+                        ...(scopeBranchId ? { branchId: scopeBranchId } : {}),
+                    },
+                },
+            },
+        });
+        if (!schedule) return null;
+
+        const mapped = mapSchedule(schedule);
+        const shifts = mapped.shifts
+            .filter((shift) =>
+                shift.status === 'SCHEDULED' &&
+                (!scopeBranchId || shift.branchId === scopeBranchId)
+            )
+            .sort((left, right) => left.startAt.getTime() - right.startAt.getTime());
+        const viewerHasShift = shifts.some((shift) => shift.userId === viewerUserId);
+
+        return {
+            id: schedule.id,
+            weekStart: schedule.weekStart,
+            version: schedule.version,
+            revision: schedule.revision,
+            status: schedule.status,
+            publishedAt: schedule.publishedAt,
+            viewerUserId,
+            viewerHasShift,
+            acknowledgedAt: schedule.acknowledgements.find((entry) => entry.userId === viewerUserId)?.acknowledgedAt || null,
+            shifts,
         };
     }
 }

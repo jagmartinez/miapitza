@@ -10,13 +10,17 @@ const ordersSource = read('../pages/Orders.tsx');
 const mapSource = read('./TableMap.tsx');
 const chairLayoutSource = read('./tableChairLayout.ts');
 const operationSource = read('./TableOperationModal.tsx');
+const selectionSource = read('./TableSelectionModal.tsx');
 const groupSource = read('./TableGroupModal.tsx');
 const groupStyles = read('./TableGroupModal.css');
+const cartStyles = read('./OrderCart.css');
+const posStyles = read('../pages/POS.css');
 const kitchenSource = read('../pages/Kitchen.tsx');
 const layoutSource = read('./Layout.tsx');
 const bellSource = read('./KitchenNotificationBell.tsx');
 const panelStyles = read('./TableOrdersModal.css');
 const apiSource = read('../services/api.ts');
+const tableAccountServiceSource = read('../../../server/src/services/table-account.service.ts');
 
 describe('table operational center contract', () => {
     it('opens the real POS workspace with the selected table', () => {
@@ -27,7 +31,9 @@ describe('table operational center contract', () => {
     });
 
     it('exposes order, invoice, payment and split actions from the table panel', () => {
-        expect(panelSource).toContain('Abrir pedido');
+        expect(panelSource).toContain("'Agregar producto' : 'Menú'");
+        expect(panelSource).not.toContain('Abrir pedido');
+        expect(panelSource).not.toContain('Continuar pedido');
         expect(panelSource).toContain('canOperatePOS');
         expect(panelSource).toContain('Emitir factura');
         expect(panelSource).toContain('Cobrar');
@@ -107,6 +113,12 @@ describe('table operational center contract', () => {
         expect(mapSource).toContain('Select<SelectOption>');
         expect(operationSource).toContain('Buscar por mesa o salón');
         expect(operationSource).toContain('visibleConsolidationSources');
+        expect(operationSource).toContain('.filter((table) => String(table.id) !== sourceTableId)');
+        expect(operationSource).toContain('No hay otra mesa compatible disponible como destino.');
+        expect(tableAccountServiceSource).toContain("if (sourceTableId === destinationTableId)");
+        expect(tableAccountServiceSource).toContain('Seleccione una mesa destino diferente');
+        expect(selectionSource).toContain('table.id !== excludeTableId');
+        expect(posSource).toContain('excludeTableId={selectedTable?.id}');
     });
 
     it('separates physical grouping from financial consolidation and shows both flows', () => {
@@ -117,14 +129,31 @@ describe('table operational center contract', () => {
         expect(mapSource).toContain('Principal de');
         expect(panelSource).toContain('Unir mesas');
         expect(panelSource).toContain('Separar todas');
-        expect(panelSource).toContain('Consolidar y cobrar');
+        expect(panelSource).not.toContain('Consolidar y cobrar');
         expect(panelSource).toContain("['AVAILABLE', 'OCCUPIED'].includes(table.status)");
         expect(groupSource).toContain('const limit = editing ? 20 : 19');
         expect(operationSource).toContain('table-transfer-route');
         expect(operationSource).toContain('Se libera al completar');
         expect(operationSource).toContain('(table.activeTableGroupId ?? null) === (selectedTransferSource.activeTableGroupId ?? null)');
-        expect(tablesSource).toContain("setConsolidationIntent('PAY')");
-        expect(tablesSource).toContain('Las cuentas sí quedaron consolidadas');
+        expect(panelSource).toContain('const canStartFinancialConsolidation = canConsolidate');
+        expect(panelSource).toContain('&& !loadingConsolidation');
+        expect(panelSource).toContain('&& !consolidationLookupError');
+        expect(panelSource).toContain('&& !hasActiveFinancialConsolidation');
+        expect(tablesSource).not.toContain('consolidationIntent');
+        expect(tablesSource).toContain('Emite la factura para continuar al cobro');
+        expect(panelSource).toContain('Emitir factura');
+        expect(panelSource).toContain('Cobrar');
+    });
+
+    it('keeps the POS cart footer visible while only the item list scrolls', () => {
+        expect(posStyles).toContain('.cart-area > .order-cart');
+        expect(posStyles).toContain('flex: 1 1 auto');
+        expect(posStyles).toContain('min-height: 0');
+        expect(cartStyles).toContain('.cart-items-list');
+        expect(cartStyles).toContain('overflow-y: auto');
+        expect(cartStyles).toContain('.cart-footer');
+        expect(cartStyles).toContain('flex-shrink: 0');
+        expect(posSource).toContain('className="pos-active-order-summary"');
     });
 
     it('rediscovers and reverses only an ACTIVE financial consolidation', () => {

@@ -356,7 +356,7 @@ export default function Profile() {
                             <div className="profile-hr-context"><span><strong>{user?.employee?.status ?? 'Vinculado'}</strong> Estado laboral</span><span><strong>{fullUserData?.branch?.name || user?.branch?.name || 'Sin asignar'}</strong> Sucursal</span></div>
                             <div className="profile-hr-section-heading"><div><h4>Accesos de Mi RH</h4><p>Abre cada sección para consultar datos emitidos por el servidor o iniciar una gestión.</p></div></div>
                             <div className="profile-hr-grid">
-                                <Link to="/rh/mi-portal/horario"><CalendarClock size={22} /><span><strong>Mi horario</strong><small>Turnos publicados y acuse de lectura</small></span><ChevronRight size={17} /></Link>
+                                <Link to="/rh/mi-portal/horario"><CalendarClock size={22} /><span><strong>Horarios del equipo</strong><small>Turnos publicados de tu sucursal y acuse personal</small></span><ChevronRight size={17} /></Link>
                                 <Link to="/rh/marcaje"><MapPin size={22} /><span><strong>Marcajes</strong><small>Entrada, descansos y salida</small></span><ChevronRight size={17} /></Link>
                                 <Link to="/rh/mi-portal/gestion?tab=OVERTIME"><TrendingUp size={22} /><span><strong>Horas extra</strong><small>Solicitadas, aprobadas y rechazadas</small></span><ChevronRight size={17} /></Link>
                                 <Link to="/rh/mi-portal/gestion?tab=LEAVE"><Calendar size={22} /><span><strong>Vacaciones y permisos</strong><small>Crea solicitudes y revisa sus estados</small></span><ChevronRight size={17} /></Link>

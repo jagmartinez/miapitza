@@ -124,7 +124,6 @@ export default function Tables() {
     const [savingLayout, setSavingLayout] = useState(false);
     const [operation, setOperation] = useState<'TRANSFER' | 'CONSOLIDATE' | null>(null);
     const [operationTableId, setOperationTableId] = useState<number | null>(null);
-    const [consolidationIntent, setConsolidationIntent] = useState<'MANAGE' | 'PAY'>('MANAGE');
     const [submittingOperation, setSubmittingOperation] = useState(false);
     const [groupTableId, setGroupTableId] = useState<number | null>(null);
     const [submittingGroup, setSubmittingGroup] = useState(false);
@@ -631,41 +630,7 @@ export default function Tables() {
             setOperationTableId(null);
             await loadTables();
             await loadFloorPlan();
-            if (consolidationIntent === 'PAY') {
-                try {
-                    const invoiceResponse = await invoicesAPI.issue(consolidatedOrder.id);
-                    const invoiceNumber = invoiceResponse.data?.data?.invoiceNumber as string | undefined;
-                    if (!invoiceNumber) {
-                        throw new Error('La factura consolidada no devolvió un número fiscal.');
-                    }
-                    let payableOrder: Order = {
-                        ...consolidatedOrder,
-                        invoiceNumber,
-                        invoicedAt: invoiceResponse.data?.data?.issuedAt || consolidatedOrder.invoicedAt,
-                        invoiceFiscalStatus: 'ISSUED',
-                    };
-                    try {
-                        const refreshed = await ordersAPI.getById(consolidatedOrder.id);
-                        payableOrder = refreshed.data.data as Order;
-                    } catch (refreshError) {
-                        console.error('Consolidated invoice issued but order refresh failed:', refreshError);
-                        showWarning('La factura consolidada fue emitida, pero el detalle no pudo actualizarse. El cobro usará la última información disponible.');
-                    }
-                    await loadTables();
-                    await loadFloorPlan();
-                    showSuccess(`Cuentas consolidadas. ${buildInvoiceReleaseMessage({
-                        invoiceNumber,
-                        orderId: payableOrder.id,
-                        tableNumber: payableOrder.table?.number,
-                        financialStatus: payableOrder.financialStatus,
-                    })}`);
-                    await openPayment(payableOrder, 'single');
-                } catch (error) {
-                    showError(`Las cuentas sí quedaron consolidadas, pero no se pudo abrir el cobro. ${extractApiError(error, 'Reabre la mesa principal para emitir la factura o continuar el pago.')}`);
-                }
-            } else {
-                showSuccess('Las cuentas fueron consolidadas en la mesa principal.');
-            }
+            showSuccess(`Las cuentas fueron consolidadas en la mesa principal (orden #${consolidatedOrder.id}). Emite la factura para continuar al cobro.`);
         } catch (error) {
             showError(extractApiError(error, 'No se pudieron consolidar las cuentas'));
         } finally {
@@ -1311,13 +1276,6 @@ export default function Tables() {
                 onConsolidate={(table) => {
                     setIsOrdersModalOpen(false);
                     setOperationTableId(table.id);
-                    setConsolidationIntent('MANAGE');
-                    setOperation('CONSOLIDATE');
-                }}
-                onConsolidateAndPay={(table) => {
-                    setIsOrdersModalOpen(false);
-                    setOperationTableId(table.id);
-                    setConsolidationIntent('PAY');
                     setOperation('CONSOLIDATE');
                 }}
                 onGroup={(table) => {
@@ -1356,7 +1314,6 @@ export default function Tables() {
                 operation={operation ?? 'TRANSFER'}
                 tables={mapBranchId ? tables.filter((table) => table.branchId === mapBranchId) : tables}
                 initialTableId={operationTableId}
-                intent={consolidationIntent}
                 submitting={submittingOperation}
                 onClose={() => { setOperation(null); setOperationTableId(null); }}
                 onTransfer={handleTransfer}

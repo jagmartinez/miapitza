@@ -50,7 +50,7 @@ describe('personal, compensation and weekly schedule UX contract', () => {
   it('keeps cancelled and superseded schedule history visible but read-only', () => {
     expect(schedulePage).toContain('historicalSchedules');
     expect(schedulePage).toContain('activeSchedule ?? historicalSchedule');
-    expect(schedulePage).toContain('readOnly={mutationBusy || fromCache || !activeSchedule}');
+    expect(schedulePage).toContain('readOnly={mutationBusy || fromCache || !canManageSchedule}');
     expect(schedulePage).toContain("primarySchedule?.status === 'CANCELLED'");
     expect(schedulePage).toContain("primarySchedule?.status === 'SUPERSEDED'");
   });

@@ -57,6 +57,8 @@ export interface HrWeeklySchedule {
     cancelledAt?: string | null;
     publishedById?: number | null;
     acknowledgedAt?: string | null;
+    viewerUserId?: number;
+    viewerHasShift?: boolean;
     acknowledgements?: HrScheduleAcknowledgement[];
     createdAt?: string;
     updatedAt?: string;

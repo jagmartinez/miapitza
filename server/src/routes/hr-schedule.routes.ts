@@ -51,6 +51,9 @@ router.get('/schedules', ownerRead, validate({ query: {
     branchId: { type: 'number', integer: true, min: 1 }, userId: { type: 'number', integer: true, min: 1 },
     jobPositionId: { type: 'number', integer: true, min: 1 },
 } }), HrScheduleController.listSchedules);
+router.get('/schedules/lookups', ownerRead, validate({ query: {
+    weekStart: weekRule,
+} }), HrScheduleController.scheduleLookups);
 router.get('/schedules/:id', ownerRead, validate({ params: idParam }), HrScheduleController.getSchedule);
 router.post('/schedules', ownerManage, allowHrBodyFields(['weekStart', 'notes', 'shifts']), validate({ body: {
     weekStart: weekRule, notes: { type: 'string', max: 5000 }, shifts: { type: 'array', max: 500 },
@@ -77,6 +80,7 @@ router.post('/schedules/:id/cancel', ownerPublish, allowHrBodyFields(['expectedR
 } }), HrScheduleController.cancelSchedule);
 router.post('/schedules/:id/acknowledge', selfSchedule, allowHrBodyFields([]), validate({ params: idParam }), HrScheduleController.acknowledge);
 router.get('/me/schedule', selfSchedule, validate({ query: { weekStart: weekRule } }), HrScheduleController.mySchedule);
+router.get('/team/schedule', selfSchedule, validate({ query: { weekStart: weekRule } }), HrScheduleController.teamSchedule);
 
 router.get('/swaps', ownerRead, validate({ query: {
     status: { type: 'string', enum: ['PENDING', 'ACCEPTED', 'APPROVED', 'REJECTED', 'CANCELLED'] },

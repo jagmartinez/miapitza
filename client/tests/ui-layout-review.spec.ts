@@ -80,6 +80,19 @@ async function mockApp(page: Page, activeUser = user) {
           images: [],
           active: true,
         },
+        ...Array.from({ length: 11 }, (_, index) => ({
+          id: index + 2,
+          name: `Producto de prueba ${index + 2}`,
+          description: 'Producto para validar el desbordamiento del carrito',
+          price: 100 + index,
+          categoryId: 3,
+          branchId: null,
+          brandId: null,
+          category: { id: 3, name: 'Especialidades' },
+          recipes: [],
+          images: [],
+          active: true,
+        })),
       ];
     }
     if (path.endsWith('/menu-items/1')) {
@@ -195,6 +208,41 @@ async function mockApp(page: Page, activeUser = user) {
         }],
       }];
     }
+    if (path.endsWith('/v1/hr/schedules/lookups')) {
+      data = {
+        branches: [{ id: 10, name: 'Sucursal QA' }],
+        positions: [{ id: 4, name: 'Supervisor QA' }],
+        users: [{
+          id: 902,
+          name: 'UI Review',
+          username: 'ui-review',
+          status: 'ACTIVE',
+          accountType: 'INTERNAL',
+          branchId: 10,
+          employee: {
+            id: 321,
+            employeeCode: 'EMP-321',
+            status: 'ACTIVE',
+            jobPositionId: 4,
+            branchAssignments: [{ branchId: 10, isPrimary: true }],
+          },
+        }, {
+          id: 903,
+          name: 'Trabajador sin turno',
+          username: 'sin-turno',
+          status: 'ACTIVE',
+          accountType: 'INTERNAL',
+          branchId: 10,
+          employee: {
+            id: 322,
+            employeeCode: 'EMP-322',
+            status: 'ACTIVE',
+            jobPositionId: 4,
+            branchAssignments: [{ branchId: 10, isPrimary: true }],
+          },
+        }],
+      };
+    }
     if (path.endsWith('/v1/hr/payroll/runs')) data = [payrollRun];
     if (path.endsWith('/v1/hr/payroll/aguinaldo/runs')) data = [];
     if (path.endsWith('/v1/hr/payroll/runs/91')) data = payrollRun;
@@ -209,6 +257,49 @@ async function mockApp(page: Page, activeUser = user) {
     if (path.endsWith('/v1/hr/payroll/runs/91/statutory-calculations')) data = [];
     if (path.endsWith('/v1/hr/payroll/rules/81/configuration-revisions')) data = [];
     if (path.endsWith('/v1/hr/me/schedule')) data = [];
+    if (path.endsWith('/v1/hr/team/schedule')) {
+      data = {
+        schedules: [{
+          id: 62,
+          weekStart: '2026-07-13',
+          status: 'PUBLISHED',
+          version: 2,
+          revision: 3,
+          viewerUserId: 902,
+          viewerHasShift: true,
+          acknowledgedAt: null,
+          shifts: [{
+            id: 621,
+            userId: 902,
+            branchId: 10,
+            jobPositionId: 4,
+            date: '2026-07-16',
+            startTime: '08:00',
+            endTime: '17:00',
+            breakMinutes: 60,
+            timezoneSnapshot: 'America/Managua',
+            user: { id: 902, name: 'UI Review', username: 'ui-review' },
+            branch: { id: 10, name: 'Sucursal QA' },
+            jobPosition: { id: 4, name: 'Supervisor QA' },
+          }, {
+            id: 622,
+            userId: 903,
+            branchId: 10,
+            jobPositionId: 4,
+            date: '2026-07-17',
+            startTime: '10:00',
+            endTime: '19:00',
+            breakMinutes: 60,
+            timezoneSnapshot: 'America/Managua',
+            user: { id: 903, name: 'Compañero QA', username: 'companero-qa' },
+            branch: { id: 10, name: 'Sucursal QA' },
+            jobPosition: { id: 4, name: 'Supervisor QA' },
+          }],
+        }],
+        conflicts: [],
+        holidays: [],
+      };
+    }
     if (path.endsWith('/v1/hr/me/attendance/summary')) data = [];
     if (path.endsWith('/v1/hr/me/workforce')) {
       data = {
@@ -462,7 +553,7 @@ test('mobile table orders use the full viewport and keep prices and actions insi
   const dialog = page.getByRole('dialog', { name: 'Mesa ABANICO' });
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveCSS('transform', 'none');
-  await expect(dialog.getByRole('button', { name: 'Continuar pedido' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Agregar producto' })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Imprimir cuenta' })).toBeVisible();
 
   const geometry = await dialog.evaluate((element) => {
@@ -492,6 +583,87 @@ test('mobile table orders use the full viewport and keep prices and actions insi
   expect(geometry.itemOverflows.every((overflow) => overflow <= 1)).toBe(true);
   expect(geometry.footerCloseDisplay).toBe('none');
   await expect(dialog.getByRole('button', { name: 'Agregar productos' })).toBeHidden();
+});
+
+test('embedded POS keeps the cart total visible at 768px and scrolls only its item list', async ({
+  page,
+}) => {
+  await mockApp(page);
+  await page.setViewportSize({ width: 1620, height: 768 });
+  await page.goto('/tables');
+
+  await page.getByRole('button', { name: /Mesa ABANICO/ }).click();
+  await page
+    .getByRole('dialog', { name: 'Mesa ABANICO' })
+    .getByRole('button', { name: 'Agregar producto', exact: true })
+    .click();
+
+  const pos = page.getByRole('dialog', { name: 'Pedido de mesa ABANICO' });
+  const footer = pos.locator('.cart-footer');
+  const items = pos.locator('.cart-items-list');
+  await expect(pos).toBeVisible();
+  await expect(footer).toContainText('TOTAL:');
+
+  const verifyCartGeometry = async (expectItemOverflow = false) => {
+    const geometry = await pos.evaluate((element) => {
+      const cartArea = element.querySelector('.cart-area') as HTMLElement;
+      const cart = element.querySelector('.order-cart') as HTMLElement;
+      const list = element.querySelector('.cart-items-list') as HTMLElement;
+      const cartFooter = element.querySelector('.cart-footer') as HTMLElement;
+      const areaBox = cartArea.getBoundingClientRect();
+      const cartBox = cart.getBoundingClientRect();
+      const footerBox = cartFooter.getBoundingClientRect();
+      return {
+        viewportHeight: window.innerHeight,
+        areaBottom: areaBox.bottom,
+        cartBottom: cartBox.bottom,
+        footerBottom: footerBox.bottom,
+        footerHeight: footerBox.height,
+        listOverflowY: getComputedStyle(list).overflowY,
+        listClientHeight: list.clientHeight,
+        listScrollHeight: list.scrollHeight,
+      };
+    });
+
+    expect(geometry.footerHeight).toBeGreaterThan(0);
+    expect(geometry.listOverflowY).toBe('auto');
+    expect(geometry.footerBottom).toBeLessThanOrEqual(geometry.cartBottom + 1);
+    expect(geometry.cartBottom).toBeLessThanOrEqual(geometry.areaBottom + 1);
+    expect(geometry.footerBottom).toBeLessThanOrEqual(geometry.viewportHeight + 1);
+    if (expectItemOverflow) {
+      expect(geometry.listScrollHeight).toBeGreaterThan(geometry.listClientHeight);
+    }
+  };
+
+  await verifyCartGeometry();
+  const products = pos.locator('.product-card-new');
+  await expect(products).toHaveCount(12);
+  for (let index = 0; index < 12; index += 1) {
+    await products.nth(index).click();
+  }
+  await expect(items.locator('.cart-item-compact')).toHaveCount(12);
+  await verifyCartGeometry(true);
+
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await verifyCartGeometry(true);
+});
+
+test('change-table flow excludes the origin and explains when no destination remains', async ({
+  page,
+}) => {
+  await mockApp(page);
+  await page.goto('/tables');
+
+  await page.getByRole('button', { name: /Mesa ABANICO/ }).click();
+  await page
+    .getByRole('dialog', { name: 'Mesa ABANICO' })
+    .getByRole('button', { name: 'Cambiar mesa' })
+    .click();
+
+  const dialog = page.getByRole('dialog', { name: 'Cambiar consumo de mesa' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('No hay otra mesa compatible disponible como destino.')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Cambiar mesa' })).toBeDisabled();
 });
 
 test('attendance settings activates only its exact navigation option', async ({ page }) => {
@@ -713,6 +885,19 @@ test('RH dashboard prioritizes pending work and the guided payroll route', async
   await expect(page.getByRole('button', { name: 'Reglas legales Configuración activa' })).toBeVisible();
 });
 
+test('schedule matrix lists active workers without shifts and preselects worker-day on click', async ({ page }) => {
+  await mockApp(page);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/rh/horarios');
+
+  await expect(page.getByRole('rowheader', { name: /Trabajador sin turno/ })).toBeVisible();
+  await page.getByRole('button', { name: /Agregar turno para Trabajador sin turno/ }).first().click();
+  await expect(page.getByRole('heading', { name: 'Nuevo turno' })).toBeVisible();
+  await expect(page.getByText('Trabajador sin turno · @sin-turno')).toBeVisible();
+  await page.getByRole('button', { name: 'Continuar' }).click();
+  await expect(page.locator('#hr-shift-date')).not.toHaveValue('');
+});
+
 test('employee portal and Profile expose a cohesive RH self-service entry point', async ({ page }) => {
   await mockApp(page);
   await page.goto('/rh/mi-portal');
@@ -722,8 +907,9 @@ test('employee portal and Profile expose a cohesive RH self-service entry point'
   await expect(page.getByRole('heading', { name: 'Mi información laboral' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Mi biometría Consentimiento, enrolamiento y revocación' })).toBeVisible();
 
-  await page.getByRole('link', { name: 'Mi horario Turnos publicados y acuse de lectura' }).click();
-  await expect(page.getByRole('heading', { name: 'Mi horario' })).toBeVisible();
+  await page.getByRole('link', { name: 'Horarios del equipo Turnos publicados de tu sucursal y acuse personal' }).click();
+  await expect(page.getByRole('heading', { name: 'Horarios del equipo' })).toBeVisible();
+  await expect(page.getByRole('rowheader', { name: /Compañero QA/ })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Navegación de Mi RH' })).toBeVisible();
   await expect(page.locator('.my-hr-page')).toHaveCSS('max-width', '1700px');
 

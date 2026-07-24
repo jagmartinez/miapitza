@@ -17,7 +17,6 @@ interface Props {
     operation: Operation;
     tables: Table[];
     initialTableId?: number | null;
-    intent?: 'MANAGE' | 'PAY';
     submitting: boolean;
     onClose: () => void;
     onTransfer: (data: {
@@ -31,7 +30,7 @@ interface Props {
 }
 
 export default function TableOperationModal({
-    isOpen, operation, tables, initialTableId, intent = 'MANAGE', submitting, onClose, onTransfer, onConsolidate
+    isOpen, operation, tables, initialTableId, submitting, onClose, onTransfer, onConsolidate
 }: Props) {
     const [sourceTableId, setSourceTableId] = useState('');
     const [destinationTableId, setDestinationTableId] = useState('');
@@ -166,7 +165,7 @@ export default function TableOperationModal({
         <Modal
             isOpen={isOpen}
             onClose={submitting ? () => undefined : onClose}
-            title={operation === 'TRANSFER' ? 'Cambiar consumo de mesa' : intent === 'PAY' ? 'Consolidar antes de cobrar' : 'Consolidar cuentas de mesas'}
+            title={operation === 'TRANSFER' ? 'Cambiar consumo de mesa' : 'Consolidar cuentas de mesas'}
             size={operation === 'CONSOLIDATE' ? 'lg' : 'md'}
             description={operation === 'TRANSFER'
                 ? 'El traslado completo conserva productos, notas, modificadores y estado de cocina.'
@@ -175,7 +174,7 @@ export default function TableOperationModal({
                 <>
                     <Button type="button" variant="ghost" disabled={submitting} onClick={onClose}>Cancelar</Button>
                     <Button type="button" disabled={!valid || submitting} onClick={submit}>
-                        {submitting ? 'Procesando…' : operation === 'TRANSFER' ? 'Cambiar mesa' : intent === 'PAY' ? 'Consolidar y continuar al cobro' : 'Consolidar cuentas'}
+                        {submitting ? 'Procesando…' : operation === 'TRANSFER' ? 'Cambiar mesa' : 'Consolidar cuentas'}
                     </Button>
                 </>
             )}
@@ -221,6 +220,11 @@ export default function TableOperationModal({
                     }}
                     isSearchable={destinationOptions.length > 6}
                 />
+                {operation === 'TRANSFER' && sourceTableId && destinationOptions.length === 0 && (
+                    <div className="table-operation-empty" role="status">
+                        No hay otra mesa compatible disponible como destino.
+                    </div>
+                )}
 
                 {operation === 'TRANSFER' && (
                     <div>
@@ -316,7 +320,7 @@ export default function TableOperationModal({
                         {sourceTableIds.length > 0 && (
                             <div className="table-consolidation-preview">
                                 <Merge size={18} />
-                                <span><strong>{sourceTableIds.length + 1} cuentas → mesa principal</strong><small>{intent === 'PAY' ? 'Luego se emitirá la factura y se abrirá el cobro.' : 'Los productos y totales quedarán en una sola orden.'}</small></span>
+                                <span><strong>{sourceTableIds.length + 1} cuentas → mesa principal</strong><small>Los productos y totales quedarán en una sola orden.</small></span>
                             </div>
                         )}
                     </fieldset>

@@ -1042,7 +1042,6 @@
 .table-active-group-banner > div { min-width: 0; display: grid; gap: 2px; }
 .table-active-group-banner strong { color: var(--color-text); font-size: var(--font-size-sm); }
 .table-active-group-banner span { color: var(--color-text-secondary); font-size: 10px; line-height: 1.35; }
-.table-order-actions .consolidate-pay { border-color: color-mix(in srgb, var(--color-primary) 58%, var(--color-border)); color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface)); }
 
 .table-consolidation-lookup,
 .table-consolidation-reversal {

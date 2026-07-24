@@ -709,6 +709,23 @@ export interface CashMovement {
     id: number;
     name: string;
   };
+  category?:
+    | 'POS_SALE'
+    | 'CATERING_SALE'
+    | 'POS_PAYMENT_REVERSAL'
+    | 'CATERING_PAYMENT_REVERSAL'
+    | 'CREDIT_NOTE_REFUND'
+    | 'MANUAL_INCOME'
+    | 'MANUAL_OUTFLOW'
+    | 'UNCLASSIFIED_INCOME'
+    | 'UNCLASSIFIED_OUTFLOW';
+  paymentMethod?: {
+    id: number | null;
+    name: string;
+    type: PaymentMethodType | null;
+    source: 'PAYMENT' | 'CATERING_PAYMENT' | 'MANUAL_CASH_MOVEMENT' | 'UNRESOLVED_REFERENCE';
+    nameSource: 'CURRENT_PAYMENT_METHOD_CATALOG' | 'NOT_APPLICABLE';
+  };
 }
 
 export interface InventoryMovement {

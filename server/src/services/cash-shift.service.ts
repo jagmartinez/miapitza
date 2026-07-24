@@ -2,6 +2,10 @@ import type { DocumentType, Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { SettingService } from './setting.service';
 import { zonedDateKey } from '../utils/timezone';
+import {
+    CashMovementReportService,
+    summarizeCashMovements
+} from './cash-movement-report.service';
 
 const MANUAL_MOVEMENT_FIELDS = new Set([
     'type',
@@ -137,7 +141,13 @@ export class CashShiftService {
             throw new Error('Cash shift not found');
         }
 
-        return shift;
+        const movements = await CashMovementReportService.enrichForReport(
+            shift.movements,
+            companyId,
+            shift.cashRegister.branch.id
+        );
+
+        return { ...shift, movements };
     }
 
     static async open(companyId: number, branchId: number, data: {
@@ -417,39 +427,25 @@ export class CashShiftService {
             throw new Error('Cash shift not found');
         }
 
-        const movementsIn = shift.movements.filter((m) => m.type === 'IN');
-        const movementsOut = shift.movements.filter((m) => m.type === 'OUT');
-
-        const totalIn = movementsIn.reduce((sum, m) => sum + Number(m.amount), 0);
-        const totalOut = movementsOut.reduce((sum, m) => sum + Number(m.amount), 0);
-
-        // Cash sales are correlated by immutable POS/Catering payment references;
-        // never infer them from free-text descriptions.
-        const grossSalesCash = movementsIn
-            .filter((m) => m.reference?.startsWith('PAY-') || m.reference?.startsWith('CAT-PAY-'))
-            .reduce((sum, m) => sum + Number(m.amount), 0);
-        const cashRefunds = movementsOut
-            .filter((m) =>
-                m.reference?.startsWith('REV-PAY-')
-                || m.reference?.startsWith('CN-REF-')
-                || m.reference?.startsWith('REV-CAT-PAY-')
-            )
-            .reduce((sum, m) => sum + Number(m.amount), 0);
-        const totalSalesCash = grossSalesCash - cashRefunds;
-
-        const expectedBalance = Number(shift.startAmount) + totalIn - totalOut;
+        // Keep presentation categories and the authoritative balance on the
+        // same cents-based classification. Free-text descriptions never decide
+        // whether a movement is a sale, refund or manual entry.
+        const movementSummary = summarizeCashMovements(shift.movements);
+        const startAmountCents = Math.round(Number(shift.startAmount) * 100);
+        const expectedBalanceCents = startAmountCents
+            + Math.round(movementSummary.totalIn * 100)
+            - Math.round(movementSummary.totalOut * 100);
+        const expectedBalance = expectedBalanceCents / 100;
         const actualBalance = shift.endAmount !== null ? Number(shift.endAmount) : null;
-        const difference = actualBalance !== null ? actualBalance - expectedBalance : null;
+        const difference = actualBalance !== null
+            ? (Math.round(actualBalance * 100) - expectedBalanceCents) / 100
+            : null;
 
         return {
             shift,
             summary: {
                 startAmount: Number(shift.startAmount),
-                totalIn,
-                totalOut,
-                totalSalesCash,
-                grossSalesCash,
-                cashRefunds,
+                ...movementSummary,
                 expectedBalance,
                 expectedAmount: expectedBalance, // Alias for frontend compatibility
                 actualBalance,

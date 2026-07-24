@@ -17,18 +17,30 @@ interface ScheduleShiftFormProps {
     branches: HrNamedEntity[];
     positions: HrNamedEntity[];
     templates?: HrShiftTemplate[];
+    initialAssignment?: {
+        userId?: number;
+        branchId?: number;
+        jobPositionId?: number;
+        date?: string;
+    } | null;
     conflicts?: Array<{ code: string; message: string }>;
     saving?: boolean;
     onCancel: () => void;
     onSubmit: (shift: HrScheduleShiftInput) => Promise<void> | void;
 }
 
-function stateFor(weekStart: string, shift?: HrScheduleShift | null) {
+function stateFor(
+    weekStart: string,
+    shift?: HrScheduleShift | null,
+    initialAssignment?: ScheduleShiftFormProps['initialAssignment'],
+) {
     return {
-        userId: shift ? String(shift.userId) : '',
-        branchId: shift ? String(shift.branchId) : '',
-        jobPositionId: shift?.jobPositionId ? String(shift.jobPositionId) : '',
-        date: shift?.date ?? weekStart,
+        userId: shift ? String(shift.userId) : initialAssignment?.userId ? String(initialAssignment.userId) : '',
+        branchId: shift ? String(shift.branchId) : initialAssignment?.branchId ? String(initialAssignment.branchId) : '',
+        jobPositionId: shift?.jobPositionId
+            ? String(shift.jobPositionId)
+            : initialAssignment?.jobPositionId ? String(initialAssignment.jobPositionId) : '',
+        date: shift?.date ?? initialAssignment?.date ?? weekStart,
         startTime: shift?.startTime.slice(0, 5) ?? '08:00',
         endTime: shift?.endTime.slice(0, 5) ?? '17:00',
         breakMinutes: String(shift?.breakMinutes ?? 0),
@@ -49,20 +61,21 @@ export default function ScheduleShiftForm({
     branches,
     positions,
     templates = [],
+    initialAssignment,
     conflicts = [],
     saving = false,
     onCancel,
     onSubmit,
 }: ScheduleShiftFormProps) {
-    const [form, setForm] = useState(() => stateFor(weekStart, shift));
+    const [form, setForm] = useState(() => stateFor(weekStart, shift, initialAssignment));
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<FormTab>('assignment');
 
     useEffect(() => {
-        setForm(stateFor(weekStart, shift));
+        setForm(stateFor(weekStart, shift, initialAssignment));
         setError(null);
         setActiveTab('assignment');
-    }, [shift, weekStart]);
+    }, [initialAssignment, shift, weekStart]);
 
     const activeTemplates = useMemo(() => templates.filter((template) => template.active !== false), [templates]);
     const overnight = shiftCrossesMidnight({ startTime: form.startTime, endTime: form.endTime });

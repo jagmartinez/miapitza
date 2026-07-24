@@ -4,6 +4,7 @@
     display: flex;
     flex-direction: column;
     height: calc(100vh - 48px);
+    min-height: 0;
     background: var(--color-background);
     max-width: 1700px;
     margin: 0 auto;
@@ -19,6 +20,7 @@
     /*background: var(--color-surface);*/
     border-bottom: 2px solid var(--color-border);
     align-items: center;
+    flex-shrink: 0;
     z-index: 10;
 }
 
@@ -182,6 +184,7 @@
     gap: var(--spacing-lg);
     padding: var(--spacing-lg);
     flex: 1;
+    min-height: 0;
     overflow: hidden;
 }
 
@@ -373,7 +376,21 @@
 
 /* Cart Area */
 .cart-area {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
     overflow: hidden;
+}
+
+.cart-area > .order-cart {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+}
+
+.cart-area > .header-action-btn,
+.cart-area > .pos-active-order-summary {
+    flex-shrink: 0;
 }
 
 /* Loading State */

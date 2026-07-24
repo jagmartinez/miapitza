@@ -21,6 +21,7 @@ import ScheduleWeekView from '../../components/hr/ScheduleWeekView';
 import {
     addDaysDateOnly,
     existingShiftApiInput,
+    seedDraftFromPublished,
     toScheduledShiftApiInput,
     weekStartFor,
 } from '../../components/hr/scheduleDates';
@@ -29,10 +30,11 @@ import {
     getScheduleErrorMessage,
     scheduleClient,
 } from '../../components/hr/scheduleClient';
-import { hrClient } from '../../components/hr/hrClient';
+import { ROLES, HR_OWNER } from '../../constants/roles';
 import { useConfirmDialog } from '../../context/ConfirmContext';
 import { useAppToast } from '../../context/ToastContext';
-import type { HrOrganizationCatalogs } from '../../types/hr';
+import { useAuth } from '../../hooks/useAuth';
+import type { HrScheduleLookups, HrUserSummary } from '../../types/hr';
 import type {
     HrHoliday,
     HrScheduleConflict,
@@ -41,12 +43,13 @@ import type {
     HrShiftTemplate,
     HrWeeklySchedule,
 } from '../../types/hr-schedule';
+import { getUserRoleNames, hasPermission } from '../../utils/authz';
 import './schedule.css';
 
 type Option = { value: string; label: string };
 type MutationKind = 'save' | 'delete' | 'publish' | 'copy' | 'cancel';
 
-const EMPTY_LOOKUPS: HrOrganizationCatalogs = { departments: [], positions: [], costCenters: [], branches: [], users: [] };
+const EMPTY_LOOKUPS: HrScheduleLookups = { positions: [], branches: [], users: [] };
 const weekFormatter = new Intl.DateTimeFormat('es-NI', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
 function weekLabel(weekStart: string): string {
@@ -67,6 +70,7 @@ function filteredSchedules(schedules: HrWeeklySchedule[], branchId: string, user
 }
 
 export default function Schedules() {
+    const { user } = useAuth();
     const { confirm } = useConfirmDialog();
     const { success: showSuccess, error: showError } = useAppToast();
     const currentWeek = weekStartFor();
@@ -74,7 +78,7 @@ export default function Schedules() {
     const [branchId, setBranchId] = useState('');
     const [userId, setUserId] = useState('');
     const [jobPositionId, setJobPositionId] = useState('');
-    const [lookups, setLookups] = useState<HrOrganizationCatalogs>(EMPTY_LOOKUPS);
+    const [lookups, setLookups] = useState<HrScheduleLookups>(EMPTY_LOOKUPS);
     const [lookupsError, setLookupsError] = useState<string | null>(null);
     const [schedules, setSchedules] = useState<HrWeeklySchedule[]>([]);
     const [holidays, setHolidays] = useState<HrHoliday[]>([]);
@@ -88,6 +92,12 @@ export default function Schedules() {
     const [editingShift, setEditingShift] = useState<HrScheduleShift | null>(null);
     const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null);
     const [editingScheduleRevision, setEditingScheduleRevision] = useState<number | null>(null);
+    const [newShiftDefaults, setNewShiftDefaults] = useState<{
+        userId?: number;
+        branchId?: number;
+        jobPositionId?: number;
+        date?: string;
+    } | null>(null);
     const [mutationKind, setMutationKind] = useState<MutationKind | null>(null);
     const requestId = useRef(0);
     const mutationLock = useRef(false);
@@ -97,6 +107,10 @@ export default function Schedules() {
     const mutationBusy = mutationKind !== null;
     const saving = mutationKind === 'save';
     const hasActiveFilters = Boolean(branchId || userId || jobPositionId);
+    const roleNames = getUserRoleNames(user);
+    const hasCompanyWideRole = roleNames.includes(ROLES.SUPERADMIN) || roleNames.includes(ROLES.ADMIN);
+    const canManageSchedule = hasCompanyWideRole && hasPermission(user, 'hr.schedule.manage', HR_OWNER);
+    const canPublishSchedule = hasCompanyWideRole && hasPermission(user, 'hr.schedule.publish', HR_OWNER);
 
     const beginMutation = (kind: MutationKind): boolean => {
         if (mutationLock.current || fromCache) return false;
@@ -113,12 +127,12 @@ export default function Schedules() {
     const loadLookups = useCallback(async () => {
         setLookupsError(null);
         try {
-            setLookups(await hrClient.getOrganization());
+            setLookups(await scheduleClient.getScheduleLookups(weekStart));
         } catch (lookupError) {
             setLookups(EMPTY_LOOKUPS);
             setLookupsError(getScheduleErrorMessage(lookupError, 'No fue posible cargar usuarios, sucursales y puestos.'));
         }
-    }, []);
+    }, [weekStart]);
 
     const loadWeek = useCallback(async () => {
         const activeRequest = ++requestId.current;
@@ -182,19 +196,59 @@ export default function Schedules() {
         () => filteredSchedules(primarySchedule ? [primarySchedule] : [], branchId, userId, jobPositionId),
         [branchId, jobPositionId, primarySchedule, userId]
     );
+    const schedulableWorkers = useMemo(
+        () => lookups.users.filter((worker) =>
+            worker.status === 'ACTIVE' &&
+            worker.accountType === 'INTERNAL' &&
+            worker.employee?.status === 'ACTIVE'
+        ),
+        [lookups.users],
+    );
+    const visibleWorkers = useMemo(
+        () => schedulableWorkers.filter((worker) => {
+            const branchIds = new Set([
+                worker.branchId,
+                ...(worker.allowedBranches ?? []).map((entry) => entry.branch.id),
+                ...(worker.employee?.branchAssignments ?? []).map((entry) => entry.branchId),
+            ].filter((value): value is number => typeof value === 'number'));
+            return (
+                (!branchId || branchIds.has(Number(branchId))) &&
+                (!userId || worker.id === Number(userId)) &&
+                (!jobPositionId || worker.employee?.jobPositionId === Number(jobPositionId))
+            );
+        }),
+        [branchId, jobPositionId, schedulableWorkers, userId],
+    );
     const hasShifts = visibleSchedules.some((schedule) => schedule.shifts.length > 0);
-    const openCreate = () => {
-        if (mutationBusy || fromCache) return;
+    const openCreate = (defaults?: typeof newShiftDefaults) => {
+        if (!canManageSchedule || mutationBusy || fromCache) return;
         setEditingShift(null);
+        setNewShiftDefaults(defaults ?? null);
         setEditingScheduleId(draftSchedule?.id ?? null);
         setEditingScheduleRevision(draftSchedule?.revision ?? null);
         setConflicts([]);
         setEditorOpen(true);
     };
+    const openCreateForCell = (worker: HrUserSummary, date: string) => {
+        const assignments = worker.employee?.branchAssignments ?? [];
+        const selectedBranchId = branchId ? Number(branchId) : undefined;
+        const defaultBranchId = selectedBranchId
+            ?? assignments.find((assignment) => assignment.isPrimary)?.branchId
+            ?? assignments[0]?.branchId
+            ?? worker.branchId
+            ?? undefined;
+        openCreate({
+            userId: worker.id,
+            date,
+            branchId: defaultBranchId,
+            jobPositionId: worker.employee?.jobPositionId ?? undefined,
+        });
+    };
 
     const openEdit = (shift: HrScheduleShift, schedule: HrWeeklySchedule) => {
-        if (mutationBusy || fromCache) return;
+        if (!canManageSchedule || mutationBusy || fromCache) return;
         setEditingShift(shift);
+        setNewShiftDefaults(null);
         setEditingScheduleId(schedule.id);
         setEditingScheduleRevision(schedule.revision);
         setConflicts([]);
@@ -205,6 +259,7 @@ export default function Schedules() {
         if (saving) return;
         setEditorOpen(false);
         setEditingShift(null);
+        setNewShiftDefaults(null);
         setEditingScheduleId(null);
         setEditingScheduleRevision(null);
     };
@@ -244,11 +299,16 @@ export default function Schedules() {
                 if (!editingShift) shifts.push(changedShift);
                 await scheduleClient.updateSchedule(target.id, { expectedRevision: editingScheduleRevision!, shifts });
             } else {
-                await scheduleClient.createSchedule({ weekStart, shifts: [changedShift] });
+                const published = full.schedules.find((schedule) => schedule.status === 'PUBLISHED');
+                await scheduleClient.createSchedule({
+                    weekStart,
+                    shifts: seedDraftFromPublished(published, changedShift),
+                });
             }
             showSuccess(editingShift ? 'Turno actualizado.' : 'Turno agregado al borrador.');
             setEditorOpen(false);
             setEditingShift(null);
+            setNewShiftDefaults(null);
             setEditingScheduleId(null);
             setEditingScheduleRevision(null);
             await reloadIfScopeIsCurrent(operationScope);
@@ -371,7 +431,9 @@ export default function Schedules() {
                 title="Horarios semanales"
                 subtitle="Planificación por usuario, puesto y sucursal"
                 icon={CalendarDays}
-                actions={<Button onClick={openCreate} disabled={Boolean(lookupsError) || loading || mutationBusy || fromCache}><Plus size={18} aria-hidden="true" /> Nuevo turno</Button>}
+                actions={canManageSchedule
+                    ? <Button onClick={() => openCreate()} disabled={Boolean(lookupsError) || loading || mutationBusy || fromCache}><Plus size={18} aria-hidden="true" /> Nuevo turno</Button>
+                    : undefined}
             />
 
             <section className="hr-week-navigation" aria-label="Navegación semanal">
@@ -387,9 +449,9 @@ export default function Schedules() {
                 <div className="filter-field"><Select<Option> label="Puesto" options={positionOptions} value={positionOptions.find((option) => option.value === jobPositionId)} onChange={(option: SingleValue<Option>) => setJobPositionId(option?.value ?? '')} isDisabled={mutationBusy} isSearchable /></div>
                 <div className="filter-actions">
                     <Button variant="ghost" disabled={mutationBusy} onClick={() => { setBranchId(''); setUserId(''); setJobPositionId(''); }}>Limpiar</Button>
-                    {!loading && !error && primarySchedule && <Button variant="secondary" disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void copyToNextWeek()}><ClipboardCopy size={17} aria-hidden="true" /> {mutationKind === 'copy' ? 'Copiando…' : 'Copiar semana'}</Button>}
-                    {!loading && !error && primarySchedule?.status === 'DRAFT' && <Button disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void publish()}><Send size={17} aria-hidden="true" /> {mutationKind === 'publish' ? 'Publicando…' : 'Publicar semana'}</Button>}
-                    {!loading && !error && primarySchedule && ['DRAFT', 'PUBLISHED'].includes(primarySchedule.status) && (
+                    {!loading && !error && canManageSchedule && primarySchedule && <Button variant="secondary" disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void copyToNextWeek()}><ClipboardCopy size={17} aria-hidden="true" /> {mutationKind === 'copy' ? 'Copiando…' : 'Copiar semana'}</Button>}
+                    {!loading && !error && canPublishSchedule && primarySchedule?.status === 'DRAFT' && <Button disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void publish()}><Send size={17} aria-hidden="true" /> {mutationKind === 'publish' ? 'Publicando…' : 'Publicar semana'}</Button>}
+                    {!loading && !error && canPublishSchedule && primarySchedule && ['DRAFT', 'PUBLISHED'].includes(primarySchedule.status) && (
                         <Button variant="ghost" disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void cancelWeek()}>
                             <Ban size={17} aria-hidden="true" /> {mutationKind === 'cancel' ? 'Cancelando…' : 'Cancelar semana'}
                         </Button>
@@ -450,10 +512,21 @@ export default function Schedules() {
             {!loading && error && (
                 <div className="state-placeholder" role="alert"><CalendarDays size={44} aria-hidden="true" /><p className="state-error">{error}</p><Button variant="ghost" onClick={() => void loadWeek()}><RefreshCw size={16} /> Reintentar</Button></div>
             )}
-            {!loading && !error && !hasShifts && (
-                <div className="state-placeholder"><CalendarDays size={44} aria-hidden="true" /><p>No hay turnos para esta semana y filtros.</p><Button variant="ghost" onClick={openCreate} disabled={Boolean(lookupsError) || mutationBusy || fromCache}>Agregar primer turno</Button></div>
+            {!loading && !error && visibleWorkers.length === 0 && !hasShifts && (
+                <div className="state-placeholder"><CalendarDays size={44} aria-hidden="true" /><p>No hay trabajadores activos autorizados para esta semana y filtros.</p></div>
             )}
-            {!loading && !error && hasShifts && <ScheduleWeekView weekStart={weekStart} schedules={visibleSchedules} holidays={holidays} readOnly={mutationBusy || fromCache || !activeSchedule} onEdit={openEdit} onDelete={(shift, schedule) => void deleteShift(shift, schedule)} />}
+            {!loading && !error && (visibleWorkers.length > 0 || hasShifts) && (
+                <ScheduleWeekView
+                    weekStart={weekStart}
+                    schedules={visibleSchedules}
+                    holidays={holidays}
+                    workers={visibleWorkers}
+                    readOnly={mutationBusy || fromCache || !canManageSchedule}
+                    onCreate={openCreateForCell}
+                    onEdit={openEdit}
+                    onDelete={(shift, schedule) => void deleteShift(shift, schedule)}
+                />
+            )}
 
             <Sidebar isOpen={editorOpen} onClose={closeEditor} title={editingShift ? 'Editar turno' : 'Nuevo turno'} width="large" closeOnBackdrop={!saving} closeOnEscape={!saving}>
                 <ScheduleShiftForm
@@ -463,6 +536,7 @@ export default function Schedules() {
                     branches={lookups.branches ?? []}
                     positions={lookups.positions}
                     templates={templates}
+                    initialAssignment={newShiftDefaults}
                     conflicts={conflicts}
                     saving={saving}
                     onCancel={closeEditor}

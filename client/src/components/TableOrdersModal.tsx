@@ -40,7 +40,6 @@ interface TableOrdersModalProps {
     onSplit: (order: Order) => void;
     onTransfer: (table: Table) => void;
     onConsolidate: (table: Table) => void;
-    onConsolidateAndPay: (table: Table) => void;
     onGroup: (table: Table) => void;
     onEditGroup: (table: Table) => void;
     onUngroup: (table: Table) => void;
@@ -73,7 +72,6 @@ export default function TableOrdersModal({
     onSplit,
     onTransfer,
     onConsolidate,
-    onConsolidateAndPay,
     onGroup,
     onEditGroup,
     onUngroup,
@@ -100,6 +98,11 @@ export default function TableOrdersModal({
     const tableNumber = table.number;
 
     const totalAmount = orders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+    const hasActiveFinancialConsolidation = activeConsolidation?.status === 'ACTIVE';
+    const canStartFinancialConsolidation = canConsolidate
+        && !loadingConsolidation
+        && !consolidationLookupError
+        && !hasActiveFinancialConsolidation;
     const getStatusColor = (status: string) => {
         return getOrderStatusClassName(status as Order['status']);
     };
@@ -362,12 +365,12 @@ export default function TableOrdersModal({
                     </section>
                 )}
 
-                {(canTransfer || canConsolidate || canGroup) && (
+                {(canTransfer || canStartFinancialConsolidation || canGroup) && (
                     <div className="table-command-strip" aria-label="Gestionar ubicación de la mesa">
                         {canTransfer && <button type="button" onClick={() => onTransfer(table)}>
                             <ArrowRightLeft size={18} /><span>Cambiar mesa</span>
                         </button>}
-                        {canConsolidate && <button type="button" onClick={() => onConsolidate(table)}>
+                        {canStartFinancialConsolidation && <button type="button" onClick={() => onConsolidate(table)}>
                             <Merge size={18} /><span>Consolidar</span>
                         </button>}
                         {canGroup && !table.activeTableGroup && ['AVAILABLE', 'OCCUPIED'].includes(table.status) && <button type="button" onClick={() => onGroup(table)}>
@@ -458,11 +461,6 @@ export default function TableOrdersModal({
                                                     {busyOrderId === order.id ? 'Emitiendo…' : 'Emitir factura'}
                                                 </button>
                                             )}
-                                            {!order.invoiceNumber && canIssueInvoice && canPay && canConsolidate && (
-                                                <button type="button" className="consolidate-pay" onClick={() => onConsolidateAndPay(table)}>
-                                                    <Merge size={16} /> Consolidar y cobrar
-                                                </button>
-                                            )}
                                             {order.invoiceNumber && (
                                                 <span className="invoice-issued-badge">
                                                     <Receipt size={15} /> {order.invoiceNumber}
@@ -497,7 +495,7 @@ export default function TableOrdersModal({
                     )}
                     {canOperatePOS && <button type="button" className="btn-modal-primary" disabled={loading} onClick={() => onOpenPOS(table)}>
                         {loading ? <Loader2 className="button-spinner" size={18} /> : <ShoppingCart size={18} />}
-                        {loading ? 'Cargando…' : orders.length > 0 ? 'Continuar pedido' : 'Abrir pedido'}
+                        {loading ? 'Cargando…' : orders.length > 0 ? 'Agregar producto' : 'Menú'}
                     </button>}
                 </div>
             </div>

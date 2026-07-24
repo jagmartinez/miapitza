@@ -598,6 +598,84 @@ describe('POS operational flow', () => {
         expect(await prisma.cashMovement.count({ where: { shiftId } })).toBe(before);
     });
 
+    it('reports payment methods and separates manual entries from POS/Catering sales', async () => {
+        await request(app)
+            .post(`/api/cash-shifts/${shiftId}/movements`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({
+                type: 'IN',
+                amount: 0.10,
+                description: 'Entrada manual para clasificación'
+            })
+            .expect(201);
+        await request(app)
+            .post(`/api/cash-shifts/${shiftId}/movements`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({
+                type: 'OUT',
+                amount: 0.10,
+                description: 'Salida manual compensatoria'
+            })
+            .expect(201);
+
+        const shiftResponse = await request(app)
+            .get(`/api/cash-shifts/${shiftId}`)
+            .set('Authorization', `Bearer ${token}`)
+            .expect(200);
+        const movements = shiftResponse.body.data.movements as Array<{
+            description: string;
+            reference: string | null;
+            category: string;
+            paymentMethod: { name: string; type: string | null; source: string };
+        }>;
+        expect(movements.find((movement) => movement.description === 'Entrada manual para clasificación'))
+            .toMatchObject({
+                category: 'MANUAL_INCOME',
+                paymentMethod: {
+                    name: 'Movimiento manual de caja',
+                    type: null,
+                    source: 'MANUAL_CASH_MOVEMENT'
+                }
+            });
+        expect(movements.find((movement) => movement.reference?.startsWith('PAY-')))
+            .toMatchObject({
+                category: 'POS_SALE',
+                paymentMethod: {
+                    name: 'EFECTIVO',
+                    type: 'CASH',
+                    source: 'PAYMENT'
+                }
+            });
+
+        const summary = await request(app)
+            .get(`/api/cash-shifts/${shiftId}/summary`)
+            .set('Authorization', `Bearer ${token}`)
+            .expect(200);
+        expect(summary.body.data.summary.otherIncome).toBe(0.1);
+        expect(summary.body.data.summary.otherOutflows).toBe(0.1);
+        expect(summary.body.data.summary.expectedBalance).toBe(153.5);
+
+        const report = await request(app)
+            .get(`/api/cash-arqueo/${shiftId}/report`)
+            .set('Authorization', `Bearer ${token}`)
+            .expect(200);
+        const reportMovements = [
+            ...report.body.data.movements.in,
+            ...report.body.data.movements.out
+        ] as Array<{
+            reference: string | null;
+            category: string;
+            paymentMethod: { name: string; type: string | null };
+        }>;
+        expect(report.body.data.amounts.otherIncome).toBe(0.1);
+        expect(report.body.data.amounts.otherOutflows).toBe(0.1);
+        expect(reportMovements.find((movement) => movement.reference?.startsWith('PAY-')))
+            .toMatchObject({
+                category: 'POS_SALE',
+                paymentMethod: { name: 'EFECTIVO', type: 'CASH' }
+            });
+    });
+
     it('closes the cash shift with reconciled denominations, actor and historical FX rate', async () => {
         const otherCompany = await prisma.company.create({ data: { name: 'Tolerance Isolation', active: true } });
         await SettingService.update(companyId, { cash_reconciliation_tolerance: '0.25' });

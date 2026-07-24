@@ -29,6 +29,13 @@ export interface HrUserSummary {
         id: number;
         employeeCode: string;
         status: HrEmploymentStatus;
+        jobPositionId?: number | null;
+        branchAssignments?: Array<{
+            branchId: number;
+            isPrimary?: boolean;
+            effectiveFrom?: string | null;
+            effectiveTo?: string | null;
+        }>;
     } | null;
     branchId?: number | null;
     branch?: HrNamedEntity | null;
@@ -176,6 +183,12 @@ export interface HrOrganizationCatalogs {
         employmentTypes: string[];
         accountTypes: HrAccountType[];
     };
+}
+
+export interface HrScheduleLookups {
+    positions: HrNamedEntity[];
+    branches: HrNamedEntity[];
+    users: HrUserSummary[];
 }
 
 export interface HrEmployeePayload {

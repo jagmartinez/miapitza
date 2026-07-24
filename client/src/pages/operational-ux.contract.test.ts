@@ -193,7 +193,9 @@ describe('operational UX contracts', () => {
         expect(kitchen).toContain('ordersAPI.getKitchenQueue()');
         expect(tables).toContain('showSuccess(buildInvoiceReleaseMessage({');
         expect(tables).toContain('await refreshOperationalTable();');
-        expect(tables).toContain('Cuentas consolidadas. ${buildInvoiceReleaseMessage({');
+        expect(tables).toContain('Las cuentas fueron consolidadas en la mesa principal');
+        expect(tables).toContain('Emite la factura para continuar al cobro.');
+        expect(tables).not.toContain('Cuentas consolidadas. ${buildInvoiceReleaseMessage({');
         expect(tables).not.toContain('settleReadyTableOnPayment');
         expect(tables).toContain('isEligibleForPosOrderBucket(o)');
     });

@@ -1,4 +1,5 @@
-import { Briefcase, Building2, Clock3, Edit2, Trash2, UserRound } from 'lucide-react';
+import { Briefcase, Building2, Clock3, Edit2, Plus, Trash2, UserRound } from 'lucide-react';
+import type { HrUserSummary } from '../../types/hr';
 import type { HrHoliday, HrScheduleShift, HrWeeklySchedule } from '../../types/hr-schedule';
 import { shiftCrossesMidnight, sortScheduleShifts, weekDates } from './scheduleDates';
 
@@ -11,6 +12,8 @@ interface ScheduleWeekViewProps {
     schedules: HrWeeklySchedule[];
     holidays?: HrHoliday[];
     readOnly?: boolean;
+    workers?: HrUserSummary[];
+    onCreate?: (worker: HrUserSummary, date: string) => void;
     onEdit?: (shift: HrScheduleShift, schedule: HrWeeklySchedule) => void;
     onDelete?: (shift: HrScheduleShift, schedule: HrWeeklySchedule) => void;
 }
@@ -27,6 +30,13 @@ function time(value: string): string {
     return value.slice(0, 5);
 }
 
+function shiftColorIndex(item: HrScheduleShift): number {
+    const key = `${item.shiftTemplateId ?? 'custom'}|${time(item.startTime)}|${time(item.endTime)}`;
+    let hash = 0;
+    for (const character of key) hash = ((hash << 5) - hash + character.charCodeAt(0)) | 0;
+    return Math.abs(hash) % 6;
+}
+
 function ShiftCard({ item, compact = false, readOnly, onEdit, onDelete }: {
     item: ShiftWithSchedule;
     compact?: boolean;
@@ -41,7 +51,10 @@ function ShiftCard({ item, compact = false, readOnly, onEdit, onDelete }: {
     const positionName = item.jobPosition?.name ?? (item.jobPositionId ? `Puesto #${item.jobPositionId}` : 'Sin puesto');
 
     return (
-        <article className={`hr-shift-card ${compact ? 'is-compact' : ''}`} aria-label={`${employeeName}, ${time(item.startTime)} a ${time(item.endTime)}`}>
+        <article
+            className={`hr-shift-card shift-color-${shiftColorIndex(item)} ${compact ? 'is-compact' : ''}`}
+            aria-label={`${employeeName}, turno de ${time(item.startTime)} a ${time(item.endTime)}${overnight ? ', termina al día siguiente' : ''}`}
+        >
             <div className="hr-shift-time"><Clock3 size={15} aria-hidden="true" /><strong>{time(item.startTime)}–{time(item.endTime)}</strong>{overnight && <span>+1 día</span>}</div>
             {!compact && <div className="hr-shift-meta"><UserRound size={14} aria-hidden="true" /><span>{employeeName}</span></div>}
             <div className="hr-shift-meta"><Building2 size={14} aria-hidden="true" /><span>{branchName}</span></div>
@@ -63,6 +76,8 @@ export default function ScheduleWeekView({
     schedules,
     holidays = [],
     readOnly = false,
+    workers = [],
+    onCreate,
     onEdit,
     onDelete,
 }: ScheduleWeekViewProps) {
@@ -72,21 +87,41 @@ export default function ScheduleWeekView({
     ));
     const groupedByDay = new Map(days.map((day) => [day, shifts.filter((shift) => shift.date === day)]));
     const holidayFor = (day: string) => holidays.find((holiday) => holiday.date.slice(0, 10) === day);
-    const employeeRows = Array.from(new Set(shifts.map((shift) => shift.userId)))
+    const workersById = new Map(workers.map((worker) => [worker.id, worker]));
+    for (const shift of shifts) {
+        if (shift.user && !workersById.has(shift.userId)) workersById.set(shift.userId, shift.user);
+    }
+    const employeeRows = Array.from(new Set([...workersById.keys(), ...shifts.map((shift) => shift.userId)]))
         .map((userId) => {
             const employeeShifts = shifts.filter((shift) => shift.userId === userId);
-            const user = employeeShifts[0]?.user;
+            const user = workersById.get(userId) ?? employeeShifts[0]?.user;
             return {
                 userId,
                 name: user?.name ?? `Usuario #${userId}`,
                 code: user?.employee?.employeeCode ?? user?.username ?? 'Sin código',
+                worker: user,
                 shifts: employeeShifts,
             };
         })
         .sort((left, right) => left.name.localeCompare(right.name, 'es'));
+    const legend = Array.from(new Map(shifts.map((shift) => {
+        const label = `${time(shift.startTime)}–${time(shift.endTime)}${shiftCrossesMidnight(shift) ? ' (+1 día)' : ''}`;
+        return [label, { label, colorIndex: shiftColorIndex(shift) }];
+    })).values());
 
     return (
         <section className="hr-schedule-workspace" aria-label="Planificación semanal por colaborador y día">
+            {legend.length > 0 && (
+                <div className="hr-shift-color-legend" aria-label="Leyenda de colores por franja de turno">
+                    <strong>Colores de turno</strong>
+                    {legend.map((entry) => (
+                        <span key={entry.label}>
+                            <i className={`shift-color-${entry.colorIndex}`} aria-hidden="true" />
+                            {entry.label}
+                        </span>
+                    ))}
+                </div>
+            )}
             <div className="hr-schedule-matrix-wrap" role="region" tabIndex={0} aria-label="Matriz semanal por colaborador">
                 <div className="hr-schedule-matrix" role="table" aria-rowcount={employeeRows.length + 1} aria-colcount={8}>
                     <div className="hr-schedule-matrix-row is-header" role="row">
@@ -104,7 +139,19 @@ export default function ScheduleWeekView({
                                 return (
                                     <div key={day} className={`hr-schedule-matrix-cell ${items.length === 0 ? 'is-empty' : ''}`} role="cell" aria-labelledby={`schedule-employee-${employee.userId} schedule-column-${day}`}>
                                         {items.map((item) => <ShiftCard key={`${item.parentSchedule.id}-${item.id}`} item={item} compact readOnly={readOnly} onEdit={onEdit} onDelete={onDelete} />)}
-                                        {items.length === 0 && <span className="hr-schedule-no-shift">—</span>}
+                                        {items.length === 0 && !readOnly && employee.worker && onCreate
+                                            ? (
+                                                <button
+                                                    type="button"
+                                                    className="hr-schedule-empty-cell-button"
+                                                    onClick={() => onCreate(employee.worker!, day)}
+                                                    aria-label={`Agregar turno para ${employee.name} el ${formatDay(day, true)}`}
+                                                >
+                                                    <Plus size={16} aria-hidden="true" />
+                                                    <span>Agregar</span>
+                                                </button>
+                                            )
+                                            : items.length === 0 && <span className="hr-schedule-no-shift">—</span>}
                                     </div>
                                 );
                             })}

@@ -220,6 +220,40 @@ describe('HR weekly schedule invariants', () => {
         }));
     });
 
+    it('returns only active internal workers with valid weekly assignments in schedule lookups', async () => {
+        const users = jest.spyOn(prisma.user, 'findMany').mockResolvedValue([] as never);
+        const branches = jest.spyOn(prisma.branch, 'findMany').mockResolvedValue([] as never);
+        const positions = jest.spyOn(prisma.jobPosition, 'findMany').mockResolvedValue([] as never);
+
+        await WeeklyScheduleService.listLookups(4, '2026-07-13', 10);
+
+        expect(users).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({
+                companyId: 4,
+                status: 'ACTIVE',
+                accountType: 'INTERNAL',
+                OR: [
+                    { branchId: 10 },
+                    { allowedBranches: { some: { branchId: 10 } } },
+                ],
+                employee: {
+                    is: expect.objectContaining({
+                        status: 'ACTIVE',
+                        branchAssignments: {
+                            some: expect.objectContaining({ branchId: 10 }),
+                        },
+                    }),
+                },
+            }),
+        }));
+        expect(branches).toHaveBeenCalledWith(expect.objectContaining({
+            where: { companyId: 4, status: 'ACTIVE', id: 10 },
+        }));
+        expect(positions).toHaveBeenCalledWith(expect.objectContaining({
+            where: { companyId: 4, active: true },
+        }));
+    });
+
     it('fails closed when a branch-scoped actor tries to replace a company-wide weekly schedule', async () => {
         const getById = jest.spyOn(WeeklyScheduleService, 'getById');
 
@@ -269,6 +303,36 @@ describe('HR weekly schedule invariants', () => {
 
         expect(original?.shifts).toHaveLength(0);
         expect(replacement?.shifts).toEqual([expect.objectContaining({ userId: 99, originalUserId: 8 })]);
+    });
+
+    it('shows only published shifts from the viewer active branch in the team endpoint', async () => {
+        jest.spyOn(prisma.user, 'findFirst').mockResolvedValue({ id: 8 } as never);
+        const findFirst = jest.spyOn(prisma.weeklySchedule, 'findFirst').mockResolvedValue({
+            id: 9, companyId: 4, weekStart: new Date('2026-07-13T00:00:00Z'),
+            version: 1, revision: 3, status: 'PUBLISHED', publishedAt: new Date(),
+            shifts: [
+                publishedShift,
+                { ...publishedShift, id: 21, userId: 99 },
+                { ...publishedShift, id: 22, branchId: 11, userId: 77 },
+            ],
+            acknowledgements: [{ userId: 8, acknowledgedAt: new Date('2026-07-13T10:00:00Z') }],
+        } as never);
+
+        const result = await WeeklyScheduleService.getTeamSchedule(4, 8, '2026-07-13', 10);
+
+        expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
+            where: { companyId: 4, weekStart: new Date('2026-07-13T00:00:00.000Z'), status: 'PUBLISHED' },
+            include: expect.objectContaining({
+                shifts: expect.objectContaining({ where: { status: 'SCHEDULED', branchId: 10 } }),
+            }),
+        }));
+        expect(result?.shifts).toHaveLength(2);
+        expect(result?.shifts.every((shift) => shift.branchId === 10)).toBe(true);
+        expect(result).toEqual(expect.objectContaining({
+            viewerUserId: 8,
+            viewerHasShift: true,
+            acknowledgedAt: new Date('2026-07-13T10:00:00Z'),
+        }));
     });
 
     it('materializes approved swap assignments and releases reservations atomically', async () => {

@@ -1,4 +1,9 @@
-import type { HrScheduledShiftApiInput, HrScheduleShift, HrScheduleShiftInput } from '../../types/hr-schedule';
+import type {
+    HrScheduledShiftApiInput,
+    HrScheduleShift,
+    HrScheduleShiftInput,
+    HrWeeklySchedule,
+} from '../../types/hr-schedule';
 
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -92,4 +97,14 @@ export function toScheduledShiftApiInput(input: HrScheduleShiftInput): HrSchedul
 
 export function existingShiftApiInput(shift: HrScheduleShift): HrScheduledShiftApiInput {
     return toScheduledShiftApiInput(shift);
+}
+
+export function seedDraftFromPublished(
+    published: HrWeeklySchedule | null | undefined,
+    changedShift: HrScheduledShiftApiInput,
+): HrScheduledShiftApiInput[] {
+    return [
+        ...(published?.shifts ?? []).map(existingShiftApiInput),
+        changedShift,
+    ];
 }

@@ -1,4 +1,5 @@
 import api from '../../services/api';
+import type { HrScheduleLookups } from '../../types/hr';
 import type {
     HrHoliday,
     HrScheduleCollection,
@@ -99,6 +100,7 @@ function normalizeScheduleRecord(value: unknown): HrWeeklySchedule {
 }
 
 function normalizeCollection(value: unknown): HrScheduleCollection {
+    if (value === null || value === undefined) return { schedules: [], conflicts: [], holidays: [] };
     if (Array.isArray(value)) return { schedules: value.map(normalizeScheduleRecord), conflicts: [], holidays: [] };
     if (!value || typeof value !== 'object') throw contractError('la colección de horarios');
     const raw = value as Record<string, unknown>;
@@ -169,6 +171,23 @@ export const scheduleClient = {
     async getMySchedule(weekStart: string): Promise<HrScheduleCollection> {
         const response = await api.get(`${HR_BASE}/me/schedule`, { params: { weekStart } });
         return { ...normalizeCollection(unwrap(response.data)), fromCache: responseFromCache(response) };
+    },
+
+    async getTeamSchedule(weekStart: string): Promise<HrScheduleCollection> {
+        const response = await api.get(`${HR_BASE}/team/schedule`, { params: { weekStart } });
+        return { ...normalizeCollection(unwrap(response.data)), fromCache: responseFromCache(response) };
+    },
+
+    async getScheduleLookups(weekStart: string): Promise<HrScheduleLookups> {
+        const response = await api.get(`${HR_BASE}/schedules/lookups`, { params: { weekStart } });
+        const value = unwrap<unknown>(response.data);
+        if (!value || typeof value !== 'object') throw contractError('los catálogos de horarios');
+        const raw = value as Record<string, unknown>;
+        return {
+            positions: requiredArray(raw.positions, 'los puestos') as HrScheduleLookups['positions'],
+            branches: requiredArray(raw.branches, 'las sucursales') as HrScheduleLookups['branches'],
+            users: requiredArray(raw.users, 'los trabajadores') as HrScheduleLookups['users'],
+        };
     },
 
     async getShiftTemplates(branchId?: number): Promise<HrShiftTemplate[]> {

@@ -28,6 +28,11 @@ interface ShiftSummaryState {
     expectedAmount?: number;
     totalIn?: number;
     totalOut?: number;
+    totalSalesCash?: number;
+    grossSalesCash?: number;
+    cashRefunds?: number;
+    otherIncome?: number;
+    otherOutflows?: number;
     [key: string]: unknown;
 }
 
@@ -83,6 +88,38 @@ const formatDuration = (startDate: string, endDate?: string): string => {
     const hours = Math.floor(diffMs / (1000 * 60 * 60));
     const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     return `${hours}h ${minutes}m`;
+};
+
+const CASH_MOVEMENT_CATEGORY_LABELS: Record<string, string> = {
+    POS_SALE: 'Venta POS',
+    CATERING_SALE: 'Cobro Catering',
+    POS_PAYMENT_REVERSAL: 'Reverso de pago POS',
+    CATERING_PAYMENT_REVERSAL: 'Reverso de pago Catering',
+    CREDIT_NOTE_REFUND: 'Reembolso por nota de crédito',
+    MANUAL_INCOME: 'Entrada manual',
+    MANUAL_OUTFLOW: 'Salida manual',
+    UNCLASSIFIED_INCOME: 'Entrada no clasificada',
+    UNCLASSIFIED_OUTFLOW: 'Salida no clasificada'
+};
+
+const getMovementCategoryLabel = (movement: CashMovement): string =>
+    movement.category
+        ? (CASH_MOVEMENT_CATEGORY_LABELS[movement.category] || 'Movimiento no clasificado')
+        : 'Movimiento no clasificado';
+
+const getMovementPaymentOrigin = (movement: CashMovement): string =>
+    movement.paymentMethod?.name || 'Movimiento no clasificado';
+
+const getMovementAuditLabel = (movement: CashMovement): string => {
+    const typeLabel = movement.paymentMethod?.type
+        ? ({
+            CASH: 'Efectivo',
+            CARD: 'Tarjeta',
+            BANK_TRANSFER: 'Transferencia bancaria',
+            OTHER: 'Otro método'
+        }[movement.paymentMethod.type])
+        : null;
+    return [getMovementCategoryLabel(movement), typeLabel].filter(Boolean).join(' · ');
 };
 
 export default function CashShiftPage() {
@@ -234,6 +271,8 @@ export default function CashShiftPage() {
             filtered = filtered.filter(m =>
                 m.description?.toLowerCase().includes(query) ||
                 m.reference?.toLowerCase().includes(query) ||
+                getMovementPaymentOrigin(m).toLowerCase().includes(query) ||
+                getMovementCategoryLabel(m).toLowerCase().includes(query) ||
                 m.amount.toString().includes(query)
             );
         }
@@ -424,10 +463,14 @@ export default function CashShiftPage() {
                                 <div>
                                     <div class="section-title">Resumen de Totales</div>
                                      <div class="amount-item"><span>Monto Inicial:</span> <span>${safeCurrencySymbol} ${formatCurrency(amounts.startAmount)}</span></div>
-                                     <div class="amount-item"><span>Ventas (Efectivo):</span> <span style="color: #28a745;">+ ${safeCurrencySymbol} ${formatCurrency(Number(summary?.totalSalesCash || 0))}</span></div>
-                                     <div class="amount-item"><span>Otros Ingresos:</span> <span style="color: #28a745;">+ ${safeCurrencySymbol} ${formatCurrency(amounts.totalIn)}</span></div>
-                                     <div class="amount-item"><span>Gastos / Retiros:</span> <span style="color: #dc3545;">- ${safeCurrencySymbol} ${formatCurrency(amounts.totalOut)}</span></div>
+                                     <div class="amount-item"><span>Ventas netas en efectivo (POS + Catering):</span> <span style="color: #28a745;">+ ${safeCurrencySymbol} ${formatCurrency(Number(amounts.totalSalesCash || 0))}</span></div>
+                                     <div class="amount-item"><span>Otros ingresos de caja:</span> <span style="color: #28a745;">+ ${safeCurrencySymbol} ${formatCurrency(Number(amounts.otherIncome || 0))}</span></div>
+                                     <div class="amount-item"><span>Gastos / Retiros:</span> <span style="color: #dc3545;">- ${safeCurrencySymbol} ${formatCurrency(Number(amounts.otherOutflows || 0))}</span></div>
                                      <div class="amount-item grand-total"><span>Monto Esperado:</span> <span>${safeCurrencySymbol} ${formatCurrency(amounts.expectedEndAmount)}</span></div>
+                                     <p style="font-size: 11px; color: #666; margin-top: 12px;">
+                                         Otros ingresos son únicamente entradas manuales o no asociadas a una venta.
+                                         No incluyen cobros POS/Catering. Las ventas netas descuentan reversos y notas de crédito.
+                                     </p>
                                     
                                     <div class="section-title">Resultados del Arqueo</div>
                                      <div class="amount-item"><span>Monto Contado:</span> <span>${safeCurrencySymbol} ${formatCurrency(amounts.actualEndAmount || 0)}</span></div>
@@ -480,6 +523,7 @@ export default function CashShiftPage() {
                                         <th>Hora</th>
                                         <th>Tipo</th>
                                         <th>Referencia</th>
+                                        <th>Forma de pago / origen</th>
                                         <th>Descripción</th>
                                         <th class="text-right">Monto</th>
                                     </tr>
@@ -490,13 +534,17 @@ export default function CashShiftPage() {
                                             <td>${escapeHtml(new Date(m.createdAt).toLocaleTimeString())}</td>
                                             <td><span class="badge ${m.type === 'IN' ? 'badge-in' : 'badge-out'}">${m.type === 'IN' ? 'INGRESO' : 'EGRESO'}</span></td>
                                             <td>${escapeHtml(m.documentNumber || m.reference || '-')}</td>
+                                            <td>
+                                                ${escapeHtml(getMovementPaymentOrigin(m))}
+                                                <br><small>${escapeHtml(getMovementAuditLabel(m))}</small>
+                                            </td>
                                             <td>${escapeHtml(m.description)} ${m.supplier ? `(${escapeHtml(m.supplier.name)})` : ''}</td>
                                             <td class="text-right" style="color: ${m.type === 'IN' ? '#28a745' : '#dc3545'};">
                                                  ${m.type === 'IN' ? '+' : '-'}${safeCurrencySymbol} ${formatCurrency(Number(m.amount))}
                                             </td>
                                         </tr>
                                     `).join('')}
-                                    ${(movements.in.length === 0 && movements.out.length === 0) ? '<tr><td colspan="5" style="text-align: center;">No se registraron movimientos adicionales</td></tr>' : ''}
+                                    ${(movements.in.length === 0 && movements.out.length === 0) ? '<tr><td colspan="6" style="text-align: center;">No se registraron movimientos adicionales</td></tr>' : ''}
                                 </tbody>
                             </table>
 
@@ -600,24 +648,32 @@ export default function CashShiftPage() {
                         <div className="summary-card-v2 success">
                             <div className="card-icon"><TrendingUp size={24} /></div>
                             <div className="card-data">
-                                <span className="label">Ventas Cash</span>
+                                <span className="label">Ventas netas efectivo</span>
                                 <span className="amount">+ {formatMoney(Number(summary?.totalSalesCash || 0))}</span>
                             </div>
                         </div>
                         <div className="summary-card-v2 blue">
                             <div className="card-icon"><Plus size={24} /></div>
                             <div className="card-data">
-                                <span className="label">Otros Ingresos</span>
-                                <span className="amount">+ {formatMoney(Number(summary?.totalIn || 0))}</span>
+                                <span className="label">Otros ingresos de caja</span>
+                                <span className="amount">+ {formatMoney(Number(summary?.otherIncome || 0))}</span>
                             </div>
                         </div>
                         <div className="summary-card-v2 danger">
                             <div className="card-icon"><Minus size={24} /></div>
                             <div className="card-data">
                                 <span className="label">Gastos / Retiros</span>
-                                <span className="amount">- {formatMoney(Number(summary?.totalOut || 0))}</span>
+                                <span className="amount">- {formatMoney(Number(summary?.otherOutflows || 0))}</span>
                             </div>
                         </div>
+                    </div>
+                    <div className="cash-income-explanation" role="note">
+                        <strong>¿Qué son “Otros ingresos”?</strong>
+                        <span>
+                            Entradas manuales o no asociadas a ventas. No incluyen cobros POS ni Catering.
+                            “Ventas netas efectivo” ya descuenta reversos y reembolsos por notas de crédito;
+                            “Gastos / Retiros” muestra únicamente las demás salidas.
+                        </span>
                     </div>
 
                     {/* Movements Card with Filters */}
@@ -666,6 +722,7 @@ export default function CashShiftPage() {
                                         <th>Hora</th>
                                         <th>Tipo</th>
                                         <th>Documento</th>
+                                        <th>Forma de pago / origen</th>
                                         <th>Descripción</th>
                                         <th>Proveedor</th>
                                         <th className="text-right">Monto</th>
@@ -687,6 +744,12 @@ export default function CashShiftPage() {
                                                     </span>
                                                 ) : '-'}
                                             </td>
+                                            <td>
+                                                <div className="payment-origin">
+                                                    <span>{getMovementPaymentOrigin(mov)}</span>
+                                                    <small>{getMovementAuditLabel(mov)}</small>
+                                                </div>
+                                            </td>
                                             <td>{mov.description || '-'}</td>
                                             <td>{mov.supplier?.name || '-'}</td>
                                             <td className={`text-right amount-cell ${mov.type === 'IN' ? 'text-green' : 'text-red'}`}>
@@ -696,7 +759,7 @@ export default function CashShiftPage() {
                                     ))}
                                     {paginatedMovements.length === 0 && (
                                         <tr>
-                                            <td colSpan={6} className="text-center empty-row">
+                                            <td colSpan={7} className="text-center empty-row">
                                                 {searchQuery || filterType !== 'all'
                                                     ? 'No hay movimientos que coincidan con los filtros'
                                                     : 'No hay movimientos registrados'}

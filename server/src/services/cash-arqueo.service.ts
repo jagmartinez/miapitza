@@ -1,6 +1,10 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { SettingService } from './setting.service';
+import {
+    CashMovementReportService,
+    summarizeCashMovements
+} from './cash-movement-report.service';
 
 /**
  * Cash Register Arqueo Service
@@ -77,7 +81,8 @@ export class CashArqueoService {
                 cashRegister: {
                     select: {
                         id: true,
-                        name: true
+                        name: true,
+                        branchId: true
                     }
                 },
                 user: {
@@ -93,7 +98,15 @@ export class CashArqueoService {
                     }
                 },
                 movements: {
-                    orderBy: { createdAt: 'desc' }
+                    orderBy: { createdAt: 'desc' },
+                    include: {
+                        supplier: {
+                            select: {
+                                id: true,
+                                name: true
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -113,17 +126,25 @@ export class CashArqueoService {
             }
         });
 
-        // Calculate totals by movement type
-        const inMovements = shift.movements.filter((m) => m.type === 'IN');
-        const outMovements = shift.movements.filter((m) => m.type === 'OUT');
-
-        const totalIn = inMovements.reduce((sum, m) => sum + Number(m.amount), 0);
-        const totalOut = outMovements.reduce((sum, m) => sum + Number(m.amount), 0);
+        const enrichedMovements = await CashMovementReportService.enrichForReport(
+            shift.movements,
+            companyId,
+            shift.cashRegister.branchId
+        );
+        const inMovements = enrichedMovements.filter((movement) => movement.type === 'IN');
+        const outMovements = enrichedMovements.filter((movement) => movement.type === 'OUT');
+        const movementSummary = summarizeCashMovements(shift.movements);
 
         // Calculate expected vs actual
-        const expectedEndAmount = Number(shift.startAmount) + totalIn - totalOut;
+        const startAmountCents = Math.round(Number(shift.startAmount) * 100);
+        const expectedEndAmountCents = startAmountCents
+            + Math.round(movementSummary.totalIn * 100)
+            - Math.round(movementSummary.totalOut * 100);
+        const expectedEndAmount = expectedEndAmountCents / 100;
         const actualEndAmount = shift.endAmount !== null ? Number(shift.endAmount) : null;
-        const difference = actualEndAmount !== null ? actualEndAmount - expectedEndAmount : null;
+        const difference = actualEndAmount !== null
+            ? (Math.round(actualEndAmount * 100) - expectedEndAmountCents) / 100
+            : null;
 
         return {
             shift: {
@@ -144,8 +165,7 @@ export class CashArqueoService {
                 expectedEndAmount,
                 actualEndAmount,
                 difference,
-                totalIn,
-                totalOut
+                ...movementSummary
             },
             movements: {
                 in: inMovements,
@@ -327,11 +347,15 @@ export class CashArqueoService {
             if (!lockedShift) throw new Error('Turno de caja no encontrado');
             if (lockedShift.endDate) throw new Error('El turno de caja ya está cerrado');
 
-            const expectedNow = Number(lockedShift.startAmount) + lockedShift.movements.reduce(
-                (sum, movement) => sum + (movement.type === 'IN' ? Number(movement.amount) : -Number(movement.amount)),
-                0
-            );
-            const expectedNowCents = Math.round(expectedNow * 100);
+            const expectedNowCents = Math.round(Number(lockedShift.startAmount) * 100)
+                + lockedShift.movements.reduce(
+                    (sum, movement) => sum + (
+                        movement.type === 'IN'
+                            ? Math.round(Number(movement.amount) * 100)
+                            : -Math.round(Number(movement.amount) * 100)
+                    ),
+                    0
+                );
             const currentSummary = this.classifyDifference(
                 (Math.round(normalizedEndAmount * 100) - expectedNowCents) / 100,
                 preview.tolerance

@@ -49,6 +49,17 @@ function handleError(error: unknown, res: Response, next: NextFunction): void {
 }
 
 export class HrScheduleController {
+    static async scheduleLookups(req: Request, res: Response, next: NextFunction) {
+        try {
+            const data = await WeeklyScheduleService.listLookups(
+                req.user!.companyId,
+                String(req.query.weekStart),
+                branchScope(req),
+            );
+            res.json({ success: true, data });
+        } catch (error) { handleError(error, res, next); }
+    }
+
     static async listTemplates(req: Request, res: Response, next: NextFunction) {
         try {
             const data = await ShiftTemplateService.list(req.user!.companyId, {
@@ -148,6 +159,25 @@ export class HrScheduleController {
         try {
             const data = await WeeklyScheduleService.getMySchedule(req.user!.companyId, req.user!.userId, String(req.query.weekStart));
             res.json({ success: true, data });
+        } catch (error) { handleError(error, res, next); }
+    }
+
+    static async teamSchedule(req: Request, res: Response, next: NextFunction) {
+        try {
+            const schedule = await WeeklyScheduleService.getTeamSchedule(
+                req.user!.companyId,
+                req.user!.userId,
+                String(req.query.weekStart),
+                branchScope(req),
+            );
+            res.json({
+                success: true,
+                data: {
+                    schedules: schedule ? [schedule] : [],
+                    conflicts: [],
+                    holidays: [],
+                },
+            });
         } catch (error) { handleError(error, res, next); }
     }
 

@@ -194,7 +194,7 @@ export default function TableGroupModal({
                     <strong>{editing ? 'Editar la unión no mezcla las cuentas' : 'Unión física, no financiera'}</strong>
                     <span>{editing
                         ? 'Una mesa retirada conserva su pedido y quedará ocupada si aún tiene una cuenta activa.'
-                        : 'Las cuentas no se mezclan hasta usar “Consolidar” o “Consolidar y cobrar”.'}</span>
+                        : 'Las cuentas no se mezclan hasta usar “Consolidar”. Después podrás emitir la factura y cobrar.'}</span>
                 </div>
 
                 <label className="table-group-reason">

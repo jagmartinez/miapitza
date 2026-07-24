@@ -105,16 +105,32 @@ describe('Phase 2 schedule API contract', () => {
     it('uses the self-service and auxiliary read routes with their filters', async () => {
         apiMock.get
             .mockResolvedValueOnce(response({ schedules: [schedule], conflicts: [], holidays: [] }))
+            .mockResolvedValueOnce(response({ schedules: [{ ...schedule, status: 'PUBLISHED' }], conflicts: [], holidays: [] }))
+            .mockResolvedValueOnce(response({ users: [], branches: [], positions: [] }))
             .mockResolvedValueOnce(response({ shiftTemplates: [] }))
             .mockResolvedValueOnce(response({ holidays: [] }));
 
         await scheduleClient.getMySchedule('2026-07-13');
+        await scheduleClient.getTeamSchedule('2026-07-13');
+        await scheduleClient.getScheduleLookups('2026-07-13');
         await scheduleClient.getShiftTemplates(4);
         await scheduleClient.getHolidays('2026-07-13', 4);
 
         expect(apiMock.get).toHaveBeenNthCalledWith(1, '/v1/hr/me/schedule', { params: { weekStart: '2026-07-13' } });
-        expect(apiMock.get).toHaveBeenNthCalledWith(2, '/v1/hr/shift-templates', { params: { branchId: 4 } });
-        expect(apiMock.get).toHaveBeenNthCalledWith(3, '/v1/hr/holidays', { params: { weekStart: '2026-07-13', branchId: 4 } });
+        expect(apiMock.get).toHaveBeenNthCalledWith(2, '/v1/hr/team/schedule', { params: { weekStart: '2026-07-13' } });
+        expect(apiMock.get).toHaveBeenNthCalledWith(3, '/v1/hr/schedules/lookups', { params: { weekStart: '2026-07-13' } });
+        expect(apiMock.get).toHaveBeenNthCalledWith(4, '/v1/hr/shift-templates', { params: { branchId: 4 } });
+        expect(apiMock.get).toHaveBeenNthCalledWith(5, '/v1/hr/holidays', { params: { weekStart: '2026-07-13', branchId: 4 } });
+    });
+
+    it('treats a published week without a schedule as a valid empty team result', async () => {
+        apiMock.get.mockResolvedValueOnce(response(null));
+        await expect(scheduleClient.getTeamSchedule('2026-07-13')).resolves.toEqual({
+            schedules: [],
+            conflicts: [],
+            holidays: [],
+            fromCache: false,
+        });
     });
 
     it('fails loudly instead of treating malformed schedule payloads as an empty week', async () => {

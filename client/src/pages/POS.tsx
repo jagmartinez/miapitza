@@ -1270,7 +1270,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                         </div>
                     )}
                     {selectedTable && activeTableOrder && (
-                        <div style={{
+                        <div className="pos-active-order-summary" style={{
                             marginBottom: '1rem',
                             padding: '0.85rem 1rem',
                             borderRadius: '12px',
@@ -1407,6 +1407,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             {showTableModal && (
                 <TableSelectionModal
                     tables={tables}
+                    excludeTableId={selectedTable?.id}
                     onSelectTable={handleSelectTable}
                     onClose={() => setShowTableModal(false)}
                 />

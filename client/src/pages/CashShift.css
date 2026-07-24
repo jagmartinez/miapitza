@@ -131,6 +131,39 @@
     margin-bottom: var(--spacing-xl);
 }
 
+.cash-income-explanation {
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: baseline;
+    margin: calc(var(--spacing-xl) * -0.55) 0 var(--spacing-xl);
+    padding: var(--spacing-md);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-border));
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface));
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+}
+
+.cash-income-explanation strong {
+    flex-shrink: 0;
+    color: var(--color-text);
+}
+
+.payment-origin {
+    display: flex;
+    flex-direction: column;
+    min-width: 150px;
+}
+
+.payment-origin span {
+    color: var(--color-text);
+    font-weight: 600;
+}
+
+.payment-origin small {
+    color: var(--color-text-tertiary);
+}
+
 .summary-card-v2 {
     background: var(--color-surface);
     border: 1px solid var(--color-border);

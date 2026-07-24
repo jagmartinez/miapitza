@@ -12,12 +12,14 @@ describe('CashShiftService.getShiftSummary fiscal cash counterflows', () => {
         jest.spyOn(prisma.cashShift, 'findFirst').mockResolvedValue({
             id: 7,
             startAmount: 50,
-            endAmount: 130,
+            endAmount: 145.35,
             cashRegister: { id: 1, name: 'Caja' },
             user: { id: 3, name: 'Ana' },
             movements: [
                 { type: 'IN', amount: 100, reference: 'PAY-10' },
                 { type: 'IN', amount: 40, reference: 'CAT-PAY-20' },
+                { type: 'IN', amount: 15.25, reference: null },
+                { type: 'IN', amount: 0.10, reference: 'LEGACY-IN-1' },
                 { type: 'OUT', amount: 25, reference: 'CN-REF-NC-1-PAY-10' },
                 { type: 'OUT', amount: 10, reference: 'REV-PAY-11' },
                 { type: 'OUT', amount: 15, reference: 'REV-CAT-PAY-21' },
@@ -31,9 +33,11 @@ describe('CashShiftService.getShiftSummary fiscal cash counterflows', () => {
             grossSalesCash: 140,
             cashRefunds: 50,
             totalSalesCash: 90,
-            totalIn: 140,
+            otherIncome: 15.35,
+            otherOutflows: 10,
+            totalIn: 155.35,
             totalOut: 60,
-            expectedBalance: 130,
+            expectedBalance: 145.35,
             difference: 0
         });
     });
