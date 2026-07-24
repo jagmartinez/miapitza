@@ -6,6 +6,7 @@ import {
   loadExpectedMigrations,
   type MigrationLedgerRow,
 } from '../src/utils/migration-ledger';
+import { containsOnlyKnownExternalTableRemovals } from '../src/utils/schema-drift';
 
 type ForeignKeyRow = RowDataPacket & {
   TABLE_NAME: string;
@@ -211,7 +212,8 @@ async function main() {
       maxBuffer: 10 * 1024 * 1024,
     });
     if (schemaDiff.error) throw schemaDiff.error;
-    if (schemaDiff.status !== 0) {
+    const onlyKnownExternalTables = containsOnlyKnownExternalTableRemovals(schemaDiff.stdout || '');
+    if (schemaDiff.status !== 0 && !onlyKnownExternalTables) {
       const summary = `${schemaDiff.stdout || ''}\n${schemaDiff.stderr || ''}`
         .replace(/\s+/g, ' ')
         .trim()
