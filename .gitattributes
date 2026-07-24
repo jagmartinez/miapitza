@@ -1,1 +1,2 @@
 *.sh text eol=lf
+server/prisma/migrations/**/migration.sql text eol=crlf
