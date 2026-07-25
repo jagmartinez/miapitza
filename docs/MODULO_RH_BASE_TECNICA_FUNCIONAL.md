@@ -117,9 +117,11 @@ Para DST:
 
 ### Entidades y estados
 
-- `ShiftTemplate`.
+- `ShiftTemplate`: catálogo reutilizable por empresa/sucursal, con puesto opcional,
+  horas, descanso, color, baja lógica y revisión optimista.
 - `WeeklySchedule`: `DRAFT -> PUBLISHED -> SUPERSEDED`; `DRAFT/PUBLISHED -> CANCELLED`.
-- `ScheduledShift`.
+- `ScheduledShift`: conserva nombre y color de la jornada como snapshots para que
+  un horario publicado no cambie visualmente cuando se edita el catálogo.
 - `ScheduleAcknowledgement`.
 - `HolidayCalendar`, `Holiday`.
 - `ShiftSwapRequest`, `ShiftSwapReservation`, `ShiftAssignmentOverride`.
@@ -129,6 +131,12 @@ Para DST:
 - La semana inicia lunes y una versión publicada es inmutable.
 - Sólo una publicación efectiva puede existir por empresa/semana.
 - Se admiten turnos partidos y nocturnos; se rechazan solapes del asignado efectivo.
+- Al asignar una jornada configurada, el servidor deriva autoritativamente horas,
+  descanso, zona y snapshots; rechaza datos que contradigan la plantilla.
+- Las mutaciones del catálogo usan `expectedRevision`; una jornada referenciada
+  por un borrador no se edita ni desactiva hasta reemplazar esa asignación.
+- Copiar una semana conserva los valores y colores históricos sin reinterpretarlos
+  mediante una plantilla que pudo cambiar o quedar inactiva.
 - Publicación company-wide usa transacción `Serializable`, CAS y reintento acotado de conflictos Prisma.
 - Antes de publicar se revalidan dentro de la transacción: `User ACTIVE`, `INTERNAL`, `Employee ACTIVE` y autorización vigente para cada sucursal.
 - Un intercambio nunca reescribe el turno: crea `ShiftAssignmentOverride`.
@@ -136,7 +144,9 @@ Para DST:
 
 ### UI
 
-- Owner: `/rh/horarios`.
+- Owner: `/rh/horarios`, con catálogo de jornadas y color configurable. La
+  asignación rápida se inicia en la celda empleado/día y sólo solicita elegir
+  una jornada activa compatible con sucursal y puesto.
 - Empleado interno: `/rh/mi-portal/horario`.
 
 ## 7. Biometría y marcaje

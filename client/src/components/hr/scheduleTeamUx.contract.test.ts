@@ -7,6 +7,7 @@ const schedulePage = read('../../pages/hr/Schedules.tsx');
 const teamPage = read('../../pages/hr/MySchedule.tsx');
 const weekView = read('./ScheduleWeekView.tsx');
 const shiftForm = read('./ScheduleShiftForm.tsx');
+const templateCatalog = read('./ShiftTemplateCatalog.tsx');
 const styles = read('../../pages/hr/schedule.css');
 
 describe('team schedule planning UX', () => {
@@ -30,16 +31,22 @@ describe('team schedule planning UX', () => {
         expect(shiftForm).toContain('initialAssignment?.date ?? weekStart');
     });
 
-    it('keeps contextual cell creation on Jornada while global creation and editing retain the full form', () => {
+    it('keeps contextual cell creation on a compatible configured shift without redundant fields', () => {
         expect(shiftForm).toContain('const contextualCreate = !shift && Boolean(initialAssignment)');
         expect(shiftForm).toContain("contextualCreate ? 'schedule' : 'assignment'");
         expect(shiftForm).toContain('!contextualCreate && <div className="modal-tabs"');
-        expect(shiftForm).toContain('!contextualCreate && <div className="modal-input-group"');
+        expect(shiftForm).toContain('label="Jornada configurada"');
+        expect(shiftForm).toContain('template.branchId === initialAssignment?.branchId');
+        expect(shiftForm).toContain('!template.jobPositionId || template.jobPositionId === initialAssignment?.jobPositionId');
+        expect(shiftForm).toContain('No hay jornadas activas compatibles');
+        expect(shiftForm).toContain('Configurar jornadas');
         expect(shiftForm).toContain("role={contextualCreate ? undefined : 'tabpanel'}");
-        expect(shiftForm).toContain("shift ? 'Guardar turno' : 'Agregar turno'");
+        expect(shiftForm).toContain("contextualCreate ? 'Asignar jornada' : 'Agregar turno'");
         expect(schedulePage).toContain('setNewShiftDefaults(defaults ?? null)');
-        expect(schedulePage).toContain('setNewShiftDefaults(null)');
-        expect(schedulePage).toContain('disabled={mutationBusy || editorOpen}');
+        expect(schedulePage).toContain('returnToShiftAfterTemplate');
+        expect(schedulePage).toContain('initialBranchId={!editingTemplate ? newShiftDefaults?.branchId');
+        expect(schedulePage).toContain('disabled={mutationBusy || anyEditorOpen}');
+        expect(schedulePage).not.toContain('> Nuevo turno</Button>');
     });
 
     it('fails before opening a locked contextual editor when branch or position is missing', () => {
@@ -76,12 +83,26 @@ describe('team schedule planning UX', () => {
         expect(teamPage).toContain('schedule.viewerHasShift');
     });
 
-    it('uses deterministic colors with a textual and aria equivalent', () => {
-        expect(weekView).toContain('shiftColorIndex');
+    it('uses immutable template snapshots with a deterministic fallback and textual equivalent', () => {
+        expect(weekView).toContain('templateColorSnapshot ?? item.shiftTemplate?.color');
+        expect(weekView).toContain('templateNameSnapshot ?? item.shiftTemplate?.name');
+        expect(weekView).toContain('fallbackShiftColor');
+        expect(weekView).toContain("'--shift-accent': shiftColor(item)");
         expect(weekView).toContain('Leyenda de colores por franja de turno');
         expect(weekView).toContain('turno de');
-        expect(styles).toContain('.shift-color-0');
-        expect(styles).toContain('.shift-color-5');
+        expect(styles).not.toContain('.shift-color-0');
         expect(styles).toContain('.hr-shift-color-legend');
+    });
+
+    it('exposes a revision-aware reusable shift catalog without destructive deletion', () => {
+        expect(schedulePage).toContain('<ShiftTemplateCatalog');
+        expect(schedulePage).toContain('expectedRevision: editingTemplate.revision');
+        expect(schedulePage).toContain('status === 409');
+        expect(templateCatalog).toContain('Jornadas configuradas');
+        expect(templateCatalog).toContain('Nueva jornada');
+        expect(templateCatalog).toContain('Desactivar');
+        expect(templateCatalog).toContain('Reactivar');
+        expect(templateCatalog).not.toContain('Eliminar');
+        expect(templateCatalog).toContain('Color de la jornada');
     });
 });

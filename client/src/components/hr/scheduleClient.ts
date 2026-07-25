@@ -11,6 +11,8 @@ import type {
     HrSchedulePublishPayload,
     HrScheduleUpdatePayload,
     HrShiftTemplate,
+    HrShiftTemplateCreatePayload,
+    HrShiftTemplateUpdatePayload,
     HrWeeklySchedule,
 } from '../../types/hr-schedule';
 
@@ -198,6 +200,21 @@ export const scheduleClient = {
         const raw = value as Record<string, unknown>;
         const templates = raw.shiftTemplates ?? raw.templates ?? raw.items;
         return requiredArray(templates, 'las plantillas de turno') as HrShiftTemplate[];
+    },
+
+    async createShiftTemplate(payload: HrShiftTemplateCreatePayload): Promise<HrShiftTemplate> {
+        const response = await api.post(`${HR_BASE}/shift-templates`, payload);
+        return unwrap<HrShiftTemplate>(response.data);
+    },
+
+    async updateShiftTemplate(id: number, payload: HrShiftTemplateUpdatePayload): Promise<HrShiftTemplate> {
+        const response = await api.put(`${HR_BASE}/shift-templates/${id}`, payload);
+        return unwrap<HrShiftTemplate>(response.data);
+    },
+
+    async setShiftTemplateActive(id: number, active: boolean, expectedRevision: number): Promise<HrShiftTemplate> {
+        const response = await api.patch(`${HR_BASE}/shift-templates/${id}/status`, { active, expectedRevision });
+        return unwrap<HrShiftTemplate>(response.data);
     },
 
     async getHolidays(weekStart: string, branchId?: number): Promise<HrHoliday[]> {

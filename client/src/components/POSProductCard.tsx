@@ -6,12 +6,12 @@ interface POSProductCardProps {
     onClick: (item: MenuItem) => void;
     onContextMenu: (e: React.MouseEvent, item: MenuItem) => void;
     onQuantityEdit?: (item: MenuItem) => void;
-    currencySymbol?: string;
+    formatMoney: (amount: unknown) => string;
 }
 
 const LONG_PRESS_MS = 500;
 
-const POSProductCard = memo(({ item, onClick, onContextMenu, onQuantityEdit, currencySymbol = '$' }: POSProductCardProps) => {
+const POSProductCard = memo(({ item, onClick, onContextMenu, onQuantityEdit, formatMoney }: POSProductCardProps) => {
     const hasImage = item.images && item.images.length > 0;
     const backgroundImage = hasImage ? `url(${item.images?.[0]?.imageUrl})` : 'none';
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -64,7 +64,7 @@ const POSProductCard = memo(({ item, onClick, onContextMenu, onQuantityEdit, cur
             )}
             <div className="product-info-overlay">
                 <div className="product-name-new">{item.name}</div>
-                <div className="product-price-new">{currencySymbol}{Number(item.price).toFixed(2)}</div>
+                <div className="product-price-new">{formatMoney(Number(item.price))}</div>
             </div>
         </div>
     );
@@ -73,7 +73,7 @@ const POSProductCard = memo(({ item, onClick, onContextMenu, onQuantityEdit, cur
         prevProps.item.name === nextProps.item.name &&
         prevProps.item.price === nextProps.item.price &&
         prevProps.item.images?.[0]?.imageUrl === nextProps.item.images?.[0]?.imageUrl &&
-        prevProps.currencySymbol === nextProps.currencySymbol;
+        prevProps.formatMoney === nextProps.formatMoney;
 });
 
 export default POSProductCard;

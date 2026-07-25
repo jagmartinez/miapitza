@@ -981,6 +981,7 @@ model ShiftTemplate {
   jobPositionId Int?
   name          String
   code          String
+  color         String   @default("#3B82F6") @db.VarChar(7)
   startMinute   Int
   endMinute     Int
   breakMinutes  Int      @default(0)
@@ -988,6 +989,7 @@ model ShiftTemplate {
   timezone      String   @db.VarChar(64)
   notes         String?  @db.Text
   active        Boolean  @default(true)
+  revision      Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -1044,22 +1046,24 @@ enum WeeklyScheduleStatus {
 }
 
 model ScheduledShift {
-  id               Int                  @id @default(autoincrement())
-  companyId        Int
-  scheduleId       Int
-  userId           Int
-  branchId         Int
-  jobPositionId    Int?
-  shiftTemplateId  Int?
-  startAt          DateTime
-  endAt            DateTime
-  timezoneSnapshot String               @db.VarChar(64)
-  breakMinutes     Int                  @default(0)
-  paidBreak        Boolean              @default(false)
-  notes            String?              @db.Text
-  status           ScheduledShiftStatus @default(SCHEDULED)
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  id                    Int                  @id @default(autoincrement())
+  companyId             Int
+  scheduleId            Int
+  userId                Int
+  branchId              Int
+  jobPositionId         Int?
+  shiftTemplateId       Int?
+  templateNameSnapshot  String?
+  templateColorSnapshot String?              @db.VarChar(7)
+  startAt               DateTime
+  endAt                 DateTime
+  timezoneSnapshot      String               @db.VarChar(64)
+  breakMinutes          Int                  @default(0)
+  paidBreak             Boolean              @default(false)
+  notes                 String?              @db.Text
+  status                ScheduledShiftStatus @default(SCHEDULED)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
 
   company               Company                  @relation(fields: [companyId], references: [id], onDelete: Restrict)
   schedule              WeeklySchedule           @relation(fields: [scheduleId], references: [id], onDelete: Restrict)

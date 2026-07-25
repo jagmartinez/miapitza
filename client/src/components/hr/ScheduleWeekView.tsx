@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { Briefcase, Building2, Clock3, Edit2, Plus, Trash2, UserRound } from 'lucide-react';
 import type { HrUserSummary } from '../../types/hr';
 import type { HrHoliday, HrScheduleShift, HrWeeklySchedule } from '../../types/hr-schedule';
@@ -30,11 +31,19 @@ function time(value: string): string {
     return value.slice(0, 5);
 }
 
-function shiftColorIndex(item: HrScheduleShift): number {
+const FALLBACK_SHIFT_COLORS = ['#2563EB', '#0F766E', '#A16207', '#7C3AED', '#BE123C', '#0369A1'] as const;
+const HEX_COLOR = /^#[0-9A-F]{6}$/;
+
+function fallbackShiftColor(item: HrScheduleShift): string {
     const key = `${item.shiftTemplateId ?? 'custom'}|${time(item.startTime)}|${time(item.endTime)}`;
     let hash = 0;
     for (const character of key) hash = ((hash << 5) - hash + character.charCodeAt(0)) | 0;
-    return Math.abs(hash) % 6;
+    return FALLBACK_SHIFT_COLORS[Math.abs(hash) % FALLBACK_SHIFT_COLORS.length];
+}
+
+function shiftColor(item: HrScheduleShift): string {
+    const configured = (item.templateColorSnapshot ?? item.shiftTemplate?.color)?.toUpperCase();
+    return configured && HEX_COLOR.test(configured) ? configured : fallbackShiftColor(item);
 }
 
 function ShiftCard({ item, compact = false, readOnly, onEdit, onDelete }: {
@@ -49,13 +58,16 @@ function ShiftCard({ item, compact = false, readOnly, onEdit, onDelete }: {
     const employeeName = item.user?.name ?? `Usuario #${item.userId}`;
     const branchName = item.branch?.name ?? `Sucursal #${item.branchId}`;
     const positionName = item.jobPosition?.name ?? (item.jobPositionId ? `Puesto #${item.jobPositionId}` : 'Sin puesto');
+    const templateName = item.templateNameSnapshot ?? item.shiftTemplate?.name;
 
     return (
         <article
-            className={`hr-shift-card shift-color-${shiftColorIndex(item)} ${compact ? 'is-compact' : ''}`}
+            className={`hr-shift-card ${compact ? 'is-compact' : ''}`}
+            style={{ '--shift-accent': shiftColor(item) } as CSSProperties}
             aria-label={`${employeeName}, turno de ${time(item.startTime)} a ${time(item.endTime)}${overnight ? ', termina al día siguiente' : ''}`}
         >
             <div className="hr-shift-time"><Clock3 size={15} aria-hidden="true" /><strong>{time(item.startTime)}–{time(item.endTime)}</strong>{overnight && <span>+1 día</span>}</div>
+            {templateName && <div className="hr-shift-template-name">{templateName}</div>}
             {!compact && <div className="hr-shift-meta"><UserRound size={14} aria-hidden="true" /><span>{employeeName}</span></div>}
             <div className="hr-shift-meta"><Building2 size={14} aria-hidden="true" /><span>{branchName}</span></div>
             <div className="hr-shift-meta"><Briefcase size={14} aria-hidden="true" /><span>{positionName}</span></div>
@@ -105,8 +117,11 @@ export default function ScheduleWeekView({
         })
         .sort((left, right) => left.name.localeCompare(right.name, 'es'));
     const legend = Array.from(new Map(shifts.map((shift) => {
-        const label = `${time(shift.startTime)}–${time(shift.endTime)}${shiftCrossesMidnight(shift) ? ' (+1 día)' : ''}`;
-        return [label, { label, colorIndex: shiftColorIndex(shift) }];
+        const timeLabel = `${time(shift.startTime)}–${time(shift.endTime)}${shiftCrossesMidnight(shift) ? ' (+1 día)' : ''}`;
+        const templateName = shift.templateNameSnapshot ?? shift.shiftTemplate?.name;
+        const label = templateName ? `${templateName} · ${timeLabel}` : timeLabel;
+        const color = shiftColor(shift);
+        return [`${color}|${label}`, { label, color }];
     })).values());
 
     return (
@@ -116,7 +131,7 @@ export default function ScheduleWeekView({
                     <strong>Colores de turno</strong>
                     {legend.map((entry) => (
                         <span key={entry.label}>
-                            <i className={`shift-color-${entry.colorIndex}`} aria-hidden="true" />
+                            <i style={{ '--shift-accent': entry.color } as CSSProperties} aria-hidden="true" />
                             {entry.label}
                         </span>
                     ))}

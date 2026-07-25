@@ -4,6 +4,7 @@ const apiMock = vi.hoisted(() => ({
     get: vi.fn(),
     post: vi.fn(),
     put: vi.fn(),
+    patch: vi.fn(),
 }));
 
 vi.mock('../../services/api', () => ({ default: apiMock }));
@@ -40,6 +41,7 @@ describe('Phase 2 schedule API contract', () => {
         apiMock.get.mockReset();
         apiMock.post.mockReset();
         apiMock.put.mockReset();
+        apiMock.patch.mockReset();
     });
 
     it('sends every supported schedule filter and preserves offline-cache provenance', async () => {
@@ -121,6 +123,49 @@ describe('Phase 2 schedule API contract', () => {
         expect(apiMock.get).toHaveBeenNthCalledWith(3, '/v1/hr/schedules/lookups', { params: { weekStart: '2026-07-13' } });
         expect(apiMock.get).toHaveBeenNthCalledWith(4, '/v1/hr/shift-templates', { params: { branchId: 4 } });
         expect(apiMock.get).toHaveBeenNthCalledWith(5, '/v1/hr/holidays', { params: { weekStart: '2026-07-13', branchId: 4 } });
+    });
+
+    it('uses revision-aware template mutations and never deletes a configured shift', async () => {
+        const template = {
+            id: 12,
+            revision: 4,
+            branchId: 4,
+            name: 'Apertura',
+            code: 'APERTURA',
+            startTime: '08:00',
+            endTime: '16:00',
+            breakMinutes: 30,
+            paidBreak: false,
+            color: '#2563EB',
+            active: true,
+        };
+        apiMock.post.mockResolvedValueOnce(response(template));
+        apiMock.put.mockResolvedValueOnce(response({ ...template, revision: 5 }));
+        apiMock.patch.mockResolvedValueOnce(response({ ...template, revision: 6, active: false }));
+
+        const payload = {
+            branchId: 4,
+            jobPositionId: null,
+            name: 'Apertura',
+            code: 'APERTURA',
+            startTime: '08:00',
+            endTime: '16:00',
+            breakMinutes: 30,
+            paidBreak: false,
+            notes: null,
+            color: '#2563EB',
+        };
+        await scheduleClient.createShiftTemplate(payload);
+        await scheduleClient.updateShiftTemplate(12, { ...payload, expectedRevision: 4 });
+        await scheduleClient.setShiftTemplateActive(12, false, 5);
+
+        expect(apiMock.post).toHaveBeenCalledWith('/v1/hr/shift-templates', payload);
+        expect(apiMock.put).toHaveBeenCalledWith('/v1/hr/shift-templates/12', { ...payload, expectedRevision: 4 });
+        expect(apiMock.patch).toHaveBeenCalledWith('/v1/hr/shift-templates/12/status', {
+            active: false,
+            expectedRevision: 5,
+        });
+        expect(apiMock).not.toHaveProperty('delete');
     });
 
     it('treats a published week without a schedule as a valid empty team result', async () => {

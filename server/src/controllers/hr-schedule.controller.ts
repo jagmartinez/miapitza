@@ -91,6 +91,19 @@ export class HrScheduleController {
         } catch (error) { handleError(error, res, next); }
     }
 
+    static async deleteTemplate(req: Request, res: Response, next: NextFunction) {
+        try {
+            const data = await ShiftTemplateService.remove(
+                Number(req.params.id),
+                req.user!.companyId,
+                req.query.expectedRevision,
+                req.user!.userId,
+                branchScope(req),
+            );
+            res.json({ success: true, data, message: 'Plantilla de turno desactivada' });
+        } catch (error) { handleError(error, res, next); }
+    }
+
     static async listSchedules(req: Request, res: Response, next: NextFunction) {
         try {
             const data = await WeeklyScheduleService.list(req.user!.companyId, {

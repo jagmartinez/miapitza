@@ -136,7 +136,7 @@ interface POSProps {
 export default function POS({ initialTableId, embedded = false, onExit, onOperationalChange }: POSProps = {}) {
     const navigate = useNavigate();
     const { user } = useAuth();
-    const { symbol: currencySymbol } = useCurrency();
+    const { symbol: currencySymbol, formatMoney } = useCurrency();
     const { confirm } = useConfirmDialog();
     const { success, error: showError, warning, info } = useAppToast();
     const canManageShift = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'CAJERO']);
@@ -1317,7 +1317,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                 onClick={handleItemClick}
                                 onContextMenu={handleItemRightClick}
                                 onQuantityEdit={handleQuantityEdit}
-                                currencySymbol={currencySymbol}
+                                formatMoney={formatMoney}
                             />
                         ))}
                         {filteredMenuItems.length === 0 && (
@@ -1401,7 +1401,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                     </div>
                                 </div>
                                 <div style={{ fontWeight: 700 }}>
-                                    {currencySymbol}{activeOrderTotal.toFixed(2)}
+                                    {formatMoney(activeOrderTotal)}
                                 </div>
                             </div>
                         </div>
@@ -1433,7 +1433,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                         onTipToggle={settings.tipEnabled === 'true' ? (enabled) => setTipApplied(enabled) : undefined}
                         enablePromotions={settings.enablePromotions === 'true'}
                         onApplyPromotion={handleApplyPromotion}
-                        currencySymbol={currencySymbol}
+                        formatMoney={formatMoney}
                     />
                     {showMobileCart && showMobileActions && (
                         <div className="pos-mobile-actions in-cart-panel">
@@ -1487,7 +1487,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             <div className="mobile-cart-summary">
                 <div className="cart-total-preview">
                     <span style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>Total:</span>
-                    <span style={{ fontSize: '1.2rem', fontWeight: 'bold', marginLeft: '0.5rem' }}>{currencySymbol}{displayTotal.toFixed(2)}</span>
+                    <span style={{ fontSize: '1.2rem', fontWeight: 'bold', marginLeft: '0.5rem' }}>{formatMoney(displayTotal)}</span>
                 </div>
                 <button className="mobile-cart-btn" onClick={() => setShowMobileCart(true)}>
                     <span>Ver Orden ({cart.reduce((acc, item) => acc + item.quantity, 0) || activeTableOrder?.items?.length || 0})</span>
@@ -1643,7 +1643,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                     item={modifierItem}
                     groups={modifierGroups}
                     loading={loadingModifiers}
-                    currencySymbol={currencySymbol}
+                    formatMoney={formatMoney}
                     onClose={() => {
                         setModifierItem(null);
                         setModifierGroups([]);
@@ -1695,7 +1695,7 @@ interface ModifierSelectorModalProps {
     item: MenuItem;
     groups: ModifierGroupWithModifiers[];
     loading: boolean;
-    currencySymbol: string;
+    formatMoney: (amount: unknown) => string;
     onClose: () => void;
     onConfirm: (selected: SelectedModifier[]) => void;
 }
@@ -1704,7 +1704,7 @@ function ModifierSelectorModal({
     item,
     groups,
     loading,
-    currencySymbol,
+    formatMoney,
     onClose,
     onConfirm
 }: ModifierSelectorModalProps) {
@@ -1771,7 +1771,7 @@ function ModifierSelectorModal({
                 <>
                     <div className="pos-modifier-subtotal">
                         <span>Subtotal</span>
-                        <strong>{currencySymbol}{subtotal.toFixed(2)}</strong>
+                        <strong>{formatMoney(subtotal)}</strong>
                     </div>
                     <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
                     <Button type="button" onClick={() => onConfirm(selectedOptions)} disabled={loading || !isValid}>Agregar</Button>
@@ -1810,7 +1810,7 @@ function ModifierSelectorModal({
                                                     <span className="pos-modifier-option-name">{mod.name}</span>
                                                     {Number(mod.price) > 0 && (
                                                         <span className="pos-modifier-option-price">
-                                                            +{currencySymbol}{Number(mod.price).toFixed(2)}
+                                                            +{formatMoney(Number(mod.price))}
                                                         </span>
                                                     )}
                                                 </button>

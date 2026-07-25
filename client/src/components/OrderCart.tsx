@@ -35,7 +35,7 @@ interface OrderCartProps {
     onTipToggle?: (enabled: boolean) => void;
     enablePromotions?: boolean;
     onApplyPromotion?: (code: string) => void;
-    currencySymbol?: string;
+    formatMoney: (amount: unknown) => string;
 }
 
 export default function OrderCart({
@@ -50,7 +50,7 @@ export default function OrderCart({
     onTipToggle,
     enablePromotions,
     onApplyPromotion,
-    currencySymbol = '$'
+    formatMoney,
 }: OrderCartProps) {
     const { confirm } = useConfirmDialog();
 
@@ -88,7 +88,7 @@ export default function OrderCart({
                         <div key={item.lineId} className="cart-item-compact">
                             <div className="item-info">
                                 <div className="item-name-compact">{item.menuItem.name}</div>
-                                <div className="item-price-compact">{currencySymbol}{Number(item.price).toFixed(2)}</div>
+                                <div className="item-price-compact">{formatMoney(Number(item.price))}</div>
                                 {item.modifiers.length > 0 && (
                                     <ul style={{ listStyle: 'none', margin: '4px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                         {item.modifiers.map(mod => (
@@ -104,7 +104,7 @@ export default function OrderCart({
                                             >
                                                 <span>+ {mod.name}</span>
                                                 {Number(mod.price) > 0 && (
-                                                    <span>{currencySymbol}{Number(mod.price).toFixed(2)}</span>
+                                                    <span>{formatMoney(Number(mod.price))}</span>
                                                 )}
                                             </li>
                                         ))}
@@ -133,7 +133,7 @@ export default function OrderCart({
                                 </button>
                             </div>
                             <div className="item-total-compact">
-                                {currencySymbol}{(Number(item.price) * item.quantity).toFixed(2)}
+                                {formatMoney(Number(item.price) * item.quantity)}
                             </div>
                         </div>
                     ))
@@ -156,24 +156,24 @@ export default function OrderCart({
                 {enablePromotions && (
                     <PromotionSelector
                         onApply={onApplyPromotion}
-                        currencySymbol={currencySymbol}
+                        formatMoney={formatMoney}
                     />
                 )}
 
                 <div className="totals-section">
                     <div className="total-line">
                         <span>Subtotal:</span>
-                        <span>{currencySymbol}{subtotal.toFixed(2)}</span>
+                        <span>{formatMoney(subtotal)}</span>
                     </div>
                     {discount > 0 && (
                         <div className="total-line discount-line">
                             <span>Descuento ({discount}%):</span>
-                            <span>-{currencySymbol}{discountAmount.toFixed(2)}</span>
+                            <span>-{formatMoney(discountAmount)}</span>
                         </div>
                     )}
                     <div className="total-line">
                         <span>IVA ({taxRate}%):</span>
-                        <span>{currencySymbol}{tax.toFixed(2)}</span>
+                        <span>{formatMoney(tax)}</span>
                     </div>
                     {tipRate > 0 && onTipToggle && (
                         <div className="total-line tip-line">
@@ -186,12 +186,12 @@ export default function OrderCart({
                                 />
                                 <span>Propina ({tipRate}%):</span>
                             </label>
-                            <span>{currencySymbol}{tipAmount.toFixed(2)}</span>
+                            <span>{formatMoney(tipAmount)}</span>
                         </div>
                     )}
                     <div className="total-line total-final">
                         <span>TOTAL:</span>
-                        <span>{currencySymbol}{total.toFixed(2)}</span>
+                        <span>{formatMoney(total)}</span>
                     </div>
                 </div>
             </div>
@@ -208,7 +208,7 @@ interface PromotionListEntry {
 }
 
 /** Inline promotion selector with active promos dropdown */
-function PromotionSelector({ onApply, currencySymbol = '$' }: { onApply?: (code: string) => void; currencySymbol?: string }) {
+function PromotionSelector({ onApply, formatMoney }: { onApply?: (code: string) => void; formatMoney: (amount: unknown) => string }) {
     const [promos, setPromos] = useState<PromotionListEntry[]>([]);
     const [selected, setSelected] = useState('');
     const [manualCode, setManualCode] = useState('');
@@ -271,7 +271,7 @@ function PromotionSelector({ onApply, currencySymbol = '$' }: { onApply?: (code:
                                 return p
                                     ? {
                                         value: p.code,
-                                        label: `${p.code} — ${p.name} (${p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : `${currencySymbol}${Number(p.value)}`})`
+                                        label: `${p.code} — ${p.name} (${p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : formatMoney(Number(p.value))})`
                                     }
                                     : { value: selected, label: selected };
                             })()
@@ -280,7 +280,7 @@ function PromotionSelector({ onApply, currencySymbol = '$' }: { onApply?: (code:
                     onChange={(option: SingleValue<{ value: string; label: string }>) => setSelected(option?.value || '')}
                     options={promos.map((p) => ({
                         value: p.code,
-                        label: `${p.code} — ${p.name} (${p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : `${currencySymbol}${Number(p.value)}`})`
+                        label: `${p.code} — ${p.name} (${p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : formatMoney(Number(p.value))})`
                     }))}
                     placeholder={loading ? 'Cargando promociones...' : 'Seleccionar promoción...'}
                     isDisabled={loading || loadError || promos.length === 0}
