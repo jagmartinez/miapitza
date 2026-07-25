@@ -944,21 +944,17 @@ test('schedule matrix lists active workers without shifts and preselects worker-
 
   await page.getByRole('button', { name: /Agregar turno para Trabajador sin puesto/ }).first().click();
   await expect(page.getByText(/No se puede agregar un turno para Trabajador sin puesto/)).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Nuevo turno' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Asignar jornada' })).toHaveCount(0);
 
   await expect(page.getByRole('rowheader', { name: /Trabajador sin turno/ })).toBeVisible();
   await page.getByRole('button', { name: /Agregar turno para Trabajador sin turno/ }).first().click();
-  await expect(page.getByRole('heading', { name: 'Nuevo turno' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Jornada' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Asignar jornada' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Asignación' })).toHaveCount(0);
   await expect(page.locator('#hr-shift-date')).toHaveCount(0);
   await expect(page.locator('.hr-shift-modal-content .react-select__control')).toHaveCount(0);
-  await expect(page.locator('#hr-shift-start')).toBeVisible();
-  await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
-
-  await page.getByRole('button', { name: 'Nuevo turno' }).click();
-  await expect(page.getByRole('tab', { name: 'Asignación' })).toBeVisible();
-  await expect(page.locator('.hr-shift-modal-content .react-select__control')).toHaveCount(3);
+  await expect(page.locator('#hr-shift-start')).toHaveCount(0);
+  await expect(page.getByText('No hay jornadas activas compatibles con la sucursal y el puesto de este trabajador.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Configurar jornadas' })).toBeVisible();
   await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
 
   await page.getByRole('button', { name: /Editar turno de UI Review/ }).click();

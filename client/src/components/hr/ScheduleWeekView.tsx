@@ -32,7 +32,12 @@ function time(value: string): string {
 }
 
 const FALLBACK_SHIFT_COLORS = ['#2563EB', '#0F766E', '#A16207', '#7C3AED', '#BE123C', '#0369A1'] as const;
+const UNCONFIGURED_SHIFT_COLOR = '#64748B';
 const HEX_COLOR = /^#[0-9A-F]{6}$/;
+
+function shiftTemplateName(item: HrScheduleShift): string | null {
+    return item.templateNameSnapshot?.trim() || item.shiftTemplate?.name?.trim() || null;
+}
 
 function fallbackShiftColor(item: HrScheduleShift): string {
     const key = `${item.shiftTemplateId ?? 'custom'}|${time(item.startTime)}|${time(item.endTime)}`;
@@ -43,7 +48,8 @@ function fallbackShiftColor(item: HrScheduleShift): string {
 
 function shiftColor(item: HrScheduleShift): string {
     const configured = (item.templateColorSnapshot ?? item.shiftTemplate?.color)?.toUpperCase();
-    return configured && HEX_COLOR.test(configured) ? configured : fallbackShiftColor(item);
+    if (configured && HEX_COLOR.test(configured)) return configured;
+    return shiftTemplateName(item) ? fallbackShiftColor(item) : UNCONFIGURED_SHIFT_COLOR;
 }
 
 function ShiftCard({ item, compact = false, readOnly, onEdit, onDelete }: {
@@ -58,7 +64,7 @@ function ShiftCard({ item, compact = false, readOnly, onEdit, onDelete }: {
     const employeeName = item.user?.name ?? `Usuario #${item.userId}`;
     const branchName = item.branch?.name ?? `Sucursal #${item.branchId}`;
     const positionName = item.jobPosition?.name ?? (item.jobPositionId ? `Puesto #${item.jobPositionId}` : 'Sin puesto');
-    const templateName = item.templateNameSnapshot ?? item.shiftTemplate?.name;
+    const templateName = shiftTemplateName(item);
 
     return (
         <article
@@ -67,7 +73,9 @@ function ShiftCard({ item, compact = false, readOnly, onEdit, onDelete }: {
             aria-label={`${employeeName}, turno de ${time(item.startTime)} a ${time(item.endTime)}${overnight ? ', termina al día siguiente' : ''}`}
         >
             <div className="hr-shift-time"><Clock3 size={15} aria-hidden="true" /><strong>{time(item.startTime)}–{time(item.endTime)}</strong>{overnight && <span>+1 día</span>}</div>
-            {templateName && <div className="hr-shift-template-name">{templateName}</div>}
+            {templateName
+                ? <div className="hr-shift-template-name">{templateName}</div>
+                : <div className="hr-shift-template-name is-unconfigured">Sin jornada configurada</div>}
             {!compact && <div className="hr-shift-meta"><UserRound size={14} aria-hidden="true" /><span>{employeeName}</span></div>}
             <div className="hr-shift-meta"><Building2 size={14} aria-hidden="true" /><span>{branchName}</span></div>
             <div className="hr-shift-meta"><Briefcase size={14} aria-hidden="true" /><span>{positionName}</span></div>
@@ -116,25 +124,33 @@ export default function ScheduleWeekView({
             };
         })
         .sort((left, right) => left.name.localeCompare(right.name, 'es'));
-    const legend = Array.from(new Map(shifts.map((shift) => {
+    const legend = Array.from(new Map(shifts.flatMap((shift) => {
+        const templateName = shiftTemplateName(shift);
+        if (!templateName) return [];
         const timeLabel = `${time(shift.startTime)}–${time(shift.endTime)}${shiftCrossesMidnight(shift) ? ' (+1 día)' : ''}`;
-        const templateName = shift.templateNameSnapshot ?? shift.shiftTemplate?.name;
-        const label = templateName ? `${templateName} · ${timeLabel}` : timeLabel;
+        const label = `${templateName} · ${timeLabel}`;
         const color = shiftColor(shift);
-        return [`${color}|${label}`, { label, color }];
+        return [[`${color}|${label}`, { label, color }] as const];
     })).values());
+    const hasUnconfiguredShifts = shifts.some((shift) => !shiftTemplateName(shift));
 
     return (
         <section className="hr-schedule-workspace" aria-label="Planificación semanal por colaborador y día">
-            {legend.length > 0 && (
+            {(legend.length > 0 || hasUnconfiguredShifts) && (
                 <div className="hr-shift-color-legend" aria-label="Leyenda de colores por franja de turno">
-                    <strong>Colores de turno</strong>
+                    <strong>Leyenda de turnos</strong>
                     {legend.map((entry) => (
-                        <span key={entry.label}>
+                        <span key={`${entry.color}|${entry.label}`}>
                             <i style={{ '--shift-accent': entry.color } as CSSProperties} aria-hidden="true" />
                             {entry.label}
                         </span>
                     ))}
+                    {hasUnconfiguredShifts && (
+                        <span className="is-unconfigured">
+                            <i style={{ '--shift-accent': UNCONFIGURED_SHIFT_COLOR } as CSSProperties} aria-hidden="true" />
+                            Turno sin jornada configurada
+                        </span>
+                    )}
                 </div>
             )}
             <div className="hr-schedule-matrix-wrap" role="region" tabIndex={0} aria-label="Matriz semanal por colaborador">

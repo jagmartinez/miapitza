@@ -44,6 +44,8 @@ describe('team schedule planning UX', () => {
         expect(shiftForm).toContain('templateLoadError');
         expect(shiftForm).toContain('Reintentar jornadas');
         expect(shiftForm).toContain('template.branchId === null ? current.branchId : String(template.branchId)');
+        expect(shiftForm).toContain("templateId: shift?.shiftTemplateId ? String(shift.shiftTemplateId) : ''");
+        expect(shiftForm).toContain('event.preventDefault();');
         expect(shiftForm).toContain("role={contextualCreate ? undefined : 'tabpanel'}");
         expect(shiftForm).toContain("contextualCreate ? 'Asignar jornada' : 'Agregar turno'");
         expect(schedulePage).toContain('setNewShiftDefaults(defaults ?? null)');
@@ -92,11 +94,16 @@ describe('team schedule planning UX', () => {
 
     it('uses immutable template snapshots with a deterministic fallback and textual equivalent', () => {
         expect(weekView).toContain('templateColorSnapshot ?? item.shiftTemplate?.color');
-        expect(weekView).toContain('templateNameSnapshot ?? item.shiftTemplate?.name');
+        expect(weekView).toContain('shiftTemplateName(item)');
         expect(weekView).toContain('fallbackShiftColor');
         expect(weekView).toContain("'--shift-accent': shiftColor(item)");
         expect(weekView).toContain('Leyenda de colores por franja de turno');
         expect(weekView).toContain('turno de');
+        expect(weekView).toContain('if (!templateName) return []');
+        expect(weekView).toContain('Turno sin jornada configurada');
+        expect(weekView).toContain('UNCONFIGURED_SHIFT_COLOR');
+        expect(weekView).toContain('key={`${entry.color}|${entry.label}`}');
+        expect(weekView).not.toContain('08:00–22:00');
         expect(styles).not.toContain('.shift-color-0');
         expect(styles).toContain('.hr-shift-color-legend');
     });

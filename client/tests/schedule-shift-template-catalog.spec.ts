@@ -262,6 +262,70 @@ test('catálogo representa 0, 1, 2 y 3 jornadas con sus colores configurados', a
   }
 });
 
+test('catálogo compacto y formulario alineado responden en escritorio y móvil', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockScheduleCatalog(page, { templates: makeTemplates(3) });
+  await openTemplates(page);
+
+  const catalog = page.getByRole('region', { name: '3 jornadas configuradas' });
+  const cards = catalog.locator('.hr-template-card');
+  const cardBoxes = await cards.evaluateAll((elements) => elements.map((element) => {
+    const box = element.getBoundingClientRect();
+    return { x: box.x, y: box.y, width: box.width, height: box.height };
+  }));
+  expect(cardBoxes).toHaveLength(3);
+  expect(Math.max(...cardBoxes.map((box) => box.y)) - Math.min(...cardBoxes.map((box) => box.y))).toBeLessThanOrEqual(2);
+  expect(cardBoxes.every((box) => box.width >= 250 && box.width <= 312)).toBe(true);
+  expect(cardBoxes.every((box) => box.height < 230)).toBe(true);
+
+  const firstCard = cards.first();
+  const firstCardBox = await firstCard.boundingBox();
+  const actionBox = await firstCard.locator('.hr-template-card-actions').boundingBox();
+  expect(firstCardBox).not.toBeNull();
+  expect(actionBox).not.toBeNull();
+  expect(actionBox!.width).toBeLessThan(firstCardBox!.width - 24);
+
+  await page.getByRole('button', { name: 'Nueva jornada' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Nueva jornada' });
+  const nameLabel = dialog.locator('label[for="hr-template-name"]');
+  const nameInput = dialog.getByLabel('Nombre');
+  const startInput = dialog.getByLabel('Entrada');
+  const endInput = dialog.getByLabel('Salida');
+  const desktopLabelBox = await nameLabel.boundingBox();
+  const desktopInputBox = await nameInput.boundingBox();
+  const desktopStartBox = await startInput.boundingBox();
+  const desktopEndBox = await endInput.boundingBox();
+  expect(desktopLabelBox).not.toBeNull();
+  expect(desktopInputBox).not.toBeNull();
+  expect(desktopStartBox).not.toBeNull();
+  expect(desktopEndBox).not.toBeNull();
+  expect(desktopLabelBox!.y + desktopLabelBox!.height).toBeLessThanOrEqual(desktopInputBox!.y);
+  expect(Math.abs(desktopStartBox!.y - desktopEndBox!.y)).toBeLessThanOrEqual(2);
+  expect(desktopStartBox!.x).toBeLessThan(desktopEndBox!.x);
+  expect(desktopInputBox!.width).toBeGreaterThan(desktopStartBox!.width * 1.8);
+  await expect.poll(() => nameLabel.evaluate((element) => ({
+    alignItems: getComputedStyle(element).alignItems,
+    textAlign: getComputedStyle(element).textAlign,
+  }))).toEqual({ alignItems: 'flex-start', textAlign: 'left' });
+  await expect.poll(() => dialog.locator('.hr-template-custom-color').evaluate((element) => ({
+    alignItems: getComputedStyle(element).alignItems,
+    flexDirection: getComputedStyle(element).flexDirection,
+    textAlign: getComputedStyle(element).textAlign,
+  }))).toEqual({ alignItems: 'center', flexDirection: 'row', textAlign: 'left' });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileLabelBox = await nameLabel.boundingBox();
+  const mobileInputBox = await nameInput.boundingBox();
+  const mobileStartBox = await startInput.boundingBox();
+  const mobileEndBox = await endInput.boundingBox();
+  expect(mobileLabelBox).not.toBeNull();
+  expect(mobileInputBox).not.toBeNull();
+  expect(mobileStartBox).not.toBeNull();
+  expect(mobileEndBox).not.toBeNull();
+  expect(mobileLabelBox!.y + mobileLabelBox!.height).toBeLessThanOrEqual(mobileInputBox!.y);
+  expect(mobileStartBox!.y).toBeLessThan(mobileEndBox!.y);
+});
+
 test('selector rápido asigna por teclado la jornada, horas y color al trabajador y día', async ({ page }) => {
   const mock = await mockScheduleCatalog(page, { templates: makeTemplates(2) });
   await openSchedules(page);
@@ -295,6 +359,85 @@ test('selector rápido asigna por teclado la jornada, horas y color al trabajado
   await expect.poll(async () => (
     await shiftCard.evaluate((element) => getComputedStyle(element).getPropertyValue('--shift-accent').trim().toUpperCase())
   )).toBe('#A16207');
+});
+
+test('un turno histórico sin jornada no se presenta como jornada configurada', async ({ page }) => {
+  const mock = await mockScheduleCatalog(page, { templates: makeTemplates(1) });
+  mock.state.schedule.shifts.push({
+    id: 710,
+    scheduleId: mock.state.schedule.id,
+    userId: worker.id,
+    branchId: branch.id,
+    jobPositionId: position.id,
+    shiftTemplateId: null,
+    templateNameSnapshot: null,
+    templateColorSnapshot: null,
+    date: '2026-07-20',
+    startTime: '08:00',
+    endTime: '22:00',
+    breakMinutes: 0,
+    paidBreak: false,
+    status: 'SCHEDULED',
+    timezoneSnapshot: 'America/Managua',
+    user: worker,
+    branch,
+    jobPosition: position,
+    shiftTemplate: null,
+  });
+
+  await openSchedules(page);
+
+  const legend = page.locator('.hr-shift-color-legend');
+  await expect(legend).toContainText('Leyenda de turnos');
+  await expect(legend).toContainText('Turno sin jornada configurada');
+  await expect(legend).not.toContainText('08:00–22:00');
+
+  const shiftCard = page.locator('.hr-shift-card').filter({ hasText: '08:00–22:00' }).first();
+  await expect(shiftCard).toContainText('Sin jornada configurada');
+  await expect.poll(async () => (
+    await shiftCard.evaluate((element) => getComputedStyle(element).getPropertyValue('--shift-accent').trim().toUpperCase())
+  )).toBe('#64748B');
+});
+
+test('editar un turno configurado conserva su jornada asociada', async ({ page }) => {
+  const templates = makeTemplates(1);
+  const mock = await mockScheduleCatalog(page, { templates });
+  mock.state.schedule.shifts.push({
+    id: 711,
+    scheduleId: mock.state.schedule.id,
+    userId: worker.id,
+    branchId: branch.id,
+    jobPositionId: position.id,
+    shiftTemplateId: templates[0].id,
+    templateNameSnapshot: templates[0].name,
+    templateColorSnapshot: templates[0].color,
+    date: '2026-07-20',
+    startTime: templates[0].startTime,
+    endTime: templates[0].endTime,
+    breakMinutes: templates[0].breakMinutes,
+    paidBreak: templates[0].paidBreak,
+    status: 'SCHEDULED',
+    timezoneSnapshot: 'America/Managua',
+    user: worker,
+    branch,
+    jobPosition: position,
+    shiftTemplate: templates[0],
+  });
+
+  await openSchedules(page);
+  await page.getByRole('button', { name: 'Editar turno de Trabajador QA' }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Editar turno' });
+  await expect(dialog.getByText('Matutina', { exact: true })).toBeVisible();
+  const continueButton = dialog.getByRole('button', { name: 'Continuar' });
+  await expect(continueButton).toHaveAttribute('type', 'button');
+  await continueButton.click();
+  await dialog.getByRole('button', { name: 'Guardar turno' }).click();
+
+  await expect.poll(() => mock.mutations.filter((item) => item.path.endsWith('/v1/hr/schedules/61')).length).toBe(1);
+  const update = mock.mutations.find((item) => item.path.endsWith('/v1/hr/schedules/61'))!;
+  const saved = (update.body.shifts as Array<Record<string, unknown>>)[0];
+  expect(saved.shiftTemplateId).toBe(templates[0].id);
 });
 
 test('administrador crea, edita y desactiva una jornada con revisión optimista', async ({ page }) => {

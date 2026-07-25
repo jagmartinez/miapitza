@@ -466,6 +466,11 @@
     overflow-wrap: anywhere;
 }
 
+.hr-shift-template-name.is-unconfigured,
+.hr-shift-color-legend > span.is-unconfigured {
+    color: var(--color-warning);
+}
+
 .hr-shift-time {
     margin-bottom: 5px;
     color: var(--color-text);

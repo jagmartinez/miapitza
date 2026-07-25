@@ -48,7 +48,7 @@ function stateFor(
         endTime: shift?.endTime.slice(0, 5) ?? '17:00',
         breakMinutes: String(shift?.breakMinutes ?? 0),
         notes: shift?.notes ?? '',
-        templateId: '',
+        templateId: shift?.shiftTemplateId ? String(shift.shiftTemplateId) : '',
     };
 }
 
@@ -319,7 +319,10 @@ export default function ScheduleShiftForm({
               <div className="modal-footer">
                 <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>
                 {!contextualCreate && activeTab === 'assignment'
-                    ? <Button type="button" onClick={() => setActiveTab('schedule')}>Continuar</Button>
+                    ? <Button type="button" onClick={(event) => {
+                        event.preventDefault();
+                        setActiveTab('schedule');
+                    }}>Continuar</Button>
                     : <Button type="submit" disabled={saving || (contextualCreate && !form.templateId)}>{saving ? 'Guardando…' : shift ? 'Guardar turno' : contextualCreate ? 'Asignar jornada' : 'Agregar turno'}</Button>}
               </div>
             </form>
