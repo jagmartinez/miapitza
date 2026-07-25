@@ -237,11 +237,20 @@ export default function Schedules() {
             ?? assignments[0]?.branchId
             ?? worker.branchId
             ?? undefined;
+        const defaultJobPositionId = worker.employee?.jobPositionId ?? undefined;
+        if (!defaultBranchId || !defaultJobPositionId) {
+            const missing = [
+                !defaultBranchId ? 'sucursal vigente' : null,
+                !defaultJobPositionId ? 'puesto' : null,
+            ].filter(Boolean).join(' y ');
+            showError(`No se puede agregar un turno para ${worker.name}: falta ${missing} en su expediente laboral.`);
+            return;
+        }
         openCreate({
             userId: worker.id,
             date,
             branchId: defaultBranchId,
-            jobPositionId: worker.employee?.jobPositionId ?? undefined,
+            jobPositionId: defaultJobPositionId,
         });
     };
 
@@ -437,18 +446,18 @@ export default function Schedules() {
             />
 
             <section className="hr-week-navigation" aria-label="Navegación semanal">
-                <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={mutationBusy} aria-label="Semana anterior"><ChevronLeft size={18} aria-hidden="true" /> Anterior</Button>
+                <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, -7))} disabled={mutationBusy || editorOpen} aria-label="Semana anterior"><ChevronLeft size={18} aria-hidden="true" /> Anterior</Button>
                 <div><span>Semana</span><strong>{weekLabel(weekStart)}</strong></div>
-                <Button variant="ghost" onClick={() => setWeekStart(currentWeek)} disabled={weekStart === currentWeek || mutationBusy}>Hoy</Button>
-                <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, 7))} disabled={mutationBusy} aria-label="Semana siguiente">Siguiente <ChevronRight size={18} aria-hidden="true" /></Button>
+                <Button variant="ghost" onClick={() => setWeekStart(currentWeek)} disabled={weekStart === currentWeek || mutationBusy || editorOpen}>Hoy</Button>
+                <Button variant="ghost" onClick={() => setWeekStart(addDaysDateOnly(weekStart, 7))} disabled={mutationBusy || editorOpen} aria-label="Semana siguiente">Siguiente <ChevronRight size={18} aria-hidden="true" /></Button>
             </section>
 
             <div className="filters-toolbar hr-schedule-filters">
-                <div className="filter-field"><Select<Option> label="Sucursal" options={branchOptions} value={branchOptions.find((option) => option.value === branchId)} onChange={(option: SingleValue<Option>) => setBranchId(option?.value ?? '')} isDisabled={mutationBusy} isSearchable /></div>
-                <div className="filter-field"><Select<Option> label="Usuario" options={userOptions} value={userOptions.find((option) => option.value === userId)} onChange={(option: SingleValue<Option>) => setUserId(option?.value ?? '')} isDisabled={mutationBusy} isSearchable /></div>
-                <div className="filter-field"><Select<Option> label="Puesto" options={positionOptions} value={positionOptions.find((option) => option.value === jobPositionId)} onChange={(option: SingleValue<Option>) => setJobPositionId(option?.value ?? '')} isDisabled={mutationBusy} isSearchable /></div>
+                <div className="filter-field"><Select<Option> label="Sucursal" options={branchOptions} value={branchOptions.find((option) => option.value === branchId)} onChange={(option: SingleValue<Option>) => setBranchId(option?.value ?? '')} isDisabled={mutationBusy || editorOpen} isSearchable /></div>
+                <div className="filter-field"><Select<Option> label="Usuario" options={userOptions} value={userOptions.find((option) => option.value === userId)} onChange={(option: SingleValue<Option>) => setUserId(option?.value ?? '')} isDisabled={mutationBusy || editorOpen} isSearchable /></div>
+                <div className="filter-field"><Select<Option> label="Puesto" options={positionOptions} value={positionOptions.find((option) => option.value === jobPositionId)} onChange={(option: SingleValue<Option>) => setJobPositionId(option?.value ?? '')} isDisabled={mutationBusy || editorOpen} isSearchable /></div>
                 <div className="filter-actions">
-                    <Button variant="ghost" disabled={mutationBusy} onClick={() => { setBranchId(''); setUserId(''); setJobPositionId(''); }}>Limpiar</Button>
+                    <Button variant="ghost" disabled={mutationBusy || editorOpen} onClick={() => { setBranchId(''); setUserId(''); setJobPositionId(''); }}>Limpiar</Button>
                     {!loading && !error && canManageSchedule && primarySchedule && <Button variant="secondary" disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void copyToNextWeek()}><ClipboardCopy size={17} aria-hidden="true" /> {mutationKind === 'copy' ? 'Copiando…' : 'Copiar semana'}</Button>}
                     {!loading && !error && canPublishSchedule && primarySchedule?.status === 'DRAFT' && <Button disabled={mutationBusy || hasActiveFilters || fromCache} onClick={() => void publish()}><Send size={17} aria-hidden="true" /> {mutationKind === 'publish' ? 'Publicando…' : 'Publicar semana'}</Button>}
                     {!loading && !error && canPublishSchedule && primarySchedule && ['DRAFT', 'PUBLISHED'].includes(primarySchedule.status) && (
@@ -467,7 +476,7 @@ export default function Schedules() {
             )}
 
             {fromCache && (
-                <div className="hr-schedule-alert info" role="status">
+                <div className="hr-schedule-alert warning" role="alert">
                     Mostrando una copia guardada sin conexión. La edición, publicación, cancelación y copia permanecerán bloqueadas hasta recuperar conexión.
                 </div>
             )}
@@ -478,27 +487,27 @@ export default function Schedules() {
             )}
 
             {!loading && !error && primarySchedule?.status === 'SUPERSEDED' && (
-                <div className="hr-schedule-alert info" role="status">
+                <p className="hr-schedule-context-note" role="status">
                     Mostrando una versión histórica sustituida por una publicación posterior; sus turnos ya no aplican a marcaje.
-                </div>
+                </p>
             )}
             {!loading && !error && historicalSchedules.length > 1 && (
-                <div className="hr-schedule-alert info" role="status">
+                <p className="hr-schedule-context-note" role="status">
                     Esta semana conserva {historicalSchedules.length} versiones canceladas o sustituidas en el historial de auditoría.
-                </div>
+                </p>
             )}
 
             {loadWarnings.length > 0 && (
-                <div className="hr-schedule-alert info" role="status">
+                <div className="hr-schedule-alert warning" role="alert">
                     <span>{loadWarnings.join(' ')}</span>
                     <Button size="sm" variant="ghost" disabled={mutationBusy} onClick={() => void loadWeek()}><RefreshCw size={15} aria-hidden="true" /> Reintentar auxiliares</Button>
                 </div>
             )}
 
             {hasActiveFilters && primarySchedule && (
-                <div className="hr-schedule-alert info" role="status">
+                <p className="hr-schedule-context-note" role="status">
                     Limpia los filtros para revisar el horario completo antes de publicarlo o copiarlo.
-                </div>
+                </p>
             )}
 
             {conflicts.length > 0 && (

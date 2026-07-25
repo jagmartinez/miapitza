@@ -40,7 +40,9 @@ async function mockApp(page: Page, activeUser = user) {
   }, activeUser);
 
   await page.route('**/api/**', async (route) => {
-    const path = new URL(route.request().url()).pathname;
+    const requestUrl = new URL(route.request().url());
+    const path = requestUrl.pathname;
+    const requestedWeekStart = requestUrl.searchParams.get('weekStart') ?? '2026-07-13';
     let data: unknown = [];
     if (path.endsWith('/auth/me')) data = activeUser;
     if (path.endsWith('/settings')) data = { currency_symbol: 'C$' };
@@ -80,7 +82,7 @@ async function mockApp(page: Page, activeUser = user) {
           images: [],
           active: true,
         },
-        ...Array.from({ length: 11 }, (_, index) => ({
+        ...Array.from({ length: 39 }, (_, index) => ({
           id: index + 2,
           name: `Producto de prueba ${index + 2}`,
           description: 'Producto para validar el desbordamiento del carrito',
@@ -186,7 +188,7 @@ async function mockApp(page: Page, activeUser = user) {
       data = [{
         id: 61,
         companyId: 7,
-        weekStart: '2026-07-13',
+        weekStart: requestedWeekStart,
         status: 'DRAFT',
         version: 1,
         revision: 1,
@@ -196,7 +198,7 @@ async function mockApp(page: Page, activeUser = user) {
           userId: 902,
           branchId: 10,
           jobPositionId: 4,
-          date: '2026-07-16',
+          date: requestedWeekStart,
           startTime: '08:00',
           endTime: '17:00',
           breakMinutes: 60,
@@ -240,6 +242,20 @@ async function mockApp(page: Page, activeUser = user) {
             jobPositionId: 4,
             branchAssignments: [{ branchId: 10, isPrimary: true }],
           },
+        }, {
+          id: 904,
+          name: 'Trabajador sin puesto',
+          username: 'sin-puesto',
+          status: 'ACTIVE',
+          accountType: 'INTERNAL',
+          branchId: 10,
+          employee: {
+            id: 323,
+            employeeCode: 'EMP-323',
+            status: 'ACTIVE',
+            jobPositionId: null,
+            branchAssignments: [{ branchId: 10, isPrimary: true }],
+          },
         }],
       };
     }
@@ -261,7 +277,7 @@ async function mockApp(page: Page, activeUser = user) {
       data = {
         schedules: [{
           id: 62,
-          weekStart: '2026-07-13',
+          weekStart: requestedWeekStart,
           status: 'PUBLISHED',
           version: 2,
           revision: 3,
@@ -273,7 +289,7 @@ async function mockApp(page: Page, activeUser = user) {
             userId: 902,
             branchId: 10,
             jobPositionId: 4,
-            date: '2026-07-16',
+            date: requestedWeekStart,
             startTime: '08:00',
             endTime: '17:00',
             breakMinutes: 60,
@@ -609,10 +625,25 @@ test('embedded POS keeps the cart total visible at 768px and scrolls only its it
       const cartArea = element.querySelector('.cart-area') as HTMLElement;
       const cart = element.querySelector('.order-cart') as HTMLElement;
       const list = element.querySelector('.cart-items-list') as HTMLElement;
+      const productArea = element.querySelector('.product-area') as HTMLElement;
       const cartFooter = element.querySelector('.cart-footer') as HTMLElement;
       const areaBox = cartArea.getBoundingClientRect();
       const cartBox = cart.getBoundingClientRect();
       const footerBox = cartFooter.getBoundingClientRect();
+      const getScrollbarStyle = (scrollable: HTMLElement) => {
+        const elementStyle = getComputedStyle(scrollable);
+        const barStyle = getComputedStyle(scrollable, '::-webkit-scrollbar');
+        const trackStyle = getComputedStyle(scrollable, '::-webkit-scrollbar-track');
+        const thumbStyle = getComputedStyle(scrollable, '::-webkit-scrollbar-thumb');
+        return {
+          standardWidth: elementStyle.scrollbarWidth,
+          standardColor: elementStyle.scrollbarColor,
+          webkitWidth: barStyle.width,
+          trackBackground: trackStyle.backgroundColor,
+          thumbBackground: thumbStyle.backgroundColor,
+          thumbRadius: thumbStyle.borderRadius,
+        };
+      };
       return {
         viewportHeight: window.innerHeight,
         areaBottom: areaBox.bottom,
@@ -622,6 +653,10 @@ test('embedded POS keeps the cart total visible at 768px and scrolls only its it
         listOverflowY: getComputedStyle(list).overflowY,
         listClientHeight: list.clientHeight,
         listScrollHeight: list.scrollHeight,
+        productClientHeight: productArea.clientHeight,
+        productScrollHeight: productArea.scrollHeight,
+        cartScrollbar: getScrollbarStyle(list),
+        productScrollbar: getScrollbarStyle(productArea),
       };
     });
 
@@ -630,6 +665,17 @@ test('embedded POS keeps the cart total visible at 768px and scrolls only its it
     expect(geometry.footerBottom).toBeLessThanOrEqual(geometry.cartBottom + 1);
     expect(geometry.cartBottom).toBeLessThanOrEqual(geometry.areaBottom + 1);
     expect(geometry.footerBottom).toBeLessThanOrEqual(geometry.viewportHeight + 1);
+    expect(geometry.cartScrollbar.standardWidth).toBe(geometry.productScrollbar.standardWidth);
+    expect(geometry.cartScrollbar.standardColor).toBe(geometry.productScrollbar.standardColor);
+    expect(geometry.cartScrollbar.webkitWidth).toBe(geometry.productScrollbar.webkitWidth);
+    expect(geometry.cartScrollbar.trackBackground).toBe(geometry.productScrollbar.trackBackground);
+    expect(geometry.cartScrollbar.thumbRadius).toBe(geometry.productScrollbar.thumbRadius);
+    expect(geometry.cartScrollbar.standardWidth).toBe('thin');
+    expect(geometry.cartScrollbar.webkitWidth).toBe('6px');
+    expect(geometry.cartScrollbar.trackBackground).toBe('rgba(0, 0, 0, 0)');
+    expect(geometry.cartScrollbar.thumbBackground).not.toBe('rgba(0, 0, 0, 0)');
+    expect(geometry.productScrollbar.thumbBackground).not.toBe('rgba(0, 0, 0, 0)');
+    expect(geometry.productScrollHeight).toBeGreaterThan(geometry.productClientHeight);
     if (expectItemOverflow) {
       expect(geometry.listScrollHeight).toBeGreaterThan(geometry.listClientHeight);
     }
@@ -637,12 +683,18 @@ test('embedded POS keeps the cart total visible at 768px and scrolls only its it
 
   await verifyCartGeometry();
   const products = pos.locator('.product-card-new');
-  await expect(products).toHaveCount(12);
+  await expect(products).toHaveCount(40);
   for (let index = 0; index < 12; index += 1) {
     await products.nth(index).click();
   }
   await expect(items.locator('.cart-item-compact')).toHaveCount(12);
   await verifyCartGeometry(true);
+  await items.focus();
+  await expect(items).toBeFocused();
+  const scrollTopBeforeKeyboard = await items.evaluate((element) => element.scrollTop);
+  await page.keyboard.press('PageDown');
+  await expect.poll(() => items.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(scrollTopBeforeKeyboard);
 
   await page.setViewportSize({ width: 1366, height: 768 });
   await verifyCartGeometry(true);
@@ -890,12 +942,28 @@ test('schedule matrix lists active workers without shifts and preselects worker-
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/rh/horarios');
 
+  await page.getByRole('button', { name: /Agregar turno para Trabajador sin puesto/ }).first().click();
+  await expect(page.getByText(/No se puede agregar un turno para Trabajador sin puesto/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Nuevo turno' })).toHaveCount(0);
+
   await expect(page.getByRole('rowheader', { name: /Trabajador sin turno/ })).toBeVisible();
   await page.getByRole('button', { name: /Agregar turno para Trabajador sin turno/ }).first().click();
   await expect(page.getByRole('heading', { name: 'Nuevo turno' })).toBeVisible();
-  await expect(page.getByText('Trabajador sin turno · @sin-turno')).toBeVisible();
-  await page.getByRole('button', { name: 'Continuar' }).click();
-  await expect(page.locator('#hr-shift-date')).not.toHaveValue('');
+  await expect(page.getByRole('heading', { name: 'Jornada' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Asignación' })).toHaveCount(0);
+  await expect(page.locator('#hr-shift-date')).toHaveCount(0);
+  await expect(page.locator('.hr-shift-modal-content .react-select__control')).toHaveCount(0);
+  await expect(page.locator('#hr-shift-start')).toBeVisible();
+  await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Nuevo turno' }).click();
+  await expect(page.getByRole('tab', { name: 'Asignación' })).toBeVisible();
+  await expect(page.locator('.hr-shift-modal-content .react-select__control')).toHaveCount(3);
+  await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
+
+  await page.getByRole('button', { name: /Editar turno de UI Review/ }).click();
+  await expect(page.getByRole('tab', { name: 'Asignación' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Jornada' })).toBeVisible();
 });
 
 test('employee portal and Profile expose a cohesive RH self-service entry point', async ({ page }) => {

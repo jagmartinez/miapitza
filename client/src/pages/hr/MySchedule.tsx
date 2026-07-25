@@ -92,7 +92,7 @@ export default function MySchedule() {
             </section>
 
             {fromCache && (
-                <div className="hr-schedule-alert info" role="status">
+                <div className="hr-schedule-alert warning" role="alert">
                     Estás consultando una copia guardada sin conexión. La confirmación de recepción se habilitará al recuperar conexión.
                 </div>
             )}

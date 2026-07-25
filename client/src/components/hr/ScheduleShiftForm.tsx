@@ -67,15 +67,16 @@ export default function ScheduleShiftForm({
     onCancel,
     onSubmit,
 }: ScheduleShiftFormProps) {
+    const contextualCreate = !shift && Boolean(initialAssignment);
     const [form, setForm] = useState(() => stateFor(weekStart, shift, initialAssignment));
     const [error, setError] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<FormTab>('assignment');
+    const [activeTab, setActiveTab] = useState<FormTab>(contextualCreate ? 'schedule' : 'assignment');
 
     useEffect(() => {
         setForm(stateFor(weekStart, shift, initialAssignment));
         setError(null);
-        setActiveTab('assignment');
-    }, [initialAssignment, shift, weekStart]);
+        setActiveTab(contextualCreate ? 'schedule' : 'assignment');
+    }, [contextualCreate, initialAssignment, shift, weekStart]);
 
     const activeTemplates = useMemo(() => templates.filter((template) => template.active !== false), [templates]);
     const overnight = shiftCrossesMidnight({ startTime: form.startTime, endTime: form.endTime });
@@ -102,8 +103,10 @@ export default function ScheduleShiftForm({
     const submit = async (event: React.FormEvent) => {
         event.preventDefault();
         if (!form.userId || !form.branchId || !form.jobPositionId) {
-            setError('Selecciona usuario, sucursal y puesto.');
-            setActiveTab('assignment');
+            setError(contextualCreate
+                ? 'No se puede programar esta celda porque faltan la sucursal o el puesto del trabajador.'
+                : 'Selecciona usuario, sucursal y puesto.');
+            if (!contextualCreate) setActiveTab('assignment');
             return;
         }
         if (!isDateInWeek(form.date, weekStart)) {
@@ -142,14 +145,14 @@ export default function ScheduleShiftForm({
 
     return (
         <div className="premium-modal-content hr-shift-modal-content">
-            <div className="modal-tabs" role="tablist" aria-label="Secciones del turno">
+            {!contextualCreate && <div className="modal-tabs" role="tablist" aria-label="Secciones del turno">
                 <button type="button" role="tab" aria-selected={activeTab === 'assignment'} className={`modal-tab ${activeTab === 'assignment' ? 'active' : ''}`} onClick={() => setActiveTab('assignment')}>
                     <UserRound size={18} aria-hidden="true" /><span>Asignación</span>
                 </button>
                 <button type="button" role="tab" aria-selected={activeTab === 'schedule'} className={`modal-tab ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => setActiveTab('schedule')}>
                     <Clock3 size={18} aria-hidden="true" /><span>Jornada</span>
                 </button>
-            </div>
+            </div>}
             <form className="modal-form-new hr-shift-form" onSubmit={submit}>
               <div className="modal-tab-content">
                 {error && <div className="hr-schedule-alert danger" role="alert">{error}</div>}
@@ -163,7 +166,7 @@ export default function ScheduleShiftForm({
                         </ul>
                     </div>
                 )}
-                {activeTab === 'assignment' && <section className="modal-content-group" role="tabpanel">
+                {!contextualCreate && activeTab === 'assignment' && <section className="modal-content-group" role="tabpanel">
                 <div className="modal-section-header"><UserRound size={18} aria-hidden="true" /><h3>Persona y lugar de trabajo</h3></div>
                 {activeTemplates.length > 0 && (
                     <Select<Option>
@@ -210,12 +213,12 @@ export default function ScheduleShiftForm({
                     />
                 </div>
                 </section>}
-                {activeTab === 'schedule' && <section className="modal-content-group" role="tabpanel">
-                <div className="modal-section-header"><Clock3 size={18} aria-hidden="true" /><h3>Fecha y horario</h3></div>
-                <div className="modal-input-group">
+                {activeTab === 'schedule' && <section className="modal-content-group" role={contextualCreate ? undefined : 'tabpanel'}>
+                <div className="modal-section-header"><Clock3 size={18} aria-hidden="true" /><h3>Jornada</h3></div>
+                {!contextualCreate && <div className="modal-input-group">
                     <label htmlFor="hr-shift-date">Fecha</label>
                     <input id="hr-shift-date" className="modal-standard-input" type="date" min={weekStart} max={addDaysDateOnly(weekStart, 6)} value={form.date} onChange={(event) => update('date', event.target.value)} required />
-                </div>
+                </div>}
                 <div className="modal-form-row">
                     <div className="modal-input-group">
                         <label htmlFor="hr-shift-start">Inicio</label>
@@ -226,7 +229,7 @@ export default function ScheduleShiftForm({
                         <input id="hr-shift-end" className="modal-standard-input" type="time" value={form.endTime} onChange={(event) => update('endTime', event.target.value)} required />
                     </div>
                 </div>
-                {overnight && <div className="hr-schedule-alert info"><Clock3 size={17} aria-hidden="true" /> El fin ocurre al día siguiente; el turno cruza medianoche.</div>}
+                {overnight && <p className="hr-shift-overnight-note"><Clock3 size={17} aria-hidden="true" /> El fin ocurre al día siguiente; el turno cruza medianoche.</p>}
                 <div className="modal-input-group">
                     <label htmlFor="hr-shift-break">Descanso no laborado (minutos)</label>
                     <input id="hr-shift-break" className="modal-standard-input" type="number" min="0" max="720" step="1" value={form.breakMinutes} onChange={(event) => update('breakMinutes', event.target.value)} />
@@ -239,7 +242,7 @@ export default function ScheduleShiftForm({
               </div>
               <div className="modal-footer">
                 <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancelar</Button>
-                {activeTab === 'assignment'
+                {!contextualCreate && activeTab === 'assignment'
                     ? <Button type="button" onClick={() => setActiveTab('schedule')}>Continuar</Button>
                     : <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : shift ? 'Guardar turno' : 'Agregar turno'}</Button>}
               </div>

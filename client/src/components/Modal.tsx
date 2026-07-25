@@ -9,6 +9,7 @@ interface ModalProps {
     onClose: () => void;
     title: string;
     children: ReactNode;
+    overlayClassName?: string;
     size?: 'sm' | 'md' | 'lg';
     variant?: 'center' | 'sidebar';
     closeOnBackdrop?: boolean;
@@ -22,6 +23,7 @@ export default function Modal({
     onClose,
     title,
     children,
+    overlayClassName = '',
     size = 'md',
     variant = 'center',
     closeOnBackdrop = true,
@@ -41,7 +43,7 @@ export default function Modal({
     return createPortal(
         <div
             ref={containerRef}
-            className={`modal-overlay ${variant === 'sidebar' ? 'modal-overlay-sidebar' : ''}`}
+            className={`modal-overlay ${variant === 'sidebar' ? 'modal-overlay-sidebar' : ''} ${overlayClassName}`.trim()}
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}

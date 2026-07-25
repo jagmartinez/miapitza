@@ -72,7 +72,12 @@ export default function OrderCart({
                 <span className="item-count">{cart.length} items</span>
             </div>
 
-            <div className="cart-items-list">
+            <div
+                className="cart-items-list"
+                role="region"
+                aria-label="Productos de la orden"
+                tabIndex={0}
+            >
                 {cart.length === 0 ? (
                     <div className="empty-cart-message">
                         <p>Sin productos</p>

@@ -101,8 +101,17 @@ interface FiscalCustomerForm {
     phone: string;
 }
 
+interface FiscalCustomerDraft extends FiscalCustomerForm {
+    customerName: string;
+}
+
 const EMPTY_FISCAL_CUSTOMER: FiscalCustomerForm = {
     taxId: '', taxIdType: '', fiscalAddress: '', email: '', phone: ''
+};
+
+const EMPTY_FISCAL_CUSTOMER_DRAFT: FiscalCustomerDraft = {
+    customerName: '',
+    ...EMPTY_FISCAL_CUSTOMER,
 };
 
 interface ShiftInfo {
@@ -161,6 +170,9 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const [customerName, setCustomerName] = useState('');
     const [fiscalCustomer, setFiscalCustomer] = useState<FiscalCustomerForm>(EMPTY_FISCAL_CUSTOMER);
     const [showFiscalCustomer, setShowFiscalCustomer] = useState(false);
+    const [fiscalCustomerDraft, setFiscalCustomerDraft] = useState<FiscalCustomerDraft>(EMPTY_FISCAL_CUSTOMER_DRAFT);
+    const [savingFiscalCustomer, setSavingFiscalCustomer] = useState(false);
+    const [fiscalCustomerError, setFiscalCustomerError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const debouncedSearch = useDebounce(searchQuery, 250);
     const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
@@ -774,6 +786,83 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         window.print();
     };
 
+    const openFiscalCustomerModal = useCallback(() => {
+        setFiscalCustomerDraft({
+            customerName,
+            ...fiscalCustomer,
+        });
+        setFiscalCustomerError(null);
+        setShowFiscalCustomer(true);
+    }, [customerName, fiscalCustomer]);
+
+    const closeFiscalCustomerModal = useCallback(() => {
+        if (savingFiscalCustomer) return;
+        setFiscalCustomerError(null);
+        setShowFiscalCustomer(false);
+    }, [savingFiscalCustomer]);
+
+    const saveFiscalCustomer = async () => {
+        const normalized: FiscalCustomerDraft = {
+            customerName: fiscalCustomerDraft.customerName.trim(),
+            taxId: fiscalCustomerDraft.taxId.trim(),
+            taxIdType: fiscalCustomerDraft.taxIdType.trim(),
+            fiscalAddress: fiscalCustomerDraft.fiscalAddress.trim(),
+            email: fiscalCustomerDraft.email.trim(),
+            phone: fiscalCustomerDraft.phone.trim(),
+        };
+        const hasTaxIdentity = Boolean(normalized.taxId || normalized.taxIdType);
+
+        if (hasTaxIdentity && (!normalized.customerName || !normalized.taxId || !normalized.taxIdType)) {
+            setFiscalCustomerError('Nombre, identificación tributaria y tipo de identificación deben registrarse juntos.');
+            return;
+        }
+        if (normalized.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized.email)) {
+            setFiscalCustomerError('El correo fiscal del cliente no es válido.');
+            return;
+        }
+
+        setSavingFiscalCustomer(true);
+        setFiscalCustomerError(null);
+        try {
+            if (currentOrderId) {
+                const response = await ordersAPI.updateFiscalCustomer(currentOrderId, {
+                    customerName: normalized.customerName,
+                    customerTaxId: normalized.taxId,
+                    customerTaxIdType: normalized.taxIdType,
+                    customerFiscalAddress: normalized.fiscalAddress,
+                    customerEmail: normalized.email,
+                    customerPhone: normalized.phone,
+                });
+                const persistedOrder = response.data.data as Order;
+                setActiveTableOrder((current) => (
+                    current?.id === currentOrderId
+                        ? { ...current, ...persistedOrder }
+                        : current
+                ));
+            }
+
+            setCustomerName(normalized.customerName);
+            setFiscalCustomer({
+                taxId: normalized.taxId,
+                taxIdType: normalized.taxIdType,
+                fiscalAddress: normalized.fiscalAddress,
+                email: normalized.email,
+                phone: normalized.phone,
+            });
+            setShowFiscalCustomer(false);
+            success(currentOrderId
+                ? 'Datos fiscales guardados en la orden.'
+                : 'Datos fiscales guardados para este pedido.');
+        } catch (error: unknown) {
+            const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message
+                || (error instanceof Error ? error.message : 'No se pudieron guardar los datos fiscales.');
+            setFiscalCustomerError(message);
+            showError(message);
+        } finally {
+            setSavingFiscalCustomer(false);
+        }
+    };
+
     const handlePayment = async () => {
         if (!canPay) {
             warning('Tu rol no puede registrar pagos. Pide apoyo a un cajero o administrador.');
@@ -1320,7 +1409,9 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                     <button
                         type="button"
                         className="header-action-btn secondary"
-                        onClick={() => setShowFiscalCustomer(true)}
+                        onClick={openFiscalCustomerModal}
+                        aria-haspopup="dialog"
+                        aria-expanded={showFiscalCustomer}
                         style={{ width: '100%', justifyContent: 'center', marginBottom: '0.75rem' }}
                     >
                         Datos fiscales del cliente
@@ -1432,38 +1523,55 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             {showFiscalCustomer && (
                 <Modal
                     isOpen
-                    onClose={() => setShowFiscalCustomer(false)}
+                    onClose={closeFiscalCustomerModal}
                     title="Datos fiscales del cliente"
+                    overlayClassName="pos-fiscal-modal-overlay"
                     size="lg"
+                    closeOnBackdrop={!savingFiscalCustomer}
+                    closeOnEscape={!savingFiscalCustomer}
                     description="Déjalos vacíos para consumidor final. Si registras identificación tributaria, nombre, tipo e identificación son obligatorios y quedarán congelados al emitir."
-                    footer={<Button type="button" onClick={() => setShowFiscalCustomer(false)}>Aceptar</Button>}
+                    footer={activeTableOrder?.invoiceNumber
+                        ? <Button type="button" onClick={closeFiscalCustomerModal}>Cerrar</Button>
+                        : (
+                            <>
+                                <Button type="button" variant="ghost" onClick={closeFiscalCustomerModal} disabled={savingFiscalCustomer}>
+                                    Cancelar
+                                </Button>
+                                <Button type="button" onClick={() => void saveFiscalCustomer()} disabled={savingFiscalCustomer}>
+                                    {savingFiscalCustomer ? 'Guardando...' : 'Guardar'}
+                                </Button>
+                            </>
+                        )}
                 >
                         <div className="pos-fiscal-grid">
-                            <label>
+                            <label htmlFor="pos-fiscal-customer-name">
                                 Nombre o razón social
-                                <input className="input" value={customerName} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setCustomerName(event.target.value)} />
+                                <input id="pos-fiscal-customer-name" className="input" value={fiscalCustomerDraft.customerName} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, customerName: event.target.value }))} placeholder="Consumidor final" />
                             </label>
-                            <label>
+                            <label htmlFor="pos-fiscal-tax-id-type">
                                 Tipo de identificación
-                                <input className="input" value={fiscalCustomer.taxIdType} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, taxIdType: event.target.value }))} placeholder="RUC, NIT u otro configurado" />
+                                <input id="pos-fiscal-tax-id-type" className="input" value={fiscalCustomerDraft.taxIdType} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, taxIdType: event.target.value }))} placeholder="RUC, NIT u otro configurado" />
                             </label>
-                            <label>
+                            <label htmlFor="pos-fiscal-tax-id">
                                 Identificación tributaria
-                                <input className="input" value={fiscalCustomer.taxId} maxLength={100} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, taxId: event.target.value }))} />
+                                <input id="pos-fiscal-tax-id" className="input" value={fiscalCustomerDraft.taxId} maxLength={100} disabled={Boolean(activeTableOrder?.invoiceNumber) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, taxId: event.target.value }))} />
                             </label>
-                            <label>
+                            <label htmlFor="pos-fiscal-phone">
                                 Teléfono
-                                <input className="input" value={fiscalCustomer.phone} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, phone: event.target.value }))} />
+                                <input id="pos-fiscal-phone" className="input" value={fiscalCustomerDraft.phone} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, phone: event.target.value }))} />
                             </label>
-                            <label className="pos-fiscal-span-full">
+                            <label className="pos-fiscal-span-full" htmlFor="pos-fiscal-address">
                                 Dirección fiscal
-                                <textarea className="input" rows={2} value={fiscalCustomer.fiscalAddress} maxLength={1000} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, fiscalAddress: event.target.value }))} />
+                                <textarea id="pos-fiscal-address" className="input" rows={2} value={fiscalCustomerDraft.fiscalAddress} maxLength={1000} disabled={Boolean(activeTableOrder?.invoiceNumber) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, fiscalAddress: event.target.value }))} />
                             </label>
-                            <label className="pos-fiscal-span-full">
+                            <label className="pos-fiscal-span-full" htmlFor="pos-fiscal-email">
                                 Correo
-                                <input className="input" type="email" value={fiscalCustomer.email} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber)} onChange={(event) => setFiscalCustomer((current) => ({ ...current, email: event.target.value }))} />
+                                <input id="pos-fiscal-email" className="input" type="email" value={fiscalCustomerDraft.email} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, email: event.target.value }))} />
                             </label>
                         </div>
+                        {fiscalCustomerError && (
+                            <p className="pos-fiscal-error" role="alert">{fiscalCustomerError}</p>
+                        )}
                         {activeTableOrder?.invoiceNumber && (
                             <p className="shift-warning-note">La factura ya fue emitida; estos datos son de solo lectura.</p>
                         )}

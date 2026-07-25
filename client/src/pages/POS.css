@@ -1,6 +1,9 @@
 /* ===== NEW POS DESIGN ===== */
 
 .pos-container-new {
+    --pos-scrollbar-size: 6px;
+    --pos-scrollbar-thumb: var(--color-border);
+    --pos-scrollbar-thumb-hover: var(--color-text-tertiary);
     display: flex;
     flex-direction: column;
     height: calc(100vh - 48px);
@@ -505,26 +508,37 @@
 }
 
 /* Custom Scrollbars */
+.category-sidebar,
+.product-area,
+.cart-items-list {
+    scrollbar-width: thin;
+    scrollbar-color: var(--pos-scrollbar-thumb) transparent;
+}
+
 .category-sidebar::-webkit-scrollbar,
-.product-area::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+.product-area::-webkit-scrollbar,
+.cart-items-list::-webkit-scrollbar {
+    width: var(--pos-scrollbar-size);
+    height: var(--pos-scrollbar-size);
 }
 
 .category-sidebar::-webkit-scrollbar-track,
-.product-area::-webkit-scrollbar-track {
+.product-area::-webkit-scrollbar-track,
+.cart-items-list::-webkit-scrollbar-track {
     background: transparent;
 }
 
 .category-sidebar::-webkit-scrollbar-thumb,
-.product-area::-webkit-scrollbar-thumb {
-    background: var(--color-border);
+.product-area::-webkit-scrollbar-thumb,
+.cart-items-list::-webkit-scrollbar-thumb {
+    background: var(--pos-scrollbar-thumb);
     border-radius: 10px;
 }
 
 .category-sidebar::-webkit-scrollbar-thumb:hover,
-.product-area::-webkit-scrollbar-thumb:hover {
-    background: var(--color-text-tertiary);
+.product-area::-webkit-scrollbar-thumb:hover,
+.cart-items-list::-webkit-scrollbar-thumb:hover {
+    background: var(--pos-scrollbar-thumb-hover);
 }
 
 /* Responsive */
@@ -1037,6 +1051,10 @@
     width: 100%;
 }
 
+.modal-overlay.pos-fiscal-modal-overlay {
+    z-index: 1600;
+}
+
 .pos-fiscal-grid label {
     display: flex;
     flex-direction: column;
@@ -1068,6 +1086,12 @@
 
 .pos-fiscal-grid textarea { min-height: 86px; resize: vertical; }
 .pos-fiscal-span-full { grid-column: 1 / -1; }
+.pos-fiscal-error {
+    margin: var(--spacing-md) 0 0;
+    color: var(--color-error);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+}
 
 .pos-dialog-icon {
     display: grid;
