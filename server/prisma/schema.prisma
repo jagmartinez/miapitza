@@ -977,7 +977,7 @@ model StorageIdentity {
 model ShiftTemplate {
   id            Int      @id @default(autoincrement())
   companyId     Int
-  branchId      Int
+  branchId      Int?
   jobPositionId Int?
   name          String
   code          String
@@ -986,7 +986,7 @@ model ShiftTemplate {
   endMinute     Int
   breakMinutes  Int      @default(0)
   paidBreak     Boolean  @default(false)
-  timezone      String   @db.VarChar(64)
+  timezone      String?  @db.VarChar(64)
   notes         String?  @db.Text
   active        Boolean  @default(true)
   revision      Int      @default(0)
@@ -994,7 +994,7 @@ model ShiftTemplate {
   updatedAt     DateTime @updatedAt
 
   company     Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  branch      Branch           @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  branch      Branch?          @relation(fields: [branchId], references: [id], onDelete: Restrict)
   jobPosition JobPosition?     @relation(fields: [jobPositionId], references: [id], onDelete: SetNull)
   shifts      ScheduledShift[]
 

@@ -120,7 +120,7 @@ export interface HrShiftTemplate {
     revision: number;
     name: string;
     code?: string | null;
-    branchId: number;
+    branchId: number | null;
     jobPositionId?: number | null;
     startTime: string;
     endTime: string;
@@ -135,14 +135,14 @@ export interface HrShiftTemplate {
 }
 
 export interface HrShiftTemplateCreatePayload {
-    branchId: number;
+    branchId?: number | null;
     jobPositionId?: number | null;
     name: string;
-    code: string;
+    code?: string;
     startTime: string;
     endTime: string;
     breakMinutes: number;
-    paidBreak: boolean;
+    paidBreak?: boolean;
     notes?: string | null;
     color: string;
 }

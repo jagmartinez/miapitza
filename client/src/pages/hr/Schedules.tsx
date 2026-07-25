@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SingleValue } from 'react-select';
+import { useNavigate } from 'react-router-dom';
 import {
     CalendarDays,
     ChevronLeft,
@@ -17,10 +18,6 @@ import Select from '../../components/Select';
 import Sidebar from '../../components/Sidebar';
 import ScheduleShiftForm from '../../components/hr/ScheduleShiftForm';
 import ScheduleWeekView from '../../components/hr/ScheduleWeekView';
-import {
-    ShiftTemplateCatalog,
-    ShiftTemplateForm,
-} from '../../components/hr/ShiftTemplateCatalog';
 import {
     addDaysDateOnly,
     existingShiftApiInput,
@@ -44,14 +41,13 @@ import type {
     HrScheduleShift,
     HrScheduleShiftInput,
     HrShiftTemplate,
-    HrShiftTemplateCreatePayload,
     HrWeeklySchedule,
 } from '../../types/hr-schedule';
 import { getUserRoleNames, hasPermission } from '../../utils/authz';
 import './schedule.css';
 
 type Option = { value: string; label: string };
-type MutationKind = 'save' | 'delete' | 'publish' | 'copy' | 'cancel' | 'template-save' | 'template-status';
+type MutationKind = 'save' | 'delete' | 'publish' | 'copy' | 'cancel';
 
 const EMPTY_LOOKUPS: HrScheduleLookups = { positions: [], branches: [], users: [] };
 const weekFormatter = new Intl.DateTimeFormat('es-NI', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
@@ -74,6 +70,7 @@ function filteredSchedules(schedules: HrWeeklySchedule[], branchId: string, user
 }
 
 export default function Schedules() {
+    const navigate = useNavigate();
     const { user } = useAuth();
     const { confirm } = useConfirmDialog();
     const { success: showSuccess, error: showError } = useAppToast();
@@ -87,17 +84,13 @@ export default function Schedules() {
     const [schedules, setSchedules] = useState<HrWeeklySchedule[]>([]);
     const [holidays, setHolidays] = useState<HrHoliday[]>([]);
     const [templates, setTemplates] = useState<HrShiftTemplate[]>([]);
-    const [templateCatalogLoadError, setTemplateCatalogLoadError] = useState<string | null>(null);
+    const [templateLoadError, setTemplateLoadError] = useState<string | null>(null);
     const [conflicts, setConflicts] = useState<HrScheduleConflict[]>([]);
     const [loadWarnings, setLoadWarnings] = useState<string[]>([]);
     const [fromCache, setFromCache] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [editorOpen, setEditorOpen] = useState(false);
-    const [templateEditorOpen, setTemplateEditorOpen] = useState(false);
-    const [editingTemplate, setEditingTemplate] = useState<HrShiftTemplate | null>(null);
-    const [templateError, setTemplateError] = useState<string | null>(null);
-    const [returnToShiftAfterTemplate, setReturnToShiftAfterTemplate] = useState(false);
     const [editingShift, setEditingShift] = useState<HrScheduleShift | null>(null);
     const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null);
     const [editingScheduleRevision, setEditingScheduleRevision] = useState<number | null>(null);
@@ -115,8 +108,7 @@ export default function Schedules() {
     scopeRef.current = scopeKey;
     const mutationBusy = mutationKind !== null;
     const saving = mutationKind === 'save';
-    const templateSaving = mutationKind === 'template-save';
-    const anyEditorOpen = editorOpen || templateEditorOpen;
+    const anyEditorOpen = editorOpen;
     const hasActiveFilters = Boolean(branchId || userId || jobPositionId);
     const roleNames = getUserRoleNames(user);
     const hasCompanyWideRole = roleNames.includes(ROLES.SUPERADMIN) || roleNames.includes(ROLES.ADMIN);
@@ -150,7 +142,6 @@ export default function Schedules() {
         setLoading(true);
         setError(null);
         setLoadWarnings([]);
-        setTemplateCatalogLoadError(null);
         try {
             const numericBranchId = branchId ? Number(branchId) : undefined;
             const [scheduleState, holidayState, templateState] = await Promise.allSettled([
@@ -173,7 +164,11 @@ export default function Schedules() {
                 warnings.push(getScheduleErrorMessage(holidayState.reason, 'No se pudieron actualizar los feriados.'));
             }
             if (templateState.status === 'rejected') {
-                setTemplateCatalogLoadError(getScheduleErrorMessage(templateState.reason, 'No se pudieron cargar las jornadas configuradas.'));
+                const message = getScheduleErrorMessage(templateState.reason, 'No se pudieron cargar las jornadas configuradas.');
+                warnings.push(message);
+                setTemplateLoadError(message);
+            } else {
+                setTemplateLoadError(null);
             }
             setSchedules(scheduleResult.schedules);
             setConflicts(scheduleResult.conflicts);
@@ -186,7 +181,7 @@ export default function Schedules() {
             setSchedules([]);
             setHolidays([]);
             setTemplates([]);
-            setTemplateCatalogLoadError(null);
+            setTemplateLoadError(null);
             setConflicts([]);
             setFromCache(false);
             setLoadWarnings([]);
@@ -286,138 +281,20 @@ export default function Schedules() {
         setEditingScheduleRevision(null);
     };
 
-    const openTemplateCreate = () => {
-        if (!canManageSchedule || mutationBusy || fromCache || editorOpen) return;
-        setEditingTemplate(null);
-        setTemplateError(null);
-        setReturnToShiftAfterTemplate(false);
-        setTemplateEditorOpen(true);
-    };
-
-    const openTemplateEdit = (template: HrShiftTemplate) => {
-        if (!canManageSchedule || mutationBusy || fromCache || editorOpen) return;
-        setEditingTemplate(template);
-        setTemplateError(null);
-        setReturnToShiftAfterTemplate(false);
-        setTemplateEditorOpen(true);
-    };
-
-    const closeTemplateEditor = () => {
-        if (templateSaving) return;
-        setTemplateEditorOpen(false);
-        setEditingTemplate(null);
-        setTemplateError(null);
-        if (returnToShiftAfterTemplate) {
-            setReturnToShiftAfterTemplate(false);
-            setEditorOpen(true);
-        }
-    };
-
     const configureTemplatesFromShift = () => {
         if (saving) return;
-        setEditorOpen(false);
-        setEditingTemplate(null);
-        setTemplateError(null);
-        setReturnToShiftAfterTemplate(true);
-        setTemplateEditorOpen(true);
+        navigate('/rh/horarios/jornadas');
     };
 
-    const refreshTemplateCatalog = async (): Promise<HrShiftTemplate[]> => {
+    const retryTemplates = async () => {
         try {
             const latest = await scheduleClient.getShiftTemplates(branchId ? Number(branchId) : undefined);
             setTemplates(latest);
-            setTemplateCatalogLoadError(null);
-            return latest;
-        } catch (catalogError) {
-            setTemplateCatalogLoadError(getScheduleErrorMessage(catalogError, 'No se pudieron cargar las jornadas configuradas.'));
-            throw catalogError;
-        }
-    };
-
-    const saveTemplate = async (payload: HrShiftTemplateCreatePayload) => {
-        if (!beginMutation('template-save')) return;
-        setTemplateError(null);
-        try {
-            const savedTemplate = editingTemplate
-                ? await scheduleClient.updateShiftTemplate(editingTemplate.id, {
-                    ...payload,
-                    expectedRevision: editingTemplate.revision,
-                })
-                : await scheduleClient.createShiftTemplate(payload);
-            try {
-                await refreshTemplateCatalog();
-            } catch {
-                setTemplates((current) => [
-                    ...current.filter((template) => template.id !== savedTemplate.id),
-                    savedTemplate,
-                ].sort((left, right) => left.name.localeCompare(right.name, 'es')));
-                setLoadWarnings((current) => [
-                    ...current,
-                    'La jornada fue guardada, pero no se pudo refrescar el catálogo completo.',
-                ]);
-            }
-            showSuccess(editingTemplate ? 'Jornada actualizada.' : 'Jornada creada.');
-            setTemplateEditorOpen(false);
-            setEditingTemplate(null);
-            if (returnToShiftAfterTemplate) {
-                setReturnToShiftAfterTemplate(false);
-                setEditorOpen(true);
-            }
-        } catch (templateSaveError) {
-            const status = (templateSaveError as { response?: { status?: number } })?.response?.status;
-            if (status === 409 && editingTemplate) {
-                try {
-                    const latest = await refreshTemplateCatalog();
-                    setEditingTemplate(latest.find((template) => template.id === editingTemplate.id) ?? editingTemplate);
-                    setTemplateError('Otra persona modificó esta jornada. Recargamos la versión vigente; revisa los datos antes de guardar otra vez.');
-                } catch {
-                    setTemplateError('Otra persona modificó esta jornada y no fue posible recargarla. Cierra el editor y vuelve a intentarlo.');
-                }
-            } else {
-                setTemplateError(getScheduleErrorMessage(templateSaveError, 'No fue posible guardar la jornada.'));
-            }
-        } finally {
-            finishMutation();
-        }
-    };
-
-    const toggleTemplateActive = async (template: HrShiftTemplate) => {
-        if (!beginMutation('template-status')) return;
-        const activating = template.active === false;
-        const accepted = activating || await confirm(
-            'La jornada dejará de estar disponible para nuevas asignaciones. Los turnos ya guardados conservarán sus horas, color y trazabilidad.',
-            { title: `Desactivar ${template.name}`, confirmText: 'Desactivar', variant: 'warning' },
-        );
-        if (!accepted) {
-            finishMutation();
-            return;
-        }
-        try {
-            const updatedTemplate = await scheduleClient.setShiftTemplateActive(template.id, activating, template.revision);
-            try {
-                await refreshTemplateCatalog();
-            } catch {
-                setTemplates((current) => current.map((item) => item.id === updatedTemplate.id ? updatedTemplate : item));
-                setLoadWarnings((current) => [
-                    ...current,
-                    'El estado de la jornada cambió, pero no se pudo refrescar el catálogo completo.',
-                ]);
-            }
-            showSuccess(activating ? 'Jornada reactivada.' : 'Jornada desactivada.');
-        } catch (templateStatusError) {
-            const status = (templateStatusError as { response?: { status?: number } })?.response?.status;
-            if (status === 409) {
-                try {
-                    await refreshTemplateCatalog();
-                    showError('La jornada cambió mientras realizabas la acción. El catálogo fue recargado; revisa su estado vigente.');
-                } catch {
-                    showError('La jornada cambió y no fue posible recargar el catálogo. Inténtalo nuevamente.');
-                }
-            } else {
-                showError(getScheduleErrorMessage(templateStatusError, 'No fue posible cambiar el estado de la jornada.'));
-            }
-        } finally {
-            finishMutation();
+            setTemplateLoadError(null);
+            setLoadWarnings((current) => current.filter((warning) => warning !== templateLoadError));
+        } catch (retryError) {
+            const message = getScheduleErrorMessage(retryError, 'No se pudieron cargar las jornadas configuradas.');
+            setTemplateLoadError(message);
         }
     };
 
@@ -613,20 +490,6 @@ export default function Schedules() {
                 </div>
             </div>
 
-            {!loading && !error && !lookupsError && (
-                <ShiftTemplateCatalog
-                    templates={templates}
-                    branches={lookups.branches}
-                    canManage={canManageSchedule}
-                    disabled={mutationBusy || fromCache || anyEditorOpen}
-                    error={templateCatalogLoadError}
-                    onCreate={openTemplateCreate}
-                    onEdit={openTemplateEdit}
-                    onRetry={() => void refreshTemplateCatalog().catch(() => undefined)}
-                    onToggleActive={(template) => void toggleTemplateActive(template)}
-                />
-            )}
-
             {lookupsError && (
                 <div className="hr-schedule-alert danger" role="alert">
                     <AlertTriangle size={18} aria-hidden="true" /><span>{lookupsError}</span>
@@ -704,35 +567,17 @@ export default function Schedules() {
                     branches={lookups.branches ?? []}
                     positions={lookups.positions}
                     templates={templates}
+                    templateLoadError={templateLoadError}
                     initialAssignment={newShiftDefaults}
                     conflicts={conflicts}
                     saving={saving}
                     onCancel={closeEditor}
                     onConfigureTemplates={configureTemplatesFromShift}
+                    onRetryTemplates={() => void retryTemplates()}
                     onSubmit={saveShift}
                 />
             </Sidebar>
 
-            <Sidebar
-                isOpen={templateEditorOpen}
-                onClose={closeTemplateEditor}
-                title={editingTemplate ? 'Editar jornada' : 'Nueva jornada'}
-                width="large"
-                closeOnBackdrop={!templateSaving}
-                closeOnEscape={!templateSaving}
-            >
-                <ShiftTemplateForm
-                    template={editingTemplate}
-                    initialBranchId={!editingTemplate ? newShiftDefaults?.branchId ?? (branchId ? Number(branchId) : undefined) : undefined}
-                    initialJobPositionId={!editingTemplate ? newShiftDefaults?.jobPositionId : undefined}
-                    branches={lookups.branches}
-                    positions={lookups.positions}
-                    saving={templateSaving}
-                    error={templateError}
-                    onCancel={closeTemplateEditor}
-                    onSubmit={saveTemplate}
-                />
-            </Sidebar>
         </div>
     );
 }

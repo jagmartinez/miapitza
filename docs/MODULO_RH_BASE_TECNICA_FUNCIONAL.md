@@ -117,8 +117,8 @@ Para DST:
 
 ### Entidades y estados
 
-- `ShiftTemplate`: catálogo reutilizable por empresa/sucursal, con puesto opcional,
-  horas, descanso, color, baja lógica y revisión optimista.
+- `ShiftTemplate`: catálogo reutilizable global por empresa o heredado por sucursal,
+  con puesto opcional, horas, descanso, color, baja lógica y revisión optimista.
 - `WeeklySchedule`: `DRAFT -> PUBLISHED -> SUPERSEDED`; `DRAFT/PUBLISHED -> CANCELLED`.
 - `ScheduledShift`: conserva nombre y color de la jornada como snapshots para que
   un horario publicado no cambie visualmente cuando se edita el catálogo.
@@ -133,6 +133,8 @@ Para DST:
 - Se admiten turnos partidos y nocturnos; se rechazan solapes del asignado efectivo.
 - Al asignar una jornada configurada, el servidor deriva autoritativamente horas,
   descanso, zona y snapshots; rechaza datos que contradigan la plantilla.
+- Las jornadas globales toman la sucursal y zona horaria del turno asignado. Las
+  plantillas históricas vinculadas a una sucursal conservan esa restricción.
 - Las mutaciones del catálogo usan `expectedRevision`; una jornada referenciada
   por un borrador no se edita ni desactiva hasta reemplazar esa asignación.
 - Copiar una semana conserva los valores y colores históricos sin reinterpretarlos
@@ -144,9 +146,11 @@ Para DST:
 
 ### UI
 
-- Owner: `/rh/horarios`, con catálogo de jornadas y color configurable. La
-  asignación rápida se inicia en la celda empleado/día y sólo solicita elegir
-  una jornada activa compatible con sucursal y puesto.
+- Owner: `/rh/horarios` contiene únicamente el calendario y la asignación rápida
+  iniciada desde la celda empleado/día.
+- Owner: `/rh/horarios/jornadas` administra el catálogo reutilizable. El formulario
+  visible solicita sólo nombre, entrada, salida, descanso, notas y color; código,
+  alcance y zona horaria se resuelven internamente.
 - Empleado interno: `/rh/mi-portal/horario`.
 
 ## 7. Biometría y marcaje
@@ -394,7 +398,7 @@ Base: `/api/v1/hr`.
 Owner:
 
 - `/rh`, `/rh/personal`, `/rh/personal/:employeeId`.
-- `/rh/horarios`.
+- `/rh/horarios`, `/rh/horarios/jornadas`.
 - `/rh/asistencia`, `/rh/asistencia/configuracion`.
 - `/rh/jornadas`, `/rh/ausencias`.
 - `/rh/nomina`, `/rh/prestaciones`.

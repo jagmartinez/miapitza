@@ -24,9 +24,11 @@ interface ScheduleShiftFormProps {
         date?: string;
     } | null;
     conflicts?: Array<{ code: string; message: string }>;
+    templateLoadError?: string | null;
     saving?: boolean;
     onCancel: () => void;
     onConfigureTemplates?: () => void;
+    onRetryTemplates?: () => void;
     onSubmit: (shift: HrScheduleShiftInput) => Promise<void> | void;
 }
 
@@ -64,9 +66,11 @@ export default function ScheduleShiftForm({
     templates = [],
     initialAssignment,
     conflicts = [],
+    templateLoadError,
     saving = false,
     onCancel,
     onConfigureTemplates,
+    onRetryTemplates,
     onSubmit,
 }: ScheduleShiftFormProps) {
     const contextualCreate = !shift && Boolean(initialAssignment);
@@ -84,7 +88,7 @@ export default function ScheduleShiftForm({
     const compatibleTemplates = useMemo(() => {
         if (!contextualCreate) return activeTemplates;
         return activeTemplates.filter((template) =>
-            template.branchId === initialAssignment?.branchId &&
+            (template.branchId === null || template.branchId === initialAssignment?.branchId) &&
             (!template.jobPositionId || template.jobPositionId === initialAssignment?.jobPositionId)
         );
     }, [activeTemplates, contextualCreate, initialAssignment?.branchId, initialAssignment?.jobPositionId]);
@@ -104,7 +108,7 @@ export default function ScheduleShiftForm({
                 endTime: template.endTime.slice(0, 5),
                 breakMinutes: String(template.breakMinutes ?? 0),
                 ...(!contextualCreate ? {
-                    branchId: String(template.branchId),
+                    branchId: template.branchId === null ? current.branchId : String(template.branchId),
                     jobPositionId: template.jobPositionId ? String(template.jobPositionId) : current.jobPositionId,
                 } : {}),
             } : {}),
@@ -247,7 +251,16 @@ export default function ScheduleShiftForm({
                 </section>}
                 {activeTab === 'schedule' && <section className="modal-content-group" role={contextualCreate ? undefined : 'tabpanel'}>
                 {contextualCreate ? (
-                    compatibleTemplates.length > 0 ? (
+                    templateLoadError ? (
+                        <div className="hr-schedule-alert danger" role="alert">
+                            <span>{templateLoadError}</span>
+                            {onRetryTemplates && (
+                                <Button type="button" size="sm" variant="ghost" onClick={onRetryTemplates}>
+                                    Reintentar jornadas
+                                </Button>
+                            )}
+                        </div>
+                    ) : compatibleTemplates.length > 0 ? (
                         <Select<Option>
                             variant="modal"
                             label="Jornada configurada"
@@ -265,7 +278,7 @@ export default function ScheduleShiftForm({
                             placeholder="Selecciona una jornada"
                         />
                     ) : (
-                        <div className="hr-template-empty is-contextual" role="status">
+                        <div className="hr-shift-template-empty" role="status">
                             <Clock3 size={25} aria-hidden="true" />
                             <span>No hay jornadas activas compatibles con la sucursal y el puesto de este trabajador.</span>
                             {onConfigureTemplates && (

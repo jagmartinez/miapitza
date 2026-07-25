@@ -94,6 +94,7 @@ const HrDashboard = lazy(() => import('./pages/hr/HrDashboard'));
 const Employees = lazy(() => import('./pages/hr/Employees'));
 const EmployeeDetail = lazy(() => import('./pages/hr/EmployeeDetail'));
 const Schedules = lazy(() => import('./pages/hr/Schedules'));
+const ShiftTemplates = lazy(() => import('./pages/hr/ShiftTemplates'));
 const MySchedule = lazy(() => import('./pages/hr/MySchedule'));
 const TimeClock = lazy(() => import('./pages/hr/TimeClock'));
 const Biometrics = lazy(() => import('./pages/hr/Biometrics'));
@@ -145,6 +146,7 @@ function App() {
                                 <Route path="/rh/personal" element={<RoleGuard roles={HR_OWNER} permission="hr.employee.read"><Employees /></RoleGuard>} />
                                 <Route path="/rh/personal/:employeeId" element={<RoleGuard roles={HR_OWNER} permission="hr.employee.read"><EmployeeDetail /></RoleGuard>} />
                                 <Route path="/rh/horarios" element={<RoleGuard roles={HR_OWNER} permission="hr.schedule.read"><Schedules /></RoleGuard>} />
+                                <Route path="/rh/horarios/jornadas" element={<RoleGuard roles={HR_OWNER} permission="hr.schedule.read"><ShiftTemplates /></RoleGuard>} />
                                 <Route path="/rh/asistencia" element={<RoleGuard roles={HR_OWNER} permission="hr.attendance.review"><AttendanceReview /></RoleGuard>} />
                                 <Route path="/rh/asistencia/configuracion" element={<RoleGuard roles={HR_OWNER} permission="hr.attendance.manage"><AttendanceSettings /></RoleGuard>} />
                                 <Route path="/rh/jornadas" element={<RoleGuard roles={HR_OWNER} permission="hr.workforce.read"><AttendanceManagement /></RoleGuard>} />

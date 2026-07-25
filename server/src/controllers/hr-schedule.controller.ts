@@ -79,7 +79,13 @@ export class HrScheduleController {
 
     static async createTemplate(req: Request, res: Response, next: NextFunction) {
         try {
-            const data = await ShiftTemplateService.create(req.user!.companyId, req.body, req.user!.userId, branchScope(req, Number(req.body.branchId)));
+            const requestedBranchId = queryId(req.body.branchId);
+            const data = await ShiftTemplateService.create(
+                req.user!.companyId,
+                req.body,
+                req.user!.userId,
+                branchScope(req, requestedBranchId),
+            );
             res.status(201).json({ success: true, data, message: 'Plantilla de turno creada' });
         } catch (error) { handleError(error, res, next); }
     }

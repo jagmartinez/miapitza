@@ -8,6 +8,10 @@ describe('HR shift-template persistence and API contract', () => {
         path.resolve(__dirname, '../../../prisma/migrations/20260725_add_shift_template_color_snapshots/migration.sql'),
         'utf8',
     );
+    const companyWideMigration = fs.readFileSync(
+        path.resolve(__dirname, '../../../prisma/migrations/20260725_shift_templates_company_wide/migration.sql'),
+        'utf8',
+    );
     const routes = fs.readFileSync(path.resolve(__dirname, '../../routes/hr-schedule.routes.ts'), 'utf8');
     const controller = fs.readFileSync(path.resolve(__dirname, '../../controllers/hr-schedule.controller.ts'), 'utf8');
     const service = fs.readFileSync(path.resolve(__dirname, '../../services/hr-schedule.service.ts'), 'utf8');
@@ -23,12 +27,23 @@ describe('HR shift-template persistence and API contract', () => {
         expect(migration).toContain('`shift`.`templateColorSnapshot` = `template`.`color`');
     });
 
+    it('supports additive company-wide templates while preserving existing scoped rows', () => {
+        expect(schema).toMatch(/model ShiftTemplate[\s\S]*?branchId\s+Int\?/);
+        expect(schema).toMatch(/model ShiftTemplate[\s\S]*?timezone\s+String\?\s+@db\.VarChar\(64\)/);
+        expect(schema).toMatch(/model ShiftTemplate[\s\S]*?branch\s+Branch\?\s+@relation/);
+        expect(companyWideMigration).toContain('MODIFY `branchId` INTEGER NULL');
+        expect(companyWideMigration).toContain('MODIFY `timezone` VARCHAR(64) NULL');
+        expect(companyWideMigration).not.toMatch(/\bUPDATE\s+`ShiftTemplate`/);
+    });
+
     it('validates color and explicit revision in middleware for all template mutations', () => {
         expect(routes).toContain("color: { type: 'string' as const, pattern: /^#[0-9A-Fa-f]{6}$/ }");
         expect(routes).toContain("expectedRevision: { ...templateBody.expectedRevision, required: true }");
         expect(routes).toContain("allowHrBodyFields(['active', 'expectedRevision'])");
         expect(routes).toContain("router.delete('/shift-templates/:id', ownerManage");
         expect(routes).toMatch(/router\.delete\('\/shift-templates\/:id'[\s\S]*?expectedRevision:\s*\{\s*type:\s*'number',\s*required:\s*true/);
+        expect(routes).not.toContain('branchId: { ...templateBody.branchId, required: true }');
+        expect(routes).not.toContain('code: { ...templateBody.code, required: true }');
     });
 
     it('keeps every template endpoint behind owner permissions and tenant identity from auth', () => {
@@ -55,6 +70,10 @@ describe('HR shift-template persistence and API contract', () => {
         expect(service).toContain('breakMinutes no coincide con la plantilla seleccionada');
         expect(service).toContain('shiftTemplateId: null');
         expect(service).toContain('templateSnapshotsPreserved');
+        expect(service).toContain("OR: [{ branchId: null }, { branchId }]");
+        expect(service).toContain("template.branchId !== null");
+        expect(service).toContain("timezoneSnapshot: branch.timezone");
+        expect(service).toContain("generatedShiftTemplateCode()");
     });
 
     it('maps duplicate unique keys to an explicit HTTP 409 instead of a generic 500', () => {

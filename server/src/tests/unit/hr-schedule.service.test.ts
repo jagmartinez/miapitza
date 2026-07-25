@@ -203,11 +203,15 @@ describe('HR weekly schedule invariants', () => {
         expect(tx.weeklySchedule.updateMany).not.toHaveBeenCalled();
     });
 
-    it('applies tenant and branch scope to template reads', async () => {
+    it('applies tenant scope and exposes global plus local templates to branch-scoped reads', async () => {
         const findFirst = jest.spyOn(prisma.shiftTemplate, 'findFirst').mockResolvedValue(null as never);
         await expect(ShiftTemplateService.getById(7, 4, 10)).rejects.toMatchObject({ statusCode: 404 });
         expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
-            where: { id: 7, companyId: 4, branchId: 10 },
+            where: {
+                id: 7,
+                companyId: 4,
+                OR: [{ branchId: null }, { branchId: 10 }],
+            },
         }));
     });
 

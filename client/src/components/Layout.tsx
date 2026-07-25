@@ -23,6 +23,7 @@ import {
     Building2,
     ChefHat,
     Calendar,
+    Clock3,
     Utensils,
     ChevronLeft,
     ChevronRight,
@@ -125,6 +126,7 @@ const NAV_SECTIONS: NavSection[] = [
             { to: '/rh', icon: Briefcase, label: 'Panel RH', roles: HR_OWNER, permission: 'hr.dashboard.read' },
             { to: '/rh/personal', icon: Users, label: 'Personal', roles: HR_OWNER, permission: 'hr.employee.read' },
             { to: '/rh/horarios', icon: Calendar, label: 'Horarios', roles: HR_OWNER, permission: 'hr.schedule.read' },
+            { to: '/rh/horarios/jornadas', icon: Clock3, label: 'Jornadas configuradas', roles: HR_OWNER, permission: 'hr.schedule.read' },
             { to: '/rh/asistencia', icon: ClipboardList, label: 'Asistencia', roles: HR_OWNER, permission: 'hr.attendance.review' },
             { to: '/rh/jornadas', icon: ClipboardList, label: 'Jornadas y extras', roles: HR_OWNER, permission: 'hr.workforce.read' },
             { to: '/rh/ausencias', icon: Calendar, label: 'Solicitudes y vacaciones', roles: HR_OWNER, permission: 'hr.workforce.read' },
@@ -196,7 +198,7 @@ export default function Layout() {
                         <NavLink
                             key={item.to}
                             to={item.to}
-                            end={item.to === '/rh' || item.to === '/rh/asistencia' || item.to === '/rh/nomina' || item.to === '/rh/mi-portal'}
+                            end={item.to === '/rh' || item.to === '/rh/horarios' || item.to === '/rh/asistencia' || item.to === '/rh/nomina' || item.to === '/rh/mi-portal'}
                             className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}
                             title={item.label}
                             onClick={onNavigate}

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import { Prisma } from '@prisma/client';
 
 import prisma from '../../utils/prisma';
 import {
@@ -116,6 +117,139 @@ describe('reusable HR shift templates', () => {
         }));
     });
 
+    it('creates a company-wide template with generated stable code when company-wide actor omits branch and code', async () => {
+        const branch = jest.spyOn(prisma.branch, 'findFirst');
+        const tx = {
+            shiftTemplate: {
+                create: jest.fn<(args: { data: Record<string, unknown> }) => Promise<Record<string, unknown>>>()
+                    .mockImplementation(async ({ data }) => ({
+                    ...template,
+                    ...data,
+                    id: 72,
+                    revision: 0,
+                })),
+            },
+            auditLog: { create: jest.fn().mockResolvedValue({ id: 1 } as never) },
+        };
+        mockSerializableTransaction(tx);
+
+        const result = await ShiftTemplateService.create(4, {
+            name: 'Turno global',
+            startTime: '08:00',
+            endTime: '16:00',
+            breakMinutes: 30,
+        }, 3);
+
+        expect(branch).not.toHaveBeenCalled();
+        expect(tx.shiftTemplate.create).toHaveBeenCalledTimes(1);
+        const createdData = tx.shiftTemplate.create.mock.calls[0][0].data as Record<string, unknown>;
+        expect(createdData).toEqual(expect.objectContaining({
+            companyId: 4,
+            branchId: null,
+            jobPositionId: null,
+            timezone: null,
+            paidBreak: false,
+        }));
+        expect(createdData.code).toMatch(/^SHIFT_[0-9A-F]{24}$/);
+        expect(result).toEqual(expect.objectContaining({
+            branchId: null,
+            code: createdData.code,
+        }));
+    });
+
+    it('derives branch scope when a branch-scoped actor omits branchId', async () => {
+        jest.spyOn(prisma.branch, 'findFirst').mockResolvedValue({
+            id: 10,
+            timezone: 'America/Managua',
+        } as never);
+        const tx = {
+            shiftTemplate: {
+                create: jest.fn<(args: { data: Record<string, unknown> }) => Promise<Record<string, unknown>>>()
+                    .mockImplementation(async ({ data }) => ({
+                    ...template,
+                    ...data,
+                    id: 72,
+                    revision: 0,
+                })),
+            },
+            auditLog: { create: jest.fn().mockResolvedValue({ id: 1 } as never) },
+        };
+        mockSerializableTransaction(tx);
+
+        await ShiftTemplateService.create(4, {
+            name: 'Turno local',
+            startTime: '08:00',
+            endTime: '16:00',
+        }, 3, 10);
+
+        expect(tx.shiftTemplate.create).toHaveBeenCalledWith({
+            data: expect.objectContaining({
+                branchId: 10,
+                timezone: 'America/Managua',
+            }),
+        });
+    });
+
+    it('retries an internally generated code collision without overwriting another template', async () => {
+        const duplicate = new Prisma.PrismaClientKnownRequestError('duplicate code', {
+            code: 'P2002',
+            clientVersion: 'test',
+            meta: { target: ['companyId', 'code'] },
+        });
+        const create = jest.fn<(args: { data: Record<string, unknown> }) => Promise<Record<string, unknown>>>()
+            .mockRejectedValueOnce(duplicate as never)
+            .mockImplementation(async ({ data }) => ({
+                ...template,
+                ...data,
+                id: 72,
+                revision: 0,
+            }));
+        const tx = {
+            shiftTemplate: { create },
+            auditLog: { create: jest.fn().mockResolvedValue({ id: 1 } as never) },
+        };
+        mockSerializableTransaction(tx);
+
+        const result = await ShiftTemplateService.create(4, {
+            name: 'Turno global',
+            startTime: '08:00',
+            endTime: '16:00',
+        }, 3);
+
+        expect(create).toHaveBeenCalledTimes(2);
+        const firstCode = create.mock.calls[0][0].data.code;
+        const secondCode = create.mock.calls[1][0].data.code;
+        expect(firstCode).toMatch(/^SHIFT_[0-9A-F]{24}$/);
+        expect(secondCode).toMatch(/^SHIFT_[0-9A-F]{24}$/);
+        expect(secondCode).not.toBe(firstCode);
+        expect(result.code).toBe(secondCode);
+    });
+
+    it('returns 409 for a duplicate explicit legacy code instead of silently replacing it', async () => {
+        const duplicate = new Prisma.PrismaClientKnownRequestError('duplicate code', {
+            code: 'P2002',
+            clientVersion: 'test',
+            meta: { target: ['companyId', 'code'] },
+        });
+        const tx = {
+            shiftTemplate: { create: jest.fn().mockRejectedValue(duplicate as never) },
+            auditLog: { create: jest.fn() },
+        };
+        mockSerializableTransaction(tx);
+
+        await expect(ShiftTemplateService.create(4, {
+            name: 'Turno duplicado',
+            code: 'MANANA',
+            startTime: '08:00',
+            endTime: '16:00',
+        }, 3)).rejects.toMatchObject({
+            statusCode: 409,
+            message: expect.stringContaining('código de plantilla ya existe'),
+        });
+        expect(tx.shiftTemplate.create).toHaveBeenCalledTimes(1);
+        expect(tx.auditLog.create).not.toHaveBeenCalled();
+    });
+
     it('rejects invalid colors before persistence', async () => {
         jest.spyOn(prisma.branch, 'findFirst').mockResolvedValue({
             id: 10,
@@ -147,6 +281,26 @@ describe('reusable HR shift templates', () => {
             expectedRevision: 1,
             name: 'Formulario obsoleto',
         }, 3)).rejects.toMatchObject({ statusCode: 409 });
+        expect(transaction).not.toHaveBeenCalled();
+    });
+
+    it('prevents a branch-scoped actor from mutating a company-wide template', async () => {
+        jest.spyOn(ShiftTemplateService, 'getById').mockResolvedValue({
+            ...template,
+            branchId: null,
+            timezone: null,
+            startTime: '08:00',
+            endTime: '16:00',
+            crossesMidnight: false,
+        } as never);
+        const transaction = jest.spyOn(prisma, '$transaction');
+
+        await expect(ShiftTemplateService.update(71, 4, {
+            expectedRevision: 2,
+            name: 'Cambio no autorizado',
+        }, 3, 10)).rejects.toMatchObject({ statusCode: 403 });
+        await expect(ShiftTemplateService.remove(71, 4, 2, 3, 10))
+            .rejects.toMatchObject({ statusCode: 403 });
         expect(transaction).not.toHaveBeenCalled();
     });
 
@@ -205,6 +359,7 @@ describe('reusable HR shift templates', () => {
     it('updates through company-scoped CAS and audits the revision transition', async () => {
         jest.spyOn(ShiftTemplateService, 'getById').mockResolvedValue({
             ...template,
+            paidBreak: true,
             startTime: '08:00',
             endTime: '16:00',
             crossesMidnight: false,
@@ -221,6 +376,7 @@ describe('reusable HR shift templates', () => {
                 findFirst: jest.fn().mockResolvedValue({
                     ...template,
                     name: 'Jornada actualizada',
+                    paidBreak: true,
                     revision: 3,
                 } as never),
             },
@@ -235,7 +391,13 @@ describe('reusable HR shift templates', () => {
 
         expect(tx.shiftTemplate.updateMany).toHaveBeenCalledWith({
             where: { id: 71, companyId: 4, revision: 2 },
-            data: expect.objectContaining({ name: 'Jornada actualizada', revision: 3 }),
+            data: expect.objectContaining({
+                name: 'Jornada actualizada',
+                code: 'MANANA',
+                branchId: 10,
+                paidBreak: true,
+                revision: 3,
+            }),
         });
         expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({
@@ -356,6 +518,81 @@ describe('reusable HR shift templates', () => {
         }));
         expect((persisted.startAt as Date).toISOString()).toBe('2026-07-14T14:00:00.000Z');
         expect((persisted.endAt as Date).toISOString()).toBe('2026-07-14T22:00:00.000Z');
+    });
+
+    it('assigns a company-wide template in any company branch and derives timezone from that branch', async () => {
+        mockShiftNormalizationDependencies();
+        jest.spyOn(prisma.shiftTemplate, 'findMany').mockResolvedValue([{
+            ...template,
+            branchId: null,
+            timezone: null,
+            name: 'Turno global',
+        }] as never);
+        jest.spyOn(prisma.weeklySchedule, 'findFirst').mockResolvedValue(null as never);
+        jest.spyOn(WeeklyScheduleService, 'getById').mockResolvedValue({ id: 91 } as never);
+        const tx = {
+            weeklySchedule: {
+                create: jest.fn().mockResolvedValue({ id: 91, version: 1 } as never),
+            },
+            scheduledShift: {
+                createMany: jest.fn().mockResolvedValue({ count: 1 } as never),
+            },
+            auditLog: { create: jest.fn().mockResolvedValue({ id: 4 } as never) },
+        };
+        mockSerializableTransaction(tx);
+
+        await WeeklyScheduleService.createDraft(4, {
+            weekStart: '2026-07-13',
+            shifts: [{
+                userId: 8,
+                branchId: 10,
+                shiftTemplateId: 71,
+                date: '2026-07-14',
+            }],
+        }, 3);
+
+        const persisted = (tx.scheduledShift.createMany.mock.calls[0][0] as {
+            data: Array<Record<string, unknown>>;
+        }).data[0];
+        expect(persisted).toEqual(expect.objectContaining({
+            branchId: 10,
+            shiftTemplateId: 71,
+            templateNameSnapshot: 'Turno global',
+            timezoneSnapshot: 'America/Managua',
+        }));
+        expect((persisted.startAt as Date).toISOString()).toBe('2026-07-14T14:00:00.000Z');
+    });
+
+    it('keeps existing branch-scoped templates restricted to their branch', async () => {
+        jest.spyOn(prisma.branch, 'findMany').mockResolvedValue([{
+            id: 11,
+            timezone: 'America/Managua',
+        }] as never);
+        jest.spyOn(prisma.user, 'findMany').mockResolvedValue([{
+            id: 8,
+            branchId: 11,
+            allowedBranches: [],
+            employee: {
+                jobPositionId: 21,
+                branchAssignments: [{
+                    branchId: 11,
+                    effectiveFrom: new Date('2025-01-01T00:00:00Z'),
+                    effectiveTo: null,
+                }],
+            },
+        }] as never);
+        jest.spyOn(prisma.jobPosition, 'findMany').mockResolvedValue([{ id: 21 }] as never);
+        jest.spyOn(prisma.shiftTemplate, 'findMany').mockResolvedValue([template] as never);
+
+        await expect(WeeklyScheduleService.createDraft(4, {
+            weekStart: '2026-07-13',
+            shifts: [{
+                userId: 8,
+                branchId: 11,
+                shiftTemplateId: 71,
+                date: '2026-07-14',
+            }],
+        }, 3)).rejects.toThrow('pertenece a otra sucursal');
     });
 
     it('rejects forged template times and breaks', async () => {
@@ -493,13 +730,26 @@ describe('reusable HR shift templates', () => {
         }));
     });
 
-    it('applies tenant and branch scope to reads', async () => {
+    it('applies tenant scope and exposes global plus local templates to a branch scope', async () => {
+        const findMany = jest.spyOn(prisma.shiftTemplate, 'findMany').mockResolvedValue([] as never);
         const findFirst = jest.spyOn(prisma.shiftTemplate, 'findFirst').mockResolvedValue(null as never);
 
+        await ShiftTemplateService.list(4, { active: true }, 10);
         await expect(ShiftTemplateService.getById(71, 4, 10))
             .rejects.toMatchObject({ statusCode: 404 });
+        expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+            where: {
+                companyId: 4,
+                active: true,
+                OR: [{ branchId: null }, { branchId: 10 }],
+            },
+        }));
         expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
-            where: { id: 71, companyId: 4, branchId: 10 },
+            where: {
+                id: 71,
+                companyId: 4,
+                OR: [{ branchId: null }, { branchId: 10 }],
+            },
         }));
     });
 

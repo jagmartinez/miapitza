@@ -1,11 +1,11 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 type ShiftTemplate = {
   id: number;
   revision: number;
   name: string;
   code: string;
-  branchId: number;
+  branchId: number | null;
   jobPositionId: number | null;
   startTime: string;
   endTime: string;
@@ -15,7 +15,7 @@ type ShiftTemplate = {
   color: string;
   active: boolean;
   crossesMidnight: boolean;
-  branch: { id: number; name: string };
+  branch: { id: number; name: string } | null;
   jobPosition: { id: number; name: string } | null;
 };
 
@@ -77,15 +77,15 @@ function makeTemplates(count: number): ShiftTemplate[] {
     id: index + 1,
     revision: 1,
     ...definition,
-    branchId: branch.id,
-    jobPositionId: position.id,
+    branchId: null,
+    jobPositionId: null,
     breakMinutes: 30,
     paidBreak: false,
     notes: null,
     active: true,
     crossesMidnight: definition.endTime <= definition.startTime,
-    branch: { id: branch.id, name: branch.name },
-    jobPosition: { id: position.id, name: position.name },
+    branch: null,
+    jobPosition: null,
   }));
 }
 
@@ -145,8 +145,8 @@ async function mockScheduleCatalog(page: Page, options: MockOptions = {}) {
         id: Math.max(0, ...state.templates.map((template) => template.id)) + 1,
         revision: 1,
         name: String(body.name),
-        code: String(body.code),
-        branchId: Number(body.branchId),
+        code: body.code ? String(body.code) : `SHIFT_MOCK_${state.templates.length + 1}`,
+        branchId: body.branchId == null ? null : Number(body.branchId),
         jobPositionId: body.jobPositionId == null ? null : Number(body.jobPositionId),
         startTime: String(body.startTime),
         endTime: String(body.endTime),
@@ -156,7 +156,7 @@ async function mockScheduleCatalog(page: Page, options: MockOptions = {}) {
         color: String(body.color),
         active: true,
         crossesMidnight: String(body.endTime) <= String(body.startTime),
-        branch: { id: branch.id, name: branch.name },
+        branch: body.branchId == null ? null : { id: branch.id, name: branch.name },
         jobPosition: body.jobPositionId == null ? null : { id: position.id, name: position.name },
       };
       state.templates.push(created);
@@ -228,12 +228,11 @@ async function mockScheduleCatalog(page: Page, options: MockOptions = {}) {
 async function openSchedules(page: Page) {
   await page.goto('/rh/horarios');
   await expect(page.getByRole('heading', { name: 'Horarios semanales' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Jornadas configuradas' })).toBeVisible();
 }
 
-async function selectReactOption(scope: Locator, label: string, option: string) {
-  await scope.getByLabel(label).click();
-  await scope.getByRole('option', { name: option }).click();
+async function openTemplates(page: Page) {
+  await page.goto('/rh/horarios/jornadas');
+  await expect(page.getByRole('heading', { name: 'Jornadas configuradas' })).toBeVisible();
 }
 
 test('catálogo representa 0, 1, 2 y 3 jornadas con sus colores configurados', async ({ page }) => {
@@ -241,10 +240,10 @@ test('catálogo representa 0, 1, 2 y 3 jornadas con sus colores configurados', a
 
   for (const count of [0, 1, 2, 3]) {
     mock.state.templates.splice(0, mock.state.templates.length, ...makeTemplates(count));
-    await openSchedules(page);
+    await openTemplates(page);
 
     if (count === 0) {
-      await expect(page.getByText('No hay jornadas configuradas para el alcance seleccionado.')).toBeVisible();
+      await expect(page.getByText('No hay jornadas configuradas.')).toBeVisible();
       await expect(page.locator('.hr-template-card')).toHaveCount(0);
     } else {
       const catalog = page.locator(`[aria-label="${count} jornadas configuradas"]`);
@@ -300,24 +299,26 @@ test('selector rápido asigna por teclado la jornada, horas y color al trabajado
 
 test('administrador crea, edita y desactiva una jornada con revisión optimista', async ({ page }) => {
   const mock = await mockScheduleCatalog(page, { templates: makeTemplates(1) });
-  await openSchedules(page);
+  await openTemplates(page);
 
   await page.getByRole('button', { name: 'Nueva jornada' }).click();
   let dialog = page.getByRole('dialog', { name: 'Nueva jornada' });
   await dialog.getByLabel('Nombre').fill('Tarde QA');
-  await dialog.getByLabel('Código').fill('tarde');
-  await selectReactOption(dialog, 'Sucursal', branch.name);
-  await selectReactOption(dialog, 'Puesto (opcional)', position.name);
+  await expect(dialog.getByLabel('Código')).toHaveCount(0);
+  await expect(dialog.getByLabel('Sucursal')).toHaveCount(0);
+  await expect(dialog.getByLabel('Puesto (opcional)')).toHaveCount(0);
+  await expect(dialog.getByText('Descanso pagado')).toHaveCount(0);
   await dialog.getByLabel('Violeta').check();
   await dialog.getByRole('button', { name: 'Crear jornada' }).click();
 
   await expect(page.locator('.hr-template-card').filter({ hasText: 'Tarde QA' })).toBeVisible();
   const created = mock.mutations.find((item) => item.method === 'POST');
-  expect(created?.body).toMatchObject({
+  expect(created?.body).toEqual({
     name: 'Tarde QA',
-    code: 'TARDE',
-    branchId: branch.id,
-    jobPositionId: position.id,
+    startTime: '08:00',
+    endTime: '17:00',
+    breakMinutes: 0,
+    notes: null,
     color: '#7C3AED',
   });
 
@@ -328,6 +329,10 @@ test('administrador crea, edita y desactiva una jornada con revisión optimista'
   await expect(page.locator('.hr-template-card').filter({ hasText: 'Tarde editada' })).toBeVisible();
   const edited = mock.mutations.find((item) => item.method === 'PUT' && item.path.includes('/shift-templates/'));
   expect(edited?.body).toMatchObject({ name: 'Tarde editada', expectedRevision: 1 });
+  expect(edited?.body).not.toHaveProperty('code');
+  expect(edited?.body).not.toHaveProperty('branchId');
+  expect(edited?.body).not.toHaveProperty('jobPositionId');
+  expect(edited?.body).not.toHaveProperty('paidBreak');
 
   await page.getByRole('button', { name: 'Desactivar jornada Tarde editada' }).click();
   const confirmation = page.getByRole('alertdialog', { name: 'Desactivar Tarde editada' });
@@ -343,13 +348,13 @@ test('lector ve todas las jornadas y trabajadores, pero no puede mutar ni asigna
     templates: makeTemplates(3),
     permissions: ['hr.schedule.read'],
   });
-  await openSchedules(page);
-
-  await expect(page.getByText('Trabajador QA')).toBeVisible();
+  await openTemplates(page);
   await expect(page.locator('.hr-template-card')).toHaveCount(3);
   await expect(page.getByRole('button', { name: 'Nueva jornada' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Editar jornada/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Desactivar jornada/ })).toHaveCount(0);
+  await openSchedules(page);
+  await expect(page.getByText('Trabajador QA')).toBeVisible();
   await expect(page.getByRole('button', { name: /Agregar turno para Trabajador QA/i })).toHaveCount(0);
 });
 
@@ -357,7 +362,7 @@ test('fallos de lectura y escritura quedan visibles y no producen éxito aparent
   await mockScheduleCatalog(page, {
     templateReadError: 'Catálogo de jornadas temporalmente no disponible.',
   });
-  await openSchedules(page);
+  await openTemplates(page);
   await expect(page.getByRole('alert')).toContainText('Catálogo de jornadas temporalmente no disponible.');
 
   await page.unroute('**/api/**');
@@ -378,6 +383,19 @@ test('fallos de lectura y escritura quedan visibles y no producen éxito aparent
   expect(failingMutation.mutations.filter((item) => item.method === 'PUT')).toHaveLength(1);
 });
 
+test('fallo del catálogo no se presenta como una jornada vacía al asignar', async ({ page }) => {
+  await mockScheduleCatalog(page, {
+    templateReadError: 'Catálogo de jornadas temporalmente no disponible.',
+  });
+  await openSchedules(page);
+
+  await page.getByRole('button', { name: /Agregar turno para Trabajador QA/i }).first().click();
+  const shiftDialog = page.getByRole('dialog', { name: 'Asignar jornada' });
+  await expect(shiftDialog.getByRole('alert')).toContainText('Catálogo de jornadas temporalmente no disponible.');
+  await expect(shiftDialog).not.toContainText('No hay jornadas activas compatibles');
+  await expect(shiftDialog.getByRole('button', { name: 'Reintentar jornadas' })).toBeVisible();
+});
+
 test('catálogo vacío permite pasar de la celda al alta de jornada', async ({ page }) => {
   await mockScheduleCatalog(page);
   await openSchedules(page);
@@ -387,5 +405,7 @@ test('catálogo vacío permite pasar de la celda al alta de jornada', async ({ p
   await expect(shiftDialog).toContainText('No hay jornadas activas compatibles');
   await shiftDialog.getByRole('button', { name: 'Configurar jornadas' }).click();
   await expect(shiftDialog).toBeHidden();
-  await expect(page.getByRole('dialog', { name: 'Nueva jornada' })).toBeVisible();
+  await expect(page).toHaveURL(/\/rh\/horarios\/jornadas$/);
+  await expect(page.getByRole('heading', { name: 'Jornadas configuradas' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Nueva jornada' })).toHaveCount(0);
 });

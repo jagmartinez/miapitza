@@ -38,8 +38,10 @@ describe('Phase 1 HR API contract', () => {
 describe('Phase 2 HR schedule navigation contract', () => {
     it('lazy-loads Owner schedules and limits self schedule to internal employees', () => {
         expect(appSource).toContain("lazy(() => import('./pages/hr/Schedules'))");
+        expect(appSource).toContain("lazy(() => import('./pages/hr/ShiftTemplates'))");
         expect(appSource).toContain("lazy(() => import('./pages/hr/MySchedule'))");
         expect(appSource).toContain('path="/rh/horarios" element={<RoleGuard roles={HR_OWNER} permission="hr.schedule.read"><Schedules /></RoleGuard>}');
+        expect(appSource).toContain('path="/rh/horarios/jornadas" element={<RoleGuard roles={HR_OWNER} permission="hr.schedule.read"><ShiftTemplates /></RoleGuard>}');
         expect(appSource).toContain('path="/rh/mi-portal/horario" element={<InternalEmployeeGuard permission="hr.schedule.self"><MySchedule /></InternalEmployeeGuard>}');
         expect(appSource).toContain('path="/rh/mi-portal" element={<InternalEmployeeGuard><Navigate to="/profile?tab=hr" replace /></InternalEmployeeGuard>}');
     });
@@ -47,6 +49,8 @@ describe('Phase 2 HR schedule navigation contract', () => {
     it('keeps Owner navigation role-scoped and consolidates employee access in Profile', () => {
         expect(layoutSource).toContain("{ to: '/rh/personal', icon: Users, label: 'Personal', roles: HR_OWNER, permission: 'hr.employee.read' }");
         expect(layoutSource).toContain("{ to: '/rh/horarios', icon: Calendar, label: 'Horarios', roles: HR_OWNER, permission: 'hr.schedule.read' }");
+        expect(layoutSource).toContain("{ to: '/rh/horarios/jornadas', icon: Clock3, label: 'Jornadas configuradas', roles: HR_OWNER, permission: 'hr.schedule.read' }");
+        expect(layoutSource).toContain("item.to === '/rh/horarios'");
         expect(layoutSource).not.toContain("section: 'Mi portal RH'");
         expect(profileSource).toContain('to="/rh/mi-portal/horario"');
         expect(profileSource).toContain('to="/rh/mi-portal/gestion?tab=LEAVE"');

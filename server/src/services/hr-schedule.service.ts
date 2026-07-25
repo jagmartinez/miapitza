@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import prisma from '../utils/prisma';
 import { isValidTimeZone, getZonedParts, zonedDateKey, zonedDateTimeToUtc } from '../utils/timezone';
 import { AuditLogService } from './audit-log.service';
@@ -13,6 +14,7 @@ export class HrScheduleError extends Error {
 const SCHEDULE_STATUSES = ['DRAFT', 'PUBLISHED', 'SUPERSEDED', 'CANCELLED'] as const;
 const SWAP_STATUSES = ['PENDING', 'ACCEPTED', 'APPROVED', 'REJECTED', 'CANCELLED'] as const;
 const DEFAULT_SHIFT_TEMPLATE_COLOR = '#3B82F6';
+const GENERATED_SHIFT_TEMPLATE_CODE_ATTEMPTS = 3;
 
 type ScheduleStatusValue = typeof SCHEDULE_STATUSES[number];
 
@@ -38,6 +40,10 @@ function shiftTemplateColor(value: unknown, fallback = DEFAULT_SHIFT_TEMPLATE_CO
         throw new HrScheduleError('color debe usar formato hexadecimal #RRGGBB');
     }
     return value.trim().toUpperCase();
+}
+
+function generatedShiftTemplateCode(): string {
+    return `SHIFT_${randomUUID().replace(/-/g, '').slice(0, 24).toUpperCase()}`;
 }
 
 function positiveInt(value: unknown, field: string): number {
@@ -310,7 +316,11 @@ export class ShiftTemplateService {
     static async list(companyId: number, filters: { branchId?: number; active?: boolean } = {}, scopeBranchId?: number) {
         const branchId = scopeBranchId || filters.branchId;
         const templates = await prisma.shiftTemplate.findMany({
-            where: { companyId, ...(branchId ? { branchId } : {}), ...(filters.active !== undefined ? { active: filters.active } : {}) },
+            where: {
+                companyId,
+                ...(branchId ? { OR: [{ branchId: null }, { branchId }] } : {}),
+                ...(filters.active !== undefined ? { active: filters.active } : {}),
+            },
             include: templateInclude,
             orderBy: [{ active: 'desc' }, { name: 'asc' }],
         });
@@ -319,7 +329,11 @@ export class ShiftTemplateService {
 
     static async getById(id: number, companyId: number, scopeBranchId?: number) {
         const template = await prisma.shiftTemplate.findFirst({
-            where: { id, companyId, ...(scopeBranchId ? { branchId: scopeBranchId } : {}) },
+            where: {
+                id,
+                companyId,
+                ...(scopeBranchId ? { OR: [{ branchId: null }, { branchId: scopeBranchId }] } : {}),
+            },
             include: templateInclude,
         });
         if (!template) throw new HrScheduleError('Plantilla de turno no encontrada', 404);
@@ -327,20 +341,31 @@ export class ShiftTemplateService {
     }
 
     private static async normalize(companyId: number, input: Record<string, unknown>, existing?: {
-        branchId: number; jobPositionId: number | null; startMinute: number; endMinute: number;
-        breakMinutes: number; paidBreak: boolean; name: string; code: string; color: string; notes: string | null;
+        branchId: number | null; jobPositionId: number | null; startMinute: number; endMinute: number;
+        breakMinutes: number; paidBreak: boolean; name: string; code: string; color: string;
+        timezone: string | null; notes: string | null;
     }, scopeBranchId?: number) {
-        const branchId = input.branchId !== undefined ? positiveInt(input.branchId, 'branchId') : existing?.branchId;
-        if (!branchId) throw new HrScheduleError('branchId es requerido');
-        assertScopedBranch(branchId, scopeBranchId);
-        const branch = await prisma.branch.findFirst({
-            where: { id: branchId, companyId, status: 'ACTIVE' },
-            select: { id: true, timezone: true },
-        });
-        if (!branch) throw new HrScheduleError('Sucursal activa no encontrada en la empresa', 404);
+        let branchId = input.branchId !== undefined
+            ? optionalId(input.branchId, 'branchId')
+            : existing?.branchId;
+        if (!existing && branchId === undefined) branchId = scopeBranchId ?? null;
+        if (branchId === undefined) branchId = null;
+        if (scopeBranchId) {
+            if (branchId === null) branchId = scopeBranchId;
+            assertScopedBranch(branchId, scopeBranchId);
+        }
+        let timezone: string | null = null;
+        if (branchId !== null) {
+            const branch = await prisma.branch.findFirst({
+                where: { id: branchId, companyId, status: 'ACTIVE' },
+                select: { id: true, timezone: true },
+            });
+            if (!branch) throw new HrScheduleError('Sucursal activa no encontrada en la empresa', 404);
+            timezone = branch.timezone;
+        }
         const jobPositionId = input.jobPositionId !== undefined
             ? optionalId(input.jobPositionId, 'jobPositionId')
-            : existing?.jobPositionId;
+            : existing?.jobPositionId ?? null;
         if (jobPositionId && !await prisma.jobPosition.findFirst({ where: { id: jobPositionId, companyId, active: true }, select: { id: true } })) {
             throw new HrScheduleError('Puesto activo no encontrado en la empresa', 404);
         }
@@ -356,11 +381,11 @@ export class ShiftTemplateService {
         return {
             branchId, jobPositionId,
             name: input.name !== undefined ? requiredText(input.name, 'name', 100) : existing?.name || '',
-            code: input.code !== undefined ? requiredText(input.code, 'code', 30).toUpperCase() : existing?.code || '',
+            code: input.code !== undefined ? requiredText(input.code, 'code', 30).toUpperCase() : existing?.code,
             color: shiftTemplateColor(input.color, existing?.color),
             startMinute, endMinute, breakMinutes,
-            paidBreak: optionalBoolean(input.paidBreak, 'paidBreak', existing?.paidBreak || false),
-            timezone: branch.timezone,
+            paidBreak: optionalBoolean(input.paidBreak, 'paidBreak', existing?.paidBreak ?? false),
+            timezone,
             notes: input.notes !== undefined ? optionalText(input.notes, 'notes') : existing?.notes,
         };
     }
@@ -368,21 +393,40 @@ export class ShiftTemplateService {
     static async create(companyId: number, input: Record<string, unknown>, actorUserId: number, scopeBranchId?: number) {
         const data = await this.normalize(companyId, input, undefined, scopeBranchId);
         const active = optionalBoolean(input.active, 'active', true);
-        const template = await serializableTransaction(async (tx) => {
-            const created = await tx.shiftTemplate.create({ data: { companyId, ...data, active } });
-            await AuditLogService.log({
-                companyId, userId: actorUserId, entityType: 'ShiftTemplate', entityId: created.id,
-                action: 'CREATE', details: {
-                    code: created.code, branchId: created.branchId, color: created.color, revision: created.revision,
-                },
-            }, tx);
-            return created;
-        });
-        return mapTemplate(template);
+        const explicitCode = data.code;
+        for (let attempt = 1; attempt <= GENERATED_SHIFT_TEMPLATE_CODE_ATTEMPTS; attempt += 1) {
+            const code = explicitCode || generatedShiftTemplateCode();
+            try {
+                const template = await serializableTransaction(async (tx) => {
+                    const created = await tx.shiftTemplate.create({
+                        data: { companyId, ...data, code, active },
+                    });
+                    await AuditLogService.log({
+                        companyId, userId: actorUserId, entityType: 'ShiftTemplate', entityId: created.id,
+                        action: 'CREATE', details: {
+                            code: created.code, branchId: created.branchId, color: created.color, revision: created.revision,
+                            scope: created.branchId === null ? 'COMPANY' : 'BRANCH',
+                        },
+                    }, tx);
+                    return created;
+                });
+                return mapTemplate(template);
+            } catch (error) {
+                if (!isPrismaConflict(error, 'P2002')) throw error;
+                if (explicitCode) throw new HrScheduleError('El código de plantilla ya existe en la empresa', 409);
+                if (attempt === GENERATED_SHIFT_TEMPLATE_CODE_ATTEMPTS) {
+                    throw new HrScheduleError('No fue posible reservar un código interno único para la plantilla', 409);
+                }
+            }
+        }
+        throw new HrScheduleError('No fue posible crear la plantilla', 409);
     }
 
     static async update(id: number, companyId: number, input: Record<string, unknown>, actorUserId: number, scopeBranchId?: number) {
         const existing = await this.getById(id, companyId, scopeBranchId);
+        if (scopeBranchId && existing.branchId === null) {
+            throw new HrScheduleError('Solo un administrador con alcance de empresa puede modificar una plantilla global', 403);
+        }
         const expectedRevision = requiredNonNegativeInt(input.expectedRevision, 'expectedRevision');
         const statusOnlyUpdate = input.active !== undefined
             && Object.keys(input).every((field) => field === 'active' || field === 'expectedRevision');
@@ -433,6 +477,9 @@ export class ShiftTemplateService {
         scopeBranchId?: number,
     ) {
         const existing = await this.getById(id, companyId, scopeBranchId);
+        if (scopeBranchId && existing.branchId === null) {
+            throw new HrScheduleError('Solo un administrador con alcance de empresa puede eliminar una plantilla global', 403);
+        }
         if (!existing.active) return existing;
         const expectedRevision = requiredNonNegativeInt(expectedRevisionInput, 'expectedRevision');
         if (expectedRevision !== existing.revision) {
@@ -821,7 +868,7 @@ export class WeeklyScheduleService {
             }
             const shiftTemplateId = optionalId(shift.shiftTemplateId, 'shiftTemplateId') || null;
             const template = shiftTemplateId ? templateMap.get(shiftTemplateId) : undefined;
-            if (shiftTemplateId && template?.branchId !== branchId) {
+            if (template && template.branchId !== null && template.branchId !== branchId) {
                 throw new HrScheduleError('La plantilla seleccionada pertenece a otra sucursal');
             }
             const requestedJobPositionId = optionalId(shift.jobPositionId, 'jobPositionId') || null;

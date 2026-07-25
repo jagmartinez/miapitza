@@ -42,8 +42,7 @@ router.get('/shift-templates', ownerRead, validate({ query: {
 router.get('/shift-templates/:id', ownerRead, validate({ params: idParam }), HrScheduleController.getTemplate);
 router.post('/shift-templates', ownerManage, allowHrBodyFields(templateCreateFields), validate({ body: {
     ...templateBody,
-    branchId: { ...templateBody.branchId, required: true },
-    name: { ...templateBody.name, required: true }, code: { ...templateBody.code, required: true },
+    name: { ...templateBody.name, required: true },
     startTime: { ...templateBody.startTime, required: true }, endTime: { ...templateBody.endTime, required: true },
 } }), HrScheduleController.createTemplate);
 router.put('/shift-templates/:id', ownerManage, allowHrBodyFields(templateUpdateFields), validate({ params: idParam, body: {
