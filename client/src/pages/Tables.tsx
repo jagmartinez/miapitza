@@ -43,7 +43,7 @@ import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/web
 import { useCurrency } from '../hooks/useCurrency';
 import ThemeToggle from '../components/ThemeToggle';
 import KitchenNotificationBell from '../components/KitchenNotificationBell';
-import { buildInvoiceReleaseMessage, isEligibleForPosOrderBucket } from '../utils/posOrderBucket';
+import { buildInvoiceStatusMessage, isEligibleForPosOrderBucket } from '../utils/posOrderBucket';
 import { useNavigate } from 'react-router-dom';
 
 interface ApiValidationError { field?: string; message?: string }
@@ -491,7 +491,7 @@ export default function Tables() {
             }
             setTableOrders((current) => current.map((item) => item.id === nextOrder.id ? nextOrder : item));
             await refreshOperationalTable();
-            showSuccess(buildInvoiceReleaseMessage({
+            showSuccess(buildInvoiceStatusMessage({
                 invoiceNumber,
                 orderId: nextOrder.id,
                 tableNumber: nextOrder.table?.number ?? order.table?.number,

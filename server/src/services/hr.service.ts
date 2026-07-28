@@ -182,6 +182,12 @@ function nullableText(value: unknown, field: string, max = 191): string | null |
     return normalized || null;
 }
 
+function optionalBoolean(value: unknown, field: string): boolean | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'boolean') throw new HrDomainError(`${field} debe ser booleano`);
+    return value;
+}
+
 function requiredText(value: unknown, field: string, max = 191): string {
     const normalized = nullableText(value, field, max);
     if (!normalized) throw new HrDomainError(`${field} es requerido`);
@@ -818,7 +824,7 @@ export class HrCatalogService {
             ...(input.name !== undefined ? { name: requiredText(input.name, 'name', 100) } : {}),
             ...(input.code !== undefined ? { code: requiredText(input.code, 'code', 30).toUpperCase() } : {}),
             ...(input.description !== undefined ? { description: nullableText(input.description, 'description', 191) } : {}),
-            ...(input.active !== undefined ? { active: Boolean(input.active) } : {}),
+            ...(input.active !== undefined ? { active: optionalBoolean(input.active, 'active') } : {}),
         };
         if (kind === 'jobPosition' && input.departmentId !== undefined) {
             const departmentId = optionalId(input.departmentId, 'departmentId');

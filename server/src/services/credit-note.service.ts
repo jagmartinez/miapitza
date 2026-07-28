@@ -8,7 +8,8 @@ import { deserializeInvoiceSnapshot, type InvoiceData } from './invoice.service'
 import { InventoryConsumptionService } from './inventory-consumption.service';
 import { DEFAULT_COMPANY_SETTINGS, validateConfiguredFiscalTaxId } from './setting.service';
 import { UnitConversionService } from './unit-conversion.service';
-import { closeInactiveTableGroupForTable } from './table-group.service';
+import { reconcileTableGroupForTable } from './table-group.service';
+import { transactionWithP2034Retry } from '../utils/transaction-retry';
 
 export interface CreditNoteIssueInput {
     idempotencyKey?: unknown;
@@ -336,7 +337,7 @@ export class CreditNoteService {
     static async issue(orderId: number, companyId: number, userId: number, input: CreditNoteIssueInput) {
         if (!Number.isInteger(orderId) || orderId <= 0) throw new Error('Orden inválida');
         const normalized = this.normalizeInput(input);
-        return prisma.$transaction(async (tx) => {
+        return transactionWithP2034Retry(async (tx) => {
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
             const order = await tx.order.findFirst({
                 where: { id: orderId, companyId },
@@ -546,7 +547,7 @@ export class CreditNoteService {
                 } : { financialStatus: 'PAID', invoiceFiscalStatus: 'PARTIALLY_CREDITED' }
             });
             if (isFinal && order.tableId) {
-                await closeInactiveTableGroupForTable(
+                await reconcileTableGroupForTable(
                     tx, companyId, order.tableId, actor.id, `Nota de crédito final ${number}`
                 );
             }

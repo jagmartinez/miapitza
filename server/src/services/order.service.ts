@@ -6,8 +6,9 @@ import { DynamicPricingService } from './dynamic-pricing.service';
 import { calculatePromotionDiscount } from './promotion.service';
 import { DEFAULT_COMPANY_SETTINGS, SettingService } from './setting.service';
 import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
-import { closeInactiveTableGroupForTable } from './table-group.service';
-import { tableOperationalOrderWhere } from './table-occupancy-policy';
+import { reconcileTableGroupForTable } from './table-group.service';
+import { tableOpenAccountWhere, tableOperationalOrderWhere } from './table-occupancy-policy';
+import { transactionWithP2034Retry } from '../utils/transaction-retry';
 
 /** Valid state transitions for orders */
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -17,7 +18,7 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
     'SENT_TO_KITCHEN': ['READY'],
     'IN_PREPARATION': ['READY'],
     // Delivery has a dedicated operation because it atomically consumes stock
-    // from an explicit warehouse. Fiscal issuance owns table-account release.
+    // from an explicit warehouse. Full payment owns table-account release.
     'READY': [],
     'DELIVERED': [],
     'CANCELLED': [], // terminal
@@ -1493,7 +1494,7 @@ export class OrderService {
             // A physical table group remains occupied while any member still
             // has an operational order. The last completion closes the group.
             if (order.tableId) {
-                await closeInactiveTableGroupForTable(
+                await reconcileTableGroupForTable(
                     tx, companyId, order.tableId, deliveredById, `Orden #${order.id} completada`
                 );
             }
@@ -1501,14 +1502,14 @@ export class OrderService {
             return updatedOrder;
     }
 
-    static async reconcileTableAfterSettlement(
+    static async reconcileTableAccount(
         tx: Prisma.TransactionClient,
         companyId: number,
         tableId: number,
         actorId: number,
         reason: string
     ) {
-        return closeInactiveTableGroupForTable(
+        return reconcileTableGroupForTable(
             tx,
             companyId,
             tableId,
@@ -1524,7 +1525,7 @@ export class OrderService {
         deliveredById: number,
         options?: { syncExternal?: boolean }
     ) {
-        const updatedOrder = await prisma.$transaction((tx) => this.completeWithTransaction(
+        const updatedOrder = await transactionWithP2034Retry((tx) => this.completeWithTransaction(
             tx,
             id,
             companyId,
@@ -1548,7 +1549,7 @@ export class OrderService {
         // so their physical consumption is recorded as waste, not silently lost.
         options?: OrderCancelOptions
     ) {
-        return prisma.$transaction((tx) => this.cancelWithTransaction(
+        return transactionWithP2034Retry((tx) => this.cancelWithTransaction(
             tx, id, companyId, cancelledById, cancelReason, options
         ));
     }
@@ -1808,7 +1809,7 @@ export class OrderService {
             });
 
             if (order.tableId) {
-                await closeInactiveTableGroupForTable(
+                await reconcileTableGroupForTable(
                     tx,
                     companyId,
                     order.tableId,
@@ -1945,11 +1946,12 @@ export class OrderService {
         });
     }
 
-    // Get active orders (OPEN or SENT_TO_KITCHEN)
+    // Get every unsettled table account that the POS may need to recover.
+    // Delivered debt is included even though it is no longer in the KDS queue.
     static async getActiveOrders(companyId: number, branchId?: number) {
         const where: Prisma.OrderWhereInput = {
             companyId,
-            ...tableOperationalOrderWhere()
+            ...tableOpenAccountWhere()
         };
 
         if (branchId) {

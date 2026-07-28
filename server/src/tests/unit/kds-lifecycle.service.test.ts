@@ -10,12 +10,17 @@ afterEach(function cleanup(): void {
 });
 
 describe('durable KDS lifecycle', () => {
-    it('keeps released READY orders in the operational active query but excludes them from the KDS queue', async () => {
+    it('keeps unsettled and delivered accounts recoverable while excluding released orders from KDS', async () => {
         const findMany = jest.spyOn(prisma.order, 'findMany').mockResolvedValue([]);
 
         await OrderService.getActiveOrders(1, 2);
         expect(findMany).toHaveBeenLastCalledWith(expect.objectContaining({
-            where: expect.not.objectContaining({ kitchenReleasedAt: null })
+            where: expect.objectContaining({
+                status: {
+                    in: ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED'],
+                },
+                financialStatus: { not: 'PAID' },
+            })
         }));
 
         await OrderService.getKitchenQueue(1, 2);

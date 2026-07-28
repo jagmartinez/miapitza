@@ -81,7 +81,7 @@ describe('Table account operations', () => {
         expect(groupService).toContain("action: 'TABLE_GROUP_UPDATE'");
         expect(groupService).toContain('expectedMemberTableIds');
         expect(groupService).toContain('expectedPrimaryTableId');
-        expect(orderService).toContain('closeInactiveTableGroupForTable');
+        expect(orderService).toContain('reconcileTableGroupForTable');
     });
 
     it('derives the moved total from independently rounded financial components', () => {

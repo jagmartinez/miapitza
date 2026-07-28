@@ -1,4 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
     compareMigrationLedger,
@@ -90,5 +93,27 @@ describe('migration ledger verification', () => {
         expect(shipped.length).toBeGreaterThan(0);
         expect(result.expected).toBe(shipped.length);
         expect(result.issues).toEqual([]);
+    });
+
+    it('accepts the same SQL applied with CRLF while still hashing the artifact bytes', () => {
+        const temporaryRoot = mkdtempSync(path.join(os.tmpdir(), 'migration-ledger-eol-'));
+        try {
+            const migrationDirectory = path.join(temporaryRoot, '001_windows');
+            mkdirSync(migrationDirectory);
+            writeFileSync(path.join(migrationDirectory, 'migration.sql'), 'SELECT 1;\n', 'utf8');
+
+            const [migration] = loadExpectedMigrations(temporaryRoot);
+            const crlfChecksum = createHash('sha256').update('SELECT 1;\r\n').digest('hex');
+            const result = compareMigrationLedger(
+                [migration],
+                [row(migration.name, crlfChecksum)],
+            );
+
+            expect(migration.checksum).not.toBe(crlfChecksum);
+            expect(migration.compatibleChecksums).toContain(crlfChecksum);
+            expect(result.issues).toEqual([]);
+        } finally {
+            rmSync(temporaryRoot, { recursive: true, force: true });
+        }
     });
 });

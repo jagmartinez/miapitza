@@ -3,7 +3,8 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import prisma from '../utils/prisma';
 import { DEFAULT_COMPANY_SETTINGS, SettingService, validateConfiguredFiscalTaxId } from './setting.service';
-import { closeInactiveTableGroupForTable } from './table-group.service';
+import { reconcileTableGroupForTable } from './table-group.service';
+import { transactionWithP2034Retry } from '../utils/transaction-retry';
 
 export interface InvoiceData {
     orderId: number;
@@ -246,7 +247,7 @@ export class InvoiceService {
         const candidateTableId = candidate.tableId ?? null;
         const settings = await SettingService.getAll(companyId);
 
-        return prisma.$transaction(async (tx) => {
+        return transactionWithP2034Retry(async (tx) => {
             // Every table/order mutation follows the Table -> Order lock order
             // used by order creation.
             if (candidateTableId !== null) {
@@ -288,12 +289,12 @@ export class InvoiceService {
                     throw new Error('Invoice snapshot does not match its order');
                 }
                 if (order.tableId) {
-                    await closeInactiveTableGroupForTable(
+                    await reconcileTableGroupForTable(
                         tx,
                         companyId,
                         order.tableId,
                         actor.id,
-                        `Factura ${order.invoiceNumber} ya emitida; conciliación idempotente de mesa`,
+                        `Factura ${order.invoiceNumber} ya emitida; cuenta de mesa conciliada sin liberarla antes del pago`,
                     );
                 }
                 return persisted;
@@ -350,12 +351,12 @@ export class InvoiceService {
                 },
             });
             if (order.tableId) {
-                await closeInactiveTableGroupForTable(
+                await reconcileTableGroupForTable(
                     tx,
                     companyId,
                     order.tableId,
                     actor.id,
-                    `Factura ${invoiceNumber} emitida`,
+                    `Factura ${invoiceNumber} emitida; cuenta pendiente de pago`,
                 );
             }
             return invoiceData;

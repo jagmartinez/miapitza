@@ -23,7 +23,7 @@ import { activateOnKeyboard } from '../utils/keyboardActivation';
 import { useAppToast } from '../context/ToastContext';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
 import { DeliveryAttemptGate } from '../utils/deliveryAttempt';
-import { buildInvoiceReleaseMessage } from '../utils/posOrderBucket';
+import { buildInvoiceStatusMessage } from '../utils/posOrderBucket';
 import './Orders.css';
 
 interface ActiveShiftStatus {
@@ -219,7 +219,7 @@ export default function Orders() {
             await loadOrders();
             setPaymentOrder(payableOrder);
             setShowPaymentModal(true);
-            success(buildInvoiceReleaseMessage({
+            success(buildInvoiceStatusMessage({
                 invoiceNumber,
                 orderId: payableOrder.id,
                 tableNumber: payableOrder.table?.number ?? order.table?.number,

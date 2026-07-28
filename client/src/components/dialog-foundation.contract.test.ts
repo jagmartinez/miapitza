@@ -43,6 +43,14 @@ describe('shared dialog foundation', () => {
     expect(payment).not.toContain('ref={dialogRef}\n                className={`payment-dialog');
   });
 
+  it('associates select validation errors with the accessible combobox', () => {
+    const source = read('./Select.tsx');
+    expect(source).toContain("const errorId = error ? `${resolvedInputId}-error` : undefined");
+    expect(source).toContain('aria-invalid={error ? true');
+    expect(source).toContain("aria-errormessage={errorId ?? props['aria-errormessage']}");
+    expect(source).toContain('<span id={errorId} className="select-error-message" role="alert">');
+  });
+
   it('uses the same flat operational surfaces across shared and specialized dialogs', () => {
     const tokens = read('../index.css');
     const sharedModal = read('./Modal.css');

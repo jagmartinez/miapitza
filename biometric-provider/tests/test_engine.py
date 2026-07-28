@@ -40,9 +40,9 @@ def analysis(embedding: list[float], passive: float, offset: float) -> FrameAnal
 
 
 def test_real_model_artifacts_initialize() -> None:
-    models_dir = Path("/app/models")
-    assert_model_files(models_dir)
-    engine = FaceEngine(settings(models_dir))
+    configured = settings(Path(__file__).resolve().parents[1] / "models")
+    assert_model_files(configured.models_dir)
+    engine = FaceEngine(configured)
     engine.initialize()
 
 

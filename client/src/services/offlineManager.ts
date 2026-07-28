@@ -259,6 +259,14 @@ class OfflineManager {
         const processedIds = new Set<number>();
 
         for (const item of items) {
+            // A logout/login can happen while an earlier request is in flight.
+            // Never continue the captured owner's batch under a different
+            // browser session; leave the remaining entries pending for that
+            // owner to resume on their next authenticated session.
+            if (
+                getCurrentOfflineOwnerKey() !== ownerKey
+                || localStorage.getItem('token') !== token
+            ) return;
             if (processedIds.has(item.id!)) continue;
 
             // Check dependency resolution

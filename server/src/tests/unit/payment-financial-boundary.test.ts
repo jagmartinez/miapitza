@@ -9,6 +9,65 @@ afterEach(() => {
 });
 
 describe('PaymentService financial/physical boundary and domain replay', () => {
+    it('repeats the complete payment callback after a retryable P2034 conflict', async () => {
+        const makeTx = (paymentId: number) => ({
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 9, companyId: 1, branchId: 2, tableId: null, total: 10,
+                    financialStatus: 'UNPAID', status: 'READY', cashRegisterId: null,
+                    discountCode: null, invoiceNumber: 'FAC-2-000009', invoiceFiscalStatus: 'ISSUED', payments: []
+                })),
+                update: jest.fn(async (_args: unknown) => ({}))
+            },
+            user: { findFirst: jest.fn(async () => ({ id: 7 })) },
+            paymentMethod: { findFirst: jest.fn(async () => ({ id: 3, type: 'CARD' })) },
+            payment: {
+                create: jest.fn(async () => ({ id: paymentId, orderId: 9, amount: 10, methodType: 'CARD' }))
+            },
+            cashMovement: { create: jest.fn() },
+            promotion: { findFirst: jest.fn(), updateMany: jest.fn() }
+        });
+        const firstTx = makeTx(43);
+        const secondTx = makeTx(44);
+        const transaction = jest.spyOn(prisma, '$transaction')
+            .mockImplementationOnce((async (callback: (db: typeof firstTx) => unknown) => {
+                await callback(firstTx);
+                throw Object.assign(new Error('Transaction failed due to a write conflict or a deadlock'), {
+                    code: 'P2034'
+                });
+            }) as never)
+            .mockImplementationOnce(
+                (async (callback: (db: typeof secondTx) => unknown) => callback(secondTx)) as never
+            );
+
+        await expect(PaymentService.create(
+            1,
+            { orderId: 9, paymentMethodId: 3, amount: 10 },
+            7
+        )).resolves.toEqual(expect.objectContaining({ id: 44 }));
+
+        expect(transaction).toHaveBeenCalledTimes(2);
+        expect(firstTx.payment.create).toHaveBeenCalledTimes(1);
+        expect(secondTx.payment.create).toHaveBeenCalledTimes(1);
+        expect(secondTx.order.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ financialStatus: 'PAID' })
+        }));
+    });
+
+    it('does not retry or hide a non-retryable payment-domain failure', async () => {
+        const transaction = jest.spyOn(prisma, '$transaction')
+            .mockRejectedValue(new Error('Order not found') as never);
+
+        await expect(PaymentService.create(
+            1,
+            { orderId: 9, paymentMethodId: 3, amount: 10 },
+            7
+        )).rejects.toThrow('Order not found');
+
+        expect(transaction).toHaveBeenCalledTimes(1);
+    });
+
     it('settles a fully paid order without selecting a warehouse or moving inventory', async () => {
         const consume = jest.spyOn(InventoryConsumptionService, 'consumeForOrder');
         const tx = {
@@ -76,7 +135,7 @@ describe('PaymentService financial/physical boundary and domain replay', () => {
         expect(complete).not.toHaveBeenCalled();
     });
 
-    it('reconciles a stale physical table from the immutable invoice boundary after payment', async () => {
+    it('reconciles and releases the physical table after full payment', async () => {
         const tx = {
             $queryRaw: jest.fn(async () => []),
             order: {
@@ -98,14 +157,14 @@ describe('PaymentService financial/physical boundary and domain replay', () => {
         jest.spyOn(prisma, '$transaction').mockImplementation(
             (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
         );
-        const release = jest.spyOn(OrderService, 'reconcileTableAfterSettlement').mockResolvedValue(false);
+        const reconciliation = jest.spyOn(OrderService, 'reconcileTableAccount').mockResolvedValue(false);
 
         await PaymentService.create(1, { orderId: 9, paymentMethodId: 3, amount: 10 }, 7);
 
-        expect(release).toHaveBeenCalledTimes(1);
-        expect(release.mock.calls[0]?.[0]).toBe(tx as never);
-        expect(release.mock.calls[0]?.slice(1)).toEqual([
-            1, 5, 7, 'Orden facturada #9 conciliada después del pago'
+        expect(reconciliation).toHaveBeenCalledTimes(1);
+        expect(reconciliation.mock.calls[0]?.[0]).toBe(tx as never);
+        expect(reconciliation.mock.calls[0]?.slice(1)).toEqual([
+            1, 5, 7, 'Orden facturada #9 liberada después del pago total'
         ]);
     });
 

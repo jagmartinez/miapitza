@@ -428,16 +428,16 @@ export class ShiftTemplateService {
             throw new HrScheduleError('Solo un administrador con alcance de empresa puede modificar una plantilla global', 403);
         }
         const expectedRevision = requiredNonNegativeInt(input.expectedRevision, 'expectedRevision');
+        const active = optionalBoolean(input.active, 'active', existing.active);
         const statusOnlyUpdate = input.active !== undefined
             && Object.keys(input).every((field) => field === 'active' || field === 'expectedRevision');
-        if (statusOnlyUpdate && Boolean(input.active) === existing.active) {
+        if (statusOnlyUpdate && active === existing.active) {
             return existing;
         }
         if (expectedRevision !== existing.revision) {
             throw new HrScheduleError('La plantilla fue modificada por otro usuario', 409);
         }
         const data = await this.normalize(companyId, input, existing, scopeBranchId);
-        const active = optionalBoolean(input.active, 'active', existing.active);
         const template = await serializableTransaction(async (tx) => {
             const draftUsage = await tx.scheduledShift.findFirst({
                 where: { companyId, shiftTemplateId: id, schedule: { status: 'DRAFT' } },

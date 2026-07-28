@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
-import { tableOpenAccountWhere, tableOperationalOrderWhere } from './table-occupancy-policy';
+import { tableOpenAccountWhere } from './table-occupancy-policy';
 
 export type TableOperationalState =
   | 'AVAILABLE' | 'RESERVED' | 'DISABLED' | 'OPEN_ORDER' | 'WAITING_KITCHEN'
@@ -110,7 +110,7 @@ export class TableService {
         orders: {
           where: {
             companyId,
-            ...tableOperationalOrderWhere()
+            ...tableOpenAccountWhere()
           },
           select: {
             id: true,
@@ -218,11 +218,11 @@ export class TableService {
           where: {
             companyId,
             tableId: id,
-            ...tableOperationalOrderWhere()
+            ...tableOpenAccountWhere()
           }
         });
         if (activeOrders > 0 && data.status !== 'OCCUPIED') {
-          throw new Error('La mesa tiene una orden activa y debe permanecer ocupada');
+          throw new Error('La mesa tiene una cuenta pendiente y debe permanecer ocupada');
         }
         if (data.status === 'OCCUPIED' && activeOrders === 0 && !current.activeTableGroupId) {
           throw new Error('Una mesa solo puede marcarse ocupada mediante una orden activa');
@@ -275,12 +275,12 @@ export class TableService {
       where: {
         tableId: id,
         companyId,
-        ...tableOperationalOrderWhere()
+        ...tableOpenAccountWhere()
       }
     });
 
     if (activeOrders) {
-      throw new Error('Cannot delete table with active orders');
+      throw new Error('No se puede eliminar una mesa con cuentas pendientes');
     }
 
     const activeReservation = await prisma.reservation.findFirst({

@@ -103,7 +103,10 @@ describe('Operational readiness endpoint', () => {
     it('times out one shared storage probe without accumulating identity queries', async () => {
         process.env.NODE_ENV = 'production';
         process.env.STORAGE_SHARED_ID = 'restaurant-production-primary';
-        process.env.READINESS_STORAGE_TIMEOUT_MS = '100';
+        // This case exercises the shared in-flight database identity probe, so
+        // leave enough room for the real Windows filesystem/fsync preflight.
+        // The separate test below keeps the strict 100 ms filesystem timeout.
+        process.env.READINESS_STORAGE_TIMEOUT_MS = '1000';
         jest.spyOn(prisma, '$queryRaw').mockResolvedValue([{ ok: 1 }] as never);
         const storageIdentityQuery = jest.spyOn(prisma.storageIdentity, 'findUnique')
             .mockReturnValue(new Promise(() => undefined) as never);
@@ -118,7 +121,7 @@ describe('Operational readiness endpoint', () => {
         expect(responses.every(response => response.status === 503)).toBe(true);
         expect(responses.every(response => response.body.data.checks.storage.status === 'error')).toBe(true);
         expect(storageIdentityQuery).toHaveBeenCalledTimes(1);
-        expect(Date.now() - started).toBeLessThan(600);
+        expect(Date.now() - started).toBeLessThan(2_000);
     });
 
     it('times out a blocked filesystem operation without blocking the event loop or duplicating probes', async () => {

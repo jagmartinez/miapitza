@@ -3,8 +3,11 @@
 Sistema multiempresa para compras, inventario, producción, menú, promociones,
 órdenes, POS, caja, cocina, facturación, delivery, catering y reservaciones.
 
-El informe técnico vigente, con correcciones, evidencia ejecutada y riesgos
-residuales, está en
+La certificación técnica vigente y su procedimiento de release están en
+[`docs/CERTIFICACION_GO_PRODUCCION_2026-07-26.md`](docs/CERTIFICACION_GO_PRODUCCION_2026-07-26.md).
+El informe causal con correcciones aplicadas, evidencia y riesgos está en
+[`docs/CORRECCIONES_AUDITORIA_INTEGRAL_2026-07-25.md`](docs/CORRECCIONES_AUDITORIA_INTEGRAL_2026-07-25.md).
+El corte anterior se conserva en
 [`docs/CORRECCION_HALLAZGOS_AUDITORIA_E2E_2026-07-22.md`](docs/CORRECCION_HALLAZGOS_AUDITORIA_E2E_2026-07-22.md).
 `docs/CERTIFICACION_TRANSACCIONAL_E2E_2026-07-13.md` y los demás informes
 anteriores se conservan únicamente como antecedentes históricos.

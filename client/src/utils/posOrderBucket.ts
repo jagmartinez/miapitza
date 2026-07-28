@@ -10,46 +10,36 @@ export function isEligibleForPosOrderBucket(order: PosBucketOrder): boolean {
     return !order.invoiceFiscalStatus || order.invoiceFiscalStatus === 'NOT_ISSUED';
 }
 
-export function findPosOrderBucketForTable<T extends PosBucketOrder>(
+/**
+ * Returns the account that owns the table, including an immutable invoiced
+ * account. The active-account API is oldest-first, so historical duplicate
+ * accounts are recovered one at a time. Editability and physical occupancy
+ * are intentionally independent.
+ */
+export function findTableAccountForTable<T extends PosBucketOrder>(
     orders: T[],
     tableId: number,
 ): T | null {
     return orders.find((order) => {
         const orderTableId = order.tableId ?? order.table?.id;
-        return orderTableId === tableId && isEligibleForPosOrderBucket(order);
+        return orderTableId === tableId;
     }) ?? null;
 }
 
-export class PosBucketReleaseTracker {
-    private readonly releasedOrderIds = new Set<number>();
-
-    releaseAfterConfirmedInvoice(
-        orderId: number,
-        invoiceNumber: string | null | undefined,
-        release: () => void,
-    ): boolean {
-        if (!invoiceNumber?.trim() || this.releasedOrderIds.has(orderId)) {
-            return false;
-        }
-
-        this.releasedOrderIds.add(orderId);
-        release();
-        return true;
-    }
-}
-
-export function buildInvoiceReleaseMessage(input: {
+export function buildInvoiceStatusMessage(input: {
     invoiceNumber: string;
     orderId: number;
     tableNumber?: string | null;
     financialStatus: Order['financialStatus'];
 }): string {
-    const tableRelease = input.tableNumber
-        ? ` Mesa ${input.tableNumber} liberada.`
+    const tableState = input.tableNumber
+        ? input.financialStatus === 'PAID'
+            ? ` Mesa ${input.tableNumber} liberada por pago total.`
+            : ` Mesa ${input.tableNumber} permanece ocupada hasta confirmar el pago total.`
         : '';
     const pendingHandoff = input.financialStatus === 'PAID'
         ? ` La orden #${input.orderId} queda pendiente de entrega en Pedidos; allí se descontará el inventario.`
         : ` La orden #${input.orderId} queda pendiente de pago y luego de entrega en Pedidos; el inventario se descontará al entregar.`;
 
-    return `Factura ${input.invoiceNumber} emitida.${tableRelease}${pendingHandoff}`;
+    return `Factura ${input.invoiceNumber} emitida.${tableState}${pendingHandoff}`;
 }

@@ -3,6 +3,7 @@ import { Calendar, Users, Phone, Plus, CheckCircle, XCircle, Mail, MessageSquare
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
+import LoadErrorState from '../components/LoadErrorState';
 // import Input from '../components/Input';
 import { branchesAPI, reservationsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
@@ -53,6 +54,7 @@ export default function Reservations() {
     const canChooseReservationBranch = userRoleNames.some((role) => ['SUPERADMIN', 'ADMIN'].includes(role));
     const [reservations, setReservations] = useState<Reservation[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [editingReservation, setEditingReservation] = useState<Reservation | null>(null);
     const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -79,15 +81,17 @@ export default function Reservations() {
 
     const loadReservations = useCallback(async () => {
         try {
+            setLoading(true);
             const response = await reservationsAPI.getAll();
             setReservations(response.data.data);
+            setLoadError(null);
         } catch (error) {
             console.error('Error loading reservations:', error);
-            showError('No se pudieron cargar las reservaciones.');
+            setLoadError('No se pudieron cargar las reservaciones. Se conserva la última información disponible hasta reintentar.');
         } finally {
             setLoading(false);
         }
-    }, [showError]);
+    }, []);
 
     useEffect(() => {
         loadReservations();
@@ -399,7 +403,7 @@ export default function Reservations() {
         }
     };
 
-    if (loading) {
+    if (loading && reservations.length === 0) {
         return <div className="reservations-loading">Cargando reservaciones...</div>;
     }
 
@@ -446,8 +450,16 @@ export default function Reservations() {
                 </div>
             </div>
 
+            {loadError && (
+                <LoadErrorState
+                    message={loadError}
+                    onRetry={() => { void loadReservations(); }}
+                    retrying={loading}
+                />
+            )}
+
             {/* Filters - show in cards and table views */}
-            {viewMode !== 'calendar' && (
+            {!loadError && viewMode !== 'calendar' && (
                 <div className="reservations-filters">
                     {/* Status Filters */}
                     <div className="filter-buttons">
@@ -495,6 +507,7 @@ export default function Reservations() {
                         <input
                             type="text"
                             placeholder="Buscar por nombre, teléfono o fecha..."
+                            aria-label="Buscar reservaciones"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="search-input reservations-search"
@@ -504,7 +517,7 @@ export default function Reservations() {
             )}
 
             {/* Calendar View */}
-            {viewMode === 'calendar' && (
+            {!loadError && viewMode === 'calendar' && (
                 <div className="calendar-container">
                     {/* Calendar Header */}
                     <div className="calendar-header">
@@ -706,7 +719,7 @@ export default function Reservations() {
             )}
 
             {/* Cards View */}
-            {viewMode === 'cards' && (
+            {!loadError && viewMode === 'cards' && (
                 <>
                     {sortedReservations.length === 0 ? (
                         <div className="reservations-empty">
@@ -808,7 +821,7 @@ export default function Reservations() {
             )}
 
             {/* Table View */}
-            {viewMode === 'table' && (
+            {!loadError && viewMode === 'table' && (
                 sortedReservations.length === 0 ? (
                     <div className="reservations-empty">
                         <Calendar size={64} />

@@ -35,6 +35,18 @@ describe('authz utils', () => {
         expect(getPrimaryRoleName(user)).toBe('COCINA');
     });
 
+    it('treats an explicit empty roles array as an authoritative revocation', () => {
+        const revoked = buildUser({
+            roles: [],
+            userRoles: [{ role: { id: 2, name: 'ADMIN' } }],
+            role: { id: 2, name: 'ADMIN' },
+        });
+
+        expect(getUserRoleNames(revoked)).toEqual([]);
+        expect(hasAnyRole(revoked, ['ADMIN'])).toBe(false);
+        expect(getPrimaryRoleName(revoked)).toBe('');
+    });
+
     it('uses the explicit user color before the role fallback', () => {
         const user = buildUser({ color: '#123456' });
         expect(getUserAccentColor(user)).toBe('#123456');

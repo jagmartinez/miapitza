@@ -42,8 +42,15 @@ Los errores tienen `{ code, message, retryable, requestId }`. Un HTTP 422 descri
 - Las replicas son stateless y comparten la base de plantillas. Cada worker carga aproximadamente 40 MB de modelos; dimensionar workers segun RAM y CPU.
 - `FACE_MAX_CONCURRENCY` limita solicitudes admitidas por worker y `FACE_QUEUE_TIMEOUT_SECONDS` rechaza saturacion con HTTP 503 en vez de crear una cola ilimitada. La escala recomendada es aumentar workers/replicas segun CPU y RAM; el balanceador debe aplicar limites por cliente y TLS.
 - Los encabezados de proxy sólo se confian desde `127.0.0.1` por defecto. Configure `FACE_FORWARDED_ALLOW_IPS` con la red exacta del proxy cuando corresponda, nunca `*` en una exposicion publica.
-- Se pueden rotar tokens aceptando temporalmente dos valores separados por coma.
+- Se pueden rotar tokens aceptando temporalmente dos valores separados por coma
+  en `FACE_AUTH_TOKENS`; el consumidor debe enviar únicamente el token activo.
+  En el Compose de la raíz, `HR_FACE_PROVIDER_TOKEN` es el token activo de salida
+  y `FACE_AUTH_TOKENS` puede contener `activo,anterior` durante una ventana
+  acotada. Retire el anterior al terminar.
 - `/metrics` requiere autenticacion y expone conteos/latencias, nunca imagenes, embeddings ni identificadores.
+- `/health` falla cerrado si la base de plantillas o el worker de retención no
+  están disponibles, y vuelve a `200` sólo después de una purga exitosa. La
+  respuesta no expone detalles de la dependencia.
 - Los umbrales son configurables, pero deben calibrarse con camaras, iluminacion y poblacion reales antes de ampliar el uso.
 
 `scripts/calibrate_threshold.py` calcula FAR/FRR global y por cohorte desde un CSV

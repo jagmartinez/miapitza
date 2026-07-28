@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import base64
+import threading
+import time
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import Settings
 from app.crypto import TemplateCipher
@@ -28,6 +32,60 @@ class FakeEngine:
             passive_score=0.99,
             active_motion=0.1,
         )
+
+
+class RecoveringRetentionStore:
+    def __init__(self) -> None:
+        self.purge_calls = 0
+        self.retention_failed = threading.Event()
+        self.allow_recovery = threading.Event()
+
+    def initialize(self) -> None:
+        return None
+
+    def health_check(self) -> None:
+        return None
+
+    def purge_expired(self) -> int:
+        self.purge_calls += 1
+        if self.purge_calls == 1:
+            return 0
+        if self.purge_calls == 2:
+            self.retention_failed.set()
+            raise RuntimeError("simulated retention dependency failure")
+        self.allow_recovery.wait(timeout=2)
+        return 0
+
+
+class InitiallyBlockedRetentionStore:
+    def __init__(self) -> None:
+        self.purge_started = threading.Event()
+        self.allow_purge = threading.Event()
+
+    def initialize(self) -> None:
+        return None
+
+    def health_check(self) -> None:
+        return None
+
+    def purge_expired(self) -> int:
+        self.purge_started.set()
+        self.allow_purge.wait(timeout=2)
+        return 0
+
+
+class UnavailableTemplateStore:
+    def initialize(self) -> None:
+        return None
+
+    def health_check(self) -> None:
+        raise SQLAlchemyError("simulated storage outage")
+
+    def purge_expired(self) -> int:
+        return 0
+
+    def enroll(self, **_kwargs: object) -> str:
+        raise SQLAlchemyError("simulated storage outage")
 
 
 def settings(tmp_path: Path) -> Settings:
@@ -70,12 +128,76 @@ def auth() -> dict[str, str]:
     return {"Authorization": "Bearer test-token-with-at-least-thirty-two-characters"}
 
 
+def wait_for_health(api: TestClient, expected_status: int = 200) -> None:
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        if api.get("/health").status_code == expected_status:
+            return
+        time.sleep(0.01)
+    assert api.get("/health").status_code == expected_status
+
+
 def test_health_and_authentication(tmp_path: Path) -> None:
     with client(tmp_path, []) as api:
-        assert api.get("/health").status_code == 200
+        wait_for_health(api)
         denied = api.post("/v1/enroll", json={})
         assert denied.status_code == 401
         assert denied.json()["code"] == "AUTH_REQUIRED"
+
+
+def test_readiness_degrades_and_recovers_with_retention_worker(tmp_path: Path) -> None:
+    current = replace(settings(tmp_path), purge_interval_seconds=0.05)
+    store = RecoveringRetentionStore()
+    app = create_app(current, engine=FakeEngine([]), store=store)  # type: ignore[arg-type]
+
+    with TestClient(app) as api:
+        wait_for_health(api)
+        assert store.retention_failed.wait(timeout=2)
+
+        degraded = api.get("/health")
+        assert degraded.status_code == 503
+        assert degraded.json()["code"] == "RETENTION_NOT_READY"
+        assert "simulated" not in degraded.text
+
+        store.allow_recovery.set()
+        wait_for_health(api)
+
+
+def test_readiness_stays_closed_until_first_retention_pass(tmp_path: Path) -> None:
+    store = InitiallyBlockedRetentionStore()
+    app = create_app(settings(tmp_path), engine=FakeEngine([]), store=store)  # type: ignore[arg-type]
+
+    with TestClient(app) as api:
+        assert store.purge_started.wait(timeout=2)
+        pending = api.get("/health")
+        assert pending.status_code == 503
+        assert pending.json()["code"] == "RETENTION_NOT_READY"
+
+        store.allow_purge.set()
+        wait_for_health(api)
+
+
+def test_storage_outage_returns_sanitized_retryable_503(tmp_path: Path) -> None:
+    store = UnavailableTemplateStore()
+    engine = FakeEngine([np.asarray([1.0, 0.0], dtype=np.float32)])
+    app = create_app(settings(tmp_path), engine=engine, store=store)  # type: ignore[arg-type]
+
+    with TestClient(app) as api:
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and not app.state.retention_healthy:
+            time.sleep(0.01)
+        assert app.state.retention_healthy is True
+
+        health = api.get("/health")
+        assert health.status_code == 503
+        assert health.json()["code"] == "TEMPLATE_STORAGE_UNAVAILABLE"
+        assert health.json()["retryable"] is True
+        assert "simulated" not in health.text
+
+        enrollment = api.post("/v1/enroll", headers=auth(), json={**payload(), "retentionDays": 30})
+        assert enrollment.status_code == 503
+        assert enrollment.json()["code"] == "TEMPLATE_STORAGE_UNAVAILABLE"
+        assert "simulated" not in enrollment.text
 
 
 def test_request_body_limit_rejects_before_processing(tmp_path: Path) -> None:

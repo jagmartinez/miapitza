@@ -1,8 +1,13 @@
 .git
 .github
 .tmp
+.tmp-*
+.coverage
+output
+outputs
 **/node_modules
 client
+biometric-provider
 .claude
 *.md
 *.xlsx

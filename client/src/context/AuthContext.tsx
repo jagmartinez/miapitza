@@ -4,33 +4,7 @@ import { closeWebSocket } from '../utils/websocket';
 import { offlineManager } from '../services/offlineManager';
 import { AuthContext } from './auth-context';
 import type { User } from '../types';
-import { isAuthoritativeSessionFailure } from '../utils/auth-session';
-
-/**
- * Normalize the roles payload from /auth/me (string names from the JWT, or
- * objects) into the `{ id, name }[]` shape used across the client.
- */
-const mapServerRoles = (raw: unknown): { id: number; name: string }[] | undefined => {
-    if (!Array.isArray(raw)) {
-        return undefined;
-    }
-    const mapped = raw
-        .map((entry, index): { id: number; name: string } | null => {
-            if (typeof entry === 'string') {
-                return { id: index, name: entry };
-            }
-            if (entry && typeof entry === 'object') {
-                const candidate = entry as { id?: number; name?: string; role?: { id?: number; name?: string } };
-                const name = candidate.name ?? candidate.role?.name;
-                if (typeof name === 'string' && name) {
-                    return { id: candidate.id ?? candidate.role?.id ?? index, name };
-                }
-            }
-            return null;
-        })
-        .filter((role): role is { id: number; name: string } => role !== null);
-    return mapped.length > 0 ? mapped : undefined;
-};
+import { isAuthoritativeSessionFailure, normalizeSessionRoles } from '../utils/auth-session';
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
@@ -143,13 +117,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     // /auth/me returns the JWT shape with roles as string names. Reflect
                     // any server-side role changes by mapping them into user.roles, which
                     // is the canonical source consumed by getUserRoleNames().
-                    const refreshedRoles = mapServerRoles(serverUser.roles ?? serverUser.userRoles);
+                    const refreshedRoles = normalizeSessionRoles(serverUser.roles ?? serverUser.userRoles);
                     setUser((prev) => {
                         if (!prev) return prev;
                         const refreshedUser = {
                             ...prev,
                             ...safeFields,
-                            ...(refreshedRoles ? { roles: refreshedRoles } : {}),
+                            ...(refreshedRoles !== undefined ? { roles: refreshedRoles } : {}),
                         } as User;
                         localStorage.setItem('user', JSON.stringify(refreshedUser));
                         return refreshedUser;

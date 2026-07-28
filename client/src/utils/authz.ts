@@ -17,7 +17,7 @@ export const getUserRoleNames = (user?: User | null): string[] => {
         return [];
     }
 
-    if (Array.isArray(user.roles) && user.roles.length > 0) {
+    if (Array.isArray(user.roles)) {
         const rolesFromArray = user.roles
             .map((role) => {
                 if (typeof role === 'string') {
@@ -29,9 +29,7 @@ export const getUserRoleNames = (user?: User | null): string[] => {
                 return '';
             })
             .filter(Boolean);
-        if (rolesFromArray.length > 0) {
-            return rolesFromArray;
-        }
+        return rolesFromArray;
     }
 
     if (Array.isArray(user.userRoles) && user.userRoles.length > 0) {
@@ -112,7 +110,7 @@ export const canUpdateWholeOrderStatus = (user: User | null | undefined): boolea
     hasPermission(user, 'orders.edit', [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.MESERO, ROLES.CAJERO]);
 
 export const getPrimaryRoleName = (user?: User | null): string => {
-    return getUserRoleNames(user)[0] || user?.role?.name || '';
+    return getUserRoleNames(user)[0] || '';
 };
 
 export const getRoleColor = (roleName?: string | null): string => {

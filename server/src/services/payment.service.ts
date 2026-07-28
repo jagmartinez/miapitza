@@ -3,6 +3,7 @@ import type { PaymentMethodType, Prisma } from '@prisma/client';
 import { DEFAULT_COMPANY_SETTINGS } from './setting.service';
 import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
 import { OrderService } from './order.service';
+import { transactionWithP2034Retry } from '../utils/transaction-retry';
 
 export class PaymentService {
     private static normalizeMoney(value: unknown): { amount: number; cents: number } {
@@ -131,7 +132,7 @@ export class PaymentService {
         const idempotencyKey = this.normalizeOptionalText(data.idempotencyKey, 'Idempotency key');
 
         // ALL validation and writes inside a single transaction to prevent race conditions
-        return await prisma.$transaction(async (tx) => {
+        return await transactionWithP2034Retry(async (tx) => {
             // Pessimistic lock: prevent concurrent payments on the same order
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${data.orderId} AND companyId = ${companyId} FOR UPDATE`;
 
@@ -325,15 +326,15 @@ export class PaymentService {
                 }
 
                 if (order.tableId) {
-                    // Invoice issuance already closes the table account. Re-run
-                    // the shared derivation as an idempotent repair in case an
-                    // older deployment left the physical table stale.
-                    await OrderService.reconcileTableAfterSettlement(
+                    // Full payment, not fiscal issuance, releases the account.
+                    // Reconcile under the same transaction so no concurrent
+                    // order can steal or retain a stale table state.
+                    await OrderService.reconcileTableAccount(
                         tx,
                         companyId,
                         order.tableId,
                         userId,
-                        `Orden facturada #${order.id} conciliada después del pago`
+                        `Orden facturada #${order.id} liberada después del pago total`
                     );
                 }
             } else {
@@ -358,7 +359,7 @@ export class PaymentService {
             throw new Error('Payment not found');
         }
 
-        return await prisma.$transaction(async (tx) => {
+        return await transactionWithP2034Retry(async (tx) => {
             // Serialize payment removal with payment creation, order completion
             // and cancellation. The status alone is not an inventory marker: a
             // fully-paid order may already be DELIVERED.
@@ -457,10 +458,10 @@ export class PaymentService {
             });
 
             if (payment.order.tableId && becomesUnderpaid) {
-                // Reversing money does not erase the immutable invoice boundary.
-                // The shared policy keeps the table available while the fiscal
-                // counterflow is resolved.
-                await OrderService.reconcileTableAfterSettlement(
+                // Reversing a fully settled payment reopens the debt even though
+                // the immutable invoice remains issued. The table must be
+                // occupied again until payment or fiscal cancellation resolves it.
+                await OrderService.reconcileTableAccount(
                     tx,
                     companyId,
                     payment.order.tableId,

@@ -112,15 +112,16 @@ export async function keepGroupedTableOccupied(tx: Tx, companyId: number, tableI
     await syncStandaloneTable(tx, companyId, tableId);
 }
 
-export async function closeInactiveTableGroupForTable(
+export async function reconcileTableGroupForTable(
     tx: Tx,
     companyId: number,
     tableId: number,
     actorId: number,
     reason: string
 ): Promise<boolean> {
-    // Invoice, delivery, payment reversal and group mutations all serialize on
-    // the physical table before deriving whether its account is still open.
+    // Invoice, payment, delivery, cancellation and group mutations all
+    // serialize on the physical table before deriving whether an account still
+    // owes money and therefore owns the table.
     await tx.$queryRaw`SELECT id FROM \`Table\` WHERE id = ${tableId} AND companyId = ${companyId} FOR UPDATE`;
     const table = await tx.table.findFirst({ where: { id: tableId, companyId }, select: { activeTableGroupId: true } });
     if (!table?.activeTableGroupId) {

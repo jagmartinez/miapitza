@@ -324,6 +324,24 @@ describe('reusable HR shift templates', () => {
         expect(transaction).not.toHaveBeenCalled();
     });
 
+    it('does not let truthy strings bypass boolean validation on an idempotent status update', async () => {
+        jest.spyOn(ShiftTemplateService, 'getById').mockResolvedValue({
+            ...template,
+            active: true,
+            startTime: '08:00',
+            endTime: '16:00',
+            crossesMidnight: false,
+        } as never);
+        const transaction = jest.spyOn(prisma, '$transaction');
+
+        await expect(ShiftTemplateService.update(71, 4, {
+            active: 'false',
+            expectedRevision: 2,
+        }, 3)).rejects.toThrow('active debe ser booleano');
+
+        expect(transaction).not.toHaveBeenCalled();
+    });
+
     it('blocks editing or deactivating a template referenced by a draft schedule', async () => {
         jest.spyOn(ShiftTemplateService, 'getById').mockResolvedValue({
             ...template,

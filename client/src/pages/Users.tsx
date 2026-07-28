@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Select from '../components/Select';
 import { usersAPI, branchesAPI, companiesAPI, rolesAPI } from '../services/api';
 import Button from '../components/Button';
@@ -6,6 +6,7 @@ import Sidebar from '../components/Sidebar';
 import PageHeader from '../components/PageHeader';
 import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
+import LoadErrorState from '../components/LoadErrorState';
 import { useViewMode } from '../hooks/useViewMode';
 import { Users as UsersIcon, Plus, Edit2, UserX, UserCheck, Shield, MapPin, Building2, Mail, User as UserIcon, Lock, Palette } from 'lucide-react';
 import type { User, Branch, Company, UserAccountType } from '../types';
@@ -30,6 +31,7 @@ import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
 import { activateOnKeyboard } from '../utils/keyboardActivation';
+import { createLatestRequestGuard } from '../utils/latestRequest';
 import './Users.css';
 
 function toApiPayload(payload: UserSavePayload): Record<string, unknown> {
@@ -48,6 +50,9 @@ export default function Users() {
     const [companies, setCompanies] = useState<Company[]>([]);
     const [availableRoles, setAvailableRoles] = useState<{ id: number; name: string }[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const lastRequestedCompanyId = useRef<string | undefined>(undefined);
+    const loadRequestGuard = useRef(createLatestRequestGuard());
 
     // Filter States
     const [searchQuery, setSearchQuery] = useState('');
@@ -87,25 +92,32 @@ export default function Users() {
     ];
 
     const loadData = useCallback(async (companyId?: string, isInitial = false) => {
+        const requestId = loadRequestGuard.current.begin();
         try {
+            lastRequestedCompanyId.current = companyId;
             if (isInitial) setLoading(true);
             const [usersRes, branchesRes, rolesRes] = await Promise.all([
                 usersAPI.getAll(isSuperAdmin ? { companyId } : undefined),
                 branchesAPI.getAll(isSuperAdmin ? { companyId } : undefined),
                 rolesAPI.getAll(isSuperAdmin ? { companyId } : undefined)
             ]);
+            if (!loadRequestGuard.current.isCurrent(requestId)) return;
             setUsers(usersRes.data.data);
             setBranches(branchesRes.data.data);
             setAvailableRoles(rolesRes.data.data || []);
 
             if (isSuperAdmin && companies.length === 0) {
                 const compRes = await companiesAPI.getAll();
+                if (!loadRequestGuard.current.isCurrent(requestId)) return;
                 setCompanies(compRes.data.data);
             }
+            setLoadError(null);
         } catch (error) {
+            if (!loadRequestGuard.current.isCurrent(requestId)) return;
             console.error('Error loading data:', error);
+            setLoadError('No se pudieron cargar los usuarios y sus catálogos. La consulta y las acciones quedan bloqueadas hasta reintentar.');
         } finally {
-            if (isInitial) setLoading(false);
+            if (loadRequestGuard.current.isCurrent(requestId)) setLoading(false);
         }
     }, [companies.length, isSuperAdmin]);
 
@@ -326,7 +338,7 @@ export default function Users() {
         return colors[roleName] || '#6B7280';
     };
 
-    if (loading) return <div className="users-loading">Cargando usuarios...</div>;
+    if (loading && users.length === 0) return <div className="users-loading">Cargando usuarios...</div>;
 
     return (
         <div className="users-page">
@@ -336,7 +348,7 @@ export default function Users() {
                 actions={
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <ViewToggle value={viewMode} onChange={setViewMode} />
-                        <Button onClick={() => handleOpenSidebar()}>
+                        <Button onClick={() => handleOpenSidebar()} disabled={Boolean(loadError)}>
                             <Plus size={20} />
                             Nuevo Usuario
                         </Button>
@@ -344,14 +356,23 @@ export default function Users() {
                 }
             />
 
+            {loadError && (
+                <LoadErrorState
+                    message={loadError}
+                    onRetry={() => { void loadData(lastRequestedCompanyId.current, true); }}
+                    retrying={loading}
+                />
+            )}
+
             {/* Filters */}
-            <div className="users-filters">
+            {!loadError && <div className="users-filters">
                 {/* Search */}
                 <div className="search-container">
                     <input
                         type="text"
                         className="search-input"
                         placeholder="Buscar por nombre, usuario o email..."
+                        aria-label="Buscar usuarios"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
@@ -377,10 +398,10 @@ export default function Users() {
                         isSearchable={false}
                     />
                 </div>
-            </div>
+            </div>}
 
             {/* Table view */}
-            {viewMode === 'table' && filteredUsers.length > 0 && (
+            {!loadError && viewMode === 'table' && filteredUsers.length > 0 && (
                 <CatalogTable<User>
                     rows={filteredUsers}
                     rowKey={(u) => u.id}
@@ -463,7 +484,7 @@ export default function Users() {
             )}
 
             {/* Users Grid */}
-            {viewMode === 'cards' && filteredUsers.length > 0 && (
+            {!loadError && viewMode === 'cards' && filteredUsers.length > 0 && (
                 <div className="users-grid">
                     {filteredUsers.map(user => {
                         const userAllRoles = user.userRoles
@@ -544,7 +565,7 @@ export default function Users() {
                 </div>
             )}
 
-            {filteredUsers.length === 0 && (
+            {!loadError && filteredUsers.length === 0 && (
                 <div className="users-empty">
                     <UsersIcon size={64} />
                     <h3>No se encontraron usuarios</h3>

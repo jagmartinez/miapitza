@@ -211,6 +211,60 @@ describe('InvoiceService immutable issuance', () => {
         expect(tx.order.findUnique).toHaveBeenCalledTimes(1);
     });
 
+    it('retries the complete Table-to-Order issuance callback after P2034', async () => {
+        jest.spyOn(prisma.order, 'findFirst').mockResolvedValue({ id: 7, tableId: 5 } as never);
+        jest.spyOn(SettingService, 'getAll').mockResolvedValue({ currency_symbol: '$' });
+        const makeTx = () => ({
+            $queryRaw: jest.fn().mockResolvedValue([{ id: 7 }] as never),
+            user: { findFirst: jest.fn().mockResolvedValue({ id: 4 } as never) },
+            order: {
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 7,
+                    companyId: 1,
+                    branchId: 2,
+                    tableId: 5,
+                    status: 'READY',
+                    total: 116,
+                    items: [{ id: 1 }],
+                    invoiceNumber: 'FAC-2-000007',
+                    invoiceSnapshot: snapshot,
+                } as never),
+                count: jest.fn().mockResolvedValue(1 as never),
+            },
+            table: {
+                findFirst: jest.fn().mockResolvedValue({
+                    id: 5,
+                    status: 'OCCUPIED',
+                    activeTableGroupId: null,
+                } as never),
+                update: jest.fn().mockResolvedValue({ id: 5 } as never),
+            },
+        });
+        const firstTx = makeTx();
+        const secondTx = makeTx();
+        const transaction = jest.spyOn(prisma, '$transaction')
+            .mockImplementationOnce((async (callback: (client: typeof firstTx) => unknown) => {
+                await callback(firstTx);
+                throw Object.assign(new Error('write conflict'), { code: 'P2034' });
+            }) as never)
+            .mockImplementationOnce(
+                (async (callback: (client: typeof secondTx) => unknown) => callback(secondTx)) as never
+            );
+
+        await expect(InvoiceService.generateInvoice(7, 1, 4))
+            .resolves.toEqual(expect.objectContaining({ invoiceNumber: 'FAC-2-000007' }));
+
+        expect(transaction).toHaveBeenCalledTimes(2);
+        expect(firstTx.table.update).toHaveBeenCalledWith({
+            where: { id: 5 },
+            data: { status: 'OCCUPIED' },
+        });
+        expect(secondTx.table.update).toHaveBeenCalledWith({
+            where: { id: 5 },
+            data: { status: 'OCCUPIED' },
+        });
+    });
+
     it('fails closed for a malformed fiscal snapshot', () => {
         expect(() => deserializeInvoiceSnapshot({ ...snapshot, items: [] })).toThrow(/snapshot.*items/i);
         expect(() => deserializeInvoiceSnapshot({ ...snapshot, total: 999 })).toThrow(/totals do not reconcile/i);

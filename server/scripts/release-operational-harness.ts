@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import http from 'node:http';
 import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
 import { WebSocket } from 'ws';
+import { safeReadinessDetails } from '../src/utils/release-readiness-diagnostics';
 
 type ProbeMetric = {
   requests: number;
@@ -11,6 +12,12 @@ type ProbeMetric = {
   requestsPerSecond: number;
   latencyMs: { min: number; p50: number; p95: number; p99: number; max: number };
   statusCounts: Record<string, number>;
+};
+
+type TimedResponse = {
+  status: number;
+  latencyMs: number;
+  json?: unknown;
 };
 
 function integerFlag(name: string, fallback: number, min: number, max: number): number {
@@ -44,15 +51,27 @@ function percentile(sorted: number[], ratio: number): number {
   return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)];
 }
 
-async function timedRequest(url: string, init?: RequestInit): Promise<{ status: number; latencyMs: number }> {
+async function timedRequest(url: string, init?: RequestInit, captureJson = false): Promise<TimedResponse> {
   const started = performance.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3_000);
   timeout.unref?.();
   try {
     const response = await fetch(url, { ...init, signal: controller.signal });
-    await response.arrayBuffer();
-    return { status: response.status, latencyMs: performance.now() - started };
+    const body = await response.arrayBuffer();
+    let json: unknown;
+    if (captureJson && body.byteLength <= 64 * 1024) {
+      try {
+        json = JSON.parse(Buffer.from(body).toString('utf8'));
+      } catch {
+        json = undefined;
+      }
+    }
+    return {
+      status: response.status,
+      latencyMs: performance.now() - started,
+      ...(json === undefined ? {} : { json }),
+    };
   } finally {
     clearTimeout(timeout);
   }
@@ -180,9 +199,12 @@ async function main(): Promise<void> {
 
   try {
     const warmLiveness = await timedRequest(`${baseUrl}/health`);
-    const warmReadiness = await timedRequest(`${baseUrl}/api/v1/health`);
+    const warmReadiness = await timedRequest(`${baseUrl}/api/v1/health`, undefined, true);
     if (warmLiveness.status !== 200 || warmReadiness.status !== 200) {
-      throw new Error(`Warmup failed: liveness=${warmLiveness.status}, readiness=${warmReadiness.status}`);
+      throw new Error(
+        `Warmup failed: liveness=${warmLiveness.status}, readiness=${warmReadiness.status}, `
+        + `readinessDetails=${JSON.stringify(safeReadinessDetails(warmReadiness.json))}`
+      );
     }
 
     const load = await loadProbe(`${baseUrl}/api/v1/health`, requests, concurrency);
@@ -209,7 +231,14 @@ async function main(): Promise<void> {
     eventLoop.disable();
     const result = {
       environment: { host: '127.0.0.1', databaseSuffix: '_test', production: false },
-      warmup: { liveness: warmLiveness, readiness: warmReadiness },
+      warmup: {
+        liveness: warmLiveness,
+        readiness: {
+          status: warmReadiness.status,
+          latencyMs: warmReadiness.latencyMs,
+          details: safeReadinessDetails(warmReadiness.json),
+        },
+      },
       load,
       soak,
       chaos: {
@@ -251,7 +280,7 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error) => {
+void main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });

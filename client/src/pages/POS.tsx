@@ -32,10 +32,9 @@ import { hasUsableCashShift } from '../utils/paymentAccess';
 import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
 import { DeliveryAttemptGate } from '../utils/deliveryAttempt';
 import {
-    buildInvoiceReleaseMessage,
-    findPosOrderBucketForTable,
+    buildInvoiceStatusMessage,
+    findTableAccountForTable,
     isEligibleForPosOrderBucket,
-    PosBucketReleaseTracker,
 } from '../utils/posOrderBucket';
 import './POS.css';
 
@@ -160,7 +159,6 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const [activeTableOrder, setActiveTableOrder] = useState<Order | null>(null);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
-    const posBucketReleaseTrackerRef = useRef(new PosBucketReleaseTracker());
     const [showTableModal, setShowTableModal] = useState(false);
     const [settings, setSettings] = useState<POSSettings>({});
     const [discount, setDiscount] = useState<number>(0);
@@ -422,7 +420,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
         try {
             const response = await ordersAPI.getActive();
-            const tableOrder = findPosOrderBucketForTable(response.data.data as Order[], table.id);
+            const tableOrder = findTableAccountForTable(response.data.data as Order[], table.id);
 
             setCurrentOrderId(tableOrder?.id ?? null);
             setActiveTableOrder(tableOrder);
@@ -478,6 +476,10 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const [loadingModifiers, setLoadingModifiers] = useState(false);
 
     const addToCart = useCallback((item: MenuItem, quantity: number = 1, modifiers: SelectedModifier[] = []) => {
+        if (activeTableOrder?.invoiceNumber) {
+            warning('La orden ya fue facturada y no admite cambios. Completa o revierte el cobro mediante el flujo fiscal.');
+            return;
+        }
         const modifiersExtra = modifiers.reduce((sum, mod) => sum + Number(mod.price), 0);
         const unitPrice = Number(item.price) + modifiersExtra;
 
@@ -503,7 +505,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 modifiers
             }];
         });
-    }, []);
+    }, [activeTableOrder?.invoiceNumber, warning]);
 
     const openModifierSelector = useCallback(async (item: MenuItem) => {
         setModifierItem(item);
@@ -598,14 +600,6 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
         const response = await ordersAPI.getById(orderId);
         const refreshedOrder = response.data.data as Order;
-        if (!isEligibleForPosOrderBucket(refreshedOrder)) {
-            posBucketReleaseTrackerRef.current.releaseAfterConfirmedInvoice(
-                refreshedOrder.id,
-                refreshedOrder.invoiceNumber || `fiscal-order-${refreshedOrder.id}`,
-                clearTableContext,
-            );
-            return refreshedOrder;
-        }
         setActiveTableOrder(refreshedOrder);
         setCurrentOrderId(refreshedOrder.id);
         setCustomerName(refreshedOrder.customerName || '');
@@ -616,8 +610,11 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             email: refreshedOrder.customerEmail || '',
             phone: refreshedOrder.customerPhone || ''
         });
+        if (!isEligibleForPosOrderBucket(refreshedOrder)) {
+            clearDraftCart(refreshedOrder.customerName || '');
+        }
         return refreshedOrder;
-    }, [clearTableContext]);
+    }, [clearDraftCart]);
 
     const persistCartToOrder = useCallback(async () => {
         if (cart.length === 0) {
@@ -948,14 +945,12 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 invoiceFiscalStatus: 'ISSUED',
             };
             setPaymentOrder(invoicedPaymentOrder);
+            setActiveTableOrder(invoicedPaymentOrder);
+            setCurrentOrderId(orderId);
+            clearDraftCart(invoicedPaymentOrder.customerName || '');
             setShowPaymentModal(true);
-            posBucketReleaseTrackerRef.current.releaseAfterConfirmedInvoice(
-                orderId,
-                invoiceNumber,
-                clearTableContext,
-            );
             const tableNumber = paymentSnapshot.table?.number ?? selectedTable?.number;
-            success(buildInvoiceReleaseMessage({
+            success(buildInvoiceStatusMessage({
                 invoiceNumber,
                 orderId,
                 tableNumber,
@@ -964,12 +959,12 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
             const tableViewRefreshed = await loadData(false);
             if (!tableViewRefreshed) {
-                warning('La factura fue emitida y la mesa liberada, pero la vista de mesas no pudo actualizarse. Recarga la página.');
+                warning('La factura fue emitida y la mesa sigue ocupada hasta el pago total, pero la vista de mesas no pudo actualizarse. Recarga la página.');
             }
             try {
                 await onOperationalChange?.();
             } catch {
-                warning('La factura fue emitida y la mesa liberada, pero el mapa operativo no pudo actualizarse. Recarga la página.');
+                warning('La factura fue emitida y la mesa sigue ocupada hasta el pago total, pero el mapa operativo no pudo actualizarse. Recarga la página.');
             }
         } catch (error: unknown) {
             const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
@@ -983,28 +978,33 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     handleSendToKitchenRef.current = handleSendToKitchen;
 
     const handlePaymentComplete = async (paymentData?: { offlineQueued?: boolean }) => {
-        try {
-            if (!paymentOrder) {
-                throw new Error('No se encontró una orden lista para cobrar');
-            }
-
-            // El bucket POS ya fue liberado al emitir la factura. Un pago en cola
-            // no se presenta como confirmado y conserva su propio contexto de cobro.
-            if (paymentData?.offlineQueued) {
-                warning('Pago pendiente de sincronización. La factura ya fue emitida; el cobro se marcará como pagado al confirmarse la conexión.');
-                return;
-            }
-
-            setShowPaymentModal(false);
-            setPaymentOrder(null);
-            success('Pago procesado exitosamente');
-
-            await loadData();
-            await onOperationalChange?.();
-            if (embedded) onExit?.();
-        } catch {
-            showError('Error al procesar el pago.');
+        if (!paymentOrder) {
+            showError('No se encontró una orden lista para cobrar');
+            return;
         }
+
+        // La factura inmoviliza la orden, pero la cuenta de mesa se conserva
+        // hasta que el backend confirme el pago total. Un pago en cola no libera.
+        if (paymentData?.offlineQueued) {
+            warning('Pago pendiente de sincronización. La factura ya fue emitida; el cobro se marcará como pagado al confirmarse la conexión.');
+            return;
+        }
+
+        setShowPaymentModal(false);
+        setPaymentOrder(null);
+        clearTableContext();
+        success('Pago procesado exitosamente');
+
+        const refreshed = await loadData(false);
+        if (!refreshed) {
+            warning('El pago fue confirmado, pero el POS no pudo actualizarse. Recarga la página antes de continuar.');
+        }
+        try {
+            await onOperationalChange?.();
+        } catch {
+            warning('El pago fue confirmado, pero el mapa operativo no pudo actualizarse. Recarga la página.');
+        }
+        if (embedded) onExit?.();
     };
 
     const handleCancelActiveOrder = useCallback(async () => {

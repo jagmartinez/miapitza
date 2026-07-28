@@ -5,6 +5,7 @@ import path from 'node:path';
 export interface ExpectedMigration {
     name: string;
     checksum: string;
+    compatibleChecksums?: string[];
 }
 
 export interface MigrationLedgerRow {
@@ -18,6 +19,10 @@ export interface MigrationLedgerIssue {
     check: string;
     count: number;
     detail?: string;
+}
+
+function sha256(contents: Buffer | string): string {
+    return createHash('sha256').update(contents).digest('hex');
 }
 
 function summarize(names: string[]): string | undefined {
@@ -35,9 +40,18 @@ export function loadExpectedMigrations(migrationsDirectory: string): ExpectedMig
         }))
         .map(entry => {
             const contents = readFileSync(entry.file);
+            const text = contents.toString('utf8');
+            const lf = text.replace(/\r\n/g, '\n');
+            const crlf = lf.replace(/\n/g, '\r\n');
+            const checksums = [...new Set([
+                sha256(contents),
+                sha256(lf),
+                sha256(crlf),
+            ])];
             return {
                 name: entry.name,
-                checksum: createHash('sha256').update(contents).digest('hex'),
+                checksum: checksums[0],
+                compatibleChecksums: checksums.slice(1),
             };
         })
         .sort((left, right) => left.name.localeCompare(right.name));
@@ -69,7 +83,11 @@ export function compareMigrationLedger(
             missing.push(migration.name);
             continue;
         }
-        if (!applied.some(row => row.checksum.toLowerCase() === migration.checksum.toLowerCase())) {
+        const acceptedChecksums = new Set([
+            migration.checksum,
+            ...(migration.compatibleChecksums ?? []),
+        ].map(checksum => checksum.toLowerCase()));
+        if (!applied.some(row => acceptedChecksums.has(row.checksum.toLowerCase()))) {
             checksumMismatch.push(migration.name);
         }
         if (applied.length > 1) duplicateSuccessful.push(migration.name);

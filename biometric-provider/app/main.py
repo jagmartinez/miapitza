@@ -15,6 +15,7 @@ from fastapi import Depends, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from . import __version__
@@ -26,14 +27,14 @@ from .schemas import EnrollRequest, EnrollResponse, RevokeRequest, RevokeRespons
 from .security import BearerAuthenticator
 from .storage import TemplateStore
 
-LOGGER = logging.getLogger("mia-face-provider")
+LOGGER = logging.getLogger("uvicorn.error.mia-face-provider")
 REQUESTS = Counter("face_provider_requests_total", "Solicitudes por ruta y resultado", ["route", "method", "status"])
 LATENCY = Histogram("face_provider_request_seconds", "Latencia por ruta", ["route", "method"])
 INFERENCES = Counter("face_provider_inferences_total", "Inferencias por operacion y resultado", ["operation", "result"])
 
 
-def _log(event: str, **fields: Any) -> None:
-    LOGGER.info(json.dumps({"event": event, **fields}, separators=(",", ":"), default=str))
+def _log(event: str, *, level: int = logging.INFO, **fields: Any) -> None:
+    LOGGER.log(level, json.dumps({"event": event, **fields}, separators=(",", ":"), default=str))
 
 
 def evidence_fingerprint(payload: EnrollRequest) -> str:
@@ -105,12 +106,24 @@ def create_app(
             while not retention_stop.is_set():
                 try:
                     purged = await asyncio.to_thread(resolved_store.purge_expired)
+                    recovered = not app.state.retention_healthy
+                    app.state.retention_healthy = True
                     if purged:
                         _log("expired_templates_purged", count=purged)
-                except Exception as exc:  # pragma: no cover - dependency outage is observed in integration/health
-                    _log("retention_worker_error", errorType=type(exc).__name__)
+                    if recovered:
+                        _log("retention_worker_recovered")
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    app.state.retention_healthy = False
+                    _log("retention_worker_error", level=logging.ERROR, errorType=type(exc).__name__)
+                wait_seconds = (
+                    resolved.purge_interval_seconds
+                    if app.state.retention_healthy
+                    else min(resolved.purge_interval_seconds, 30)
+                )
                 try:
-                    await asyncio.wait_for(retention_stop.wait(), timeout=resolved.purge_interval_seconds)
+                    await asyncio.wait_for(retention_stop.wait(), timeout=wait_seconds)
                 except TimeoutError:
                     continue
 
@@ -133,8 +146,27 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.ready = False
+    app.state.retention_healthy = False
     app.state.settings = resolved
     app.add_middleware(BodyLimitMiddleware, max_bytes=resolved.max_request_bytes)
+
+    async def call_store(operation: str, callback: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        try:
+            return await asyncio.to_thread(callback, *args, **kwargs)
+        except BiometricError:
+            raise
+        except SQLAlchemyError as exc:
+            _log(
+                "template_storage_error",
+                level=logging.ERROR,
+                operation=operation,
+                errorType=type(exc).__name__,
+            )
+            raise BiometricError(
+                "TEMPLATE_STORAGE_UNAVAILABLE",
+                "El almacenamiento biometrico no esta disponible",
+                status_code=503,
+            ) from exc
 
     async def analyze_evidence(payload: EnrollRequest | VerifyRequest):
         try:
@@ -214,7 +246,12 @@ def create_app(
 
     @app.exception_handler(Exception)
     async def unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
-        _log("unexpected_error", requestId=getattr(request.state, "request_id", None), errorType=type(exc).__name__)
+        _log(
+            "unexpected_error",
+            level=logging.ERROR,
+            requestId=getattr(request.state, "request_id", None),
+            errorType=type(exc).__name__,
+        )
         return JSONResponse(
             status_code=500,
             content={
@@ -231,7 +268,13 @@ def create_app(
     async def health() -> dict[str, Any]:
         if not app.state.ready:
             raise BiometricError("NOT_READY", "El proveedor aun no esta listo", status_code=503)
-        await asyncio.to_thread(resolved_store.health_check)
+        if not app.state.retention_healthy:
+            raise BiometricError(
+                "RETENTION_NOT_READY",
+                "La retencion biometrica aun no esta disponible",
+                status_code=503,
+            )
+        await call_store("health_check", resolved_store.health_check)
         return {"status": "ok", "provider": "mia-face-provider", "model": resolved.model_name, "version": __version__}
 
     @app.get("/ready", dependencies=[auth])
@@ -246,7 +289,8 @@ def create_app(
     async def enroll(payload: EnrollRequest) -> EnrollResponse:
         try:
             analysis = await analyze_evidence(payload)
-            template_ref = await asyncio.to_thread(
+            template_ref = await call_store(
+                "enroll",
                 resolved_store.enroll,
                 tenant_ref=payload.tenant_ref,
                 subject_ref=payload.subject_ref,
@@ -270,7 +314,8 @@ def create_app(
     async def verify(payload: VerifyRequest) -> VerifyResponse:
         try:
             analysis = await analyze_evidence(payload)
-            enrolled_template = await asyncio.to_thread(
+            enrolled_template = await call_store(
+                "load",
                 resolved_store.load_record,
                 template_ref=payload.template_ref,
                 tenant_ref=payload.tenant_ref,
@@ -301,7 +346,8 @@ def create_app(
 
     @app.post("/v1/templates/revoke", response_model=RevokeResponse, dependencies=[auth])
     async def revoke(payload: RevokeRequest) -> RevokeResponse:
-        revoked = await asyncio.to_thread(
+        revoked = await call_store(
+            "revoke",
             resolved_store.revoke,
             template_ref=payload.template_ref,
             tenant_ref=payload.tenant_ref,

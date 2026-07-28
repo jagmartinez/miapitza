@@ -5,7 +5,6 @@ import { assertCompatiblePhysicalGroups, keepGroupedTableOccupied } from './tabl
 import {
     TABLE_OPERATIONAL_ORDER_STATUSES,
     tableOpenAccountWhere,
-    tableOperationalOrderWhere,
     type TableOperationalOrderStatus,
 } from './table-occupancy-policy';
 
@@ -285,7 +284,7 @@ export class TableAccountService {
                 where: {
                     companyId,
                     tableId: { in: [destinationTableId, ...sourceTableIds] },
-                    ...tableOperationalOrderWhere()
+                    ...tableOpenAccountWhere()
                 },
                 include: {
                     payments: { where: { status: 'ACTIVE' }, select: { id: true } },
@@ -873,7 +872,7 @@ export class TableAccountService {
             if (sourceSubtotalCents <= 0 || movedSubtotalCents <= 0) throw new Error('El traslado parcial debe tener un importe positivo');
 
             const destinationOrders = await tx.order.findMany({
-                where: { companyId, tableId: destinationTableId, ...tableOperationalOrderWhere() },
+                where: { companyId, tableId: destinationTableId, ...tableOpenAccountWhere() },
                 include: { payments: { where: { status: 'ACTIVE' }, select: { id: true } } }
             });
             if (destinationOrders.length > 1) throw new Error('Consolide primero las órdenes activas de la mesa destino');

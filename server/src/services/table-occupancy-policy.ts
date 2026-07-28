@@ -9,53 +9,43 @@ export const TABLE_OPERATIONAL_ORDER_STATUSES = [
 
 export type TableOperationalOrderStatus = typeof TABLE_OPERATIONAL_ORDER_STATUSES[number];
 
-type FiscalTableClosure = {
-    invoiceNumber: string | null;
-    invoiceSnapshot: Prisma.JsonValue | null;
-    invoiceFiscalStatus: string;
+export const TABLE_ACCOUNT_HOLDING_STATUSES = [
+    ...TABLE_OPERATIONAL_ORDER_STATUSES,
+    'DELIVERED',
+] as const;
+
+type TableAccountOrder = {
+    status: string;
+    financialStatus: string;
 };
 
 /**
- * Fiscal issuance closes the table account without claiming that food was
- * delivered. The immutable number + snapshot are the durable fact; subsequent
- * payment reversals and fiscal counterdocuments must not reopen the table.
+ * A fiscal document freezes price/customer data but does not settle the debt.
+ * The account keeps its table until payment is complete or the order reaches a
+ * terminal cancellation. Payment reversal therefore reopens the same account.
  */
-export function isTableAccountClosedByInvoice(order: FiscalTableClosure): boolean {
-    return Boolean(order.invoiceNumber?.trim())
-        && order.invoiceSnapshot !== null
-        && order.invoiceFiscalStatus !== 'NOT_ISSUED';
-}
-
-function fiscalTableClosureWhere(): Prisma.OrderWhereInput {
-    return {
-        invoiceNumber: { not: null },
-        invoiceSnapshot: { not: Prisma.DbNull },
-        invoiceFiscalStatus: { not: 'NOT_ISSUED' },
-    };
+export function doesOrderHoldTableAccount(order: TableAccountOrder): boolean {
+    return order.financialStatus !== 'PAID'
+        && TABLE_ACCOUNT_HOLDING_STATUSES.includes(
+            order.status as typeof TABLE_ACCOUNT_HOLDING_STATUSES[number],
+        );
 }
 
 /** Operational order that still owns a table account. */
 export function tableOperationalOrderWhere(): Prisma.OrderWhereInput {
     return {
         status: { in: [...TABLE_OPERATIONAL_ORDER_STATUSES] },
-        NOT: fiscalTableClosureWhere(),
+        financialStatus: { not: 'PAID' },
     };
 }
 
 /**
- * Any order that keeps a table occupied. A delivered/unpaid legacy account
- * remains open only when it has not crossed the immutable invoice boundary.
+ * Any non-cancelled, non-settled account that keeps a table occupied. Delivered
+ * legacy accounts remain visible until their financial balance is settled.
  */
 export function tableOpenAccountWhere(): Prisma.OrderWhereInput {
     return {
-        AND: [
-            {
-                OR: [
-                    { status: { in: [...TABLE_OPERATIONAL_ORDER_STATUSES] } },
-                    { status: 'DELIVERED', financialStatus: { not: 'PAID' } },
-                ],
-            },
-            { NOT: fiscalTableClosureWhere() },
-        ],
+        status: { in: [...TABLE_ACCOUNT_HOLDING_STATUSES] },
+        financialStatus: { not: 'PAID' },
     };
 }

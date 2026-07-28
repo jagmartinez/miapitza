@@ -13,7 +13,7 @@ const activeGroup = {
 };
 
 describe('TableGroupService.updateMembership', () => {
-    it('can remove the current primary, reassign it and preserve only uninvoiced delivered-unpaid occupancy', async () => {
+    it('can remove the current primary, reassign it and preserve every delivered-unpaid account', async () => {
         const updateMany = jest.fn()
             .mockResolvedValueOnce({ count: 1 } as never)
             .mockResolvedValueOnce({ count: 2 } as never);
@@ -59,19 +59,13 @@ describe('TableGroupService.updateMembership', () => {
             where: {
                 companyId: number;
                 tableId: number;
-                AND: Array<Record<string, unknown>>;
+                status: { in: string[] };
+                financialStatus: { not: string };
             };
         }).where;
         expect(occupancyWhere).toEqual(expect.objectContaining({ companyId: 1, tableId: 11 }));
-        expect(occupancyWhere.AND[0].OR).toEqual(expect.arrayContaining([
-            expect.objectContaining({ status: 'DELIVERED', financialStatus: { not: 'PAID' } })
-        ]));
-        expect(occupancyWhere.AND[1]).toEqual(expect.objectContaining({
-            NOT: expect.objectContaining({
-                invoiceNumber: { not: null },
-                invoiceFiscalStatus: { not: 'NOT_ISSUED' }
-            })
-        }));
+        expect(occupancyWhere.status.in).toContain('DELIVERED');
+        expect(occupancyWhere.financialStatus).toEqual({ not: 'PAID' });
         expect(update).toHaveBeenCalledWith({ where: { id: 11 }, data: { status: 'OCCUPIED' } });
         expect(tx.tableGroup.update).toHaveBeenCalledWith({
             where: { id: 7 },

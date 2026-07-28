@@ -5,6 +5,7 @@ import prisma from '../utils/prisma';
 import { deserializeInvoiceSnapshot, type InvoiceData } from './invoice.service';
 import { OrderService } from './order.service';
 import { validateConfiguredFiscalTaxId } from './setting.service';
+import { transactionWithP2034Retry } from '../utils/transaction-retry';
 
 export interface InvoiceCancellationInput {
     idempotencyKey?: unknown;
@@ -91,7 +92,7 @@ export class InvoiceCancellationService {
     static async cancel(orderId: number, companyId: number, userId: number, input: InvoiceCancellationInput) {
         if (!Number.isInteger(orderId) || orderId <= 0) throw new Error('Orden inválida');
         const normalized = this.normalize(input);
-        return prisma.$transaction(async (tx) => {
+        return transactionWithP2034Retry(async (tx) => {
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
             const order = await tx.order.findFirst({
                 where: { id: orderId, companyId },

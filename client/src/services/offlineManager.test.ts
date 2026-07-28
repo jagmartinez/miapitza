@@ -81,6 +81,35 @@ describe('offline ownership and single-flight', () => {
         expect(await offlineManager.getPendingCount()).toBe(0);
     });
 
+    it('stops the captured owner batch when the authenticated identity changes', async () => {
+        login(1, 10);
+        await offlineManager.enqueueRequest({ url: '/orders/1', method: 'POST', data: {}, operationType: 'CREATE_ORDER' });
+        await offlineManager.enqueueRequest({ url: '/orders/2', method: 'POST', data: {}, operationType: 'CREATE_ORDER' });
+        request.mockImplementationOnce(async () => {
+            login(2, 20);
+        });
+
+        await offlineManager.processSyncQueue();
+
+        expect(request).toHaveBeenCalledTimes(1);
+        login(1, 10);
+        expect(await offlineManager.getPendingCount()).toBe(1);
+    });
+
+    it('stops the captured owner batch when the authentication token rotates', async () => {
+        login(1, 10);
+        await offlineManager.enqueueRequest({ url: '/orders/1', method: 'POST', data: {}, operationType: 'CREATE_ORDER' });
+        await offlineManager.enqueueRequest({ url: '/orders/2', method: 'POST', data: {}, operationType: 'CREATE_ORDER' });
+        request.mockImplementationOnce(async () => {
+            storage.set('token', 'rotated-token');
+        });
+
+        await offlineManager.processSyncQueue();
+
+        expect(request).toHaveBeenCalledTimes(1);
+        expect(await offlineManager.getPendingCount()).toBe(1);
+    });
+
     it('keeps dependency ordering within the same owner partition', async () => {
         login(1, 10);
         await offlineManager.enqueueRequest({ url: '/orders', method: 'POST', data: {}, operationType: 'CREATE_ORDER', entityTempId: 'tmp-order' });

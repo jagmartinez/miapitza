@@ -71,6 +71,7 @@ export default function CustomSelect<
 }: CustomSelectProps<Option, IsMulti, Group>) {
     const generatedId = useId();
     const resolvedInputId = inputId ?? generatedId;
+    const errorId = error ? `${resolvedInputId}-error` : undefined;
     const combinedClassName = `select-group ${variant} ${props.isDisabled ? 'is-disabled' : ''} ${className}`.trim();
     const isModal = variant === 'modal';
     const anchorRef = useRef<HTMLDivElement>(null);
@@ -133,6 +134,8 @@ export default function CustomSelect<
                 inputId={resolvedInputId}
                 classNamePrefix={classNamePrefix}
                 {...props}
+                aria-invalid={error ? true : props['aria-invalid']}
+                aria-errormessage={errorId ?? props['aria-errormessage']}
                 menuPlacement={effectiveMenuPlacement}
                 menuPosition={resolvedMenuPosition}
                 menuPortalTarget={resolvedMenuPortalTarget}
@@ -140,7 +143,7 @@ export default function CustomSelect<
                 styles={resolvedStyles}
                 onMenuOpen={handleMenuOpen}
             />
-            {error && <span className="select-error-message">{error}</span>}
+            {error && <span id={errorId} className="select-error-message" role="alert">{error}</span>}
         </div>
     );
 }

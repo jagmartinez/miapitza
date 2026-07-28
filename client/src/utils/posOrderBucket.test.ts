@@ -1,9 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-    buildInvoiceReleaseMessage,
-    findPosOrderBucketForTable,
+    buildInvoiceStatusMessage,
+    findTableAccountForTable,
     isEligibleForPosOrderBucket,
-    PosBucketReleaseTracker,
 } from './posOrderBucket';
 
 const baseOrder = {
@@ -33,7 +32,7 @@ describe('POS order bucket lifecycle', () => {
         })).toBe(false);
     });
 
-    it('selects only the non-invoiced order when an active list contains a fiscal residue', () => {
+    it('keeps an invoiced unpaid account attached to its table while treating it as non-editable', () => {
         const fiscalResidue = {
             ...baseOrder,
             invoiceNumber: 'FAC-1-000009',
@@ -45,39 +44,28 @@ describe('POS order bucket lifecycle', () => {
             invoiceFiscalStatus: 'NOT_ISSUED' as const,
         };
 
-        expect(findPosOrderBucketForTable([fiscalResidue], 9)).toBeNull();
-        expect(findPosOrderBucketForTable([fiscalResidue, openOrder], 9)).toBe(openOrder);
+        expect(findTableAccountForTable([fiscalResidue], 9)).toBe(fiscalResidue);
+        expect(isEligibleForPosOrderBucket(fiscalResidue)).toBe(false);
+        expect(findTableAccountForTable([openOrder], 9)).toBe(openOrder);
+        expect(findTableAccountForTable([fiscalResidue, openOrder], 9)).toBe(fiscalResidue);
     });
 
-    it('releases exactly once after confirmed invoicing, but not on failure, offline preparation, or retry', () => {
-        const tracker = new PosBucketReleaseTracker();
-        const clearBucket = vi.fn();
-
-        expect(tracker.releaseAfterConfirmedInvoice(36, undefined, clearBucket)).toBe(false);
-        expect(tracker.releaseAfterConfirmedInvoice(36, '', clearBucket)).toBe(false);
-        expect(clearBucket).not.toHaveBeenCalled();
-
-        expect(tracker.releaseAfterConfirmedInvoice(36, 'FAC-1-000009', clearBucket)).toBe(true);
-        expect(tracker.releaseAfterConfirmedInvoice(36, 'FAC-1-000009', clearBucket)).toBe(false);
-        expect(clearBucket).toHaveBeenCalledTimes(1);
-    });
-
-    it('communicates payment and delivery handoff without claiming payment prematurely', () => {
-        expect(buildInvoiceReleaseMessage({
+    it('communicates table occupancy, payment and delivery without claiming settlement prematurely', () => {
+        expect(buildInvoiceStatusMessage({
             invoiceNumber: 'FAC-1-000009',
             orderId: 36,
             tableNumber: 'ABANICO',
             financialStatus: 'UNPAID',
         })).toBe(
-            'Factura FAC-1-000009 emitida. Mesa ABANICO liberada. '
+            'Factura FAC-1-000009 emitida. Mesa ABANICO permanece ocupada hasta confirmar el pago total. '
             + 'La orden #36 queda pendiente de pago y luego de entrega en Pedidos; '
             + 'el inventario se descontará al entregar.',
         );
-        expect(buildInvoiceReleaseMessage({
+        expect(buildInvoiceStatusMessage({
             invoiceNumber: 'FAC-1-000010',
             orderId: 37,
             tableNumber: '2',
             financialStatus: 'PAID',
-        })).toContain('queda pendiente de entrega en Pedidos');
+        })).toContain('Mesa 2 liberada por pago total.');
     });
 });
