@@ -1,6 +1,7 @@
 import type { Order } from '../types';
 
 type PosBucketOrder = Pick<Order, 'id' | 'tableId' | 'table' | 'invoiceNumber' | 'invoicedAt' | 'invoiceFiscalStatus'>;
+type VisibleTableOrder = Pick<Order, 'status' | 'financialStatus'>;
 
 export function isEligibleForPosOrderBucket(order: PosBucketOrder): boolean {
     if (order.invoiceNumber?.trim() || order.invoicedAt) {
@@ -8,6 +9,15 @@ export function isEligibleForPosOrderBucket(order: PosBucketOrder): boolean {
     }
 
     return !order.invoiceFiscalStatus || order.invoiceFiscalStatus === 'NOT_ISSUED';
+}
+
+/**
+ * Fiscal issuance freezes an order but does not remove its products or release
+ * its table account. Only settlement/cancellation can remove it from this view.
+ */
+export function doesOrderRemainVisibleAtTable(order: VisibleTableOrder): boolean {
+    return order.financialStatus !== 'PAID'
+        && ['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED'].includes(order.status);
 }
 
 /**

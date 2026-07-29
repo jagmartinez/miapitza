@@ -192,7 +192,22 @@ async function mockScheduleCatalog(page: Page, options: MockOptions = {}) {
     }
 
     if (path.endsWith('/v1/hr/schedules') && method === 'GET') {
-      state.schedule.weekStart = requestUrl.searchParams.get('weekStart') ?? state.schedule.weekStart;
+      const requestedWeekStart = requestUrl.searchParams.get('weekStart') ?? state.schedule.weekStart;
+      if (requestedWeekStart !== state.schedule.weekStart) {
+        const offsetMs = Date.parse(`${requestedWeekStart}T00:00:00.000Z`)
+          - Date.parse(`${state.schedule.weekStart}T00:00:00.000Z`);
+        state.schedule.shifts = state.schedule.shifts.map((shift) => ({
+          ...shift,
+          ...(typeof shift.date === 'string'
+            ? {
+                date: new Date(
+                  Date.parse(`${shift.date}T00:00:00.000Z`) + offsetMs,
+                ).toISOString().slice(0, 10),
+              }
+            : {}),
+        }));
+        state.schedule.weekStart = requestedWeekStart;
+      }
       return route.fulfill({ json: [state.schedule] });
     }
 

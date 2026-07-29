@@ -6,12 +6,12 @@ type KitchenTimedOrder = {
 export type KdsTimingConfig = { warningMinutes: number; urgentMinutes: number };
 export type KdsTimeClass = 'time-normal' | 'time-warning' | 'time-urgent';
 
-/** The KDS SLA starts when the first line reaches kitchen, not when the sale draft was created. */
+/** The KDS SLA starts at reception of the latest kitchen wave. */
 export function getKitchenReceivedAt(order: KitchenTimedOrder): string {
     const sentTimes = order.items
         .map((item) => item.sentAt ? new Date(item.sentAt).getTime() : null)
         .filter((value): value is number => value !== null && Number.isFinite(value));
-    return sentTimes.length > 0 ? new Date(Math.min(...sentTimes)).toISOString() : order.createdAt;
+    return sentTimes.length > 0 ? new Date(Math.max(...sentTimes)).toISOString() : order.createdAt;
 }
 
 export function getKdsWaitMinutes(order: KitchenTimedOrder, nowMs = Date.now()): number {

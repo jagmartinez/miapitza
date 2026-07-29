@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getChairPlacements } from './tableChairLayout';
+import { resolveTablePresentationState } from '../utils/tablePresentation';
 
 function tableWithCapacity(capacity: number, mapWidth = 120, mapHeight = 80) {
     return { capacity, mapWidth, mapHeight };
@@ -23,5 +24,37 @@ describe('table map chair placement', () => {
     it('renders no misleading chairs for an invalid stored capacity', () => {
         expect(getChairPlacements(tableWithCapacity(0))).toEqual([]);
         expect(getChairPlacements(tableWithCapacity(2.5))).toEqual([]);
+    });
+});
+
+describe('table map operational presentation', () => {
+    it('collapses internal workflow states into the three user-facing states', () => {
+        expect(resolveTablePresentationState({
+            status: 'AVAILABLE',
+            operationalState: 'AVAILABLE',
+        })).toBe('AVAILABLE');
+        expect(resolveTablePresentationState({
+            status: 'OCCUPIED',
+            operationalState: 'PREPARING',
+        })).toBe('OCCUPIED');
+        expect(resolveTablePresentationState({
+            status: 'OCCUPIED',
+            operationalState: 'INVOICED',
+        })).toBe('PENDING_PAYMENT');
+        expect(resolveTablePresentationState({
+            status: 'OCCUPIED',
+            operationalState: 'PARTIAL_PAYMENT',
+        })).toBe('PENDING_PAYMENT');
+    });
+
+    it('does not expose reserved/disabled internals as extra legend states', () => {
+        expect(resolveTablePresentationState({
+            status: 'RESERVED',
+            operationalState: 'RESERVED',
+        })).toBe('OCCUPIED');
+        expect(resolveTablePresentationState({
+            status: 'OUT_OF_SERVICE',
+            operationalState: 'DISABLED',
+        })).toBe('OCCUPIED');
     });
 });

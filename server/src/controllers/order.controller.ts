@@ -287,17 +287,21 @@ export class OrderController {
             const companyId = req.user!.companyId;
             await OrderController.assertOrderBranch(req, id);
             const order = await OrderService.sendToKitchen(id, companyId);
+            const kitchenBatchSent = order.kitchenBatchSent !== false;
 
-            // Broadcast to kitchen
-            WebSocketService.broadcastOrderToKitchen(order, {
-                companyId,
-                branchId: order?.branchId || req.user?.branchId,
-                roles: ['COCINA', 'CHEF', 'ADMIN', 'SUPERADMIN']
-            });
+            // An idempotent offline retry must not manufacture a second KDS
+            // arrival event after the original send already committed.
+            if (kitchenBatchSent) {
+                WebSocketService.broadcastOrderToKitchen(order, {
+                    companyId,
+                    branchId: order?.branchId || req.user?.branchId,
+                    roles: ['COCINA', 'CHEF', 'ADMIN', 'SUPERADMIN']
+                });
+            }
 
             res.json({
                 success: true,
-                message: 'Orden enviada a cocina',
+                message: kitchenBatchSent ? 'Orden enviada a cocina' : 'La tanda ya estaba enviada a cocina',
                 data: order
             });
         } catch (error) {

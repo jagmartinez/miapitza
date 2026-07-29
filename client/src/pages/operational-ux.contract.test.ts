@@ -212,6 +212,6 @@ describe('operational UX contracts', () => {
         expect(tables).toContain('Emite la factura para continuar al cobro.');
         expect(tables).not.toContain('Cuentas consolidadas. ${buildInvoiceStatusMessage({');
         expect(tables).not.toContain('settleReadyTableOnPayment');
-        expect(tables).toContain('isEligibleForPosOrderBucket(o)');
+        expect(tables).toContain('doesOrderRemainVisibleAtTable(order)');
     });
 });

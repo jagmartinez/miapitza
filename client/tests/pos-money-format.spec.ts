@@ -110,7 +110,7 @@ test('POS shows C$ 1,375.00 consistently on product, cart line and total', async
   await page.getByRole('button', { name: /Mesa MONEDA/ }).click();
   await page
     .getByRole('dialog', { name: 'Mesa MONEDA' })
-    .getByRole('button', { name: 'Menú', exact: true })
+    .getByRole('button', { name: 'Agregar productos', exact: true })
     .click();
 
   const pos = page.getByRole('dialog', { name: 'Pedido de mesa MONEDA' });

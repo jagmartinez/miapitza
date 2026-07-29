@@ -33,6 +33,7 @@ const payrollRun = {
 };
 
 async function mockApp(page: Page, activeUser = user) {
+  let invoiceIssued = false;
   await page.addInitScript((storedUser) => {
     localStorage.setItem('user', JSON.stringify(storedUser));
     localStorage.setItem('sidebar-collapsed', 'true');
@@ -386,13 +387,68 @@ async function mockApp(page: Page, activeUser = user) {
         payroll: { activeRule: true, draftRuns: 1, reviewRuns: 0, approvedRuns: 0 },
       };
     }
+    if (path.endsWith('/cash-shifts/1')) {
+      data = {
+        id: 1,
+        cashRegisterId: 4,
+        userId: activeUser.id,
+        startDate: '2026-07-29T12:00:00.000Z',
+        startAmount: 1000,
+        user: activeUser,
+        register: { id: 4, name: 'Caja QA', branchId: 10, status: 'OPEN' },
+        movements: [],
+      };
+    }
+    if (path.endsWith('/cash-shifts/1/summary')) {
+      data = {
+        summary: {
+          expectedAmount: 1000,
+          totalIn: 0,
+          totalOut: 0,
+          totalSalesCash: 0,
+          grossSalesCash: 0,
+          cashRefunds: 0,
+          otherIncome: 0,
+          otherOutflows: 0,
+        },
+      };
+    }
+    if (path.endsWith('/cash-arqueo/1')) {
+      data = { counts: { bills: [], coins: [] } };
+    }
+    if (path.endsWith('/invoices/501/issue')) {
+      invoiceIssued = true;
+      data = {
+        orderId: 501,
+        customerName: 'Cliente general',
+        items: [
+          { orderItemId: 1, name: 'Pinot Grigio Pasqua - Copa', quantity: 1, price: 300, subtotal: 300 },
+          { orderItemId: 2, name: 'Verdejo Quintaluna - Copa', quantity: 1, price: 350, subtotal: 350 },
+          { orderItemId: 3, name: 'Plato especial', quantity: 1, price: 1549, subtotal: 1549 },
+        ],
+        grossSubtotal: 2199,
+        discount: 0,
+        subtotal: 2199,
+        tax: 0,
+        tipAmount: 0,
+        tipRatePercent: 0,
+        total: 2199,
+        branchName: 'Sucursal QA',
+        companyName: 'Empresa QA',
+        companyRuc: 'J0310000000000',
+        date: '2026-07-29T18:00:00.000Z',
+        invoiceNumber: 'FAC-QA-501',
+        taxRatePercent: 0,
+        currencySymbol: 'C$',
+      };
+    }
     if (path.endsWith('/tables')) {
       data = [{
         id: 77,
         number: 'ABANICO',
         capacity: 4,
         status: 'OCCUPIED',
-        operationalState: 'PREPARING',
+        operationalState: invoiceIssued ? 'INVOICED' : 'PREPARING',
         location: 'Salon principal',
         branchId: 10,
         mapX: 80,
@@ -413,6 +469,9 @@ async function mockApp(page: Page, activeUser = user) {
         total: 2199,
         status: 'IN_PREPARATION',
         financialStatus: 'UNPAID',
+        invoiceNumber: invoiceIssued ? 'FAC-QA-501' : undefined,
+        invoicedAt: invoiceIssued ? '2026-07-29T18:00:00.000Z' : undefined,
+        invoiceFiscalStatus: invoiceIssued ? 'ISSUED' : undefined,
         createdAt: '2026-07-16T22:05:00.000Z',
         user: activeUser,
         items: [
@@ -421,6 +480,27 @@ async function mockApp(page: Page, activeUser = user) {
           { id: 3, orderId: 501, menuItemId: 103, quantity: 1, price: 1549, subtotal: 1549, status: 'DONE', menuItem: { id: 103, name: 'Plato especial con un nombre deliberadamente largo', price: 1549 } },
         ],
       }];
+    }
+    if (path.endsWith('/orders/501')) {
+      data = {
+        id: 501,
+        branchId: 10,
+        tableId: 77,
+        userId: 902,
+        total: 2199,
+        status: 'IN_PREPARATION',
+        financialStatus: 'UNPAID',
+        invoiceNumber: invoiceIssued ? 'FAC-QA-501' : undefined,
+        invoicedAt: invoiceIssued ? '2026-07-29T18:00:00.000Z' : undefined,
+        invoiceFiscalStatus: invoiceIssued ? 'ISSUED' : undefined,
+        createdAt: '2026-07-16T22:05:00.000Z',
+        user: activeUser,
+        items: [
+          { id: 1, orderId: 501, menuItemId: 101, quantity: 1, price: 300, subtotal: 300, status: 'PENDING', menuItem: { id: 101, name: 'Pinot Grigio Pasqua - Copa', price: 300 } },
+          { id: 2, orderId: 501, menuItemId: 102, quantity: 1, price: 350, subtotal: 350, status: 'IN_PROGRESS', menuItem: { id: 102, name: 'Verdejo Quintaluna - Copa', price: 350 } },
+          { id: 3, orderId: 501, menuItemId: 103, quantity: 1, price: 1549, subtotal: 1549, status: 'DONE', menuItem: { id: 103, name: 'Plato especial con un nombre deliberadamente largo', price: 1549 } },
+        ],
+      };
     }
     if (path.includes('/tables/plan/')) {
       data = {
@@ -435,7 +515,7 @@ async function mockApp(page: Page, activeUser = user) {
           number: 'ABANICO',
           capacity: 4,
           status: 'OCCUPIED',
-          operationalState: 'PREPARING',
+          operationalState: invoiceIssued ? 'INVOICED' : 'PREPARING',
           location: 'Salon principal',
           branchId: 10,
           mapX: 80,
@@ -541,7 +621,11 @@ test('operational table map uses the complete viewport without lateral gutters',
   await expect(table.locator('.map-table-chair')).toHaveCount(4);
   await expect(table).toHaveAttribute('data-chair-count', '4');
   await expect(table).toHaveAccessibleName(/4 sillas, capacidad para 4 comensales/);
-  await expect(page.locator('.table-map-legend')).toContainText('En preparación');
+  const legend = page.locator('.table-map-legend');
+  await expect(legend.locator('span')).toHaveCount(3);
+  await expect(legend).toContainText('Mesa disponible');
+  await expect(legend).toContainText('Mesa ocupada');
+  await expect(legend).toContainText('Mesa pendiente de pago');
 
   const furnitureGeometry = await table.evaluate((element) => {
     const tableBox = element.getBoundingClientRect();
@@ -569,14 +653,14 @@ test('mobile table orders use the full viewport and keep prices and actions insi
   const dialog = page.getByRole('dialog', { name: 'Mesa ABANICO' });
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveCSS('transform', 'none');
-  await expect(dialog.getByRole('button', { name: 'Agregar producto' })).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Imprimir cuenta' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Agregar productos' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Emitir Factura' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Imprimir cuenta' })).toHaveCount(0);
 
   const geometry = await dialog.evaluate((element) => {
     const box = element.getBoundingClientRect();
     const content = element.querySelector('.modal-tab-content-orders') as HTMLElement;
     const footer = element.querySelector('.orders-modal-footer') as HTMLElement;
-    const hiddenClose = footer.querySelector('.btn-modal-secondary') as HTMLElement;
     const lines = Array.from(element.querySelectorAll<HTMLElement>('.order-item-line'));
     return {
       top: box.top,
@@ -587,7 +671,6 @@ test('mobile table orders use the full viewport and keep prices and actions insi
       contentOverflow: content.scrollWidth - content.clientWidth,
       footerOverflow: footer.scrollWidth - footer.clientWidth,
       itemOverflows: lines.map((line) => line.scrollWidth - line.clientWidth),
-      footerCloseDisplay: getComputedStyle(hiddenClose).display,
     };
   });
 
@@ -597,8 +680,117 @@ test('mobile table orders use the full viewport and keep prices and actions insi
   expect(geometry.contentOverflow).toBeLessThanOrEqual(1);
   expect(geometry.footerOverflow).toBeLessThanOrEqual(1);
   expect(geometry.itemOverflows.every((overflow) => overflow <= 1)).toBe(true);
-  expect(geometry.footerCloseDisplay).toBe('none');
-  await expect(dialog.getByRole('button', { name: 'Agregar productos' })).toBeHidden();
+  await expect(dialog.getByRole('button', { name: 'Agregar productos' })).toHaveCount(1);
+  await expect(dialog.getByRole('button', { name: 'Emitir Factura' })).toHaveCount(1);
+});
+
+test('mobile and tablet routed views retain the main bottom navigation', async ({ page }) => {
+  await mockApp(page);
+
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 768, height: 1024 },
+    { width: 1024, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    for (const path of ['/tables', '/cash-shifts/1']) {
+      await page.goto(path);
+      const navigation = page.getByRole('navigation', { name: 'Acceso rápido' });
+      await expect(navigation).toBeVisible();
+      await expect(navigation.getByRole('link', { name: 'Inicio' })).toBeVisible();
+      await expect(navigation.getByRole('button', { name: 'Más opciones' })).toBeVisible();
+      const box = await navigation.boundingBox();
+      expect(box).not.toBeNull();
+      expect(Math.abs(box!.y + box!.height - viewport.height)).toBeLessThanOrEqual(1);
+      const overflow = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+        candidates: Array.from(document.querySelectorAll<HTMLElement>('body *'))
+          .map((element) => {
+            const box = element.getBoundingClientRect();
+            return { className: element.className, left: box.left, right: box.right };
+          })
+          .filter(({ left, right }) => left < -1 || right > window.innerWidth + 1)
+          .slice(0, 8),
+      }));
+      expect(
+        overflow.scrollWidth,
+        `${path} at ${viewport.width}px overflows: ${JSON.stringify(overflow.candidates)}`,
+      ).toBeLessThanOrEqual(overflow.viewportWidth + 1);
+    }
+  }
+});
+
+test('cash denomination rows remain aligned inside mobile and tablet sidebars', async ({ page }) => {
+  await mockApp(page);
+
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 768, height: 1024 },
+    { width: 1024, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/cash-shifts/1');
+    await page.getByRole('button', { name: 'Cerrar Turno' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Cierre de Turno' });
+    await expect(dialog).toBeVisible();
+    await expect.poll(async () => {
+      const box = await dialog.boundingBox();
+      return box ? Math.abs(box.x + box.width - viewport.width) : Number.POSITIVE_INFINITY;
+    }).toBeLessThanOrEqual(1);
+    await expect(dialog.getByLabel('Cantidad de billetes de C$ 1000')).toBeVisible();
+
+    const geometry = await dialog.evaluate((element) => {
+      const panel = element.getBoundingClientRect();
+      const body = element.querySelector('.sidebar-body')!.getBoundingClientRect();
+      const rows = Array.from(element.querySelectorAll<HTMLElement>('.denomination-item'));
+      return {
+        panelLeft: panel.left,
+        panelRight: panel.right,
+        viewportWidth: window.innerWidth,
+        bodyOverflow: (element.querySelector('.sidebar-body') as HTMLElement).scrollWidth
+          - (element.querySelector('.sidebar-body') as HTMLElement).clientWidth,
+        rowOverflows: rows.map((row) => row.scrollWidth - row.clientWidth),
+        rowsInside: rows.every((row) => {
+          const rowBox = row.getBoundingClientRect();
+          const inputBox = row.querySelector('input')!.getBoundingClientRect();
+          const subtotalBox = row.querySelector('.den-subtotal')!.getBoundingClientRect();
+          return rowBox.left >= body.left - 1
+            && rowBox.right <= body.right + 1
+            && inputBox.left >= rowBox.left - 1
+            && inputBox.right <= rowBox.right + 1
+            && subtotalBox.left >= rowBox.left - 1
+            && subtotalBox.right <= rowBox.right + 1;
+        }),
+      };
+    });
+
+    expect(geometry.panelLeft).toBeGreaterThanOrEqual(0);
+    expect(geometry.panelRight).toBeLessThanOrEqual(geometry.viewportWidth + 1);
+    expect(geometry.bodyOverflow).toBeLessThanOrEqual(1);
+    expect(geometry.rowOverflows.every((overflow) => overflow <= 1)).toBe(true);
+    expect(geometry.rowsInside).toBe(true);
+    await dialog.getByRole('button', { name: 'Cerrar Cierre de Turno' }).click();
+  }
+});
+
+test('issuing an invoice opens the immutable print document and enables payment', async ({ page }) => {
+  await mockApp(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/tables');
+  await page.getByRole('button', { name: /Mesa ABANICO/ }).click();
+
+  const tableDialog = page.getByRole('dialog', { name: 'Mesa ABANICO' });
+  const popupPromise = page.waitForEvent('popup');
+  await tableDialog.getByRole('button', { name: 'Emitir Factura' }).click();
+  const invoicePage = await popupPromise;
+  await invoicePage.waitForLoadState('domcontentloaded');
+  await expect(invoicePage.getByRole('heading', { name: 'FACTURA FAC-QA-501' })).toBeVisible();
+  await expect(invoicePage.locator('body')).toContainText('TOTAL');
+
+  await expect(tableDialog.getByRole('button', { name: 'Cobrar' })).toBeVisible();
+  await expect(tableDialog.getByRole('button', { name: 'Emitir Factura' })).toHaveCount(0);
+  await expect(tableDialog.getByText('Pinot Grigio Pasqua - Copa')).toBeVisible();
 });
 
 test('embedded POS keeps the cart total visible at 768px and scrolls only its item list', async ({
@@ -611,7 +803,7 @@ test('embedded POS keeps the cart total visible at 768px and scrolls only its it
   await page.getByRole('button', { name: /Mesa ABANICO/ }).click();
   await page
     .getByRole('dialog', { name: 'Mesa ABANICO' })
-    .getByRole('button', { name: 'Agregar producto', exact: true })
+    .getByRole('button', { name: 'Agregar productos', exact: true })
     .click();
 
   const pos = page.getByRole('dialog', { name: 'Pedido de mesa ABANICO' });

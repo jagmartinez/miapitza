@@ -31,17 +31,26 @@ describe('table operational center contract', () => {
     });
 
     it('exposes order, invoice, payment and split actions from the table panel', () => {
-        expect(panelSource).toContain("'Agregar producto' : 'Menú'");
+        expect(panelSource).toContain("'Agregar productos'");
         expect(panelSource).not.toContain('Abrir pedido');
         expect(panelSource).not.toContain('Continuar pedido');
         expect(panelSource).toContain('canOperatePOS');
-        expect(panelSource).toContain('Emitir factura');
+        expect(panelSource).toContain('Emitir Factura');
+        expect(panelSource).not.toContain('Imprimir cuenta');
+        expect(panelSource.match(/Agregar productos/g)).toHaveLength(1);
+        expect(panelSource.match(/Emitir Factura/g)).toHaveLength(1);
+        expect(panelSource).toContain('invoiceTargetOrderId');
         expect(panelSource).toContain('Cobrar');
         expect(panelSource).toContain('Dividir por consumo');
         expect(paymentSource).toContain("initialMode?: 'single' | 'split'");
     });
 
     it('keeps invoice issuance before collection in every order entry point', () => {
+        expect(tablesSource.indexOf("window.open('', '_blank')")).toBeLessThan(
+            tablesSource.indexOf('await invoicesAPI.issue(order.id)')
+        );
+        expect(tablesSource).toContain('invoiceWindow.close()');
+        expect(tablesSource).toContain('renderInvoiceHtml(invoice)');
         expect(tablesSource.indexOf('invoicesAPI.issue(order.id)')).toBeLessThan(
             tablesSource.indexOf("setPaymentMode(mode)")
         );
@@ -141,7 +150,7 @@ describe('table operational center contract', () => {
         expect(panelSource).toContain('&& !hasActiveFinancialConsolidation');
         expect(tablesSource).not.toContain('consolidationIntent');
         expect(tablesSource).toContain('Emite la factura para continuar al cobro');
-        expect(panelSource).toContain('Emitir factura');
+        expect(panelSource).toContain('Emitir Factura');
         expect(panelSource).toContain('Cobrar');
     });
 
@@ -184,8 +193,9 @@ describe('table operational center contract', () => {
         expect(panelStyles).toContain('height: 100dvh');
         expect(panelStyles).toContain('grid-template-columns: minmax(0, 1fr) max-content');
         expect(panelStyles).toContain('overscroll-behavior: contain');
-        expect(panelStyles).toContain('.orders-modal-footer .btn-modal-secondary:first-child { display: none; }');
-        expect(panelStyles).toContain('.table-order-add-products { display: none !important; }');
+        expect(panelStyles).toContain('.orders-modal-footer .issue-invoice-action');
+        expect(panelStyles).toContain('.orders-modal-footer .add-products-action');
+        expect(panelStyles).toContain('.orders-modal-footer .invoice-order-selector');
         expect(panelStyles).toContain('env(safe-area-inset-bottom)');
         expect(panelStyles).toContain('.orders-modal-footer.single-action');
         expect(panelSource).toContain("loading ? 'Cargando…'");
@@ -204,7 +214,8 @@ describe('table operational center contract', () => {
         expect(mapSource).toContain('members.map((table)');
         expect(mapSource).toContain('Grupo de ${groupMembers.length} mesas');
         expect(mapSource).toContain('Mesa ${groupPosition}/${groupMembers.length}');
-        expect(mapSource).toContain('Etiqueta: cantidad exacta del grupo');
+        expect(mapSource).toContain("'PENDING_PAYMENT', label: 'Mesa pendiente de pago'");
+        expect(mapSource).not.toContain('Etiqueta: cantidad exacta del grupo');
         expect(groupSource).toContain('Selección exacta: ${groupTableLabel}');
     });
 

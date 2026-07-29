@@ -29,6 +29,122 @@ describe('durable KDS lifecycle', () => {
         }));
     });
 
+    it('projects only the latest sent wave and isolates its kitchen timeline', async () => {
+        const firstSentAt = new Date('2026-07-29T12:00:00.000Z');
+        const secondSentAt = new Date('2026-07-29T12:30:00.000Z');
+        jest.spyOn(prisma.order, 'findMany').mockResolvedValue([{
+            id: 41,
+            companyId: 1,
+            branchId: 2,
+            status: 'SENT_TO_KITCHEN',
+            createdAt: new Date('2026-07-29T11:45:00.000Z'),
+            kitchenReleasedAt: null,
+            items: [
+                {
+                    id: 1,
+                    sentAt: firstSentAt,
+                    startedAt: new Date('2026-07-29T12:02:00.000Z'),
+                    finishedAt: new Date('2026-07-29T12:10:00.000Z'),
+                    status: 'DONE',
+                },
+                {
+                    id: 2,
+                    sentAt: secondSentAt,
+                    startedAt: null,
+                    finishedAt: null,
+                    status: 'PENDING',
+                },
+            ],
+        }] as never);
+
+        const [batch] = await OrderService.getKitchenQueue(1, 2);
+
+        expect(batch.items.map((item) => item.id)).toEqual([2]);
+        expect(batch.firstStartedAt).toBeNull();
+        expect(batch.readyAt).toBeNull();
+    });
+
+    it('rejects a new send until the previous wave is explicitly released', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 41,
+                    branchId: 2,
+                    status: 'READY',
+                    kitchenReleasedAt: null,
+                    items: [
+                        { id: 1, sentAt: new Date(), status: 'DONE' },
+                        { id: 2, sentAt: null, status: 'PENDING' },
+                    ],
+                })),
+            },
+            orderItem: { updateMany: jest.fn() },
+        };
+        jest.spyOn(prisma, '$transaction')
+            .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
+
+        await expect(OrderService.sendToKitchen(41, 1))
+            .rejects.toThrow(/libera la tanda activa/i);
+        expect(tx.orderItem.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('keeps the active previous wave visible while newer products remain unsent drafts', async () => {
+        const firstSentAt = new Date('2026-07-29T12:00:00.000Z');
+        jest.spyOn(prisma.order, 'findMany').mockResolvedValue([{
+            id: 41,
+            companyId: 1,
+            branchId: 2,
+            status: 'IN_PREPARATION',
+            createdAt: new Date('2026-07-29T11:45:00.000Z'),
+            kitchenReleasedAt: null,
+            items: [
+                {
+                    id: 1,
+                    sentAt: firstSentAt,
+                    startedAt: new Date('2026-07-29T12:02:00.000Z'),
+                    finishedAt: null,
+                    status: 'IN_PROGRESS',
+                },
+                {
+                    id: 2,
+                    sentAt: null,
+                    startedAt: null,
+                    finishedAt: null,
+                    status: 'PENDING',
+                },
+            ],
+        }] as never);
+
+        const [batch] = await OrderService.getKitchenQueue(1, 2);
+
+        expect(batch.items.map((item) => item.id)).toEqual([1]);
+        expect(batch.firstStartedAt).toBe('2026-07-29T12:02:00.000Z');
+    });
+
+    it('treats a repeated send of the current wave as an idempotent no-op', async () => {
+        const sentAt = new Date('2026-07-29T12:30:00.000Z');
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 41,
+                    branchId: 2,
+                    status: 'SENT_TO_KITCHEN',
+                    items: [{ id: 2, sentAt, status: 'PENDING' }],
+                })),
+            },
+            orderItem: { updateMany: jest.fn() },
+        };
+        jest.spyOn(prisma, '$transaction')
+            .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
+
+        const result = await OrderService.sendToKitchen(41, 1);
+
+        expect((result.items as Array<{ id: number }>).map((item) => item.id)).toEqual([2]);
+        expect(tx.orderItem.updateMany).not.toHaveBeenCalled();
+    });
+
     it('deduplicates retries in one READY cycle but permits a later reopened cycle', () => {
         const first = buildKitchenNotificationDedupKey({
             orderId: 41,
@@ -107,7 +223,8 @@ describe('durable KDS lifecycle', () => {
                     id: 41,
                     branchId: 2,
                     status: 'READY',
-                    kitchenReleasedAt: null
+                    kitchenReleasedAt: null,
+                    items: []
                 })),
                 update: jest.fn(async (_args: unknown) => ({}))
             },
@@ -124,10 +241,53 @@ describe('durable KDS lifecycle', () => {
 
         expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
             where: { id: 41 },
-            data: { kitchenReleasedAt: expect.anything(), kitchenReleasedById: 9 }
+            data: expect.objectContaining({
+                kitchenReleasedAt: expect.anything(),
+                kitchenReleasedById: 9
+            })
         }));
         expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({ action: 'KITCHEN_RELEASED', userId: 9 })
+        }));
+        expect(result.changed).toBe(true);
+    });
+
+    it('reopens the commercial order only after releasing a completed wave with a next draft', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 41,
+                    branchId: 2,
+                    status: 'READY',
+                    kitchenReleasedAt: null,
+                    items: [
+                        { sentAt: new Date('2026-07-29T12:00:00.000Z') },
+                        { sentAt: null },
+                    ]
+                })),
+                update: jest.fn(async (_args: unknown) => ({}))
+            },
+            auditLog: { create: jest.fn(async (_args: unknown) => ({})) }
+        };
+        jest.spyOn(prisma, '$transaction')
+            .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
+        jest.spyOn(OrderService, 'getById').mockResolvedValue({ id: 41, status: 'OPEN' } as never);
+
+        const result = await OrderService.releaseFromKitchen(41, 1, 9);
+
+        expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                status: 'OPEN',
+                kitchenReleasedAt: expect.anything(),
+                kitchenReleasedById: 9
+            })
+        }));
+        expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                action: 'KITCHEN_RELEASED',
+                details: expect.objectContaining({ nextDraftPending: true })
+            })
         }));
         expect(result.changed).toBe(true);
     });
@@ -165,9 +325,11 @@ describe('KDS migration contract', () => {
         expect(sql).toContain('_kds_urgent_minutes');
     });
 
-    it('clears release/start markers when a READY order receives a new item cycle', () => {
+    it('reopens only released READY waves and clears prior wave markers on the next send', () => {
         const source = fs.readFileSync(path.resolve(process.cwd(), 'src/services/order.service.ts'), 'utf8');
-        const reopenedMarkers = source.match(/status: 'SENT_TO_KITCHEN' as const,[\s\S]{0,260}kitchenReleasedAt: null,[\s\S]{0,260}kitchenStartedAt: null/g) ?? [];
-        expect(reopenedMarkers).toHaveLength(2);
+        expect(source.match(/status: 'OPEN' as const/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+        expect(source).toContain('...(hasPreviousBatch ? {');
+        expect(source).toContain('kitchenReleasedAt: null');
+        expect(source).toContain('kitchenStartedAt: null');
     });
 });

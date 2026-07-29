@@ -27,9 +27,9 @@ import type {
 } from '../types';
 import type { SingleValue } from 'react-select';
 import Select from '../components/Select';
-import { ACTIVE_ORDER_STATUSES } from '../utils/orderStatus';
 import './Tables.css';
 import TableMap, { type FloorPlanDraft } from '../components/TableMap';
+import { resolveTablePresentationState } from '../utils/tablePresentation';
 import {
     getIdempotentAttempt,
     newIdempotencyKey,
@@ -43,7 +43,8 @@ import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/web
 import { useCurrency } from '../hooks/useCurrency';
 import ThemeToggle from '../components/ThemeToggle';
 import KitchenNotificationBell from '../components/KitchenNotificationBell';
-import { buildInvoiceStatusMessage, isEligibleForPosOrderBucket } from '../utils/posOrderBucket';
+import { buildInvoiceStatusMessage, doesOrderRemainVisibleAtTable } from '../utils/posOrderBucket';
+import { renderInvoiceHtml, renderInvoiceLoadingHtml, type PrintableInvoiceSnapshot } from '../utils/invoicePrint';
 import { useNavigate } from 'react-router-dom';
 
 interface ApiValidationError { field?: string; message?: string }
@@ -298,18 +299,13 @@ export default function Tables() {
             const response = await ordersAPI.getAll({
                 tableId: table.id,
             });
-            const active = response.data.data.filter((o: Order) =>
-                isEligibleForPosOrderBucket(o)
-                && (
-                    ACTIVE_ORDER_STATUSES.includes(o.status)
-                    || (o.status === 'DELIVERED' && o.financialStatus !== 'PAID')
-                )
+            const active = response.data.data.filter((order: Order) =>
+                doesOrderRemainVisibleAtTable(order)
             );
             if (requestId === tableOrderRequestRef.current) setTableOrders(active);
         } catch (error) {
             console.error('Error loading table orders:', error);
             if (requestId === tableOrderRequestRef.current) {
-                setTableOrders([]);
                 showError('No se pudieron cargar las órdenes de esta mesa.');
             }
         } finally {
@@ -469,17 +465,61 @@ export default function Tables() {
             showWarning('Tu rol no puede emitir facturas.');
             return;
         }
+        // Mobile browsers only allow popups inside the original user gesture.
+        // Reserve the window before awaiting fiscal issuance; never issue and
+        // then silently lose the printable document to a popup blocker.
+        const invoiceWindow = window.open('', '_blank');
+        if (!invoiceWindow) {
+            showError('No se pudo abrir la factura. Permite ventanas emergentes e inténtalo de nuevo; no se emitió ningún documento.');
+            return;
+        }
+        try {
+            invoiceWindow.document.write(renderInvoiceLoadingHtml(order.id));
+            invoiceWindow.document.close();
+        } catch (popupError) {
+            console.error('Invoice popup could not be prepared:', popupError);
+            if (!invoiceWindow.closed) invoiceWindow.close();
+            showError('No se pudo preparar la ventana de factura; no se emitió ningún documento.');
+            return;
+        }
+
         setBusyOrderId(order.id);
+        let invoice: PrintableInvoiceSnapshot;
         try {
             const response = await invoicesAPI.issue(order.id);
-            const invoiceNumber = response.data?.data?.invoiceNumber as string | undefined;
+            invoice = response.data?.data as PrintableInvoiceSnapshot;
+            const invoiceNumber = invoice?.invoiceNumber;
             if (!invoiceNumber) {
                 throw new Error('La factura no devolvió un número fiscal.');
             }
+        } catch (error) {
+            invoiceWindow.close();
+            showError(extractApiError(error, 'No se pudo emitir la factura.'));
+            setBusyOrderId(null);
+            return;
+        }
+
+        const invoiceNumber = invoice.invoiceNumber;
+        try {
+            const invoiceHtml = renderInvoiceHtml(invoice);
+            invoiceWindow.document.open();
+            invoiceWindow.document.write(invoiceHtml);
+            invoiceWindow.document.close();
+            invoiceWindow.focus();
+            window.setTimeout(() => {
+                if (!invoiceWindow.closed) invoiceWindow.print();
+            }, 250);
+        } catch (printError) {
+            console.error('Invoice issued but printable snapshot could not be shown:', printError);
+            if (!invoiceWindow.closed) invoiceWindow.close();
+            showWarning(`La factura ${invoiceNumber} fue emitida, pero no se pudo mostrar para imprimir. Consúltala desde el historial fiscal.`);
+        }
+
+        try {
             let nextOrder: Order = {
                 ...order,
                 invoiceNumber,
-                invoicedAt: response.data?.data?.issuedAt || order.invoicedAt,
+                invoicedAt: invoice.date || order.invoicedAt,
                 invoiceFiscalStatus: 'ISSUED',
             };
             try {
@@ -498,7 +538,8 @@ export default function Tables() {
                 financialStatus: nextOrder.financialStatus,
             }));
         } catch (error) {
-            showError(extractApiError(error, 'No se pudo emitir la factura.'));
+            console.error('Invoice issued but table refresh failed:', error);
+            showWarning(`La factura ${invoiceNumber} fue emitida, pero el estado de la mesa no pudo refrescarse. Recarga la vista antes de cobrar.`);
         } finally {
             setBusyOrderId(null);
         }
@@ -543,7 +584,11 @@ export default function Tables() {
     }, [loadActiveConsolidation, loadFloorPlan, loadTableOrders, loadTables, selectedTable]);
 
     const filteredTables = statusFilter
-        ? tables.filter(t => t.status === statusFilter)
+        ? tables.filter((table) =>
+            ['AVAILABLE', 'OCCUPIED', 'PENDING_PAYMENT'].includes(statusFilter)
+                ? resolveTablePresentationState(table) === statusFilter
+                : table.status === statusFilter
+        )
         : tables;
 
     const handleSaveLayout = async (draft: FloorPlanDraft) => {

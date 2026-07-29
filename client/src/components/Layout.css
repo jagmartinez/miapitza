@@ -30,7 +30,7 @@
 /* A collapsed desktop menu expands as an overlay on pointer or keyboard focus.
    The content canvas keeps its 70px offset, so opening navigation never causes
    a horizontal jump. Mobile continues to use its dedicated drawer. */
-@media (min-width: 769px) {
+@media (min-width: 1025px) {
     .sidebar.collapsed:is(:hover, :focus-within) {
         width: 300px;
         overflow-y: auto;
@@ -596,8 +596,7 @@
     width: calc(100% - 70px);
 }
 
-.workspace-layout .sidebar,
-.workspace-layout .mobile-bottom-nav {
+.workspace-layout .sidebar {
     display: none;
 }
 
@@ -618,9 +617,9 @@
     height: 100%;
 }
 
-@media (max-width: 768px) {
-    /* On mobile we drop the lateral sidebar entirely.
-       Primary navigation + logout live in the bottom-nav. */
+@media (max-width: 1024px) {
+    /* On mobile and tablet we drop the lateral sidebar entirely.
+       Primary navigation + logout live in the bottom-nav and its drawer. */
     .sidebar,
     .sidebar.collapsed {
         display: none;
@@ -634,6 +633,16 @@
         padding: var(--spacing-md);
         padding-bottom: calc(var(--spacing-md) + 72px + env(safe-area-inset-bottom, 0px));
     }
+
+    /* Operational workspaces remain viewport-bound, but reserve the bottom
+       navigation area so their controls are never hidden behind it. */
+    .main-content.workspace-content,
+    .main-content.workspace-content.sidebar-collapsed {
+        height: 100dvh;
+        padding: 0;
+        padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+        box-sizing: border-box;
+    }
 }
 
 /* =========================================================
@@ -643,7 +652,7 @@
     display: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
     .mobile-bottom-nav {
         display: flex;
         position: fixed;
@@ -735,7 +744,7 @@
     display: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
     .mobile-menu-overlay {
         display: block;
         position: fixed;

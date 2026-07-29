@@ -1,17 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-    X, Clock, FileText, Printer, ShoppingCart, Receipt,
+    X, Clock, FileText, ShoppingCart, Receipt,
     CreditCard, Scissors, ArrowRightLeft, Merge, ChefHat,
     Users, CircleDollarSign, Link2, Unlink, Loader2, Pencil, Undo2, AlertTriangle
 } from 'lucide-react';
 import type { ActiveTableConsolidation, Order, OrderItem, Table } from '../types';
-import { escapeHtml } from '../utils/escapeHtml';
 import { getUserAccentColor } from '../utils/authz';
 import { getOrderStatusClassName, getOrderStatusLabel } from '../utils/orderStatus';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import { useCurrency } from '../hooks/useCurrency';
-import { useAppToast } from '../context/ToastContext';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import './TableOrdersModal.css';
 
@@ -78,20 +76,30 @@ export default function TableOrdersModal({
     onRetryConsolidationLookup,
     onReverseConsolidation,
 }: TableOrdersModalProps) {
-    const { formatMoney, symbol } = useCurrency();
-    const { error: showError } = useAppToast();
+    const { formatMoney } = useCurrency();
     const { confirm } = useConfirmDialog();
     const containerRef = useRef<HTMLDivElement>(null);
     const { titleId } = useDialogA11y(isOpen, onClose, containerRef);
     const [showReversalForm, setShowReversalForm] = useState(false);
     const [reversalReason, setReversalReason] = useState('');
     const [reversalValidationError, setReversalValidationError] = useState<string | null>(null);
+    const [invoiceTargetOrderId, setInvoiceTargetOrderId] = useState<number | null>(null);
 
     useEffect(() => {
         setShowReversalForm(false);
         setReversalReason('');
         setReversalValidationError(null);
     }, [activeConsolidation?.id, isOpen]);
+
+    useEffect(() => {
+        const candidates = orders.filter((order) =>
+            !order.invoiceNumber && order.financialStatus === 'UNPAID'
+        );
+        setInvoiceTargetOrderId((current) => {
+            if (candidates.length === 1) return candidates[0].id;
+            return candidates.some((order) => order.id === current) ? current : null;
+        });
+    }, [orders]);
 
     if (!isOpen || !table) return null;
 
@@ -103,6 +111,17 @@ export default function TableOrdersModal({
         && !loadingConsolidation
         && !consolidationLookupError
         && !hasActiveFinancialConsolidation;
+    const invoiceCandidates = orders.filter((order) =>
+        !order.invoiceNumber && order.financialStatus === 'UNPAID'
+    );
+    const invoiceTarget = invoiceCandidates.find((order) => order.id === invoiceTargetOrderId) ?? null;
+    const editableOrder = orders.find((order) =>
+        !order.invoiceNumber && order.financialStatus === 'UNPAID'
+    );
+    const canAddProducts = canOperatePOS
+        && (orders.length === 0 || (orders.length === 1 && Boolean(editableOrder)));
+    const canShowInvoiceAction = canIssueInvoice && invoiceCandidates.length > 0;
+    const footerActionCount = Number(canShowInvoiceAction) + Number(canAddProducts);
     const getStatusColor = (status: string) => {
         return getOrderStatusClassName(status as Order['status']);
     };
@@ -145,73 +164,6 @@ export default function TableOrdersModal({
             setShowReversalForm(false);
             setReversalReason('');
         }
-    };
-
-    const handlePrintBill = () => {
-        // ... (print logic remains the same)
-        const printWindow = window.open('', '_blank');
-        if (!printWindow) {
-            showError('No se pudo abrir la impresión. Permite ventanas emergentes e inténtalo de nuevo.');
-            return;
-        }
-
-        const e = escapeHtml;
-        const billHTML = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Cuenta - Mesa ${e(tableNumber)}</title>
-                <style>
-                    body {
-                        font-family: 'Courier New', monospace;
-                        max-width: 300px;
-                        margin: 20px auto;
-                        padding: 10px;
-                    }
-                    h2 { text-align: center; margin: 10px 0; }
-                    .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
-                    .item { display: flex; justify-content: space-between; margin: 5px 0; }
-                    .total { border-top: 2px dashed #000; padding-top: 10px; margin-top: 10px; font-weight: bold; font-size: 1.2em; }
-                    .footer { text-align: center; margin-top: 20px; border-top: 2px dashed #000; padding-top: 10px; }
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <h2>CUENTA</h2>
-                    <p>Mesa ${e(tableNumber)}</p>
-                    <p>${e(new Date().toLocaleString('es-ES'))}</p>
-                </div>
-                ${orders.map(order => `
-                    <div style="margin-bottom: 15px;">
-                        <strong>Orden #${e(order.id)}</strong>
-                        ${order.items?.map(item => `
-                            <div class="item">
-                                <span>${e(item.quantity)}x ${e(item.menuItem?.name || 'Item')}</span>
-                                <span>${e(symbol)}${Number(item.subtotal).toFixed(2)}</span>
-                            </div>
-                        `).join('')}
-                    </div>
-                `).join('')}
-                <div class="total">
-                    <div class="item">
-                        <span>TOTAL:</span>
-                        <span>${e(symbol)}${totalAmount.toFixed(2)}</span>
-                    </div>
-                </div>
-                <div class="footer">
-                    <p>¡Gracias por su visita!</p>
-                </div>
-            </body>
-            </html>
-        `;
-
-        printWindow.document.write(billHTML);
-        printWindow.document.close();
-        printWindow.focus();
-        setTimeout(() => {
-            printWindow.print();
-            printWindow.close();
-        }, 250);
     };
 
     return createPortal(
@@ -445,22 +397,6 @@ export default function TableOrdersModal({
                                             <span className="order-total-amount">{formatMoney(Number(order.total))}</span>
                                         </div>
                                         <div className="table-order-actions">
-                                            {canOperatePOS && !order.invoiceNumber && order.financialStatus === 'UNPAID' && (
-                                                <button type="button" className="table-order-add-products" onClick={() => onOpenPOS(table)}>
-                                                    <ShoppingCart size={16} /> Agregar productos
-                                                </button>
-                                            )}
-                                            {!order.invoiceNumber && canIssueInvoice && (
-                                                <button
-                                                    type="button"
-                                                    className="primary"
-                                                    disabled={busyOrderId === order.id}
-                                                    onClick={() => onIssueInvoice(order)}
-                                                >
-                                                    <Receipt size={16} />
-                                                    {busyOrderId === order.id ? 'Emitiendo…' : 'Emitir factura'}
-                                                </button>
-                                            )}
                                             {order.invoiceNumber && (
                                                 <span className="invoice-issued-badge">
                                                     <Receipt size={15} /> {order.invoiceNumber}
@@ -483,21 +419,47 @@ export default function TableOrdersModal({
                     </div>
                 </div>
 
-                <div className={`orders-modal-footer ${orders.length === 0 ? 'single-action' : ''}`}>
-                    <button type="button" className="btn-modal-secondary" onClick={onClose}>
-                        Cerrar
-                    </button>
-                    {orders.length > 0 && (
-                        <button type="button" className="btn-modal-secondary print-bill-action" onClick={handlePrintBill}>
-                            <Printer size={18} />
-                            Imprimir cuenta
+                {footerActionCount > 0 && <div className={`orders-modal-footer ${footerActionCount === 1 ? 'single-action' : ''}`}>
+                    {canShowInvoiceAction && invoiceCandidates.length > 1 && (
+                        <label className="invoice-order-selector">
+                            <span>Orden a facturar</span>
+                            <select
+                                value={invoiceTargetOrderId ?? ''}
+                                onChange={(event) => setInvoiceTargetOrderId(event.target.value ? Number(event.target.value) : null)}
+                                disabled={busyOrderId !== null && busyOrderId !== undefined}
+                            >
+                                <option value="">Selecciona una orden</option>
+                                {invoiceCandidates.map((order) => (
+                                    <option key={order.id} value={order.id}>
+                                        Orden #{order.id} · {formatMoney(Number(order.total))}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                    )}
+                    {canShowInvoiceAction && (
+                        <button
+                            type="button"
+                            className="btn-modal-primary issue-invoice-action"
+                            disabled={!invoiceTarget || busyOrderId !== null && busyOrderId !== undefined}
+                            onClick={() => invoiceTarget && onIssueInvoice(invoiceTarget)}
+                        >
+                            {busyOrderId ? <Loader2 className="button-spinner" size={18} /> : <Receipt size={18} />}
+                            {busyOrderId ? 'Emitiendo…' : 'Emitir Factura'}
                         </button>
                     )}
-                    {canOperatePOS && <button type="button" className="btn-modal-primary" disabled={loading} onClick={() => onOpenPOS(table)}>
-                        {loading ? <Loader2 className="button-spinner" size={18} /> : <ShoppingCart size={18} />}
-                        {loading ? 'Cargando…' : orders.length > 0 ? 'Agregar producto' : 'Menú'}
-                    </button>}
-                </div>
+                    {canAddProducts && (
+                        <button
+                            type="button"
+                            className="btn-modal-primary add-products-action"
+                            disabled={loading}
+                            onClick={() => onOpenPOS(table)}
+                        >
+                            {loading ? <Loader2 className="button-spinner" size={18} /> : <ShoppingCart size={18} />}
+                            {loading ? 'Cargando…' : 'Agregar productos'}
+                        </button>
+                    )}
+                </div>}
             </div>
         </div>,
         document.body,

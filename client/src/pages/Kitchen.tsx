@@ -337,12 +337,12 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
             if (debouncedTableFilter && order.table?.number?.toString() !== debouncedTableFilter) return false;
 
             // Date filter (only apply when statusFilter is 'all')
-            if (statusFilter === 'all' && !isWithinDateRange(order.createdAt)) return false;
+            if (statusFilter === 'all' && !isWithinDateRange(getKitchenReceivedAt(order))) return false;
 
             return true;
         })
         .sort((a, b) =>
-            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+            new Date(getKitchenReceivedAt(a)).getTime() - new Date(getKitchenReceivedAt(b)).getTime()
         );
 
     return (

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     buildInvoiceStatusMessage,
+    doesOrderRemainVisibleAtTable,
     findTableAccountForTable,
     isEligibleForPosOrderBucket,
 } from './posOrderBucket';
@@ -48,6 +49,29 @@ describe('POS order bucket lifecycle', () => {
         expect(isEligibleForPosOrderBucket(fiscalResidue)).toBe(false);
         expect(findTableAccountForTable([openOrder], 9)).toBe(openOrder);
         expect(findTableAccountForTable([fiscalResidue, openOrder], 9)).toBe(fiscalResidue);
+    });
+
+    it('keeps all products visible after invoicing until full payment and restores them after reversal', () => {
+        expect(doesOrderRemainVisibleAtTable({
+            status: 'READY',
+            financialStatus: 'UNPAID',
+        })).toBe(true);
+        expect(doesOrderRemainVisibleAtTable({
+            status: 'DELIVERED',
+            financialStatus: 'PARTIAL',
+        })).toBe(true);
+        expect(doesOrderRemainVisibleAtTable({
+            status: 'READY',
+            financialStatus: 'PAID',
+        })).toBe(false);
+        expect(doesOrderRemainVisibleAtTable({
+            status: 'READY',
+            financialStatus: 'UNPAID',
+        })).toBe(true);
+        expect(doesOrderRemainVisibleAtTable({
+            status: 'CANCELLED',
+            financialStatus: 'UNPAID',
+        })).toBe(false);
     });
 
     it('communicates table occupancy, payment and delivery without claiming settlement prematurely', () => {

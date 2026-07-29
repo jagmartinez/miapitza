@@ -4,6 +4,7 @@ import type { SingleValue } from 'react-select';
 import type { FloorArea, FloorAreaKind, FloorAreaShape, Table, TableFloorPlan } from '../types';
 import Select from './Select';
 import { getChairPlacements } from './tableChairLayout';
+import { resolveTablePresentationState, type TablePresentationState } from '../utils/tablePresentation';
 import './TableMap.css';
 
 interface PositionedTable extends Table {
@@ -87,12 +88,16 @@ const FALLBACK_COLUMNS = 5;
 const FALLBACK_X_GAP = 165;
 const FALLBACK_Y_GAP = 125;
 const AREA_COLORS = ['#DFF4E8', '#E4EEFF', '#F8E8FF', '#FFF1D6', '#E4F5F7', '#FBE5E7'];
-const STATUS_OPTIONS: SelectOption[] = [
+const STATUS_OPTIONS: SelectOption<TablePresentationState | ''>[] = [
     { value: '', label: 'Todas las mesas' },
     { value: 'AVAILABLE', label: 'Disponibles' },
     { value: 'OCCUPIED', label: 'Ocupadas' },
-    { value: 'RESERVED', label: 'Reservadas' },
-    { value: 'OUT_OF_SERVICE', label: 'Fuera de servicio' }
+    { value: 'PENDING_PAYMENT', label: 'Pendientes de pago' }
+];
+const PRESENTATION_STATES: Array<{ value: TablePresentationState; label: string }> = [
+    { value: 'AVAILABLE', label: 'Mesa disponible' },
+    { value: 'OCCUPIED', label: 'Mesa ocupada' },
+    { value: 'PENDING_PAYMENT', label: 'Mesa pendiente de pago' }
 ];
 const AREA_KIND_OPTIONS: SelectOption<FloorAreaKind>[] = [
     { value: 'DINING', label: 'Salón' },
@@ -145,20 +150,6 @@ function normalizeTable(table: Table, index: number, defaultArea?: EditableArea)
         mapShape: table.mapShape ?? 'RECTANGLE',
         floorAreaClientKey: table.floorAreaId ? null : defaultArea?.clientKey ?? null
     };
-}
-
-const operationalLabel: Record<NonNullable<Table['operationalState']>, string> = {
-    AVAILABLE: 'Disponible', RESERVED: 'Reservada', DISABLED: 'Inhabilitada', OPEN_ORDER: 'Orden abierta',
-    WAITING_KITCHEN: 'Esperando cocina', PREPARING: 'En preparación', PARTIALLY_READY: 'Parcialmente lista',
-    READY: 'Lista para entregar', INVOICED: 'Facturada', PARTIAL_PAYMENT: 'Pago parcial', PAID: 'Pagada', ATTENTION: 'Atención',
-    JOINED: 'Mesa unida'
-};
-
-function resolveOperationalState(table: PositionedTable): NonNullable<Table['operationalState']> {
-    if (table.operationalState) return table.operationalState;
-    if (table.status === 'OUT_OF_SERVICE') return 'DISABLED';
-    if (table.status === 'OCCUPIED') return 'ATTENTION';
-    return table.status;
 }
 
 function areaKey(area: EditableArea): string { return area.id ? `id:${area.id}` : area.clientKey; }
@@ -379,7 +370,6 @@ export default function TableMap({
         return () => window.clearTimeout(timer);
     }, [areas, editing, focusArea, focusedAreaKey]);
 
-    const legendStates = useMemo(() => Array.from(new Set(layout.map(resolveOperationalState))), [layout]);
     const activeGroupIds = useMemo(
         () => [...new Set(layout.map((table) => table.activeTableGroupId).filter((id): id is number => Boolean(id)))],
         [layout]
@@ -429,6 +419,9 @@ export default function TableMap({
             }];
         });
     }, [activeGroupIds, layout]);
+    const activePresentationFilter = STATUS_OPTIONS.some((option) => option.value === statusFilter)
+        ? statusFilter
+        : null;
 
     return (
         <section className={`table-map-shell ${editing ? 'is-editing' : ''}`} aria-label="Mapa de mesas">
@@ -438,12 +431,12 @@ export default function TableMap({
                     <span>{editing ? 'Selecciona un salón o mesa para cambiar tamaño, forma y rotación' : `${layout.length} ${layout.length === 1 ? 'mesa' : 'mesas'} · ${areas.length} ${areas.length === 1 ? 'salón' : 'salones'} · selecciona una mesa para operarla`}</span>
                 </div>
                 <div className="table-map-actions">
-                    {!editing && <Select<SelectOption>
+                    {!editing && <Select<SelectOption<TablePresentationState | ''>>
                         className="table-map-status-filter"
                         aria-label="Filtrar mesas por estado"
                         options={STATUS_OPTIONS}
-                        value={STATUS_OPTIONS.find((option) => option.value === (statusFilter || '')) || STATUS_OPTIONS[0]}
-                        onChange={(option: SingleValue<SelectOption>) => onStatusFilterChange(option?.value || null)}
+                        value={STATUS_OPTIONS.find((option) => option.value === (activePresentationFilter || '')) || STATUS_OPTIONS[0]}
+                        onChange={(option: SingleValue<SelectOption<TablePresentationState | ''>>) => onStatusFilterChange(option?.value || null)}
                         isSearchable={false}
                     />}
                     {!editing && branchControl}
@@ -527,8 +520,10 @@ export default function TableMap({
                                 </svg>
                             )}
                             {layout.map((table) => {
-                                const state = resolveOperationalState(table);
-                                const filteredOut = Boolean(!editing && statusFilter && table.status !== statusFilter);
+                                const presentationState = resolveTablePresentationState(table);
+                                const presentationLabel = PRESENTATION_STATES.find(({ value }) => value === presentationState)!.label;
+                                const operationalDisabled = table.operationalState === 'DISABLED' || table.status === 'OUT_OF_SERVICE';
+                                const filteredOut = Boolean(!editing && activePresentationFilter && presentationState !== activePresentationFilter);
                                 const selected = selection?.kind === 'table' && selection.key === table.id;
                                 const chairs = getChairPlacements(table);
                                 const group = table.activeTableGroup;
@@ -544,13 +539,13 @@ export default function TableMap({
                                     : '';
                                 return (
                                     <button key={table.id} type="button"
-                                        className={`map-table state-${state.toLowerCase()} shape-${table.mapShape.toLowerCase()} ${group ? 'is-grouped' : ''} ${isGroupPrimary ? 'is-group-primary' : ''} ${selected ? 'selected' : ''} ${filteredOut ? 'filtered-out' : ''}`}
+                                        className={`map-table state-${presentationState.toLowerCase()} shape-${table.mapShape.toLowerCase()} ${group ? 'is-grouped' : ''} ${isGroupPrimary ? 'is-group-primary' : ''} ${selected ? 'selected' : ''} ${filteredOut ? 'filtered-out' : ''}`}
                                         style={{ left: table.mapX, top: table.mapY, width: table.mapWidth, height: table.mapHeight, transform: `rotate(${table.mapRotation}deg)` }}
-                                        aria-label={`Mesa ${table.number}, ${operationalLabel[state]}, ${table.capacity} ${table.capacity === 1 ? 'silla' : 'sillas'}, capacidad para ${table.capacity} ${table.capacity === 1 ? 'comensal' : 'comensales'}${group ? `, ${groupLabel}, ${groupCapacity} comensales en el grupo` : ''}`}
+                                        aria-label={`Mesa ${table.number}, ${presentationLabel}, ${table.capacity} ${table.capacity === 1 ? 'silla' : 'sillas'}, capacidad para ${table.capacity} ${table.capacity === 1 ? 'comensal' : 'comensales'}${group ? `, ${groupLabel}, ${groupCapacity} comensales en el grupo` : ''}`}
                                         data-chair-count={chairs.length}
                                         data-group-size={groupMembers.length || undefined}
                                         aria-hidden={filteredOut}
-                                        disabled={!editing && (state === 'DISABLED' || filteredOut)}
+                                        disabled={!editing && (operationalDisabled || filteredOut)}
                                         onClick={(event) => { event.stopPropagation(); if (!editing && !filteredOut) onSelect(table); else if (editing) setSelection({ kind: 'table', key: table.id }); }}
                                         onPointerDown={(event) => beginInteraction(event, { kind: 'table', key: table.id }, 'MOVE')}
                                         onPointerMove={moveInteraction} onPointerUp={endInteraction} onPointerCancel={endInteraction}>
@@ -564,7 +559,7 @@ export default function TableMap({
                                             <span className="map-table-state-dot" aria-hidden="true" />
                                             {group && <span className="map-table-group-badge"><Link2 size={10} /> {isGroupPrimary ? `Grupo de ${groupMembers.length} mesas` : `Mesa ${groupPosition}/${groupMembers.length}`}</span>}
                                             <span className="map-table-number">{table.number}</span>
-                                            <span className="map-table-status">{operationalLabel[state]}</span>
+                                            <span className="map-table-status">{presentationLabel}</span>
                                             <span className="map-table-capacity">{table.capacity} {table.capacity === 1 ? 'silla' : 'sillas'}</span>
                                         </span>
                                         {editing && <span className="map-resize-handle" role="button" aria-label={`Redimensionar mesa ${table.number}`} onPointerDown={(event) => beginInteraction(event, { kind: 'table', key: table.id }, 'RESIZE')} />}
@@ -633,7 +628,7 @@ export default function TableMap({
                 )}
             </div>
 
-            {!editing && <div className="table-map-legend" aria-label="Leyenda de estados">{legendStates.map((state) => <span key={state}><i className={`state-${state.toLowerCase()}`} />{operationalLabel[state]}</span>)}{activeGroupIds.length > 0 && <span><i className="state-joined-link" />Etiqueta: cantidad exacta del grupo</span>}</div>}
+            {!editing && <div className="table-map-legend" aria-label="Leyenda de estados">{PRESENTATION_STATES.map((state) => <span key={state.value}><i className={`state-${state.value.toLowerCase()}`} />{state.label}</span>)}</div>}
         </section>
     );
 }

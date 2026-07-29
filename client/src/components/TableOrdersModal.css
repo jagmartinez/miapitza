@@ -355,6 +355,7 @@
 /* Modal Footer */
 .orders-modal-footer {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--spacing-md);
     padding: var(--spacing-lg) var(--spacing-xl);
     border-top: 1px solid var(--dialog-panel-border, var(--color-border));
@@ -835,7 +836,26 @@
 }
 
 .orders-modal-footer .btn-modal-primary { flex: 1.45; }
-.orders-modal-footer .print-bill-action { flex: 1.15; }
+.orders-modal-footer .add-products-action { flex: 1.15; }
+
+.invoice-order-selector {
+    flex: 1 0 100%;
+    display: grid;
+    gap: 5px;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+}
+
+.invoice-order-selector select {
+    width: 100%;
+    min-height: 42px;
+    padding: 8px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    color: var(--color-text);
+}
 
 @media (max-width: 600px) {
     .modal-overlay-orders {
@@ -985,9 +1005,6 @@
         font-size: 10px;
     }
 
-    .table-order-add-products { display: none !important; }
-    .table-order-actions:has(> .table-order-add-products:only-child) { display: none; }
-
     .orders-modal-footer {
         flex: 0 0 auto;
         display: grid;
@@ -997,10 +1014,7 @@
         box-shadow: 0 -8px 22px rgba(0, 0, 0, .1);
     }
 
-    .orders-modal-footer .btn-modal-secondary:first-child { display: none; }
-
-    .orders-modal-footer .btn-modal-primary,
-    .orders-modal-footer .print-bill-action {
+    .orders-modal-footer .btn-modal-primary {
         min-width: 0;
         min-height: 46px;
         padding: 9px 10px;
@@ -1009,14 +1023,27 @@
         font-size: 11px;
     }
 
-    .orders-modal-footer .btn-modal-primary {
+    .orders-modal-footer .issue-invoice-action {
         grid-column: 1;
         grid-row: 1;
     }
 
-    .orders-modal-footer .print-bill-action {
+    .orders-modal-footer .add-products-action {
         grid-column: 2;
         grid-row: 1;
+    }
+
+    .orders-modal-footer .invoice-order-selector {
+        grid-column: 1 / -1;
+        grid-row: 1;
+    }
+
+    .orders-modal-footer .invoice-order-selector + .issue-invoice-action {
+        grid-row: 2;
+    }
+
+    .orders-modal-footer .invoice-order-selector ~ .add-products-action {
+        grid-row: 2;
     }
 
     .no-orders-message { min-height: 100%; padding: 28px 16px; }
@@ -1025,8 +1052,7 @@
 @media (max-width: 340px) {
     .table-detail-summary strong,
     .table-detail-summary .summary-total strong { font-size: 11px; }
-    .orders-modal-footer .btn-modal-primary,
-    .orders-modal-footer .print-bill-action { font-size: 10px; }
+    .orders-modal-footer .btn-modal-primary { font-size: 10px; }
 }
 .table-active-group-banner {
     display: flex;

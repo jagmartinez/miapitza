@@ -164,7 +164,7 @@ async function openEmbeddedFiscalDialog(page: Page) {
   await page.getByRole('button', { name: /Mesa ABANICO/ }).click();
   await page
     .getByRole('dialog', { name: 'Mesa ABANICO' })
-    .getByRole('button', { name: 'Agregar producto', exact: true })
+    .getByRole('button', { name: 'Agregar productos', exact: true })
     .click();
 
   const pos = page.getByRole('dialog', { name: 'Pedido de mesa ABANICO' });

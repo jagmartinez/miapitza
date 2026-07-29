@@ -73,9 +73,9 @@ type NavSection = { section: string; items: NavItem[] };
 
 const ALL_ROLES: string[] = Object.values(ROLES);
 
-// Quick-access bottom nav for mobile (max 6 items, role-filtered)
+// Quick-access bottom nav for mobile/tablet (max 6 items, role-filtered)
 const MOBILE_QUICK_NAV: NavItem[] = [
-    { to: '/dashboard', icon: BarChart3, label: 'BI', roles: ALL_ROLES },
+    { to: '/dashboard', icon: LayoutDashboard, label: 'Inicio', roles: ALL_ROLES },
     { to: '/tables', icon: Utensils, label: 'Mesas', roles: WAITER_TABLE, permission: 'tables.map.view' },
     { to: '/kitchen', icon: ChefHat, label: 'Cocina', roles: KITCHEN_ROLES, permission: 'kds.view' },
     { to: '/reservations', icon: Calendar, label: 'Reservaciones', roles: HOST_ROLES },

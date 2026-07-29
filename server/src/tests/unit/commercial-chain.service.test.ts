@@ -158,7 +158,7 @@ describe('kitchen order state invariants', () => {
         expect(tx.orderItem.updateMany).not.toHaveBeenCalled();
     });
 
-    it('reopens after a sent wave finishes while unsent lines remain on the ticket', async () => {
+    it('keeps a completed wave READY until release while newer lines remain as drafts', async () => {
         const sentAt = new Date('2026-07-16T12:00:00.000Z');
         const items = [
             { id: 21, sentAt, status: 'IN_PROGRESS', startedAt: sentAt, menuItem: { id: 1 }, modifiers: [] },
@@ -177,6 +177,7 @@ describe('kitchen order state invariants', () => {
                     companyId: 1,
                     branchId: 2,
                     status: 'IN_PREPARATION',
+                    kitchenReleasedAt: null,
                     salesChannel: 'RESTAURANT',
                     table: null,
                     user: { id: 7, name: 'Chef', color: null },
@@ -187,6 +188,7 @@ describe('kitchen order state invariants', () => {
                     companyId: 1,
                     branchId: 2,
                     status: args.data.status,
+                    kitchenReleasedAt: null,
                     salesChannel: 'RESTAURANT',
                     table: null,
                     user: { id: 7, name: 'Chef', color: null },
@@ -203,10 +205,10 @@ describe('kitchen order state invariants', () => {
 
         const result = await OrderService.finishItem(8, 21, 1);
 
-        expect(result.allDone).toBe(false);
-        expect(result.order.status).toBe('OPEN');
+        expect(result.allDone).toBe(true);
+        expect(result.order.status).toBe('READY');
         expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
-            data: { status: 'OPEN' }
+            data: { status: 'READY' }
         }));
     });
 

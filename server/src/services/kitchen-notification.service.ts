@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { WebSocketService } from './websocket.service';
+import { selectLatestKitchenBatch } from './kitchen-batch';
 
 type ReadyNotificationInput = {
     companyId: number;
@@ -42,7 +43,9 @@ export class KitchenNotificationService {
             : input.complete
                 ? 'ORDER_READY' as const
                 : 'ORDER_ITEM_READY' as const;
-        const readyAt = order.items.reduce<Date | null>((latest, candidate) => {
+        const batchItems = selectLatestKitchenBatch(order.items);
+        const notificationItems = item ? [item] : batchItems;
+        const readyAt = notificationItems.reduce<Date | null>((latest, candidate) => {
             if (!candidate.finishedAt) return latest;
             return !latest || candidate.finishedAt > latest ? candidate.finishedAt : latest;
         }, null);
@@ -58,7 +61,7 @@ export class KitchenNotificationService {
         });
         const readyProducts = item
             ? [{ id: item.id, name: item.menuItem.name, quantity: item.quantity }]
-            : order.items.map((candidate) => ({
+            : batchItems.map((candidate) => ({
                 id: candidate.id,
                 name: candidate.menuItem.name,
                 quantity: candidate.quantity

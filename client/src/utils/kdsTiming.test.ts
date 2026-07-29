@@ -10,9 +10,9 @@ describe('KDS persistent timing', () => {
         ]
     };
 
-    it('starts the SLA at the first persisted kitchen reception timestamp', () => {
-        expect(getKitchenReceivedAt(order)).toBe('2026-07-14T12:07:00.000Z');
-        expect(getKdsWaitMinutes(order, new Date('2026-07-14T12:12:30.000Z').getTime())).toBe(5);
+    it('starts the SLA at the latest persisted kitchen wave', () => {
+        expect(getKitchenReceivedAt(order)).toBe('2026-07-14T12:09:00.000Z');
+        expect(getKdsWaitMinutes(order, new Date('2026-07-14T12:12:30.000Z').getTime())).toBe(3);
     });
 
     it('uses tenant thresholds at their exact boundaries', () => {

@@ -1103,8 +1103,10 @@ export default function CashShiftPage() {
                                                 <span className="den-times">×</span>
                                                 <input
                                                     type="number"
+                                                    inputMode="numeric"
                                                     min="0"
                                                     className="den-input-compact"
+                                                    aria-label={`Cantidad de billetes de ${symbol} ${den}`}
                                                     value={billsCount[den] || ''}
                                                     onChange={(e) => setBillsCount({
                                                         ...billsCount,
@@ -1134,8 +1136,10 @@ export default function CashShiftPage() {
                                                 <span className="den-times">×</span>
                                                 <input
                                                     type="number"
+                                                    inputMode="numeric"
                                                     min="0"
                                                     className="den-input-compact"
+                                                    aria-label={`Cantidad de monedas de ${symbol} ${den}`}
                                                     value={coinsCount[den] || ''}
                                                     onChange={(e) => setCoinsCount({
                                                         ...coinsCount,
@@ -1163,7 +1167,9 @@ export default function CashShiftPage() {
                                         <span>1 USD =</span>
                                         <input
                                             type="number"
+                                            inputMode="decimal"
                                             className="exchange-rate-input"
+                                            aria-label="Tipo de cambio de USD a NIO"
                                             value={exchangeRate}
                                             onChange={(e) => setExchangeRate(parseFloat(e.target.value) || DEFAULT_EXCHANGE_RATE)}
                                             step="0.01"
@@ -1187,8 +1193,10 @@ export default function CashShiftPage() {
                                                 <span className="den-times">×</span>
                                                 <input
                                                     type="number"
+                                                    inputMode="numeric"
                                                     min="0"
                                                     className="den-input-compact"
+                                                    aria-label={`Cantidad de billetes USD de ${den}`}
                                                     value={usdBillsCount[den] || ''}
                                                     onChange={(e) => setUsdBillsCount({
                                                         ...usdBillsCount,

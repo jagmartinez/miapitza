@@ -8,6 +8,7 @@ import { DEFAULT_COMPANY_SETTINGS, SettingService } from './setting.service';
 import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
 import { reconcileTableGroupForTable } from './table-group.service';
 import { tableOpenAccountWhere, tableOperationalOrderWhere } from './table-occupancy-policy';
+import { selectLatestKitchenBatch } from './kitchen-batch';
 import { transactionWithP2034Retry } from '../utils/transaction-retry';
 
 /** Valid state transitions for orders */
@@ -205,24 +206,53 @@ export class OrderService {
         };
     }
 
-    private static deriveStatusFromItems(order: { items?: Array<{ sentAt?: Date | null; status?: string }> }) {
+    /**
+     * A commercial order can receive several sequential kitchen sends. The KDS
+     * must operate on the most recently sent wave, not replay DONE lines or SLA
+     * timestamps from an earlier wave on the same account.
+     */
+    private static withLatestKitchenBatch<T extends {
+        items?: Array<{
+            sentAt?: Date | string | null;
+            startedAt?: Date | string | null;
+            finishedAt?: Date | string | null;
+        }>;
+    }>(order: T): T & {
+        items: NonNullable<T['items']>;
+        firstStartedAt: string | null;
+        readyAt: string | null;
+    } {
+        const items = (order.items ?? []) as NonNullable<T['items']>;
+        const batchItems = selectLatestKitchenBatch(items) as NonNullable<T['items']>;
+        return this.withTimeline({ ...order, items: batchItems }) as T & {
+            items: NonNullable<T['items']>;
+            firstStartedAt: string | null;
+            readyAt: string | null;
+        };
+    }
+
+    private static deriveStatusFromItems(order: {
+        items?: Array<{ sentAt?: Date | null; status?: string }>;
+        kitchenReleasedAt?: Date | null;
+    }) {
         const items = order.items || [];
-        const sentItems = items.filter((item) => item.sentAt != null);
+        const sentItems = selectLatestKitchenBatch(items).filter((item) => item.sentAt != null);
         const hasSentItems = sentItems.length > 0;
         const hasInProgressItem = sentItems.some((item) => item.status === 'IN_PROGRESS');
         const hasPendingKitchenItem = sentItems.some((item) => item.status !== 'DONE');
         const hasUnsentItem = items.some((item) => item.sentAt == null);
-        const wholeOrderReady = items.length > 0
-            && !hasUnsentItem
+        const currentBatchReady = hasSentItems
             && sentItems.every((item) => item.status === 'DONE');
 
-        if (wholeOrderReady) return 'READY';
         if (hasInProgressItem) return 'IN_PREPARATION';
         if (hasPendingKitchenItem) return 'SENT_TO_KITCHEN';
-        // A completed wave followed by unsent additions is operationally open
-        // again. It cannot be released or delivered until the new wave is sent.
-        if (hasUnsentItem) return 'OPEN';
-        if (hasSentItems) return 'SENT_TO_KITCHEN';
+        // Unsent additions are a draft for the next wave. The completed current
+        // wave must stay READY until kitchen explicitly releases it; otherwise
+        // the KDS would lose work before handoff. Release moves the order back
+        // to OPEN when such a draft exists.
+        if (currentBatchReady) {
+            return order.kitchenReleasedAt && hasUnsentItem ? 'OPEN' : 'READY';
+        }
         return 'OPEN';
     }
 
@@ -609,12 +639,8 @@ export class OrderService {
                                 discount: repricedDiscount,
                                 tax: repricedTax,
                                 ...fiscalCustomer,
-                                ...(existingOrder.status === 'READY' ? {
-                                    status: 'SENT_TO_KITCHEN' as const,
-                                    kitchenReleasedAt: null,
-                                    kitchenReleasedById: null,
-                                    kitchenStartedAt: null,
-                                    kitchenStartedById: null
+                                ...(existingOrder.status === 'READY' && existingOrder.kitchenReleasedAt ? {
+                                    status: 'OPEN' as const
                                 } : {})
                             }
                         });
@@ -873,13 +899,10 @@ export class OrderService {
                     total: newTotal,
                     discount: repricedDiscount,
                     tax: repricedTax,
-                    // READY is no longer truthful after appending an unsent line.
-                    ...(order.status === 'READY' ? {
-                        status: 'SENT_TO_KITCHEN' as const,
-                        kitchenReleasedAt: null,
-                        kitchenReleasedById: null,
-                        kitchenStartedAt: null,
-                        kitchenStartedById: null
+                    // A released READY wave may reopen as a draft. An unreleased
+                    // READY wave stays visible in KDS until explicit handoff.
+                    ...(order.status === 'READY' && order.kitchenReleasedAt ? {
+                        status: 'OPEN' as const
                     } : {})
                 }
             });
@@ -989,9 +1012,13 @@ export class OrderService {
             // transaction committed but a notification response failed. Return
             // the already-ready order so the durable, deduplicated notifier can
             // be attempted again without manufacturing a second transition.
+            const currentKitchenBatch = status === 'READY'
+                ? selectLatestKitchenBatch(existing.items ?? [])
+                : [];
+
             if (status === 'READY' && existing.status === 'READY') {
-                if (existing.items.length === 0 || existing.items.some((item) => item.sentAt === null)) {
-                    throw new Error('La orden marcada como lista contiene productos sin enviar a cocina');
+                if (currentKitchenBatch.length === 0 || currentKitchenBatch.some((item) => item.sentAt === null)) {
+                    throw new Error('La tanda marcada como lista contiene productos sin enviar a cocina');
                 }
                 const readyOrder = await tx.order.findUnique({
                     where: { id },
@@ -1027,19 +1054,20 @@ export class OrderService {
             // (firstStartedAt / readyAt) reflects completion. READY is an order-
             // level assertion, so every line must already have been sent.
             if (status === 'READY') {
-                if (existing.items.length === 0) {
+                if (currentKitchenBatch.length === 0) {
                     throw new Error('Cannot mark an empty order as ready');
                 }
-                if (existing.items.some((item) => item.sentAt === null)) {
-                    throw new Error('No se puede marcar lista una orden con productos sin enviar a cocina');
+                if (currentKitchenBatch.some((item) => item.sentAt === null)) {
+                    throw new Error('No se puede marcar lista una tanda con productos sin enviar a cocina');
                 }
                 const now = new Date();
+                const currentKitchenItemIds = currentKitchenBatch.map((item) => item.id);
                 await tx.orderItem.updateMany({
-                    where: { orderId: id, sentAt: { not: null }, status: { not: 'DONE' } },
+                    where: { orderId: id, id: { in: currentKitchenItemIds }, status: { not: 'DONE' } },
                     data: { status: 'DONE', finishedAt: now }
                 });
                 await tx.orderItem.updateMany({
-                    where: { orderId: id, sentAt: { not: null }, startedAt: null },
+                    where: { orderId: id, id: { in: currentKitchenItemIds }, startedAt: null },
                     data: { startedAt: now }
                 });
             }
@@ -1114,7 +1142,19 @@ export class OrderService {
             const unsentItems = order.items.filter((item) => item.sentAt == null);
 
             if (unsentItems.length === 0) {
-                throw new Error('No hay productos nuevos pendientes por enviar a cocina');
+                // A retry after the first transaction committed is a safe no-op.
+                // It must not create a second wave or fail an offline replay.
+                return {
+                    ...this.withLatestKitchenBatch(order),
+                    kitchenBatchSent: false,
+                };
+            }
+
+            const hasPreviousBatch = order.items.some((item) => item.sentAt != null);
+            if (hasPreviousBatch && !order.kitchenReleasedAt) {
+                throw new Error(
+                    'Libera la tanda activa de cocina antes de enviar los productos nuevos'
+                );
             }
 
             // Mark only new items as sent to preserve kitchen history for previous sends.
@@ -1143,7 +1183,7 @@ export class OrderService {
                     where: { id },
                     data: {
                         status: nextStatus,
-                        ...(order.status === 'READY' ? {
+                        ...(hasPreviousBatch ? {
                             kitchenReleasedAt: null,
                             kitchenReleasedById: null,
                             kitchenStartedAt: null,
@@ -1158,7 +1198,10 @@ export class OrderService {
                 });
         });
         this.syncPedidosYaStatus(companyId, updatedOrder);
-        return updatedOrder;
+        return {
+            ...this.withLatestKitchenBatch(updatedOrder),
+            kitchenBatchSent: true,
+        };
     }
 
     static async updateFiscalCustomer(
@@ -1333,8 +1376,9 @@ export class OrderService {
                 })
                 : currentOrder;
 
-            const allDone = updatedOrder.items.length > 0
-                && updatedOrder.items.every((item) => item.sentAt != null && item.status === 'DONE');
+            const currentKitchenBatch = selectLatestKitchenBatch(updatedOrder.items);
+            const allDone = currentKitchenBatch.length > 0
+                && currentKitchenBatch.every((item) => item.sentAt != null && item.status === 'DONE');
 
             return { item: updated, allDone, order: this.withTimeline(updatedOrder) };
         });
@@ -2005,7 +2049,7 @@ export class OrderService {
             },
             orderBy: { createdAt: 'asc' }
         });
-        return orders.map((order) => this.withTimeline(order));
+        return orders.map((order) => this.withLatestKitchenBatch(order));
     }
 
     static async startKitchenPreparation(orderId: number, companyId: number, actorUserId: number) {
@@ -2062,16 +2106,27 @@ export class OrderService {
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
             const order = await tx.order.findFirst({
                 where: { id: orderId, companyId },
-                select: { id: true, branchId: true, status: true, kitchenReleasedAt: true }
+                select: {
+                    id: true,
+                    branchId: true,
+                    status: true,
+                    kitchenReleasedAt: true,
+                    items: { select: { sentAt: true } }
+                }
             });
             if (!order) throw new Error('Orden no encontrada');
             if (order.kitchenReleasedAt) return { changed: false, branchId: order.branchId };
             if (order.status !== 'READY') throw new Error('La orden debe estar lista antes de liberarla');
 
             const releasedAt = new Date();
+            const hasNextDraft = order.items.some((item) => item.sentAt == null);
             await tx.order.update({
                 where: { id: orderId },
-                data: { kitchenReleasedAt: releasedAt, kitchenReleasedById: actorUserId }
+                data: {
+                    kitchenReleasedAt: releasedAt,
+                    kitchenReleasedById: actorUserId,
+                    ...(hasNextDraft ? { status: 'OPEN' as const } : {})
+                }
             });
             await tx.auditLog.create({
                 data: {
@@ -2080,7 +2135,11 @@ export class OrderService {
                     entityId: orderId,
                     action: 'KITCHEN_RELEASED',
                     userId: actorUserId,
-                    details: { status: order.status, releasedAt: releasedAt.toISOString() }
+                    details: {
+                        status: order.status,
+                        releasedAt: releasedAt.toISOString(),
+                        nextDraftPending: hasNextDraft
+                    }
                 }
             });
             return { changed: true, branchId: order.branchId };
@@ -2110,7 +2169,7 @@ export class OrderService {
             orderBy: { updatedAt: 'desc' },
             take: safeLimit
         });
-        return orders.map((order) => this.withTimeline(order));
+        return orders.map((order) => this.withLatestKitchenBatch(order));
     }
 
     /**

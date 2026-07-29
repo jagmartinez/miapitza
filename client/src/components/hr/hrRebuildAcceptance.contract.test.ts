@@ -81,8 +81,8 @@ describe('reconstrucción RH: criterios de aceptación integrados', () => {
 
   it('expande el menú colapsado con hover o teclado sin reemplazar la navegación móvil', () => {
     expect(layoutCss).toContain('.sidebar.collapsed:is(:hover, :focus-within)');
-    expect(layoutCss).toContain('@media (min-width: 769px)');
-    expect(layoutCss).toContain('@media (max-width: 768px)');
+    expect(layoutCss).toContain('@media (min-width: 1025px)');
+    expect(layoutCss).toContain('@media (max-width: 1024px)');
     expect(adminCss).toContain('.table-action-btn.btn');
     expect(adminCss).toContain('scrollbar-gutter: stable');
   });
