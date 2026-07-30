@@ -346,7 +346,12 @@ export class OrderController {
             const itemId = parseInt(req.params.itemId);
             const companyId = req.user!.companyId;
             await OrderController.assertOrderBranch(req, orderId);
-            const result = await OrderService.startItem(orderId, itemId, companyId);
+            const result = await OrderService.startItem(
+                orderId,
+                itemId,
+                companyId,
+                req.user!.userId,
+            );
 
             WebSocketService.broadcastOrderUpdate(orderId, 'ITEM_STARTED', { orderId, item: result.item, order: result.order }, {
                 companyId,
@@ -371,7 +376,12 @@ export class OrderController {
             const itemId = parseInt(req.params.itemId);
             const companyId = req.user!.companyId;
             await OrderController.assertOrderBranch(req, orderId);
-            const result = await OrderService.finishItem(orderId, itemId, companyId);
+            const result = await OrderService.finishItem(
+                orderId,
+                itemId,
+                companyId,
+                req.user!.userId,
+            );
 
             WebSocketService.broadcastOrderUpdate(orderId, 'ITEM_FINISHED', { orderId, item: result.item, order: result.order }, {
                 companyId,
@@ -379,13 +389,24 @@ export class OrderController {
             });
 
             if (result.allDone) {
-                await KitchenNotificationService.notifyReady({ companyId, orderId, complete: true });
+                await KitchenNotificationService.notifyReady({
+                    companyId,
+                    orderId,
+                    kitchenBatchId: result.kitchenBatchId,
+                    complete: true,
+                });
                 WebSocketService.broadcastOrderReady(orderId, result.order.table?.number, {
                     companyId,
                     branchId: result.order.branchId
                 });
             } else {
-                await KitchenNotificationService.notifyReady({ companyId, orderId, itemId, complete: false });
+                await KitchenNotificationService.notifyReady({
+                    companyId,
+                    orderId,
+                    kitchenBatchId: result.kitchenBatchId,
+                    itemId,
+                    complete: false,
+                });
             }
 
             res.json({ success: true, message: result.allDone ? 'Todos los artículos listos - orden lista' : 'Artículo terminado', data: result });
@@ -484,8 +505,16 @@ export class OrderController {
     static async startKitchenPreparation(req: Request, res: Response, next: NextFunction) {
         try {
             const id = Number(req.params.id);
+            const kitchenBatchId = req.body?.kitchenBatchId === undefined
+                ? undefined
+                : Number(req.body.kitchenBatchId);
             await OrderController.assertOrderBranch(req, id);
-            const result = await OrderService.startKitchenPreparation(id, req.user!.companyId, req.user!.userId);
+            const result = await OrderService.startKitchenPreparation(
+                id,
+                req.user!.companyId,
+                req.user!.userId,
+                kitchenBatchId,
+            );
             WebSocketService.broadcastOrderInPreparation(id, result.order.table?.number, {
                 companyId: req.user!.companyId,
                 branchId: result.branchId
@@ -505,12 +534,31 @@ export class OrderController {
         try {
             const id = Number(req.params.id);
             const companyId = req.user!.companyId;
+            const kitchenBatchId = req.body?.kitchenBatchId === undefined
+                ? undefined
+                : Number(req.body.kitchenBatchId);
             await OrderController.assertOrderBranch(req, id);
-            const order = await OrderService.updateStatus(id, companyId, 'READY', req.user!.userId);
-            await KitchenNotificationService.notifyReady({ companyId, orderId: id, complete: true });
-            WebSocketService.broadcastOrderReady(id, order.table?.number, { companyId, branchId: order.branchId });
-            WebSocketService.broadcastOrderUpdate(id, 'KITCHEN_READY', order, { companyId, branchId: order.branchId });
-            res.json({ success: true, message: 'Orden marcada como lista', data: order });
+            const result = await OrderService.markKitchenBatchReady(
+                id,
+                companyId,
+                req.user!.userId,
+                kitchenBatchId,
+            );
+            await KitchenNotificationService.notifyReady({
+                companyId,
+                orderId: id,
+                kitchenBatchId: result.kitchenBatchId,
+                complete: true,
+            });
+            WebSocketService.broadcastOrderReady(id, result.order.table?.number, {
+                companyId,
+                branchId: result.order.branchId,
+            });
+            WebSocketService.broadcastOrderUpdate(id, 'KITCHEN_READY', result.order, {
+                companyId,
+                branchId: result.order.branchId,
+            });
+            res.json({ success: true, message: 'Tanda marcada como lista', data: result.order });
         } catch (error) {
             if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 409, message: error instanceof Error ? error.message : 'No se pudo marcar la orden lista' });
@@ -521,9 +569,23 @@ export class OrderController {
         try {
             const id = Number(req.params.id);
             const companyId = req.user!.companyId;
+            const kitchenBatchId = req.body?.kitchenBatchId === undefined
+                ? undefined
+                : Number(req.body.kitchenBatchId);
             await OrderController.assertOrderBranch(req, id);
-            const result = await OrderService.releaseFromKitchen(id, companyId, req.user!.userId);
-            if (result.changed) await KitchenNotificationService.notifyReleased(companyId, id);
+            const result = await OrderService.releaseFromKitchen(
+                id,
+                companyId,
+                req.user!.userId,
+                kitchenBatchId,
+            );
+            if (result.changed) {
+                await KitchenNotificationService.notifyReleased(
+                    companyId,
+                    id,
+                    result.kitchenBatchId,
+                );
+            }
             WebSocketService.broadcastOrderUpdate(id, 'KITCHEN_RELEASED', result.order, {
                 companyId,
                 branchId: result.branchId

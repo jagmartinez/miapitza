@@ -231,6 +231,7 @@ describe('Recipe inventory flows (integration)', () => {
         await prisma.payment.deleteMany({ where: { order: { companyId } } });
         await prisma.orderItemModifier.deleteMany({ where: { orderItem: { order: { companyId } } } });
         await prisma.orderItem.deleteMany({ where: { order: { companyId } } });
+        await prisma.kitchenBatch.deleteMany({ where: { companyId } });
         await prisma.order.deleteMany({ where: { companyId } });
         await prisma.productionOrderItem.deleteMany({ where: { productionOrder: { companyId } } });
         await prisma.productionOrder.deleteMany({ where: { companyId } });

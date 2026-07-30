@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import prisma from '../utils/prisma';
@@ -352,6 +352,133 @@ export class InvoiceService {
                 );
             }
             return preInvoice;
+        });
+    }
+
+    /**
+     * Reopens a non-fiscal prefactura so late additions can be included in the
+     * same commercial order. Fiscal invoices and any account with payments are
+     * intentionally outside this counterflow.
+     */
+    static async reversePreInvoice(
+        orderId: number,
+        companyId: number,
+        actorUserId: number,
+        reasonInput: unknown,
+    ) {
+        if (!Number.isInteger(actorUserId) || actorUserId <= 0) {
+            throw new Error('Invalid invoice actor');
+        }
+        const reason = typeof reasonInput === 'string' ? reasonInput.trim() : '';
+        if (reason.length < 3 || reason.length > 500) {
+            throw new Error('El motivo para revertir la prefactura debe tener entre 3 y 500 caracteres');
+        }
+        const candidate = await prisma.order.findFirst({
+            where: { id: orderId, companyId },
+            select: { id: true, tableId: true },
+        });
+        if (!candidate) throw new Error('Order not found or unauthorized');
+        const candidateTableId = candidate.tableId ?? null;
+
+        return transactionWithP2034Retry(async (tx) => {
+            if (candidateTableId !== null) {
+                const lockedTable = await tx.$queryRaw<Array<{ id: number }>>`
+                    SELECT \`id\` FROM \`Table\`
+                    WHERE \`id\` = ${candidateTableId} AND \`companyId\` = ${companyId}
+                    FOR UPDATE`;
+                if (lockedTable.length === 0) {
+                    throw new Error('La mesa asociada a la orden ya no está disponible');
+                }
+            }
+            const lockedOrder = await tx.$queryRaw<Array<{ id: number }>>`
+                SELECT \`id\` FROM \`Order\`
+                WHERE \`id\` = ${orderId} AND \`companyId\` = ${companyId}
+                FOR UPDATE`;
+            if (lockedOrder.length === 0) throw new Error('Order not found or unauthorized');
+
+            const order = await tx.order.findUnique({
+                where: { id: orderId },
+                select: {
+                    id: true,
+                    companyId: true,
+                    tableId: true,
+                    status: true,
+                    financialStatus: true,
+                    preInvoicedAt: true,
+                    preInvoiceSnapshot: true,
+                    invoiceNumber: true,
+                    invoicedAt: true,
+                    invoiceSnapshot: true,
+                    payments: {
+                        where: { status: 'ACTIVE' },
+                        select: { id: true },
+                    },
+                },
+            });
+            if (!order || order.companyId !== companyId) {
+                throw new Error('Order not found or unauthorized');
+            }
+            if ((order.tableId ?? null) !== candidateTableId) {
+                throw new Error('La mesa asociada a la orden cambió durante la reversión; vuelva a intentarlo');
+            }
+            const actor = await tx.user.findFirst({
+                where: { id: actorUserId, companyId, status: 'ACTIVE' },
+                select: { id: true },
+            });
+            if (!actor) throw new Error('Invalid invoice actor for this company');
+            if (order.invoiceNumber || order.invoicedAt || order.invoiceSnapshot !== null) {
+                throw new Error('La factura fiscal ya fue emitida y la prefactura no puede revertirse');
+            }
+            if (!order.preInvoicedAt || order.preInvoiceSnapshot === null) {
+                throw new Error('La orden no tiene una prefactura emitida para revertir');
+            }
+            if (
+                order.status === 'CANCELLED'
+                || order.financialStatus !== 'UNPAID'
+                || order.payments.length > 0
+            ) {
+                throw new Error('La prefactura solo puede revertirse antes de registrar cualquier pago');
+            }
+
+            const previous = deserializeInvoiceSnapshot(order.preInvoiceSnapshot);
+            const reversedAt = new Date();
+            await tx.order.update({
+                where: { id: order.id },
+                data: {
+                    preInvoicedAt: null,
+                    preInvoiceSnapshot: Prisma.DbNull,
+                },
+            });
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    entityType: 'Order',
+                    entityId: order.id,
+                    action: 'PRE_INVOICE_REVERSED',
+                    userId: actor.id,
+                    details: {
+                        reference: previous.invoiceNumber,
+                        reason,
+                        reversedAt: reversedAt.toISOString(),
+                        tableId: order.tableId,
+                    },
+                },
+            });
+            if (order.tableId) {
+                await reconcileTableGroupForTable(
+                    tx,
+                    companyId,
+                    order.tableId,
+                    actor.id,
+                    `Prefactura de orden ${order.id} revertida para agregar productos`,
+                );
+            }
+            return {
+                orderId: order.id,
+                preInvoicedAt: null,
+                reversedAt,
+                reason,
+            };
         });
     }
 

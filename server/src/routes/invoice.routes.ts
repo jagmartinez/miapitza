@@ -14,6 +14,7 @@ const canIssueCreditNote = requirePermission('invoices.credit', 'SUPERADMIN', 'A
 
 // A pre-invoice freezes the payable account but never consumes a fiscal number.
 router.post('/:id/preinvoice', canIssueInvoice, InvoiceController.issuePreInvoice);
+router.post('/:id/preinvoice/reverse', canIssueInvoice, InvoiceController.reversePreInvoice);
 
 // Issuance is intentionally a POST: it consumes a fiscal sequence and captures
 // an immutable rendering snapshot after full payment. Idempotent retries return

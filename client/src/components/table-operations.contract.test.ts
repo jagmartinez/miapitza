@@ -70,6 +70,15 @@ describe('table operational center contract', () => {
         expect(paymentSource).toContain('renderInvoiceHtml(completion.fiscalInvoice)');
     });
 
+    it('offers an audited prefactura reversal before payments so the same account can receive late products', () => {
+        expect(panelSource).toContain('Revertir prefactura');
+        expect(panelSource).toContain('preInvoiceReverseReason');
+        expect(panelSource).toContain('onReversePreInvoice(order, reason)');
+        expect(tablesSource).toContain('invoicesAPI.reversePreInvoice(order.id, reason)');
+        expect(tablesSource).toContain('Ya puedes agregar productos a la misma cuenta');
+        expect(apiSource).toContain('/preinvoice/reverse');
+    });
+
     it('renders editable persisted floor areas and table geometry', () => {
         expect(mapSource).toContain('plan.areas.map(normalizeArea)');
         expect(mapSource).toContain('Agregar salón');

@@ -450,14 +450,14 @@ export const ordersAPI = {
     getKitchenHistory: (params?: { branchId?: number; limit?: number }) =>
         api.get('/orders/kitchen/history', { params }),
 
-    startKitchenPreparation: (orderId: number) =>
-        api.post(`/orders/${orderId}/kitchen/start`),
+    startKitchenPreparation: (orderId: number, kitchenBatchId?: number) =>
+        api.post(`/orders/${orderId}/kitchen/start`, { kitchenBatchId }),
 
-    markKitchenReady: (orderId: number) =>
-        api.post(`/orders/${orderId}/kitchen/ready`),
+    markKitchenReady: (orderId: number, kitchenBatchId?: number) =>
+        api.post(`/orders/${orderId}/kitchen/ready`, { kitchenBatchId }),
 
-    releaseKitchenOrder: (orderId: number) =>
-        api.post(`/orders/${orderId}/kitchen/release`),
+    releaseKitchenOrder: (orderId: number, kitchenBatchId?: number) =>
+        api.post(`/orders/${orderId}/kitchen/release`, { kitchenBatchId }),
 
     updateStatus: (id: number, status: string) =>
         api.patch(`/orders/${id}/status`, { status }),
@@ -483,6 +483,9 @@ export const ordersAPI = {
 
 export const invoicesAPI = {
     issuePreInvoice: (orderId: number) => api.post(`/invoices/${orderId}/preinvoice`),
+
+    reversePreInvoice: (orderId: number, reason: string) =>
+        api.post(`/invoices/${orderId}/preinvoice/reverse`, { reason }),
 
     issue: (orderId: number) => api.post(`/invoices/${orderId}/issue`),
 

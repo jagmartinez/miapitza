@@ -1,77 +1,112 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { WebSocketService } from './websocket.service';
-import { selectLatestKitchenBatch } from './kitchen-batch';
 
 type ReadyNotificationInput = {
     companyId: number;
     orderId: number;
+    kitchenBatchId?: number;
     itemId?: number;
     complete: boolean;
+};
+
+type ReleasedNotificationInput = {
+    companyId: number;
+    orderId: number;
+    kitchenBatchId?: number;
+    released: true;
 };
 
 export function buildKitchenNotificationDedupKey(input: {
     orderId: number;
     eventType: 'ORDER_ITEM_READY' | 'ORDER_READY' | 'ORDER_RELEASED';
     eventTimestamp: Date;
+    kitchenBatchId?: number;
     itemId?: number;
 }): string {
     const cycleToken = input.eventTimestamp.toISOString();
-    if (input.eventType === 'ORDER_RELEASED') return `order:${input.orderId}:released:${cycleToken}`;
-    if (input.eventType === 'ORDER_READY') return `order:${input.orderId}:ready:${cycleToken}`;
-    return `order:${input.orderId}:item:${input.itemId}:ready:${cycleToken}`;
+    const batchToken = input.kitchenBatchId ? `:batch:${input.kitchenBatchId}` : '';
+    if (input.eventType === 'ORDER_RELEASED') {
+        return `order:${input.orderId}${batchToken}:released:${cycleToken}`;
+    }
+    if (input.eventType === 'ORDER_READY') {
+        return `order:${input.orderId}${batchToken}:ready:${cycleToken}`;
+    }
+    return `order:${input.orderId}${batchToken}:item:${input.itemId}:ready:${cycleToken}`;
 }
 
 export class KitchenNotificationService {
-    private static async create(input: ReadyNotificationInput | (Omit<ReadyNotificationInput, 'itemId' | 'complete'> & { released: true })) {
-        const order = await prisma.order.findFirst({
-            where: { id: input.orderId, companyId: input.companyId },
-            include: {
-                table: { select: { number: true } },
-                user: { select: { id: true, name: true } },
-                items: { include: { menuItem: { select: { name: true } } } }
-            }
-        });
-        if (!order) throw new Error('Orden no encontrada al crear notificación KDS');
-
+    private static async create(input: ReadyNotificationInput | ReleasedNotificationInput) {
         const released = 'released' in input;
+        const itemBatchId = !released && input.itemId
+            ? (await prisma.orderItem.findFirst({
+                where: { id: input.itemId, orderId: input.orderId },
+                select: { kitchenBatchId: true },
+            }))?.kitchenBatchId
+            : undefined;
+        const resolvedBatchId = input.kitchenBatchId ?? itemBatchId ?? undefined;
+        const batch = await prisma.kitchenBatch.findFirst({
+            where: {
+                ...(resolvedBatchId ? { id: resolvedBatchId } : {}),
+                orderId: input.orderId,
+                companyId: input.companyId,
+                ...(released
+                    ? { status: 'RELEASED' as const }
+                    : input.complete
+                        ? { status: 'READY' as const }
+                        : {}),
+            },
+            include: {
+                order: {
+                    include: {
+                        table: { select: { number: true } },
+                        user: { select: { id: true, name: true } },
+                    },
+                },
+                items: {
+                    include: {
+                        menuItem: { select: { name: true } },
+                    },
+                },
+            },
+            orderBy: [{ sentAt: 'desc' }, { id: 'desc' }],
+        });
+        if (!batch) throw new Error('Tanda no encontrada al crear notificación KDS');
+        const order = batch.order;
+
         const item = !released && input.itemId
-            ? order.items.find((candidate) => candidate.id === input.itemId)
+            ? batch.items.find((candidate) => candidate.id === input.itemId)
             : undefined;
         const eventType = released
             ? 'ORDER_RELEASED' as const
             : input.complete
                 ? 'ORDER_READY' as const
                 : 'ORDER_ITEM_READY' as const;
-        const batchItems = selectLatestKitchenBatch(order.items);
-        const notificationItems = item ? [item] : batchItems;
-        const readyAt = notificationItems.reduce<Date | null>((latest, candidate) => {
-            if (!candidate.finishedAt) return latest;
-            return !latest || candidate.finishedAt > latest ? candidate.finishedAt : latest;
-        }, null);
         const eventTimestamp = released
-            ? order.kitchenReleasedAt
-            : item?.finishedAt ?? readyAt;
+            ? batch.releasedAt
+            : item?.finishedAt ?? batch.readyAt;
         if (!eventTimestamp) throw new Error('El evento KDS no tiene un timestamp persistido');
+
         const dedupKey = buildKitchenNotificationDedupKey({
             orderId: order.id,
             eventType,
             eventTimestamp,
-            itemId: !released ? input.itemId : undefined
+            kitchenBatchId: batch.id,
+            itemId: !released ? input.itemId : undefined,
         });
         const readyProducts = item
             ? [{ id: item.id, name: item.menuItem.name, quantity: item.quantity }]
-            : batchItems.map((candidate) => ({
+            : batch.items.map((candidate) => ({
                 id: candidate.id,
                 name: candidate.menuItem.name,
-                quantity: candidate.quantity
+                quantity: candidate.quantity,
             }));
         const tableLabel = order.table?.number ? `Mesa ${order.table.number}` : 'Pedido sin mesa';
         const message = released
-            ? `${tableLabel}: orden #${order.id} liberada por cocina`
-            : !released && input.complete
-                ? `${tableLabel}: orden #${order.id} completa y lista`
-                : `${tableLabel}: ${item?.menuItem.name ?? 'producto'} listo de la orden #${order.id}`;
+            ? `${tableLabel}: tanda ${batch.sequence} de la orden #${order.id} liberada por cocina`
+            : input.complete
+                ? `${tableLabel}: tanda ${batch.sequence} de la orden #${order.id} completa y lista`
+                : `${tableLabel}: ${item?.menuItem.name ?? 'producto'} listo de la tanda ${batch.sequence}, orden #${order.id}`;
 
         let notification;
         try {
@@ -89,22 +124,26 @@ export class KitchenNotificationService {
                         complete: !released && input.complete,
                         released,
                         orderNumber: order.id,
+                        kitchenBatchId: batch.id,
+                        kitchenBatchSequence: batch.sequence,
                         waiterName: order.user.name,
-                        readyProducts
-                    } satisfies Prisma.InputJsonValue
-                }
+                        readyProducts,
+                    } satisfies Prisma.InputJsonValue,
+                },
             });
         } catch (error) {
-            if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error;
+            if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+                throw error;
+            }
             return prisma.kitchenNotification.findFirst({
-                where: { companyId: order.companyId, dedupKey }
+                where: { companyId: order.companyId, dedupKey },
             });
         }
 
         WebSocketService.broadcastKitchenNotification(notification, {
             companyId: order.companyId,
             branchId: order.branchId,
-            userIds: [order.userId]
+            userIds: [order.userId],
         });
         return notification;
     }
@@ -113,8 +152,8 @@ export class KitchenNotificationService {
         return this.create(input);
     }
 
-    static notifyReleased(companyId: number, orderId: number) {
-        return this.create({ companyId, orderId, released: true });
+    static notifyReleased(companyId: number, orderId: number, kitchenBatchId?: number) {
+        return this.create({ companyId, orderId, kitchenBatchId, released: true });
     }
 
     /**
@@ -122,14 +161,19 @@ export class KitchenNotificationService {
      * before publishing its side effect. The unique dedup key makes this safe.
      */
     static async reconcileReadyForUser(companyId: number, userId: number) {
-        const orders = await prisma.order.findMany({
-            where: { companyId, userId, status: 'READY' },
-            select: { id: true }
+        const batches = await prisma.kitchenBatch.findMany({
+            where: {
+                companyId,
+                status: 'READY',
+                order: { userId },
+            },
+            select: { id: true, orderId: true },
         });
-        await Promise.all(orders.map((order) => this.notifyReady({
+        await Promise.all(batches.map((batch) => this.notifyReady({
             companyId,
-            orderId: order.id,
-            complete: true
+            orderId: batch.orderId,
+            kitchenBatchId: batch.id,
+            complete: true,
         })));
     }
 
@@ -143,20 +187,22 @@ export class KitchenNotificationService {
             where: {
                 companyId,
                 userId,
-                ...(options?.includeAttended ? {} : { status: { not: 'ATTENDED' as const } })
+                ...(options?.includeAttended ? {} : { status: { not: 'ATTENDED' as const } }),
             },
             orderBy: { createdAt: 'desc' },
-            take: limit
+            take: limit,
         });
     }
 
     static async markSeen(companyId: number, userId: number, id: number) {
         const changed = await prisma.kitchenNotification.updateMany({
             where: { id, companyId, userId, status: 'UNREAD' },
-            data: { status: 'SEEN', seenAt: new Date() }
+            data: { status: 'SEEN', seenAt: new Date() },
         });
         if (changed.count === 0) {
-            const existing = await prisma.kitchenNotification.findFirst({ where: { id, companyId, userId } });
+            const existing = await prisma.kitchenNotification.findFirst({
+                where: { id, companyId, userId },
+            });
             if (!existing) throw new Error('Notificación no encontrada');
         }
         return prisma.kitchenNotification.findUnique({ where: { id } });
@@ -166,10 +212,12 @@ export class KitchenNotificationService {
         const now = new Date();
         const changed = await prisma.kitchenNotification.updateMany({
             where: { id, companyId, userId, status: { not: 'ATTENDED' } },
-            data: { status: 'ATTENDED', seenAt: now, attendedAt: now }
+            data: { status: 'ATTENDED', seenAt: now, attendedAt: now },
         });
         if (changed.count === 0) {
-            const existing = await prisma.kitchenNotification.findFirst({ where: { id, companyId, userId } });
+            const existing = await prisma.kitchenNotification.findFirst({
+                where: { id, companyId, userId },
+            });
             if (!existing) throw new Error('Notificación no encontrada');
         }
         return prisma.kitchenNotification.findUnique({ where: { id } });

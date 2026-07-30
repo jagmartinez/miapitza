@@ -25,6 +25,7 @@ import { newIdempotencyKey } from '../utils/idempotency';
 import {
     centsToMoney,
     canUsePaymentMethodInMixed,
+    calculateAutomaticPaymentRemainder,
     formatMoneyAmount,
     formatMoneyInput,
     hasUniqueNormalizedPayerNames,
@@ -331,6 +332,30 @@ export default function PaymentModal({
         return selected.map((option, index) => createLeg(option.value, amounts[index]));
     }, [balance, mixedMethodOptions]);
 
+    const rebalanceMixedLegs = useCallback((legs: PaymentLeg[]) => {
+        if (legs.length < 2) return legs;
+        const lastIndex = legs.length - 1;
+        const last = legs[lastIndex];
+        const previousAmount = parseMoneyInput(last.amount);
+        const previousReceived = parseMoneyInput(last.received);
+        const remainder = calculateAutomaticPaymentRemainder(
+            balance,
+            legs.slice(0, lastIndex).map((leg) => parseMoneyInput(leg.amount)),
+        ).amount;
+        const formatted = formatMoneyInput(remainder.toFixed(2));
+        const preserveTendered = isCash(last.paymentMethodId)
+            && previousReceived !== null
+            && previousAmount !== null
+            && moneyToCents(previousReceived) !== moneyToCents(previousAmount);
+        return legs.map((leg, index) => index === lastIndex
+            ? {
+                ...leg,
+                amount: formatted,
+                received: preserveTendered ? leg.received : formatted,
+            }
+            : leg);
+    }, [balance, isCash]);
+
     const buildSplitLegs = useCallback((count: number, previous: SplitLeg[] = []) => {
         const amounts = splitTotalEvenly(balance, count);
         const defaultMethodId = usableMethodOptions[0]?.value ?? null;
@@ -348,6 +373,11 @@ export default function PaymentModal({
             };
         });
     }, [balance, usableMethodOptions]);
+
+    useEffect(() => {
+        if (mode !== 'mixed') return;
+        setMixedLegs((current) => current.length >= 2 ? rebalanceMixedLegs(current) : current);
+    }, [mode, rebalanceMixedLegs]);
 
     useEffect(() => {
         if (mode === 'mixed' && mixedLegs.length === 0 && mixedMethodOptions.length >= 2) {
@@ -373,6 +403,10 @@ export default function PaymentModal({
 
     const mixedAmounts = mixedLegs.map((leg) => parseField(leg.amount));
     const mixedAllocation = summarizePaymentAllocation(balance, mixedAmounts);
+    const mixedLeadingRemainder = calculateAutomaticPaymentRemainder(
+        balance,
+        mixedAmounts.slice(0, -1),
+    );
     const mixedMethodIds = mixedLegs.map((leg) => leg.paymentMethodId).filter((id): id is number => id !== null);
     const mixedMethodsUnique = new Set(mixedMethodIds).size === mixedMethodIds.length;
     const mixedCashValid = mixedLegs.every((leg) => {
@@ -697,7 +731,9 @@ export default function PaymentModal({
     };
 
     const updateMixedLeg = (id: string, patch: Partial<PaymentLeg>) => {
-        setMixedLegs((current) => current.map((leg) => leg.id === id ? { ...leg, ...patch } : leg));
+        setMixedLegs((current) => rebalanceMixedLegs(
+            current.map((leg) => leg.id === id ? { ...leg, ...patch } : leg)
+        ));
     };
     const updateSplitLeg = (id: string, patch: Partial<SplitLeg>) => {
         if (patch.payerName !== undefined) lastItemPreviewSignatureRef.current = '';
@@ -858,7 +894,33 @@ export default function PaymentModal({
                                 <div className="payment-heading-tools">
                                     {!mixedAttempted && mixedLegs.length < 3 && mixedMethodOptions.length > mixedLegs.length && <button type="button" className="payment-add-leg" onClick={() => {
                                         const nextMethod = mixedMethodOptions.find((option) => !mixedMethodIds.includes(option.value));
-                                        if (nextMethod) setMixedLegs((current) => [...current, createLeg(nextMethod.value, 0)]);
+                                        if (nextMethod) {
+                                            setMixedLegs((current) => {
+                                                const previousLast = current[current.length - 1];
+                                                const previousAmount = parseMoneyInput(previousLast?.amount ?? '') ?? 0;
+                                                const previousReceived = parseMoneyInput(previousLast?.received ?? '');
+                                                const preserveTendered = Boolean(
+                                                    previousLast
+                                                    && isCash(previousLast.paymentMethodId)
+                                                    && previousReceived !== null
+                                                    && moneyToCents(previousReceived) !== moneyToCents(previousAmount)
+                                                );
+                                                const divided = splitTotalEvenly(previousAmount, 2);
+                                                const expanded = current.map((leg, index) => index === current.length - 1
+                                                    ? {
+                                                        ...leg,
+                                                        amount: formatMoneyInput((divided[0] ?? 0).toFixed(2)),
+                                                        received: preserveTendered
+                                                            ? leg.received
+                                                            : formatMoneyInput((divided[0] ?? 0).toFixed(2)),
+                                                    }
+                                                    : leg);
+                                                return rebalanceMixedLegs([
+                                                    ...expanded,
+                                                    createLeg(nextMethod.value, divided[1] ?? 0),
+                                                ]);
+                                            });
+                                        }
                                     }}><Plus size={17} /> Agregar método</button>}
                                     <AllocationStatus summary={mixedAllocation} currencySymbol={currencySymbol} valid={mixedValid} compact />
                                 </div>
@@ -872,24 +934,41 @@ export default function PaymentModal({
                                             const cash = isCash(leg.paymentMethodId);
                                             const amount = parseField(leg.amount) ?? 0;
                                             const received = parseField(leg.received) ?? 0;
+                                            const automaticRemainder = index === mixedLegs.length - 1;
                                             const options = mixedMethodOptions.filter((option) => option.value === leg.paymentMethodId || !mixedMethodIds.includes(option.value));
                                             return (
                                                 <article className={`payment-leg ${mixedSucceeded.includes(leg.id) ? 'completed' : ''}`} key={leg.id}>
                                                     <div className="payment-leg-title"><span>Tramo {index + 1}</span>{mixedSucceeded.includes(leg.id) && <b>Confirmado</b>}</div>
                                                     <div className="payment-leg-grid">
                                                         <label className="payment-field"><span>Método</span>{renderMethodSelect(`mixed-method-${leg.id}`, leg.paymentMethodId, options, (value) => updateMixedLeg(leg.id, { paymentMethodId: value, reference: '', received: leg.amount }), mixedAttempted)}</label>
-                                                        {renderMoneyInput(`mixed-amount-${leg.id}`, leg.amount, (value) => updateMixedLeg(leg.id, { amount: value, received: cash && parseField(leg.received) === parseField(leg.amount) ? value : leg.received }), mixedAttempted)}
+                                                        {renderMoneyInput(
+                                                            `mixed-amount-${leg.id}`,
+                                                            leg.amount,
+                                                            (value) => updateMixedLeg(leg.id, {
+                                                                amount: value,
+                                                                received: cash && parseField(leg.received) === parseField(leg.amount)
+                                                                    ? value
+                                                                    : leg.received,
+                                                            }),
+                                                            mixedAttempted || automaticRemainder,
+                                                            automaticRemainder ? 'Diferencia automática' : 'Monto',
+                                                        )}
                                                         {cash ? renderMoneyInput(`mixed-received-${leg.id}`, leg.received, (value) => updateMixedLeg(leg.id, { received: value }), mixedAttempted, 'Efectivo recibido') : (
                                                             <label className="payment-field" htmlFor={`mixed-reference-${leg.id}`}><span>Referencia <em>opcional</em></span><input id={`mixed-reference-${leg.id}`} value={leg.reference} onChange={(event) => updateMixedLeg(leg.id, { reference: event.target.value })} disabled={mixedAttempted} maxLength={191} placeholder="Voucher o transferencia" /></label>
                                                         )}
                                                     </div>
                                                     {cash && <div className="leg-change">Cambio de este tramo: <b>{displayMoney(Math.max(0, received - amount))}</b></div>}
-                                                    {mixedLegs.length > 2 && !mixedAttempted && <button type="button" className="leg-remove" onClick={() => setMixedLegs((current) => current.filter((item) => item.id !== leg.id))}><Trash2 size={16} /> Eliminar tramo</button>}
+                                                    {mixedLegs.length > 2 && !mixedAttempted && <button type="button" className="leg-remove" onClick={() => setMixedLegs((current) => rebalanceMixedLegs(current.filter((item) => item.id !== leg.id)))}><Trash2 size={16} /> Eliminar tramo</button>}
                                                 </article>
                                             );
                                         })}
                                     </div>
                                     {!mixedMethodsUnique && <div className="payment-alert error">Cada tramo debe usar un método distinto.</div>}
+                                    {mixedLeadingRemainder.excess > 0 && (
+                                        <div className="payment-alert error">
+                                            Los tramos anteriores exceden el saldo por {displayMoney(mixedLeadingRemainder.excess)}. Si el excedente es efectivo, regístralo en “Efectivo recibido” para mostrar el cambio, no como monto aplicado.
+                                        </div>
+                                    )}
                                 </>
                             )}
                         </div>

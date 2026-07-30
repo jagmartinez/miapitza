@@ -51,6 +51,7 @@ model Company {
   suppliers                       Supplier[]
   purchaseOrders                  PurchaseOrder[]
   orders                          Order[]
+  kitchenBatches                  KitchenBatch[]
   paymentMethods                  PaymentMethod[]
   cashRegisters                   CashRegister[]
   cashShifts                      CashShift[]
@@ -197,6 +198,7 @@ model Branch {
   warehouses                      Warehouse[]
   purchaseOrders                  PurchaseOrder[]
   orders                          Order[]
+  kitchenBatches                  KitchenBatch[]
   cashRegisters                   CashRegister[]
   menuItems                       MenuItem[] // Optional: if menu varies by branch
   menuItemPrices                  MenuItemBranchPrice[]
@@ -423,6 +425,8 @@ model User {
   cancelledOrders                   Order[]                            @relation("OrderCancelledBy")
   kitchenStarts                     Order[]                            @relation("OrderKitchenStartedBy")
   kitchenReleases                   Order[]                            @relation("OrderKitchenReleasedBy")
+  kitchenBatchStarts                KitchenBatch[]                     @relation("KitchenBatchStartedBy")
+  kitchenBatchReleases              KitchenBatch[]                     @relation("KitchenBatchReleasedBy")
   kitchenNotifications              KitchenNotification[]              @relation("KitchenNotificationRecipient")
   cashShifts                        CashShift[]                        @relation("CashShiftOpenedBy")
   cashShiftsClosed                  CashShift[]                        @relation("CashShiftClosedBy")
@@ -3953,6 +3957,7 @@ model Order {
   kitchenReleasedBy User?        @relation("OrderKitchenReleasedBy", fields: [kitchenReleasedById], references: [id], onDelete: SetNull)
 
   items                         OrderItem[]
+  kitchenBatches                KitchenBatch[]
   payments                      Payment[]
   pedidosYaSyncs                PedidosYaOrderSync[]
   kitchenNotifications          KitchenNotification[]
@@ -4002,18 +4007,56 @@ enum OrderFinancialStatus {
   PAID
 }
 
+enum KitchenBatchStatus {
+  PENDING
+  IN_PREPARATION
+  READY
+  RELEASED
+}
+
+model KitchenBatch {
+  id           Int                @id @default(autoincrement())
+  companyId    Int
+  branchId     Int
+  orderId      Int
+  sequence     Int
+  status       KitchenBatchStatus @default(PENDING)
+  sentAt       DateTime           @default(now())
+  startedAt    DateTime?
+  readyAt      DateTime?
+  releasedAt   DateTime?
+  startedById  Int?
+  releasedById Int?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  branch     Branch  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  order      Order   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  startedBy  User?   @relation("KitchenBatchStartedBy", fields: [startedById], references: [id], onDelete: SetNull)
+  releasedBy User?   @relation("KitchenBatchReleasedBy", fields: [releasedById], references: [id], onDelete: SetNull)
+  items      OrderItem[]
+
+  @@unique([orderId, sequence])
+  @@index([companyId, branchId, status, sentAt], map: "KitchenBatch_company_branch_status_sent_idx")
+  @@index([orderId, status, sentAt], map: "KitchenBatch_order_status_sent_idx")
+  @@index([startedById])
+  @@index([releasedById])
+}
+
 model OrderItem {
-  id            Int             @id @default(autoincrement())
-  orderId       Int
-  menuItemId    Int
-  quantity      Int
-  price         Decimal         @db.Decimal(10, 2)
-  subtotal      Decimal         @db.Decimal(10, 2)
-  notes         String?
-  status        OrderItemStatus @default(PENDING)
-  sentAt        DateTime? // When sent to kitchen
-  startedAt     DateTime? // When kitchen started preparing
-  finishedAt    DateTime? // When kitchen finished preparing
+  id             Int             @id @default(autoincrement())
+  orderId        Int
+  menuItemId     Int
+  kitchenBatchId Int?
+  quantity       Int
+  price          Decimal         @db.Decimal(10, 2)
+  subtotal       Decimal         @db.Decimal(10, 2)
+  notes          String?
+  status         OrderItemStatus @default(PENDING)
+  sentAt         DateTime? // When sent to kitchen
+  startedAt      DateTime? // When kitchen started preparing
+  finishedAt     DateTime? // When kitchen finished preparing
   // Durable provenance for table transfers/consolidations. The first origin is
   // retained even if an item is moved more than once.
   originOrderId Int?
@@ -4021,12 +4064,14 @@ model OrderItem {
 
   order                       Order                    @relation(fields: [orderId], references: [id], onDelete: Restrict)
   menuItem                    MenuItem                 @relation(fields: [menuItemId], references: [id])
+  kitchenBatch                KitchenBatch?            @relation(fields: [kitchenBatchId], references: [id], onDelete: Restrict)
   modifiers                   OrderItemModifier[]
   fiscalCreditNoteLines       FiscalCreditNoteLine[]
   tableConsolidationSnapshots TableConsolidationItem[]
 
   @@index([orderId])
   @@index([menuItemId])
+  @@index([kitchenBatchId])
   @@index([originOrderId])
   @@index([originTableId])
 }

@@ -43,6 +43,26 @@ export interface OrderCancelOptions {
     externalRefundReferences?: Array<{ paymentId: number; reference: string }>;
 }
 
+const kitchenBatchOrderInclude = {
+    order: {
+        include: {
+            table: true,
+            user: { select: { id: true, name: true, color: true } },
+        },
+    },
+    items: {
+        include: {
+            menuItem: true,
+            modifiers: true,
+        },
+        orderBy: { id: 'asc' as const },
+    },
+} satisfies Prisma.KitchenBatchInclude;
+
+type KitchenBatchOrderRow = Prisma.KitchenBatchGetPayload<{
+    include: typeof kitchenBatchOrderInclude;
+}>;
+
 export class OrderService {
     private static assertMenuItemSellable(menuItem: {
         name: string;
@@ -229,6 +249,109 @@ export class OrderService {
             firstStartedAt: string | null;
             readyAt: string | null;
         };
+    }
+
+    private static kitchenBatchOrderStatus(status: string) {
+        if (status === 'IN_PREPARATION') return 'IN_PREPARATION' as const;
+        if (status === 'READY' || status === 'RELEASED') return 'READY' as const;
+        return 'SENT_TO_KITCHEN' as const;
+    }
+
+    private static withPersistentKitchenBatch(batch: KitchenBatchOrderRow) {
+        return this.withTimeline({
+            ...batch.order,
+            status: this.kitchenBatchOrderStatus(batch.status),
+            kitchenBatchId: batch.id,
+            kitchenBatchSequence: batch.sequence,
+            kitchenBatchStatus: batch.status,
+            kitchenBatchSentAt: batch.sentAt,
+            kitchenStartedAt: batch.startedAt,
+            kitchenReleasedAt: batch.releasedAt,
+            items: batch.items,
+        });
+    }
+
+    private static async syncOrderKitchenCompatibility(
+        tx: Prisma.TransactionClient,
+        orderId: number,
+    ) {
+        const order = await tx.order.findUnique({
+            where: { id: orderId },
+            select: {
+                id: true,
+                status: true,
+                kitchenReleasedAt: true,
+                items: { where: { sentAt: null }, select: { id: true } },
+                kitchenBatches: {
+                    select: {
+                        status: true,
+                        startedAt: true,
+                        startedById: true,
+                        releasedAt: true,
+                        releasedById: true,
+                    },
+                    orderBy: { sentAt: 'asc' },
+                },
+            },
+        });
+        if (!order) throw new Error('Order not found');
+        if (order.status === 'CANCELLED' || order.status === 'DELIVERED') return order.status;
+
+        const active = order.kitchenBatches.filter((batch) => batch.status !== 'RELEASED');
+        const inPreparation = active.filter((batch) => batch.status === 'IN_PREPARATION');
+        const pending = active.filter((batch) => batch.status === 'PENDING');
+        const ready = active.filter((batch) => batch.status === 'READY');
+        const released = order.kitchenBatches.filter((batch) => batch.status === 'RELEASED');
+        const latestRelease = released[released.length - 1];
+        const earliestStarted = inPreparation
+            .filter((batch) => batch.startedAt)
+            .sort((left, right) => left.startedAt!.getTime() - right.startedAt!.getTime())[0];
+
+        const nextStatus = inPreparation.length > 0
+            ? 'IN_PREPARATION' as const
+            : pending.length > 0
+                ? 'SENT_TO_KITCHEN' as const
+                : ready.length > 0
+                    ? 'READY' as const
+                    : order.items.length > 0
+                        ? 'OPEN' as const
+                        : order.kitchenBatches.length > 0
+                            ? 'READY' as const
+                            : 'OPEN' as const;
+
+        await tx.order.update({
+            where: { id: orderId },
+            data: {
+                status: nextStatus,
+                kitchenStartedAt: earliestStarted?.startedAt ?? null,
+                kitchenStartedById: earliestStarted?.startedById ?? null,
+                kitchenReleasedAt: active.length > 0 ? null : latestRelease?.releasedAt ?? order.kitchenReleasedAt,
+                kitchenReleasedById: active.length > 0 ? null : latestRelease?.releasedById ?? null,
+            },
+        });
+        return nextStatus;
+    }
+
+    private static async findKitchenBatchForOperation(
+        tx: Prisma.TransactionClient,
+        orderId: number,
+        companyId: number,
+        kitchenBatchId?: number,
+    ) {
+        if (kitchenBatchId !== undefined && (!Number.isInteger(kitchenBatchId) || kitchenBatchId <= 0)) {
+            throw new Error('Tanda de cocina inválida');
+        }
+        const batch = await tx.kitchenBatch.findFirst({
+            where: {
+                ...(kitchenBatchId ? { id: kitchenBatchId } : {}),
+                orderId,
+                companyId,
+                status: { not: 'RELEASED' },
+            },
+            orderBy: [{ sentAt: 'desc' }, { id: 'desc' }],
+        });
+        if (!batch) throw new Error('La tanda de cocina no existe o ya fue liberada');
+        return batch;
     }
 
     private static deriveStatusFromItems(order: {
@@ -1119,7 +1242,7 @@ export class OrderService {
     static async sendToKitchen(id: number, companyId: number) {
         const now = new Date();
 
-        const updatedOrder = await prisma.$transaction(async (tx) => {
+        const result = await prisma.$transaction(async (tx) => {
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
             // Re-check status INSIDE the transaction to prevent a TOCTOU race.
             const order = await tx.order.findFirst({
@@ -1144,69 +1267,55 @@ export class OrderService {
             if (unsentItems.length === 0) {
                 // A retry after the first transaction committed is a safe no-op.
                 // It must not create a second wave or fail an offline replay.
+                const currentBatch = await tx.kitchenBatch.findFirst({
+                    where: { orderId: id, companyId },
+                    include: kitchenBatchOrderInclude,
+                    orderBy: [{ sequence: 'desc' }, { id: 'desc' }],
+                });
+                if (!currentBatch) {
+                    throw new Error('La orden no tiene una tanda de cocina persistida');
+                }
                 return {
-                    ...this.withLatestKitchenBatch(order),
+                    ...this.withPersistentKitchenBatch(currentBatch),
                     kitchenBatchSent: false,
                 };
             }
 
-            const hasPreviousBatch = order.items.some((item) => item.sentAt != null);
-            const previousBatch = selectLatestKitchenBatch(order.items)
-                .filter((item) => item.sentAt != null);
-            const previousBatchIsReady = previousBatch.length > 0
-                && previousBatch.every((item) => item.status === 'DONE');
-            if (hasPreviousBatch && !order.kitchenReleasedAt && !previousBatchIsReady) {
-                throw new Error(
-                    'Los productos se agregaron a la orden, pero la tanda activa de cocina debe terminar antes de enviar la nueva'
-                );
-            }
+            const latestSequence = await tx.kitchenBatch.aggregate({
+                where: { orderId: id },
+                _max: { sequence: true },
+            });
+            const kitchenBatch = await tx.kitchenBatch.create({
+                data: {
+                    companyId,
+                    branchId: order.branchId,
+                    orderId: id,
+                    sequence: (latestSequence._max.sequence ?? 0) + 1,
+                    status: 'PENDING',
+                    sentAt: now,
+                },
+            });
 
-            // A completed wave rolls over atomically. DONE lines stay historical,
-            // while only the new lines receive a fresh batch timestamp and SLA.
+            // Every send owns an independent KDS lifecycle. Previous batches can
+            // remain active without swallowing this new wave.
             await tx.orderItem.updateMany({
                 where: { orderId: id, sentAt: null },
-                data: { sentAt: now }
+                data: { sentAt: now, kitchenBatchId: kitchenBatch.id }
             });
 
-            const refreshed = await tx.order.findUnique({
-                where: { id },
-                include: {
-                    items: {
-                        include: {
-                            menuItem: true,
-                            modifiers: true
-                        }
-                    }
-                }
+            await this.syncOrderKitchenCompatibility(tx, id);
+            const createdBatch = await tx.kitchenBatch.findUnique({
+                where: { id: kitchenBatch.id },
+                include: kitchenBatchOrderInclude,
             });
-
-            if (!refreshed) throw new Error('Order not found');
-            const nextStatus = this.deriveStatusFromItems(refreshed);
-            return nextStatus === refreshed.status
-                ? refreshed
-                : tx.order.update({
-                    where: { id },
-                    data: {
-                        status: nextStatus,
-                        ...(hasPreviousBatch ? {
-                            kitchenReleasedAt: null,
-                            kitchenReleasedById: null,
-                            kitchenStartedAt: null,
-                            kitchenStartedById: null
-                        } : {})
-                    },
-                    include: {
-                        items: {
-                            include: { menuItem: true, modifiers: true }
-                        }
-                    }
-                });
+            if (!createdBatch) throw new Error('No se pudo recuperar la tanda de cocina');
+            return {
+                ...this.withPersistentKitchenBatch(createdBatch),
+                kitchenBatchSent: true,
+            };
         });
-        this.syncPedidosYaStatus(companyId, updatedOrder);
-        return {
-            ...this.withLatestKitchenBatch(updatedOrder),
-            kitchenBatchSent: true,
-        };
+        this.syncPedidosYaStatus(companyId, result);
+        return result;
     }
 
     static async updateFiscalCustomer(
@@ -1253,139 +1362,164 @@ export class OrderService {
         });
     }
 
-    static async startItem(orderId: number, itemId: number, companyId: number) {
+    static async startItem(
+        orderId: number,
+        itemId: number,
+        companyId: number,
+        actorUserId?: number,
+    ) {
         const result = await prisma.$transaction(async (tx) => {
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
-            const order = await tx.order.findFirst({ where: { id: orderId, companyId }, select: { status: true } });
+            const order = await tx.order.findFirst({
+                where: { id: orderId, companyId },
+                select: { status: true },
+            });
             if (!order) throw new Error('Orden no encontrada');
             if (order.status === 'CANCELLED' || order.status === 'DELIVERED') {
                 throw new Error(`No se puede actualizar items de una orden ${order.status}`);
             }
-            const claimed = await tx.orderItem.updateMany({
-                where: { id: itemId, orderId, status: 'PENDING', sentAt: { not: null } },
-                data: { status: 'IN_PROGRESS', startedAt: new Date() }
+
+            const item = await tx.orderItem.findFirst({
+                where: { id: itemId, orderId },
+                select: { kitchenBatchId: true },
             });
-            if (claimed.count !== 1) throw new Error('El item debe estar enviado y PENDIENTE para iniciar');
+            if (!item?.kitchenBatchId) {
+                throw new Error('El artículo no pertenece a una tanda de cocina');
+            }
+            const batch = await tx.kitchenBatch.findFirst({
+                where: { id: item.kitchenBatchId, orderId, companyId },
+            });
+            if (!batch || batch.status === 'RELEASED') {
+                throw new Error('La tanda de cocina no está disponible');
+            }
+
+            const startedAt = new Date();
+            const claimed = await tx.orderItem.updateMany({
+                where: {
+                    id: itemId,
+                    orderId,
+                    kitchenBatchId: batch.id,
+                    status: 'PENDING',
+                    sentAt: { not: null },
+                },
+                data: { status: 'IN_PROGRESS', startedAt },
+            });
+            if (claimed.count !== 1) {
+                throw new Error('El item debe estar enviado y PENDIENTE para iniciar');
+            }
             const updatedItem = await tx.orderItem.findUnique({
                 where: { id: itemId },
-                include: { menuItem: true }
+                include: { menuItem: true },
             });
             if (!updatedItem) throw new Error('Item no encontrado');
 
-            const currentOrder = await tx.order.findUnique({
-                where: { id: orderId },
-                include: {
-                    table: true,
-                    user: {
-                        select: {
-                            id: true,
-                            name: true,
-                            color: true
-                        }
-                    },
-                    items: {
-                        include: {
-                            menuItem: true,
-                            modifiers: true
-                        }
-                    }
-                }
+            await tx.kitchenBatch.update({
+                where: { id: batch.id },
+                data: {
+                    status: 'IN_PREPARATION',
+                    startedAt: batch.startedAt ?? startedAt,
+                    startedById: batch.startedById ?? actorUserId,
+                },
             });
-
-            if (!currentOrder) {
-                throw new Error('Order not found');
-            }
-
-            const nextStatus = this.deriveStatusFromItems(currentOrder);
-            const updatedOrder = nextStatus !== currentOrder.status
-                ? await tx.order.update({
-                    where: { id: orderId },
-                    data: { status: nextStatus },
-                    include: {
-                        table: true,
-                        user: {
-                            select: {
-                                id: true,
-                                name: true,
-                                color: true
-                            }
-                        },
-                        items: {
-                            include: {
-                                menuItem: true,
-                                modifiers: true
-                            }
-                        }
-                    }
-                })
-                : currentOrder;
+            await this.syncOrderKitchenCompatibility(tx, orderId);
+            const updatedBatch = await tx.kitchenBatch.findUnique({
+                where: { id: batch.id },
+                include: kitchenBatchOrderInclude,
+            });
+            if (!updatedBatch) throw new Error('Tanda de cocina no encontrada');
 
             return {
                 item: updatedItem,
-                order: this.withTimeline(updatedOrder)
+                order: this.withPersistentKitchenBatch(updatedBatch),
+                kitchenBatchId: batch.id,
             };
         });
         this.syncPedidosYaStatus(companyId, result.order);
         return result;
     }
 
-    static async finishItem(orderId: number, itemId: number, companyId: number) {
+    static async finishItem(
+        orderId: number,
+        itemId: number,
+        companyId: number,
+        actorUserId?: number,
+    ) {
         const result = await prisma.$transaction(async (tx) => {
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
-            const order = await tx.order.findFirst({ where: { id: orderId, companyId }, select: { status: true } });
+            const order = await tx.order.findFirst({
+                where: { id: orderId, companyId },
+                select: { status: true },
+            });
             if (!order) throw new Error('Orden no encontrada');
             if (order.status === 'CANCELLED' || order.status === 'DELIVERED') {
                 throw new Error(`No se puede actualizar items de una orden ${order.status}`);
             }
+
+            const item = await tx.orderItem.findFirst({
+                where: { id: itemId, orderId },
+                select: { kitchenBatchId: true },
+            });
+            if (!item?.kitchenBatchId) {
+                throw new Error('El artículo no pertenece a una tanda de cocina');
+            }
+            const batch = await tx.kitchenBatch.findFirst({
+                where: { id: item.kitchenBatchId, orderId, companyId },
+            });
+            if (!batch || batch.status === 'RELEASED') {
+                throw new Error('La tanda de cocina no está disponible');
+            }
+
             const finishedAt = new Date();
             const claimed = await tx.orderItem.updateMany({
-                where: { id: itemId, orderId, status: 'IN_PROGRESS' },
-                data: { status: 'DONE', finishedAt }
-            });
-            if (claimed.count !== 1) throw new Error('El item debe estar EN PROGRESO para finalizar');
-            const updated = await tx.orderItem.findUnique({
-                where: { id: itemId },
-                include: { menuItem: true }
-            });
-            if (!updated) throw new Error('Item no encontrado');
-
-            const orderInclude = {
-                table: true,
-                user: {
-                    select: {
-                        id: true,
-                        name: true,
-                        color: true
-                    }
+                where: {
+                    id: itemId,
+                    orderId,
+                    kitchenBatchId: batch.id,
+                    status: 'IN_PROGRESS',
                 },
-                items: {
-                    include: {
-                        menuItem: true,
-                        modifiers: true
-                    }
-                }
-            } as const;
-
-            const currentOrder = await tx.order.findUnique({
-                where: { id: orderId },
-                include: orderInclude
+                data: { status: 'DONE', finishedAt },
             });
-            if (!currentOrder) throw new Error('Order not found');
+            if (claimed.count !== 1) {
+                throw new Error('El item debe estar EN PROGRESO para finalizar');
+            }
+            const updatedItem = await tx.orderItem.findUnique({
+                where: { id: itemId },
+                include: { menuItem: true },
+            });
+            if (!updatedItem) throw new Error('Item no encontrado');
 
-            const nextStatus = this.deriveStatusFromItems(currentOrder);
-            const updatedOrder = nextStatus !== currentOrder.status
-                ? await tx.order.update({
-                    where: { id: orderId },
-                    data: { status: nextStatus },
-                    include: orderInclude
-                })
-                : currentOrder;
+            const openItems = await tx.orderItem.count({
+                where: { kitchenBatchId: batch.id, status: { not: 'DONE' } },
+            });
+            const allDone = openItems === 0;
+            await tx.kitchenBatch.update({
+                where: { id: batch.id },
+                data: allDone
+                    ? {
+                        status: 'READY',
+                        readyAt: finishedAt,
+                        startedAt: batch.startedAt ?? finishedAt,
+                        startedById: batch.startedById ?? actorUserId,
+                    }
+                    : {
+                        status: 'IN_PREPARATION',
+                        startedAt: batch.startedAt ?? finishedAt,
+                        startedById: batch.startedById ?? actorUserId,
+                    },
+            });
+            await this.syncOrderKitchenCompatibility(tx, orderId);
+            const updatedBatch = await tx.kitchenBatch.findUnique({
+                where: { id: batch.id },
+                include: kitchenBatchOrderInclude,
+            });
+            if (!updatedBatch) throw new Error('Tanda de cocina no encontrada');
 
-            const currentKitchenBatch = selectLatestKitchenBatch(updatedOrder.items);
-            const allDone = currentKitchenBatch.length > 0
-                && currentKitchenBatch.every((item) => item.sentAt != null && item.status === 'DONE');
-
-            return { item: updated, allDone, order: this.withTimeline(updatedOrder) };
+            return {
+                item: updatedItem,
+                allDone,
+                order: this.withPersistentKitchenBatch(updatedBatch),
+                kitchenBatchId: batch.id,
+            };
         });
         this.syncPedidosYaStatus(companyId, result.order);
         return result;
@@ -2035,60 +2169,73 @@ export class OrderService {
     }
 
     static async getKitchenQueue(companyId: number, branchId?: number) {
-        const orders = await prisma.order.findMany({
+        const batches = await prisma.kitchenBatch.findMany({
             where: {
                 companyId,
                 ...(branchId ? { branchId } : {}),
-                kitchenReleasedAt: null,
-                OR: [
-                    { status: 'READY' },
-                    {
-                        status: { in: ['SENT_TO_KITCHEN', 'IN_PREPARATION'] },
-                        items: { some: { sentAt: { not: null }, status: { not: 'DONE' } } }
-                    }
-                ]
+                status: { in: ['PENDING', 'IN_PREPARATION', 'READY'] },
+                order: { status: { notIn: ['CANCELLED', 'DELIVERED'] } },
             },
-            include: {
-                table: true,
-                user: { select: { id: true, name: true, color: true } },
-                items: { include: { menuItem: true, modifiers: true } }
-            },
-            orderBy: { createdAt: 'asc' }
+            include: kitchenBatchOrderInclude,
+            orderBy: [{ sentAt: 'asc' }, { id: 'asc' }],
         });
-        return orders.map((order) => this.withLatestKitchenBatch(order));
+        return batches.map((batch) => this.withPersistentKitchenBatch(batch));
     }
 
-    static async startKitchenPreparation(orderId: number, companyId: number, actorUserId: number) {
+    static async startKitchenPreparation(
+        orderId: number,
+        companyId: number,
+        actorUserId: number,
+        kitchenBatchId?: number,
+    ) {
         const result = await prisma.$transaction(async (tx) => {
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
             const order = await tx.order.findFirst({
                 where: { id: orderId, companyId },
-                include: { items: true }
+                select: { id: true, branchId: true },
             });
             if (!order) throw new Error('Orden no encontrada');
-            if (order.kitchenReleasedAt) throw new Error('La orden ya fue liberada del KDS');
-            if (order.status === 'IN_PREPARATION' && order.kitchenStartedAt) {
-                return { changed: false, branchId: order.branchId };
+            const batch = await this.findKitchenBatchForOperation(
+                tx,
+                orderId,
+                companyId,
+                kitchenBatchId,
+            );
+            if (batch.status === 'IN_PREPARATION') {
+                const current = await tx.kitchenBatch.findUnique({
+                    where: { id: batch.id },
+                    include: kitchenBatchOrderInclude,
+                });
+                if (!current) throw new Error('Tanda de cocina no encontrada');
+                return {
+                    changed: false,
+                    branchId: order.branchId,
+                    order: this.withPersistentKitchenBatch(current),
+                    kitchenBatchId: batch.id,
+                };
             }
-            if (order.status !== 'SENT_TO_KITCHEN') {
-                throw new Error('Solo una orden pendiente en cocina puede iniciar preparación');
+            if (batch.status !== 'PENDING') {
+                throw new Error('Solo una tanda pendiente puede iniciar preparación');
             }
 
             const now = new Date();
             const started = await tx.orderItem.updateMany({
-                where: { orderId, sentAt: { not: null }, status: 'PENDING' },
+                where: { orderId, kitchenBatchId: batch.id, status: 'PENDING' },
                 data: { status: 'IN_PROGRESS', startedAt: now }
             });
-            if (started.count === 0) throw new Error('La orden no tiene productos pendientes para iniciar');
+            if (started.count === 0) {
+                throw new Error('La tanda no tiene productos pendientes para iniciar');
+            }
 
-            await tx.order.update({
-                where: { id: orderId },
+            await tx.kitchenBatch.update({
+                where: { id: batch.id },
                 data: {
                     status: 'IN_PREPARATION',
-                    kitchenStartedAt: now,
-                    kitchenStartedById: actorUserId
+                    startedAt: now,
+                    startedById: actorUserId,
                 }
             });
+            await this.syncOrderKitchenCompatibility(tx, orderId);
             await tx.auditLog.create({
                 data: {
                     companyId,
@@ -2096,18 +2243,122 @@ export class OrderService {
                     entityId: orderId,
                     action: 'KITCHEN_PREPARATION_STARTED',
                     userId: actorUserId,
-                    details: { from: order.status, to: 'IN_PREPARATION', startedItems: started.count }
+                    details: {
+                        kitchenBatchId: batch.id,
+                        sequence: batch.sequence,
+                        from: batch.status,
+                        to: 'IN_PREPARATION',
+                        startedItems: started.count,
+                    }
                 }
             });
-            return { changed: true, branchId: order.branchId };
+            const updatedBatch = await tx.kitchenBatch.findUnique({
+                where: { id: batch.id },
+                include: kitchenBatchOrderInclude,
+            });
+            if (!updatedBatch) throw new Error('Tanda de cocina no encontrada');
+            return {
+                changed: true,
+                branchId: order.branchId,
+                order: this.withPersistentKitchenBatch(updatedBatch),
+                kitchenBatchId: batch.id,
+            };
         });
 
-        const order = await this.getById(orderId, companyId);
-        this.syncPedidosYaStatus(companyId, order);
-        return { ...result, order };
+        this.syncPedidosYaStatus(companyId, result.order);
+        return result;
     }
 
-    static async releaseFromKitchen(orderId: number, companyId: number, actorUserId: number) {
+    static async markKitchenBatchReady(
+        orderId: number,
+        companyId: number,
+        actorUserId: number,
+        kitchenBatchId?: number,
+    ) {
+        const result = await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
+            const order = await tx.order.findFirst({
+                where: { id: orderId, companyId },
+                select: { id: true, branchId: true },
+            });
+            if (!order) throw new Error('Orden no encontrada');
+            const batch = await this.findKitchenBatchForOperation(
+                tx,
+                orderId,
+                companyId,
+                kitchenBatchId,
+            );
+            if (batch.status === 'READY') {
+                const current = await tx.kitchenBatch.findUnique({
+                    where: { id: batch.id },
+                    include: kitchenBatchOrderInclude,
+                });
+                if (!current) throw new Error('Tanda de cocina no encontrada');
+                return {
+                    changed: false,
+                    branchId: order.branchId,
+                    order: this.withPersistentKitchenBatch(current),
+                    kitchenBatchId: batch.id,
+                };
+            }
+
+            const now = new Date();
+            const completed = await tx.orderItem.updateMany({
+                where: { orderId, kitchenBatchId: batch.id, status: { not: 'DONE' } },
+                data: {
+                    status: 'DONE',
+                    startedAt: batch.startedAt ?? now,
+                    finishedAt: now,
+                },
+            });
+            await tx.kitchenBatch.update({
+                where: { id: batch.id },
+                data: {
+                    status: 'READY',
+                    startedAt: batch.startedAt ?? now,
+                    startedById: batch.startedById ?? actorUserId,
+                    readyAt: now,
+                },
+            });
+            await this.syncOrderKitchenCompatibility(tx, orderId);
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    entityType: 'Order',
+                    entityId: orderId,
+                    action: 'KITCHEN_READY',
+                    userId: actorUserId,
+                    details: {
+                        kitchenBatchId: batch.id,
+                        sequence: batch.sequence,
+                        from: batch.status,
+                        to: 'READY',
+                        completedItems: completed.count,
+                    },
+                },
+            });
+            const updatedBatch = await tx.kitchenBatch.findUnique({
+                where: { id: batch.id },
+                include: kitchenBatchOrderInclude,
+            });
+            if (!updatedBatch) throw new Error('Tanda de cocina no encontrada');
+            return {
+                changed: true,
+                branchId: order.branchId,
+                order: this.withPersistentKitchenBatch(updatedBatch),
+                kitchenBatchId: batch.id,
+            };
+        });
+        this.syncPedidosYaStatus(companyId, result.order);
+        return result;
+    }
+
+    static async releaseFromKitchen(
+        orderId: number,
+        companyId: number,
+        actorUserId: number,
+        kitchenBatchId?: number,
+    ) {
         const result = await prisma.$transaction(async (tx) => {
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
             const order = await tx.order.findFirst({
@@ -2116,24 +2367,48 @@ export class OrderService {
                     id: true,
                     branchId: true,
                     status: true,
-                    kitchenReleasedAt: true,
-                    items: { select: { sentAt: true } }
                 }
             });
             if (!order) throw new Error('Orden no encontrada');
-            if (order.kitchenReleasedAt) return { changed: false, branchId: order.branchId };
-            if (order.status !== 'READY') throw new Error('La orden debe estar lista antes de liberarla');
+            if (kitchenBatchId !== undefined && (!Number.isInteger(kitchenBatchId) || kitchenBatchId <= 0)) {
+                throw new Error('Tanda de cocina inválida');
+            }
+            const batch = await tx.kitchenBatch.findFirst({
+                where: {
+                    ...(kitchenBatchId ? { id: kitchenBatchId } : {}),
+                    orderId,
+                    companyId,
+                },
+                orderBy: [{ sentAt: 'desc' }, { id: 'desc' }],
+            });
+            if (!batch) throw new Error('Tanda de cocina no encontrada');
+            if (batch.status === 'RELEASED') {
+                const current = await tx.kitchenBatch.findUnique({
+                    where: { id: batch.id },
+                    include: kitchenBatchOrderInclude,
+                });
+                if (!current) throw new Error('Tanda de cocina no encontrada');
+                return {
+                    changed: false,
+                    branchId: order.branchId,
+                    order: this.withPersistentKitchenBatch(current),
+                    kitchenBatchId: batch.id,
+                };
+            }
+            if (batch.status !== 'READY') {
+                throw new Error('La tanda debe estar lista antes de liberarla');
+            }
 
             const releasedAt = new Date();
-            const hasNextDraft = order.items.some((item) => item.sentAt == null);
-            await tx.order.update({
-                where: { id: orderId },
+            await tx.kitchenBatch.update({
+                where: { id: batch.id },
                 data: {
-                    kitchenReleasedAt: releasedAt,
-                    kitchenReleasedById: actorUserId,
-                    ...(hasNextDraft ? { status: 'OPEN' as const } : {})
+                    status: 'RELEASED',
+                    releasedAt,
+                    releasedById: actorUserId,
                 }
             });
+            await this.syncOrderKitchenCompatibility(tx, orderId);
             await tx.auditLog.create({
                 data: {
                     companyId,
@@ -2142,40 +2417,40 @@ export class OrderService {
                     action: 'KITCHEN_RELEASED',
                     userId: actorUserId,
                     details: {
-                        status: order.status,
+                        kitchenBatchId: batch.id,
+                        sequence: batch.sequence,
+                        status: batch.status,
                         releasedAt: releasedAt.toISOString(),
-                        nextDraftPending: hasNextDraft
                     }
                 }
             });
-            return { changed: true, branchId: order.branchId };
+            const updatedBatch = await tx.kitchenBatch.findUnique({
+                where: { id: batch.id },
+                include: kitchenBatchOrderInclude,
+            });
+            if (!updatedBatch) throw new Error('Tanda de cocina no encontrada');
+            return {
+                changed: true,
+                branchId: order.branchId,
+                order: this.withPersistentKitchenBatch(updatedBatch),
+                kitchenBatchId: batch.id,
+            };
         });
-        return { ...result, order: await this.getById(orderId, companyId) };
+        return result;
     }
 
     static async getKitchenHistory(companyId: number, branchId?: number, limit = 100) {
         const safeLimit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : 100;
-        const orders = await prisma.order.findMany({
+        const batches = await prisma.kitchenBatch.findMany({
             where: {
                 companyId,
                 ...(branchId ? { branchId } : {}),
-                OR: [
-                    { kitchenStartedAt: { not: null } },
-                    { kitchenReleasedAt: { not: null } },
-                    { status: { in: ['SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED', 'CANCELLED'] } }
-                ]
             },
-            include: {
-                table: true,
-                user: { select: { id: true, name: true, color: true } },
-                kitchenStartedBy: { select: { id: true, name: true } },
-                kitchenReleasedBy: { select: { id: true, name: true } },
-                items: { include: { menuItem: true, modifiers: true } }
-            },
-            orderBy: { updatedAt: 'desc' },
+            include: kitchenBatchOrderInclude,
+            orderBy: [{ sentAt: 'desc' }, { id: 'desc' }],
             take: safeLimit
         });
-        return orders.map((order) => this.withLatestKitchenBatch(order));
+        return batches.map((batch) => this.withPersistentKitchenBatch(batch));
     }
 
     /**

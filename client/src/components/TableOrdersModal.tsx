@@ -34,6 +34,7 @@ interface TableOrdersModalProps {
     groupTotalCapacity?: number;
     onOpenPOS: (table: Table) => void;
     onIssueInvoice: (order: Order) => void;
+    onReversePreInvoice: (order: Order, reason: string) => Promise<boolean>;
     onPay: (order: Order) => void;
     onSplit: (order: Order) => void;
     onTransfer: (table: Table) => void;
@@ -66,6 +67,7 @@ export default function TableOrdersModal({
     groupTotalCapacity,
     onOpenPOS,
     onIssueInvoice,
+    onReversePreInvoice,
     onPay,
     onSplit,
     onTransfer,
@@ -84,11 +86,17 @@ export default function TableOrdersModal({
     const [reversalReason, setReversalReason] = useState('');
     const [reversalValidationError, setReversalValidationError] = useState<string | null>(null);
     const [invoiceTargetOrderId, setInvoiceTargetOrderId] = useState<number | null>(null);
+    const [preInvoiceReverseOrderId, setPreInvoiceReverseOrderId] = useState<number | null>(null);
+    const [preInvoiceReverseReason, setPreInvoiceReverseReason] = useState('');
+    const [preInvoiceReverseError, setPreInvoiceReverseError] = useState<string | null>(null);
 
     useEffect(() => {
         setShowReversalForm(false);
         setReversalReason('');
         setReversalValidationError(null);
+        setPreInvoiceReverseOrderId(null);
+        setPreInvoiceReverseReason('');
+        setPreInvoiceReverseError(null);
     }, [activeConsolidation?.id, isOpen]);
 
     useEffect(() => {
@@ -163,6 +171,26 @@ export default function TableOrdersModal({
         if (reversed) {
             setShowReversalForm(false);
             setReversalReason('');
+        }
+    };
+
+    const submitPreInvoiceReversal = async (event: React.FormEvent, order: Order) => {
+        event.preventDefault();
+        const reason = preInvoiceReverseReason.trim();
+        if (reason.length < 3) {
+            setPreInvoiceReverseError('Escribe un motivo de al menos 3 caracteres.');
+            return;
+        }
+        const accepted = await confirm(
+            `¿Revertir la prefactura de la orden #${order.id}? Podrás agregar productos y luego emitir una nueva prefactura con el total actualizado.`,
+            { title: 'Revertir prefactura' },
+        );
+        if (!accepted) return;
+        setPreInvoiceReverseError(null);
+        const reversed = await onReversePreInvoice(order, reason);
+        if (reversed) {
+            setPreInvoiceReverseOrderId(null);
+            setPreInvoiceReverseReason('');
         }
     };
 
@@ -412,6 +440,22 @@ export default function TableOrdersModal({
                                                     <Receipt size={16} /> Reimprimir factura
                                                 </button>
                                             )}
+                                            {order.preInvoicedAt
+                                                && !order.invoiceNumber
+                                                && order.financialStatus === 'UNPAID'
+                                                && canIssueInvoice && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setPreInvoiceReverseOrderId(order.id);
+                                                        setPreInvoiceReverseReason('');
+                                                        setPreInvoiceReverseError(null);
+                                                    }}
+                                                    disabled={busyOrderId !== null && busyOrderId !== undefined}
+                                                >
+                                                    <Undo2 size={16} /> Revertir prefactura
+                                                </button>
+                                            )}
                                             {(order.preInvoicedAt || order.invoiceNumber) && order.financialStatus !== 'PAID' && canPay && (
                                                 <>
                                                     <button type="button" className="primary" onClick={() => onPay(order)}>
@@ -423,6 +467,57 @@ export default function TableOrdersModal({
                                                 </>
                                             )}
                                         </div>
+                                        {preInvoiceReverseOrderId === order.id && (
+                                            <form
+                                                className="table-consolidation-reversal-form preinvoice-reversal-form"
+                                                onSubmit={(event) => void submitPreInvoiceReversal(event, order)}
+                                            >
+                                                <label htmlFor={`preinvoice-reversal-reason-${order.id}`}>
+                                                    Motivo obligatorio
+                                                </label>
+                                                <textarea
+                                                    id={`preinvoice-reversal-reason-${order.id}`}
+                                                    value={preInvoiceReverseReason}
+                                                    onChange={(event) => {
+                                                        setPreInvoiceReverseReason(event.target.value);
+                                                        if (preInvoiceReverseError) setPreInvoiceReverseError(null);
+                                                    }}
+                                                    minLength={3}
+                                                    maxLength={500}
+                                                    rows={3}
+                                                    disabled={busyOrderId === order.id}
+                                                    placeholder="Ej.: El comensal solicitó un producto adicional"
+                                                    required
+                                                />
+                                                {preInvoiceReverseError && (
+                                                    <span className="table-consolidation-reversal-error" role="alert">
+                                                        {preInvoiceReverseError}
+                                                    </span>
+                                                )}
+                                                <div className="table-consolidation-reversal-actions">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setPreInvoiceReverseOrderId(null);
+                                                            setPreInvoiceReverseReason('');
+                                                            setPreInvoiceReverseError(null);
+                                                        }}
+                                                        disabled={busyOrderId === order.id}
+                                                    >
+                                                        Cancelar
+                                                    </button>
+                                                    <button
+                                                        type="submit"
+                                                        className="danger"
+                                                        disabled={busyOrderId === order.id || preInvoiceReverseReason.trim().length < 3}
+                                                    >
+                                                        {busyOrderId === order.id
+                                                            ? <><Loader2 className="button-spinner" size={17} /> Revirtiendo…</>
+                                                            : <><Undo2 size={17} /> Confirmar reverso</>}
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        )}
                                     </article>
                                 ))
                             )}

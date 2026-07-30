@@ -308,6 +308,10 @@ export interface Order {
   kitchenReleasedById?: number | null;
   kitchenStartedBy?: { id: number; name: string } | null;
   kitchenReleasedBy?: { id: number; name: string } | null;
+  kitchenBatchId?: number;
+  kitchenBatchSequence?: number;
+  kitchenBatchStatus?: 'PENDING' | 'IN_PREPARATION' | 'READY' | 'RELEASED';
+  kitchenBatchSentAt?: string;
   cancelledById?: number;
   cancelledBy?: { id: number; name: string };
   cancelReason?: string;
@@ -323,6 +327,7 @@ export interface Order {
 export interface OrderItem {
   id: number;
   orderId: number;
+  kitchenBatchId?: number | null;
   menuItemId: number;
   menuItem: MenuItem;
   quantity: number;

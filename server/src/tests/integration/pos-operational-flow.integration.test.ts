@@ -86,6 +86,7 @@ describe('POS operational flow', () => {
         await prisma.payment.deleteMany({ where: { order: { companyId } } });
         await prisma.orderItemModifier.deleteMany({ where: { orderItem: { order: { companyId } } } });
         await prisma.orderItem.deleteMany({ where: { order: { companyId } } });
+        await prisma.kitchenBatch.deleteMany({ where: { companyId } });
         await prisma.order.deleteMany({ where: { companyId } });
         await prisma.reservation.deleteMany({ where: { companyId } });
         await prisma.inventoryMovement.deleteMany({ where: { companyId } });
@@ -182,6 +183,7 @@ describe('POS operational flow', () => {
         await prisma.payment.deleteMany({ where: { order: { companyId } } });
         await prisma.orderItemModifier.deleteMany({ where: { orderItem: { order: { companyId } } } });
         await prisma.orderItem.deleteMany({ where: { order: { companyId } } });
+        await prisma.kitchenBatch.deleteMany({ where: { companyId } });
         await prisma.order.deleteMany({ where: { companyId } });
         await prisma.reservation.deleteMany({ where: { companyId } });
         await prisma.promotion.deleteMany({ where: { companyId } });
@@ -515,6 +517,83 @@ describe('POS operational flow', () => {
         await request(app).post(`/api/orders/${orderId}/cancel`).set('Authorization', `Bearer ${token}`)
             .send({ cancelReason: 'Kitchen certification rollback', warehouseId }).expect(200);
         expect((await prisma.table.findUniqueOrThrow({ where: { id: tableId } })).status).toBe('AVAILABLE');
+    });
+
+    it('persists a second KDS batch and reopens an unpaid prefactura for a late product', async () => {
+        const created = await request(app).post('/api/orders')
+            .set('Authorization', `Bearer ${token}`)
+            .send({ branchId, tableId, orderType: 'DINE_IN' })
+            .expect(201);
+        const orderId = created.body.data.id as number;
+
+        const firstItem = await request(app).post(`/api/orders/${orderId}/items`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ menuItemId, quantity: 1 })
+            .expect(201);
+        const firstSend = await request(app).post(`/api/orders/${orderId}/send-to-kitchen`)
+            .set('Authorization', `Bearer ${token}`)
+            .expect(200);
+
+        const secondItem = await request(app).post(`/api/orders/${orderId}/items`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ menuItemId, quantity: 1 })
+            .expect(201);
+        const secondSend = await request(app).post(`/api/orders/${orderId}/send-to-kitchen`)
+            .set('Authorization', `Bearer ${token}`)
+            .expect(200);
+
+        expect(firstSend.body.data.kitchenBatchId).not.toBe(secondSend.body.data.kitchenBatchId);
+        expect(secondSend.body.data.kitchenBatchSequence).toBe(2);
+        const queue = await request(app).get('/api/orders/kitchen/queue')
+            .set('Authorization', `Bearer ${token}`)
+            .query({ branchId })
+            .expect(200);
+        const orderBatches = queue.body.data.filter((entry: { id: number }) => entry.id === orderId);
+        expect(orderBatches).toHaveLength(2);
+        expect(orderBatches.map((entry: { kitchenBatchSequence: number }) => entry.kitchenBatchSequence))
+            .toEqual([1, 2]);
+        expect(orderBatches.map((entry: { items: Array<{ id: number }> }) => entry.items.map((item) => item.id)))
+            .toEqual([[firstItem.body.data.id], [secondItem.body.data.id]]);
+
+        await request(app).post(`/api/invoices/${orderId}/preinvoice`)
+            .set('Authorization', `Bearer ${token}`)
+            .expect(201);
+        await request(app).post(`/api/orders/${orderId}/items`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ menuItemId, quantity: 1 })
+            .expect(400);
+
+        const reversed = await request(app).post(`/api/invoices/${orderId}/preinvoice/reverse`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ reason: 'El comensal solicitó un producto adicional' })
+            .expect(200);
+        expect(reversed.body.data).toMatchObject({ orderId, preInvoicedAt: null });
+        const reopened = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+        expect(reopened.preInvoicedAt).toBeNull();
+        expect(reopened.preInvoiceSnapshot).toBeNull();
+
+        await request(app).post(`/api/orders/${orderId}/items`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ menuItemId, quantity: 1 })
+            .expect(201);
+        const thirdSend = await request(app).post(`/api/orders/${orderId}/send-to-kitchen`)
+            .set('Authorization', `Bearer ${token}`)
+            .expect(200);
+        expect(thirdSend.body.data.kitchenBatchSequence).toBe(3);
+
+        const active = await request(app).get('/api/orders/active')
+            .set('Authorization', `Bearer ${token}`)
+            .query({ branchId })
+            .expect(200);
+        const sameAccount = active.body.data.find((entry: { id: number }) => entry.id === orderId);
+        expect(sameAccount.items).toHaveLength(3);
+        expect((await prisma.table.findUniqueOrThrow({ where: { id: tableId } })).status)
+            .toBe('OCCUPIED');
+
+        await request(app).post(`/api/orders/${orderId}/cancel`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ cancelReason: 'Cierre de certificación KDS por tandas', warehouseId })
+            .expect(200);
     });
 
     it('supports charging a DIRECT item and reverses finance without corrupting operations', async () => {

@@ -573,6 +573,30 @@ export default function Tables() {
         }
     };
 
+    const handleReversePreInvoice = async (order: Order, reason: string): Promise<boolean> => {
+        if (!canIssueInvoice) {
+            showWarning('Tu rol no puede revertir prefacturas.');
+            return false;
+        }
+        setBusyOrderId(order.id);
+        try {
+            await invoicesAPI.reversePreInvoice(order.id, reason);
+            const refreshed = await ordersAPI.getById(order.id);
+            const nextOrder = refreshed.data.data as Order;
+            setTableOrders((current) =>
+                current.map((item) => item.id === nextOrder.id ? nextOrder : item)
+            );
+            await refreshOperationalTable();
+            showSuccess('Prefactura revertida. Ya puedes agregar productos a la misma cuenta.');
+            return true;
+        } catch (error) {
+            showError(extractApiError(error, 'No se pudo revertir la prefactura.'));
+            return false;
+        } finally {
+            setBusyOrderId(null);
+        }
+    };
+
     const openPayment = async (order: Order, mode: 'single' | 'split') => {
         if (!canPay) {
             showWarning('Tu rol no puede procesar pagos.');
@@ -1339,6 +1363,7 @@ export default function Tables() {
                     : undefined}
                 onOpenPOS={handleOpenPOS}
                 onIssueInvoice={(order) => void handleIssueInvoice(order)}
+                onReversePreInvoice={handleReversePreInvoice}
                 onPay={(order) => void openPayment(order, 'single')}
                 onSplit={(order) => void openPayment(order, 'split')}
                 onTransfer={(table) => {

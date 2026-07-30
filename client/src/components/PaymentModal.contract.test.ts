@@ -21,6 +21,8 @@ describe('PaymentModal contract', () => {
 
     it('requires exact cent allocation and only renders change for cash legs', () => {
         expect(source).toContain('summarizePaymentAllocation(balance');
+        expect(source).toContain('calculateAutomaticPaymentRemainder(');
+        expect(source).toContain("'Diferencia automática'");
         expect(source).toContain('&& mixedAllocation.exact');
         expect(source).toContain('!previewAllocation.exact');
         expect(source).toContain("{cash && <div className=\"leg-change\"");

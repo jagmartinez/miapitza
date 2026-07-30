@@ -178,6 +178,96 @@ describe('InvoiceService immutable issuance', () => {
         expect(tx.invoiceSequence.update).not.toHaveBeenCalled();
     });
 
+    it('reverses an unpaid prefactura with an audited reason and no fiscal mutation', async () => {
+        const preInvoiceSnapshot = {
+            ...snapshot,
+            orderId: 9,
+            invoiceNumber: 'PREF-ORD-9',
+        } as Prisma.JsonObject;
+        jest.spyOn(prisma.order, 'findFirst').mockResolvedValue({ id: 9, tableId: null } as never);
+        const tx = {
+            $queryRaw: jest.fn().mockResolvedValue([{ id: 9 }] as never),
+            user: { findFirst: jest.fn().mockResolvedValue({ id: 4 } as never) },
+            order: {
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 9,
+                    companyId: 1,
+                    tableId: null,
+                    status: 'READY',
+                    financialStatus: 'UNPAID',
+                    preInvoicedAt: new Date('2026-07-14T17:30:00.000Z'),
+                    preInvoiceSnapshot,
+                    invoiceNumber: null,
+                    invoicedAt: null,
+                    invoiceSnapshot: null,
+                    payments: [],
+                } as never),
+                update: jest.fn().mockResolvedValue({ id: 9 } as never),
+            },
+            auditLog: { create: jest.fn().mockResolvedValue({ id: 1 } as never) },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(((callback: unknown) =>
+            (callback as (client: typeof tx) => Promise<unknown>)(tx)) as never);
+
+        const result = await InvoiceService.reversePreInvoice(
+            9,
+            1,
+            4,
+            'El comensal solicitó otro producto',
+        );
+
+        expect(tx.order.update).toHaveBeenCalledWith({
+            where: { id: 9 },
+            data: {
+                preInvoicedAt: null,
+                preInvoiceSnapshot: expect.anything(),
+            },
+        });
+        expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                action: 'PRE_INVOICE_REVERSED',
+                userId: 4,
+                details: expect.objectContaining({
+                    reference: 'PREF-ORD-9',
+                    reason: 'El comensal solicitó otro producto',
+                }),
+            }),
+        }));
+        expect(result).toMatchObject({ orderId: 9, preInvoicedAt: null });
+    });
+
+    it('refuses to reverse a prefactura after any active payment', async () => {
+        jest.spyOn(prisma.order, 'findFirst').mockResolvedValue({ id: 9, tableId: null } as never);
+        const tx = {
+            $queryRaw: jest.fn().mockResolvedValue([{ id: 9 }] as never),
+            user: { findFirst: jest.fn().mockResolvedValue({ id: 4 } as never) },
+            order: {
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 9,
+                    companyId: 1,
+                    tableId: null,
+                    status: 'READY',
+                    financialStatus: 'PARTIAL',
+                    preInvoicedAt: new Date(),
+                    preInvoiceSnapshot: { ...snapshot, orderId: 9, invoiceNumber: 'PREF-ORD-9' },
+                    invoiceNumber: null,
+                    invoicedAt: null,
+                    invoiceSnapshot: null,
+                    payments: [{ id: 77 }],
+                } as never),
+                update: jest.fn(),
+            },
+            auditLog: { create: jest.fn() },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(((callback: unknown) =>
+            (callback as (client: typeof tx) => Promise<unknown>)(tx)) as never);
+
+        await expect(InvoiceService.reversePreInvoice(9, 1, 4, 'Agregar producto'))
+            .rejects.toThrow(/antes de registrar cualquier pago/i);
+        expect(tx.order.update).not.toHaveBeenCalled();
+        expect(tx.auditLog.create).not.toHaveBeenCalled();
+    });
+
     it('rejects first fiscal issuance until the order is fully paid', async () => {
         jest.spyOn(prisma.order, 'findFirst').mockResolvedValue({ id: 9, tableId: null } as never);
         jest.spyOn(SettingService, 'getAll').mockResolvedValue({ currency_symbol: 'C$' });

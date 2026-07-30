@@ -27,8 +27,13 @@ function forwardInvoiceError(error: unknown, next: NextFunction) {
         message.startsWith('Solo se puede emitir una prefactura')
         || message.startsWith('La factura fiscal original')
         || message.startsWith('La factura fiscal ya fue emitida')
+        || message.startsWith('La orden no tiene una prefactura')
+        || message.startsWith('La prefactura solo puede revertirse')
     ) {
         return next({ statusCode: 409, message });
+    }
+    if (message.startsWith('El motivo para revertir la prefactura')) {
+        return next({ statusCode: 400, message });
     }
     if (message === 'Invoice not issued') {
         return next({ statusCode: 409, message: 'La orden todavía no tiene una factura emitida' });
@@ -40,6 +45,9 @@ function forwardInvoiceError(error: unknown, next: NextFunction) {
         return next({ statusCode: 409, message: 'Los totales fiscales de la orden no concilian' });
     }
     if (message === 'La sucursal de la orden cambió durante la facturación') {
+        return next({ statusCode: 409, message });
+    }
+    if (message.includes('cambió durante la reversión')) {
         return next({ statusCode: 409, message });
     }
 
@@ -75,6 +83,24 @@ export class InvoiceController {
             const invoiceData = await InvoiceService.generatePreInvoice(id, companyId, req.user!.userId);
 
             res.status(201).json({ success: true, data: invoiceData });
+        } catch (error: unknown) {
+            forwardInvoiceError(error, next);
+        }
+    }
+
+    static async reversePreInvoice(req: Request, res: Response, next: NextFunction) {
+        try {
+            const id = Number(req.params.id);
+            const companyId = req.user!.companyId;
+            const order = await OrderService.getById(id, companyId);
+            assertBranchAccess(req.user!, order.branchId);
+            const data = await InvoiceService.reversePreInvoice(
+                id,
+                companyId,
+                req.user!.userId,
+                req.body?.reason,
+            );
+            res.json({ success: true, data });
         } catch (error: unknown) {
             forwardInvoiceError(error, next);
         }

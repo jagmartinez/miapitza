@@ -38,6 +38,27 @@ export interface PaymentAllocationSummary {
     exact: boolean;
 }
 
+export interface AutomaticPaymentRemainder {
+    amount: number;
+    excess: number;
+}
+
+/** The final mixed-payment leg owns the exact remainder in integer cents. */
+export const calculateAutomaticPaymentRemainder = (
+    target: number,
+    precedingAmounts: Array<number | null>,
+): AutomaticPaymentRemainder => {
+    const targetCents = moneyToCents(target);
+    const precedingCents = precedingAmounts.reduce(
+        (sum: number, amount) => sum + (amount === null ? 0 : moneyToCents(amount)),
+        0,
+    );
+    return {
+        amount: centsToMoney(Math.max(0, targetCents - precedingCents)),
+        excess: centsToMoney(Math.max(0, precedingCents - targetCents)),
+    };
+};
+
 /** Mixed payments accept only persisted financial method types; cash additionally needs a usable shift. */
 export const canUsePaymentMethodInMixed = (
     type: string | null | undefined,

@@ -291,6 +291,10 @@ export class TableAccountService {
                 },
                 include: {
                     payments: { where: { status: 'ACTIVE' }, select: { id: true } },
+                    kitchenBatches: {
+                        where: { status: { not: 'RELEASED' } },
+                        select: { id: true },
+                    },
                     items: {
                         select: {
                             id: true,
@@ -319,6 +323,9 @@ export class TableAccountService {
             if (orders.length < 2) throw new Error('Se necesitan al menos dos órdenes activas para consolidar');
             await lockOrders(tx, companyId, orders.map((order) => order.id));
             orders.forEach(validateMutableOrder);
+            if (orders.some((order) => order.kitchenBatches.length > 0)) {
+                throw new Error('Libere las tandas activas de cocina antes de consolidar las cuentas');
+            }
             if (orders.some((order) => order.discountCode)) {
                 throw new Error('Las órdenes con promociones deben revisarse y retirarse antes de consolidar');
             }
@@ -874,6 +881,9 @@ export class TableAccountService {
             for (const slice of normalized) {
                 const item = itemById.get(slice.orderItemId);
                 if (!item) throw new Error(`El producto #${slice.orderItemId} no pertenece a la orden`);
+                if (item.kitchenBatchId) {
+                    throw new Error(`El producto #${slice.orderItemId} ya fue comandado y no admite traslado parcial`);
+                }
                 if (slice.quantity > item.quantity) throw new Error(`La cantidad del producto #${slice.orderItemId} excede lo ordenado`);
                 movedSubtotalCents += toCents(item.price) * slice.quantity;
             }
