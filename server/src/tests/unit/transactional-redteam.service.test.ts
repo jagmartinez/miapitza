@@ -56,6 +56,33 @@ describe('transactional red-team regressions', () => {
         expect(tx.orderItem.create).not.toHaveBeenCalled();
     });
 
+    it('rejects changing order lines after the immutable prefactura exists', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 9,
+                    companyId: 1,
+                    branchId: 2,
+                    status: 'READY',
+                    invoiceNumber: null,
+                    preInvoicedAt: new Date('2026-07-29T12:00:00.000Z'),
+                    payments: [],
+                })),
+            },
+            menuItem: { findFirst: jest.fn() },
+            orderItem: { create: jest.fn() },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+
+        await expect(OrderService.addItem(9, 1, { menuItemId: 4, quantity: 1 }))
+            .rejects.toThrow(/prefactura.*factura emitida/i);
+        expect(tx.menuItem.findFirst).not.toHaveBeenCalled();
+        expect(tx.orderItem.create).not.toHaveBeenCalled();
+    });
+
     it('does not post cash into a shift closed concurrently', async () => {
         const shiftLookup = jest.fn(async (): Promise<{ id: number; cashRegisterId: number; startDate: Date } | null> => null);
         shiftLookup

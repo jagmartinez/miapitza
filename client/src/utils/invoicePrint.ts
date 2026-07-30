@@ -93,18 +93,28 @@ function assertPrintableSnapshot(value: unknown): asserts value is PrintableInvo
  * Renders only the immutable snapshot returned by fiscal issuance. It never
  * reads the mutable order/table state to reconstruct an already-issued invoice.
  */
-export function renderInvoiceHtml(value: unknown): string {
+function renderSalesDocumentHtml(
+    value: unknown,
+    documentType: 'INVOICE' | 'PRE_INVOICE',
+): string {
     assertPrintableSnapshot(value);
     const invoice = value;
     const e = escapeHtml;
     const issuedAt = new Date(invoice.date).toLocaleString('es-NI');
+    const isPreInvoice = documentType === 'PRE_INVOICE';
+    const documentTitle = isPreInvoice
+        ? `Prefactura de orden #${invoice.orderId}`
+        : `Factura ${invoice.invoiceNumber}`;
+    const documentHeading = isPreInvoice
+        ? 'PREFACTURA'
+        : `FACTURA ${invoice.invoiceNumber}`;
 
     return `<!doctype html>
 <html lang="es">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Factura ${e(invoice.invoiceNumber)}</title>
+    <title>${e(documentTitle)}</title>
     <style>
         body { font-family: Arial, sans-serif; max-width: 760px; margin: 0 auto; padding: 24px; color: #111827; }
         header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 2px solid #111827; padding-bottom: 16px; }
@@ -133,7 +143,8 @@ export function renderInvoiceHtml(value: unknown): string {
             ${invoice.branchPhone ? `<p class="muted">Tel: ${e(invoice.branchPhone)}</p>` : ''}
         </div>
         <div>
-            <h2>FACTURA ${e(invoice.invoiceNumber)}</h2>
+            <h2>${e(documentHeading)}</h2>
+            ${isPreInvoice ? `<p class="muted">Referencia ${e(invoice.invoiceNumber)}</p>` : ''}
             <p class="muted">Orden #${e(invoice.orderId)}</p>
             <p class="muted">${e(issuedAt)}</p>
         </div>
@@ -164,11 +175,25 @@ export function renderInvoiceHtml(value: unknown): string {
         ${invoice.tipAmount > 0 ? `<div><span>Propina (${e(invoice.tipRatePercent)}%)</span><span>${e(invoice.currencySymbol)} ${e(money(invoice.tipAmount))}</span></div>` : ''}
         <div class="total"><span>TOTAL</span><span>${e(invoice.currencySymbol)} ${e(money(invoice.total))}</span></div>
     </section>
-    <footer>¡Gracias por su compra!</footer>
+    <footer>${isPreInvoice
+        ? 'Documento previo al pago. No es una factura fiscal.'
+        : '¡Gracias por su compra!'}</footer>
 </body>
 </html>`;
 }
 
+export function renderInvoiceHtml(value: unknown): string {
+    return renderSalesDocumentHtml(value, 'INVOICE');
+}
+
+export function renderPreInvoiceHtml(value: unknown): string {
+    return renderSalesDocumentHtml(value, 'PRE_INVOICE');
+}
+
 export function renderInvoiceLoadingHtml(orderId: number): string {
     return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Emitiendo factura</title></head><body style="font-family:Arial,sans-serif;padding:24px"><p>Emitiendo factura fiscal de la orden #${escapeHtml(orderId)}…</p></body></html>`;
+}
+
+export function renderPreInvoiceLoadingHtml(orderId: number): string {
+    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Preparando prefactura</title></head><body style="font-family:Arial,sans-serif;padding:24px"><p>Preparando la prefactura de la orden #${escapeHtml(orderId)}…</p></body></html>`;
 }

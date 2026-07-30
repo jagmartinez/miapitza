@@ -64,6 +64,7 @@ describe('InvoiceService immutable issuance', () => {
                     companyId: 1,
                     branchId: 2,
                     status: 'READY',
+                    financialStatus: 'PAID',
                     total: 115,
                     discount: 0,
                     tax: 15,
@@ -107,6 +108,101 @@ describe('InvoiceService immutable issuance', () => {
                 }),
             }),
         }));
+    });
+
+    it('persists an immutable prefactura without consuming the fiscal sequence', async () => {
+        jest.spyOn(prisma.order, 'findFirst').mockResolvedValue({ id: 9, tableId: null } as never);
+        jest.spyOn(SettingService, 'getAll').mockResolvedValue({ tax_rate: '15', currency_symbol: 'C$' });
+        const preInvoicedAt = new Date('2026-07-14T17:30:00.000Z');
+        jest.useFakeTimers().setSystemTime(preInvoicedAt);
+        const tx = {
+            $queryRaw: jest.fn().mockResolvedValue([{ id: 9 }] as never),
+            user: { findFirst: jest.fn().mockResolvedValue({ id: 4 } as never) },
+            order: {
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 9,
+                    companyId: 1,
+                    branchId: 2,
+                    tableId: null,
+                    status: 'READY',
+                    financialStatus: 'UNPAID',
+                    total: 115,
+                    discount: 0,
+                    tax: 15,
+                    tipAmount: 0,
+                    invoiceNumber: null,
+                    invoiceSnapshot: null,
+                    preInvoicedAt: null,
+                    preInvoiceSnapshot: null,
+                    customerName: null,
+                    customerTaxId: null,
+                    branch: {
+                        name: 'Centro', address: null, phone: null,
+                        company: { name: 'Empresa', ruc: 'J001' },
+                    },
+                    items: [{
+                        id: 1,
+                        quantity: 1,
+                        price: 100,
+                        subtotal: 100,
+                        menuItem: { name: 'Plato' },
+                    }],
+                } as never),
+                update: jest.fn().mockResolvedValue({ id: 9 } as never),
+            },
+            auditLog: { create: jest.fn().mockResolvedValue({ id: 1 } as never) },
+            invoiceSequence: {
+                upsert: jest.fn(),
+                update: jest.fn(),
+            },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(((callback: unknown) =>
+            (callback as (client: typeof tx) => Promise<unknown>)(tx)) as never);
+
+        const preInvoice = await InvoiceService.generatePreInvoice(9, 1, 4);
+
+        expect(preInvoice).toEqual(expect.objectContaining({
+            invoiceNumber: 'PREF-ORD-9',
+            date: preInvoicedAt,
+            total: 115,
+        }));
+        expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                preInvoicedAt,
+                preInvoiceSnapshot: expect.objectContaining({
+                    invoiceNumber: 'PREF-ORD-9',
+                }),
+            }),
+        }));
+        expect(tx.invoiceSequence.upsert).not.toHaveBeenCalled();
+        expect(tx.invoiceSequence.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects first fiscal issuance until the order is fully paid', async () => {
+        jest.spyOn(prisma.order, 'findFirst').mockResolvedValue({ id: 9, tableId: null } as never);
+        jest.spyOn(SettingService, 'getAll').mockResolvedValue({ currency_symbol: 'C$' });
+        const tx = {
+            $queryRaw: jest.fn().mockResolvedValue([{ id: 9 }] as never),
+            user: { findFirst: jest.fn().mockResolvedValue({ id: 4 } as never) },
+            order: {
+                findUnique: jest.fn().mockResolvedValue({
+                    id: 9,
+                    companyId: 1,
+                    tableId: null,
+                    status: 'READY',
+                    financialStatus: 'UNPAID',
+                    total: 115,
+                    items: [{ id: 1 }],
+                    invoiceNumber: null,
+                    invoiceSnapshot: null,
+                } as never),
+            },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(((callback: unknown) =>
+            (callback as (client: typeof tx) => Promise<unknown>)(tx)) as never);
+
+        await expect(InvoiceService.generateInvoice(9, 1, 4))
+            .rejects.toThrow(/factura fiscal.*pago total/i);
     });
 
     it('does not reprice a historical order from mutable tax settings at invoice issuance', async () => {

@@ -35,6 +35,11 @@ import {
     summarizePaymentAllocation,
 } from '../utils/payment';
 import CustomSelect from './Select';
+import {
+    renderInvoiceHtml,
+    renderInvoiceLoadingHtml,
+    type PrintableInvoiceSnapshot,
+} from '../utils/invoicePrint';
 import './PaymentModal.css';
 
 type PaymentMode = 'single' | 'mixed' | 'split';
@@ -61,6 +66,14 @@ interface SplitLeg extends PaymentLeg {
 
 interface ApiEnvelope {
     _offline?: boolean;
+    fiscalInvoice?: PrintableInvoiceSnapshot | null;
+    fiscalInvoiceError?: string | null;
+}
+
+interface PaymentCompletion {
+    status: 'confirmed' | 'queued';
+    fiscalInvoice?: PrintableInvoiceSnapshot | null;
+    fiscalInvoiceError?: string | null;
 }
 
 interface PaymentModalProps {
@@ -69,7 +82,12 @@ interface PaymentModalProps {
     orderTotal: number;
     orderId: number | null;
     order?: Order | null;
-    onPaymentSuccess: (data?: { offlineQueued?: boolean }) => void;
+    onPaymentSuccess: (data?: {
+        offlineQueued?: boolean;
+        fiscalInvoice?: PrintableInvoiceSnapshot | null;
+        fiscalInvoiceError?: string | null;
+        invoicePrinted?: boolean;
+    }) => void;
     currencySymbol?: string;
     hasUsableCashShift?: boolean;
     initialMode?: 'single' | 'split';
@@ -98,6 +116,42 @@ function methodIcon(type?: PaymentMethodType) {
     if (type === 'CASH') return Banknote;
     if (type === 'CARD') return CreditCard;
     return Smartphone;
+}
+
+function reserveInvoiceWindow(orderId: number): Window | null {
+    const invoiceWindow = window.open('', '_blank');
+    if (!invoiceWindow) return null;
+    try {
+        invoiceWindow.document.write(renderInvoiceLoadingHtml(orderId));
+        invoiceWindow.document.close();
+        return invoiceWindow;
+    } catch {
+        invoiceWindow.close();
+        return null;
+    }
+}
+
+function presentFiscalInvoice(
+    invoiceWindow: Window | null,
+    completion: PaymentCompletion,
+): boolean {
+    if (!completion.fiscalInvoice || !invoiceWindow || invoiceWindow.closed) {
+        if (invoiceWindow && !invoiceWindow.closed) invoiceWindow.close();
+        return false;
+    }
+    try {
+        invoiceWindow.document.open();
+        invoiceWindow.document.write(renderInvoiceHtml(completion.fiscalInvoice));
+        invoiceWindow.document.close();
+        invoiceWindow.focus();
+        window.setTimeout(() => {
+            if (!invoiceWindow.closed) invoiceWindow.print();
+        }, 250);
+        return true;
+    } catch {
+        if (!invoiceWindow.closed) invoiceWindow.close();
+        return false;
+    }
 }
 
 export default function PaymentModal({
@@ -483,7 +537,7 @@ export default function PaymentModal({
         leg: PaymentLeg,
         idempotencyKey: string,
         payerName?: string,
-    ): Promise<'confirmed' | 'queued'> => {
+    ): Promise<PaymentCompletion> => {
         if (!orderId || !leg.paymentMethodId) throw new Error('La orden o el método de pago no están disponibles.');
         const amount = parseField(leg.amount);
         if (amount === null || amount <= 0) throw new Error('El monto del pago es inválido.');
@@ -497,7 +551,12 @@ export default function PaymentModal({
             operationType: 'CREATE_PAYMENT',
             entityTempId: `payment-${orderId}-${leg.id}`,
         }, idempotencyKey);
-        return (response.data as ApiEnvelope)._offline ? 'queued' : 'confirmed';
+        const envelope = response.data as ApiEnvelope;
+        return {
+            status: envelope._offline ? 'queued' : 'confirmed',
+            fiscalInvoice: envelope.fiscalInvoice,
+            fiscalInvoiceError: envelope.fiscalInvoiceError,
+        };
     };
 
     const handleSinglePayment = async () => {
@@ -509,19 +568,28 @@ export default function PaymentModal({
         setLoading(true);
         setError('');
         setNotice('');
+        const invoiceWindow = reserveInvoiceWindow(orderId);
         try {
             const result = await submitPayment({
                 ...createLeg(singleMethodId, balance),
                 reference: singleReference,
             }, singleKeyRef.current);
-            if (result === 'queued') {
+            if (result.status === 'queued') {
+                if (invoiceWindow && !invoiceWindow.closed) invoiceWindow.close();
                 setQueuedPayment(true);
                 setNotice('Sin conexión: el pago quedó en cola. La orden permanecerá abierta hasta su confirmación.');
                 return;
             }
-            onPaymentSuccess({ offlineQueued: false });
+            const invoicePrinted = presentFiscalInvoice(invoiceWindow, result);
+            onPaymentSuccess({
+                offlineQueued: false,
+                fiscalInvoice: result.fiscalInvoice,
+                fiscalInvoiceError: result.fiscalInvoiceError,
+                invoicePrinted,
+            });
             onClose();
         } catch (requestError: unknown) {
+            if (invoiceWindow && !invoiceWindow.closed) invoiceWindow.close();
             setError(apiErrorMessage(requestError, 'No se pudo procesar el pago.'));
         } finally {
             setLoading(false);
@@ -530,19 +598,24 @@ export default function PaymentModal({
 
     const handleMixedPayment = async () => {
         if (!mixedValid) return setError('Distribuye el saldo exacto entre 2 o 3 métodos distintos.');
+        if (!orderId) return setError('La orden no está disponible para el cobro.');
         setLoading(true);
         setError('');
         setNotice('');
         setMixedAttempted(true);
         const succeeded = [...mixedSucceeded];
+        const invoiceWindow = reserveInvoiceWindow(orderId);
         try {
             const pendingLegs = mixedLegs.filter((leg) => !succeeded.includes(leg.id));
+            let finalResult: PaymentCompletion | null = null;
             for (const leg of pendingLegs) {
                 const result = await submitPayment(
                     leg,
                     mixedKeysRef.current[leg.id] ||= newIdempotencyKey(),
                 );
-                if (result === 'queued') {
+                finalResult = result;
+                if (result.status === 'queued') {
+                    if (invoiceWindow && !invoiceWindow.closed) invoiceWindow.close();
                     setQueuedPayment(true);
                     setMixedSucceeded(succeeded);
                     setNotice('Un tramo del pago mixto quedó en cola sin conexión. No se procesarán más tramos hasta confirmar la sincronización.');
@@ -551,9 +624,19 @@ export default function PaymentModal({
                 succeeded.push(leg.id);
                 setMixedSucceeded([...succeeded]);
             }
-            onPaymentSuccess({ offlineQueued: false });
+            const invoicePrinted = presentFiscalInvoice(
+                invoiceWindow,
+                finalResult ?? { status: 'confirmed' },
+            );
+            onPaymentSuccess({
+                offlineQueued: false,
+                fiscalInvoice: finalResult?.fiscalInvoice,
+                fiscalInvoiceError: finalResult?.fiscalInvoiceError,
+                invoicePrinted,
+            });
             onClose();
         } catch (requestError: unknown) {
+            if (invoiceWindow && !invoiceWindow.closed) invoiceWindow.close();
             setMixedSucceeded(succeeded);
             setError(`${apiErrorMessage(requestError, 'Falló un tramo del pago mixto.')} Los tramos confirmados no se repetirán; vuelve a confirmar para reintentar solo los pendientes.`);
         } finally {
@@ -563,6 +646,7 @@ export default function PaymentModal({
 
     const handleSplitPayment = async () => {
         if (!itemAssignmentsComplete) return setError('Asigna todas las unidades y al menos una a cada comensal.');
+        if (!orderId) return setError('La orden no está disponible para el cobro.');
         const effective = splitAttempted ? splitLegs : await rebuildSplitPreview();
         if (!effective) return;
         if (!splitLegsArePayable(effective)) return setError('Revisa métodos, importes y efectivo recibido; la suma debe coincidir exactamente con el saldo.');
@@ -571,15 +655,19 @@ export default function PaymentModal({
         setNotice('');
         setSplitAttempted(true);
         const succeeded = [...splitSucceeded];
+        const invoiceWindow = reserveInvoiceWindow(orderId);
         try {
             const pendingLegs = effective.filter((leg) => !succeeded.includes(leg.id));
+            let finalResult: PaymentCompletion | null = null;
             for (const leg of pendingLegs) {
                 const result = await submitPayment(
                     leg,
                     splitKeysRef.current[leg.id] ||= newIdempotencyKey(),
                     normalizePayerName(leg.payerName),
                 );
-                if (result === 'queued') {
+                finalResult = result;
+                if (result.status === 'queued') {
+                    if (invoiceWindow && !invoiceWindow.closed) invoiceWindow.close();
                     setQueuedPayment(true);
                     setSplitSucceeded(succeeded);
                     setNotice(`El pago de ${leg.payerName} quedó en cola sin conexión. La cuenta sigue abierta.`);
@@ -588,9 +676,19 @@ export default function PaymentModal({
                 succeeded.push(leg.id);
                 setSplitSucceeded([...succeeded]);
             }
-            onPaymentSuccess({ offlineQueued: false });
+            const invoicePrinted = presentFiscalInvoice(
+                invoiceWindow,
+                finalResult ?? { status: 'confirmed' },
+            );
+            onPaymentSuccess({
+                offlineQueued: false,
+                fiscalInvoice: finalResult?.fiscalInvoice,
+                fiscalInvoiceError: finalResult?.fiscalInvoiceError,
+                invoicePrinted,
+            });
             onClose();
         } catch (requestError: unknown) {
+            if (invoiceWindow && !invoiceWindow.closed) invoiceWindow.close();
             setSplitSucceeded(succeeded);
             setError(`${apiErrorMessage(requestError, 'Falló un pago de la cuenta dividida.')} Los pagos confirmados no se repetirán.`);
         } finally {

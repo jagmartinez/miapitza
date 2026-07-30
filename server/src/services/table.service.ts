@@ -11,6 +11,7 @@ interface OperationalOrder {
   status: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'CANCELLED';
   financialStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
   invoiceNumber: string | null;
+  preInvoicedAt?: Date | null;
   items: Array<{ status: 'PENDING' | 'IN_PROGRESS' | 'DONE' }>;
 }
 
@@ -27,7 +28,7 @@ export function deriveTableOperationalState(
   }
   if (orders.some((order) => order.financialStatus === 'PARTIAL')) return 'PARTIAL_PAYMENT';
   if (orders.every((order) => order.financialStatus === 'PAID')) return 'PAID';
-  if (orders.some((order) => Boolean(order.invoiceNumber))) return 'INVOICED';
+  if (orders.some((order) => Boolean(order.invoiceNumber || order.preInvoicedAt))) return 'INVOICED';
   if (orders.every((order) => order.status === 'READY')) return 'READY';
   const items = orders.flatMap((order) => order.items);
   if (items.some((item) => item.status === 'DONE') && items.some((item) => item.status !== 'DONE')) {
@@ -69,6 +70,7 @@ export class TableService {
             status: true,
             financialStatus: true,
             invoiceNumber: true,
+            preInvoicedAt: true,
             items: { select: { status: true } }
           }
         }

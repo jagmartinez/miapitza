@@ -3919,6 +3919,10 @@ model Order {
   invoiceNumber           String?              @unique
   invoicedAt              DateTime?
   invoiceFiscalStatus     InvoiceFiscalStatus  @default(NOT_ISSUED)
+  // A pre-invoice freezes the payable account without consuming a fiscal
+  // sequence. The fiscal invoice is assigned only after full payment.
+  preInvoicedAt           DateTime?
+  preInvoiceSnapshot      Json?
   // Immutable fiscal rendering payload captured when the number is issued.
   // Reads and PDF downloads must never reconstruct an issued document from
   // mutable menu, company, branch or settings master data.
@@ -3962,6 +3966,7 @@ model Order {
   @@index([companyId, status])
   @@index([companyId, financialStatus, closedAt])
   @@index([companyId, invoicedAt])
+  @@index([companyId, preInvoicedAt])
   @@index([companyId, createdAt])
   @@index([userId])
   @@index([tableId])

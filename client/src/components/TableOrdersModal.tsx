@@ -116,7 +116,7 @@ export default function TableOrdersModal({
     );
     const invoiceTarget = invoiceCandidates.find((order) => order.id === invoiceTargetOrderId) ?? null;
     const editableOrder = orders.find((order) =>
-        !order.invoiceNumber && order.financialStatus === 'UNPAID'
+        !order.invoiceNumber && !order.preInvoicedAt && order.financialStatus === 'UNPAID'
     );
     const canAddProducts = canOperatePOS
         && (orders.length === 0 || (orders.length === 1 && Boolean(editableOrder)));
@@ -402,7 +402,17 @@ export default function TableOrdersModal({
                                                     <Receipt size={15} /> {order.invoiceNumber}
                                                 </span>
                                             )}
-                                            {order.invoiceNumber && order.financialStatus !== 'PAID' && canPay && (
+                                            {order.preInvoicedAt && !order.invoiceNumber && (
+                                                <span className="invoice-issued-badge">
+                                                    <Receipt size={15} /> Prefactura emitida
+                                                </span>
+                                            )}
+                                            {order.invoiceNumber && canIssueInvoice && (
+                                                <button type="button" onClick={() => onIssueInvoice(order)}>
+                                                    <Receipt size={16} /> Reimprimir factura
+                                                </button>
+                                            )}
+                                            {(order.preInvoicedAt || order.invoiceNumber) && order.financialStatus !== 'PAID' && canPay && (
                                                 <>
                                                     <button type="button" className="primary" onClick={() => onPay(order)}>
                                                         <CreditCard size={16} /> Cobrar
@@ -445,7 +455,11 @@ export default function TableOrdersModal({
                             onClick={() => invoiceTarget && onIssueInvoice(invoiceTarget)}
                         >
                             {busyOrderId ? <Loader2 className="button-spinner" size={18} /> : <Receipt size={18} />}
-                            {busyOrderId ? 'Emitiendo…' : 'Emitir Factura'}
+                            {busyOrderId
+                                ? 'Preparando…'
+                                : invoiceTarget?.preInvoicedAt
+                                    ? 'Reimprimir prefactura'
+                                    : 'Emitir Factura'}
                         </button>
                     )}
                     {canAddProducts && (

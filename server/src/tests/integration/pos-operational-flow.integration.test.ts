@@ -234,9 +234,9 @@ describe('POS operational flow', () => {
         expect(Number(priced.body.data.tax)).toBe(13.5);
         expect(Number(priced.body.data.total)).toBe(103.5);
 
-        const issuedInvoice = await request(app).post(`/api/invoices/${paidOrderId}/issue`).set('Authorization', `Bearer ${token}`);
-        expect(issuedInvoice.status).toBe(201);
-        expect(issuedInvoice.body.data.invoiceNumber).toMatch(/^FAC-/);
+        const issuedPreInvoice = await request(app).post(`/api/invoices/${paidOrderId}/preinvoice`).set('Authorization', `Bearer ${token}`);
+        expect(issuedPreInvoice.status).toBe(201);
+        expect(issuedPreInvoice.body.data.invoiceNumber).toBe(`PREF-ORD-${paidOrderId}`);
         expect((await prisma.table.findUnique({ where: { id: tableId } }))?.status).toBe('OCCUPIED');
         expect(await prisma.inventoryMovement.count({
             where: { companyId, reference: `ORD-${paidOrderId}`, type: 'OUT' }
@@ -253,6 +253,8 @@ describe('POS operational flow', () => {
         const paid = await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
             .send({ orderId: paidOrderId, paymentMethodId, amount: 103.5 });
         expect(paid.status).toBe(201);
+        expect(paid.body.fiscalInvoice?.invoiceNumber).toMatch(/^FAC-/);
+        expect(paid.body.fiscalInvoiceError).toBeNull();
         expect(await prisma.order.findUnique({ where: { id: paidOrderId } })).toEqual(expect.objectContaining({
             status: 'OPEN',
             financialStatus: 'PAID'
@@ -317,7 +319,7 @@ describe('POS operational flow', () => {
         await request(app).post(`/api/orders/${orderId}/send-to-kitchen`).set('Authorization', `Bearer ${token}`).expect(200);
         await request(app).patch(`/api/orders/${orderId}/items/${itemId}/start`).set('Authorization', `Bearer ${token}`).expect(200);
         await request(app).patch(`/api/orders/${orderId}/items/${itemId}/finish`).set('Authorization', `Bearer ${token}`).expect(200);
-        await request(app).post(`/api/invoices/${orderId}/issue`).set('Authorization', `Bearer ${token}`).expect(201);
+        await request(app).post(`/api/invoices/${orderId}/preinvoice`).set('Authorization', `Bearer ${token}`).expect(201);
 
         const ready = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
         atomicSettlementTotal = Number(ready.total);
@@ -426,7 +428,7 @@ describe('POS operational flow', () => {
             .set('Authorization', `Bearer ${token}`).expect(200);
         await request(app).patch(`/api/orders/${orderId}/items/${itemId}/finish`)
             .set('Authorization', `Bearer ${token}`).expect(200);
-        await request(app).post(`/api/invoices/${orderId}/issue`)
+        await request(app).post(`/api/invoices/${orderId}/preinvoice`)
             .set('Authorization', `Bearer ${token}`).expect(201);
         const ready = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
         deliveredRecoveryTotal = Number(ready.total);
@@ -538,7 +540,7 @@ describe('POS operational flow', () => {
         expect(split.body.data.splits.map((entry: { amount: number }) => entry.amount)).toEqual([38.34, 38.34, 38.34]);
         expect(split.body.data.splits.reduce((sum: number, entry: { amount: number }) => sum + entry.amount, 0)).toBeCloseTo(115.02, 2);
 
-        await request(app).post(`/api/invoices/${splitOrderId}/issue`).set('Authorization', `Bearer ${token}`).expect(201);
+        await request(app).post(`/api/invoices/${splitOrderId}/preinvoice`).set('Authorization', `Bearer ${token}`).expect(201);
 
         const first = await request(app).post('/api/payments').set('Authorization', `Bearer ${token}`)
             .send({ orderId: splitOrderId, paymentMethodId, amount: 40 });
@@ -618,7 +620,7 @@ describe('POS operational flow', () => {
                 .send({ menuItemId, quantity: 1 }).expect(201);
             await request(app).patch(`/api/orders/${orderId}/pricing`).set('Authorization', `Bearer ${token}`)
                 .send({ discount: 1, discountCode: 'RACE1' }).expect(200);
-            await request(app).post(`/api/invoices/${orderId}/issue`).set('Authorization', `Bearer ${token}`).expect(201);
+            await request(app).post(`/api/invoices/${orderId}/preinvoice`).set('Authorization', `Bearer ${token}`).expect(201);
         }
 
         const attempts = await Promise.all(orderIds.map((orderId) =>
@@ -629,14 +631,20 @@ describe('POS operational flow', () => {
         expect((await prisma.promotion.findFirst({ where: { companyId, code: 'RACE1' } }))?.usageCount).toBe(1);
         expect(await prisma.payment.count({ where: { orderId: { in: orderIds } } })).toBe(1);
 
-        const successfulPaymentId = attempts.find((response) => response.status === 201)!.body.data.id as number;
+        const successfulIndex = attempts.findIndex((response) => response.status === 201);
+        const successfulOrderId = orderIds[successfulIndex]!;
+        const failedOrderId = orderIds[successfulIndex === 0 ? 1 : 0]!;
+        const successfulPaymentId = attempts[successfulIndex]!.body.data.id as number;
         await request(app).delete(`/api/payments/${successfulPaymentId}`).set('Authorization', `Bearer ${token}`)
             .send({ reason: 'Promotion concurrency cleanup' }).expect(200);
         expect((await prisma.promotion.findFirst({ where: { companyId, code: 'RACE1' } }))?.usageCount).toBe(0);
-        for (const orderId of orderIds) {
-            await request(app).post(`/api/orders/${orderId}/cancel`).set('Authorization', `Bearer ${token}`)
-                .send({ cancelReason: 'invoiced concurrency fixture' }).expect(400);
-        }
+        // The paid order already owns a fiscal original even after financial
+        // reversal, so it requires the fiscal counterflow. The rejected payment
+        // left only a non-fiscal prefactura and remains administratively cancellable.
+        await request(app).post(`/api/orders/${successfulOrderId}/cancel`).set('Authorization', `Bearer ${token}`)
+            .send({ cancelReason: 'invoiced concurrency fixture' }).expect(400);
+        await request(app).post(`/api/orders/${failedOrderId}/cancel`).set('Authorization', `Bearer ${token}`)
+            .send({ cancelReason: 'prefactura concurrency fixture' }).expect(200);
     });
 
     it('rejects reserved payment references on the manual-movement endpoint', async () => {

@@ -181,14 +181,14 @@ export class PaymentService {
                 );
             }
 
-            if (!order.invoiceNumber?.trim()) {
-                throw new Error('Debe emitir la factura de la orden antes de procesar cualquier pago');
+            if (!order.preInvoicedAt && !order.invoiceNumber?.trim()) {
+                throw new Error('Debe emitir la prefactura de la orden antes de procesar cualquier pago');
             }
             // Idempotent replay is resolved above. Every new mutation after a
             // fiscal counterdocument must fail closed: a partially credited sale
             // is still fully settled for its reduced net balance and must never
             // be reopened for collection.
-            if (order.invoiceFiscalStatus !== 'ISSUED') {
+            if (order.invoiceNumber && order.invoiceFiscalStatus !== 'ISSUED') {
                 throw new Error('La factura ya tiene un contraflujo fiscal y no admite nuevos pagos');
             }
 

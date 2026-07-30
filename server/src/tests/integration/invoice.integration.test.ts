@@ -196,6 +196,20 @@ describe('Order to Invoice Flow & Multi-tenancy Isolation', () => {
                 .set('Authorization', `Bearer ${adminToken1}`);
             expect(beforeIssue.status).toBe(409);
 
+            const preInvoice = await request(app)
+                .post(`/api/invoices/${order1.id}/preinvoice`)
+                .set('Authorization', `Bearer ${adminToken1}`);
+            expect(preInvoice.status).toBe(201);
+            expect(preInvoice.body.data.invoiceNumber).toBe(`PREF-ORD-${order1.id}`);
+            expect(await prisma.invoiceSequence.count({ where: { companyId: company1.id } })).toBe(0);
+            expect((await request(app)
+                .get(`/api/invoices/${order1.id}`)
+                .set('Authorization', `Bearer ${adminToken1}`)).status).toBe(409);
+
+            await prisma.order.update({
+                where: { id: order1.id },
+                data: { financialStatus: 'PAID', closedAt: new Date() },
+            });
             const issued = await request(app)
                 .post(`/api/invoices/${order1.id}/issue`)
                 .set('Authorization', `Bearer ${adminToken1}`);

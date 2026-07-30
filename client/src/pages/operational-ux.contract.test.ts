@@ -153,7 +153,7 @@ describe('operational UX contracts', () => {
             pos.indexOf('const handlePayment = async () => {'),
             pos.indexOf('handlePaymentRef.current = handlePayment;'),
         );
-        const postInvoiceFlow = paymentFlow.slice(paymentFlow.indexOf('const invoiceResponse'));
+        const postInvoiceFlow = paymentFlow.slice(paymentFlow.indexOf('let payableOrder = paymentSnapshot'));
         const paymentCompleteFlow = pos.slice(
             pos.indexOf('const handlePaymentComplete = async'),
             pos.indexOf('const handleCancelActiveOrder = useCallback'),
@@ -161,8 +161,8 @@ describe('operational UX contracts', () => {
 
         expect(pos).toContain('findTableAccountForTable(response.data.data as Order[], table.id)');
         expect(pos).toContain('if (!isEligibleForPosOrderBucket(refreshedOrder))');
-        expect(postInvoiceFlow).toContain('setPaymentOrder(invoicedPaymentOrder)');
-        expect(postInvoiceFlow).toContain('setActiveTableOrder(invoicedPaymentOrder)');
+        expect(postInvoiceFlow).toContain('setPaymentOrder(payableOrder)');
+        expect(postInvoiceFlow).toContain('setActiveTableOrder(payableOrder)');
         expect(postInvoiceFlow).toContain('clearDraftCart');
         expect(postInvoiceFlow).not.toContain('releaseAfterConfirmedInvoice(');
         expect(postInvoiceFlow).not.toContain('clearTableContext');
@@ -170,8 +170,8 @@ describe('operational UX contracts', () => {
         expect(paymentCompleteFlow).toContain('clearTableContext');
         expect(pos).toContain('orderId={paymentOrder?.id ?? null}');
         expect(pos).toContain('order={paymentOrder}');
-        expect(paymentFlow.indexOf('if (offlineQueued)')).toBeLessThan(
-            paymentFlow.indexOf('const invoiceResponse'),
+        expect(paymentFlow.indexOf('ordersAPI.updateFiscalCustomer(orderId')).toBeLessThan(
+            paymentFlow.indexOf('invoicesAPI.issuePreInvoice(orderId)'),
         );
     });
 
@@ -194,11 +194,11 @@ describe('operational UX contracts', () => {
         const tables = read('./Tables.tsx');
         const kitchen = read('./Kitchen.tsx');
 
-        expect(pos).toContain('buildInvoiceStatusMessage({');
+        expect(pos).toContain('Pago confirmado y factura ${paymentData.fiscalInvoice.invoiceNumber} emitida.');
         expect(pos).not.toContain('settleReadyTableOnPayment');
         expect(orders).toContain("const canDeliver = canDeliverOrder(user)");
         expect(orders).toContain("if (canDeliver && order.status === 'READY'");
-        expect(orders).toContain('success(buildInvoiceStatusMessage({');
+        expect(orders).toContain('Pago confirmado y factura ${result.fiscalInvoice.invoiceNumber} emitida.');
         expect(orders).toContain('await loadOrders();');
         expect(orders).toContain('La orden seguirá visible como pendiente hasta confirmar la entrega.');
         expect(orders).toContain('al entregar se descontará allí el inventario.');
@@ -206,7 +206,7 @@ describe('operational UX contracts', () => {
         expect(orders).not.toContain('settleReadyTableOnPayment');
         expect(orders).toContain('setOrders(response.data.data)');
         expect(kitchen).toContain('ordersAPI.getKitchenQueue()');
-        expect(tables).toContain('showSuccess(buildInvoiceStatusMessage({');
+        expect(tables).toContain('Pago confirmado y factura ${result.fiscalInvoice.invoiceNumber} emitida.');
         expect(tables).toContain('await refreshOperationalTable();');
         expect(tables).toContain('Las cuentas fueron consolidadas en la mesa principal');
         expect(tables).toContain('Emite la factura para continuar al cobro.');

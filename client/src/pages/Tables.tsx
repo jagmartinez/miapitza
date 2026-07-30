@@ -43,8 +43,14 @@ import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/web
 import { useCurrency } from '../hooks/useCurrency';
 import ThemeToggle from '../components/ThemeToggle';
 import KitchenNotificationBell from '../components/KitchenNotificationBell';
-import { buildInvoiceStatusMessage, doesOrderRemainVisibleAtTable } from '../utils/posOrderBucket';
-import { renderInvoiceHtml, renderInvoiceLoadingHtml, type PrintableInvoiceSnapshot } from '../utils/invoicePrint';
+import { doesOrderRemainVisibleAtTable } from '../utils/posOrderBucket';
+import {
+    renderInvoiceHtml,
+    renderInvoiceLoadingHtml,
+    renderPreInvoiceHtml,
+    renderPreInvoiceLoadingHtml,
+    type PrintableInvoiceSnapshot,
+} from '../utils/invoicePrint';
 import { useNavigate } from 'react-router-dom';
 
 interface ApiValidationError { field?: string; message?: string }
@@ -468,13 +474,18 @@ export default function Tables() {
         // Mobile browsers only allow popups inside the original user gesture.
         // Reserve the window before awaiting fiscal issuance; never issue and
         // then silently lose the printable document to a popup blocker.
+        const isFiscalReprint = Boolean(order.invoiceNumber);
         const invoiceWindow = window.open('', '_blank');
         if (!invoiceWindow) {
             showError('No se pudo abrir la factura. Permite ventanas emergentes e inténtalo de nuevo; no se emitió ningún documento.');
             return;
         }
         try {
-            invoiceWindow.document.write(renderInvoiceLoadingHtml(order.id));
+            invoiceWindow.document.write(
+                isFiscalReprint
+                    ? renderInvoiceLoadingHtml(order.id)
+                    : renderPreInvoiceLoadingHtml(order.id),
+            );
             invoiceWindow.document.close();
         } catch (popupError) {
             console.error('Invoice popup could not be prepared:', popupError);
@@ -486,22 +497,31 @@ export default function Tables() {
         setBusyOrderId(order.id);
         let invoice: PrintableInvoiceSnapshot;
         try {
-            const response = await invoicesAPI.issue(order.id);
+            const response = isFiscalReprint
+                ? await invoicesAPI.getData(order.id)
+                : await invoicesAPI.issuePreInvoice(order.id);
             invoice = response.data?.data as PrintableInvoiceSnapshot;
             const invoiceNumber = invoice?.invoiceNumber;
             if (!invoiceNumber) {
-                throw new Error('La factura no devolvió un número fiscal.');
+                throw new Error('El documento no devolvió una referencia imprimible.');
             }
         } catch (error) {
             invoiceWindow.close();
-            showError(extractApiError(error, 'No se pudo emitir la factura.'));
+            showError(extractApiError(
+                error,
+                isFiscalReprint
+                    ? 'No se pudo recuperar la factura.'
+                    : 'No se pudo emitir la prefactura.',
+            ));
             setBusyOrderId(null);
             return;
         }
 
         const invoiceNumber = invoice.invoiceNumber;
         try {
-            const invoiceHtml = renderInvoiceHtml(invoice);
+            const invoiceHtml = isFiscalReprint
+                ? renderInvoiceHtml(invoice)
+                : renderPreInvoiceHtml(invoice);
             invoiceWindow.document.open();
             invoiceWindow.document.write(invoiceHtml);
             invoiceWindow.document.close();
@@ -512,34 +532,42 @@ export default function Tables() {
         } catch (printError) {
             console.error('Invoice issued but printable snapshot could not be shown:', printError);
             if (!invoiceWindow.closed) invoiceWindow.close();
-            showWarning(`La factura ${invoiceNumber} fue emitida, pero no se pudo mostrar para imprimir. Consúltala desde el historial fiscal.`);
+            showWarning(isFiscalReprint
+                ? `La factura ${invoiceNumber} existe, pero no se pudo mostrar para imprimir.`
+                : 'La prefactura fue emitida, pero no se pudo mostrar. Usa Reimprimir prefactura.');
         }
 
         try {
-            let nextOrder: Order = {
-                ...order,
-                invoiceNumber,
-                invoicedAt: invoice.date || order.invoicedAt,
-                invoiceFiscalStatus: 'ISSUED',
-            };
+            let nextOrder: Order = isFiscalReprint
+                ? {
+                    ...order,
+                    invoiceNumber,
+                    invoicedAt: invoice.date || order.invoicedAt,
+                    invoiceFiscalStatus: 'ISSUED',
+                }
+                : {
+                    ...order,
+                    preInvoicedAt: invoice.date || order.preInvoicedAt,
+                };
             try {
                 const refreshed = await ordersAPI.getById(order.id);
                 nextOrder = refreshed.data.data as Order;
             } catch (refreshError) {
                 console.error('Invoice issued but table order refresh failed:', refreshError);
-                showWarning('La factura fue emitida, pero el detalle de la orden no pudo actualizarse. Recarga si necesitas revisarlo.');
+                showWarning(isFiscalReprint
+                    ? 'La factura existe, pero el detalle de la orden no pudo actualizarse.'
+                    : 'La prefactura fue emitida, pero el detalle no pudo actualizarse. Recarga antes de cobrar.');
             }
             setTableOrders((current) => current.map((item) => item.id === nextOrder.id ? nextOrder : item));
             await refreshOperationalTable();
-            showSuccess(buildInvoiceStatusMessage({
-                invoiceNumber,
-                orderId: nextOrder.id,
-                tableNumber: nextOrder.table?.number ?? order.table?.number,
-                financialStatus: nextOrder.financialStatus,
-            }));
+            showSuccess(isFiscalReprint
+                ? `Factura ${invoiceNumber} lista para reimpresión.`
+                : 'Prefactura emitida. La cuenta quedó habilitada para cobrar.');
         } catch (error) {
             console.error('Invoice issued but table refresh failed:', error);
-            showWarning(`La factura ${invoiceNumber} fue emitida, pero el estado de la mesa no pudo refrescarse. Recarga la vista antes de cobrar.`);
+            showWarning(isFiscalReprint
+                ? `La factura ${invoiceNumber} está disponible, pero la mesa no pudo refrescarse.`
+                : 'La prefactura fue emitida, pero la mesa no pudo refrescarse. Recarga antes de cobrar.');
         } finally {
             setBusyOrderId(null);
         }
@@ -550,8 +578,8 @@ export default function Tables() {
             showWarning('Tu rol no puede procesar pagos.');
             return;
         }
-        if (!order.invoiceNumber) {
-            showWarning('Primero debes emitir la factura de esta orden.');
+        if (!order.preInvoicedAt && !order.invoiceNumber) {
+            showWarning('Primero debes emitir la prefactura de esta orden.');
             return;
         }
         try {
@@ -1348,9 +1376,16 @@ export default function Tables() {
                     currencySymbol={currencySymbol}
                     initialMode={paymentMode}
                     hasUsableCashShift={hasUsableCashShift(cashShiftStatus, paymentOrder.branchId)}
-                    onPaymentSuccess={() => {
+                    onPaymentSuccess={(result) => {
                         setPaymentOrder(null);
                         void refreshOperationalTable();
+                        if (result?.fiscalInvoiceError) {
+                            showWarning(`El pago fue confirmado, pero la factura fiscal debe reintentarse: ${result.fiscalInvoiceError}`);
+                        } else if (result?.fiscalInvoice && !result.invoicePrinted) {
+                            showWarning('El pago y la factura fiscal fueron confirmados. Usa Reimprimir factura porque el navegador bloqueó la ventana de impresión.');
+                        } else if (result?.fiscalInvoice) {
+                            showSuccess(`Pago confirmado y factura ${result.fiscalInvoice.invoiceNumber} emitida.`);
+                        }
                     }}
                 />
             )}

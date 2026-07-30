@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { ordersAPI, invoicesAPI, cashShiftsAPI, warehousesAPI } from '../services/api';
-import { canSendOrderToKitchen, canCancelOrder, canCreatePayment, canDeliverOrder, canOperateKitchenLineItems } from '../utils/authz';
+import { canSendOrderToKitchen, canCancelOrder, canCreatePayment, canDeliverOrder, canOperateKitchenLineItems, getUserRoleNames, hasPermission } from '../utils/authz';
 import { useDebounce } from '../utils/useDebounce';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
@@ -23,7 +23,6 @@ import { activateOnKeyboard } from '../utils/keyboardActivation';
 import { useAppToast } from '../context/ToastContext';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
 import { DeliveryAttemptGate } from '../utils/deliveryAttempt';
-import { buildInvoiceStatusMessage } from '../utils/posOrderBucket';
 import './Orders.css';
 
 interface ActiveShiftStatus {
@@ -41,6 +40,10 @@ export default function Orders() {
     const canCancel = canCancelOrder(user);
     const canPayOrder = canCreatePayment(user);
     const canDeliver = canDeliverOrder(user);
+    const canIssueInvoice = hasPermission(user, 'invoices.issue', ['SUPERADMIN', 'ADMIN', 'CAJERO']);
+    const userRoleNames = getUserRoleNames(user);
+    const isWaiterWithoutAdministrativeRole = userRoleNames.includes('MESERO')
+        && !userRoleNames.some((role) => role === 'ADMIN' || role === 'SUPERADMIN');
 
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
@@ -188,57 +191,61 @@ export default function Orders() {
     };
 
     const handlePaymentClick = async (order: Order) => {
-        if (!canPayOrder) {
-            showWarning('Tu rol no puede registrar pagos. Pide apoyo a un cajero o administrador.');
+        if (!canPayOrder || !canIssueInvoice) {
+            showWarning('Tu rol necesita permisos de cobro y facturación. Pide apoyo a un cajero o administrador.');
             return;
         }
         setPreparingPaymentOrderId(order.id);
         try {
-            // Keep the same fiscal invariant as POS and the table command center:
-            // an official invoice must exist before PaymentModal can collect.
-            const invoiceResponse = await invoicesAPI.issue(order.id);
-            const invoiceNumber = invoiceResponse.data?.data?.invoiceNumber as string | undefined;
-            if (!invoiceNumber) {
-                throw new Error('La factura no devolvió un número fiscal.');
+            let payableOrder = order;
+            if (!order.preInvoicedAt && !order.invoiceNumber) {
+                const preInvoiceResponse = await invoicesAPI.issuePreInvoice(order.id);
+                if (!preInvoiceResponse.data?.data?.invoiceNumber) {
+                    throw new Error('La prefactura no devolvió una referencia imprimible.');
+                }
+                payableOrder = {
+                    ...order,
+                    preInvoicedAt: preInvoiceResponse.data.data.date,
+                };
             }
 
-            let payableOrder: Order = {
-                ...order,
-                invoiceNumber,
-                invoicedAt: invoiceResponse.data?.data?.issuedAt || order.invoicedAt,
-                invoiceFiscalStatus: 'ISSUED',
-            };
             try {
                 const refreshed = await ordersAPI.getById(order.id);
                 payableOrder = refreshed.data.data as Order;
             } catch (refreshError) {
-                console.error('Invoice issued but order refresh failed:', refreshError);
-                showWarning('La factura fue emitida, pero el detalle no pudo actualizarse. El cobro usará la última información disponible.');
+                console.error('Pre-invoice issued but order refresh failed:', refreshError);
+                showWarning('La prefactura fue emitida, pero el detalle no pudo actualizarse. El cobro usará la última información disponible.');
             }
 
             await loadOrders();
             setPaymentOrder(payableOrder);
             setShowPaymentModal(true);
-            success(buildInvoiceStatusMessage({
-                invoiceNumber,
-                orderId: payableOrder.id,
-                tableNumber: payableOrder.table?.number ?? order.table?.number,
-                financialStatus: payableOrder.financialStatus,
-            }));
+            success('Prefactura confirmada. La orden está lista para cobrar.');
         } catch (error: unknown) {
             const message = typeof error === 'object' && error !== null && 'response' in error
                 ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
                 : undefined;
-            showError(message || 'No se pudo emitir la factura antes del cobro.');
+            showError(message || 'No se pudo emitir la prefactura antes del cobro.');
         } finally {
             setPreparingPaymentOrderId(null);
         }
     };
 
-    const handlePaymentComplete = () => {
+    const handlePaymentComplete = (result?: {
+        fiscalInvoice?: { invoiceNumber: string } | null;
+        fiscalInvoiceError?: string | null;
+        invoicePrinted?: boolean;
+    }) => {
         setShowPaymentModal(false);
         setPaymentOrder(null);
         loadOrders();
+        if (result?.fiscalInvoiceError) {
+            showWarning(`El pago fue confirmado, pero la factura fiscal debe reintentarse: ${result.fiscalInvoiceError}`);
+        } else if (result?.fiscalInvoice && !result.invoicePrinted) {
+            showWarning('Pago y factura fiscal confirmados. Usa Descargar Factura porque el navegador bloqueó la impresión.');
+        } else if (result?.fiscalInvoice) {
+            success(`Pago confirmado y factura ${result.fiscalInvoice.invoiceNumber} emitida.`);
+        }
         // Close sidebar if the paid order was the one open
         if (selectedOrder && paymentOrder && selectedOrder.id === paymentOrder.id) {
             setIsSidebarOpen(false);
@@ -302,8 +309,12 @@ export default function Orders() {
 
     const handleReprintInvoice = async (order: Order) => {
         try {
-            const invoice = await invoicesAPI.getData(order.id);
+            const needsIssuance = !order.invoiceNumber;
+            const invoice = order.invoiceNumber
+                ? await invoicesAPI.getData(order.id)
+                : await invoicesAPI.issue(order.id);
             const invoiceNumber = invoice.data.data.invoiceNumber as string;
+            if (needsIssuance) await loadOrders();
             const pdf = await invoicesAPI.downloadPdf(order.id);
             const url = URL.createObjectURL(new Blob([pdf.data], { type: 'application/pdf' }));
             const link = document.createElement('a');
@@ -428,7 +439,12 @@ export default function Orders() {
             );
         }
 
-        if (order.status !== 'CANCELLED' && order.financialStatus !== 'PAID' && canPayOrder) {
+        if (
+            order.status !== 'CANCELLED'
+            && order.financialStatus !== 'PAID'
+            && canPayOrder
+            && canIssueInvoice
+        ) {
             buttons.push(
                 <Button
                     key="pay"
@@ -436,12 +452,20 @@ export default function Orders() {
                     disabled={preparingPaymentOrderId === order.id}
                     onClick={() => void handlePaymentClick(order)}
                 >
-                    <CreditCard size={16} /> {preparingPaymentOrderId === order.id ? 'Facturando…' : 'Cobrar'}
+                    <CreditCard size={16} /> {preparingPaymentOrderId === order.id ? 'Preparando…' : 'Cobrar'}
                 </Button>
             );
         }
 
-        if (order.financialStatus === 'UNPAID' && order.status !== 'CANCELLED' && !order.invoiceNumber && canCancel) {
+        const wasSentToKitchen = order.items.some((item) => item.sentAt != null);
+        if (
+            order.financialStatus === 'UNPAID'
+            && order.status !== 'CANCELLED'
+            && !order.invoiceNumber
+            && !order.preInvoicedAt
+            && canCancel
+            && !(isWaiterWithoutAdministrativeRole && wasSentToKitchen)
+        ) {
             buttons.push(
                 <Button key="cancel" variant="ghost" className="text-danger" onClick={() => void openCancelModal(order)}>
                     <XCircle size={16} /> Cancelar
@@ -449,10 +473,17 @@ export default function Orders() {
             );
         }
 
-        if (order.invoiceNumber) {
+        if (
+            order.invoiceNumber
+            || (
+                canIssueInvoice
+                && order.financialStatus === 'PAID'
+                && Boolean(order.preInvoicedAt)
+            )
+        ) {
             buttons.push(
                 <Button key="reprint" variant="secondary" onClick={() => void handleReprintInvoice(order)}>
-                    <Printer size={16} /> Descargar Factura
+                    <Printer size={16} /> {order.invoiceNumber ? 'Descargar Factura' : 'Emitir Factura Original'}
                 </Button>
             );
         }

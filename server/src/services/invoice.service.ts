@@ -229,6 +229,133 @@ function buildInvoiceData(
 
 export class InvoiceService {
     /**
+     * Freezes the payable account without consuming the fiscal sequence.
+     * Replays return the same immutable snapshot; the real invoice is issued
+     * only after the order reaches PAID.
+     */
+    static async generatePreInvoice(orderId: number, companyId: number, actorUserId: number): Promise<InvoiceData> {
+        if (!Number.isInteger(actorUserId) || actorUserId <= 0) {
+            throw new Error('Invalid invoice actor');
+        }
+        const candidate = await prisma.order.findFirst({
+            where: { id: orderId, companyId },
+            select: { id: true, tableId: true },
+        });
+        if (!candidate) throw new Error('Order not found or unauthorized');
+        const candidateTableId = candidate.tableId ?? null;
+        const settings = await SettingService.getAll(companyId);
+
+        return transactionWithP2034Retry(async (tx) => {
+            if (candidateTableId !== null) {
+                const lockedTable = await tx.$queryRaw<Array<{ id: number }>>`
+                    SELECT \`id\` FROM \`Table\`
+                    WHERE \`id\` = ${candidateTableId} AND \`companyId\` = ${companyId}
+                    FOR UPDATE`;
+                if (lockedTable.length === 0) {
+                    throw new Error('La mesa asociada a la orden ya no está disponible');
+                }
+            }
+
+            const lockedOrder = await tx.$queryRaw<Array<{ id: number }>>`
+                SELECT \`id\` FROM \`Order\`
+                WHERE \`id\` = ${orderId} AND \`companyId\` = ${companyId}
+                FOR UPDATE`;
+            if (lockedOrder.length === 0) throw new Error('Order not found or unauthorized');
+
+            const order = await tx.order.findUnique({
+                where: { id: orderId },
+                include: invoiceOrderInclude,
+            });
+            if (!order || order.companyId !== companyId) {
+                throw new Error('Order not found or unauthorized');
+            }
+            if ((order.tableId ?? null) !== candidateTableId) {
+                throw new Error('La mesa asociada a la orden cambió durante la emisión; vuelva a intentarlo');
+            }
+            const actor = await tx.user.findFirst({
+                where: { id: actorUserId, companyId, status: 'ACTIVE' },
+                select: { id: true },
+            });
+            if (!actor) throw new Error('Invalid invoice actor for this company');
+            if (order.invoiceSnapshot !== null || order.invoiceNumber) {
+                throw new Error('La factura fiscal ya fue emitida; use la opción de reimpresión');
+            }
+
+            if (order.preInvoiceSnapshot !== null) {
+                if (!order.preInvoicedAt) {
+                    throw new Error('Pre-invoice snapshot exists without an issuance timestamp');
+                }
+                const persisted = deserializeInvoiceSnapshot(order.preInvoiceSnapshot);
+                if (persisted.orderId !== order.id || persisted.invoiceNumber !== `PREF-ORD-${order.id}`) {
+                    throw new Error('Pre-invoice snapshot does not match its order');
+                }
+                if (order.tableId) {
+                    await reconcileTableGroupForTable(
+                        tx,
+                        companyId,
+                        order.tableId,
+                        actor.id,
+                        `Prefactura de orden ${order.id} reimpresa; cuenta pendiente de pago`,
+                    );
+                }
+                return persisted;
+            }
+            if (order.preInvoicedAt) {
+                throw new Error('Pre-invoice timestamp exists without a snapshot');
+            }
+
+            const totalCents = Math.round(finiteNumber(order.total, 'total') * 100);
+            if (
+                order.status === 'CANCELLED'
+                || order.financialStatus === 'PAID'
+                || totalCents <= 0
+                || order.items.length === 0
+            ) {
+                throw new Error('Solo se puede emitir una prefactura para una orden activa, pendiente de pago, con productos y total mayor a cero');
+            }
+
+            const preInvoicedAt = new Date();
+            const preInvoice = buildInvoiceData(
+                order,
+                `PREF-ORD-${order.id}`,
+                preInvoicedAt,
+                settings,
+            );
+            await tx.order.update({
+                where: { id: order.id },
+                data: {
+                    preInvoicedAt,
+                    preInvoiceSnapshot: serializeInvoiceSnapshot(preInvoice),
+                },
+            });
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    entityType: 'Order',
+                    entityId: order.id,
+                    action: 'PRE_INVOICE_ISSUED',
+                    userId: actor.id,
+                    details: {
+                        reference: preInvoice.invoiceNumber,
+                        financialStatus: order.financialStatus,
+                        tableId: order.tableId,
+                    },
+                },
+            });
+            if (order.tableId) {
+                await reconcileTableGroupForTable(
+                    tx,
+                    companyId,
+                    order.tableId,
+                    actor.id,
+                    `Prefactura de orden ${order.id} emitida; cuenta pendiente de pago`,
+                );
+            }
+            return preInvoice;
+        });
+    }
+
+    /**
      * Issues once under the shared Table -> Order lock order and persists the
      * exact rendering payload together with the fiscal number. Concurrent
      * retries return the first snapshot and never consume another sequence.
@@ -308,6 +435,9 @@ export class InvoiceService {
             const totalCents = Math.round(finiteNumber(order.total, 'total') * 100);
             if (order.status === 'CANCELLED' || totalCents <= 0 || order.items.length === 0) {
                 throw new Error('Solo se puede emitir una factura para una orden activa, con productos y total mayor a cero');
+            }
+            if (order.financialStatus !== 'PAID') {
+                throw new Error('La factura fiscal original solo se emite después del pago total');
             }
 
             let invoiceNumber = order.invoiceNumber;

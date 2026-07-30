@@ -574,8 +574,8 @@ export class OrderService {
                 if (existingOrder) {
                     // Merge items into existing order
                     if (data.items && data.items.length > 0) {
-                        if (existingOrder.invoiceNumber) {
-                            throw new Error('No se puede modificar una orden facturada');
+                        if (existingOrder.invoiceNumber || existingOrder.preInvoicedAt) {
+                            throw new Error('No se puede modificar una orden con prefactura o factura emitida');
                         }
                         if (existingOrder.payments.length > 0) {
                             throw new Error('No se puede modificar una orden con pagos activos; revierta los pagos primero');
@@ -827,8 +827,8 @@ export class OrderService {
             if (order.status === 'CANCELLED' || order.status === 'DELIVERED') {
                 throw new Error('Cannot add items to paid, delivered or cancelled orders');
             }
-            if (order.invoiceNumber) {
-                throw new Error('No se puede modificar una orden facturada');
+            if (order.invoiceNumber || order.preInvoicedAt) {
+                throw new Error('No se puede modificar una orden con prefactura o factura emitida');
             }
             if (order.payments.length > 0) {
                 throw new Error('No se puede modificar una orden con pagos activos; revierta los pagos primero');
@@ -940,8 +940,8 @@ export class OrderService {
             if (item.order.status === 'CANCELLED' || item.order.status === 'DELIVERED') {
                 throw new Error('Cannot remove items from paid, delivered or cancelled orders');
             }
-            if (item.order.invoiceNumber) {
-                throw new Error('No se puede modificar una orden facturada');
+            if (item.order.invoiceNumber || item.order.preInvoicedAt) {
+                throw new Error('No se puede modificar una orden con prefactura o factura emitida');
             }
             if (item.sentAt !== null) {
                 throw new Error('No se puede eliminar un articulo ya enviado a cocina; use un flujo de anulacion/merma');
@@ -1151,13 +1151,18 @@ export class OrderService {
             }
 
             const hasPreviousBatch = order.items.some((item) => item.sentAt != null);
-            if (hasPreviousBatch && !order.kitchenReleasedAt) {
+            const previousBatch = selectLatestKitchenBatch(order.items)
+                .filter((item) => item.sentAt != null);
+            const previousBatchIsReady = previousBatch.length > 0
+                && previousBatch.every((item) => item.status === 'DONE');
+            if (hasPreviousBatch && !order.kitchenReleasedAt && !previousBatchIsReady) {
                 throw new Error(
-                    'Libera la tanda activa de cocina antes de enviar los productos nuevos'
+                    'Los productos se agregaron a la orden, pero la tanda activa de cocina debe terminar antes de enviar la nueva'
                 );
             }
 
-            // Mark only new items as sent to preserve kitchen history for previous sends.
+            // A completed wave rolls over atomically. DONE lines stay historical,
+            // while only the new lines receive a fresh batch timestamp and SLA.
             await tx.orderItem.updateMany({
                 where: { orderId: id, sentAt: null },
                 data: { sentAt: now }
@@ -1215,10 +1220,10 @@ export class OrderService {
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
             const order = await tx.order.findFirst({
                 where: { id, companyId },
-                select: { id: true, branchId: true, invoiceNumber: true }
+                select: { id: true, branchId: true, invoiceNumber: true, preInvoicedAt: true }
             });
             if (!order) throw new Error('Order not found');
-            if (order.invoiceNumber) {
+            if (order.invoiceNumber || order.preInvoicedAt) {
                 throw new Error('Los datos fiscales no pueden modificarse después de emitir la factura');
             }
             const actor = await tx.user.findFirst({
@@ -1920,6 +1925,7 @@ export class OrderService {
                     tax: true,
                     tipAmount: true,
                     invoiceNumber: true,
+                    preInvoicedAt: true,
                     payments: { where: { status: 'ACTIVE' }, select: { id: true } }
                 }
             });
@@ -1931,7 +1937,7 @@ export class OrderService {
             if (order.status === 'CANCELLED') {
                 throw new Error('Cannot modify pricing for paid or cancelled orders');
             }
-            if (order.invoiceNumber) {
+            if (order.invoiceNumber || order.preInvoicedAt) {
                 throw new Error('No se puede modificar el total de una orden facturada');
             }
             if (order.payments.length > 0) {

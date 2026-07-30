@@ -23,6 +23,13 @@ function forwardInvoiceError(error: unknown, next: NextFunction) {
     if (message.startsWith('Solo se puede emitir una factura')) {
         return next({ statusCode: 400, message });
     }
+    if (
+        message.startsWith('Solo se puede emitir una prefactura')
+        || message.startsWith('La factura fiscal original')
+        || message.startsWith('La factura fiscal ya fue emitida')
+    ) {
+        return next({ statusCode: 409, message });
+    }
     if (message === 'Invoice not issued') {
         return next({ statusCode: 409, message: 'La orden todavía no tiene una factura emitida' });
     }
@@ -59,6 +66,19 @@ function forwardCreditNoteError(error: unknown, next: NextFunction) {
 }
 
 export class InvoiceController {
+    static async issuePreInvoice(req: Request, res: Response, next: NextFunction) {
+        try {
+            const id = parseInt(req.params.id);
+            const companyId = req.user!.companyId;
+            const order = await OrderService.getById(id, companyId);
+            assertBranchAccess(req.user!, order.branchId);
+            const invoiceData = await InvoiceService.generatePreInvoice(id, companyId, req.user!.userId);
+
+            res.status(201).json({ success: true, data: invoiceData });
+        } catch (error: unknown) {
+            forwardInvoiceError(error, next);
+        }
+    }
 
     static async listInvoiceCancellations(req: Request, res: Response, next: NextFunction) {
         try {

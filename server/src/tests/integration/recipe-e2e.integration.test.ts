@@ -262,13 +262,14 @@ describe('Recipe inventory flows (integration)', () => {
         });
         if (!order) throw new Error('OrderService.create returned null in recipe E2E fixture.');
         orderId = order.id;
-        await InvoiceService.generateInvoice(orderId, companyId, userId);
+        await InvoiceService.generatePreInvoice(orderId, companyId, userId);
 
         const firstPayment = await PaymentService.create(
             companyId,
             { orderId, paymentMethodId, amount: Number(order.total) },
             userId
         );
+        await InvoiceService.generateInvoice(orderId, companyId, userId);
 
         expect(await quantity(saleIngredientId)).toBeCloseTo(100, 6);
         expect(await prisma.inventoryMovement.count({
@@ -351,13 +352,14 @@ describe('Recipe inventory flows (integration)', () => {
             where: { id: order.id },
             data: { discountCode: promotion.code }
         });
-        await InvoiceService.generateInvoice(order.id, companyId, userId);
+        await InvoiceService.generatePreInvoice(order.id, companyId, userId);
 
         await PaymentService.create(
             companyId,
             { orderId: order.id, paymentMethodId, amount: Number(order.total) },
             userId
         );
+        await InvoiceService.generateInvoice(order.id, companyId, userId);
         expect(await quantity(saleIngredientId)).toBeCloseTo(initialIngredientQuantity, 6);
         expect((await prisma.promotion.findUnique({ where: { id: promotion.id } }))?.usageCount).toBe(1);
 

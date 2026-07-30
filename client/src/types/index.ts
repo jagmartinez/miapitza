@@ -296,6 +296,7 @@ export interface Order {
   customerPhone?: string;
   invoiceNumber?: string;
   invoicedAt?: string;
+  preInvoicedAt?: string;
   invoiceFiscalStatus?: 'NOT_ISSUED' | 'ISSUED' | 'PARTIALLY_CREDITED' | 'CREDITED' | 'CANCELLED';
   fiscalCreditNote?: { id: number; number: string; status: 'ISSUED'; issuedAt: string } | null;
   fiscalInvoiceCancellation?: { id: number; cancelledAt: string; reason: string } | null;

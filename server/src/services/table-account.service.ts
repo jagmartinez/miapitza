@@ -153,6 +153,7 @@ async function syncTableStatus(tx: Tx, companyId: number, tableId: number) {
 
 function validateMutableOrder(order: {
     invoiceNumber: string | null;
+    preInvoicedAt: Date | null;
     financialStatus: string;
     payments: Array<{ id: number }>;
     status: string;
@@ -160,7 +161,9 @@ function validateMutableOrder(order: {
     if (!ACTIVE_STATUSES.includes(order.status as ActiveStatus)) {
         throw new Error('Solo se pueden mover o consolidar órdenes operativas activas');
     }
-    if (order.invoiceNumber) throw new Error('No se puede modificar una orden ya facturada');
+    if (order.invoiceNumber || order.preInvoicedAt) {
+        throw new Error('No se puede modificar una orden con prefactura o factura emitida');
+    }
     if (order.financialStatus !== 'UNPAID' || order.payments.length > 0) {
         throw new Error('No se puede modificar una orden con pagos registrados');
     }
@@ -642,7 +645,13 @@ export class TableAccountService {
                 if (current.payments.length > 0 || current.financialStatus !== 'UNPAID') {
                     throw new Error(`La orden #${current.id} tiene historial de pago y no puede separarse`);
                 }
-                if (current.invoiceNumber || current.invoicedAt || current.invoiceFiscalStatus !== 'NOT_ISSUED') {
+                if (
+                    current.preInvoicedAt
+                    || current.preInvoiceSnapshot
+                    || current.invoiceNumber
+                    || current.invoicedAt
+                    || current.invoiceFiscalStatus !== 'NOT_ISSUED'
+                ) {
                     throw new Error(`La orden #${current.id} ya tiene historia fiscal y no puede separarse`);
                 }
                 if (snapshot.isPrimary) {

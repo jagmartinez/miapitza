@@ -12,12 +12,17 @@ const baseOrder = {
     table: { id: 9, number: 'ABANICO' },
     invoiceNumber: undefined,
     invoicedAt: undefined,
+    preInvoicedAt: undefined,
     invoiceFiscalStatus: 'NOT_ISSUED' as const,
 };
 
 describe('POS order bucket lifecycle', () => {
-    it('never adopts a fiscally issued order as the editable table bucket', () => {
+    it('never adopts a prefacturada or fiscally issued order as the editable table bucket', () => {
         expect(isEligibleForPosOrderBucket(baseOrder)).toBe(true);
+        expect(isEligibleForPosOrderBucket({
+            ...baseOrder,
+            preInvoicedAt: '2026-07-24T11:55:00.000Z',
+        })).toBe(false);
         expect(isEligibleForPosOrderBucket({
             ...baseOrder,
             invoiceNumber: 'FAC-1-000009',

@@ -44,13 +44,13 @@ describe('POS fiscal customer contract', () => {
     expect(saveFlow).toContain('setFiscalCustomerError(message)');
   });
 
-  it('still freezes the fiscal snapshot before invoice issuance at checkout', () => {
+  it('freezes the fiscal snapshot before prefactura issuance at checkout', () => {
     const paymentStart = pos.indexOf('const handlePayment = async () =>');
     const paymentEnd = pos.indexOf('handlePaymentRef.current = handlePayment');
     const paymentFlow = pos.slice(paymentStart, paymentEnd);
 
     const fiscalUpdate = paymentFlow.indexOf('ordersAPI.updateFiscalCustomer(orderId');
-    const invoiceIssue = paymentFlow.indexOf('invoicesAPI.issue(orderId)');
+    const invoiceIssue = paymentFlow.indexOf('invoicesAPI.issuePreInvoice(orderId)');
     expect(fiscalUpdate).toBeGreaterThan(-1);
     expect(invoiceIssue).toBeGreaterThan(fiscalUpdate);
   });

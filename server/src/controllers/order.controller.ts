@@ -545,7 +545,19 @@ export class OrderController {
                 ? undefined
                 : Number(req.body.warehouseId);
 
-            await OrderController.assertOrderBranch(req, id);
+            const scopedOrder = await OrderController.assertOrderBranch(req, id);
+            const actorRoles = req.user!.roles ?? [req.user!.role];
+            const isWaiterWithoutAdministrativeRole = actorRoles.includes('MESERO')
+                && !actorRoles.some((role) => role === 'ADMIN' || role === 'SUPERADMIN');
+            if (
+                isWaiterWithoutAdministrativeRole
+                && scopedOrder.items.some((item) => item.sentAt != null)
+            ) {
+                return next({
+                    statusCode: 403,
+                    message: 'El mesero no puede cancelar una orden después de enviarla a cocina',
+                });
+            }
             const order = await OrderService.cancel(id, companyId, cancelledById, cancelReason, {
                 wasteWarehouseId
             });

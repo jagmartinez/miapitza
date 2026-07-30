@@ -6,6 +6,7 @@ import { OrderService } from '../../services/order.service';
 import { buildKitchenNotificationDedupKey } from '../../services/kitchen-notification.service';
 
 afterEach(function cleanup(): void {
+    jest.useRealTimers();
     jest.restoreAllMocks();
 });
 
@@ -64,7 +65,10 @@ describe('durable KDS lifecycle', () => {
         expect(batch.readyAt).toBeNull();
     });
 
-    it('rejects a new send until the previous wave is explicitly released', async () => {
+    it('starts a new kitchen wave automatically after the previous wave is done', async () => {
+        const previousSentAt = new Date('2026-07-29T12:00:00.000Z');
+        const nextSentAt = new Date('2026-07-29T12:30:00.000Z');
+        jest.useFakeTimers().setSystemTime(nextSentAt);
         const tx = {
             $queryRaw: jest.fn(async () => []),
             order: {
@@ -74,7 +78,64 @@ describe('durable KDS lifecycle', () => {
                     status: 'READY',
                     kitchenReleasedAt: null,
                     items: [
-                        { id: 1, sentAt: new Date(), status: 'DONE' },
+                        { id: 1, sentAt: previousSentAt, status: 'DONE' },
+                        { id: 2, sentAt: null, status: 'PENDING' },
+                    ],
+                })),
+                findUnique: jest.fn(async () => ({
+                    id: 41,
+                    branchId: 2,
+                    status: 'READY',
+                    kitchenReleasedAt: null,
+                    items: [
+                        { id: 1, sentAt: previousSentAt, status: 'DONE' },
+                        { id: 2, sentAt: nextSentAt, status: 'PENDING' },
+                    ],
+                })),
+                update: jest.fn(async (_args: unknown) => ({
+                    id: 41,
+                    branchId: 2,
+                    status: 'SENT_TO_KITCHEN',
+                    kitchenReleasedAt: null,
+                    items: [
+                        { id: 1, sentAt: previousSentAt, status: 'DONE' },
+                        { id: 2, sentAt: nextSentAt, status: 'PENDING' },
+                    ],
+                })),
+            },
+            orderItem: { updateMany: jest.fn(async (_args: unknown) => ({ count: 1 })) },
+        };
+        jest.spyOn(prisma, '$transaction')
+            .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
+
+        const result = await OrderService.sendToKitchen(41, 1);
+
+        expect(tx.orderItem.updateMany).toHaveBeenCalledWith({
+            where: { orderId: 41, sentAt: null },
+            data: { sentAt: nextSentAt },
+        });
+        expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({
+                status: 'SENT_TO_KITCHEN',
+                kitchenReleasedAt: null,
+                kitchenStartedAt: null,
+            }),
+        }));
+        expect((result.items as Array<{ id: number }>).map((item) => item.id)).toEqual([2]);
+        expect(result.kitchenBatchSent).toBe(true);
+    });
+
+    it('keeps new products saved as drafts while the previous kitchen wave is active', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 41,
+                    branchId: 2,
+                    status: 'IN_PREPARATION',
+                    kitchenReleasedAt: null,
+                    items: [
+                        { id: 1, sentAt: new Date('2026-07-29T12:00:00.000Z'), status: 'IN_PROGRESS' },
                         { id: 2, sentAt: null, status: 'PENDING' },
                     ],
                 })),
@@ -85,7 +146,7 @@ describe('durable KDS lifecycle', () => {
             .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
 
         await expect(OrderService.sendToKitchen(41, 1))
-            .rejects.toThrow(/libera la tanda activa/i);
+            .rejects.toThrow(/productos se agregaron.*tanda activa.*terminar/i);
         expect(tx.orderItem.updateMany).not.toHaveBeenCalled();
     });
 

@@ -168,13 +168,14 @@ describe('PaymentService financial/physical boundary and domain replay', () => {
         ]);
     });
 
-    it('rejects payment before an invoice is issued', async () => {
+    it('rejects payment before a prefactura is issued', async () => {
         const tx = {
             $queryRaw: jest.fn(async () => []),
             order: {
                 findFirst: jest.fn(async () => ({
                     id: 9, companyId: 1, branchId: 2, total: 10,
-                    financialStatus: 'UNPAID', status: 'READY', invoiceNumber: null, payments: []
+                    financialStatus: 'UNPAID', status: 'READY',
+                    preInvoicedAt: null, invoiceNumber: null, payments: []
                 })),
                 update: jest.fn()
             },
@@ -188,7 +189,7 @@ describe('PaymentService financial/physical boundary and domain replay', () => {
 
         await expect(PaymentService.create(1, {
             orderId: 9, paymentMethodId: 3, amount: 10
-        }, 7)).rejects.toThrow(/factura.*antes/i);
+        }, 7)).rejects.toThrow(/prefactura.*antes/i);
         expect(tx.paymentMethod.findFirst).not.toHaveBeenCalled();
         expect(tx.payment.create).not.toHaveBeenCalled();
     });

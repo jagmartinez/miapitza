@@ -482,6 +482,8 @@ export const ordersAPI = {
 };
 
 export const invoicesAPI = {
+    issuePreInvoice: (orderId: number) => api.post(`/invoices/${orderId}/preinvoice`),
+
     issue: (orderId: number) => api.post(`/invoices/${orderId}/issue`),
 
     getData: (orderId: number) => api.get(`/invoices/${orderId}`),

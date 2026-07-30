@@ -45,21 +45,29 @@ describe('table operational center contract', () => {
         expect(paymentSource).toContain("initialMode?: 'single' | 'split'");
     });
 
-    it('keeps invoice issuance before collection in every order entry point', () => {
+    it('keeps prefactura issuance before collection and fiscal issuance after payment', () => {
+        const ordersPaymentFlow = ordersSource.slice(
+            ordersSource.indexOf('const handlePaymentClick = async'),
+            ordersSource.indexOf('const handlePaymentComplete ='),
+        );
         expect(tablesSource.indexOf("window.open('', '_blank')")).toBeLessThan(
-            tablesSource.indexOf('await invoicesAPI.issue(order.id)')
+            tablesSource.indexOf('await invoicesAPI.issuePreInvoice(order.id)')
         );
         expect(tablesSource).toContain('invoiceWindow.close()');
-        expect(tablesSource).toContain('renderInvoiceHtml(invoice)');
-        expect(tablesSource.indexOf('invoicesAPI.issue(order.id)')).toBeLessThan(
+        expect(tablesSource).toContain('renderPreInvoiceHtml(invoice)');
+        expect(tablesSource.indexOf('invoicesAPI.issuePreInvoice(order.id)')).toBeLessThan(
             tablesSource.indexOf("setPaymentMode(mode)")
         );
-        expect(ordersSource.indexOf('await invoicesAPI.issue(order.id)')).toBeLessThan(
+        expect(ordersSource.indexOf('await invoicesAPI.issuePreInvoice(order.id)')).toBeLessThan(
             ordersSource.indexOf('setShowPaymentModal(true)')
         );
-        expect(posSource.indexOf('invoicesAPI.issue(orderId)')).toBeLessThan(
+        expect(posSource.indexOf('invoicesAPI.issuePreInvoice(orderId)')).toBeLessThan(
             posSource.indexOf('setShowPaymentModal(true)')
         );
+        expect(tablesSource).not.toContain('await invoicesAPI.issue(order.id)');
+        expect(ordersPaymentFlow).not.toContain('await invoicesAPI.issue(order.id)');
+        expect(posSource).not.toContain('await invoicesAPI.issue(orderId)');
+        expect(paymentSource).toContain('renderInvoiceHtml(completion.fiscalInvoice)');
     });
 
     it('renders editable persisted floor areas and table geometry', () => {

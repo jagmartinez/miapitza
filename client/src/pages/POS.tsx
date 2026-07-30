@@ -11,7 +11,8 @@ import {
     hasAnyRole,
     canSendOrderToKitchen,
     canCancelOrder,
-    canCreatePayment
+    canCreatePayment,
+    hasPermission
 } from '../utils/authz';
 import { getOrderStatusLabel } from '../utils/orderStatus';
 import { useConfirmDialog } from '../context/ConfirmContext';
@@ -32,7 +33,6 @@ import { hasUsableCashShift } from '../utils/paymentAccess';
 import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
 import { DeliveryAttemptGate } from '../utils/deliveryAttempt';
 import {
-    buildInvoiceStatusMessage,
     findTableAccountForTable,
     isEligibleForPosOrderBucket,
 } from '../utils/posOrderBucket';
@@ -143,6 +143,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const canSendToKitchen = canSendOrderToKitchen(user);
     const canCancelActive = canCancelOrder(user);
     const canPay = canCreatePayment(user);
+    const canIssueInvoice = hasPermission(user, 'invoices.issue', ['SUPERADMIN', 'ADMIN', 'CAJERO']);
     const [tables, setTables] = useState<Table[]>([]);
     const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
@@ -476,8 +477,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const [loadingModifiers, setLoadingModifiers] = useState(false);
 
     const addToCart = useCallback((item: MenuItem, quantity: number = 1, modifiers: SelectedModifier[] = []) => {
-        if (activeTableOrder?.invoiceNumber) {
-            warning('La orden ya fue facturada y no admite cambios. Completa o revierte el cobro mediante el flujo fiscal.');
+        if (activeTableOrder?.preInvoicedAt || activeTableOrder?.invoiceNumber) {
+            warning('La orden ya tiene prefactura o factura y no admite cambios. Completa el cobro mediante el flujo fiscal.');
             return;
         }
         const modifiersExtra = modifiers.reduce((sum, mod) => sum + Number(mod.price), 0);
@@ -505,7 +506,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 modifiers
             }];
         });
-    }, [activeTableOrder?.invoiceNumber, warning]);
+    }, [activeTableOrder?.invoiceNumber, activeTableOrder?.preInvoicedAt, warning]);
 
     const openModifierSelector = useCallback(async (item: MenuItem) => {
         setModifierItem(item);
@@ -703,12 +704,14 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         }
 
         setSendingToKitchen(true);
+        let persistedOrderId: number | null = null;
         try {
             const requestedDiscountPercent = discount;
             const requestedDiscountOverride = discountAmountOverride;
             const requestedPromotionCode = appliedPromotionCode;
             const requestedTipApplied = tipApplied;
             const { orderId, offlineQueued, dependencyKey } = await persistCartToOrder();
+            persistedOrderId = orderId;
 
             if (!orderId) {
                 warning('La orden quedó pendiente, pero no puede enviarse a cocina hasta existir en el servidor.');
@@ -773,7 +776,18 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             }
         } catch (error: unknown) {
             const axiosErr = error as { response?: { data?: { message?: string } } };
-            showError(axiosErr.response?.data?.message || 'Error al enviar la orden');
+            const message = axiosErr.response?.data?.message || 'No se pudo enviar la nueva tanda a cocina';
+            if (persistedOrderId) {
+                warning(`${message}. Los productos sí quedaron guardados en la orden.`);
+                try {
+                    await syncOrderContext(persistedOrderId);
+                    await loadData();
+                } catch (refreshError) {
+                    console.error('Order persisted but could not be refreshed after kitchen failure:', refreshError);
+                }
+            } else {
+                showError(message);
+            }
         } finally {
             setSendingToKitchen(false);
         }
@@ -861,8 +875,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     };
 
     const handlePayment = async () => {
-        if (!canPay) {
-            warning('Tu rol no puede registrar pagos. Pide apoyo a un cajero o administrador.');
+        if (!canPay || !canIssueInvoice) {
+            warning('Tu rol necesita permisos de cobro y facturación. Pide apoyo a un cajero o administrador.');
             return;
         }
 
@@ -918,7 +932,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 setActiveTableOrder(paymentSnapshot);
             }
 
-            if (!paymentSnapshot.invoiceNumber) {
+            if (!paymentSnapshot.preInvoicedAt && !paymentSnapshot.invoiceNumber) {
                 await ordersAPI.updateFiscalCustomer(orderId, {
                     customerName,
                     customerTaxId: fiscalCustomer.taxId,
@@ -929,42 +943,32 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 });
             }
 
-            // Emit the fiscal document before opening collection. The backend
-            // enforces the same invariant, so bypassing this UI cannot pay an
-            // unbilled order.
-            const invoiceResponse = await invoicesAPI.issue(orderId);
-            const invoiceNumber = invoiceResponse.data?.data?.invoiceNumber;
-            if (!invoiceNumber) {
-                throw new Error('La factura no pudo emitirse antes del cobro');
+            let payableOrder = paymentSnapshot;
+            if (!paymentSnapshot.preInvoicedAt && !paymentSnapshot.invoiceNumber) {
+                const preInvoiceResponse = await invoicesAPI.issuePreInvoice(orderId);
+                if (!preInvoiceResponse.data?.data?.invoiceNumber) {
+                    throw new Error('La prefactura no pudo emitirse antes del cobro');
+                }
+                payableOrder = {
+                    ...paymentSnapshot,
+                    preInvoicedAt: preInvoiceResponse.data.data.date,
+                };
             }
-
-            const invoicedPaymentOrder: Order = {
-                ...paymentSnapshot,
-                invoiceNumber,
-                invoicedAt: invoiceResponse.data?.data?.issuedAt || paymentSnapshot.invoicedAt,
-                invoiceFiscalStatus: 'ISSUED',
-            };
-            setPaymentOrder(invoicedPaymentOrder);
-            setActiveTableOrder(invoicedPaymentOrder);
+            setPaymentOrder(payableOrder);
+            setActiveTableOrder(payableOrder);
             setCurrentOrderId(orderId);
-            clearDraftCart(invoicedPaymentOrder.customerName || '');
+            clearDraftCart(payableOrder.customerName || '');
             setShowPaymentModal(true);
-            const tableNumber = paymentSnapshot.table?.number ?? selectedTable?.number;
-            success(buildInvoiceStatusMessage({
-                invoiceNumber,
-                orderId,
-                tableNumber,
-                financialStatus: paymentSnapshot.financialStatus,
-            }));
+            success('Prefactura confirmada. La orden está lista para cobrar.');
 
             const tableViewRefreshed = await loadData(false);
             if (!tableViewRefreshed) {
-                warning('La factura fue emitida y la mesa sigue ocupada hasta el pago total, pero la vista de mesas no pudo actualizarse. Recarga la página.');
+                warning('La prefactura fue emitida y la mesa sigue ocupada hasta el pago total, pero la vista de mesas no pudo actualizarse. Recarga la página.');
             }
             try {
                 await onOperationalChange?.();
             } catch {
-                warning('La factura fue emitida y la mesa sigue ocupada hasta el pago total, pero el mapa operativo no pudo actualizarse. Recarga la página.');
+                warning('La prefactura fue emitida y la mesa sigue ocupada hasta el pago total, pero el mapa operativo no pudo actualizarse. Recarga la página.');
             }
         } catch (error: unknown) {
             const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
@@ -977,7 +981,12 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     handlePaymentRef.current = handlePayment;
     handleSendToKitchenRef.current = handleSendToKitchen;
 
-    const handlePaymentComplete = async (paymentData?: { offlineQueued?: boolean }) => {
+    const handlePaymentComplete = async (paymentData?: {
+        offlineQueued?: boolean;
+        fiscalInvoice?: { invoiceNumber: string } | null;
+        fiscalInvoiceError?: string | null;
+        invoicePrinted?: boolean;
+    }) => {
         if (!paymentOrder) {
             showError('No se encontró una orden lista para cobrar');
             return;
@@ -986,14 +995,22 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         // La factura inmoviliza la orden, pero la cuenta de mesa se conserva
         // hasta que el backend confirme el pago total. Un pago en cola no libera.
         if (paymentData?.offlineQueued) {
-            warning('Pago pendiente de sincronización. La factura ya fue emitida; el cobro se marcará como pagado al confirmarse la conexión.');
+            warning('Pago pendiente de sincronización. La prefactura permanece abierta hasta confirmar la conexión.');
             return;
         }
 
         setShowPaymentModal(false);
         setPaymentOrder(null);
         clearTableContext();
-        success('Pago procesado exitosamente');
+        if (paymentData?.fiscalInvoiceError) {
+            warning(`Pago confirmado, pero la factura fiscal debe reintentarse: ${paymentData.fiscalInvoiceError}`);
+        } else if (paymentData?.fiscalInvoice && !paymentData.invoicePrinted) {
+            warning('Pago y factura fiscal confirmados. Reimprime la factura porque el navegador bloqueó la ventana.');
+        } else {
+            success(paymentData?.fiscalInvoice
+                ? `Pago confirmado y factura ${paymentData.fiscalInvoice.invoiceNumber} emitida.`
+                : 'Pago procesado exitosamente');
+        }
 
         const refreshed = await loadData(false);
         if (!refreshed) {
@@ -1150,7 +1167,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const activeOrderTotal = Number(activeTableOrder?.total || 0);
     const displayTotal = cart.length > 0 ? total : activeOrderTotal;
     const branchHasNoWarehouse = hasWarehouse === false;
-    const canProcessPayment = canPay && (cart.length > 0 || Boolean(currentOrderId));
+    const canProcessPayment = canPay && canIssueInvoice && (cart.length > 0 || Boolean(currentOrderId));
 
     return (
         <div className={`pos-container-new ${embedded ? 'pos-embedded' : ''}`}>
@@ -1210,7 +1227,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                         className="header-action-btn primary"
                         onClick={handlePayment}
                         disabled={!canProcessPayment || processingPayment}
-                        title={!canPay ? 'Tu rol no puede registrar pagos' : 'Pagar (Ctrl+P)'}
+                        title={!canPay || !canIssueInvoice ? 'Tu rol necesita permisos de cobro y facturación' : 'Pagar (Ctrl+P)'}
                     >
                         <CreditCard size={18} />
                         <span>{processingPayment ? 'Preparando...' : 'Pagar'}</span>
@@ -1530,7 +1547,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                     closeOnBackdrop={!savingFiscalCustomer}
                     closeOnEscape={!savingFiscalCustomer}
                     description="Déjalos vacíos para consumidor final. Si registras identificación tributaria, nombre, tipo e identificación son obligatorios y quedarán congelados al emitir."
-                    footer={activeTableOrder?.invoiceNumber
+                    footer={activeTableOrder?.invoiceNumber || activeTableOrder?.preInvoicedAt
                         ? <Button type="button" onClick={closeFiscalCustomerModal}>Cerrar</Button>
                         : (
                             <>
@@ -1546,34 +1563,34 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                         <div className="pos-fiscal-grid">
                             <label htmlFor="pos-fiscal-customer-name">
                                 Nombre o razón social
-                                <input id="pos-fiscal-customer-name" className="input" value={fiscalCustomerDraft.customerName} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, customerName: event.target.value }))} placeholder="Consumidor final" />
+                                <input id="pos-fiscal-customer-name" className="input" value={fiscalCustomerDraft.customerName} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber || activeTableOrder?.preInvoicedAt) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, customerName: event.target.value }))} placeholder="Consumidor final" />
                             </label>
                             <label htmlFor="pos-fiscal-tax-id-type">
                                 Tipo de identificación
-                                <input id="pos-fiscal-tax-id-type" className="input" value={fiscalCustomerDraft.taxIdType} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, taxIdType: event.target.value }))} placeholder="RUC, NIT u otro configurado" />
+                                <input id="pos-fiscal-tax-id-type" className="input" value={fiscalCustomerDraft.taxIdType} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber || activeTableOrder?.preInvoicedAt) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, taxIdType: event.target.value }))} placeholder="RUC, NIT u otro configurado" />
                             </label>
                             <label htmlFor="pos-fiscal-tax-id">
                                 Identificación tributaria
-                                <input id="pos-fiscal-tax-id" className="input" value={fiscalCustomerDraft.taxId} maxLength={100} disabled={Boolean(activeTableOrder?.invoiceNumber) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, taxId: event.target.value }))} />
+                                <input id="pos-fiscal-tax-id" className="input" value={fiscalCustomerDraft.taxId} maxLength={100} disabled={Boolean(activeTableOrder?.invoiceNumber || activeTableOrder?.preInvoicedAt) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, taxId: event.target.value }))} />
                             </label>
                             <label htmlFor="pos-fiscal-phone">
                                 Teléfono
-                                <input id="pos-fiscal-phone" className="input" value={fiscalCustomerDraft.phone} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, phone: event.target.value }))} />
+                                <input id="pos-fiscal-phone" className="input" value={fiscalCustomerDraft.phone} maxLength={50} disabled={Boolean(activeTableOrder?.invoiceNumber || activeTableOrder?.preInvoicedAt) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, phone: event.target.value }))} />
                             </label>
                             <label className="pos-fiscal-span-full" htmlFor="pos-fiscal-address">
                                 Dirección fiscal
-                                <textarea id="pos-fiscal-address" className="input" rows={2} value={fiscalCustomerDraft.fiscalAddress} maxLength={1000} disabled={Boolean(activeTableOrder?.invoiceNumber) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, fiscalAddress: event.target.value }))} />
+                                <textarea id="pos-fiscal-address" className="input" rows={2} value={fiscalCustomerDraft.fiscalAddress} maxLength={1000} disabled={Boolean(activeTableOrder?.invoiceNumber || activeTableOrder?.preInvoicedAt) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, fiscalAddress: event.target.value }))} />
                             </label>
                             <label className="pos-fiscal-span-full" htmlFor="pos-fiscal-email">
                                 Correo
-                                <input id="pos-fiscal-email" className="input" type="email" value={fiscalCustomerDraft.email} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, email: event.target.value }))} />
+                                <input id="pos-fiscal-email" className="input" type="email" value={fiscalCustomerDraft.email} maxLength={191} disabled={Boolean(activeTableOrder?.invoiceNumber || activeTableOrder?.preInvoicedAt) || savingFiscalCustomer} onChange={(event) => setFiscalCustomerDraft((current) => ({ ...current, email: event.target.value }))} />
                             </label>
                         </div>
                         {fiscalCustomerError && (
                             <p className="pos-fiscal-error" role="alert">{fiscalCustomerError}</p>
                         )}
-                        {activeTableOrder?.invoiceNumber && (
-                            <p className="shift-warning-note">La factura ya fue emitida; estos datos son de solo lectura.</p>
+                        {(activeTableOrder?.invoiceNumber || activeTableOrder?.preInvoicedAt) && (
+                            <p className="shift-warning-note">La prefactura o factura ya fue emitida; estos datos son de solo lectura.</p>
                         )}
                 </Modal>
             )}

@@ -1,10 +1,10 @@
 import type { Order } from '../types';
 
-type PosBucketOrder = Pick<Order, 'id' | 'tableId' | 'table' | 'invoiceNumber' | 'invoicedAt' | 'invoiceFiscalStatus'>;
+type PosBucketOrder = Pick<Order, 'id' | 'tableId' | 'table' | 'invoiceNumber' | 'invoicedAt' | 'preInvoicedAt' | 'invoiceFiscalStatus'>;
 type VisibleTableOrder = Pick<Order, 'status' | 'financialStatus'>;
 
 export function isEligibleForPosOrderBucket(order: PosBucketOrder): boolean {
-    if (order.invoiceNumber?.trim() || order.invoicedAt) {
+    if (order.preInvoicedAt || order.invoiceNumber?.trim() || order.invoicedAt) {
         return false;
     }
 
