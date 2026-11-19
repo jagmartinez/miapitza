@@ -39,7 +39,7 @@ describe('commercial chain request and pricing invariants', () => {
 
     it('rejects fractional POS quantities again at the service boundary', async () => {
         await expect(OrderService.addItem(1, 1, { menuItemId: 2, quantity: 0.5 }))
-            .rejects.toThrow(/positive integer/i);
+            .rejects.toThrow(/entero mayor a 0/i);
     });
 
     it('blocks selling an existing active PREPARED item whose sale BOM is empty', async () => {
@@ -105,7 +105,7 @@ describe('commercial chain request and pricing invariants', () => {
         };
 
         expect(() => calculatePromotionDiscount(promotion as never, 49))
-            .toThrow('MINIMUM_NOT_MET');
+            .toThrow('El subtotal no alcanza el monto mínimo de la promoción');
     });
 });
 
@@ -261,7 +261,9 @@ describe('kitchen order state invariants', () => {
             order: expect.objectContaining({ items: legacyItems }),
             orderItemIds: [21, 22],
             warehouseId: 5,
-            reference: 'WASTE-ORD-8'
+            reference: 'WASTE-ORD-8',
+            // Prepared food: a short balance must not block the cancellation.
+            allowNegative: true
         }));
         expect(reverse).not.toHaveBeenCalled();
         expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({

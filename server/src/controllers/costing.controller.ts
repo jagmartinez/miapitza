@@ -1,14 +1,13 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { CostingService } from '../services/costing.service';
 import prisma from '../utils/prisma';
-import { getErrorMessage } from '../utils/error';
 
 export class CostingController {
     /**
      * Get cost history for a specific product
      * GET /api/products/:id/cost-history
      */
-    static async getCostHistory(req: Request, res: Response) {
+    static async getCostHistory(req: Request, res: Response, next: NextFunction) {
         try {
             const productId = parseInt(req.params.id);
             const companyId = req.user!.companyId;
@@ -19,7 +18,7 @@ export class CostingController {
             res.json(history);
         } catch (error: unknown) {
             console.error('[CostingController] Error getting cost history:', error);
-            res.status(500).json({ error: getErrorMessage(error) });
+            next(error);
         }
     }
 
@@ -27,7 +26,7 @@ export class CostingController {
      * Get costing method for the company
      * GET /api/settings/costing-method
      */
-    static async getCostingMethod(req: Request, res: Response) {
+    static async getCostingMethod(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
 
@@ -43,7 +42,7 @@ export class CostingController {
             res.json({ costingMethod: company.costingMethod });
         } catch (error: unknown) {
             console.error('[CostingController] Error getting costing method:', error);
-            res.status(500).json({ error: getErrorMessage(error) });
+            next(error);
         }
     }
 
@@ -51,7 +50,7 @@ export class CostingController {
      * Update costing method for the company
      * PUT /api/settings/costing-method
      */
-    static async updateCostingMethod(req: Request, res: Response) {
+    static async updateCostingMethod(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
             const { costingMethod } = req.body;
@@ -67,7 +66,7 @@ export class CostingController {
             res.json(company);
         } catch (error: unknown) {
             console.error('[CostingController] Error updating costing method:', error);
-            res.status(500).json({ error: getErrorMessage(error) });
+            next(error);
         }
     }
 

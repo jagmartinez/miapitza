@@ -107,13 +107,23 @@ function safeEqualHex(left: string, right: string): boolean {
 const safeProfileSelect = {
     id: true, status: true, consentVersion: true, consentedAt: true,
     enrolledAt: true, retentionExpiresAt: true, purgeRequestedAt: true, revokedAt: true,
+    revocationReason: true, approvedAt: true,
 } satisfies Prisma.BiometricProfileSelect;
+
+/** Stable code returned when a punch uses an enrollment HR has not approved yet. */
+export const BIOMETRIC_ENROLLMENT_PENDING_APPROVAL = 'BIOMETRIC_ENROLLMENT_PENDING_APPROVAL';
+/** Prefix of `revocationReason` when HR rejects a pending enrollment. */
+const ENROLLMENT_REJECTED_PREFIX = 'ENROLLMENT_REJECTED: ';
 
 export function mapBiometricProfile(profile: {
     status: 'PENDING' | 'ACTIVE' | 'REVOKED'; consentVersion: string; consentedAt: Date;
     enrolledAt: Date | null; retentionExpiresAt: Date | null; purgeRequestedAt: Date | null; revokedAt: Date | null;
+    revocationReason?: string | null; approvedAt?: Date | null;
 } | null) {
-    if (!profile) return { status: 'NOT_ENROLLED' as const, canEnroll: true };
+    if (!profile) return { status: 'NOT_ENROLLED' as const, canEnroll: true, pendingApproval: false };
+    const rejectionReason = profile.status === 'REVOKED' && profile.revocationReason?.startsWith(ENROLLMENT_REJECTED_PREFIX)
+        ? profile.revocationReason.slice(ENROLLMENT_REJECTED_PREFIX.length)
+        : null;
     return {
         status: profile.status,
         consentVersion: profile.consentVersion,
@@ -122,7 +132,25 @@ export function mapBiometricProfile(profile: {
         retentionExpiresAt: profile.retentionExpiresAt,
         purgeRequestedAt: profile.purgeRequestedAt,
         revokedAt: profile.revokedAt,
+        approvedAt: profile.approvedAt ?? null,
+        // PENDING = first enrollment awaiting HR approval; punches are rejected
+        // until approved. A new capture is allowed (it stays PENDING).
+        pendingApproval: profile.status === 'PENDING',
+        rejectionReason,
         canEnroll: profile.status !== 'ACTIVE',
+    };
+}
+
+/**
+ * Restricts a biometric profile query to employees currently assigned to the
+ * branch (same rule as schedules/employment records). No branch = company-wide.
+ */
+function profileBranchFilter(branchId: number | undefined, today = new Date()): Prisma.BiometricProfileWhereInput {
+    if (!branchId) return {};
+    return {
+        user: { employee: { is: { branchAssignments: { some: {
+            branchId, effectiveFrom: { lte: today }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: today } }],
+        } } } } },
     };
 }
 
@@ -168,10 +196,28 @@ export class AttendancePolicyService {
                     geofenceViolationMode: 'BLOCK' as const,
                     biometricViolationMode: 'BLOCK' as const,
                 };
-                return branchTimezone ? { ...enforced, timezone: branchTimezone } : enforced;
+                // Biometric consent is one legal document per company (an employee has
+                // a single profile): branch policies always expose the company version
+                // so enroll and every punch scope compare against the same value.
+                const consented = currentKey === 'COMPANY'
+                    ? enforced
+                    : { ...enforced, biometricConsentVersion: await this.companyConsentVersion(companyId) };
+                return branchTimezone ? { ...consented, timezone: branchTimezone } : consented;
             }
         }
-        return { ...this.defaults, timezone: branchTimezone || this.defaults.timezone, id: undefined, branchId: branchId || null };
+        return {
+            ...this.defaults,
+            biometricConsentVersion: branchId ? await this.companyConsentVersion(companyId) : this.defaults.biometricConsentVersion,
+            timezone: branchTimezone || this.defaults.timezone, id: undefined, branchId: branchId || null,
+        };
+    }
+
+    static async companyConsentVersion(companyId: number): Promise<string> {
+        const company = await prisma.attendancePolicy.findFirst({
+            where: { companyId, currentKey: 'COMPANY', active: true },
+            select: { biometricConsentVersion: true },
+        });
+        return company?.biometricConsentVersion || this.defaults.biometricConsentVersion;
     }
 
     static async replace(companyId: number, input: Record<string, unknown>, actorUserId: number, scopeBranchId?: number) {
@@ -210,7 +256,10 @@ export class AttendancePolicyService {
             allowUnscheduledPunch: booleanValue(input.allowUnscheduledPunch, 'allowUnscheduledPunch', base.allowUnscheduledPunch),
             unscheduledViolationMode: mode(input.unscheduledViolationMode, 'unscheduledViolationMode', base.unscheduledViolationMode),
             allowManualFallback: booleanValue(input.allowManualFallback, 'allowManualFallback', base.allowManualFallback),
-            biometricConsentVersion: input.biometricConsentVersion === undefined ? base.biometricConsentVersion : text(input.biometricConsentVersion, 'biometricConsentVersion', 64),
+            biometricConsentVersion: branchId
+                // Consent is company-wide (see getCurrent); branch rows mirror it.
+                ? await this.companyConsentVersion(companyId)
+                : input.biometricConsentVersion === undefined ? base.biometricConsentVersion : text(input.biometricConsentVersion, 'biometricConsentVersion', 64),
             biometricRetentionDays: input.biometricRetentionDays === undefined ? base.biometricRetentionDays : integer(input.biometricRetentionDays, 'biometricRetentionDays', 1, 3650),
             biometricRetentionNotice: input.biometricRetentionNotice === undefined ? base.biometricRetentionNotice : optionalText(input.biometricRetentionNotice, 'biometricRetentionNotice'),
             createdById: actorUserId,
@@ -303,7 +352,7 @@ export class BiometricService {
         const challenge = await prisma.biometricChallenge.findFirst({
             where: { id: input.challengeId, companyId: input.companyId, userId: input.userId },
         });
-        if (!challenge) throw new HrAttendanceError('Reto no encontrado', 401, 'CHALLENGE_INVALID');
+        if (!challenge) throw new HrAttendanceError('Reto no encontrado', 409, 'CHALLENGE_INVALID');
         if (challenge.usedAt) {
             if (
                 input.useKey && input.requestHash && challenge.usedByKey === input.useKey &&
@@ -329,7 +378,7 @@ export class BiometricService {
                 where: { id: challenge.id, usedAt: null, attempts: { lt: challenge.maxAttempts } },
                 data: { attempts: { increment: 1 } },
             });
-            throw new HrAttendanceError('Token de reto inválido', 401, 'CHALLENGE_TOKEN_INVALID');
+            throw new HrAttendanceError('Token de reto inválido', 409, 'CHALLENGE_TOKEN_INVALID');
         }
         const consumed = await prisma.biometricChallenge.updateMany({
             where: { id: challenge.id, companyId: input.companyId, userId: input.userId, usedAt: null, expiresAt: { gt: new Date() }, attempts: { lt: challenge.maxAttempts } },
@@ -385,6 +434,15 @@ export class BiometricService {
         }
         const now = new Date();
         const retentionExpiresAt = new Date(now.getTime() + policy.biometricRetentionDays * 86400000);
+        // First enrollment needs HR approval: only a user HR already approved
+        // (approvedAt kept) re-enrolls straight to ACTIVE (consent renewal,
+        // REENROLL_REQUIRED, retention expiry). Owner revocation and rejection
+        // clear approvedAt, so those users need a new approval. Self-revocation
+        // keeps approvedAt on purpose: the employee withdrew their own consent,
+        // HR never questioned the identity, so re-enrolling does not require
+        // HR again (kept simple by design).
+        const previouslyApproved = Boolean(existing?.approvedAt);
+        const nextStatus = previouslyApproved ? 'ACTIVE' as const : 'PENDING' as const;
         try {
             const result = await prisma.$transaction(async (tx) => {
                 let saved: Prisma.BiometricProfileGetPayload<{ select: typeof safeProfileSelect }>;
@@ -395,10 +453,11 @@ export class BiometricService {
                             status: existing.status, updatedAt: existing.updatedAt,
                         },
                         data: {
-                            status: 'ACTIVE', consentVersion: input.consentVersion,
+                            status: nextStatus, consentVersion: input.consentVersion,
                             consentedAt: now, provider: enrolled.provider, model: enrolled.model,
                             templateRef: encryptedTemplate, enrolledAt: now, retentionExpiresAt,
                             purgeRequestedAt: null, revokedAt: null, revocationReason: null,
+                            ...(previouslyApproved ? {} : { approvedAt: null, approvedByUserId: null }),
                         },
                     });
                     if (updated.count !== 1) {
@@ -412,7 +471,7 @@ export class BiometricService {
                 } else {
                     saved = await tx.biometricProfile.create({
                         data: {
-                            companyId: input.companyId, userId: input.userId, status: 'ACTIVE',
+                            companyId: input.companyId, userId: input.userId, status: nextStatus,
                             consentVersion: input.consentVersion, consentedAt: now,
                             provider: enrolled.provider, model: enrolled.model, templateRef: encryptedTemplate,
                             enrolledAt: now, retentionExpiresAt,
@@ -420,7 +479,8 @@ export class BiometricService {
                         select: safeProfileSelect,
                     });
                 }
-                const purge = existing?.status === 'ACTIVE' ? await tx.biometricPurgeRequest.create({
+                // ACTIVE and PENDING profiles both hold a live provider template.
+                const purge = existing && existing.status !== 'REVOKED' ? await tx.biometricPurgeRequest.create({
                     data: {
                         companyId: input.companyId, biometricProfileId: saved.id, provider: existing.provider,
                         encryptedTemplateRef: existing.templateRef, reason: 'REENROLL_REPLACED', nextAttemptAt: now,
@@ -430,7 +490,10 @@ export class BiometricService {
                 await AuditLogService.log({
                     companyId: input.companyId, userId: input.userId, entityType: 'BiometricProfile', entityId: saved.id,
                     action: existing ? 'UPDATE' : 'CREATE',
-                    details: { consentVersion: input.consentVersion, provider: enrolled.provider, retentionExpiresAt, priorPurgeRequestId: purge?.id || null },
+                    details: {
+                        consentVersion: input.consentVersion, provider: enrolled.provider, retentionExpiresAt,
+                        priorPurgeRequestId: purge?.id || null, status: nextStatus, requiresHrApproval: !previouslyApproved,
+                    },
                 }, tx);
                 return { saved, purgeId: purge?.id || null };
             });
@@ -456,27 +519,58 @@ export class BiometricService {
         companyId: number,
         userId: number,
         provider: FaceVerificationProvider = createFaceVerificationProvider(),
-        options: { actorUserId?: number; reason?: string } = {},
+        options: {
+            actorUserId?: number; reason?: string;
+            /** Purge-request reason code (VARCHAR(64)); defaults to `reason`. */
+            purgeReason?: string;
+            /** Owner revocation/rejection: the next enrollment needs HR approval again. */
+            requireReapproval?: boolean;
+            /** Reject: only a PENDING enrollment may be revoked through this call. */
+            onlyPending?: boolean;
+            /** Restrict to employees assigned to this branch (admin scope). */
+            scopeBranchId?: number;
+        } = {},
     ) {
         const now = new Date();
         const reason = options.reason || 'SELF_REVOKED';
+        const purgeReason = (options.purgeReason || reason).slice(0, 64);
         const result = await prisma.$transaction(async (tx) => {
             await tx.$queryRaw(Prisma.sql`
                 SELECT id FROM BiometricProfile
                 WHERE companyId = ${companyId} AND userId = ${userId}
                 FOR UPDATE
             `);
-            const current = await tx.biometricProfile.findFirst({ where: { companyId, userId } });
-            if (!current) return null;
-            if (current.status !== 'ACTIVE') {
+            const current = await tx.biometricProfile.findFirst({
+                where: { companyId, userId, ...profileBranchFilter(options.scopeBranchId) },
+            });
+            if (!current) {
+                if (options.onlyPending) throw new HrAttendanceError('Registro facial no encontrado en el alcance autorizado', 404, 'BIOMETRIC_PROFILE_NOT_FOUND');
+                return null;
+            }
+            if (options.onlyPending && current.status === 'ACTIVE') {
+                throw new HrAttendanceError('El registro facial ya fue aprobado; use la revocación', 409, 'BIOMETRIC_ENROLLMENT_NOT_PENDING');
+            }
+            if (current.status === 'REVOKED') {
+                if (options.requireReapproval && current.approvedAt) {
+                    // Owner revocation of an already self-revoked profile still
+                    // withdraws the prior HR approval.
+                    await tx.biometricProfile.update({
+                        where: { id: current.id }, data: { approvedAt: null, approvedByUserId: null },
+                    });
+                    await AuditLogService.log({
+                        companyId, userId: options.actorUserId || userId, entityType: 'BiometricProfile', entityId: current.id,
+                        action: 'UPDATE', details: { transition: 'APPROVAL_WITHDRAWN', reason, subjectUserId: userId },
+                    }, tx);
+                }
                 const safe = await tx.biometricProfile.findUnique({ where: { id: current.id }, select: safeProfileSelect });
                 return safe ? { profile: safe, purgeId: null as number | null } : null;
             }
+            // ACTIVE and PENDING (awaiting HR approval) both hold a provider template.
             const purge = await tx.biometricPurgeRequest.create({
                 data: {
                     companyId, biometricProfileId: current.id, provider: current.provider,
                     encryptedTemplateRef: current.templateRef,
-                    reason, status: 'PENDING', attempts: 0, nextAttemptAt: now,
+                    reason: purgeReason, status: 'PENDING', attempts: 0, nextAttemptAt: now,
                 },
                 select: { id: true },
             });
@@ -485,12 +579,17 @@ export class BiometricService {
                 data: {
                     status: 'REVOKED', templateRef: `REVOKED:${randomUUID()}`, revokedAt: now,
                     purgeRequestedAt: now, revocationReason: reason,
+                    ...(options.requireReapproval ? { approvedAt: null, approvedByUserId: null } : {}),
                 },
                 select: safeProfileSelect,
             });
             await AuditLogService.log({
                 companyId, userId: options.actorUserId || userId, entityType: 'BiometricProfile', entityId: current.id,
-                action: 'DELETE', details: { reason, purgeRequestId: purge.id, subjectUserId: userId },
+                action: 'DELETE',
+                details: {
+                    reason, purgeRequestId: purge.id, subjectUserId: userId, previousStatus: current.status,
+                    approvalWithdrawn: Boolean(options.requireReapproval),
+                },
             }, tx);
             return { profile: saved, purgeId: purge.id };
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -505,6 +604,97 @@ export class BiometricService {
         return mapBiometricProfile(result.profile);
     }
 
+    /** First enrollments awaiting HR approval, oldest first. */
+    static async listPendingEnrollments(companyId: number, scopeBranchId?: number) {
+        const rows = await prisma.biometricProfile.findMany({
+            where: { companyId, status: 'PENDING', ...profileBranchFilter(scopeBranchId) },
+            select: {
+                id: true, userId: true, consentVersion: true, enrolledAt: true, provider: true,
+                user: {
+                    select: {
+                        id: true, name: true, username: true,
+                        employee: { select: { id: true, employeeCode: true, legalName: true, preferredName: true } },
+                    },
+                },
+            },
+            orderBy: [{ enrolledAt: 'asc' }, { id: 'asc' }],
+            take: 200,
+        });
+        return rows.map((row) => ({
+            profileId: row.id,
+            userId: row.userId,
+            consentVersion: row.consentVersion,
+            enrolledAt: row.enrolledAt,
+            provider: row.provider,
+            userName: row.user.name,
+            username: row.user.username,
+            employeeId: row.user.employee?.id ?? null,
+            employeeCode: row.user.employee?.employeeCode ?? null,
+            employeeName: row.user.employee?.preferredName || row.user.employee?.legalName || row.user.name,
+        }));
+    }
+
+    /** HR approves a PENDING enrollment (idempotent; row-locked). */
+    static async approveEnrollment(companyId: number, userId: number, actorUserId: number, scopeBranchId?: number) {
+        if (actorUserId === userId) {
+            throw new HrAttendanceError('No puede aprobar su propio registro facial; otra persona de RRHH debe aprobarlo', 403, 'BIOMETRIC_SELF_APPROVAL_FORBIDDEN');
+        }
+        const now = new Date();
+        const profile = await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw(Prisma.sql`
+                SELECT id FROM BiometricProfile
+                WHERE companyId = ${companyId} AND userId = ${userId}
+                FOR UPDATE
+            `);
+            const current = await tx.biometricProfile.findFirst({
+                where: { companyId, userId, ...profileBranchFilter(scopeBranchId) },
+                select: { id: true, status: true, approvedAt: true },
+            });
+            if (!current) throw new HrAttendanceError('Registro facial no encontrado en el alcance autorizado', 404, 'BIOMETRIC_PROFILE_NOT_FOUND');
+            if (current.status === 'ACTIVE' && current.approvedAt) {
+                return tx.biometricProfile.findUnique({ where: { id: current.id }, select: safeProfileSelect });
+            }
+            if (current.status !== 'PENDING') {
+                throw new HrAttendanceError('El registro facial no está pendiente de aprobación', 409, 'BIOMETRIC_ENROLLMENT_NOT_PENDING');
+            }
+            const updated = await tx.biometricProfile.updateMany({
+                where: { id: current.id, companyId, userId, status: 'PENDING' },
+                data: { status: 'ACTIVE', approvedAt: now, approvedByUserId: actorUserId },
+            });
+            if (updated.count !== 1) {
+                throw new HrAttendanceError('El registro facial cambió concurrentemente; recargue la lista', 409, 'BIOMETRIC_PROFILE_CHANGED');
+            }
+            await AuditLogService.log({
+                companyId, userId: actorUserId, entityType: 'BiometricProfile', entityId: current.id,
+                action: 'UPDATE', details: { transition: 'ENROLLMENT_APPROVED', subjectUserId: userId },
+            }, tx);
+            return tx.biometricProfile.findUnique({ where: { id: current.id }, select: safeProfileSelect });
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+        if (!profile) throw new HrAttendanceError('Registro facial no encontrado', 404, 'BIOMETRIC_PROFILE_NOT_FOUND');
+        return mapBiometricProfile(profile);
+    }
+
+    /** HR rejects a PENDING enrollment: revoke + purge, exactly like owner revocation. */
+    static async rejectEnrollment(
+        companyId: number,
+        userId: number,
+        actorUserId: number,
+        reasonValue: unknown,
+        scopeBranchId?: number,
+        provider: FaceVerificationProvider = createFaceVerificationProvider(),
+    ) {
+        const reason = text(reasonValue, 'El motivo del rechazo', 500);
+        if (reason.length < 3) throw new HrAttendanceError('El motivo del rechazo debe tener al menos 3 caracteres');
+        return this.revoke(companyId, userId, provider, {
+            actorUserId,
+            reason: `${ENROLLMENT_REJECTED_PREFIX}${reason}`,
+            purgeReason: 'ENROLLMENT_REJECTED',
+            requireReapproval: true,
+            onlyPending: true,
+            scopeBranchId,
+        });
+    }
+
     static async processPurgeRequest(id: number, provider: FaceVerificationProvider = createFaceVerificationProvider()) {
         const now = new Date();
         const request = await prisma.biometricPurgeRequest.findFirst({
@@ -516,7 +706,15 @@ export class BiometricService {
             include: { profile: { select: { userId: true } } },
         });
         if (!request) return false;
-        if (request.encryptedTemplateRef === 'PURGED') return false;
+        if (request.encryptedTemplateRef === 'PURGED') {
+            // Already wiped by an earlier attempt whose status write was lost;
+            // close it instead of re-selecting it on every maintenance run.
+            await prisma.biometricPurgeRequest.updateMany({
+                where: { id, status: request.status, encryptedTemplateRef: 'PURGED' },
+                data: { status: 'COMPLETED', nextAttemptAt: null, lastError: null, completedAt: now },
+            });
+            return false;
+        }
         const claimedAttempts = request.attempts + 1;
         const claim = await prisma.biometricPurgeRequest.updateMany({
             where: {
@@ -533,6 +731,19 @@ export class BiometricService {
         });
         if (claim.count !== 1) return false;
         let requestProvider = provider;
+        if (request.provider === 'fake' && provider.name !== 'fake') {
+            // The dev "fake" adapter never stored a template outside this database
+            // (and cannot be instantiated in production): wiping our encrypted
+            // reference is the whole purge.
+            const completed = await prisma.biometricPurgeRequest.updateMany({
+                where: { id, status: request.status, attempts: claimedAttempts },
+                data: {
+                    status: 'COMPLETED', encryptedTemplateRef: 'PURGED',
+                    nextAttemptAt: null, lastError: null, completedAt: new Date(),
+                },
+            });
+            return completed.count === 1;
+        }
         if (request.provider !== provider.name) {
             try {
                 requestProvider = createFaceVerificationProviderForName(request.provider);
@@ -581,7 +792,7 @@ export class BiometricService {
         now = new Date(),
     ) {
         const expired = await prisma.biometricProfile.findMany({
-            where: { companyId, status: 'ACTIVE', retentionExpiresAt: { lte: now } },
+            where: { companyId, status: { in: ['ACTIVE', 'PENDING'] }, retentionExpiresAt: { lte: now } },
             select: { userId: true }, take: 100,
         });
         let revoked = 0;
@@ -607,7 +818,7 @@ export class BiometricService {
     static async runScheduledMaintenance(now = new Date()) {
         const [expiredProfiles, pendingPurges] = await Promise.all([
             prisma.biometricProfile.findMany({
-                where: { status: 'ACTIVE', retentionExpiresAt: { lte: now } },
+                where: { status: { in: ['ACTIVE', 'PENDING'] }, retentionExpiresAt: { lte: now } },
                 select: { companyId: true },
                 distinct: ['companyId'],
             }),

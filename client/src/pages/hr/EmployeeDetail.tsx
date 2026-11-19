@@ -30,6 +30,8 @@ import './hr-admin-operations.css';
 type DetailTab = 'data' | 'relationship' | 'user' | 'assignment' | 'contracts' | 'compensation' | 'documents';
 const DETAIL_TABS: DetailTab[] = ['data', 'relationship', 'user', 'assignment', 'contracts', 'compensation', 'documents'];
 
+const REST_DAY_NAMES: Record<number, string> = { 1: 'Lunes', 2: 'Martes', 3: 'Miércoles', 4: 'Jueves', 5: 'Viernes', 6: 'Sábado', 7: 'Domingo' };
+
 function displayDate(value?: string | null): string {
     if (!value) return '—';
     const date = new Date(`${value.slice(0, 10)}T00:00:00`);
@@ -245,6 +247,7 @@ export default function EmployeeDetail() {
                                 <DetailGroup title="Relación laboral" description="Vigencia y estructura organizacional" icon={<Briefcase size={18} />}>
                                     <DetailItem label="Fecha de ingreso">{displayDate(employee.hireDate)}</DetailItem>
                                     <DetailItem label="Tipo de empleo">{value(employee.employmentType).replace(/_/g, ' ')}</DetailItem>
+                                    <DetailItem label="Descanso semanal">{employee.weeklyRestDays?.length ? employee.weeklyRestDays.map((day) => REST_DAY_NAMES[day] ?? String(day)).join(', ') : 'Domingo (por defecto legal, sin configurar)'}</DetailItem>
                                     <DetailItem label="Departamento">{employee.department?.name ?? 'Sin asignar'}</DetailItem>
                                     <DetailItem label="Puesto">{employee.jobPosition?.name ?? 'Sin asignar'}</DetailItem>
                                     <DetailItem label="Centro de costo">{employee.costCenter?.name ?? 'Sin asignar'}</DetailItem>

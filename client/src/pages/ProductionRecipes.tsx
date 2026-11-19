@@ -20,6 +20,7 @@ import type { SingleValue } from 'react-select';
 import type { ProductionRecipe, Product, UnitOfMeasure, RecipeCost } from '../types';
 import './Inventory.css';
 import './ProductionRecipes.css';
+import { getApiErrorMessage } from '../utils/apiError';
 
 type StrOption = { value: string; label: string };
 
@@ -173,7 +174,7 @@ export default function ProductionRecipes() {
             setLoadError(null);
         } catch (error) {
             console.error('Error loading production recipes:', error);
-            setLoadError('No se pudieron cargar las recetas y sus catálogos. Los resultados vacíos quedan suspendidos hasta reintentar.');
+            setLoadError(getApiErrorMessage(error, 'No se pudieron cargar las recetas y sus catálogos (los resultados vacíos quedan suspendidos hasta reintentar)'));
         } finally {
             setLoading(false);
         }
@@ -186,7 +187,7 @@ export default function ProductionRecipes() {
             setLoadError(null);
         } catch (error) {
             console.error('Error reloading production recipes:', error);
-            setLoadError('No se pudo actualizar el listado de recetas. Se conserva la última información disponible.');
+            setLoadError(getApiErrorMessage(error, 'No se pudo actualizar el listado de recetas (se conserva la última información disponible)'));
         }
     };
 

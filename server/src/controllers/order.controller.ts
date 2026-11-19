@@ -29,6 +29,7 @@ export class OrderController {
                 invoicedStartDate?: Date;
                 invoicedEndDate?: Date;
                 invoicedOnly?: boolean;
+                search?: string;
                 page?: number;
                 limit?: number;
             } = {};
@@ -81,6 +82,12 @@ export class OrderController {
 
             if (req.query.invoicedOnly === 'true') {
                 filters.invoicedOnly = true;
+            }
+
+            if (typeof req.query.search === 'string' && req.query.search.trim()) {
+                // Bounded free text; matched server-side against order number,
+                // customer name and table number within the caller's scope.
+                filters.search = req.query.search.trim().slice(0, 100);
             }
 
             if (req.query.page) {
@@ -212,6 +219,64 @@ export class OrderController {
         }
     }
 
+    /**
+     * POST /orders/:id/items/:itemId/void — supervisor void of a line already
+     * sent to kitchen. Requires X-Idempotency-Key so a retried tap/offline
+     * replay never wastes the same food twice.
+     */
+    static async voidItem(req: Request, res: Response, next: NextFunction) {
+        try {
+            const orderId = Number(req.params.id);
+            const itemId = Number(req.params.itemId);
+            const companyId = req.user!.companyId;
+            const headerKey = req.headers['x-idempotency-key'];
+            const idempotencyKey = typeof headerKey === 'string' && headerKey.trim()
+                ? headerKey.trim()
+                : typeof req.body?.idempotencyKey === 'string' ? req.body.idempotencyKey.trim() : '';
+            if (idempotencyKey.length < 8 || idempotencyKey.length > 191) {
+                return next({ statusCode: 428, message: 'X-Idempotency-Key es requerido (8 a 191 caracteres) para anular una línea' });
+            }
+            await OrderController.assertOrderBranch(req, orderId);
+            const result = await OrderService.voidKitchenItem(orderId, itemId, companyId, req.user!.userId, {
+                quantity: req.body?.quantity === undefined ? undefined : Number(req.body.quantity),
+                reason: req.body?.reason,
+                wasteWarehouseId: req.body?.warehouseId === undefined ? undefined : Number(req.body.warehouseId),
+                idempotencyKey,
+            });
+            if (!result.replayed) {
+                // POS, tables, orders and KDS all refetch on ORDER_UPDATE.
+                WebSocketService.broadcastOrderUpdate(orderId, 'ITEM_VOIDED', result.order, {
+                    companyId,
+                    branchId: result.branchId
+                });
+            }
+            res.json({
+                success: true,
+                message: result.promotionRemoved
+                    ? `Línea anulada. La promoción ${result.promotionRemoved.code} ya no aplica y fue retirada`
+                    : 'Línea anulada y merma registrada',
+                data: {
+                    order: result.order,
+                    voidItemId: result.voidItemId,
+                    voidedQuantity: result.voidedQuantity,
+                    kitchenBatchId: result.kitchenBatchId,
+                    promotionRemoved: result.promotionRemoved,
+                    manualDiscountClamped: result.manualDiscountClamped ?? null,
+                    replayed: result.replayed,
+                }
+            });
+        } catch (error) {
+            if (error instanceof BranchScopeError) return next(error);
+            // Explicit domain statuses (409 idempotency conflict) and Prisma
+            // errors (P2034 -> 409) keep their own classification.
+            const bag = error as { statusCode?: unknown; code?: unknown; name?: unknown };
+            if (typeof bag.statusCode === 'number' || (typeof bag.name === 'string' && bag.name.startsWith('PrismaClient'))) {
+                return next(error);
+            }
+            next({ statusCode: 400, message: error instanceof Error ? error.message : 'Error desconocido' });
+        }
+    }
+
     static async updateStatus(req: Request, res: Response, next: NextFunction) {
         try {
             const id = parseInt(req.params.id);
@@ -263,7 +328,7 @@ export class OrderController {
                 discountCode: discountCode !== undefined ? String(discountCode || '') : undefined,
                 tax: tax !== undefined ? Number(tax) : undefined,
                 tipAmount: tipAmount !== undefined ? Number(tipAmount) : undefined
-            });
+            }, req.user!.userId, { role: req.user!.role, roles: req.user!.roles });
 
             WebSocketService.broadcastOrderUpdate(id, 'PRICING_UPDATED', order, {
                 companyId,
@@ -590,6 +655,17 @@ export class OrderController {
                 companyId,
                 branchId: result.branchId
             });
+            if (result.autoDelivered) {
+                // Paid order handed over on release: let POS/Tables drop the
+                // READY card instead of offering a now-invalid "Entregar".
+                // The release already committed: a failed reload must not turn
+                // the response into an error, clients refetch on any update.
+                const delivered = await OrderService.getById(id, companyId).catch(() => undefined);
+                WebSocketService.broadcastOrderUpdate(id, 'COMPLETED', delivered, {
+                    companyId,
+                    branchId: result.branchId
+                });
+            }
             res.json({ success: true, message: result.changed ? 'Orden liberada del KDS' : 'La orden ya estaba liberada', data: result.order });
         } catch (error) {
             if (error instanceof BranchScopeError) return next(error);

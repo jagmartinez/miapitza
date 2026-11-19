@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { notifyError } from '../services/notify';
 import api, { unitsAPI } from '../services/api';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import type { SingleValue } from 'react-select';
@@ -115,7 +116,7 @@ const WasteReport: React.FC = () => {
             setProducts(productsRes.data.data || []);
             setWasteReasons(reasonsRes.data.data || []);
         } catch (error) {
-            console.error('Error loading data:', error);
+            notifyError(error, 'No se pudieron cargar bodegas, productos o motivos de merma');
         }
     }, []);
 
@@ -124,7 +125,7 @@ const WasteReport: React.FC = () => {
             const response = await api.get('/settings');
             setSettings(response.data.data || {});
         } catch (error) {
-            console.error('Error loading settings:', error);
+            notifyError(error, 'No se pudo cargar la configuración; los montos usan el formato predeterminado', { type: 'warning' });
         }
     }, []);
 

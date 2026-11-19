@@ -113,6 +113,10 @@
         overflow-x: auto;
         flex-wrap: nowrap;
         scrollbar-width: none;
+        min-width: 0;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
     }
 
     .invoice-date-filters::-webkit-scrollbar {
@@ -120,6 +124,8 @@
     }
 
     .invoice-search-input {
+        flex: none;
+        width: 100%;
         max-width: none;
         min-width: 0;
     }
@@ -391,4 +397,9 @@
     .invoice-payment-reversal-buttons .btn {
         width: 100%;
     }
+}
+
+/* Keep "C$ 12,345.67" on one line when the subtitle wraps on phones. */
+.invoice-subtitle-amount {
+    white-space: nowrap;
 }

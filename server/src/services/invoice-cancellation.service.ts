@@ -93,7 +93,8 @@ export class InvoiceCancellationService {
         if (!Number.isInteger(orderId) || orderId <= 0) throw new Error('Orden inválida');
         const normalized = this.normalize(input);
         return transactionWithP2034Retry(async (tx) => {
-            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
+            // Table → Order lock order, same as complete/cancel/payment paths.
+            await OrderService.lockTableThenOrder(tx, companyId, orderId);
             const order = await tx.order.findFirst({
                 where: { id: orderId, companyId },
                 include: {
@@ -125,7 +126,20 @@ export class InvoiceCancellationService {
                 throw new Error('Solo una factura emitida, íntegra y no acreditada puede anularse');
             }
             if (order.status === 'DELIVERED') {
-                throw new Error('Una venta entregada no puede anularse; evalúe emitir nota de crédito');
+                // A sale delivered automatically at payment / kitchen release
+                // and whose payments were then reversed must still be annullable
+                // (reverse payment -> annul invoice). Its ORD consumption stays:
+                // the food was prepared and handed over either way.
+                const lastDelivery = await tx.auditLog.findFirst({
+                    where: { companyId, entityType: 'Order', entityId: order.id, action: 'DELIVER' },
+                    orderBy: { id: 'desc' },
+                    select: { details: true },
+                });
+                const details = lastDelivery?.details as { automatic?: unknown } | null | undefined;
+                const autoDelivered = details != null && typeof details === 'object' && details.automatic === true;
+                if (!autoDelivered || order.financialStatus === 'PAID') {
+                    throw new Error('Una venta entregada no puede anularse; evalúe emitir nota de crédito');
+                }
             }
             if (order.financialStatus !== 'UNPAID' || order.payments.length > 0) {
                 throw new Error('La anulación fiscal requiere una factura sin pagos activos; revierta los pagos primero');

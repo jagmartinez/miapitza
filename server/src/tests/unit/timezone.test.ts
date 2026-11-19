@@ -32,4 +32,25 @@ describe('tenant timezone boundaries', () => {
         const bounds = getZonedDayBounds('America/New_York', new Date('2026-03-08T12:00:00Z'));
         expect(bounds.endExclusive.getTime() - bounds.start.getTime()).toBe(23 * 60 * 60 * 1000);
     });
+
+    describe('days whose local midnight does not exist (DST starts at 00:00)', () => {
+        const cases = [
+            // zone, local day, first instant of the day (01:00 local), previous day end, day end
+            ['America/Santiago', '2026-09-06', '2026-09-06T04:00:00.000Z', '2026-09-05', '2026-09-07T02:59:59.999Z'],
+            ['America/Havana', '2026-03-08', '2026-03-08T05:00:00.000Z', '2026-03-07', '2026-03-09T03:59:59.999Z'],
+            ['Asia/Beirut', '2026-03-29', '2026-03-28T22:00:00.000Z', '2026-03-28', '2026-03-29T20:59:59.999Z'],
+        ] as const;
+
+        it.each(cases)('%s %s starts at the first valid instant of the local day', (zone, day, start, previousDay, end) => {
+            expect(parseZonedDateStart(day, zone).toISOString()).toBe(start);
+            expect(zonedDateKey(parseZonedDateStart(day, zone), zone)).toBe(day);
+            expect(parseZonedDateEnd(day, zone).toISOString()).toBe(end);
+            // The previous day ends exactly 1 ms before the gap day starts.
+            expect(parseZonedDateEnd(previousDay, zone).getTime()).toBe(new Date(start).getTime() - 1);
+            // Instant-based helpers use the same fallback instead of throwing.
+            const bounds = getZonedDayBounds(zone, new Date(new Date(start).getTime() + 6 * 60 * 60 * 1000));
+            expect(bounds.start.toISOString()).toBe(start);
+            expect(bounds.endExclusive.getTime() - bounds.start.getTime()).toBe(23 * 60 * 60 * 1000);
+        });
+    });
 });

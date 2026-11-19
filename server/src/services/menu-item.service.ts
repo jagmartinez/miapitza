@@ -2,6 +2,10 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
 import { ProductionRecipeService } from './production-recipe.service';
+import { normalizeRecipeQuantity, resolveRecipeUnit } from '../utils/recipe-unit';
+
+const MISSING_RECIPE_MESSAGE = (name: string) =>
+    `No se puede dejar "${name}" activo sin receta: los productos de venta directa también requieren al menos un insumo para descontar inventario.`;
 
 export class MenuItemService {
     static async getOwnerBranch(menuItemId: number, companyId: number): Promise<number | null> {
@@ -141,8 +145,14 @@ export class MenuItemService {
             ]
         });
 
-        if (!filters?.branchId || !filters.resolveBranchPrice) return menuItems;
-        return menuItems.map((item) => ({
+        // Legacy DIRECT rows may have no recipe (they never deduct stock). They
+        // stay readable/sellable, but are flagged so the admin can fix them.
+        const flagged = menuItems.map((item) => ({
+            ...item,
+            missingRecipe: item._count.recipes === 0
+        }));
+        if (!filters?.branchId || !filters.resolveBranchPrice) return flagged;
+        return flagged.map((item) => ({
             ...item,
             basePrice: item.price,
             price: item.branchPrices[0]?.price ?? item.price
@@ -175,7 +185,8 @@ export class MenuItemService {
                                 name: true,
                                 unit: true,
                                 cost: true,
-                                currentAverageCost: true
+                                currentAverageCost: true,
+                                baseUnit: { select: { abbreviation: true } }
                             }
                         },
                         unitOfMeasure: { select: { abbreviation: true } }
@@ -197,11 +208,11 @@ export class MenuItemService {
         }
 
         // Calculate total cost from recipes in product base units.
-        // Unit priority: recipe.unit -> recipe.unitId abbreviation -> product.unit.
+        // Unit priority: shared resolveRecipeUnit (same as sales deduction).
         // Prefer the real weighted average, but allow a catalog reference cost
         // when no purchase/production has established an average yet.
         const recipeCosts = await Promise.all(menuItem.recipes.map(async (recipe) => {
-            const recipeUnit = recipe.unit || recipe.unitOfMeasure?.abbreviation || recipe.product.unit;
+            const recipeUnit = resolveRecipeUnit(recipe, recipe.product);
             const recipeQty = Number(recipe.quantity);
             const unitCost = await ProductionRecipeService.resolveProductUnitCost(
                 recipe.product.id,
@@ -270,8 +281,9 @@ export class MenuItemService {
         if (!name) throw new Error('El nombre del elemento de menú es requerido');
         await this.assertScopedRefs(companyId, { categoryId: data.categoryId, brandId: data.brandId, branchId: data.branchId });
         const type = data.type || 'PREPARED';
-        // PREPARED items require a sale recipe before going live; create inactive
-        // so POS cannot sell a kitchen plate with an empty BOM.
+        // Both PREPARED and DIRECT items require at least one recipe line before
+        // going live (a DIRECT item without recipe never deducts stock). The
+        // recipe is attached afterwards (replaceRecipes), so create inactive.
         return await prisma.menuItem.create({
             data: {
                 branchId: data.branchId,
@@ -282,7 +294,7 @@ export class MenuItemService {
                 price,
                 companyId,
                 type,
-                active: type === 'DIRECT'
+                active: false
             },
             include: {
                 category: {
@@ -324,12 +336,16 @@ export class MenuItemService {
 
             const nextType = data.type ?? item.type;
             const nextActive = data.active ?? item.active;
-            if (nextActive && nextType === 'PREPARED') {
+            // PREPARED: always enforced. DIRECT: enforced when the caller
+            // (re)activates the item or changes its type, so legacy DIRECT rows
+            // without recipe can still get unrelated edits (price, name...).
+            const assertsDirect = nextType === 'DIRECT' && (data.active !== undefined || data.type !== undefined);
+            if (nextActive && (nextType === 'PREPARED' || assertsDirect)) {
                 const recipeCount = await tx.recipe.count({ where: { menuItemId: id } });
                 if (recipeCount === 0) {
-                    throw new Error(
-                        'No se puede activar un plato preparado sin receta de venta. Agregue ingredientes o márquelo como venta directa.'
-                    );
+                    throw new Error(nextType === 'PREPARED'
+                        ? 'No se puede activar un plato preparado sin receta de venta. Agregue ingredientes antes de activarlo.'
+                        : 'No se puede activar un producto de venta directa sin receta. Agregue al menos un insumo para que la venta descuente inventario.');
                 }
             }
 
@@ -396,10 +412,7 @@ export class MenuItemService {
         quantity: number;
         unit?: string;
     }) {
-        const quantity = Number(data.quantity);
-        if (!Number.isFinite(quantity) || quantity <= 0) {
-            throw new Error('La cantidad de la receta debe ser mayor a 0');
-        }
+        const quantity = normalizeRecipeQuantity(data.quantity);
         // Verify menu item belongs to company
         await this.getById(menuItemId, companyId);
         // Verify the product also belongs to the company (avoid cross-tenant recipe links)
@@ -458,10 +471,9 @@ export class MenuItemService {
             include: { product: { select: { id: true, unit: true } } }
         });
         if (!existing) throw new Error('Receta no encontrada para esta empresa');
-        const quantity = data.quantity === undefined ? Number(existing.quantity) : Number(data.quantity);
-        if (!Number.isFinite(quantity) || quantity <= 0) {
-            throw new Error('La cantidad de la receta debe ser mayor a 0');
-        }
+        const quantity = normalizeRecipeQuantity(
+            data.quantity === undefined ? Number(existing.quantity) : data.quantity
+        );
         const unit = String(data.unit ?? existing.unit ?? existing.product.unit).trim();
         if (!unit) throw new Error('La unidad de la receta es requerida');
         await UnitConversionService.convert(existing.product.id, companyId, quantity, unit);
@@ -548,8 +560,10 @@ export class MenuItemService {
 
             const nextActive = menuItemData?.active ?? menuItem.active;
             const nextType = menuItemData?.type ?? menuItem.type;
-            if (nextActive && nextType === 'PREPARED' && recipes.length === 0) {
-                throw new Error(`No se puede dejar "${menuItem.name}" activo sin ingredientes`);
+            if (nextActive && recipes.length === 0) {
+                throw new Error(nextType === 'PREPARED'
+                    ? `No se puede dejar "${menuItem.name}" activo sin ingredientes`
+                    : MISSING_RECIPE_MESSAGE(menuItem.name));
             }
 
             const products = await tx.product.findMany({
@@ -569,10 +583,7 @@ export class MenuItemService {
                 unitId: number | null;
             }>;
             for (const line of recipes) {
-                const quantity = Number(line.quantity);
-                if (!Number.isFinite(quantity) || quantity <= 0) {
-                    throw new Error('La cantidad de cada ingrediente debe ser mayor a 0');
-                }
+                const quantity = normalizeRecipeQuantity(line.quantity, 'La cantidad de cada ingrediente');
                 const product = productById.get(Number(line.productId))!;
                 const unit = String(line.unit ?? product.unit).trim();
                 if (!unit) throw new Error('La unidad de cada ingrediente es requerida');
@@ -631,7 +642,7 @@ export class MenuItemService {
             });
             if (!existing) throw new Error('Receta no encontrada para esta empresa');
 
-            if (existing.menuItem.active && existing.menuItem.type === 'PREPARED') {
+            if (existing.menuItem.active) {
                 const remaining = await tx.recipe.count({
                     where: { menuItemId: existing.menuItemId, id: { not: recipeId } }
                 });
@@ -672,6 +683,13 @@ export class MenuItemService {
 
     // Image management
     static async addImage(menuItemId: number, companyId: number, imageUrl: string) {
+        // Only inline raster images, local uploads or https URLs. Rejects
+        // javascript:/data:text/html/svg payloads rendered by POS/menu cards.
+        if (typeof imageUrl !== 'string'
+            || !/^(data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=\s]+|\/uploads\/[A-Za-z0-9._/-]+|https:\/\/[^\s"'()<>]+)$/.test(imageUrl)) {
+            throw new Error('Imagen inválida: use PNG, JPEG, WEBP o GIF');
+        }
+
         // Verify menu item belongs to company
         await this.getById(menuItemId, companyId);
 

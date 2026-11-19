@@ -291,3 +291,15 @@
     .sidebar-overlay { animation: none; }
     .sidebar-panel { transition: none; }
 }
+
+/* Tablets (769-1024px) also show the fixed bottom nav (z-index 1050, Layout.css):
+   keep drawers and their footer actions (e.g. "Agregar productos") above it. */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .sidebar-overlay {
+        z-index: 1500;
+    }
+
+    .sidebar-panel {
+        z-index: 1501;
+    }
+}

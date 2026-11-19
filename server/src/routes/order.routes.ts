@@ -30,6 +30,10 @@ router.post('/', requirePermission('orders.create', 'SUPERADMIN', 'ADMIN', 'MESE
 router.post('/:id/items', requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), validate(s.addOrderItem), OrderController.addItem);
 router.delete('/items/:itemId', requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), OrderController.removeItem);
 
+// Voiding a line already sent to kitchen posts waste and reprices the account:
+// a supervisor action (configurable through the orders.items.void grant).
+router.post('/:id/items/:itemId/void', requirePermission('orders.items.void', 'SUPERADMIN', 'ADMIN'), validate(s.voidOrderItem), OrderController.voidItem);
+
 router.post('/:id/send-to-kitchen', requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO'), validate(s.idParam), OrderController.sendToKitchen);
 router.patch('/:id/status', requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), validate(s.updateOrderStatus), OrderController.updateStatus);
 router.patch('/:id/pricing', requirePermission('orders.edit', 'SUPERADMIN', 'ADMIN', 'MESERO', 'CAJERO'), validate(s.idParam), OrderController.updatePricing);

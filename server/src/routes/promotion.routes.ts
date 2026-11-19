@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { PromotionService } from '../services/promotion.service';
+import { PromotionService, serializePromotion } from '../services/promotion.service';
+import { SettingService } from '../services/setting.service';
 import { authMiddleware, requireRole } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
@@ -22,12 +23,21 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.user!.companyId;
         const activeOnly = req.query.activeOnly !== 'false';
+        // POS: only promotions valid for the order's branch (and, with
+        // availableNow, inside their happy-hour window right now).
+        const rawBranchId = req.query.branchId;
+        const branchId = rawBranchId === undefined || rawBranchId === '' ? undefined : Number(rawBranchId);
+        if (branchId !== undefined && (!Number.isInteger(branchId) || branchId <= 0)) {
+            return res.status(400).json({ success: false, message: 'Sucursal inválida' });
+        }
+        const availableNow = req.query.availableNow === 'true';
+        const timeZone = await SettingService.getTimezone(companyId);
 
-        const promotions = await PromotionService.getAll(companyId, activeOnly);
+        const promotions = await PromotionService.getAll(companyId, activeOnly, { branchId, availableNow, timeZone });
 
         res.json({
             success: true,
-            data: promotions
+            data: promotions.map((promotion) => serializePromotion(promotion, timeZone))
         });
     } catch (error: unknown) {
         next({ statusCode: 500, message: getErrorMessage(error) });
@@ -45,7 +55,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
  */
 router.post('/validate', validate(s.validatePromotion), async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { code, orderTotal } = req.body;
+        const { code, orderTotal, items, branchId } = req.body;
 
         if (!code || orderTotal === undefined) {
             return res.status(400).json({
@@ -62,7 +72,10 @@ router.post('/validate', validate(s.validatePromotion), async (req: Request, res
         }
 
         const companyId = req.user!.companyId;
-        const result = await PromotionService.validateAndApply(code, parsedOrderTotal, companyId);
+        const result = await PromotionService.validateAndApply(code, parsedOrderTotal, companyId, {
+            branchId: branchId === undefined || branchId === null ? null : Number(branchId),
+            items: Array.isArray(items) ? items : undefined
+        });
 
         res.json({
             success: result.valid,
@@ -86,11 +99,12 @@ router.post('/', requireRole('ADMIN', 'SUPERADMIN'), validate(s.createPromotion)
     try {
         const companyId = req.user!.companyId;
         const promotion = await PromotionService.create(companyId, req.body);
+        const timeZone = await SettingService.getTimezone(companyId);
 
         res.status(201).json({
             success: true,
             message: 'Promoción creada exitosamente',
-            data: promotion
+            data: serializePromotion(promotion, timeZone)
         });
     } catch (error: unknown) {
         next({ statusCode: 400, message: getErrorMessage(error) });
@@ -111,11 +125,12 @@ router.put('/:id', requireRole('ADMIN', 'SUPERADMIN'), validate(s.updatePromotio
         const id = parseInt(req.params.id);
         const companyId = req.user!.companyId;
         const promotion = await PromotionService.update(id, companyId, req.body);
+        const timeZone = await SettingService.getTimezone(companyId);
 
         res.json({
             success: true,
             message: 'Promoción actualizada',
-            data: promotion
+            data: serializePromotion(promotion, timeZone)
         });
     } catch (error: unknown) {
         next({ statusCode: 400, message: getErrorMessage(error) });

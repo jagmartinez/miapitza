@@ -37,6 +37,22 @@ export function validateConfiguredFiscalTaxId(
     }
 }
 
+/**
+ * Keys a tenant ADMIN may write through PUT /settings. Anything else (typos,
+ * forged keys, unbounded growth) is rejected instead of silently persisted.
+ */
+export const WRITABLE_SETTING_KEYS: ReadonlySet<string> = new Set([
+    ...Object.keys(DEFAULT_COMPANY_SETTINGS),
+    'taxRate', 'companyName', 'tipRate', 'tipEnabled', 'cash_reconciliation_tolerance',
+    'nif', 'ruc', 'address', 'phone', 'email', 'logoUrl',
+    'invoicePrefix', 'invoiceFooter', 'invoiceTerms',
+    'fiscal_jurisdiction', 'credit_note_series', 'fiscal_tax_id_length', 'fiscal_tax_id_charset',
+    'enablePromotions', 'password_expiry_days', 'session_timeout_minutes',
+    // Read by OrderService (manual discount cap) and the client money formatter.
+    'maxManualDiscountPercent', 'currency_locale',
+]);
+const MAX_SETTING_VALUE_LENGTH = 5000;
+
 export class SettingService {
     private static readonly TIMEZONE_CACHE_TTL_MS = 60_000;
     private static readonly timezoneCache = new Map<number, { value: string; expiresAt: number }>();
@@ -98,6 +114,15 @@ export class SettingService {
             if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
                 throw new Error('La tasa de impuesto debe ser un número entre 0 y 100');
             }
+        }
+        if (name === 'maxManualDiscountPercent') {
+            const pct = Number(value);
+            if (value.trim() === '' || !Number.isFinite(pct) || pct < 0 || pct > 100) {
+                throw new Error('El descuento manual máximo debe ser un número entre 0 y 100');
+            }
+        }
+        if (name === 'currency_locale' && !/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(value.trim())) {
+            throw new Error('La configuración regional de moneda no es válida');
         }
         if (name === 'tipRate') {
             const rate = parseFloat(value);
@@ -232,6 +257,12 @@ export class SettingService {
 
     static async update(companyId: number, data: Record<string, string>) {
         const prefix = `${companyId}_`;
+        if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Configuración inválida');
+        for (const [name, value] of Object.entries(data)) {
+            if (!WRITABLE_SETTING_KEYS.has(name)) throw new Error(`Configuración no permitida: ${name.slice(0, 64)}`);
+            if (typeof value !== 'string') throw new Error(`El valor de ${name} debe ser texto`);
+            if (value.length > MAX_SETTING_VALUE_LENGTH) throw new Error(`El valor de ${name} es demasiado largo`);
+        }
         const normalized = { ...data };
 
         // Persist tax under the canonical `tax_rate` key only. Writing `taxRate`

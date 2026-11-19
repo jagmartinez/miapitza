@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { notifyError } from '../services/notify';
 import { productionOrdersAPI, productsAPI, warehousesAPI, branchesAPI } from '../services/api';
 import api from '../services/api';
 import Button from '../components/Button';
@@ -22,6 +23,7 @@ import type {
 } from '../types';
 import './Inventory.css';
 import './ProductionOrders.css';
+import { getApiErrorMessage } from '../utils/apiError';
 
 type SelectOption = { value: string; label: string };
 
@@ -114,7 +116,7 @@ export default function ProductionOrders() {
             setLoadError(null);
         } catch (error) {
             console.error('Error loading production orders:', error);
-            setLoadError('No se pudieron cargar las órdenes de producción. No se mostrará un estado vacío hasta confirmar la respuesta del servidor.');
+            setLoadError(getApiErrorMessage(error, 'No se pudieron cargar las órdenes de producción (no se mostrará un estado vacío hasta confirmar la respuesta del servidor)'));
         } finally {
             setLoading(false);
         }
@@ -125,7 +127,7 @@ export default function ProductionOrders() {
             const res = await api.get('/settings');
             setSettings(res.data.data || {});
         } catch (error) {
-            console.error('Error loading settings:', error);
+            notifyError(error, 'No se pudo cargar la configuración; los montos usan el formato predeterminado', { type: 'warning' });
         }
     }, []);
 
@@ -143,7 +145,7 @@ export default function ProductionOrders() {
                 setBranches(branchRes.data.data);
             }
         } catch (error) {
-            console.error('Error loading form dependencies:', error);
+            notifyError(error, 'No se pudieron cargar productos y bodegas para el formulario');
         }
     }, [isSuperAdmin]);
 

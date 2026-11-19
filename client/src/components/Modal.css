@@ -363,3 +363,12 @@
         animation: none !important;
     }
 }
+
+/* Tablets (769-1024px) also show the fixed bottom nav (z-index 1050, Layout.css):
+   keep dialogs and their footer actions above it, as on phones. */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .modal-overlay,
+    .modal-overlay-sidebar {
+        z-index: 1500;
+    }
+}

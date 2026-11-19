@@ -53,6 +53,18 @@ export const addOrderItem: ValidationSchema = {
     },
 };
 
+export const voidOrderItem: ValidationSchema = {
+    params: {
+        id: { type: 'number', required: true, min: 1 },
+        itemId: { type: 'number', required: true, min: 1 },
+    },
+    body: {
+        quantity: { type: 'number', min: 1, integer: true },
+        reason: { type: 'string', required: true, min: 3, max: 500 },
+        warehouseId: { type: 'number', min: 1, integer: true },
+    },
+};
+
 export const updateOrderStatus: ValidationSchema = {
     params: { id: { type: 'number', required: true, min: 1 } },
     body: {
@@ -526,6 +538,8 @@ export const updateBranch: ValidationSchema = {
         address: { type: 'string', max: 500 },
         phone: { type: 'string', max: 50 },
         status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'] },
+        // null clears the default sale warehouse.
+        defaultSaleWarehouseId: { type: 'number', min: 1, integer: true },
     },
 };
 
@@ -577,6 +591,8 @@ export const createModifier: ValidationSchema = {
         productId: { type: 'number', min: 1 },
         consumeQuantity: { type: 'number', min: 0 },
         unitId: { type: 'number', min: 1 },
+        // ADD consumes productId; REMOVE ("sin X") reduces that recipe line.
+        inventoryEffect: { type: 'string', enum: ['ADD', 'REMOVE'] },
     },
 };
 
@@ -660,13 +676,33 @@ export const createPromotion: ValidationSchema = {
     body: {
         code: { type: 'string', required: true, min: 1, max: 50 },
         name: { type: 'string', required: true, min: 1, max: 200 },
-        type: { type: 'string', required: true, enum: ['PERCENTAGE', 'FIXED_AMOUNT'] },
-        value: { type: 'number', required: true, min: 0 },
+        type: { type: 'string', required: true, enum: ['PERCENTAGE', 'FIXED_AMOUNT', 'BUY_X_GET_Y', 'COMBO'] },
+        // "N x M" (BUY_X_GET_Y) has no monetary value; the service stores 0.
+        value: { type: 'number', min: 0 },
         minOrderAmount: { type: 'number', min: 0 },
         maxDiscount: { type: 'number', min: 0 },
         validFrom: { type: 'date' },
         validTo: { type: 'date' },
         usageLimit: { type: 'number', min: 1 },
+        scope: { type: 'string', enum: ['ORDER', 'ITEMS'] },
+        weekdays: { type: 'array', max: 7, items: { type: 'number', integer: true, min: 1, max: 7 } },
+        dailyStartTime: { type: 'string', pattern: /^([01]\d|2[0-3]):[0-5]\d$/ },
+        dailyEndTime: { type: 'string', pattern: /^([01]\d|2[0-3]):[0-5]\d$/ },
+        allBranches: { type: 'boolean' },
+        branchIds: { type: 'array', max: 500, items: { type: 'number', integer: true, min: 1 } },
+        targetMenuItemIds: { type: 'array', max: 1000, items: { type: 'number', integer: true, min: 1 } },
+        targetCategoryIds: { type: 'array', max: 500, items: { type: 'number', integer: true, min: 1 } },
+        comboItems: {
+            type: 'array', max: 50, items: {
+                type: 'object',
+                properties: {
+                    menuItemId: { type: 'number', required: true, integer: true, min: 1 },
+                    quantity: { type: 'number', integer: true, min: 1, max: 99 }
+                }
+            }
+        },
+        buyQuantity: { type: 'number', integer: true, min: 2, max: 100 },
+        payQuantity: { type: 'number', integer: true, min: 1, max: 99 },
     },
 };
 
@@ -699,7 +735,7 @@ export const updatePromotion: ValidationSchema = {
     body: {
         code: { type: 'string', min: 1, max: 50 },
         name: { type: 'string', min: 1, max: 200 },
-        type: { type: 'string', enum: ['PERCENTAGE', 'FIXED_AMOUNT'] },
+        type: { type: 'string', enum: ['PERCENTAGE', 'FIXED_AMOUNT', 'BUY_X_GET_Y', 'COMBO'] },
         value: { type: 'number', min: 0 },
         minOrderAmount: { type: 'number', min: 0 },
         maxDiscount: { type: 'number', min: 0 },
@@ -707,6 +743,25 @@ export const updatePromotion: ValidationSchema = {
         validTo: { type: 'date' },
         usageLimit: { type: 'number', min: 1 },
         active: { type: 'boolean' },
+        scope: { type: 'string', enum: ['ORDER', 'ITEMS'] },
+        weekdays: { type: 'array', max: 7, items: { type: 'number', integer: true, min: 1, max: 7 } },
+        dailyStartTime: { type: 'string', pattern: /^([01]\d|2[0-3]):[0-5]\d$/ },
+        dailyEndTime: { type: 'string', pattern: /^([01]\d|2[0-3]):[0-5]\d$/ },
+        allBranches: { type: 'boolean' },
+        branchIds: { type: 'array', max: 500, items: { type: 'number', integer: true, min: 1 } },
+        targetMenuItemIds: { type: 'array', max: 1000, items: { type: 'number', integer: true, min: 1 } },
+        targetCategoryIds: { type: 'array', max: 500, items: { type: 'number', integer: true, min: 1 } },
+        comboItems: {
+            type: 'array', max: 50, items: {
+                type: 'object',
+                properties: {
+                    menuItemId: { type: 'number', required: true, integer: true, min: 1 },
+                    quantity: { type: 'number', integer: true, min: 1, max: 99 }
+                }
+            }
+        },
+        buyQuantity: { type: 'number', integer: true, min: 2, max: 100 },
+        payQuantity: { type: 'number', integer: true, min: 1, max: 99 },
     },
 };
 
@@ -714,6 +769,18 @@ export const validatePromotion: ValidationSchema = {
     body: {
         code: { type: 'string', required: true },
         orderTotal: { type: 'number', required: true, min: 0 },
+        branchId: { type: 'number', integer: true, min: 1 },
+        items: {
+            type: 'array', max: 500, items: {
+                type: 'object',
+                properties: {
+                    menuItemId: { type: 'number', required: true, integer: true, min: 1 },
+                    quantity: { type: 'number', required: true, integer: true, min: 1 },
+                    unitPrice: { type: 'number', required: true, min: 0 },
+                    modifierUnitPrice: { type: 'number', min: 0 }
+                }
+            }
+        },
     },
 };
 

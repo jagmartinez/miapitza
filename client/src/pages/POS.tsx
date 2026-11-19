@@ -12,8 +12,11 @@ import {
     canSendOrderToKitchen,
     canCancelOrder,
     canCreatePayment,
+    canVoidKitchenLine,
     hasPermission
 } from '../utils/authz';
+import KitchenLineVoidModal from '../components/KitchenLineVoidModal';
+import { orderLineVoidBlocker, voidableOrderLines } from '../utils/orderLineVoid';
 import { getOrderStatusLabel } from '../utils/orderStatus';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
@@ -32,11 +35,17 @@ import { useCurrency } from '../hooks/useCurrency';
 import { hasUsableCashShift } from '../utils/paymentAccess';
 import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
 import { DeliveryAttemptGate } from '../utils/deliveryAttempt';
+import { preferredSaleWarehouseId } from '../utils/saleWarehouse';
+import { indexAvailability, stockBadgeFor, type MenuAvailabilityResponse, type MenuItemAvailability } from '../utils/stockAvailability';
+import { getIdempotentAttempt, isAmbiguousMutationFailure, type IdempotentAttempt } from '../utils/idempotency';
 import {
     findTableAccountForTable,
     isEligibleForPosOrderBucket,
 } from '../utils/posOrderBucket';
 import './POS.css';
+import { getApiErrorMessage } from '../utils/apiError';
+import { promotionPreviewItems } from '../utils/promotionRules';
+import { notifyError } from '../services/notify';
 
 interface OfflineResponse {
     _offline?: boolean;
@@ -142,6 +151,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
     const canManageWarehouse = hasAnyRole(user, ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF']);
     const canSendToKitchen = canSendOrderToKitchen(user);
     const canCancelActive = canCancelOrder(user);
+    const canVoidLines = canVoidKitchenLine(user);
+    const [showLineVoid, setShowLineVoid] = useState(false);
     const canPay = canCreatePayment(user);
     const canIssueInvoice = hasPermission(user, 'invoices.issue', ['SUPERADMIN', 'ADMIN', 'CAJERO']);
     const [tables, setTables] = useState<Table[]>([]);
@@ -192,6 +203,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         label: `${warehouse.name} (${warehouse.code})`,
     })), [branchWarehouses]);
     const [pendingCancelReason, setPendingCancelReason] = useState<string | undefined>();
+    // Informational stock badges per menu item (never blocks selling).
+    const [stockAvailability, setStockAvailability] = useState<Map<number, MenuItemAvailability>>(() => new Map());
     const waiterAccentColor = getUserAccentColor(activeTableOrder?.user || user);
 
     // Scope the local menu cache by company + branch so different tenants/branches
@@ -224,7 +237,23 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         setActiveTableOrder(null);
     }, [clearDraftCart]);
 
+    const loadDataRequestRef = useRef(0);
+    // Per user action (create order / add cart batch): kept across retries of the
+    // same payload after an ambiguous failure so the server can deduplicate.
+    const persistCartAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const tablesRefreshRequestRef = useRef(0);
+    const tipInitializedRef = useRef(false);
+    const settingsRef = useRef<POSSettings>({});
+    useEffect(() => {
+        settingsRef.current = settings;
+    }, [settings]);
+    const currentOrderIdRef = useRef<number | null>(null);
+    useEffect(() => {
+        currentOrderIdRef.current = currentOrderId;
+    }, [currentOrderId]);
+
     const loadData = useCallback(async (notifyOnError = true): Promise<boolean> => {
+        const requestId = ++loadDataRequestRef.current;
         setLoadError(null);
         try {
             const effectiveBranchId = selectedTable?.branchId ?? user?.branchId;
@@ -245,6 +274,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 categoriesAPI.getAll(),
                 menuBrandsAPI.getAll()
             ]);
+            // A newer loadData superseded this one: never let a late response overwrite it.
+            if (requestId !== loadDataRequestRef.current) return true;
             setTables(tablesRes.data.data);
             setSelectedTable(prevTable =>
                 prevTable
@@ -253,21 +284,60 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             );
             setMenuItems(menuRes.data.data);
             setSettings(settingsRes.data.data);
-            setTipApplied(settingsRes.data.data.tipEnabled === 'true');
+            // The tip toggle is the cashier's choice: seed it from settings only once and
+            // never overwrite it on later refreshes (only force it off if tips get disabled).
+            const tipEnabledSetting = settingsRes.data.data.tipEnabled === 'true';
+            if (!tipInitializedRef.current) {
+                tipInitializedRef.current = true;
+                setTipApplied(tipEnabledSetting);
+            } else if (!tipEnabledSetting) {
+                setTipApplied(false);
+            }
             setCategories(categoriesRes.data.data);
             setBrands(brandsRes.data.data || []);
             return true;
-        } catch {
-            const message = 'No se pudieron cargar los datos del POS (mesas, menú o configuración). Revisa tu conexión e inténtalo de nuevo.';
+        } catch (error) {
+            if (requestId !== loadDataRequestRef.current) return true;
+            const message = getApiErrorMessage(error, 'No se pudieron cargar los datos del POS (mesas, menú o configuración)');
             setLoadError(message);
             if (notifyOnError) {
                 showError(message);
             }
             return false;
         } finally {
-            setLoading(false);
+            if (requestId === loadDataRequestRef.current) setLoading(false);
         }
     }, [menuCacheKey, selectedTable?.branchId, showError, user?.branchId]);
+
+    // Lightweight refresh for websocket events: only tables (and the active order's
+    // server snapshot when the event targets it). Menu/settings/catalogs stay as loaded.
+    const refreshFromRealtimeEvent = useCallback(async (eventOrderId?: number) => {
+        const requestId = ++tablesRefreshRequestRef.current;
+        try {
+            const tablesRes = await tablesAPI.getAll();
+            if (requestId !== tablesRefreshRequestRef.current) return;
+            setTables(tablesRes.data.data);
+            setSelectedTable(prevTable =>
+                prevTable
+                    ? tablesRes.data.data.find((table: Table) => table.id === prevTable.id) || prevTable
+                    : prevTable
+            );
+        } catch (error) {
+            console.error('POS realtime table refresh failed:', error);
+            notifyError(error, 'No se pudo actualizar el estado de las mesas en tiempo real', { type: 'warning' });
+        }
+
+        const activeOrderId = currentOrderIdRef.current;
+        if (!eventOrderId || !activeOrderId || eventOrderId !== activeOrderId || !offlineManager.getStatus()) return;
+        try {
+            const response = await ordersAPI.getById(activeOrderId);
+            const refreshedOrder = response.data.data as Order;
+            setActiveTableOrder((current) => (current?.id === refreshedOrder.id ? refreshedOrder : current));
+        } catch (error) {
+            console.error('POS realtime active order refresh failed:', error);
+            notifyError(error, 'No se pudo actualizar la orden activa en tiempo real', { type: 'warning' });
+        }
+    }, []);
 
     // Check if user has an active shift
     const checkShiftStatus = useCallback(async () => {
@@ -280,10 +350,10 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             if (!status.hasActiveShift || status.requiresClose) {
                 setShowShiftWarning(true);
             }
-        } catch {
-            warning('No se pudo verificar el estado del turno de caja. Los cobros podrían no estar disponibles.');
+        } catch (error) {
+            notifyError(error, 'No se pudo verificar el estado del turno de caja (los cobros podrían no estar disponibles)', { type: 'warning' });
         }
-    }, [warning]);
+    }, []);
 
     // Proactively detect whether the active branch has at least one warehouse.
     // Mirrors the backend payment guard so the cashier is warned BEFORE trying to
@@ -316,6 +386,28 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         checkBranchWarehouse();
     }, [checkBranchWarehouse]);
 
+    // Stock availability of the branch sale warehouse: one batched request,
+    // refreshed periodically. Failures only hide the badges.
+    const availabilityBranchId = selectedTable?.branchId ?? user?.branchId;
+    const loadStockAvailability = useCallback(async () => {
+        if (!availabilityBranchId) {
+            setStockAvailability(new Map());
+            return;
+        }
+        try {
+            const res = await menuAPI.getAvailability(availabilityBranchId);
+            setStockAvailability(indexAvailability(res.data?.data as MenuAvailabilityResponse));
+        } catch {
+            setStockAvailability(new Map());
+        }
+    }, [availabilityBranchId]);
+
+    useEffect(() => {
+        loadStockAvailability();
+        const timer = setInterval(loadStockAvailability, 60_000);
+        return () => clearInterval(timer);
+    }, [loadStockAvailability]);
+
     // Show table modal on first load only in the standalone POS. The map-owned
     // workspace receives a table explicitly and must never ask again.
     useEffect(() => {
@@ -337,7 +429,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 message.type === WS_EVENTS.ORDER_IN_PREPARATION ||
                 message.type === WS_EVENTS.ORDER_UPDATE
             ) {
-                loadData();
+                const eventOrderId = Number(message.payload?.orderId);
+                void refreshFromRealtimeEvent(Number.isFinite(eventOrderId) && eventOrderId > 0 ? eventOrderId : undefined);
             }
 
             const activeTable = selectedTableRef.current;
@@ -358,7 +451,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         });
 
         return unsubscribe;
-    }, [info, loadData, success]);
+    }, [info, refreshFromRealtimeEvent, success]);
 
     // Cache products in localStorage
     useEffect(() => {
@@ -425,6 +518,16 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
 
             setCurrentOrderId(tableOrder?.id ?? null);
             setActiveTableOrder(tableOrder);
+            // Seed the tip toggle per table: a priced/pre-invoiced order is authoritative,
+            // otherwise fall back to the configured default.
+            const tipSettingEnabled = settingsRef.current.tipEnabled === 'true';
+            const orderTipIsAuthoritative = Boolean(tableOrder && (
+                Number(tableOrder.tipAmount || 0) > 0 || tableOrder.preInvoicedAt || tableOrder.invoiceNumber
+            ));
+            if (orderTipIsAuthoritative) tipInitializedRef.current = true;
+            setTipApplied(orderTipIsAuthoritative
+                ? Number(tableOrder?.tipAmount || 0) > 0
+                : tipSettingEnabled);
             setCustomerName(tableOrder?.customerName || '');
             setFiscalCustomer(tableOrder ? {
                 taxId: tableOrder.customerTaxId || '',
@@ -516,8 +619,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             const res = await menuAPI.getById(item.id);
             const groups = (res.data.data?.modifierGroups || []) as ModifierGroupWithModifiers[];
             setModifierGroups(groups);
-        } catch {
-            showError('No se pudieron cargar los modificadores de este producto.');
+        } catch (error) {
+            showError(getApiErrorMessage(error, 'No se pudieron cargar los modificadores de este producto'));
             setModifierItem(null);
         } finally {
             setLoadingModifiers(false);
@@ -617,22 +720,17 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         return refreshedOrder;
     }, [clearDraftCart]);
 
-    const persistCartToOrder = useCallback(async () => {
-        if (cart.length === 0) {
-            return {
-                orderId: currentOrderId,
-                offlineQueued: false,
-                dependencyKey: null,
-            };
-        }
-
+    const persistCartWithKey = useCallback(async (
+        actionKey: string,
+        orderPayload: ReturnType<typeof buildOrderPayload>,
+    ) => {
         if (currentOrderId) {
             let offlineQueued = false;
             const operationGroupKey = `order-${currentOrderId}-kitchen-${typeof crypto !== 'undefined' && crypto.randomUUID
                 ? crypto.randomUUID()
                 : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`}`;
 
-            for (const item of cart) {
+            for (const [index, item] of cart.entries()) {
                 const response = await ordersAPI.addItem(currentOrderId, {
                     menuItemId: item.menuItemId,
                     quantity: item.quantity,
@@ -641,7 +739,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 }, {
                     operationType: 'ADD_ORDER_ITEM',
                     entityTempId: operationGroupKey,
-                });
+                }, `${actionKey}:item-${index}`);
 
                 if ((response.data as OfflineResponse)._offline) {
                     offlineQueued = true;
@@ -662,10 +760,10 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             };
         }
 
-        const createResponse = await ordersAPI.create(buildOrderPayload(), {
+        const createResponse = await ordersAPI.create(orderPayload, {
             operationType: 'CREATE_ORDER',
             entityTempId: `order-${Date.now()}`
-        });
+        }, actionKey);
 
         if ((createResponse.data as OfflineResponse)._offline) {
             return {
@@ -685,7 +783,32 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             offlineQueued: false,
             dependencyKey: null,
         };
-    }, [activeTableOrder?.customerName, buildOrderPayload, cart, clearDraftCart, currentOrderId, syncOrderContext]);
+    }, [activeTableOrder?.customerName, cart, clearDraftCart, currentOrderId, syncOrderContext]);
+
+    const persistCartToOrder = useCallback(async () => {
+        if (cart.length === 0) {
+            return {
+                orderId: currentOrderId,
+                offlineQueued: false,
+                dependencyKey: null,
+            };
+        }
+
+        const orderPayload = buildOrderPayload();
+        const attempt = getIdempotentAttempt(
+            persistCartAttemptRef.current,
+            JSON.stringify({ orderId: currentOrderId ?? null, payload: orderPayload }),
+        );
+        persistCartAttemptRef.current = attempt;
+        try {
+            const result = await persistCartWithKey(attempt.key, orderPayload);
+            persistCartAttemptRef.current = null;
+            return result;
+        } catch (error) {
+            if (!isAmbiguousMutationFailure(error)) persistCartAttemptRef.current = null;
+            throw error;
+        }
+    }, [buildOrderPayload, cart.length, currentOrderId, persistCartWithKey]);
 
     const handleSendToKitchen = async () => {
         if (!canSendToKitchen) {
@@ -775,18 +898,17 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 await loadData();
             }
         } catch (error: unknown) {
-            const axiosErr = error as { response?: { data?: { message?: string } } };
-            const message = axiosErr.response?.data?.message || 'No se pudo enviar la nueva tanda a cocina';
             if (persistedOrderId) {
-                warning(`${message}. Los productos sí quedaron guardados en la orden.`);
+                warning(getApiErrorMessage(error, 'No se pudo enviar la nueva tanda a cocina (los productos sí quedaron guardados en la orden)'));
                 try {
                     await syncOrderContext(persistedOrderId);
                     await loadData();
                 } catch (refreshError) {
                     console.error('Order persisted but could not be refreshed after kitchen failure:', refreshError);
+                    notifyError(refreshError, 'Los productos quedaron guardados, pero la orden no pudo actualizarse (recarga la página)', { type: 'warning' });
                 }
             } else {
-                showError(message);
+                showError(getApiErrorMessage(error, 'No se pudo enviar la nueva tanda a cocina'));
             }
         } finally {
             setSendingToKitchen(false);
@@ -865,8 +987,8 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 ? 'Datos fiscales guardados en la orden.'
                 : 'Datos fiscales guardados para este pedido.');
         } catch (error: unknown) {
-            const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message
-                || (error instanceof Error ? error.message : 'No se pudieron guardar los datos fiscales.');
+            // Shown inside the fiscal dialog, so the server reason alone is clearer than a prefixed lead.
+            const message = getApiErrorMessage(error);
             setFiscalCustomerError(message);
             showError(message);
         } finally {
@@ -907,8 +1029,11 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 throw new Error('No se pudo confirmar la orden antes de facturarla.');
             }
 
-            // Persist pricing snapshot on the server before opening payment modal.
-            if (cart.length > 0 || requestedDiscountPercent > 0 || requestedDiscountOverride !== null || requestedPromotionCode) {
+            // Persist pricing snapshot on the server before opening payment modal. A tip toggle
+            // alone must also be persisted, otherwise the prefactura freezes a stale tip.
+            const isPreInvoiced = Boolean(paymentSnapshot.preInvoicedAt || paymentSnapshot.invoiceNumber);
+            const tipStateChanged = !isPreInvoiced && (Number(paymentSnapshot.tipAmount || 0) > 0) !== tipApplied;
+            if (cart.length > 0 || requestedDiscountPercent > 0 || requestedDiscountOverride !== null || requestedPromotionCode || tipStateChanged) {
                 const refreshedSubtotal = (paymentSnapshot.items || []).reduce(
                     (sum, item) => sum + Number(item.subtotal || 0),
                     0
@@ -971,8 +1096,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 warning('La prefactura fue emitida y la mesa sigue ocupada hasta el pago total, pero el mapa operativo no pudo actualizarse. Recarga la página.');
             }
         } catch (error: unknown) {
-            const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
-            showError(message || (error instanceof Error ? error.message : 'No se pudo preparar la orden para cobrarla.'));
+            showError(getApiErrorMessage(error, 'No se pudo preparar la orden para cobrarla'));
             return;
         } finally {
             setProcessingPayment(false);
@@ -1042,7 +1166,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
         const requiresWasteWarehouse = activeTableOrder.status !== 'OPEN';
         if (requiresWasteWarehouse) {
             setPendingCancelReason(reason);
-            setOperationalWarehouseId(branchWarehouses.length === 1 ? branchWarehouses[0].id : null);
+            setOperationalWarehouseId(preferredSaleWarehouseId(branchWarehouses));
             setWarehouseAction('CANCEL');
             return;
         }
@@ -1053,8 +1177,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             clearTableContext();
             success(`Orden #${activeTableOrder.id} cancelada correctamente.`);
         } catch (error: unknown) {
-            const axiosErr = error as { response?: { data?: { message?: string } } };
-            showError(axiosErr.response?.data?.message || 'No se pudo cancelar la orden.');
+            showError(getApiErrorMessage(error, 'No se pudo cancelar la orden'));
         }
     }, [activeTableOrder, branchWarehouses, canCancelActive, clearTableContext, confirm, loadData, showError, success, warning]);
 
@@ -1091,9 +1214,19 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
             fallbackMessage: 'No se pudo cancelar la orden ni registrar la merma.',
         });
     }, [activeTableOrder, clearTableContext, loadData, operationalWarehouseId, pendingCancelReason, showError, success, warehouseAction, warning]);
+    // Branch of the order being priced: the POS only offers/applies promotions valid there.
+    const promotionBranchId = activeTableOrder?.branchId ?? selectedTable?.branchId ?? user?.branchId ?? null;
     const handleApplyPromotion = async (code: string) => {
         try {
-            const res = await promotionsAPI.validate(code, subtotal);
+            // Preview against the open order's lines plus the unsent cart so
+            // per-item, combo and happy-hour rules can be evaluated. The server
+            // recomputes the discount from the persisted lines when pricing.
+            const previewItems = promotionPreviewItems(cart, activeTableOrder?.items ?? []);
+            const previewTotal = previewItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+            const res = await promotionsAPI.validate(code, Math.round(Math.max(subtotal, previewTotal) * 100) / 100, {
+                branchId: promotionBranchId,
+                items: previewItems,
+            });
             const result = res.data.data;
             if (res.data.success && result) {
                 const discountAmount = Number(result.discount || 0);
@@ -1108,8 +1241,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 showError(result?.message || 'Promoción inválida');
             }
         } catch (error: unknown) {
-            const axiosErr = error as { response?: { data?: { message?: string } } };
-            showError(axiosErr.response?.data?.message || 'Error al validar promoción');
+            showError(getApiErrorMessage(error, 'Error al validar promoción'));
         }
     };
 
@@ -1335,6 +1467,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                 onContextMenu={handleItemRightClick}
                                 onQuantityEdit={handleQuantityEdit}
                                 formatMoney={formatMoney}
+                                stockBadge={stockBadgeFor(stockAvailability.get(item.id))}
                             />
                         ))}
                         {filteredMenuItems.length === 0 && (
@@ -1415,6 +1548,16 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                                                 Cancelar
                                             </button>
                                         )}
+                                        {canVoidLines && !orderLineVoidBlocker(activeTableOrder) && voidableOrderLines(activeTableOrder).length > 0 && (
+                                            <button
+                                                type="button"
+                                                className="header-action-btn secondary"
+                                                onClick={() => setShowLineVoid(true)}
+                                                title="Anular una línea ya enviada a cocina y registrar su merma"
+                                            >
+                                                Anular línea
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                                 <div style={{ fontWeight: 700 }}>
@@ -1450,6 +1593,7 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                         onTipToggle={settings.tipEnabled === 'true' ? (enabled) => setTipApplied(enabled) : undefined}
                         enablePromotions={settings.enablePromotions === 'true'}
                         onApplyPromotion={handleApplyPromotion}
+                        promotionBranchId={promotionBranchId}
                         formatMoney={formatMoney}
                     />
                     {showMobileCart && showMobileActions && (
@@ -1511,6 +1655,19 @@ export default function POS({ initialTableId, embedded = false, onExit, onOperat
                 </button>
             </div>
 
+            <KitchenLineVoidModal
+                isOpen={showLineVoid}
+                order={activeTableOrder}
+                onClose={() => setShowLineVoid(false)}
+                onVoided={(updated) => {
+                    if (updated) {
+                        setActiveTableOrder((current) => (current?.id === updated.id ? { ...current, ...updated } : current));
+                        void syncOrderContext(updated.id).catch((error) => {
+                            notifyError(error, 'La línea fue anulada, pero la orden no pudo actualizarse (recarga la página)', { type: 'warning' });
+                        });
+                    }
+                }}
+            />
             {/* Modals */}
             {showTableModal && (
                 <TableSelectionModal

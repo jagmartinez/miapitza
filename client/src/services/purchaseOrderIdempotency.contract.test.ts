@@ -6,12 +6,12 @@ const listSource = readFileSync(new URL('../pages/PurchaseOrders.tsx', import.me
 const formSource = readFileSync(new URL('../pages/PurchaseOrderForm.tsx', import.meta.url), 'utf8');
 
 describe('purchase mutation idempotency contract', () => {
-    it('sends a caller-stable key for receipt, reversal and payment writes', () => {
+    it('sends a caller-stable key for receipt, close-remaining, reversal and payment writes', () => {
         const purchaseApi = apiSource.slice(
             apiSource.indexOf('export const purchaseOrdersAPI'),
             apiSource.indexOf('export const kitchenNotificationsAPI'),
         );
-        expect(purchaseApi.match(/'X-Idempotency-Key': idempotencyKey/g)).toHaveLength(4);
+        expect(purchaseApi.match(/'X-Idempotency-Key': idempotencyKey/g)).toHaveLength(5);
     });
 
     it('retains ambiguous attempts and clears them immediately after mutation confirmation', () => {

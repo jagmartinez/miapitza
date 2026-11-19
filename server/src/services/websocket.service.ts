@@ -34,6 +34,20 @@ export class WebSocketService {
     private static wss: WebSocketServer | null = null;
     private static clients: Map<string, WebSocketClient> = new Map();
 
+    /**
+     * Same allowlist as the HTTP CORS policy. Only an explicit development or
+     * test NODE_ENV relaxes it; staging/unset environments are enforced.
+     * Requests without Origin (non-browser clients) still need the auth cookie.
+     */
+    static isOriginAllowed(
+        origin: string | undefined,
+        allowedOrigins: string[],
+        nodeEnv: string | undefined = process.env.NODE_ENV,
+    ): boolean {
+        if (!origin || allowedOrigins.includes(origin)) return true;
+        return nodeEnv === 'development' || nodeEnv === 'test';
+    }
+
     static initialize(server: Server): void {
         const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173').split(',').map(o => o.trim());
 
@@ -41,7 +55,7 @@ export class WebSocketService {
             server,
             maxPayload: 128 * 1024, // 128KB max message size
             verifyClient: ({ origin }, callback) => {
-                if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+                if (WebSocketService.isOriginAllowed(origin, allowedOrigins)) {
                     callback(true);
                 } else {
                     console.warn(`[WS] Rejected connection from origin: ${origin}`);

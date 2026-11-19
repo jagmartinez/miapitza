@@ -22,6 +22,7 @@ router.post('/:id/preinvoice/reverse', canIssueInvoice, InvoiceController.revers
 router.post('/:id/issue', canIssueInvoice, InvoiceController.issueInvoice);
 
 // Static report path must precede the parameterized invoice reads.
+router.get('/', canViewInvoice, InvoiceController.listInvoices);
 router.get('/credit-notes', canViewInvoice, InvoiceController.listCreditNotes);
 router.get('/credit-notes/:creditNoteId', canViewInvoice, InvoiceController.getCreditNoteById);
 router.get('/credit-notes/:creditNoteId/pdf', canViewInvoice, InvoiceController.getCreditNotePDFById);

@@ -140,6 +140,44 @@ function responseBoolean(value: unknown, field: string): boolean {
     return value;
 }
 
+/**
+ * Spanish, actionable messages for provider rejection codes. The provider's own
+ * text is ASCII-only and terse; the worker must know what to change in the next
+ * attempt (light, distance, motion) or that HR must intervene (template state).
+ */
+export const FACE_REJECTION_MESSAGES: Readonly<Record<string, string>> = {
+    FACE_CROP_INVALID: 'No se pudo recortar el rostro de la captura. Centra tu cara en el óvalo e inténtalo de nuevo.',
+    CHALLENGE_CONFLICT: 'El reto de verificación ya fue usado. Inicia una nueva captura.',
+    CHALLENGE_IDEMPOTENCY_MISMATCH: 'El reto de verificación ya fue usado con otra captura. Inicia una nueva captura.',
+    ENROLLMENT_CONFLICT: 'Ya hay un enrolamiento en curso para este perfil. Espera unos segundos e inicia una nueva captura.',
+    FACE_NOT_FOUND: 'No se detectó un rostro completo. Centra tu cara dentro del óvalo, de frente y sin cubrirla.',
+    MULTIPLE_FACES: 'Se detectó más de una persona. Solo debe aparecer tu rostro en la cámara.',
+    FACE_TOO_SMALL: 'El rostro se ve muy lejos. Acércate a la cámara hasta ocupar el óvalo.',
+    FACE_TOO_CLOSE: 'El rostro está demasiado cerca. Aléjate un poco de la cámara.',
+    CAPTURE_BLURRY: 'La captura salió borrosa. Limpia la cámara y mantén el teléfono inmóvil.',
+    CAPTURE_TOO_DARK: 'La imagen está muy oscura. Busca una iluminación frontal más clara.',
+    CAPTURE_TOO_BRIGHT: 'La imagen tiene demasiada luz. Evita la luz directa o el contraluz sobre el rostro.',
+    CAPTURE_INVALID: 'La captura no es una imagen válida. Repite la secuencia con la cámara.',
+    CAPTURE_DIMENSIONS_INVALID: 'La resolución de la captura no es válida. Repite la secuencia con la cámara del dispositivo.',
+    CAPTURE_SIZE_INVALID: 'La captura está vacía o es demasiado grande. Repite la secuencia.',
+    INSUFFICIENT_FRAMES: 'La prueba de vida requiere la secuencia completa de cuadros. Repite la captura guiada.',
+    TOO_MANY_FRAMES: 'La evidencia contiene demasiados cuadros. Repite la captura guiada.',
+    PASSIVE_LIVENESS_FAILED: 'La captura parece una foto, pantalla o video. Usa tu rostro real frente a la cámara.',
+    ACTIVE_LIVENESS_FAILED: 'No se detectó el giro solicitado. Empieza mirando al frente y gira solo cuando aparezca “AHORA GIRA”.',
+    ACTIVE_LIVENESS_WRONG_DIRECTION: 'Giraste hacia el lado contrario. Sigue la flecha que muestra la cámara.',
+    IDENTITY_CHANGED_DURING_CAPTURE: 'El rostro cambió durante la secuencia. Solo la misma persona debe aparecer en todos los cuadros.',
+    TEMPLATE_NOT_FOUND: 'Tu plantilla biométrica no está disponible. Debes volver a enrolarte en “Mi biometría”.',
+    TEMPLATE_REVOKED: 'Tu plantilla biométrica fue revocada. Debes volver a enrolarte en “Mi biometría”.',
+    TEMPLATE_EXPIRED: 'Tu plantilla biométrica expiró. Debes volver a enrolarte en “Mi biometría”.',
+    TEMPLATE_MODEL_MISMATCH: 'El modelo facial fue actualizado. Debes volver a enrolarte en “Mi biometría”.',
+    REQUEST_TOO_LARGE: 'La evidencia facial excede el tamaño permitido. Repite la captura.',
+    REQUEST_INVALID: 'La evidencia facial no cumple el formato esperado. Repite la captura.',
+};
+
+export function faceRejectionMessage(code: string, fallback: string): string {
+    return FACE_REJECTION_MESSAGES[code] ?? fallback;
+}
+
 function isInternalHostname(hostname: string): boolean {
     const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, '');
     if (normalized === 'localhost' || normalized === '::1' || normalized.endsWith('.internal') || normalized.endsWith('.local')) return true;
@@ -205,15 +243,29 @@ class HttpFaceProvider implements FaceVerificationProvider {
                     ? parsed.message
                     : 'La evidencia facial fue rechazada';
                 if ([400, 404, 409, 410, 413, 422].includes(response.status)) {
-                    throw new FaceEvidenceRejectedError(message, code);
+                    throw new FaceEvidenceRejectedError(faceRejectionMessage(code, message), code);
                 }
-                throw new FaceProviderUnavailableError(`Proveedor facial respondió HTTP ${response.status}`);
+                if (response.status === 401 || response.status === 403) {
+                    throw new FaceProviderUnavailableError('El servidor no pudo autenticarse con el proveedor facial; un administrador debe revisar el token configurado');
+                }
+                if (response.status === 503 && code === 'PROVIDER_BUSY') {
+                    throw new FaceProviderUnavailableError('El proveedor facial está ocupado; reintenta en unos segundos');
+                }
+                throw new FaceProviderUnavailableError(`El proveedor facial no está disponible (HTTP ${response.status})`);
             }
             if (!parsed) throw new FaceProviderUnavailableError('El proveedor facial devolvió JSON inválido');
             return parsed;
         } catch (error) {
             if (error instanceof FaceProviderUnavailableError || error instanceof FaceEvidenceRejectedError) throw error;
-            throw new FaceProviderUnavailableError(error instanceof Error ? `Proveedor facial no disponible: ${error.message}` : undefined);
+            // Never surface runtime text such as "fetch failed" or "This operation
+            // was aborted" to workers; the cause is logged without evidence.
+            const timedOut = controller.signal.aborted || (error instanceof Error && error.name === 'AbortError');
+            console.error('[Biometric] Provider request failed', {
+                pathname, timedOut, errorType: error instanceof Error ? error.name : typeof error,
+            });
+            throw new FaceProviderUnavailableError(timedOut
+                ? 'El proveedor facial no respondió a tiempo; reintenta en unos segundos'
+                : 'No fue posible conectar con el proveedor facial; reintenta en unos segundos');
         } finally {
             clearTimeout(timeout);
         }

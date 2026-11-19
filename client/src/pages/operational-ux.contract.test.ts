@@ -204,7 +204,7 @@ describe('operational UX contracts', () => {
         expect(orders).toContain('al entregar se descontará allí el inventario.');
         expect(orders).toContain('El inventario fue descontado de la bodega seleccionada.');
         expect(orders).not.toContain('settleReadyTableOnPayment');
-        expect(orders).toContain('setOrders(response.data.data)');
+        expect(orders).toContain('setOrders(rows)');
         expect(kitchen).toContain('ordersAPI.getKitchenQueue()');
         expect(tables).toContain('Pago confirmado y factura ${result.fiscalInvoice.invoiceNumber} emitida.');
         expect(tables).toContain('await refreshOperationalTable();');

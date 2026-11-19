@@ -552,6 +552,59 @@ const compensationSelect = {
     changedBy: { select: { id: true, name: true, username: true } },
 } satisfies Prisma.CompensationHistorySelect;
 
+/**
+ * Window of payroll coverage whose frozen service period would move if an employment date
+ * changes from previous to next (null terminationDate = open-ended). Returns null when unchanged.
+ */
+export function employmentDateChangeWindow(
+    field: 'hireDate' | 'terminationDate',
+    previous: Date | null,
+    next: Date | null,
+): { from: Date; to: Date | null } | null {
+    if ((previous?.getTime() ?? null) === (next?.getTime() ?? null)) return null;
+    if (field === 'hireDate') {
+        if (!previous || !next) return null;
+        const low = previous < next ? previous : next;
+        const high = previous < next ? next : previous;
+        // serviceFrom = max(coverageFrom, hireDate) moves only when coverageFrom < high.
+        return { from: low, to: previousDay(high) };
+    }
+    const bounded = [previous, next].filter((value): value is Date => value !== null);
+    const low = bounded.reduce((min, value) => (value < min ? value : min));
+    const high = bounded.length === 2 ? bounded.reduce((max, value) => (value > max ? value : max)) : null;
+    // serviceTo = min(coverageTo, terminationDate) moves only when coverageTo > low.
+    return { from: new Date(low.getTime() + 86_400_000), to: high };
+}
+
+/** First non-VOID payroll run (any kind) whose unreleased coverage would be rewritten by the date change. */
+export async function frozenPayrollCoverageForDateChange(
+    db: Prisma.TransactionClient | typeof prisma,
+    input: { companyId: number; userId: number; field: 'hireDate' | 'terminationDate'; previous: Date | null; next: Date | null },
+): Promise<{ code: string; status: string } | null> {
+    const window = employmentDateChangeWindow(input.field, input.previous, input.next);
+    if (!window) return null;
+    const claim = await db.payrollCoverageClaim.findFirst({
+        where: {
+            companyId: input.companyId, userId: input.userId, release: null, run: { status: { not: 'VOID' } },
+            coverageTo: { gte: window.from }, ...(window.to ? { coverageFrom: { lte: window.to } } : {}),
+        },
+        select: { run: { select: { code: true, status: true } } },
+        orderBy: { coverageTo: 'desc' },
+    });
+    return claim?.run ?? null;
+}
+
+export async function assertEmploymentDateChangeOutsideFrozenPayroll(
+    db: Prisma.TransactionClient | typeof prisma,
+    input: { companyId: number; userId: number; field: 'hireDate' | 'terminationDate'; previous: Date | null; next: Date | null },
+): Promise<void> {
+    const run = await frozenPayrollCoverageForDateChange(db, input);
+    if (run) {
+        const label = input.field === 'hireDate' ? 'La fecha de ingreso' : 'La fecha de terminación';
+        throw new HrDomainError(`${label} cambiaría la cobertura congelada de la nómina ${run.code} (${run.status}); anule esa corrida o use una fecha fuera de su cobertura`, 409);
+    }
+}
+
 export class HrCompensationService {
     static async list(companyId: number, employeeId: number, branchId?: number) {
         await assertEmployeeScope(companyId, employeeId, branchId);
@@ -561,6 +614,7 @@ export class HrCompensationService {
     static async append(companyId: number, employeeId: number, actorUserId: number, input: Record<string, unknown>, branchId?: number) {
         const employee = await assertEmployeeScope(companyId, employeeId, branchId);
         if (employee.status === 'TERMINATED') throw new HrDomainError('No se puede cambiar compensación de un expediente terminado', 409);
+        if (employee.userId === actorUserId) throw new HrDomainError('Segregación de funciones: una persona no puede modificar su propia compensación', 409);
         const effectiveFrom = dateOnly(input.effectiveFrom, 'effectiveFrom');
         if (effectiveFrom < employee.hireDate) throw new HrDomainError('La compensación no puede iniciar antes del alta del empleado');
         const compensationType = requiredText(input.compensationType, 'compensationType', 20);
@@ -579,6 +633,11 @@ export class HrCompensationService {
             if (contractId && !await tx.employmentContract.findFirst({ where: { id: contractId, companyId, employeeId }, select: { id: true } })) throw new HrDomainError('Contrato no encontrado para el empleado', 404);
             const later = await tx.compensationHistory.findFirst({ where: { companyId, employeeId, effectiveFrom: { gte: effectiveFrom } }, select: { id: true } });
             if (later) throw new HrDomainError('La compensación debe agregarse en orden cronológico y no puede duplicar effectiveFrom', 409);
+            const frozenCoverage = await tx.payrollCoverageClaim.findFirst({
+                where: { companyId, userId: employee.userId, kind: 'REGULAR', coverageTo: { gte: effectiveFrom }, release: null, run: { status: { not: 'VOID' } } },
+                select: { run: { select: { code: true, status: true } } },
+            });
+            if (frozenCoverage) throw new HrDomainError(`La compensación no puede iniciar dentro o antes de la cobertura de la nómina ${frozenCoverage.run.code} (${frozenCoverage.run.status}); anule esa corrida o use una fecha posterior a su cobertura`, 409);
             const current = await tx.compensationHistory.findFirst({ where: { companyId, employeeId, effectiveTo: null }, orderBy: { effectiveFrom: 'desc' } });
             if (current) {
                 const changed = await tx.compensationHistory.updateMany({ where: { id: current.id, companyId, employeeId, effectiveTo: null }, data: { effectiveTo: previousDay(effectiveFrom) } });

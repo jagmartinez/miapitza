@@ -34,6 +34,7 @@ const payrollRun = {
 
 async function mockApp(page: Page, activeUser = user) {
   let invoiceIssued = false;
+  let preInvoiced = false;
   await page.addInitScript((storedUser) => {
     localStorage.setItem('user', JSON.stringify(storedUser));
     localStorage.setItem('sidebar-collapsed', 'true');
@@ -416,8 +417,10 @@ async function mockApp(page: Page, activeUser = user) {
     if (path.endsWith('/cash-arqueo/1')) {
       data = { counts: { bills: [], coins: [] } };
     }
-    if (path.endsWith('/invoices/501/issue')) {
-      invoiceIssued = true;
+    const isPreInvoiceRequest = path.endsWith('/invoices/501/preinvoice');
+    if (path.endsWith('/invoices/501/issue') || isPreInvoiceRequest) {
+      if (isPreInvoiceRequest) preInvoiced = true;
+      else invoiceIssued = true;
       data = {
         orderId: 501,
         customerName: 'Cliente general',
@@ -437,7 +440,7 @@ async function mockApp(page: Page, activeUser = user) {
         companyName: 'Empresa QA',
         companyRuc: 'J0310000000000',
         date: '2026-07-29T18:00:00.000Z',
-        invoiceNumber: 'FAC-QA-501',
+        invoiceNumber: isPreInvoiceRequest ? 'PREF-ORD-501' : 'FAC-QA-501',
         taxRatePercent: 0,
         currencySymbol: 'C$',
       };
@@ -472,6 +475,7 @@ async function mockApp(page: Page, activeUser = user) {
         invoiceNumber: invoiceIssued ? 'FAC-QA-501' : undefined,
         invoicedAt: invoiceIssued ? '2026-07-29T18:00:00.000Z' : undefined,
         invoiceFiscalStatus: invoiceIssued ? 'ISSUED' : undefined,
+        preInvoicedAt: preInvoiced ? '2026-07-29T18:00:00.000Z' : undefined,
         createdAt: '2026-07-16T22:05:00.000Z',
         user: activeUser,
         items: [
@@ -493,6 +497,7 @@ async function mockApp(page: Page, activeUser = user) {
         invoiceNumber: invoiceIssued ? 'FAC-QA-501' : undefined,
         invoicedAt: invoiceIssued ? '2026-07-29T18:00:00.000Z' : undefined,
         invoiceFiscalStatus: invoiceIssued ? 'ISSUED' : undefined,
+        preInvoicedAt: preInvoiced ? '2026-07-29T18:00:00.000Z' : undefined,
         createdAt: '2026-07-16T22:05:00.000Z',
         user: activeUser,
         items: [
@@ -774,7 +779,7 @@ test('cash denomination rows remain aligned inside mobile and tablet sidebars', 
   }
 });
 
-test('issuing an invoice opens the immutable print document and enables payment', async ({ page }) => {
+test('issuing a pre-invoice opens the immutable print document and enables payment', async ({ page }) => {
   await mockApp(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/tables');
@@ -785,11 +790,13 @@ test('issuing an invoice opens the immutable print document and enables payment'
   await tableDialog.getByRole('button', { name: 'Emitir Factura' }).click();
   const invoicePage = await popupPromise;
   await invoicePage.waitForLoadState('domcontentloaded');
-  await expect(invoicePage.getByRole('heading', { name: 'FACTURA FAC-QA-501' })).toBeVisible();
+  await expect(invoicePage.getByRole('heading', { name: 'PREFACTURA', exact: true })).toBeVisible();
   await expect(invoicePage.locator('body')).toContainText('TOTAL');
 
   await expect(tableDialog.getByRole('button', { name: 'Cobrar' })).toBeVisible();
   await expect(tableDialog.getByRole('button', { name: 'Emitir Factura' })).toHaveCount(0);
+  await expect(tableDialog.getByRole('button', { name: 'Reimprimir prefactura' })).toBeVisible();
+  await expect(tableDialog.getByText('Prefactura emitida', { exact: true })).toBeVisible();
   await expect(tableDialog.getByText('Pinot Grigio Pasqua - Copa')).toBeVisible();
 });
 
@@ -1389,4 +1396,23 @@ test('every HR creation flow uses the canonical modal shell', async ({ page }) =
   await page.getByRole('tab', { name: 'Deducciones 0' }).click();
   await page.locator('.hr-benefits-header-actions').getByRole('button', { name: 'Nueva deducción', exact: true }).click();
   await expectCanonical('Nueva deducción');
+});
+
+test('tablet landscape table drawer keeps its footer action above the bottom navigation', async ({ page }) => {
+  await mockApp(page);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.goto('/tables');
+  await page.getByRole('button', { name: /Mesa ABANICO/ }).click();
+
+  const tableDialog = page.getByRole('dialog', { name: 'Mesa ABANICO' });
+  const issueButton = tableDialog.getByRole('button', { name: 'Emitir Factura' });
+  await expect(issueButton).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Acceso rápido' })).toBeVisible();
+  // The fixed bottom nav (shown up to 1024px) must not cover the drawer footer.
+  const hitIsButton = await issueButton.evaluate((button) => {
+    const box = button.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return !!hit && button.contains(hit);
+  });
+  expect(hitIsButton).toBe(true);
 });

@@ -165,7 +165,8 @@ export class ReservationService {
         }
 
         // Validate people count
-        if (!Number.isInteger(Number(data.peopleCount)) || Number(data.peopleCount) < 1) {
+        const peopleCount = Number(data.peopleCount);
+        if (!Number.isInteger(peopleCount) || peopleCount < 1) {
             throw new Error('People count must be at least 1');
         }
 
@@ -187,17 +188,24 @@ export class ReservationService {
                 tx,
                 data.branchId,
                 companyId,
-                new Date(data.date),
-                data.peopleCount
+                requestedDate,
+                peopleCount
             );
             if (availableTables.length === 0) {
                 throw new Error('No tables available for this capacity at the requested time');
             }
 
             const tableId = availableTables[0].id;
+            // Explicit field list: never spread caller input into the insert.
             return await tx.reservation.create({
                 data: {
-                    ...data,
+                    branchId: data.branchId,
+                    customerName: data.customerName,
+                    phone: data.phone ?? null,
+                    email: data.email ?? null,
+                    date: requestedDate,
+                    peopleCount,
+                    notes: data.notes ?? null,
                     companyId,
                     tableId,
                     status: 'PENDING'

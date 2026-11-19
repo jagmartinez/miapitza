@@ -5,7 +5,9 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { getErrorMessage } from '../utils/error';
 import { getZonedDayBounds, isValidTimeZone, zonedDateKey } from '../utils/timezone';
 import { UnitConversionService } from './unit-conversion.service';
-import { InventoryEngineService } from './inventory-engine.service';
+import { resolveRecipeUnit } from '../utils/recipe-unit';
+import { InventoryConsumptionService, type ConsumptionShortage } from './inventory-consumption.service';
+import { WarehouseRouteService } from './warehouse-route.service';
 import { DEFAULT_COMPANY_SETTINGS, SettingService } from './setting.service';
 
 export interface CateringServiceLineDto {
@@ -19,6 +21,25 @@ export interface CateringMenuLineDto {
     menuItemId: number | string;
     quantity: number | string;
     unitPrice: number | string;
+}
+
+export type CateringInventoryShortage = ConsumptionShortage & { warehouseName: string };
+
+const formatShortageQuantity = (value: number) =>
+    Number(value.toFixed(4)).toLocaleString('es-NI', { maximumFractionDigits: 4 });
+
+/**
+ * Spanish warning listing the ingredients a finished event consumed beyond
+ * the available stock (warehouse, required, available), or null.
+ */
+export function describeCateringShortages(shortages: CateringInventoryShortage[] | undefined): string | null {
+    if (!shortages || shortages.length === 0) return null;
+    const detail = shortages.map((row) => {
+        const unit = row.unit ? ` ${row.unit}` : '';
+        return `${row.productName} en ${row.warehouseName}: requerido ${formatShortageQuantity(row.required)}${unit}, `
+            + `disponible ${formatShortageQuantity(row.available)}${unit}`;
+    }).join('; ');
+    return `Evento finalizado con inventario insuficiente; se registró existencia negativa (déficit) para: ${detail}.`;
 }
 
 /** Request body shape for create/update catering events (from HTTP JSON) */
@@ -65,13 +86,91 @@ function decomposeTaxInclusiveGross(gross: Decimal, settings: Record<string, str
     };
 }
 
+/** RESERVED → PAID is only legal when nothing is owed (no payment can trigger it). */
+export function isZeroBalanceSettlement(from: CateringStatus, to: CateringStatus | undefined): boolean {
+    return from === 'RESERVED' && to === 'PAID';
+}
+
+/**
+ * Money/quantity normalization for one catering line. Columns are DECIMAL(10,2):
+ * accepting 10.555 would let MySQL round unitPrice and subtotal independently,
+ * so the persisted line (qty x unitPrice != subtotal) and the event total
+ * (sum of unrounded subtotals) could never reconcile at fiscal invoicing.
+ * Inputs are therefore limited to 2 decimals and the subtotal is rounded
+ * half-up to cents here; the event total is the sum of these rounded subtotals.
+ */
+export function normalizeCateringLineAmount(
+    rawQuantity: unknown,
+    rawUnitPrice: unknown,
+    kind: 'SERVICE' | 'MENU_ITEM'
+): { quantity: Decimal; unitPrice: Decimal; subtotal: Decimal } {
+    const invalid = kind === 'SERVICE'
+        ? 'La cantidad o el precio del servicio no son válidos'
+        : 'La cantidad o el precio del plato no son válidos';
+    let quantity: Decimal;
+    let unitPrice: Decimal;
+    try {
+        quantity = new Decimal(String(rawQuantity).trim());
+        unitPrice = new Decimal(String(rawUnitPrice).trim());
+    } catch {
+        throw new Error(invalid);
+    }
+    if (!quantity.isFinite() || !unitPrice.isFinite()) throw new Error(invalid);
+    if (kind === 'MENU_ITEM') {
+        if (!quantity.isInteger() || quantity.lte(0)) throw new Error('La cantidad de platos del menú debe ser un entero mayor a 0');
+        if (unitPrice.lt(0)) throw new Error('El precio del plato no puede ser negativo');
+    } else {
+        if (quantity.lte(0)) throw new Error('La cantidad del servicio debe ser mayor a 0');
+        if (unitPrice.lt(0)) throw new Error('El precio del servicio no puede ser negativo');
+        if (quantity.decimalPlaces() > 2) throw new Error('La cantidad del servicio admite como máximo dos decimales');
+    }
+    if (unitPrice.decimalPlaces() > 2) throw new Error('El precio unitario admite como máximo dos decimales');
+    const subtotal = quantity.mul(unitPrice).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    if (subtotal.gte(new Decimal('100000000'))) throw new Error('El subtotal de la línea excede el máximo permitido');
+    return { quantity, unitPrice, subtotal };
+}
+
+type LineInput = { id: unknown; quantity: unknown; unitPrice: unknown; notes?: unknown };
+type LineExisting = { id: number; quantity: Decimal | number | string; unitPrice: Decimal | number | string; notes?: string | null };
+
+/**
+ * True when the submitted lines are the same multiset as the persisted ones.
+ * The UI always resends every line on save; an identical resend must not count
+ * as a concept/total change (which is forbidden once deposits exist).
+ */
+export function cateringLinesUnchanged(input: LineInput[], existing: LineExisting[]): boolean {
+    if (!Array.isArray(input) || input.length !== existing.length) return false;
+    const compareNotes = input.some((line) => line.notes !== undefined);
+    try {
+        const key = (line: LineInput | LineExisting) => [
+            Number(line.id),
+            new Decimal(line.quantity as Decimal.Value).toString(),
+            new Decimal(line.unitPrice as Decimal.Value).toString(),
+            compareNotes ? String(line.notes ?? '') : ''
+        ].join('|');
+        const submitted = input.map(key).sort();
+        const persisted = existing.map(key).sort();
+        return persisted.every((value, index) => value === submitted[index]);
+    } catch {
+        return false;
+    }
+}
+
 export class CateringService {
     private static async convertRecipeQuantityToBase(
-        recipe: { productId: number; quantity: Decimal | number | string; unit?: string | null; product: { unit: string } },
+        recipe: {
+            productId: number;
+            quantity: Decimal | number | string;
+            unit?: string | null;
+            unitOfMeasure?: { abbreviation: string } | null;
+            product: { unit: string; baseUnit?: { abbreviation: string } | null };
+        },
         companyId: number,
         tx?: Prisma.TransactionClient
     ) {
-        const recipeUnit = recipe.unit || recipe.product.unit;
+        // Same priority as sales consumption: recipe.unit -> recipe unitId ->
+        // product base unit -> legacy product.unit string.
+        const recipeUnit = resolveRecipeUnit(recipe, recipe.product);
         const recipeQty = Number(recipe.quantity);
         const conv = await UnitConversionService.convert(
             recipe.productId, companyId, recipeQty, recipeUnit, tx
@@ -140,7 +239,7 @@ export class CateringService {
             }
         });
 
-        if (!event) throw new Error('Catering event not found');
+        if (!event) throw new Error('Evento de catering no encontrado');
         return event;
     }
 
@@ -197,7 +296,7 @@ export class CateringService {
 
         // Ensure branchId is an Int
         const branchId = parseInt(String(eventData.branchId), 10);
-        if (isNaN(branchId)) throw new Error('Valid branchId is required');
+        if (isNaN(branchId)) throw new Error('Se requiere una sucursal válida');
 
         // Validate the branch belongs to this tenant before creating the event.
         const branch = await prisma.branch.findFirst({
@@ -228,16 +327,12 @@ export class CateringService {
         const servicesToCreate = services?.map((s) => {
             const cateringServiceId = parseInt(String(s.cateringServiceId), 10);
             if (!Number.isInteger(cateringServiceId) || cateringServiceId <= 0) throw new Error('Servicio de catering inválido');
-            const quantity = Number(s.quantity);
-            const unitPrice = Number(s.unitPrice);
-            if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('La cantidad del servicio debe ser mayor a 0');
-            if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('El precio del servicio no puede ser negativo');
-            const subtotal = new Decimal(s.quantity).mul(new Decimal(s.unitPrice));
+            const { quantity, unitPrice, subtotal } = normalizeCateringLineAmount(s.quantity, s.unitPrice, 'SERVICE');
             totalAmount = totalAmount.add(subtotal);
             return {
                 cateringServiceId,
-                quantity: new Decimal(s.quantity),
-                unitPrice: new Decimal(s.unitPrice),
+                quantity,
+                unitPrice,
                 subtotal,
                 notes: s.notes
             };
@@ -247,19 +342,13 @@ export class CateringService {
         const menuItemsToCreate = menuItems?.map((m) => {
             const menuItemId = parseInt(String(m.menuItemId), 10);
             if (!Number.isInteger(menuItemId) || menuItemId <= 0) throw new Error('Plato de menú inválido');
-            const quantity = Number(m.quantity);
-            if (!Number.isInteger(quantity) || quantity <= 0) {
-                throw new Error('La cantidad de platos del menú debe ser un entero mayor a 0');
-            }
-            if (!Number.isFinite(Number(m.unitPrice)) || Number(m.unitPrice) < 0) {
-                throw new Error('El precio del plato no puede ser negativo');
-            }
-            const subtotal = new Decimal(m.quantity).mul(new Decimal(m.unitPrice));
+            const normalizedLine = normalizeCateringLineAmount(m.quantity, m.unitPrice, 'MENU_ITEM');
+            const subtotal = normalizedLine.subtotal;
             totalAmount = totalAmount.add(subtotal);
             return {
                 menuItemId,
-                quantity,
-                unitPrice: new Decimal(m.unitPrice),
+                quantity: normalizedLine.quantity.toNumber(),
+                unitPrice: normalizedLine.unitPrice,
                 subtotal
             };
         }) || [];
@@ -335,12 +424,12 @@ export class CateringService {
             return event;
         } catch (error: unknown) {
             console.error('Error creating catering event:', error);
-            throw new Error(`Failed to create catering event: ${getErrorMessage(error)}`);
+            throw new Error(`No se pudo crear el evento de catering: ${getErrorMessage(error)}`);
         }
     }
 
     static async updateEvent(id: number, companyId: number, userId: number, data: CateringEventWriteBody) {
-        const { services, menuItems, customerName, customerPhone, customerTaxId, customerId: cid, warehouseId: warehouseIdInput, ...eventData } = data;
+        const { services: servicesInput, menuItems: menuItemsInput, customerName, customerPhone, customerTaxId, customerId: cid, warehouseId: warehouseIdInput, ...eventData } = data;
         const normalizedCustomerName = customerName === undefined ? undefined : customerName.trim();
         const normalizedTitle = eventData.title === undefined ? undefined : String(eventData.title).trim();
         if (normalizedCustomerName !== undefined && !normalizedCustomerName) throw new Error('El nombre del cliente es requerido');
@@ -365,8 +454,9 @@ export class CateringService {
                 date: true,
                 branchId: true,
                 customerId: true,
-                services: { select: { subtotal: true } },
-                menuItems: { select: { subtotal: true, menuItemId: true } },
+                balance: true,
+                services: { select: { subtotal: true, cateringServiceId: true, quantity: true, unitPrice: true, notes: true } },
+                menuItems: { select: { subtotal: true, menuItemId: true, quantity: true, unitPrice: true } },
                 payments: { select: { status: true } },
                 fiscalSubtotal: true,
                 fiscalTax: true,
@@ -375,7 +465,7 @@ export class CateringService {
             }
         });
 
-        if (!oldEvent) throw new Error('Catering event not found');
+        if (!oldEvent) throw new Error('Evento de catering no encontrado');
         if (
             eventData.date instanceof Date
             && eventData.date < new Date()
@@ -386,6 +476,15 @@ export class CateringService {
         if (oldEvent.status === 'FINISHED' || oldEvent.status === 'CANCELLED') {
             throw new Error('Los eventos finalizados o cancelados son inmutables');
         }
+        // An identical resend of the persisted lines is not a concept change.
+        const services = servicesInput !== undefined && cateringLinesUnchanged(
+            servicesInput.map((line) => ({ id: line.cateringServiceId, quantity: line.quantity, unitPrice: line.unitPrice, notes: line.notes })),
+            oldEvent.services.map((line) => ({ id: line.cateringServiceId, quantity: line.quantity, unitPrice: line.unitPrice, notes: line.notes }))
+        ) ? undefined : servicesInput;
+        const menuItems = menuItemsInput !== undefined && cateringLinesUnchanged(
+            menuItemsInput.map((line) => ({ id: line.menuItemId, quantity: line.quantity, unitPrice: line.unitPrice })),
+            oldEvent.menuItems.map((line) => ({ id: line.menuItemId, quantity: line.quantity, unitPrice: line.unitPrice }))
+        ) ? undefined : menuItemsInput;
         if (oldEvent.status === 'PAID') {
             const keys = Object.keys(data).filter((key) => data[key as keyof CateringEventWriteBody] !== undefined);
             if (data.status !== 'FINISHED' || keys.some((key) => key !== 'status' && key !== 'warehouseId')) {
@@ -405,7 +504,11 @@ export class CateringService {
         // Validate status transition if status is changing
         if (data.status && oldEvent && data.status !== oldEvent.status) {
             const validNext = CATERING_STATUS_TRANSITIONS[oldEvent.status] || [];
-            if (!validNext.includes(data.status)) {
+            // A zero-balance reservation (e.g. zero total) never receives a payment,
+            // so it may be settled manually; the balance is re-checked under lock.
+            const settledReservation = isZeroBalanceSettlement(oldEvent.status, data.status)
+                && new Decimal(oldEvent.balance).lte(0);
+            if (!validNext.includes(data.status) && !settledReservation) {
                 throw new Error(`Transición de estado inválida: ${oldEvent.status} → ${data.status}`);
             }
         }
@@ -419,6 +522,16 @@ export class CateringService {
                 ? parseInt(String(eventData.branchId), 10)
                 : undefined;
         const effectiveBranchId = branchId ?? oldEvent.branchId;
+        if (branchId !== undefined && branchId !== oldEvent.branchId) {
+            if (!Number.isInteger(branchId) || branchId <= 0) throw new Error('Sucursal inválida');
+            const target = await prisma.branch.findFirst({
+                where: { id: branchId, companyId },
+                select: { status: true }
+            });
+            if (!target || target.status !== 'ACTIVE') {
+                throw new Error('Sucursal no encontrada o inactiva para esta empresa');
+            }
+        }
         const warehouseId = warehouseIdInput != null && warehouseIdInput !== ''
             ? Number(warehouseIdInput)
             : undefined;
@@ -442,27 +555,19 @@ export class CateringService {
             }
         }
 
-        // Recalculate totals
-        let totalAmount = new Decimal(0);
-        if (services === undefined) {
-            totalAmount = oldEvent.services.reduce((sum, line) => sum.add(new Decimal(line.subtotal)), totalAmount);
-        }
-        if (menuItems === undefined) {
-            totalAmount = oldEvent.menuItems.reduce((sum, line) => sum.add(new Decimal(line.subtotal)), totalAmount);
-        }
+        // Totals of the submitted collections; untouched collections are summed
+        // under the event lock so a concurrent line edit cannot be overwritten
+        // with a stale total.
+        let submittedLinesTotal = new Decimal(0);
         const servicesToUpdate = services?.map((s) => {
             const cateringServiceId = parseInt(String(s.cateringServiceId), 10);
             if (!Number.isInteger(cateringServiceId) || cateringServiceId <= 0) throw new Error('Servicio de catering inválido');
-            const quantity = Number(s.quantity);
-            const unitPrice = Number(s.unitPrice);
-            if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('La cantidad del servicio debe ser mayor a 0');
-            if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('El precio del servicio no puede ser negativo');
-            const subtotal = new Decimal(s.quantity).mul(new Decimal(s.unitPrice));
-            totalAmount = totalAmount.add(subtotal);
+            const { quantity, unitPrice, subtotal } = normalizeCateringLineAmount(s.quantity, s.unitPrice, 'SERVICE');
+            submittedLinesTotal = submittedLinesTotal.add(subtotal);
             return {
                 cateringServiceId,
-                quantity: new Decimal(s.quantity),
-                unitPrice: new Decimal(s.unitPrice),
+                quantity,
+                unitPrice,
                 subtotal,
                 notes: s.notes
             };
@@ -471,17 +576,13 @@ export class CateringService {
         const menuItemsToUpdate = menuItems?.map((m) => {
             const menuItemId = parseInt(String(m.menuItemId), 10);
             if (!Number.isInteger(menuItemId) || menuItemId <= 0) throw new Error('Plato de menú inválido');
-            const quantity = Number(m.quantity);
-            if (!Number.isInteger(quantity) || quantity <= 0) {
-                throw new Error('La cantidad de platos del menú debe ser un entero mayor a 0');
-            }
-            if (!Number.isFinite(Number(m.unitPrice)) || Number(m.unitPrice) < 0) throw new Error('El precio del plato no puede ser negativo');
-            const subtotal = new Decimal(m.quantity).mul(new Decimal(m.unitPrice));
-            totalAmount = totalAmount.add(subtotal);
+            const normalizedLine = normalizeCateringLineAmount(m.quantity, m.unitPrice, 'MENU_ITEM');
+            const subtotal = normalizedLine.subtotal;
+            submittedLinesTotal = submittedLinesTotal.add(subtotal);
             return {
                 menuItemId,
-                quantity,
-                unitPrice: new Decimal(m.unitPrice),
+                quantity: normalizedLine.quantity.toNumber(),
+                unitPrice: normalizedLine.unitPrice,
                 subtotal
             };
         }) || [];
@@ -491,9 +592,13 @@ export class CateringService {
             branchId: effectiveBranchId,
             customerId,
             serviceIds: servicesToUpdate.map((s) => s.cateringServiceId),
-            menuItemIds: menuItems === undefined
-                ? oldEvent.menuItems.map((m) => m.menuItemId)
-                : menuItemsToUpdate.map((m) => m.menuItemId),
+            // Persisted dishes are re-validated only when the branch moves; a dish
+            // deactivated after quoting must not block date edits or closing.
+            menuItemIds: menuItems !== undefined
+                ? menuItemsToUpdate.map((m) => m.menuItemId)
+                : branchId !== undefined && branchId !== oldEvent.branchId
+                    ? oldEvent.menuItems.map((m) => m.menuItemId)
+                    : [],
         });
 
         const { date } = eventData;
@@ -501,10 +606,10 @@ export class CateringService {
         for (const field of ['title', 'peopleCount', 'status', 'location', 'notes', 'clauses'] as const) {
             if (eventData[field] !== undefined) cleanEventData[field] = eventData[field];
         }
-        const fiscalPricing = services !== undefined || menuItems !== undefined
-            ? decomposeTaxInclusiveGross(totalAmount, await SettingService.getAll(companyId))
-            : null;
+        const linesChanged = services !== undefined || menuItems !== undefined;
+        const fiscalSettings = linesChanged ? await SettingService.getAll(companyId) : null;
 
+        let inventoryShortages: CateringInventoryShortage[] = [];
         try {
             const updatedEvent = await prisma.$transaction(async (tx) => {
                 if (createCustomer && normalizedCustomerName) {
@@ -516,9 +621,14 @@ export class CateringService {
                 await tx.$queryRaw`SELECT id FROM \`CateringEvent\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
                 const locked = await tx.cateringEvent.findFirst({
                     where: { id, companyId },
-                    select: { status: true, payments: { where: { status: 'ACTIVE' }, select: { id: true } } }
+                    select: {
+                        status: true,
+                        payments: { where: { status: 'ACTIVE' }, select: { id: true } },
+                        services: { select: { subtotal: true } },
+                        menuItems: { select: { subtotal: true } }
+                    }
                 });
-                if (!locked) throw new Error('Catering event not found');
+                if (!locked) throw new Error('Evento de catering no encontrado');
                 if (locked.status !== oldEvent.status) throw new Error('El evento cambió de estado; recargue e intente nuevamente');
                 if (data.status === 'CANCELLED' && locked.payments.length > 0) throw new Error('No se puede cancelar un evento con pagos activos; revierta los pagos primero');
                 if (locked.payments.length > 0 && branchId !== undefined && branchId !== oldEvent.branchId) {
@@ -527,13 +637,22 @@ export class CateringService {
                 if ((services !== undefined || menuItems !== undefined) && locked.payments.length > 0) {
                     throw new Error('No se pueden modificar conceptos o totales de un evento con pagos activos; revierta los pagos primero');
                 }
+                let lockedTotal: Decimal | null = null;
+                if (linesChanged) {
+                    lockedTotal = submittedLinesTotal;
+                    if (services === undefined) {
+                        lockedTotal = (locked.services ?? []).reduce((sum, line) => sum.add(new Decimal(line.subtotal)), lockedTotal);
+                    }
+                    if (menuItems === undefined) {
+                        lockedTotal = (locked.menuItems ?? []).reduce((sum, line) => sum.add(new Decimal(line.subtotal)), lockedTotal);
+                    }
+                }
                 if (services !== undefined) await tx.cateringServiceItem.deleteMany({ where: { cateringEventId: id } });
                 if (menuItems !== undefined) await tx.cateringMenuItem.deleteMany({ where: { cateringEventId: id } });
 
                 const updateData = {
                     ...cleanEventData,
-                    totalAmount,
-                    ...(fiscalPricing || {}),
+                    ...(lockedTotal ? { totalAmount: lockedTotal, ...decomposeTaxInclusiveGross(lockedTotal, fiscalSettings!) } : {}),
                     updatedAt: new Date()
                 } as Prisma.CateringEventUpdateInput;
 
@@ -554,7 +673,11 @@ export class CateringService {
                 const paid = event.payments
                     .filter((payment) => payment.status === 'ACTIVE')
                     .reduce((sum, payment) => sum.add(new Decimal(payment.amount)), new Decimal(0));
-                const newBalance = totalAmount.sub(paid);
+                const newBalance = new Decimal(event.totalAmount).sub(paid);
+
+                if (isZeroBalanceSettlement(oldEvent.status, data.status) && newBalance.gt(0)) {
+                    throw new Error('Solo un evento reservado sin saldo pendiente puede marcarse como pagado');
+                }
 
                 const finalEvent = await tx.cateringEvent.update({
                     where: { id },
@@ -563,7 +686,7 @@ export class CateringService {
 
                 // Trigger inventory deduction inside transaction if status changed to FINISHED
                 if (oldEvent?.status !== 'FINISHED' && data.status === 'FINISHED') {
-                    await this.deductInventoryTx(tx, id, companyId, userId, warehouseId!);
+                    inventoryShortages = (await this.deductInventoryTx(tx, id, companyId, userId, warehouseId!)) ?? [];
                 }
 
                 await tx.auditLog.create({
@@ -585,20 +708,34 @@ export class CateringService {
                 return finalEvent;
             });
 
-            return updatedEvent;
+            const inventoryWarning = describeCateringShortages(inventoryShortages);
+            // Sales policy: a short balance never blocks the finish; the
+            // deficit is recorded and surfaced as a warning, not an error.
+            return inventoryWarning
+                ? Object.assign(updatedEvent, { inventoryWarning, inventoryShortages })
+                : updatedEvent;
         } catch (error: unknown) {
             console.error('Error updating catering event:', error);
-            throw new Error(`Failed to update catering event: ${getErrorMessage(error)}`);
+            throw new Error(`No se pudo actualizar el evento de catering: ${getErrorMessage(error)}`);
         }
     }
 
+    /**
+     * Consumes the event's dishes with the same policy as sales
+     * (InventoryConsumptionService.consumeForOrder): each ingredient is routed
+     * per the branch's InventoryWarehouseRoute (product rule > category rule)
+     * with the selected event warehouse as the fallback, and a short balance
+     * never blocks the finish: the stock goes negative, the deficit is recorded
+     * (FIFO deficit slices + negative-stock alert) and the shortages are
+     * returned so the caller can warn the user.
+     */
     private static async deductInventoryTx(
         tx: Prisma.TransactionClient,
         eventId: number,
         companyId: number,
         userId: number,
         warehouseId: number
-    ) {
+    ): Promise<CateringInventoryShortage[]> {
         const event = await tx.cateringEvent.findUnique({
             where: { id: eventId },
             include: {
@@ -608,7 +745,10 @@ export class CateringService {
                         menuItem: {
                             include: {
                                 recipes: {
-                                    include: { product: true }
+                                    include: {
+                                        product: { include: { baseUnit: { select: { abbreviation: true } } } },
+                                        unitOfMeasure: { select: { abbreviation: true } }
+                                    }
                                 }
                             }
                         }
@@ -621,58 +761,133 @@ export class CateringService {
             throw new Error('Evento de catering no encontrado para descontar inventario');
         }
 
-        // IDEMPOTENCY GUARD: skip when this event's stock is already deducted.
-        // Mirrors order consumption: net = OUT - reversal IN for the stable ref.
-        const reference = `EVT-${event.id}`;
-        const priorMovements = await tx.inventoryMovement.findMany({
-            where: { companyId, reference, type: { in: ['OUT', 'IN'] } },
-            select: { warehouseId: true, productId: true, type: true, quantity: true }
-        });
-        const netByStock = new Map<string, number>();
-        for (const movement of priorMovements) {
-            const key = `${movement.warehouseId}|${movement.productId}`;
-            const quantity = Number(movement.quantity);
-            netByStock.set(key, (netByStock.get(key) ?? 0) + (movement.type === 'OUT' ? quantity : -quantity));
-        }
-        if ([...netByStock.values()].some((quantity) => quantity > 1e-9)) return;
-
-        await tx.$queryRaw`SELECT id FROM \`Warehouse\` WHERE id = ${warehouseId} AND companyId = ${companyId} FOR UPDATE`;
+        // Plain validation read; the warehouse locks (FOR SHARE, ascending,
+        // fallback + routed) are taken by consumeForOrder, which re-validates
+        // the branch under the lock.
         const warehouse = await tx.warehouse.findFirst({
-            where: { id: warehouseId, branchId: event.branchId, companyId, type: 'BRANCH' }
+            where: { id: warehouseId, branchId: event.branchId, companyId, type: 'BRANCH' },
+            select: { id: true }
         });
-
         if (!warehouse) throw new Error('No se encontró almacén para la deducción de inventario');
 
-        const productIds = [...new Set(event.menuItems.flatMap((line) =>
-            line.menuItem.recipes.map((recipe) => recipe.productId)
-        ))].sort((a, b) => a - b);
-        for (const productId of productIds) {
-            await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${productId} AND companyId = ${companyId} FOR UPDATE`;
+        const result = await InventoryConsumptionService.consumeForOrder(tx, {
+            order: {
+                id: event.id,
+                userId,
+                // No `id`: catering lines are not order items (no modifiers,
+                // no per-order-item snapshot).
+                items: event.menuItems.map((line) => ({
+                    quantity: line.quantity,
+                    menuItem: { recipes: line.menuItem.recipes }
+                }))
+            },
+            warehouseId,
+            userId,
+            companyId,
+            // Stable reference: idempotency guard and the credit-note return
+            // (which restores the exact recorded EVT movements) rely on it.
+            reference: `EVT-${event.id}`,
+            reason: `Catering Event: ${event.title}`,
+            orderItemIds: [],
+            allowNegative: true,
+            route: true,
+            expectedBranchId: event.branchId,
+            alertEntityType: 'CateringEvent'
+        });
+        if (!result.consumed || !result.shortages?.length) return [];
+
+        const names = new Map<number, string>();
+        for (const id of [...new Set(result.shortages.map((row) => row.warehouseId))]) {
+            const row = await tx.warehouse.findFirst({ where: { id, companyId }, select: { name: true } }) as { name?: string | null } | null;
+            names.set(id, row?.name || `Bodega #${id}`);
         }
+        return result.shortages.map((row) => ({
+            ...row,
+            warehouseName: names.get(row.warehouseId) ?? `Bodega #${row.warehouseId}`
+        }));
+    }
 
-        for (const cMenuItem of event.menuItems) {
-            for (const recipe of cMenuItem.menuItem.recipes) {
-                const conv = await this.convertRecipeQuantityToBase(recipe, companyId, tx);
-                const totalNeeded = conv.baseQuantity * cMenuItem.quantity;
+    /**
+     * Read-only preview of the finish: per ingredient, the warehouse it will be
+     * consumed from (same routing as sales/POS availability: product rule >
+     * category rule > selected warehouse), the required base quantity and the
+     * current balance there.
+     */
+    static async getInventoryPreview(eventId: number, companyId: number, warehouseId: number) {
+        if (!Number.isInteger(warehouseId) || warehouseId <= 0) throw new Error('Seleccione una bodega de la sucursal');
+        const event = await prisma.cateringEvent.findFirst({
+            where: { id: eventId, companyId },
+            include: {
+                menuItems: {
+                    include: {
+                        menuItem: {
+                            include: {
+                                recipes: {
+                                    include: {
+                                        product: { include: { baseUnit: { select: { abbreviation: true } } } },
+                                        unitOfMeasure: { select: { abbreviation: true } }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        if (!event) throw new Error('Evento de catering no encontrado');
+        const fallback = await prisma.warehouse.findFirst({
+            where: { id: warehouseId, companyId, branchId: event.branchId, type: 'BRANCH' },
+            select: { id: true }
+        });
+        if (!fallback) throw new Error('La bodega seleccionada no pertenece a la sucursal del evento');
 
-                // Stock lock, availability check, costing, FIFO-layer consumption
-                // and the OUT movement are handled by the single inventory engine.
-                await InventoryEngineService.applyMovement(tx, {
-                    type: 'OUT',
-                    companyId,
-                    warehouseId,
-                    productId: recipe.productId,
-                    userId,
-                    quantity: totalNeeded,
-                    originalQuantity: conv.originalQuantity ? conv.originalQuantity * cMenuItem.quantity : null,
-                    originalUnit: conv.originalUnit,
-                    conversionFactor: conv.conversionFactor,
-                    reason: `Catering Event: ${event.title}`,
-                    reference,
-                    productName: recipe.product.name
-                });
+        const required = new Map<number, { productName: string; unit: string | null; quantity: number }>();
+        for (const line of event.menuItems) {
+            for (const recipe of line.menuItem.recipes) {
+                const conv = await this.convertRecipeQuantityToBase(recipe, companyId);
+                const entry = required.get(recipe.productId) ?? {
+                    productName: recipe.product.name,
+                    unit: recipe.product.baseUnit?.abbreviation || recipe.product.unit || null,
+                    quantity: 0
+                };
+                entry.quantity += conv.baseQuantity * line.quantity;
+                required.set(recipe.productId, entry);
             }
         }
+        const productIds = [...required.keys()];
+        // Same resolver as sale consumption and POS menu availability.
+        const routing = await WarehouseRouteService.resolveForBranch(prisma, companyId, event.branchId, warehouseId, productIds);
+        const warehouseIds = [...new Set([warehouseId, ...routing.values()])];
+        const warehouses = await prisma.warehouse.findMany({
+            where: { companyId, id: { in: warehouseIds } },
+            select: { id: true, name: true }
+        });
+        const stocks = productIds.length > 0
+            ? await prisma.stock.findMany({
+                where: { companyId, warehouseId: { in: warehouseIds }, productId: { in: productIds } },
+                select: { warehouseId: true, productId: true, quantity: true }
+            })
+            : [];
+        const nameOf = new Map(warehouses.map((row) => [row.id, row.name]));
+        const stockOf = new Map(stocks.map((row) => [`${row.warehouseId}|${row.productId}`, Number(row.quantity)]));
+        const lines = [...required.entries()]
+            .map(([productId, entry]) => {
+                const target = routing.get(productId) ?? warehouseId;
+                const available = stockOf.get(`${target}|${productId}`) ?? 0;
+                return {
+                    productId,
+                    productName: entry.productName,
+                    unit: entry.unit,
+                    warehouseId: target,
+                    warehouseName: nameOf.get(target) ?? `Bodega #${target}`,
+                    routed: target !== warehouseId,
+                    required: Number(entry.quantity.toFixed(4)),
+                    available: Number(available.toFixed(4)),
+                    shortage: Number(Math.max(0, entry.quantity - available).toFixed(4))
+                };
+            })
+            .sort((a, b) => a.productName.localeCompare(b.productName, 'es'));
+        return { eventId, warehouseId, lines };
     }
 
     static async deleteEvent(id: number, companyId: number, userId: number) {
@@ -682,7 +897,7 @@ export class CateringService {
                 where: { id, companyId },
                 select: { status: true, payments: { select: { id: true } } }
             });
-            if (!event) throw new Error('Catering event not found');
+            if (!event) throw new Error('Evento de catering no encontrado');
             if (event.status !== 'QUOTED' && event.status !== 'CANCELLED') {
                 throw new Error('Solo se pueden eliminar eventos en estado COTIZADO o CANCELADO');
             }
@@ -754,7 +969,7 @@ export class CateringService {
             });
 
             if (!event) {
-                throw new Error('Catering event not found');
+                throw new Error('Evento de catering no encontrado');
             }
             const actor = await tx.user.findFirst({
                 where: { id: userId, companyId, status: 'ACTIVE' },
@@ -924,7 +1139,7 @@ export class CateringService {
                 }
             });
 
-            if (!event) throw new Error('Catering event not found');
+            if (!event) throw new Error('Evento de catering no encontrado');
             const actor = await tx.user.findFirst({
                 where: { id: userId, companyId, status: 'ACTIVE' },
                 select: { id: true }
@@ -1031,7 +1246,7 @@ export class CateringService {
             where: { id: params.eventId, companyId: params.companyId },
             include: { payments: { where: { status: 'ACTIVE' }, orderBy: { id: 'asc' } } }
         });
-        if (!event) throw new Error('Catering event not found');
+        if (!event) throw new Error('Evento de catering no encontrado');
         if (event.payments.length === 0) throw new Error('La factura de catering no tiene pagos activos para reembolsar');
 
         const refundMap = new Map(params.externalRefunds.map((refund) => [refund.paymentId, refund.reference]));
@@ -1279,7 +1494,10 @@ export class CateringService {
                         menuItem: {
                             include: {
                                 recipes: {
-                                    include: { product: true }
+                                    include: {
+                                        product: { include: { baseUnit: { select: { abbreviation: true } } } },
+                                        unitOfMeasure: { select: { abbreviation: true } }
+                                    }
                                 }
                             }
                         }

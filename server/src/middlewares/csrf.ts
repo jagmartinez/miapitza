@@ -42,12 +42,6 @@ function ensureCsrfToken(req: Request, res: Response): string {
 }
 
 export function csrfProtection(req: Request, res: Response, next: NextFunction): void {
-    // API key requests are stateless — skip CSRF
-    if (req.headers['x-api-key']) {
-        next();
-        return;
-    }
-
     // Exempt specific public endpoints that have their own protection (rate-limit, HMAC, etc.)
     if (isCsrfExemptPath(req.path)) {
         next();

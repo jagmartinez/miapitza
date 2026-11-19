@@ -162,8 +162,8 @@ export class BankReconciliationService {
                 user: shift.user.name,
                 startAmount: Number(shift.startAmount),
                 endAmount: endAmt,
-                salesIn: shiftSalesIn,
-                cashOut: shiftCashOut,
+                salesIn: Math.round(shiftSalesIn * 100) / 100,
+                cashOut: Math.round(shiftCashOut * 100) / 100,
                 difference: Math.round(shiftDiff * 100) / 100,
                 status: this.calculateShiftStatus(shiftDiff, tolerance)
             });
@@ -260,10 +260,11 @@ export class BankReconciliationService {
                 refunded,
                 netCollected: totalSales,
                 bySource: sourceTotals,
-                totalExpenses,
-                netSales: totalSales - totalExpenses,
+                // Float accumulations are rounded to cents at the boundary.
+                totalExpenses: Math.round(totalExpenses * 100) / 100,
+                netSales: Math.round((totalSales - totalExpenses) * 100) / 100,
                 byMethod: totalsByMethod,
-                cashInRegisters: totalCash
+                cashInRegisters: Math.round(totalCash * 100) / 100
             },
             reconciliation: {
                 cashExpected: expectedCash,

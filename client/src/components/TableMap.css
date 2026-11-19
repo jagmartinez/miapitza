@@ -441,3 +441,9 @@
     .table-map-legend span { flex: 0 0 auto; font-size: 10px; }
     .table-map-inspector { max-height: 44vh; }
 }
+
+/* Phones: the 42px third column squeezed "Nueva mesa" to an unreadable sliver;
+   use two flexible columns (filter | utilities) so every action keeps its label. */
+@media (max-width: 600px) {
+    .table-map-actions { grid-template-columns: minmax(0, 1fr) auto; }
+}

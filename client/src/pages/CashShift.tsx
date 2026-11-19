@@ -1,4 +1,6 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
 import Select from '../components/Select';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -17,6 +19,7 @@ import { useAppToast } from '../context/ToastContext';
 import { DEFAULT_EXCHANGE_RATE } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
 import { formatLocalDateInput } from '../utils/dateInput';
+import { getIdempotentAttempt, isAmbiguousMutationFailure, type IdempotentAttempt } from '../utils/idempotency';
 import './CashShift.css';
 
 interface DenomCountRow {
@@ -173,6 +176,12 @@ export default function CashShiftPage() {
     const [closeNotes, setCloseNotes] = useState('');
     const [closePreview, setClosePreview] = useState<ClosePreviewState | null>(null);
     const [previewLoading, setPreviewLoading] = useState(false);
+    // In-flight guards: refs block same-tick double submits, state disables the buttons.
+    const [submittingMovement, setSubmittingMovement] = useState(false);
+    const [closingShift, setClosingShift] = useState(false);
+    const submittingMovementRef = useRef(false);
+    const movementAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const closingShiftRef = useRef(false);
 
     const canForceClose = hasAnyRole(user, ['ADMIN', 'SUPERADMIN']);
     /** Same backend constraint as supplier POST from cash context */
@@ -238,7 +247,7 @@ export default function CashShiftPage() {
             setArqueoDetails(arqueoRes.data.data);
         } catch (error: unknown) {
             console.error('[CASH-SHIFT-PAGE] Error loading shift data:', error);
-            showError(`Error cargando datos del turno: ${error instanceof Error ? error.message : 'Error'}`);
+            showError(getApiErrorMessage(error, 'Error cargando datos del turno'));
         } finally {
             setLoading(false);
         }
@@ -297,6 +306,9 @@ export default function CashShiftPage() {
 
     const handleAddMovement = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (submittingMovementRef.current) return;
+        submittingMovementRef.current = true;
+        setSubmittingMovement(true);
         try {
             const payload: {
                 type: 'IN' | 'OUT';
@@ -327,7 +339,15 @@ export default function CashShiftPage() {
                 payload.supplierId = Number(movementForm.supplierId);
             }
 
-            await cashShiftsAPI.addMovement(Number(id), payload);
+            // One key per logical movement: a retry of the same form after a
+            // timeout reuses it; any edit to the payload yields a new key.
+            const attempt = getIdempotentAttempt(
+                movementAttemptRef.current,
+                JSON.stringify({ shiftId: Number(id), ...payload }),
+            );
+            movementAttemptRef.current = attempt;
+            await cashShiftsAPI.addMovement(Number(id), payload, attempt.key);
+            movementAttemptRef.current = null;
             setIsMovementSidebarOpen(false);
             setMovementForm({
                 amount: '',
@@ -339,8 +359,12 @@ export default function CashShiftPage() {
             });
             loadData();
         } catch (error) {
+            if (!isAmbiguousMutationFailure(error)) movementAttemptRef.current = null;
             console.error('Error adding movement:', error);
-            showError('Error al registrar movimiento');
+            showError(getApiErrorMessage(error, 'Error al registrar movimiento'));
+        } finally {
+            submittingMovementRef.current = false;
+            setSubmittingMovement(false);
         }
     };
 
@@ -360,6 +384,9 @@ export default function CashShiftPage() {
 
     const handleCloseShift = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (closingShiftRef.current) return;
+        closingShiftRef.current = true;
+        setClosingShift(true);
         try {
             const preview = closePreview || (await cashArqueoAPI.previewClose(Number(id), buildClosePayload())).data.data;
             setClosePreview(preview);
@@ -389,6 +416,9 @@ export default function CashShiftPage() {
         } catch (error: unknown) {
             console.error('Error closing shift:', error);
             showError('Error al cerrar turno: ' + errMsg(error, 'Error'));
+        } finally {
+            closingShiftRef.current = false;
+            setClosingShift(false);
         }
     };
 
@@ -563,7 +593,7 @@ export default function CashShiftPage() {
             printWindow.document.close();
         } catch (error) {
             console.error('Error printing report:', error);
-            showError('Error al generar el reporte');
+            showError(getApiErrorMessage(error, 'Error al generar el reporte'));
         }
     };
 
@@ -584,7 +614,7 @@ export default function CashShiftPage() {
                 const res = await suppliersAPI.getAll({ active: true });
                 setSuppliers(res.data.data);
             } catch (error) {
-                console.error('Error loading suppliers:', error);
+                notifyError(error, 'No se pudieron cargar los proveedores', { type: 'warning' });
             }
         }
 
@@ -601,7 +631,7 @@ export default function CashShiftPage() {
             {/* Header */}
             <div className="page-header">
                 <div className="flex items-center gap-4">
-                    <Button variant="secondary" onClick={() => navigate('/cash-registers')}>
+                    <Button variant="secondary" onClick={() => navigate('/cash-registers')} aria-label="Volver a cajas" title="Volver a cajas">
                         <ArrowLeft size={20} />
                     </Button>
                     <h1>Turno #{shift.id}</h1>
@@ -977,6 +1007,8 @@ export default function CashShiftPage() {
                                                         variant="secondary"
                                                         onClick={() => setIsNewSupplierModalOpen(true)}
                                                         className="add-supplier-btn"
+                                                        aria-label="Nuevo proveedor"
+                                                        title="Nuevo proveedor"
                                                         style={{ width: '42px', height: '42px', padding: 0, marginBottom: '2px' }}
                                                     >
                                                         <Plus size={16} />
@@ -1021,7 +1053,7 @@ export default function CashShiftPage() {
                             <Button type="button" variant="ghost" onClick={() => setIsMovementSidebarOpen(false)}>
                                 Cancelar
                             </Button>
-                            <Button type="submit">
+                            <Button type="submit" disabled={submittingMovement}>
                                 {movementType === 'IN' ? 'Registrar Ingreso' : 'Registrar Retiro'}
                             </Button>
                         </div>
@@ -1280,6 +1312,7 @@ export default function CashShiftPage() {
                                 type="submit"
                                 variant="primary"
                                 disabled={
+                                    closingShift ||
                                     !closePreview ||
                                     (closePreview.requiresNote && !closeNotes.trim()) ||
                                     (closePreview.exceedsTolerance && (!canForceClose || !closeNotes.trim()))
@@ -1315,7 +1348,7 @@ export default function CashShiftPage() {
                             setIsNewSupplierModalOpen(false);
                         } catch (error) {
                             console.error('Error creating supplier:', error);
-                            showError('Error al crear proveedor');
+                            showError(getApiErrorMessage(error, 'Error al crear proveedor'));
                         }
                     }} className="modal-form-new">
                         <div className="modal-tab-content">

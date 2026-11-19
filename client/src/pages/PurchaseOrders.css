@@ -107,11 +107,20 @@
 
 .status-recibida {
     background: rgba(16, 185, 129, 0.1);
-    color: var(--color-success);
+    color: #047857;
 }
 
 .status-cancelada {
     background: rgba(239, 68, 68, 0.1);
+    color: #b91c1c;
+}
+
+/* Light pills use darker text for >= 4.5:1; dark mode keeps the bright tokens. */
+.dark .status-recibida {
+    color: var(--color-success);
+}
+
+.dark .status-cancelada {
     color: var(--color-danger);
 }
 
@@ -809,4 +818,30 @@
 .payment-sidebar-form .modal-tab.active .payment-tab-count {
     background: rgba(255, 255, 255, 0.25);
     opacity: 1;
+}
+
+/* Partial receipts */
+.status-parcial {
+    background: rgba(245, 158, 11, 0.12);
+    color: #b45309;
+}
+
+.dark .status-parcial {
+    color: var(--color-warning);
+}
+
+.po-received-subtotal {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+}
+
+.po-out-of-range-hint {
+    margin-top: 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #92400e;
+}
+
+.dark .po-out-of-range-hint {
+    color: var(--color-warning);
 }

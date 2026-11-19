@@ -333,6 +333,6 @@ export const requirePermission = (permission: string, ...fallbackRoles: string[]
             // Authorization lookup failures must fail closed.
         }
 
-        return res.status(403).json({ success: false, message: 'Insufficient permissions' });
+        return res.status(403).json({ success: false, code: 'FORBIDDEN', message: 'No tienes permiso para realizar esta acción' });
     };
 };

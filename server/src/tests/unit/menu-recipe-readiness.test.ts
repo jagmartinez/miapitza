@@ -56,11 +56,11 @@ describe('Menu sale-recipe readiness', () => {
         }));
     });
 
-    it('creates DIRECT menu items active without requiring a sale recipe', async () => {
+    it('creates DIRECT menu items inactive until they have at least one recipe line', async () => {
         stubScopedRefs();
         const create = jest.spyOn(prisma.menuItem, 'create').mockResolvedValue({
             id: 10,
-            active: true,
+            active: false,
             type: 'DIRECT',
             name: 'Agua',
             category: { id: 1, name: 'Bebidas' }
@@ -74,8 +74,100 @@ describe('Menu sale-recipe readiness', () => {
         });
 
         expect(create).toHaveBeenCalledWith(expect.objectContaining({
-            data: expect.objectContaining({ type: 'DIRECT', active: true })
+            data: expect.objectContaining({ type: 'DIRECT', active: false })
         }));
+    });
+
+    it('blocks activating a DIRECT item without recipe lines', async () => {
+        const tx = {
+            menuItem: {
+                findFirst: jest.fn(async () => ({
+                    id: 10, companyId: 1, type: 'DIRECT', active: false, name: 'Agua'
+                })),
+                update: jest.fn()
+            },
+            recipe: { count: jest.fn(async () => 0) }
+        };
+        stubScopedRefs();
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+
+        await expect(MenuItemService.update(10, 1, { active: true }))
+            .rejects.toThrow(/venta directa sin receta/i);
+        expect(tx.menuItem.update).not.toHaveBeenCalled();
+    });
+
+    it('still allows unrelated edits on a legacy active DIRECT item without recipe', async () => {
+        const tx = {
+            menuItem: {
+                findFirst: jest.fn(async () => ({
+                    id: 10, companyId: 1, type: 'DIRECT', active: true, name: 'Agua'
+                })),
+                update: jest.fn(async () => ({ id: 10 }))
+            },
+            recipe: { count: jest.fn(async () => 0) }
+        };
+        stubScopedRefs();
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+
+        await MenuItemService.update(10, 1, { price: 3 });
+        expect(tx.menuItem.update).toHaveBeenCalled();
+    });
+
+    it('rejects replacing the recipe of an active DIRECT item with an empty list', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            menuItem: {
+                findFirst: jest.fn(async () => ({
+                    id: 10, companyId: 1, active: true, type: 'DIRECT', name: 'Agua'
+                }))
+            },
+            recipe: { deleteMany: jest.fn(), createMany: jest.fn(), findMany: jest.fn() }
+        };
+        stubScopedRefs();
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+
+        await expect(MenuItemService.replaceRecipes(10, 1, []))
+            .rejects.toThrow(/venta directa/i);
+        expect(tx.recipe.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('flags legacy items without recipe in the menu list', async () => {
+        jest.spyOn(prisma.menuItem, 'findMany').mockResolvedValue([
+            { id: 10, type: 'DIRECT', _count: { recipes: 0, modifierGroups: 0 }, branchPrices: [] },
+            { id: 11, type: 'DIRECT', _count: { recipes: 2, modifierGroups: 0 }, branchPrices: [] }
+        ] as never);
+
+        const rows = await MenuItemService.getAll(1) as Array<{ id: number; missingRecipe: boolean }>;
+        expect(rows.map((row) => [row.id, row.missingRecipe])).toEqual([[10, true], [11, false]]);
+    });
+
+    it('rejects recipe quantities that would be stored as zero', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            menuItem: {
+                findFirst: jest.fn(async () => ({
+                    id: 9, companyId: 1, active: true, type: 'PREPARED', name: 'Pasta'
+                }))
+            },
+            product: { findMany: jest.fn(async () => [{ id: 20, unit: 'kg' }]) },
+            unitOfMeasure: { findFirst: jest.fn() },
+            recipe: { deleteMany: jest.fn(), createMany: jest.fn(), findMany: jest.fn() }
+        };
+        stubScopedRefs();
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+
+        await expect(MenuItemService.replaceRecipes(9, 1, [
+            { productId: 20, quantity: 0.0000004, unit: 'kg' }
+        ])).rejects.toThrow(/demasiado pequeña/i);
+        expect(tx.recipe.deleteMany).not.toHaveBeenCalled();
     });
 
     it('blocks activating a PREPARED item with an empty sale recipe', async () => {

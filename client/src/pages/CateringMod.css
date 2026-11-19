@@ -1931,3 +1931,11 @@
     .catering-event-modal-content > .modal-tabs .modal-tab { flex: 0 0 auto; }
     .catering-event-section .modal-form-row { grid-template-columns: 1fr; }
 }
+
+/* Finish preview: source warehouse per ingredient (branch routing). */
+.catering-finish-preview { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.catering-finish-preview small { color: var(--text-secondary); }
+.catering-finish-preview-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.catering-finish-preview-table th,
+.catering-finish-preview-table td { padding: 4px 6px; border-bottom: 1px solid var(--border-color); text-align: left; }
+.catering-finish-preview-table tr.is-short td { color: var(--color-danger); }

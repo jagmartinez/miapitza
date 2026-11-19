@@ -22,6 +22,14 @@ function parseCateringStatus(value: unknown): CateringStatus | undefined {
     return (CATERING_STATUSES as readonly string[]).includes(value) ? (value as CateringStatus) : undefined;
 }
 
+/** undefined when absent, null when present but not a valid date. */
+function parseOptionalQueryDate(value: unknown): Date | undefined | null {
+    if (value === undefined || value === '') return undefined;
+    if (typeof value !== 'string') return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export class CateringController {
 
     /** Load a catering event and assert the caller's branch may access it. */
@@ -35,11 +43,16 @@ export class CateringController {
         try {
             const companyId = req.user!.companyId;
             const requested = req.query.branchId ? parseInt(req.query.branchId as string) : undefined;
+            const startDate = parseOptionalQueryDate(req.query.startDate);
+            const endDate = parseOptionalQueryDate(req.query.endDate);
+            if (startDate === null || endDate === null) {
+                return next({ statusCode: 400, message: 'Fecha de filtro inválida' });
+            }
             const filters = {
                 branchId: resolveBranchScope(req.user!, requested),
                 status: parseCateringStatus(req.query.status),
-                startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
-                endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
+                startDate,
+                endDate,
             };
 
             const events = await CateringService.getAllEvents(companyId, filters);
@@ -91,6 +104,19 @@ export class CateringController {
             }
             const event = await CateringService.updateEvent(id, companyId, userId, req.body);
             res.json({ success: true, data: event });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
+    static async getInventoryPreview(req: Request, res: Response, next: NextFunction) {
+        try {
+            const id = parseInt(req.params.id);
+            const warehouseId = Number(req.query.warehouseId);
+            await CateringController.assertEventBranch(req, id);
+            const preview = await CateringService.getInventoryPreview(id, req.user!.companyId, warehouseId);
+            res.json({ success: true, data: preview });
         } catch (error: unknown) {
             if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
@@ -276,7 +302,8 @@ export class CateringController {
     static async checkAvailability(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;
-            const date = new Date(req.query.date as string);
+            const date = parseOptionalQueryDate(req.query.date);
+            if (!date) return next({ statusCode: 400, message: 'Fecha de consulta inválida' });
             const requested = req.query.branchId ? Number(req.query.branchId) : undefined;
             const branchId = resolveBranchScope(req.user!, requested);
             const result = await CateringService.checkResourceAvailability(date, companyId, branchId);

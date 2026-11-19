@@ -11,7 +11,9 @@ describe('Browser hardware fail-closed contracts', () => {
   it('releases camera tracks and never fabricates a capture after denial/failure', () => {
     expect(cameraSource).toContain("getTracks().forEach((track) => track.stop())");
     expect(cameraSource).toContain('onCaptureRef.current(null)');
-    expect(cameraSource).toContain("name === 'NotAllowedError'");
+    // Denial/insecure/missing camera guidance lives in attendanceRules.cameraErrorMessage
+    // (covered by biometricGuidance.test.ts); the component must route failures through it.
+    expect(cameraSource).toContain('setError(cameraErrorMessage(name))');
     expect(cameraSource).toContain("phase: 'READY'");
     expect(cameraSource).toContain('El giro se validará al confirmar.');
     expect(cameraSource).not.toMatch(/localStorage|sessionStorage|indexedDB/);

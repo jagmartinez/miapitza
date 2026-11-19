@@ -21,6 +21,7 @@ import {
 import type { Branch, InventoryMovement, Product, ProductAllowedUnit, Warehouse } from '../types';
 import type { SingleValue } from 'react-select';
 import './Inventory.css';
+import { getApiErrorMessage } from '../utils/apiError';
 
 function axiosMessage(err: unknown, fallback: string): string {
     if (typeof err === 'object' && err !== null && 'response' in err) {
@@ -107,7 +108,7 @@ export default function Warehouses() {
             setLoadError(null);
         } catch (e) {
             console.error(e);
-            setLoadError('No se pudieron cargar las bodegas y sus catálogos. No se asumirá que el inventario está vacío.');
+            setLoadError(getApiErrorMessage(e, 'No se pudieron cargar las bodegas y sus catálogos (no se asumirá que el inventario está vacío)'));
         } finally {
             setLoading(false);
         }
@@ -158,8 +159,8 @@ export default function Warehouses() {
             setStock(res.data.data || []);
             setSelectedWarehouse(wh);
             setShowStock(true);
-        } catch {
-            showError('Error al cargar stock');
+        } catch (error) {
+            showError(getApiErrorMessage(error, 'Error al cargar stock'));
         }
     };
 
@@ -224,8 +225,8 @@ export default function Warehouses() {
             const res = await inventoryMovementsAPI.getAll({ type: 'TRANSFER' });
             setTransferHistory(res.data.data || []);
             setShowHistory(true);
-        } catch {
-            showError('Error al cargar historial');
+        } catch (error) {
+            showError(getApiErrorMessage(error, 'Error al cargar historial de transferencias'));
         }
     };
 

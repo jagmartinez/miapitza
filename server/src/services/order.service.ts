@@ -2,14 +2,27 @@ import prisma from '../utils/prisma';
 import { Prisma } from '@prisma/client';
 import { PedidosYaService } from './pedidosya.service';
 import { InventoryConsumptionService } from './inventory-consumption.service';
+import { SaleWarehouseService } from './sale-warehouse.service';
 import { DynamicPricingService } from './dynamic-pricing.service';
-import { calculatePromotionDiscount } from './promotion.service';
+import {
+    claimPromotionUsageAtSettlement,
+    evaluateOrderPromotion,
+    getActivePromotionReservation,
+    PromotionValidationError,
+    releasePromotionReservationForOrder,
+    syncOrderLinePromotionDiscounts,
+    type PromotionEvaluation
+} from './promotion.service';
 import { DEFAULT_COMPANY_SETTINGS, SettingService } from './setting.service';
 import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
 import { reconcileTableGroupForTable } from './table-group.service';
 import { tableOpenAccountWhere, tableOperationalOrderWhere } from './table-occupancy-policy';
 import { selectLatestKitchenBatch } from './kitchen-batch';
-import { transactionWithP2034Retry } from '../utils/transaction-retry';
+import { isRetryableTransactionError, SETTLEMENT_TRANSACTION_OPTIONS, transactionWithP2034Retry } from '../utils/transaction-retry';
+
+/** User-facing (Spanish) messages other flows compare against. */
+export const PROMOTION_NOT_ACTIVE_MESSAGE = 'El código de promoción no existe o no está activo';
+export const ORDER_ALREADY_CANCELLED_MESSAGE = 'La orden ya está cancelada';
 
 /** Valid state transitions for orders */
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -37,6 +50,12 @@ export interface FiscalCustomerInput {
 export interface OrderCancelOptions {
     allowPaidReversal?: boolean;
     wasteWarehouseId?: number;
+    /**
+     * True when `wasteWarehouseId` is a configured default (not chosen by the
+     * user): the waste then follows the branch ingredient routing. A
+     * user-selected waste warehouse is never re-routed.
+     */
+    wasteWarehouseIsDefault?: boolean;
     fiscalCreditNoteId?: number;
     fiscalInvoiceCancellationId?: number;
     externalRefundReference?: string;
@@ -58,6 +77,12 @@ const kitchenBatchOrderInclude = {
         orderBy: { id: 'asc' as const },
     },
 } satisfies Prisma.KitchenBatchInclude;
+
+const voidResultOrderInclude = {
+    table: true,
+    user: { select: { id: true, name: true, color: true } },
+    items: { include: { menuItem: true, modifiers: true }, orderBy: { id: 'asc' as const } },
+} satisfies Prisma.OrderInclude;
 
 type KitchenBatchOrderRow = Prisma.KitchenBatchGetPayload<{
     include: typeof kitchenBatchOrderInclude;
@@ -112,22 +137,34 @@ export class OrderService {
         });
     }
 
-    private static calculateFinalTotal(subtotal: number, discount: number, tax: number, tipAmount: number): number {
-        const safeSubtotal = Math.max(0, Number(subtotal) || 0);
-        const safeDiscount = Math.max(0, Number(discount) || 0);
-        const safeTax = Math.max(0, Number(tax) || 0);
-        const safeTip = Math.max(0, Number(tipAmount) || 0);
-        const discountedSubtotal = Math.max(0, safeSubtotal - safeDiscount);
-        return Math.round((discountedSubtotal + safeTax + safeTip) * 100) / 100;
+    /** Non-negative money -> integer cents, half-up, immune to binary float noise (1.005 -> 101). */
+    private static toCents(value: number): number {
+        const safe = Math.max(0, Number(value) || 0);
+        return Math.round(Number((safe * 100).toFixed(6)));
     }
 
+    /** All money arithmetic in integer cents so 0.1 + 0.2 style drift never reaches a total. */
+    private static calculateFinalTotal(subtotal: number, discount: number, tax: number, tipAmount: number): number {
+        const discountedCents = Math.max(0, this.toCents(subtotal) - this.toCents(discount));
+        return (discountedCents + this.toCents(tax) + this.toCents(tipAmount)) / 100;
+    }
+
+    /**
+     * Tax = discounted subtotal × rate (rate is a PERCENT, e.g. 15 = 15%),
+     * computed in integer cents and rounded half-up: 15% of 1.50 = 0.225 ->
+     * 0.23 (float math gives 0.22499… -> 0.22). Rates keep up to 4 decimals.
+     */
     private static taxFromRate(discountedSubtotal: number, taxRatePercent: number): number {
-        const base = Math.max(0, Number(discountedSubtotal) || 0);
         const rate = Number(taxRatePercent);
         if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
             throw new Error('La tasa de impuesto configurada no es válida');
         }
-        return Math.round(base * (rate / 100) * 100) / 100;
+        const baseCents = this.toCents(discountedSubtotal);
+        // percent × 10^4 -> integer; cents × rate / (100 × 10^4), half-up.
+        const scaledRate = Math.round(Number((rate * 10_000).toFixed(6)));
+        const denominator = 100 * 10_000;
+        const taxCents = Math.floor((baseCents * scaledRate + denominator / 2) / denominator);
+        return taxCents / 100;
     }
 
     private static async getCompanyTaxRate(
@@ -176,29 +213,40 @@ export class OrderService {
         return items.reduce((sum, item) => sum + Number(item.subtotal), 0);
     }
 
-    private static async calculatePromotionDiscount(
+    /**
+     * Authoritative promotion evaluation over the persisted order lines
+     * (branch, happy hour, per-item, N x M and combo rules). `apply` when the
+     * code is being (re)assigned, `reprice` when its lines changed.
+     */
+    private static async evaluatePromotionForOrder(
         tx: Prisma.TransactionClient,
         companyId: number,
+        orderId: number,
         code: string,
-        subtotal: number
-    ): Promise<number> {
-        const normalizedCode = code.trim().toUpperCase();
-        const promotion = await tx.promotion.findFirst({
-            where: { companyId, code: normalizedCode }
-        });
-        if (!promotion) throw new Error('Promotion is not active');
-        return calculatePromotionDiscount(promotion, subtotal);
+        subtotal: number,
+        mode: 'apply' | 'reprice'
+    ): Promise<PromotionEvaluation> {
+        return evaluateOrderPromotion(tx, { companyId, orderId, code, subtotal, mode }, PROMOTION_NOT_ACTIVE_MESSAGE);
     }
 
+    /**
+     * Reprices the stored discount after the lines changed. Line-based
+     * promotions also refresh the per-line attribution (OrderItem.promotionDiscount)
+     * so partial credit notes and split bills return/charge each line exactly.
+     * Manual discounts never carry attribution (cleared when a code is removed).
+     */
     private static async repriceStoredDiscount(
         tx: Prisma.TransactionClient,
         companyId: number,
+        orderId: number,
         subtotal: number,
         discount: Prisma.Decimal | number,
         discountCode: string | null
     ): Promise<number> {
         if (discountCode) {
-            return this.calculatePromotionDiscount(tx, companyId, discountCode, subtotal);
+            const evaluation = await this.evaluatePromotionForOrder(tx, companyId, orderId, discountCode, subtotal, 'reprice');
+            if (evaluation.lineBased) await syncOrderLinePromotionDiscounts(tx, orderId, evaluation.lineDiscounts);
+            return evaluation.discount;
         }
         return Math.round(Math.min(Math.max(0, Number(discount)), Math.max(0, subtotal)) * 100) / 100;
     }
@@ -294,7 +342,7 @@ export class OrderService {
                 },
             },
         });
-        if (!order) throw new Error('Order not found');
+        if (!order) throw new Error('Orden no encontrada');
         if (order.status === 'CANCELLED' || order.status === 'DELIVERED') return order.status;
 
         const active = order.kitchenBatches.filter((batch) => batch.status !== 'RELEASED');
@@ -379,6 +427,29 @@ export class OrderService {
         return 'OPEN';
     }
 
+    /**
+     * Free-text filter for the orders list: order number (#123 / 123),
+     * invoice number, customer name and table number. MySQL's default
+     * collations are case-insensitive, so `contains` is case-insensitive.
+     * Tenant/branch scoping stays in the outer where clause.
+     */
+    static buildOrderSearchWhere(rawSearch?: string): Prisma.OrderWhereInput | null {
+        const search = typeof rawSearch === 'string' ? rawSearch.trim().slice(0, 100) : '';
+        if (!search) return null;
+        const or: Prisma.OrderWhereInput[] = [
+            { customerName: { contains: search } },
+            { invoiceNumber: { contains: search } },
+            { table: { is: { number: { contains: search } } } },
+            { user: { is: { name: { contains: search } } } },
+        ];
+        const numeric = search.replace(/^#/, '').trim();
+        if (/^\d{1,10}$/.test(numeric)) {
+            const id = Number(numeric);
+            if (Number.isSafeInteger(id) && id > 0 && id <= 2147483647) or.push({ id });
+        }
+        return { OR: or };
+    }
+
     static async getAll(companyId: number, filters?: {
         branchId?: number;
         tableId?: number;
@@ -391,10 +462,13 @@ export class OrderService {
         invoicedStartDate?: Date;
         invoicedEndDate?: Date;
         invoicedOnly?: boolean;
+        search?: string;
         page?: number;
         limit?: number;
     }) {
         const where: Prisma.OrderWhereInput = { companyId };
+        const searchWhere = this.buildOrderSearchWhere(filters?.search);
+        if (searchWhere) where.AND = [searchWhere];
 
         if (filters?.branchId) {
             where.branchId = filters.branchId;
@@ -581,7 +655,7 @@ export class OrderService {
         });
 
         if (!order) {
-            throw new Error('Order not found');
+            throw new Error('Orden no encontrada');
         }
 
         const { fiscalCreditNotes, ...rest } = order;
@@ -657,9 +731,10 @@ export class OrderService {
         if (!Number.isInteger(data.branchId) || data.branchId <= 0) throw new Error('Sucursal inválida');
         const fiscalCustomer = this.normalizeFiscalCustomer(data);
         for (const item of data.items || []) {
-            if (!Number.isInteger(item.quantity) || item.quantity <= 0) throw new Error('Quantity must be a positive integer');
+            if (!Number.isInteger(item.quantity) || item.quantity <= 0) throw new Error('La cantidad debe ser un entero mayor a 0');
         }
-        return await prisma.$transaction(async (tx) => {
+        // Table -> Order lock order; replayed whole on deadlock/lock-wait.
+        return await transactionWithP2034Retry(async (tx) => {
             const branch = await tx.branch.findFirst({ where: { id: data.branchId, companyId, status: 'ACTIVE' }, select: { id: true } });
             if (!branch) throw new Error('Sucursal no encontrada o inactiva para esta empresa');
             // The order's table (if any) must belong to the same company AND the
@@ -688,6 +763,10 @@ export class OrderService {
                         ...tableOperationalOrderWhere(),
                         branchId: data.branchId
                     },
+                    // If a reversed payment re-opened an older account on a
+                    // table that a new party already occupies, merge into the
+                    // newest (current party's) order, never the old debt.
+                    orderBy: { id: 'desc' },
                     include: {
                         items: true,
                         payments: { where: { status: 'ACTIVE' }, select: { id: true } }
@@ -746,7 +825,7 @@ export class OrderService {
                         // Recompute final total from authoritative item subtotals + stored adjustments.
                         const newSubtotal = await this.getOrderItemsSubtotal(tx, existingOrder.id);
                         const repricedDiscount = await this.repriceStoredDiscount(
-                            tx, companyId, newSubtotal, existingOrder.discount, existingOrder.discountCode
+                            tx, companyId, existingOrder.id, newSubtotal, existingOrder.discount, existingOrder.discountCode
                         );
                         const repricedTax = await this.repriceTax(tx, companyId, newSubtotal, repricedDiscount);
                         const newTotal = this.calculateFinalTotal(
@@ -933,7 +1012,7 @@ export class OrderService {
     }) {
         // Validate quantity
         if (!Number.isInteger(data.quantity) || data.quantity <= 0) {
-            throw new Error('Quantity must be a positive integer');
+            throw new Error('La cantidad debe ser un entero mayor a 0');
         }
 
         return await prisma.$transaction(async (tx) => {
@@ -944,11 +1023,11 @@ export class OrderService {
             });
 
             if (!order) {
-                throw new Error('Order not found');
+                throw new Error('Orden no encontrada');
             }
 
             if (order.status === 'CANCELLED' || order.status === 'DELIVERED') {
-                throw new Error('Cannot add items to paid, delivered or cancelled orders');
+                throw new Error('No se pueden agregar artículos a órdenes pagadas, entregadas o canceladas');
             }
             if (order.invoiceNumber || order.preInvoicedAt) {
                 throw new Error('No se puede modificar una orden con prefactura o factura emitida');
@@ -1006,7 +1085,7 @@ export class OrderService {
 
             const newSubtotal = await this.getOrderItemsSubtotal(tx, orderId);
             const repricedDiscount = await this.repriceStoredDiscount(
-                tx, companyId, newSubtotal, order.discount, order.discountCode
+                tx, companyId, orderId, newSubtotal, order.discount, order.discountCode
             );
             const repricedTax = await this.repriceTax(tx, companyId, newSubtotal, repricedDiscount);
             const newTotal = this.calculateFinalTotal(
@@ -1040,7 +1119,7 @@ export class OrderService {
                 where: { id: itemId, order: { companyId, ...(branchId !== undefined ? { branchId } : {}) } },
                 select: { orderId: true }
             });
-            if (!target) throw new Error('Item not found');
+            if (!target) throw new Error('Línea de la orden no encontrada');
 
             // Serialize item removal with payments, cancellation and pricing changes.
             await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${target.orderId} AND companyId = ${companyId} FOR UPDATE`;
@@ -1054,14 +1133,14 @@ export class OrderService {
             });
 
             if (!item || item.order.companyId !== companyId) {
-                throw new Error('Item not found');
+                throw new Error('Línea de la orden no encontrada');
             }
             if (branchId !== undefined && item.order.branchId !== branchId) {
-                throw new Error('Item not found');
+                throw new Error('Línea de la orden no encontrada');
             }
 
             if (item.order.status === 'CANCELLED' || item.order.status === 'DELIVERED') {
-                throw new Error('Cannot remove items from paid, delivered or cancelled orders');
+                throw new Error('No se pueden eliminar artículos de órdenes pagadas, entregadas o canceladas');
             }
             if (item.order.invoiceNumber || item.order.preInvoicedAt) {
                 throw new Error('No se puede modificar una orden con prefactura o factura emitida');
@@ -1079,7 +1158,7 @@ export class OrderService {
 
             const newSubtotal = await this.getOrderItemsSubtotal(tx, item.orderId);
             const repricedDiscount = await this.repriceStoredDiscount(
-                tx, companyId, newSubtotal, item.order.discount, item.order.discountCode
+                tx, companyId, item.orderId, newSubtotal, item.order.discount, item.order.discountCode
             );
             const repricedTax = await this.repriceTax(tx, companyId, newSubtotal, repricedDiscount);
             const newTotal = this.calculateFinalTotal(
@@ -1093,9 +1172,475 @@ export class OrderService {
                 where: { id: item.orderId },
                 data: { total: newTotal, discount: repricedDiscount, tax: repricedTax }
             });
+            // Removing the only unsent draft line after a released wave must
+            // restore the kitchen-derived status (READY), otherwise the order
+            // stays OPEN and cannot be delivered. Legacy orders without batch
+            // rows keep their stored status.
+            if (await tx.kitchenBatch.count({ where: { orderId: item.orderId } }) > 0) {
+                await this.syncOrderKitchenCompatibility(tx, item.orderId);
+            }
 
             return { success: true };
         });
+    }
+
+    /** `${companyId}_tipRate` x net subtotal, the only tip the POS can offer. */
+    private static async getMaxTip(
+        tx: Prisma.TransactionClient,
+        companyId: number,
+        netSubtotal: number
+    ): Promise<number> {
+        const tipRateSetting = await tx.setting.findUnique({
+            where: { companyId_name: { companyId, name: `${companyId}_tipRate` } },
+            select: { value: true }
+        });
+        const configuredTipRate = Number.parseFloat(tipRateSetting?.value ?? '0');
+        const tipRate = Number.isFinite(configuredTipRate) && configuredTipRate >= 0 && configuredTipRate <= 100
+            ? configuredTipRate
+            : 0;
+        return Math.round(Math.max(0, netSubtotal) * tipRate) / 100;
+    }
+
+    /**
+     * Authoritative repricing after a line quantity changed outside the menu
+     * flow (kitchen void). Subtotal comes from the persisted lines, a promotion
+     * is recalculated against the new subtotal (and dropped, never kept stale,
+     * when it no longer applies), tax is company rate x net subtotal and the
+     * stored tip is capped to the configured rate over the new net subtotal.
+     */
+    static async recomputeOrderPricingWithTransaction(
+        tx: Prisma.TransactionClient,
+        companyId: number,
+        order: {
+            id: number;
+            discount: Prisma.Decimal | number;
+            discountCode: string | null;
+            tipAmount: Prisma.Decimal | number | null;
+        }
+    ) {
+        const subtotal = Math.round(await this.getOrderItemsSubtotal(tx, order.id) * 100) / 100;
+        let discountCode = order.discountCode;
+        let promotionRemoved: { code: string; reason: string } | null = null;
+        let discount: number;
+        try {
+            discount = await this.repriceStoredDiscount(tx, companyId, order.id, subtotal, order.discount, discountCode);
+        } catch (error) {
+            if (!discountCode || !(error instanceof Error)) throw error;
+            const isPromotionRejection = error instanceof PromotionValidationError
+                || error.message === PROMOTION_NOT_ACTIVE_MESSAGE;
+            if (!isPromotionRejection) throw error;
+            promotionRemoved = { code: discountCode, reason: error.message };
+            discountCode = null;
+            discount = 0;
+            await syncOrderLinePromotionDiscounts(tx, order.id, []);
+        }
+        const tax = await this.repriceTax(tx, companyId, subtotal, discount);
+        const maxTip = await this.getMaxTip(tx, companyId, subtotal - discount);
+        const storedTip = Math.round(Math.max(0, Number(order.tipAmount || 0)) * 100) / 100;
+        const tipAmount = Math.min(storedTip, maxTip);
+        const total = this.calculateFinalTotal(subtotal, discount, tax, tipAmount);
+        return { subtotal, discount, discountCode, tax, tipAmount, total, promotionRemoved };
+    }
+
+    /**
+     * Per-line kitchen void: removes `quantity` units (default: the whole line)
+     * of a line already sent to kitchen. The voided units are wasted from a
+     * branch warehouse under WASTE-ORD-{orderId}-L{voidLineId} (negative stock
+     * allowed and alerted, exactly like a prepared full-order cancel), the
+     * voided row is kept with quantity 0 so the KDS still shows it, totals are
+     * repriced and the kitchen batch stays operable/releasable.
+     *
+     * Pre-invoiced, invoiced, paid/partially paid, delivered and cancelled
+     * orders are refused: their counterflows are the prefactura reversal, a
+     * fiscal credit note or a payment reversal. `idempotencyKey` makes a
+     * retried request (offline replay, double tap) return the first result.
+     */
+    static async voidKitchenItem(
+        orderId: number,
+        itemId: number,
+        companyId: number,
+        actorUserId: number,
+        input: {
+            quantity?: number;
+            reason?: string;
+            wasteWarehouseId?: number;
+            idempotencyKey?: string;
+        }
+    ) {
+        if (!Number.isInteger(orderId) || orderId <= 0 || !Number.isInteger(itemId) || itemId <= 0) {
+            throw new Error('Orden o línea inválida');
+        }
+        if (!Number.isInteger(actorUserId) || actorUserId <= 0) throw new Error('Usuario inválido');
+        const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
+        if (reason.length < 3 || reason.length > 500) {
+            throw new Error('El motivo de anulación es obligatorio (3 a 500 caracteres)');
+        }
+        const idempotencyKey = typeof input.idempotencyKey === 'string' ? input.idempotencyKey.trim() : '';
+        if (idempotencyKey.length < 8 || idempotencyKey.length > 191) {
+            throw new Error('La clave idempotente de anulación es obligatoria (8 a 191 caracteres)');
+        }
+        if (input.quantity !== undefined && (!Number.isInteger(input.quantity) || input.quantity <= 0)) {
+            throw new Error('La cantidad a anular debe ser un entero mayor a 0');
+        }
+        if (
+            input.wasteWarehouseId !== undefined
+            && (!Number.isInteger(input.wasteWarehouseId) || input.wasteWarehouseId <= 0)
+        ) {
+            throw new Error('Bodega de merma inválida');
+        }
+
+        return transactionWithP2034Retry(async (tx) => {
+            // Same Table -> Order lock order as payment, cancel and release.
+            await this.lockTableThenOrder(tx, companyId, orderId);
+
+            const replay = await tx.orderItem.findFirst({
+                where: { voidIdempotencyKey: idempotencyKey, order: { companyId } },
+                select: { id: true, orderId: true, voidedFromItemId: true, voidedQuantity: true, voidReason: true, kitchenBatchId: true }
+            });
+            if (replay) {
+                if (replay.orderId !== orderId || (replay.voidedFromItemId ?? replay.id) !== itemId) {
+                    throw new Error('La clave idempotente ya fue usada para anular otra línea');
+                }
+                // Same key, different request: a conflict, never a silent replay.
+                const quantityDiffers = input.quantity !== undefined && input.quantity !== replay.voidedQuantity;
+                const reasonDiffers = (replay.voidReason ?? '').trim() !== reason;
+                if (quantityDiffers || reasonDiffers) {
+                    throw Object.assign(
+                        new Error('La clave idempotente ya fue usada con otra cantidad o motivo; genere una nueva anulación'),
+                        { statusCode: 409, code: 'IDEMPOTENCY_KEY_REUSED' }
+                    );
+                }
+                const current = await tx.order.findFirst({
+                    where: { id: orderId, companyId },
+                    include: voidResultOrderInclude
+                });
+                if (!current) throw new Error('Orden no encontrada');
+                return {
+                    replayed: true,
+                    order: current,
+                    branchId: current.branchId,
+                    voidItemId: replay.id,
+                    voidedQuantity: replay.voidedQuantity,
+                    kitchenBatchId: replay.kitchenBatchId,
+                    promotionRemoved: null,
+                    manualDiscountClamped: null,
+                };
+            }
+
+            const order = await tx.order.findFirst({
+                where: { id: orderId, companyId },
+                include: { payments: { where: { status: 'ACTIVE' }, select: { id: true } } }
+            });
+            if (!order) throw new Error('Orden no encontrada');
+            if (order.status === 'CANCELLED') throw new Error('La orden está cancelada');
+            if (order.status === 'DELIVERED') {
+                throw new Error('La orden ya fue entregada; use una cancelación o nota de crédito');
+            }
+            // Channel orders (PedidosYa, delivery apps) carry channel pricing
+            // (commission, tax-inclusive totals) that a line repricing would
+            // corrupt: they use the channel's own cancellation flow.
+            if (order.salesChannel !== 'RESTAURANT') {
+                throw new Error('No se pueden anular líneas de órdenes de canales externos; use el flujo de cancelación del canal');
+            }
+            if (order.invoiceNumber) {
+                throw new Error('La orden ya está facturada; emita una nota de crédito para anular productos');
+            }
+            if (order.preInvoicedAt) {
+                throw new Error('La orden tiene prefactura emitida; revierta la prefactura antes de anular productos');
+            }
+            if (order.payments.length > 0 || order.financialStatus !== 'UNPAID') {
+                throw new Error('La orden tiene pagos registrados; revierta los pagos antes de anular productos');
+            }
+
+            const item = await tx.orderItem.findFirst({
+                where: { id: itemId, orderId },
+                include: {
+                    modifiers: true,
+                    menuItem: {
+                        include: {
+                            recipes: {
+                                include: {
+                                    product: { include: { baseUnit: { select: { abbreviation: true } } } },
+                                    unitOfMeasure: { select: { abbreviation: true } }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            if (!item) throw new Error('Línea de la orden no encontrada');
+            if (item.voidedAt || item.quantity <= 0) throw new Error('La línea ya fue anulada');
+            if (item.sentAt === null) {
+                throw new Error('La línea no se ha enviado a cocina; elimínela de la orden en lugar de anularla');
+            }
+            const voidQuantity = input.quantity ?? item.quantity;
+            if (voidQuantity > item.quantity) {
+                throw new Error(`Solo hay ${item.quantity} unidad(es) disponibles para anular en esta línea`);
+            }
+
+            // Plain validation read only: consumeForOrder takes the first
+            // warehouse lock ({fallback ∪ routed} ascending) and re-validates
+            // the branch under it. A standalone Warehouse lock here would be
+            // out of ascending order and deadlock with transfers/costing.
+            let wasteWarehouseId: number;
+            const explicitWasteWarehouse = input.wasteWarehouseId !== undefined;
+            if (input.wasteWarehouseId !== undefined) {
+                const warehouse = await tx.warehouse.findFirst({
+                    where: { id: input.wasteWarehouseId, companyId, branchId: order.branchId, type: 'BRANCH' },
+                    select: { id: true }
+                });
+                if (!warehouse) throw new Error('Bodega de merma no encontrada para la empresa/sucursal de la orden');
+                wasteWarehouseId = warehouse.id;
+            } else {
+                const resolved = await SaleWarehouseService.resolve(tx, companyId, order.branchId);
+                if (resolved.warehouseId === null) {
+                    throw new Error('Seleccione la bodega donde se registrará la merma de la línea anulada');
+                }
+                wasteWarehouseId = resolved.warehouseId;
+            }
+
+            const now = new Date();
+            const unitPriceCents = Math.round(Number(item.price) * 100);
+            const remainingQuantity = item.quantity - voidQuantity;
+            let voidLineId = item.id;
+            if (remainingQuantity > 0) {
+                // Partial void: the voided units become their own row so the
+                // waste, the KDS strike-through and the audit refer to exactly
+                // those units while the original line keeps the rest.
+                await tx.orderItem.update({
+                    where: { id: item.id },
+                    data: {
+                        quantity: remainingQuantity,
+                        subtotal: (unitPriceCents * remainingQuantity) / 100
+                    }
+                });
+                const created = await tx.orderItem.create({
+                    data: {
+                        orderId,
+                        menuItemId: item.menuItemId,
+                        kitchenBatchId: item.kitchenBatchId,
+                        quantity: voidQuantity,
+                        price: item.price,
+                        subtotal: (unitPriceCents * voidQuantity) / 100,
+                        notes: item.notes,
+                        status: item.status,
+                        sentAt: item.sentAt,
+                        startedAt: item.startedAt,
+                        finishedAt: item.finishedAt,
+                        originOrderId: item.originOrderId,
+                        originTableId: item.originTableId,
+                        voidedFromItemId: item.id,
+                        modifiers: {
+                            create: item.modifiers.map((modifier) => ({
+                                modifierId: modifier.modifierId,
+                                name: modifier.name,
+                                price: modifier.price
+                            }))
+                        }
+                    },
+                    select: { id: true }
+                });
+                voidLineId = created.id;
+            }
+
+            const wasteReference = `WASTE-ORD-${orderId}-L${voidLineId}`;
+            // Runs while the void row still carries its quantity, so recipe and
+            // linked-modifier waste both use exactly the voided units.
+            const waste = await InventoryConsumptionService.consumeForOrder(tx, {
+                order: { id: order.id, userId: order.userId, items: [{ ...item, id: voidLineId, quantity: voidQuantity }] },
+                orderItemIds: [voidLineId],
+                warehouseId: wasteWarehouseId,
+                userId: actorUserId,
+                companyId,
+                reference: wasteReference,
+                reason: `WASTE: Anulación de línea #${voidLineId} de orden #${orderId}: ${reason}`.slice(0, 500),
+                modifierReason: `WASTE: Merma de modificador por anulación de línea #${voidLineId} de orden #${orderId}`,
+                // Prepared food: a short balance never blocks the void. Stock may
+                // go negative and the alert is recorded under wasteReference.
+                allowNegative: true,
+                // A warehouse chosen by the user is honored as-is; the default
+                // sale warehouse follows the branch ingredient routing.
+                route: !explicitWasteWarehouse,
+                expectedBranchId: order.branchId
+            });
+
+            await tx.orderItem.update({
+                where: { id: voidLineId },
+                data: {
+                    quantity: 0,
+                    subtotal: 0,
+                    voidedQuantity: voidQuantity,
+                    voidedAt: now,
+                    voidedById: actorUserId,
+                    voidReason: reason,
+                    voidWasteReference: wasteReference,
+                    voidWasteWarehouseId: wasteWarehouseId,
+                    voidIdempotencyKey: idempotencyKey,
+                    // A voided row is closed work for the KDS: it never blocks
+                    // start/ready and is rendered as voided, not pending.
+                    status: 'DONE',
+                    finishedAt: item.finishedAt ?? now
+                }
+            });
+
+            // A batch whose every line is now voided has nothing left to cook:
+            // move it to READY so the kitchen can acknowledge and release it.
+            let kitchenBatchReadied = false;
+            if (item.kitchenBatchId) {
+                const batch = await tx.kitchenBatch.findFirst({
+                    where: { id: item.kitchenBatchId, companyId },
+                    select: { id: true, status: true, startedAt: true, startedById: true }
+                });
+                if (batch && (batch.status === 'PENDING' || batch.status === 'IN_PREPARATION')) {
+                    const live = await tx.orderItem.count({
+                        where: { kitchenBatchId: batch.id, quantity: { gt: 0 } }
+                    });
+                    if (live === 0) {
+                        await tx.kitchenBatch.update({
+                            where: { id: batch.id },
+                            data: {
+                                status: 'READY',
+                                readyAt: now,
+                                startedAt: batch.startedAt ?? now,
+                                startedById: batch.startedById ?? actorUserId
+                            }
+                        });
+                        kitchenBatchReadied = true;
+                    }
+                }
+            }
+            if (await tx.kitchenBatch.count({ where: { orderId } }) > 0) {
+                await this.syncOrderKitchenCompatibility(tx, orderId);
+            }
+
+            const previous = {
+                total: Number(order.total),
+                discount: Number(order.discount),
+                discountCode: order.discountCode,
+                tax: Number(order.tax),
+                tipAmount: Number(order.tipAmount || 0)
+            };
+            const pricing = await this.recomputeOrderPricingWithTransaction(tx, companyId, order);
+            // Every line voided: nothing was sold, so the promotion is dropped
+            // (a zero-total completion must never claim its usage).
+            if (pricing.subtotal <= 0 && pricing.discountCode) {
+                pricing.promotionRemoved = {
+                    code: pricing.discountCode,
+                    reason: 'Todas las líneas de la orden fueron anuladas; se retiró la promoción'
+                };
+                pricing.discountCode = null;
+                pricing.discount = 0;
+                pricing.tax = 0;
+                pricing.tipAmount = 0;
+                pricing.total = 0;
+            }
+            // A fixed manual discount grows as a percentage when the subtotal
+            // shrinks: re-apply the role cap of whoever set it.
+            const manualDiscountClamped = await this.clampManualDiscountAfterVoid(tx, companyId, order, pricing);
+            await tx.order.update({
+                where: { id: orderId },
+                data: {
+                    total: pricing.total,
+                    discount: pricing.discount,
+                    discountCode: pricing.discountCode,
+                    tax: pricing.tax,
+                    tipAmount: pricing.tipAmount
+                }
+            });
+
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    entityType: 'Order',
+                    entityId: orderId,
+                    action: 'KITCHEN_LINE_VOID',
+                    userId: actorUserId,
+                    details: {
+                        orderItemId: item.id,
+                        voidLineId,
+                        menuItemId: item.menuItemId,
+                        voidedQuantity: voidQuantity,
+                        remainingQuantity,
+                        unitPrice: unitPriceCents / 100,
+                        reason,
+                        kitchenBatchId: item.kitchenBatchId,
+                        kitchenBatchReadied,
+                        wasteReference,
+                        wasteWarehouseId,
+                        negativeStockProductIds: waste.negativeProductIds ?? [],
+                        previous,
+                        repriced: {
+                            subtotal: pricing.subtotal,
+                            discount: pricing.discount,
+                            discountCode: pricing.discountCode,
+                            tax: pricing.tax,
+                            tipAmount: pricing.tipAmount,
+                            total: pricing.total
+                        },
+                        promotionRemoved: pricing.promotionRemoved,
+                        manualDiscountClamped,
+                        idempotencyKey
+                    }
+                }
+            });
+
+            const updated = await tx.order.findFirst({
+                where: { id: orderId, companyId },
+                include: voidResultOrderInclude
+            });
+            if (!updated) throw new Error('Orden no encontrada');
+            return {
+                replayed: false,
+                order: updated,
+                branchId: updated.branchId,
+                voidItemId: voidLineId,
+                voidedQuantity: voidQuantity,
+                kitchenBatchId: item.kitchenBatchId,
+                promotionRemoved: pricing.promotionRemoved,
+                manualDiscountClamped,
+            };
+        }, SETTLEMENT_TRANSACTION_OPTIONS);
+    }
+
+    /**
+     * Re-validates a manual (non-promotion) discount against
+     * maxManualDiscountPercent after a line void shrank the subtotal. The cap
+     * applies when the discount's author (last PRICING_UPDATED, else the
+     * order creator) has a capped role; an excess is clamped to the cap over
+     * the new subtotal and tax/tip/total are repriced. Mutates `pricing`.
+     */
+    private static async clampManualDiscountAfterVoid(
+        tx: Prisma.TransactionClient,
+        companyId: number,
+        order: { id: number; userId: number; tipAmount: Prisma.Decimal | number | null },
+        pricing: { subtotal: number; discount: number; discountCode: string | null; tax: number; tipAmount: number; total: number }
+    ): Promise<{ previousDiscount: number; discount: number; maxPercent: number; authorUserId: number } | null> {
+        if (pricing.discountCode || !(pricing.discount > 0)) return null;
+        const lastPricing = await tx.auditLog.findFirst({
+            where: { companyId, entityType: 'Order', entityId: order.id, action: 'PRICING_UPDATED' },
+            orderBy: { id: 'desc' },
+            select: { userId: true }
+        });
+        const authorUserId = lastPricing?.userId ?? order.userId;
+        const author = await tx.user.findFirst({
+            where: { id: authorUserId, companyId },
+            select: { role: { select: { name: true } }, userRoles: { select: { role: { select: { name: true } } } } }
+        });
+        if (!author || !this.isManualDiscountCappedRole({
+            role: author.role?.name ?? null,
+            roles: (author.userRoles ?? []).map((row) => row.role.name)
+        })) return null;
+        const maxPercent = await this.getMaxManualDiscountPercent(tx, companyId);
+        const maxDiscount = Math.floor(Math.max(0, pricing.subtotal) * maxPercent) / 100;
+        if (pricing.discount <= maxDiscount) return null;
+        const previousDiscount = pricing.discount;
+        pricing.discount = maxDiscount;
+        pricing.tax = await this.repriceTax(tx, companyId, pricing.subtotal, maxDiscount);
+        const maxTip = await this.getMaxTip(tx, companyId, pricing.subtotal - maxDiscount);
+        const storedTip = Math.round(Math.max(0, Number(order.tipAmount || 0)) * 100) / 100;
+        pricing.tipAmount = Math.min(storedTip, maxTip);
+        pricing.total = this.calculateFinalTotal(pricing.subtotal, maxDiscount, pricing.tax, pricing.tipAmount);
+        return { previousDiscount, discount: maxDiscount, maxPercent, authorUserId };
     }
 
     static async updateStatus(
@@ -1120,7 +1665,7 @@ export class OrderService {
             });
 
             if (!existing) {
-                throw new Error('Order not found');
+                throw new Error('Orden no encontrada');
             }
 
             if (status === 'READY') {
@@ -1151,7 +1696,7 @@ export class OrderService {
                         items: { include: { menuItem: true, modifiers: true } }
                     }
                 });
-                if (!readyOrder) throw new Error('Order not found');
+                if (!readyOrder) throw new Error('Orden no encontrada');
                 return readyOrder;
             }
 
@@ -1178,7 +1723,7 @@ export class OrderService {
             // level assertion, so every line must already have been sent.
             if (status === 'READY') {
                 if (currentKitchenBatch.length === 0) {
-                    throw new Error('Cannot mark an empty order as ready');
+                    throw new Error('No se puede marcar como lista una orden vacía');
                 }
                 if (currentKitchenBatch.some((item) => item.sentAt === null)) {
                     throw new Error('No se puede marcar lista una tanda con productos sin enviar a cocina');
@@ -1251,15 +1796,15 @@ export class OrderService {
             });
 
             if (!order) {
-                throw new Error('Order not found');
+                throw new Error('Orden no encontrada');
             }
 
             if (!['OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'].includes(order.status)) {
-                throw new Error(`Cannot send order to kitchen when status is ${order.status}`);
+                throw new Error(`No se puede enviar a cocina una orden con estado ${order.status}`);
             }
 
             if (order.items.length === 0) {
-                throw new Error('Cannot send empty order to kitchen');
+                throw new Error('No se puede enviar una orden vacía a cocina');
             }
 
             const unsentItems = order.items.filter((item) => item.sentAt == null);
@@ -1275,6 +1820,9 @@ export class OrderService {
                 if (!currentBatch) {
                     throw new Error('La orden no tiene una tanda de cocina persistida');
                 }
+                // Repairs an order left OPEN with nothing unsent (e.g. a draft
+                // line was added and removed after the last wave was released).
+                await this.syncOrderKitchenCompatibility(tx, id);
                 return {
                     ...this.withPersistentKitchenBatch(currentBatch),
                     kitchenBatchSent: false,
@@ -1331,7 +1879,7 @@ export class OrderService {
                 where: { id, companyId },
                 select: { id: true, branchId: true, invoiceNumber: true, preInvoicedAt: true }
             });
-            if (!order) throw new Error('Order not found');
+            if (!order) throw new Error('Orden no encontrada');
             if (order.invoiceNumber || order.preInvoicedAt) {
                 throw new Error('Los datos fiscales no pueden modificarse después de emitir la factura');
             }
@@ -1339,7 +1887,7 @@ export class OrderService {
                 where: { id: userId, companyId, status: 'ACTIVE' },
                 select: { id: true }
             });
-            if (!actor) throw new Error('Invalid user for this company');
+            if (!actor) throw new Error('Usuario inválido para esta empresa');
 
             const updated = await tx.order.update({ where: { id }, data: normalized });
             await tx.auditLog.create({
@@ -1525,12 +2073,165 @@ export class OrderService {
         return result;
     }
 
+    /**
+     * Shared Table -> Order lock order (payments, prefactura, invoicing and
+     * order creation use it). The candidate table is read without a lock; if
+     * the order moved before its row lock was granted, the current table is
+     * locked afterwards (residual window covered by the deadlock retry).
+     * Re-locking rows already held by the caller is a no-op.
+     */
+    static async lockTableThenOrder(
+        tx: Prisma.TransactionClient,
+        companyId: number,
+        orderId: number
+    ): Promise<void> {
+        // The candidate table is read OUTSIDE the transaction (global client,
+        // its own connection, like PaymentService). A plain read through `tx`
+        // would create the InnoDB REPEATABLE READ view before the locks, and
+        // every later plain read of the caller (replay keys, status, payments,
+        // quantities) would see that frozen snapshot instead of the state
+        // committed by the transaction we just waited for. The first statement
+        // through `tx` is therefore always a locking read.
+        const candidate = await this.readOrderTableIdOutsideTransaction(companyId, orderId);
+        if (candidate !== null) {
+            await tx.$queryRaw`SELECT id FROM \`Table\` WHERE id = ${candidate} AND companyId = ${companyId} FOR UPDATE`;
+        }
+        const locked = await tx.$queryRaw<Array<{ tableId: number | null }>>`SELECT id, tableId FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
+        const lockedRow = Array.isArray(locked) ? locked[0] : undefined;
+        // Test doubles return no rows; a real locked row is authoritative.
+        if (!lockedRow) return;
+        const actual = lockedRow.tableId != null ? Number(lockedRow.tableId) : null;
+        if (actual !== null && actual !== candidate) {
+            // The order moved to another table between the preflight and the
+            // Order lock. Locking that table now would be Order -> Table (lock
+            // inversion): replay the whole transaction instead.
+            throw new Prisma.PrismaClientKnownRequestError(
+                'La orden cambió de mesa mientras se procesaba; reintente la operación',
+                { code: 'P2034', clientVersion: Prisma.prismaVersion.client }
+            );
+        }
+    }
+
+    /** Order.tableId read with the global client (never inside the caller's tx). Null on any failure. */
+    static async readOrderTableIdOutsideTransaction(companyId: number, orderId: number): Promise<number | null> {
+        try {
+            const row = await prisma.order.findFirst({ where: { id: orderId, companyId }, select: { tableId: true } });
+            return row?.tableId != null ? Number(row.tableId) : null;
+        } catch {
+            // Only a hint: a missing candidate just means the Order lock is
+            // taken first and a table found there triggers a retry.
+            return null;
+        }
+    }
+
+    /**
+     * Auto-delivery of a settled restaurant sale. A paid order whose kitchen
+     * work is fully released (every line sent, every batch RELEASED) is
+     * physically handed over, so its stock is consumed here, in the caller's
+     * transaction, through the same completeWithTransaction used by the
+     * explicit "Entregar" action. Called from full payment and kitchen
+     * release; a no-op (never an error) whenever any condition is missing.
+     * Delivery/PedidosYa orders keep their courier-driven completion, and a
+     * branch with several sale warehouses and no Branch.defaultSaleWarehouseId
+     * keeps the explicit choice.
+     */
+    static async autoDeliverIfSettledWithTransaction(
+        tx: Prisma.TransactionClient,
+        orderId: number,
+        companyId: number,
+        actorUserId: number
+    ): Promise<{ delivered: boolean; reason?: string; order?: Awaited<ReturnType<typeof OrderService.completeWithTransaction>> }> {
+        const order = await tx.order.findFirst({
+            where: { id: orderId, companyId },
+            select: {
+                id: true,
+                branchId: true,
+                status: true,
+                financialStatus: true,
+                orderType: true,
+                salesChannel: true,
+                items: { select: { sentAt: true } },
+                kitchenBatches: { select: { status: true } },
+            },
+        });
+        if (!order) return { delivered: false, reason: 'NOT_FOUND' };
+        if (order.status !== 'READY' || order.financialStatus !== 'PAID') {
+            return { delivered: false, reason: 'NOT_READY_OR_UNPAID' };
+        }
+        if (order.salesChannel !== 'RESTAURANT' || order.orderType === 'DELIVERY') {
+            return { delivered: false, reason: 'CHANNEL_DELIVERY' };
+        }
+        const items = order.items ?? [];
+        const batches = order.kitchenBatches ?? [];
+        if (items.length === 0 || items.some((item) => item.sentAt == null)) {
+            return { delivered: false, reason: 'UNSENT_ITEMS' };
+        }
+        if (batches.some((batch) => batch.status !== 'RELEASED')) {
+            return { delivered: false, reason: 'KITCHEN_NOT_RELEASED' };
+        }
+        // Branch default sale warehouse first, then the single-warehouse rule.
+        const saleWarehouse = await SaleWarehouseService.resolve(tx, companyId, order.branchId);
+        if (saleWarehouse.warehouseId === null) {
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    entityType: 'Order',
+                    entityId: order.id,
+                    action: 'AUTO_DELIVER_SKIPPED',
+                    userId: actorUserId,
+                    details: {
+                        reason: saleWarehouse.reason,
+                        branchId: order.branchId,
+                    },
+                },
+            });
+            return { delivered: false, reason: saleWarehouse.reason };
+        }
+        const saleWarehouseId = saleWarehouse.warehouseId;
+        // Auto-delivery is a side effect of payment / kitchen release: an
+        // inventory problem (missing cost, unit conversion, FIFO mismatch) must
+        // never block collecting money or releasing the kitchen. Run it inside a
+        // SAVEPOINT so a failure undoes only the delivery and leaves the order
+        // READY for the explicit "Entregar". Deadlocks / lock timeouts abort the
+        // whole MySQL transaction, so those still propagate to the retry wrapper.
+        await tx.$executeRawUnsafe('SAVEPOINT auto_deliver');
+        try {
+            const updated = await this.completeWithTransaction(tx, order.id, companyId, saleWarehouseId, actorUserId, { automatic: true });
+            await tx.$executeRawUnsafe('RELEASE SAVEPOINT auto_deliver');
+            return { delivered: true, order: updated };
+        } catch (error) {
+            if (isRetryableTransactionError(error)) throw error;
+            try {
+                await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT auto_deliver');
+            } catch {
+                // The savepoint is gone only when MySQL already rolled back the
+                // whole transaction (e.g. a deadlock surfaced without a Prisma
+                // code): propagate the original cause so the caller can retry.
+                throw error;
+            }
+            const message = error instanceof Error ? error.message : String(error);
+            await tx.auditLog.create({
+                data: {
+                    companyId,
+                    entityType: 'Order',
+                    entityId: order.id,
+                    action: 'AUTO_DELIVER_SKIPPED',
+                    userId: actorUserId,
+                    details: { reason: 'INVENTORY_NOT_READY', message: message.slice(0, 500), warehouseId: saleWarehouseId },
+                },
+            });
+            console.warn('[ORDER] Auto-delivery skipped; order stays READY for explicit delivery', { orderId: order.id, companyId, message });
+            return { delivered: false, reason: 'INVENTORY_NOT_READY' };
+        }
+    }
+
     static async completeWithTransaction(
         tx: Prisma.TransactionClient,
         id: number,
         companyId: number,
         warehouseId: number,
-        deliveredById: number
+        deliveredById: number,
+        options?: { automatic?: boolean }
     ) {
         if (!Number.isInteger(warehouseId) || warehouseId <= 0) {
             throw new Error('warehouseId válido es requerido para entregar la orden');
@@ -1540,8 +2241,9 @@ export class OrderService {
         }
 
             // Reversal/payment/cancellation all lock the order. Completion must use
-            // the same lock and re-read its consumable graph inside the transaction.
-            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            // the same Table -> Order lock order and re-read its consumable graph
+            // inside the transaction (the table group is reconciled below).
+            await this.lockTableThenOrder(tx, companyId, id);
             const order = await tx.order.findFirst({
                 where: { id, companyId },
                 include: {
@@ -1562,15 +2264,15 @@ export class OrderService {
                     table: true
                 }
             });
-            if (!order) throw new Error('Order not found');
-            if (order.status !== 'READY') throw new Error('Order must be ready before completing');
+            if (!order) throw new Error('Orden no encontrada');
+            if (order.status !== 'READY') throw new Error('La orden debe estar lista antes de entregarla');
             if (order.items.some((item) => item.sentAt == null)) {
                 throw new Error('No se puede entregar una orden con productos sin enviar a cocina');
             }
 
             const isZeroTotal = Math.round(Number(order.total) * 100) === 0;
             if (order.financialStatus !== 'PAID' && !isZeroTotal) {
-                throw new Error('Order must be paid before completing');
+                throw new Error('La orden debe estar pagada antes de completar');
             }
 
             const itemSubtotal = order.items.reduce((sum, item) => sum + Number(item.subtotal), 0);
@@ -1589,11 +2291,9 @@ export class OrderService {
             // and close the financial side here, under the same order lock, once.
             if (order.financialStatus !== 'PAID' && isZeroTotal) {
                 if (order.discountCode) {
-                    const promotion = await tx.promotion.findFirst({
-                        where: { companyId, code: order.discountCode.toUpperCase() }
-                    });
-                    if (!promotion) throw new Error('Promotion is not active');
-                    const authoritativeDiscount = calculatePromotionDiscount(promotion, itemSubtotal);
+                    const { discount: authoritativeDiscount } = await this.evaluatePromotionForOrder(
+                        tx, companyId, id, order.discountCode, itemSubtotal, 'reprice'
+                    );
                     const authoritativeTotal = this.calculateFinalTotal(
                         itemSubtotal,
                         authoritativeDiscount,
@@ -1606,16 +2306,13 @@ export class OrderService {
                     ) {
                         throw new Error('La promoción cambió; recalcule la orden antes de completarla');
                     }
-                    const claimed = await tx.promotion.updateMany({
-                        where: {
-                            id: promotion.id,
-                            ...(promotion.usageLimit === null
-                                ? {}
-                                : { usageCount: { lt: promotion.usageLimit } })
-                        },
-                        data: { usageCount: { increment: 1 } }
+                    // Shared settlement claim: honors an active prefactura
+                    // reservation (no double count) and the usage limit.
+                    await claimPromotionUsageAtSettlement(tx, {
+                        companyId,
+                        orderId: id,
+                        discountCode: order.discountCode
                     });
-                    if (claimed.count !== 1) throw new Error('Promotion usage limit reached');
                 }
                 await tx.order.update({
                     where: { id },
@@ -1635,7 +2332,10 @@ export class OrderService {
 
             // Validate the target warehouse belongs to this tenant and branch
             // before touching stock (warehouseId comes from the request body).
-            await tx.$queryRaw`SELECT id FROM \`Warehouse\` WHERE id = ${warehouseId} AND companyId = ${companyId} FOR UPDATE`;
+            // Plain read on purpose: consumeForOrder takes the first warehouse
+            // lock ({sale ∪ routed} ascending) and re-validates the branch
+            // under it. Locking the sale warehouse here first would invert the
+            // ascending order whenever a routed warehouse has a lower id.
             const warehouse = await tx.warehouse.findFirst({
                 where: { id: warehouseId, companyId, branchId: order.branchId, type: 'BRANCH' }
             });
@@ -1646,11 +2346,15 @@ export class OrderService {
 
             // Deduct inventory through the shared, idempotent consumption service.
             // Skips automatically if inventory was already consumed at settlement.
+            // The sale already happened: a short balance must not block it, so
+            // stock may go negative and an alert is recorded per product.
             await InventoryConsumptionService.consumeForOrder(tx, {
                 order,
                 warehouseId,
                 userId: deliveredById,
-                companyId
+                companyId,
+                allowNegative: true,
+                expectedBranchId: order.branchId
             });
 
             // Update order status
@@ -1670,7 +2374,7 @@ export class OrderService {
                     entityId: id,
                     action: 'DELIVER',
                     userId: deliveredById,
-                    details: { warehouseId, previousStatus: order.status }
+                    details: { warehouseId, previousStatus: order.status, automatic: options?.automatic === true }
                 }
             });
 
@@ -1746,8 +2450,10 @@ export class OrderService {
         cancelReason?: string,
         options?: OrderCancelOptions
     ) {
-            // Serialize cancel with payment, delivery and another cancellation.
-            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+            // Serialize cancel with payment, delivery and another cancellation,
+            // in the shared Table -> Order order (the table group is reconciled
+            // below). Callers that already hold the Order lock keep it.
+            await this.lockTableThenOrder(tx, companyId, id);
             const order = await tx.order.findFirst({
                 where: { id, companyId },
                 include: {
@@ -1773,8 +2479,8 @@ export class OrderService {
                 }
             });
 
-            if (!order) throw new Error('Order not found');
-            if (order.status === 'CANCELLED') throw new Error('Order is already cancelled');
+            if (!order) throw new Error('Orden no encontrada');
+            if (order.status === 'CANCELLED') throw new Error(ORDER_ALREADY_CANCELLED_MESSAGE);
             if (order.invoiceNumber && !options?.fiscalCreditNoteId && !options?.fiscalInvoiceCancellationId) {
                 throw new Error('No se puede cancelar una orden facturada; emita una nota de crédito');
             }
@@ -1785,10 +2491,10 @@ export class OrderService {
             // Payment state is authoritative. A paid order may currently display
             // Operational status never substitutes for the payment ledger.
             if (fullyPaid && !options?.allowPaidReversal) {
-                throw new Error('Cannot cancel paid orders');
+                throw new Error('No se pueden cancelar órdenes pagadas');
             }
             if (!fullyPaid && totalPaid > 0 && !options?.allowPaidReversal) {
-                throw new Error(`Order has existing payments totaling ${totalPaid.toFixed(2)}. Please refund/delete payments before cancelling.`);
+                throw new Error(`La orden tiene pagos existentes por ${totalPaid.toFixed(2)}. Reembolse o elimine los pagos antes de cancelar.`);
             }
 
             const reversalUserId = cancelledById ?? order.userId;
@@ -1808,7 +2514,8 @@ export class OrderService {
                 if (!Number.isInteger(wasteWarehouseId) || wasteWarehouseId <= 0) {
                     throw new Error('La orden ya fue enviada a cocina; seleccione una bodega para registrar la merma antes de cancelar');
                 }
-                await tx.$queryRaw`SELECT id FROM \`Warehouse\` WHERE id = ${wasteWarehouseId} AND companyId = ${companyId} FOR UPDATE`;
+                // Plain validation read: consumeForOrder takes the first
+                // warehouse lock (ascending) and re-validates under it.
                 const wasteWarehouse = await tx.warehouse.findFirst({
                     where: {
                         id: wasteWarehouseId,
@@ -1829,7 +2536,17 @@ export class OrderService {
                     companyId,
                     reference: `WASTE-ORD-${id}`,
                     reason: `WASTE: Merma por cancelación de orden #${id}`,
-                    modifierReason: `WASTE: Merma de modificador por cancelación de orden #${id}`
+                    modifierReason: `WASTE: Merma de modificador por cancelación de orden #${id}`,
+                    // The food was physically prepared: a short balance must not
+                    // block the cancellation. Like the sale path, stock may go
+                    // negative and consumeForOrder records the negative-stock
+                    // alert (reference WASTE-ORD-{id}).
+                    allowNegative: true,
+                    // A waste warehouse chosen by the user (POS cancel, fiscal
+                    // invoice cancellation) is honored as-is; only a configured
+                    // default (e.g. PedidosYa) follows the ingredient routing.
+                    route: options?.wasteWarehouseIsDefault === true,
+                    expectedBranchId: order.branchId
                 });
             }
 
@@ -1965,7 +2682,11 @@ export class OrderService {
                     }
                 }
 
-                if (fullyPaid && order.discountCode) {
+                if (
+                    fullyPaid
+                    && order.discountCode
+                    && !(await getActivePromotionReservation(tx, companyId, order.id))
+                ) {
                     const promo = await tx.promotion.findFirst({
                         where: { companyId, code: order.discountCode.toUpperCase() },
                         select: { id: true, usageCount: true }
@@ -1977,6 +2698,16 @@ export class OrderService {
                         });
                     }
                 }
+            }
+
+            // A use reserved by the prefactura returns to the pool exactly once.
+            if (order.discountCode) {
+                await releasePromotionReservationForOrder(tx, {
+                    companyId,
+                    orderId: order.id,
+                    userId: cancelledById ?? order.userId,
+                    reason: `Orden #${order.id} cancelada`
+                });
             }
 
             const updatedOrder = await tx.order.update({
@@ -2028,6 +2759,24 @@ export class OrderService {
             return updatedOrder;
     }
 
+    /** Roles whose manual (non-promotion) discounts are capped by setting. */
+    private static isManualDiscountCappedRole(actor?: { role?: string | null; roles?: string[] | null }): boolean {
+        if (!actor) return false;
+        const roles = new Set([actor.role, ...(actor.roles ?? [])].filter((role): role is string => !!role));
+        if (roles.has('SUPERADMIN') || roles.has('ADMIN')) return false;
+        return roles.has('MESERO');
+    }
+
+    /** `${companyId}_maxManualDiscountPercent`; absent/invalid => 100 (no cap). */
+    private static async getMaxManualDiscountPercent(tx: Prisma.TransactionClient, companyId: number): Promise<number> {
+        const setting = await tx.setting.findUnique({
+            where: { companyId_name: { companyId, name: `${companyId}_maxManualDiscountPercent` } },
+            select: { value: true }
+        });
+        const parsed = Number.parseFloat(setting?.value ?? '');
+        return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100 ? parsed : 100;
+    }
+
     static async updatePricing(
         id: number,
         companyId: number,
@@ -2036,7 +2785,9 @@ export class OrderService {
             discountCode?: string | null;
             tax?: number;
             tipAmount?: number;
-        }
+        },
+        userId: number,
+        actor?: { role?: string | null; roles?: string[] | null }
     ) {
         for (const [label, value] of [
             ['discount', data.discount],
@@ -2065,11 +2816,11 @@ export class OrderService {
             });
 
             if (!order) {
-                throw new Error('Order not found');
+                throw new Error('Orden no encontrada');
             }
 
             if (order.status === 'CANCELLED') {
-                throw new Error('Cannot modify pricing for paid or cancelled orders');
+                throw new Error('No se pueden modificar precios de órdenes pagadas o canceladas');
             }
             if (order.invoiceNumber || order.preInvoicedAt) {
                 throw new Error('No se puede modificar el total de una orden facturada');
@@ -2085,17 +2836,78 @@ export class OrderService {
             const nextCode = requestedCode === undefined ? order.discountCode : (requestedCode || null);
             let authoritativeDiscount = data.discount
                 ?? (requestedCode === '' ? 0 : Number(order.discount || 0));
+            let lineDiscounts: Array<{ lineId: number; discount: number }> = [];
             if (nextCode) {
-                authoritativeDiscount = await this.calculatePromotionDiscount(tx, companyId, nextCode, subtotal);
+                // A new code must be valid now (happy-hour window, eligible
+                // lines); re-sending the applied code only reprices it.
+                const isNewCode = (order.discountCode || '').trim().toUpperCase() !== nextCode;
+                const evaluation = await this.evaluatePromotionForOrder(
+                    tx, companyId, id, nextCode, subtotal, isNewCode ? 'apply' : 'reprice'
+                );
+                authoritativeDiscount = evaluation.discount;
+                lineDiscounts = evaluation.lineDiscounts;
             }
+            await syncOrderLinePromotionDiscounts(tx, id, lineDiscounts);
             const nextDiscount = Math.round(Math.min(
                 Math.max(0, Number(authoritativeDiscount)),
                 Math.max(0, subtotal)
             ) * 100) / 100;
+            if (!nextCode && nextDiscount > 0 && this.isManualDiscountCappedRole(actor)) {
+                const previous = Math.round(Number(order.discount || 0) * 100) / 100;
+                const changed = previous !== nextDiscount || (order.discountCode || null) !== null;
+                if (changed) {
+                    const maxPercent = await this.getMaxManualDiscountPercent(tx, companyId);
+                    const maxDiscount = Math.floor(Math.max(0, subtotal) * maxPercent) / 100;
+                    if (nextDiscount > maxDiscount) {
+                        throw new Error(`El descuento manual excede el máximo permitido para su rol (${maxPercent}% del subtotal)`);
+                    }
+                }
+            }
             // Client-supplied tax is ignored: IVA is always company tax_rate × net subtotal.
             const nextTax = await this.repriceTax(tx, companyId, subtotal, nextDiscount);
-            const nextTip = Math.round(Math.max(0, Number(data.tipAmount ?? Number(order.tipAmount || 0))) * 100) / 100;
+            // Tip is never trusted beyond the configured company rate × net subtotal
+            // (the only amount the POS offers). A lower amount, including zero, is allowed.
+            const tipRateSetting = await tx.setting.findUnique({
+                where: { companyId_name: { companyId, name: `${companyId}_tipRate` } },
+                select: { value: true }
+            });
+            const configuredTipRate = Number.parseFloat(tipRateSetting?.value ?? '0');
+            const tipRate = Number.isFinite(configuredTipRate) && configuredTipRate >= 0 && configuredTipRate <= 100
+                ? configuredTipRate
+                : 0;
+            const maxTip = Math.round(Math.max(0, subtotal - nextDiscount) * tipRate) / 100;
+            const requestedTip = Math.round(Math.max(0, Number(data.tipAmount ?? Number(order.tipAmount || 0))) * 100) / 100;
+            const nextTip = Math.min(requestedTip, maxTip);
             const nextTotal = this.calculateFinalTotal(subtotal, nextDiscount, nextTax, nextTip);
+
+            const previousDiscount = Math.round(Number(order.discount || 0) * 100) / 100;
+            const previousTip = Math.round(Number(order.tipAmount || 0) * 100) / 100;
+            if (
+                previousDiscount !== nextDiscount
+                || (order.discountCode || null) !== nextCode
+                || previousTip !== nextTip
+            ) {
+                await tx.auditLog.create({
+                    data: {
+                        companyId,
+                        entityType: 'Order',
+                        entityId: id,
+                        action: 'PRICING_UPDATED',
+                        userId,
+                        details: {
+                            subtotal,
+                            previousDiscount,
+                            discount: nextDiscount,
+                            previousDiscountCode: order.discountCode || null,
+                            discountCode: nextCode,
+                            manualDiscount: !nextCode && nextDiscount > 0,
+                            previousTipAmount: previousTip,
+                            tipAmount: nextTip,
+                            requestedTipAmount: requestedTip
+                        }
+                    }
+                });
+            }
 
             return await tx.order.update({
                 where: { id },
@@ -2359,8 +3171,10 @@ export class OrderService {
         actorUserId: number,
         kitchenBatchId?: number,
     ) {
-        const result = await prisma.$transaction(async (tx) => {
-            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
+        const result = await transactionWithP2034Retry(async (tx) => {
+            // Table -> Order: a release can auto-deliver a settled order, which
+            // reconciles its table group under the same transaction.
+            await this.lockTableThenOrder(tx, companyId, orderId);
             const order = await tx.order.findFirst({
                 where: { id: orderId, companyId },
                 select: {
@@ -2408,7 +3222,7 @@ export class OrderService {
                     releasedById: actorUserId,
                 }
             });
-            await this.syncOrderKitchenCompatibility(tx, orderId);
+            const nextStatus = await this.syncOrderKitchenCompatibility(tx, orderId);
             await tx.auditLog.create({
                 data: {
                     companyId,
@@ -2424,6 +3238,11 @@ export class OrderService {
                     }
                 }
             });
+            // An already-settled order whose last batch was just released is
+            // physically handed over now: consume its stock atomically.
+            const autoDelivery = nextStatus === 'READY'
+                ? await this.autoDeliverIfSettledWithTransaction(tx, orderId, companyId, actorUserId)
+                : { delivered: false };
             const updatedBatch = await tx.kitchenBatch.findUnique({
                 where: { id: batch.id },
                 include: kitchenBatchOrderInclude,
@@ -2434,8 +3253,9 @@ export class OrderService {
                 branchId: order.branchId,
                 order: this.withPersistentKitchenBatch(updatedBatch),
                 kitchenBatchId: batch.id,
+                autoDelivered: autoDelivery.delivered,
             };
-        });
+        }, SETTLEMENT_TRANSACTION_OPTIONS);
         return result;
     }
 
@@ -2469,7 +3289,7 @@ export class OrderService {
         });
 
         if (!order) {
-            throw new Error('Order not found');
+            throw new Error('Orden no encontrada');
         }
 
         await prisma.auditLog.create({

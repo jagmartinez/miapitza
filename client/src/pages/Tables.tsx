@@ -10,7 +10,8 @@ import PaymentModal from '../components/PaymentModal';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
-import { canCreatePayment } from '../utils/authz';
+import { canCreatePayment, canVoidKitchenLine } from '../utils/authz';
+import KitchenLineVoidModal from '../components/KitchenLineVoidModal';
 import { getTableAccess } from '../utils/tableAccess';
 import { Armchair, Grid3x3, Plus, Edit2, Trash2, Eye, Users, MapPin, Building2, MapPinned, History } from 'lucide-react';
 import ViewToggle from '../components/ViewToggle';
@@ -52,6 +53,8 @@ import {
     type PrintableInvoiceSnapshot,
 } from '../utils/invoicePrint';
 import { useNavigate } from 'react-router-dom';
+import { getApiErrorMessage } from '../utils/apiError';
+import { markErrorHandled, notifyError } from '../services/notify';
 
 interface ApiValidationError { field?: string; message?: string }
 function extractApiError(error: unknown, fallback: string): string {
@@ -110,9 +113,13 @@ export default function Tables() {
     const [isOrdersModalOpen, setIsOrdersModalOpen] = useState(false);
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
     const [tableOrders, setTableOrders] = useState<Order[]>([]);
+    const canVoidLines = canVoidKitchenLine(user);
+    const [voidLineTarget, setVoidLineTarget] = useState<{ order: Order; itemId: number } | null>(null);
     const [loadingTableOrders, setLoadingTableOrders] = useState(false);
     const tableOrderRequestRef = useRef(0);
     const consolidationLookupRequestRef = useRef(0);
+    const tablesRequestRef = useRef(0);
+    const tablesLoadedScopeRef = useRef<number | null | undefined>(undefined);
     const reversalAttemptRef = useRef<IdempotentAttempt | null>(null);
     const [activeConsolidation, setActiveConsolidation] = useState<ActiveTableConsolidation | null>(null);
     const [loadingConsolidation, setLoadingConsolidation] = useState(false);
@@ -153,16 +160,25 @@ export default function Tables() {
     }, [canChooseBranch, user?.branchId]);
 
     const loadTables = useCallback(async () => {
-        setLoading(true);
+        // Full-page loader only for the first load of a branch scope. Background refreshes
+        // (websocket events, post-action reloads) must not unmount the embedded POS or an
+        // in-flight PaymentModal (mixed payments keep idempotency refs in component state).
+        const scopeKey = branchFilter ?? null;
+        const isBackgroundRefresh = tablesLoadedScopeRef.current === scopeKey;
+        const requestId = ++tablesRequestRef.current;
+        if (!isBackgroundRefresh) setLoading(true);
         try {
             const response = await tablesAPI.getAll(branchFilter ?? undefined);
+            if (requestId !== tablesRequestRef.current) return;
             setTables(response.data.data);
+            tablesLoadedScopeRef.current = scopeKey;
         } catch (error) {
+            if (requestId !== tablesRequestRef.current) return;
             console.error('Error loading tables:', error);
-            setTables([]);
+            if (!isBackgroundRefresh) setTables([]);
             showError(extractApiError(error, 'No se pudieron cargar las mesas. No se mostrará un salón vacío como si fuera real.'));
         } finally {
-            setLoading(false);
+            if (requestId === tablesRequestRef.current) setLoading(false);
         }
     }, [branchFilter, showError]);
 
@@ -312,7 +328,7 @@ export default function Tables() {
         } catch (error) {
             console.error('Error loading table orders:', error);
             if (requestId === tableOrderRequestRef.current) {
-                showError('No se pudieron cargar las órdenes de esta mesa.');
+                showError(getApiErrorMessage(error, 'No se pudieron cargar las órdenes de esta mesa'));
             }
         } finally {
             if (requestId === tableOrderRequestRef.current) setLoadingTableOrders(false);
@@ -554,9 +570,9 @@ export default function Tables() {
                 nextOrder = refreshed.data.data as Order;
             } catch (refreshError) {
                 console.error('Invoice issued but table order refresh failed:', refreshError);
-                showWarning(isFiscalReprint
-                    ? 'La factura existe, pero el detalle de la orden no pudo actualizarse.'
-                    : 'La prefactura fue emitida, pero el detalle no pudo actualizarse. Recarga antes de cobrar.');
+                notifyError(refreshError, isFiscalReprint
+                    ? 'La factura existe, pero el detalle de la orden no pudo actualizarse'
+                    : 'La prefactura fue emitida, pero el detalle no pudo actualizarse (recarga antes de cobrar)', { type: 'warning' });
             }
             setTableOrders((current) => current.map((item) => item.id === nextOrder.id ? nextOrder : item));
             await refreshOperationalTable();
@@ -565,9 +581,9 @@ export default function Tables() {
                 : 'Prefactura emitida. La cuenta quedó habilitada para cobrar.');
         } catch (error) {
             console.error('Invoice issued but table refresh failed:', error);
-            showWarning(isFiscalReprint
-                ? `La factura ${invoiceNumber} está disponible, pero la mesa no pudo refrescarse.`
-                : 'La prefactura fue emitida, pero la mesa no pudo refrescarse. Recarga antes de cobrar.');
+            notifyError(error, isFiscalReprint
+                ? `La factura ${invoiceNumber} está disponible, pero la mesa no pudo refrescarse`
+                : 'La prefactura fue emitida, pero la mesa no pudo refrescarse (recarga antes de cobrar)', { type: 'warning' });
         } finally {
             setBusyOrderId(null);
         }
@@ -609,9 +625,9 @@ export default function Tables() {
         try {
             const response = await cashShiftsAPI.getActiveStatus();
             setCashShiftStatus(response.data.data as CashShiftScope);
-        } catch {
+        } catch (error) {
             setCashShiftStatus(null);
-            showWarning('No se pudo validar el turno de caja; el efectivo permanecerá bloqueado.');
+            notifyError(error, 'No se pudo validar el turno de caja (el efectivo permanecerá bloqueado)', { type: 'warning' });
         }
         setPaymentMode(mode);
         setPaymentOrder(order);
@@ -690,6 +706,8 @@ export default function Tables() {
             showSuccess('Plano guardado. Las posiciones, formas y salones ya quedaron persistidos.');
         } catch (error) {
             showError(extractApiError(error, 'No se pudo guardar el plano de mesas'));
+            // Already toasted: keep the global unhandledrejection handler from repeating it.
+            markErrorHandled(error);
             throw error;
         } finally {
             setSavingLayout(false);
@@ -1339,6 +1357,17 @@ export default function Tables() {
                 </div>
             </Sidebar>
 
+            <KitchenLineVoidModal
+                isOpen={voidLineTarget !== null}
+                order={voidLineTarget?.order ?? null}
+                initialItemId={voidLineTarget?.itemId ?? null}
+                onClose={() => setVoidLineTarget(null)}
+                onVoided={() => {
+                    if (selectedTable) void loadTableOrders(selectedTable);
+                    void loadTables();
+                }}
+            />
+
             {/* Orders Modal */}
             <TableOrdersModal
                 isOpen={isOrdersModalOpen}
@@ -1353,6 +1382,8 @@ export default function Tables() {
                 canTransfer={canTransfer}
                 canConsolidate={canConsolidate}
                 canGroup={canGroup}
+                canVoidLines={canVoidLines}
+                onVoidLine={(order, itemId) => setVoidLineTarget({ order, itemId })}
                 activeConsolidation={activeConsolidation}
                 loadingConsolidation={loadingConsolidation}
                 consolidationLookupError={consolidationLookupError}

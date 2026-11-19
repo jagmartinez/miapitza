@@ -14,7 +14,34 @@ export class AutoPurchaseOrderService {
      * Generate purchase order suggestions based on low stock
      */
     static async generateSuggestions(companyId: number, warehouseId?: number, branchId?: number) {
-        const lowStockProducts = await StockAlertService.getLowStockProducts(companyId, warehouseId, branchId);
+        const allLowStock = await StockAlertService.getLowStockProducts(companyId, warehouseId, branchId);
+
+        // D11: products made in-house (ACTIVE ProductionRecipe) are replenished
+        // by a production order, not bought. Report them separately.
+        const lowStockIds = [...new Set(allLowStock.map((product) => product.productId))];
+        const producibleIds = new Set(lowStockIds.length > 0
+            ? (await prisma.productionRecipe.findMany({
+                where: { companyId, status: 'ACTIVE', productId: { in: lowStockIds } },
+                select: { productId: true }
+            })).map((recipe) => recipe.productId)
+            : []);
+        const lowStockProducts = allLowStock.filter((product) => !producibleIds.has(product.productId));
+        const toProduce = allLowStock
+            .filter((product) => producibleIds.has(product.productId))
+            .map((product) => {
+                const deficitToTarget = Math.max(0, Number(product.minStock) * 2 - product.currentStock);
+                return {
+                    productId: product.productId,
+                    productName: product.productName,
+                    unit: product.unit,
+                    currentStock: product.currentStock,
+                    minStock: product.minStock,
+                    suggestedQuantity: Math.round(deficitToTarget * 1_000_000) / 1_000_000,
+                    warehouseId: product.warehouseId,
+                    warehouseName: product.warehouseName,
+                    priority: product.currentStock <= 0 ? 'URGENT' : 'NORMAL'
+                };
+            });
 
         // Group by supplier if products have preferred suppliers
         const suggestions = await Promise.all(
@@ -29,7 +56,18 @@ export class AutoPurchaseOrderService {
                         cost: true,
                         currentAverageCost: true,
                         minStock: true,
-                        baseUnit: { select: { abbreviation: true, measurementType: true } }
+                        averageCostKnown: true,
+                        referenceCostKnown: true,
+                        baseUnitId: true,
+                        baseUnit: { select: { abbreviation: true, measurementType: true } },
+                        allowedUnits: {
+                            where: { companyId, active: true, isDefault: true, unit: { active: true } },
+                            select: {
+                                unitId: true,
+                                conversionFactor: true,
+                                unit: { select: { abbreviation: true, measurementType: true } }
+                            }
+                        }
                     }
                 });
                 if (!productDetails) {
@@ -45,19 +83,53 @@ export class AutoPurchaseOrderService {
                     ? Math.ceil(deficitToTarget)
                     : Math.round(deficitToTarget * 1_000_000) / 1_000_000;
 
+                // Unrounded per-base-unit cost: base units are often g/ml where a
+                // cost like 0.004 must survive until the PO line multiplies it.
+                const baseUnitCost = effectiveUnitCost(productDetails.currentAverageCost, productDetails.cost, {
+                    averageCostKnown: productDetails.averageCostKnown,
+                    referenceCostKnown: productDetails.referenceCostKnown
+                });
+                const baseUnitAbbreviation = productDetails.baseUnit?.abbreviation || product.unit;
+
+                // Express the suggestion in the product's default purchase unit
+                // (e.g. "saco" of 25 kg) when one is configured.
+                const defaultPurchase = productDetails.allowedUnits.find((unit) =>
+                    unit.unitId !== productDetails.baseUnitId && Number(unit.conversionFactor) > 0
+                );
+                let purchaseUnit = baseUnitAbbreviation;
+                let purchaseQuantity = suggestedQuantity;
+                let purchaseUnitCost = baseUnitCost;
+                let purchaseConversionFactor = 1;
+                if (defaultPurchase && suggestedQuantity > 0) {
+                    purchaseConversionFactor = Number(defaultPurchase.conversionFactor);
+                    const rawQuantity = suggestedQuantity / purchaseConversionFactor;
+                    const discretePurchase = defaultPurchase.unit.measurementType === 'UNIT' ||
+                        defaultPurchase.unit.measurementType === 'PACKAGE';
+                    purchaseQuantity = discretePurchase
+                        ? Math.ceil(rawQuantity - 1e-9)
+                        : Math.round(rawQuantity * 1_000_000) / 1_000_000;
+                    purchaseUnit = defaultPurchase.unit.abbreviation;
+                    purchaseUnitCost = baseUnitCost * purchaseConversionFactor;
+                }
+
                 return {
                     productId: product.productId,
                     productName: product.productName,
-                    unit: productDetails.baseUnit?.abbreviation || product.unit,
+                    unit: baseUnitAbbreviation,
                     currentStock: product.currentStock,
                     minStock: product.minStock,
+                    // Deficit in base unit (kept for compatibility/display).
                     suggestedQuantity,
-                    estimatedCost: Math.round(
-                        suggestedQuantity * effectiveUnitCost(productDetails?.currentAverageCost, productDetails?.cost) * 100
-                    ) / 100,
+                    baseUnitCost,
+                    // What the PO line should carry: quantity + unit + cost per that unit.
+                    purchaseUnit,
+                    purchaseQuantity,
+                    purchaseUnitCost,
+                    purchaseConversionFactor,
+                    estimatedCost: Math.round(purchaseQuantity * purchaseUnitCost * 100) / 100,
                     warehouseId: product.warehouseId,
                     warehouseName: product.warehouseName,
-                    priority: product.currentStock === 0 ? 'URGENT' : 'NORMAL'
+                    priority: product.currentStock <= 0 ? 'URGENT' : 'NORMAL'
                 };
             })
         );
@@ -76,9 +148,11 @@ export class AutoPurchaseOrderService {
             summary: {
                 totalProducts: suggestions.length,
                 urgentProducts: suggestions.filter(s => s.priority === 'URGENT').length,
-                totalEstimatedCost: Math.round(totalEstimatedCost * 100) / 100
+                totalEstimatedCost: Math.round(totalEstimatedCost * 100) / 100,
+                toProduceProducts: toProduce.length
             },
-            suggestions
+            suggestions,
+            toProduce
         };
     }
 
@@ -89,7 +163,7 @@ export class AutoPurchaseOrderService {
         companyId: number,
         branchId: number,
         supplierId: number,
-        items: { productId: number; quantity: number; cost: number }[]
+        items: { productId: number; quantity: number; cost?: number | null; unit?: string | null }[]
     ) {
         if (!Array.isArray(items) || items.length === 0) {
             throw new Error('Debe enviar al menos un producto para la orden de compra');
@@ -118,6 +192,10 @@ export class AutoPurchaseOrderService {
                 select: {
                     id: true,
                     unit: true,
+                    cost: true,
+                    currentAverageCost: true,
+                    averageCostKnown: true,
+                    referenceCostKnown: true,
                     baseUnit: { select: { abbreviation: true } }
                 }
             });
@@ -126,64 +204,67 @@ export class AutoPurchaseOrderService {
             }
 
             for (const item of items) {
-                if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+                if (!Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0) {
                     throw new Error(`Cantidad inválida para producto ${item.productId}`);
                 }
-                if (!Number.isFinite(item.cost) || item.cost < 0) {
+                if (item.cost != null && (!Number.isFinite(Number(item.cost)) || Number(item.cost) < 0)) {
                     throw new Error(`Costo inválido para producto ${item.productId}`);
+                }
+                if (item.unit != null && (typeof item.unit !== 'string' || !item.unit.trim())) {
+                    throw new Error(`Unidad inválida para producto ${item.productId}`);
                 }
             }
 
-            const total = Math.round((items.reduce((sum, item) => sum + (item.quantity * item.cost), 0) + Number.EPSILON) * 100) / 100;
+            const productById = new Map(products.map((product) => [product.id, product]));
 
-            // Resolve a purchase unit for every product so the conversion to base
-            // unit stays explicit. Suggested quantities come from stock (already in
-            // base unit), so we prefer the product's base unit to keep factor 1 and
-            // avoid altering the resulting quantities; this change is purely about
-            // traceability/consistency.
-            const purchaseUnitByProduct = new Map(
-                products.map((product) => [product.id, product.baseUnit?.abbreviation || product.unit])
-            );
-
+            // Each line is in the unit the suggestion was expressed in (default
+            // purchase unit or base unit). convertWithCost rejects units that are
+            // not valid for the product, so the base quantity stays exact.
             const itemCreates = [];
             for (const item of items) {
-                let purchaseUnit: string | null = purchaseUnitByProduct.get(item.productId) ?? null;
-                let conversionFactor: number | null = null;
-                let baseQuantity: number | null = null;
-                let baseCost: number | null = null;
-
-                if (purchaseUnit) {
-                    const conv = await UnitConversionService.convertWithCost(
-                        item.productId, companyId, item.quantity, purchaseUnit, item.cost, tx
-                    );
-                    conversionFactor = conv.conversionFactor;
-                    baseQuantity = conv.baseQuantity;
-                    baseCost = conv.baseCost;
-                    purchaseUnit = conv.originalUnit;
-                }
+                const product = productById.get(item.productId)!;
+                const quantity = Number(item.quantity);
+                const requestedUnit = item.unit?.trim() || product.baseUnit?.abbreviation || product.unit;
+                const factorProbe = await UnitConversionService.convertWithCost(
+                    item.productId, companyId, quantity, requestedUnit, 0, tx
+                );
+                // Cost omitted: derive it on the server from the unrounded
+                // per-base-unit cost instead of trusting a rounded client value.
+                const cost = item.cost != null
+                    ? Number(item.cost)
+                    : effectiveUnitCost(product.currentAverageCost, product.cost, {
+                        averageCostKnown: product.averageCostKnown,
+                        referenceCostKnown: product.referenceCostKnown
+                    }) * factorProbe.conversionFactor;
+                const baseCost = cost / factorProbe.conversionFactor;
 
                 itemCreates.push({
                     productId: item.productId,
-                    quantity: item.quantity,
-                    cost: item.cost,
-                    subtotal: item.quantity * item.cost,
-                    purchaseUnit,
-                    conversionFactor,
-                    baseQuantity,
+                    quantity,
+                    cost,
+                    subtotal: quantity * cost,
+                    purchaseUnit: factorProbe.originalUnit,
+                    conversionFactor: factorProbe.conversionFactor,
+                    baseQuantity: factorProbe.baseQuantity,
                     baseCost
                 });
             }
+
+            const total = Math.round((itemCreates.reduce((sum, item) => sum + item.subtotal, 0) + Number.EPSILON) * 100) / 100;
 
             return await tx.purchaseOrder.create({
                 data: {
                     companyId,
                     branchId,
                     supplierId,
+                    // A suggestion is only a draft: nothing has been paid yet. The
+                    // CASH default is settled on receipt (receive()), and can be
+                    // switched to CREDIT while the order is still a draft.
                     status: 'DRAFT',
                     total,
                     invoiceType: 'CASH',
-                    paymentStatus: 'PAID',
-                    paidAmount: total,
+                    paymentStatus: 'PENDING',
+                    paidAmount: 0,
                     items: {
                         create: itemCreates
                     }

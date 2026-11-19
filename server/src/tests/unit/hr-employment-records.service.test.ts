@@ -8,6 +8,8 @@ import {
     HrDocumentStorageUnavailableError,
     HrEmployeeDocumentService,
     HrEmploymentContractService,
+    employmentDateChangeWindow,
+    assertEmploymentDateChangeOutsideFrozenPayroll,
     type HrDocumentStorage,
 } from '../../services/hr-employment-records.service';
 import { fileCleanupService } from '../../services/file-cleanup.service';
@@ -154,6 +156,7 @@ describe('HR employment records and document custody', () => {
             $queryRaw: jest.fn().mockResolvedValue([{ id: 7, status: 'ACTIVE' }] as never),
             employmentContract: { findFirst: jest.fn() },
             compensationHistory: { findFirst, updateMany, create },
+            payrollCoverageClaim: { findFirst: jest.fn().mockResolvedValue(null as never) },
             auditLog: { create: jest.fn().mockResolvedValue({ id: 1 } as never) },
         };
         jest.spyOn(prisma, '$transaction').mockImplementation((async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as never);
@@ -167,6 +170,40 @@ describe('HR employment records and document custody', () => {
         expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ amount: new Prisma.Decimal('25000.00'), payFrequency: 'FORTNIGHTLY', effectiveFrom: new Date('2026-01-01T00:00:00.000Z') }) }));
     });
 
+    it('rejects a compensation change made by the affected employee', async () => {
+        jest.spyOn(prisma.employee, 'findFirst').mockResolvedValue(employee() as never);
+        const transaction = jest.spyOn(prisma, '$transaction');
+        await expect(HrCompensationService.append(4, 7, 11, {
+            compensationType: 'SALARY', payFrequency: 'MONTHLY', amount: '99999.00', currency: 'NIO',
+            effectiveFrom: '2026-01-01', reason: 'Autoajuste',
+        })).rejects.toMatchObject({ statusCode: 409 });
+        expect(transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects back-dating compensation into the coverage of a live payroll run', async () => {
+        jest.spyOn(prisma.employee, 'findFirst').mockResolvedValue(employee() as never);
+        const claimFind = jest.fn().mockResolvedValue({ run: { code: '2026-01-Q1-R1', status: 'PAID' } } as never);
+        const updateMany = jest.fn();
+        const create = jest.fn();
+        const tx = {
+            $queryRaw: jest.fn().mockResolvedValue([{ id: 7, status: 'ACTIVE' }] as never),
+            employmentContract: { findFirst: jest.fn() },
+            compensationHistory: { findFirst: jest.fn().mockResolvedValue(null as never), updateMany, create },
+            payrollCoverageClaim: { findFirst: claimFind },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation((async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as never);
+
+        await expect(HrCompensationService.append(4, 7, 3, {
+            compensationType: 'SALARY', payFrequency: 'MONTHLY', amount: '30000.00', currency: 'NIO',
+            effectiveFrom: '2026-01-05', reason: 'Ajuste retroactivo',
+        })).rejects.toThrow('2026-01-Q1-R1');
+        expect(claimFind).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({
+            companyId: 4, userId: 11, kind: 'REGULAR', coverageTo: { gte: new Date('2026-01-05T00:00:00.000Z') }, release: null, run: { status: { not: 'VOID' } },
+        }) }));
+        expect(updateMany).not.toHaveBeenCalled();
+        expect(create).not.toHaveBeenCalled();
+    });
+
     it('blocks activation when an active contract overlaps the draft period', async () => {
         jest.spyOn(prisma.employee, 'findFirst').mockResolvedValue(employee() as never);
         const contractFind = jest.fn()
@@ -178,5 +215,32 @@ describe('HR employment records and document custody', () => {
         await expect(HrEmploymentContractService.transition(4, 7, 21, 3, 'ACTIVATE', {
             signedAt: '2026-01-01T12:00:00.000Z', reason: 'Contrato firmado',
         })).rejects.toMatchObject({ statusCode: 409 });
+    });
+});
+
+describe('employment date edits against frozen payroll coverage', () => {
+    const utc = (value: string) => new Date(`${value}T00:00:00.000Z`);
+
+    it('computes only the coverage window whose service period would move', () => {
+        expect(employmentDateChangeWindow('hireDate', utc('2026-01-10'), utc('2026-01-10'))).toBeNull();
+        expect(employmentDateChangeWindow('hireDate', utc('2026-01-10'), utc('2025-12-01'))).toEqual({ from: utc('2025-12-01'), to: utc('2026-01-09') });
+        expect(employmentDateChangeWindow('terminationDate', null, utc('2026-01-20'))).toEqual({ from: utc('2026-01-21'), to: null });
+        expect(employmentDateChangeWindow('terminationDate', utc('2026-02-10'), utc('2026-01-20'))).toEqual({ from: utc('2026-01-21'), to: utc('2026-02-10') });
+    });
+
+    it('rejects a back-dated termination into a non-VOID payroll coverage and allows a later one', async () => {
+        const findFirst = jest.fn<(args: unknown) => Promise<unknown>>()
+            .mockResolvedValueOnce({ run: { code: 'NOM-2026-01', status: 'PAID' } })
+            .mockResolvedValueOnce(null);
+        const db = { payrollCoverageClaim: { findFirst } } as never;
+        await expect(assertEmploymentDateChangeOutsideFrozenPayroll(db, {
+            companyId: 1, userId: 11, field: 'terminationDate', previous: null, next: utc('2026-01-20'),
+        })).rejects.toThrow('NOM-2026-01');
+        expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({ userId: 11, release: null, run: { status: { not: 'VOID' } }, coverageTo: { gte: utc('2026-01-21') } }),
+        }));
+        await expect(assertEmploymentDateChangeOutsideFrozenPayroll(db, {
+            companyId: 1, userId: 11, field: 'terminationDate', previous: null, next: utc('2026-02-20'),
+        })).resolves.toBeUndefined();
     });
 });

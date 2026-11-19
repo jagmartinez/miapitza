@@ -29,6 +29,51 @@ MODEL_SHA256 = {
 }
 
 
+MIN_IMAGE_SIDE = 320
+MAX_IMAGE_SIDE = 2048
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+# Start-of-frame markers that carry image dimensions (DHT/JPG/DAC excluded).
+JPEG_SOF_MARKERS = frozenset(range(0xC0, 0xD0)) - {0xC4, 0xC8, 0xCC}
+
+
+def declared_image_dimensions(raw: bytes) -> tuple[int, int] | None:
+    """Read width/height from the PNG/JPEG header without decoding pixels.
+
+    A small, highly compressible upload can declare a gigapixel canvas; decoding
+    it first would let one request exhaust provider memory before any size check.
+    """
+    if raw.startswith(PNG_SIGNATURE):
+        if len(raw) < 24 or raw[12:16] != b"IHDR":
+            return None
+        return int.from_bytes(raw[16:20], "big"), int.from_bytes(raw[20:24], "big")
+    if not raw.startswith(b"\xff\xd8"):
+        return None
+    index = 2
+    while index + 4 <= len(raw):
+        if raw[index] != 0xFF:
+            return None
+        marker = raw[index + 1]
+        if marker == 0xFF:
+            index += 1
+            continue
+        if marker == 0x01 or 0xD0 <= marker <= 0xD8:
+            index += 2
+            continue
+        if marker in (0xD9, 0xDA):
+            return None
+        segment_length = int.from_bytes(raw[index + 2 : index + 4], "big")
+        if segment_length < 2:
+            return None
+        if marker in JPEG_SOF_MARKERS:
+            if index + 9 > len(raw):
+                return None
+            height = int.from_bytes(raw[index + 5 : index + 7], "big")
+            width = int.from_bytes(raw[index + 7 : index + 9], "big")
+            return width, height
+        index += 2 + segment_length
+    return None
+
+
 @dataclass(slots=True)
 class FrameAnalysis:
     embedding: np.ndarray
@@ -75,13 +120,24 @@ class FaceEngine:
             raise BiometricError("CAPTURE_INVALID", "La captura no es base64 valido") from exc
         if not raw or len(raw) > self.settings.max_frame_bytes:
             raise BiometricError("CAPTURE_SIZE_INVALID", "La captura esta vacia o excede el limite", status_code=413)
+        declared = declared_image_dimensions(raw)
+        if declared is None:
+            raise BiometricError("CAPTURE_INVALID", "La captura no es una imagen valida")
+        self._assert_dimensions(*declared)
         image = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
         if image is None or image.ndim != 3:
             raise BiometricError("CAPTURE_INVALID", "La captura no es una imagen valida")
         height, width = image.shape[:2]
-        if min(width, height) < 320 or max(width, height) > 2048:
-            raise BiometricError("CAPTURE_DIMENSIONS_INVALID", "La imagen debe medir entre 320 y 2048 pixeles")
+        self._assert_dimensions(width, height)
         return image
+
+    @staticmethod
+    def _assert_dimensions(width: int, height: int) -> None:
+        if min(width, height) < MIN_IMAGE_SIDE or max(width, height) > MAX_IMAGE_SIDE:
+            raise BiometricError(
+                "CAPTURE_DIMENSIONS_INVALID",
+                f"La imagen debe medir entre {MIN_IMAGE_SIDE} y {MAX_IMAGE_SIDE} pixeles",
+            )
 
     @staticmethod
     def _crop_face(image: np.ndarray, face: np.ndarray, expansion: float = 1.5) -> np.ndarray:

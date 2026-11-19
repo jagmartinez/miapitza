@@ -272,6 +272,43 @@ describe('HR attendance security and invariants', () => {
         expect(update).not.toHaveBeenCalled();
     });
 
+    it('reports unknown or wrong challenges as 409 (never 401, which would end the session)', async () => {
+        jest.spyOn(prisma.biometricChallenge, 'findFirst').mockResolvedValueOnce(null as never);
+        await expect(BiometricService.consumeChallenge({
+            companyId: 4, userId: 8, challengeId: 'missing', challengeToken: 'token', purpose: 'ATTENDANCE_PUNCH',
+        })).rejects.toMatchObject({ code: 'CHALLENGE_INVALID', statusCode: 409 });
+
+        jest.spyOn(prisma.biometricChallenge, 'findFirst').mockResolvedValueOnce({
+            id: 'c1', companyId: 4, userId: 8, purpose: 'ATTENDANCE_PUNCH', action: 'CHECK_IN',
+            tokenHash: hashChallengeToken('nonce', 'token'), nonce: 'nonce', expiresAt: new Date(Date.now() + 60000),
+            usedAt: null, usedByKey: null, attempts: 0, maxAttempts: 3, createdAt: new Date(),
+        } as never);
+        jest.spyOn(prisma.biometricChallenge, 'updateMany').mockResolvedValue({ count: 1 } as never);
+        await expect(BiometricService.consumeChallenge({
+            companyId: 4, userId: 8, challengeId: 'c1', challengeToken: 'wrong', purpose: 'ATTENDANCE_PUNCH', action: 'CHECK_IN',
+        })).rejects.toMatchObject({ code: 'CHALLENGE_TOKEN_INVALID', statusCode: 409 });
+    });
+
+    it('rejects an invalid or revoked kiosk device with 403 (never 401)', async () => {
+        const originalKiosk = process.env.HR_ATTENDANCE_KIOSK_ENABLED;
+        process.env.HR_ATTENDANCE_KIOSK_ENABLED = 'true';
+        try {
+            jest.spyOn(prisma.user, 'findFirst').mockResolvedValue({ id: 8 } as never);
+            jest.spyOn(prisma.attendanceDevice, 'findFirst').mockResolvedValue(null as never);
+            await expect(AttendanceService.punch({
+                companyId: 4, userId: 8, idempotencyKey: 'device-1', action: 'CHECK_IN', challengeId: 'challenge',
+                deviceId: 5, deviceKey: 'revoked-key',
+            })).rejects.toMatchObject({ code: 'DEVICE_INVALID', statusCode: 403 });
+            await expect(AttendanceService.punch({
+                companyId: 4, userId: 8, idempotencyKey: 'device-2', action: 'CHECK_IN', challengeId: 'challenge',
+                deviceId: 5,
+            })).rejects.toMatchObject({ code: 'DEVICE_CREDENTIALS_REQUIRED', statusCode: 403 });
+        } finally {
+            if (originalKiosk === undefined) delete process.env.HR_ATTENDANCE_KIOSK_ENABLED;
+            else process.env.HR_ATTENDANCE_KIOSK_ENABLED = originalKiosk;
+        }
+    });
+
     it('binds a consumed challenge to both idempotency key and request hash', async () => {
         jest.spyOn(prisma.biometricChallenge, 'findFirst').mockResolvedValue({
             id: 'c1', companyId: 4, userId: 8, purpose: 'ATTENDANCE_PUNCH', action: 'CHECK_IN',

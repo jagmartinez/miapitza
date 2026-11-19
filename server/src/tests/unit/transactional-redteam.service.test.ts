@@ -84,6 +84,8 @@ describe('transactional red-team regressions', () => {
     });
 
     it('does not post cash into a shift closed concurrently', async () => {
+        // Lock-order preflight (Table -> Order) runs before the transaction.
+        jest.spyOn(prisma.order, 'findFirst').mockResolvedValue({ tableId: null } as never);
         const shiftLookup = jest.fn(async (): Promise<{ id: number; cashRegisterId: number; startDate: Date } | null> => null);
         shiftLookup
             .mockResolvedValueOnce({ id: 5, cashRegisterId: 3, startDate: new Date() })
@@ -118,6 +120,8 @@ describe('transactional red-team regressions', () => {
     });
 
     it('does not infer cash behavior from a misleading display name', async () => {
+        // Lock-order preflight (Table -> Order) runs before the transaction.
+        jest.spyOn(prisma.order, 'findFirst').mockResolvedValue({ tableId: null } as never);
         const tx = {
             $queryRaw: jest.fn(async () => []),
             order: {
@@ -146,6 +150,8 @@ describe('transactional red-team regressions', () => {
     });
 
     it('revalidates an active tenant payment method under the order transaction lock', async () => {
+        // Lock-order preflight (Table -> Order) runs before the transaction.
+        jest.spyOn(prisma.order, 'findFirst').mockResolvedValue({ tableId: null } as never);
         const tx = {
             $queryRaw: jest.fn(async () => []),
             order: {
@@ -266,6 +272,7 @@ describe('transactional red-team regressions', () => {
     it('reverses multiple consumptions at their weighted outstanding value', async () => {
         const tx = {
             $queryRaw: jest.fn(async () => []),
+            stock: { aggregate: jest.fn(async () => ({ _sum: { quantity: 0 } })) },
             inventoryMovement: {
                 findMany: jest.fn(async () => [
                     { warehouseId: 2, productId: 8, type: 'OUT', quantity: 1, unitCost: 10 },
@@ -299,6 +306,7 @@ describe('transactional red-team regressions', () => {
         const acquiredAt = '2026-01-02T03:04:05.000Z';
         const tx = {
             $queryRaw: jest.fn(async () => []),
+            stock: { aggregate: jest.fn(async () => ({ _sum: { quantity: 0 } })) },
             inventoryMovement: {
                 findMany: jest.fn(async () => [{
                     warehouseId: 2,

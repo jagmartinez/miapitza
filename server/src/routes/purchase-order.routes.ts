@@ -13,6 +13,11 @@ import {
 
 const router = Router();
 
+// Purchase orders expose supplier costs, payments and invoice PDFs. Reads are
+// limited to the same warehouse roles the client exposes the module to
+// (constants/roles.ts WAREHOUSE), never to floor roles like MESERO/COCINA.
+const PURCHASE_READ_ROLES = ['SUPERADMIN', 'ADMIN', 'BODEGA', 'CHEF'] as const;
+
 // All purchase order routes require authentication
 router.use(authMiddleware);
 
@@ -27,9 +32,9 @@ router.post(
 );
 router.post('/import/confirm', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), PurchaseOrderImportController.confirm);
 
-router.get('/', PurchaseOrderController.getAll);
-router.get('/:id', validate(s.idParam), PurchaseOrderController.getById);
-router.get('/:id/invoice', validate(s.idParam), PurchaseOrderController.downloadInvoice);
+router.get('/', requireRole(...PURCHASE_READ_ROLES), PurchaseOrderController.getAll);
+router.get('/:id', requireRole(...PURCHASE_READ_ROLES), validate(s.idParam), PurchaseOrderController.getById);
+router.get('/:id/invoice', requireRole(...PURCHASE_READ_ROLES), validate(s.idParam), PurchaseOrderController.downloadInvoice);
 router.post('/', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), invoiceUpload.single('invoicePdf'), validateInvoiceUpload, PurchaseOrderController.create);
 router.put('/:id', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.idParam), invoiceUpload.single('invoicePdf'), validateInvoiceUpload, PurchaseOrderController.update);
 router.delete('/:id', requireRole('SUPERADMIN', 'ADMIN'), validate(s.idParam), PurchaseOrderController.delete);
@@ -38,9 +43,11 @@ router.post('/:id/items', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate
 router.delete('/items/:itemId', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), PurchaseOrderController.removeItem);
 
 router.post('/:id/receive', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.idParam), PurchaseOrderController.receive);
+// "Cerrar saldo": same shape as reverse-receipt (id param + required reason).
+router.post('/:id/close-remaining', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.reversePurchaseReceipt), PurchaseOrderController.closeRemaining);
 router.post('/:id/reverse-receipt', requireRole('SUPERADMIN', 'ADMIN'), validate(s.reversePurchaseReceipt), PurchaseOrderController.reverseReceipt);
 
-router.get('/:id/payments', validate(s.idParam), PurchaseOrderController.getPayments);
+router.get('/:id/payments', requireRole(...PURCHASE_READ_ROLES), validate(s.idParam), PurchaseOrderController.getPayments);
 router.post('/:id/payments', requireRole('SUPERADMIN', 'ADMIN', 'BODEGA'), validate(s.addPurchasePayment), PurchaseOrderController.addPayment);
 router.post('/:id/payments/:paymentId/reverse', requireRole('SUPERADMIN', 'ADMIN'), validate(s.reversePurchasePayment), PurchaseOrderController.reversePayment);
 

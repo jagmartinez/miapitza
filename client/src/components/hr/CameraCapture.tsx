@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Camera, CameraOff, CheckCircle2, RefreshCw } from 'lucide-react';
 import type { HrAttendanceChallenge, HrFaceCaptureEvidence } from '../../types/hr-attendance';
 import Button from '../Button';
+import { cameraErrorMessage } from './attendanceRules';
 
 interface CameraCaptureProps {
     onCapture: (evidence: HrFaceCaptureEvidence | null) => void;
@@ -143,9 +144,7 @@ export default function CameraCapture({
             if (!mountedRef.current || cameraRequestRef.current !== requestId) return;
             stopStream();
             const name = cameraError instanceof DOMException ? cameraError.name : '';
-            setError(name === 'NotAllowedError'
-                ? 'Permiso de cámara denegado. Puedes habilitarlo en el navegador o solicitar fallback supervisado.'
-                : 'No fue posible iniciar la cámara. Verifica que no esté siendo usada por otra aplicación.');
+            setError(cameraErrorMessage(name));
             setState('ERROR');
         }
     };

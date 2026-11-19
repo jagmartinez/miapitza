@@ -1,10 +1,12 @@
 import { createHash } from 'crypto';
 import type { CreditNoteInventoryDisposition, PaymentMethodType, Prisma } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 import prisma from '../utils/prisma';
 import { InventoryEngineService, type BatchSourceType } from './inventory-engine.service';
 import { DEFAULT_COMPANY_SETTINGS, SettingService, validateConfiguredFiscalTaxId } from './setting.service';
 import { CateringService } from './catering.service';
 import { CostingService } from './costing.service';
+import { planSaleReturnFromSlices } from './inventory-consumption.service';
 
 type JsonRecord = Record<string, Prisma.JsonValue>;
 
@@ -99,14 +101,34 @@ function serialize(value: CateringInvoiceData | CateringCreditNoteData): Prisma.
     return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
+/**
+ * A line reconciles when its subtotal is quantity x unitPrice rounded half-up to
+ * cents (exact decimal arithmetic, as the event write path persists it). The
+ * legacy float rounding is still accepted so snapshots issued before this rule
+ * keep deserializing (e.g. 1.01 x 18.50 = 18.685 -> 18.69 exactly, while float
+ * Math.round(1868.4999...) gives 18.68 and blocked invoicing).
+ */
+export function lineSubtotalMatches(quantity: number, unitPrice: number, subtotalCents: number): boolean {
+    if (Math.round(quantity * unitPrice * 100) === subtotalCents) return true;
+    try {
+        const exact = new Decimal(String(quantity)).mul(new Decimal(String(unitPrice)))
+            .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+            .mul(100)
+            .toNumber();
+        return exact === subtotalCents;
+    } catch {
+        return false;
+    }
+}
+
 function assertInvoiceReconciles(data: CateringInvoiceData): void {
-    if (data.lines.length === 0) throw new Error('Catering fiscal totals do not reconcile');
+    if (data.lines.length === 0) throw new Error('Los totales fiscales del catering no concilian');
     const lineCents = data.lines.reduce((sum, line) => {
         if (!Number.isFinite(line.quantity) || line.quantity <= 0 || !Number.isFinite(line.unitPrice) || line.unitPrice < 0) {
-            throw new Error('Catering fiscal totals do not reconcile');
+            throw new Error('Los totales fiscales del catering no concilian');
         }
-        if (Math.round(line.quantity * line.unitPrice * 100) !== cents(line.subtotal, 'line.subtotal')) {
-            throw new Error('Catering fiscal totals do not reconcile');
+        if (!lineSubtotalMatches(line.quantity, line.unitPrice, cents(line.subtotal, 'line.subtotal'))) {
+            throw new Error('Los totales fiscales del catering no concilian');
         }
         return sum + cents(line.subtotal, 'line.subtotal');
     }, 0);
@@ -115,22 +137,22 @@ function assertInvoiceReconciles(data: CateringInvoiceData): void {
     const totalCents = cents(data.total, 'total');
     const paidCents = data.payments.reduce((sum, payment) => sum + cents(payment.amount, 'payment.amount'), 0);
     if (lineCents !== totalCents || subtotalCents + taxCents !== totalCents || paidCents !== totalCents || totalCents <= 0) {
-        throw new Error('Catering fiscal totals do not reconcile');
+        throw new Error('Los totales fiscales del catering no concilian');
     }
 }
 
 export function deserializeCateringInvoiceSnapshot(snapshot: Prisma.JsonValue): CateringInvoiceData {
     if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
-        throw new Error('Catering fiscal snapshot is invalid');
+        throw new Error('La instantánea fiscal del catering no es válida');
     }
     const raw = snapshot as JsonRecord;
     if (!Array.isArray(raw.lines) || !Array.isArray(raw.payments)) {
-        throw new Error('Catering fiscal snapshot is invalid: collections');
+        throw new Error('La instantánea fiscal del catering no es válida: colecciones');
     }
     const eventDate = new Date(requiredString(raw.eventDate, 'eventDate'));
     const issuedAt = new Date(requiredString(raw.issuedAt, 'issuedAt'));
     if (Number.isNaN(eventDate.getTime()) || Number.isNaN(issuedAt.getTime())) {
-        throw new Error('Catering fiscal snapshot is invalid: dates');
+        throw new Error('La instantánea fiscal del catering no es válida: fechas');
     }
     const data: CateringInvoiceData = {
         eventId: positiveInteger(raw.eventId, 'eventId'),
@@ -186,24 +208,24 @@ export function deserializeCateringInvoiceSnapshot(snapshot: Prisma.JsonValue): 
         issuedById: positiveInteger(raw.issuedById, 'issuedById'),
         issuedByName: requiredString(raw.issuedByName, 'issuedByName'),
     };
-    if (data.status !== 'ISSUED') throw new Error('Catering fiscal snapshot is invalid: status');
+    if (data.status !== 'ISSUED') throw new Error('La instantánea fiscal del catering no es válida: estado');
     assertInvoiceReconciles(data);
     return data;
 }
 
 export function deserializeCateringCreditNoteSnapshot(snapshot: Prisma.JsonValue): CateringCreditNoteData {
     if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
-        throw new Error('Catering credit note snapshot is invalid');
+        throw new Error('La instantánea de la nota de crédito de catering no es válida');
     }
     const raw = snapshot as JsonRecord;
     if (!Array.isArray(raw.refunds) || !raw.originalInvoice || typeof raw.originalInvoice !== 'object' || Array.isArray(raw.originalInvoice)) {
-        throw new Error('Catering credit note snapshot is invalid: collections');
+        throw new Error('La instantánea de la nota de crédito de catering no es válida: colecciones');
     }
     const issuedAt = new Date(requiredString(raw.issuedAt, 'issuedAt'));
-    if (Number.isNaN(issuedAt.getTime())) throw new Error('Catering credit note snapshot is invalid: issuedAt');
+    if (Number.isNaN(issuedAt.getTime())) throw new Error('La instantánea de la nota de crédito de catering no es válida: fecha de emisión');
     const disposition = requiredString(raw.inventoryDisposition, 'inventoryDisposition') as CreditNoteInventoryDisposition;
     if (!['NOT_CONSUMED', 'NOT_RETURNED', 'RETURNED_TO_ORIGINAL_STOCK'].includes(disposition)) {
-        throw new Error('Catering credit note snapshot is invalid: inventoryDisposition');
+        throw new Error('La instantánea de la nota de crédito de catering no es válida: tratamiento de inventario');
     }
     const data: CateringCreditNoteData = {
         eventId: positiveInteger(raw.eventId, 'eventId'),
@@ -231,11 +253,11 @@ export function deserializeCateringCreditNoteSnapshot(snapshot: Prisma.JsonValue
         originalInvoice: deserializeCateringInvoiceSnapshot(raw.originalInvoice),
     };
     if (data.status !== 'ISSUED' || data.originalInvoice.invoiceNumber !== data.originalInvoiceNumber || data.originalInvoice.eventId !== data.eventId) {
-        throw new Error('Catering credit note snapshot does not match its invoice');
+        throw new Error('La nota de crédito de catering no corresponde a su factura');
     }
     const refundedCents = data.refunds.reduce((sum, refund) => sum + cents(refund.amount, 'refund.amount'), 0);
     if (refundedCents !== cents(data.originalInvoice.total, 'invoice.total')) {
-        throw new Error('Catering credit note refunds do not reconcile');
+        throw new Error('Los reembolsos de la nota de crédito de catering no concilian');
     }
     return data;
 }
@@ -266,7 +288,7 @@ export class CateringFiscalService {
                     fiscalInvoice: true,
                 },
             });
-            if (!event) throw new Error('Catering event not found');
+            if (!event) throw new Error('Evento de catering no encontrado');
             const actor = await tx.user.findFirst({ where: { id: userId, companyId, status: 'ACTIVE' }, select: { id: true, name: true } });
             if (!actor) throw new Error('Usuario no válido para esta empresa');
 
@@ -324,7 +346,7 @@ export class CateringFiscalService {
                 || !Number.isFinite(taxRatePercent)
                 || taxRatePercent < 0
             ) {
-                throw new Error('Catering fiscal totals do not reconcile');
+                throw new Error('Los totales fiscales del catering no concilian');
             }
 
             await tx.invoiceSequence.upsert({
@@ -397,10 +419,10 @@ export class CateringFiscalService {
 
     static async getInvoice(eventId: number, companyId: number) {
         const row = await prisma.cateringFiscalInvoice.findFirst({ where: { cateringEventId: eventId, companyId } });
-        if (!row) throw new Error('Catering invoice not issued');
+        if (!row) throw new Error('La factura de catering no ha sido emitida');
         const snapshot = deserializeCateringInvoiceSnapshot(row.snapshot);
         if (snapshot.eventId !== row.cateringEventId || snapshot.invoiceNumber !== row.number) {
-            throw new Error('Catering fiscal snapshot does not match its document');
+            throw new Error('La instantánea fiscal del catering no corresponde a su documento');
         }
         return snapshot;
     }
@@ -435,7 +457,7 @@ export class CateringFiscalService {
                 where: { id: eventId, companyId },
                 include: { fiscalInvoice: true, fiscalCreditNote: true, payments: { where: { status: 'ACTIVE' }, orderBy: { id: 'asc' } } },
             });
-            if (!event) throw new Error('Catering event not found');
+            if (!event) throw new Error('Evento de catering no encontrado');
             const actor = await tx.user.findFirst({ where: { id: userId, companyId, status: 'ACTIVE' }, select: { id: true, name: true } });
             if (!actor) throw new Error('Usuario no válido para esta empresa');
 
@@ -457,7 +479,7 @@ export class CateringFiscalService {
             }
             const originalInvoice = deserializeCateringInvoiceSnapshot(event.fiscalInvoice.snapshot);
             if (originalInvoice.eventId !== event.id || originalInvoice.invoiceNumber !== event.fiscalInvoice.number) {
-                throw new Error('Catering fiscal snapshot does not match its document');
+                throw new Error('La instantánea fiscal del catering no corresponde a su documento');
             }
             const activePaidCents = event.payments.reduce((sum, payment) => sum + cents(payment.amount, 'payment.amount'), 0);
             if (activePaidCents !== cents(originalInvoice.total, 'invoice.total')) {
@@ -496,8 +518,10 @@ export class CateringFiscalService {
             let inventoryDisposition: CreditNoteInventoryDisposition = 'NOT_CONSUMED';
             if (event.status === 'FINISHED') {
                 if (normalized.inventoryAction === 'RETURN_TO_STOCK') {
-                    await this.reverseFinishedInventory(tx, { eventId, companyId, userId: actor.id, creditNoteNumber: number });
-                    inventoryDisposition = 'RETURNED_TO_ORIGINAL_STOCK';
+                    const returned = await this.reverseFinishedInventory(tx, { eventId, companyId, userId: actor.id, creditNoteNumber: number });
+                    // No EVT-{id} consumption recorded (e.g. services-only
+                    // event): nothing to return, not an error.
+                    inventoryDisposition = returned ? 'RETURNED_TO_ORIGINAL_STOCK' : 'NOT_CONSUMED';
                 } else {
                     inventoryDisposition = 'NOT_RETURNED';
                 }
@@ -554,10 +578,10 @@ export class CateringFiscalService {
 
     static async getCreditNote(eventId: number, companyId: number) {
         const row = await prisma.cateringFiscalCreditNote.findFirst({ where: { cateringEventId: eventId, companyId } });
-        if (!row) throw new Error('Catering credit note not issued');
+        if (!row) throw new Error('La nota de crédito de catering no ha sido emitida');
         const snapshot = deserializeCateringCreditNoteSnapshot(row.snapshot);
         if (snapshot.eventId !== row.cateringEventId || snapshot.creditNoteNumber !== row.number) {
-            throw new Error('Catering credit note snapshot does not match its document');
+            throw new Error('La nota de crédito de catering no corresponde a su documento');
         }
         return snapshot;
     }
@@ -565,18 +589,34 @@ export class CateringFiscalService {
     private static async reverseFinishedInventory(
         tx: Prisma.TransactionClient,
         params: { eventId: number; companyId: number; userId: number; creditNoteNumber: string },
-    ) {
+    ): Promise<boolean> {
         const movements = await tx.inventoryMovement.findMany({
             where: { companyId: params.companyId, reference: `EVT-${params.eventId}`, type: 'OUT' },
             orderBy: [{ productId: 'asc' }, { id: 'asc' }],
-            select: { id: true, warehouseId: true, productId: true, quantity: true, totalCost: true, consumedLayers: true },
+            select: { id: true, warehouseId: true, productId: true, quantity: true, totalCost: true, balanceQty: true, consumedLayers: true },
         });
-        if (movements.length === 0) throw new Error('El evento finalizado no tiene consumo de inventario reversible');
-        const costingMethod = (await tx.company.findUnique({
-            where: { id: params.companyId },
-            select: { costingMethod: true }
-        }))?.costingMethod || 'WEIGHTED_AVERAGE';
+        // The finish posts its consumption as EVT-{id} OUT movements; their
+        // absence is the only reliable "nothing was consumed" signal. Dishes'
+        // current recipes may have been edited since the event finished.
+        if (movements.length === 0) return false;
+        // Canonical lock order for the whole return before any per-row work.
+        await InventoryEngineService.lockInventoryScope(
+            tx,
+            params.companyId,
+            movements.map((movement) => movement.warehouseId),
+            movements.map((movement) => movement.productId)
+        );
+        const methodByWarehouse = new Map<number, 'FIFO' | 'WEIGHTED_AVERAGE'>();
         for (const movement of movements) {
+            if (!methodByWarehouse.has(movement.warehouseId)) {
+                methodByWarehouse.set(
+                    movement.warehouseId,
+                    await InventoryEngineService.readWarehouseCostingMethod(tx, params.companyId, movement.warehouseId)
+                );
+            }
+        }
+        for (const movement of movements) {
+            const costingMethod = methodByWarehouse.get(movement.warehouseId) ?? 'WEIGHTED_AVERAGE';
             const priorReversal = await tx.inventoryMovement.findFirst({
                 where: { companyId: params.companyId, reversalOfId: movement.id },
                 select: { id: true }
@@ -604,9 +644,32 @@ export class CateringFiscalService {
             const quantity = Number(movement.quantity);
             const layerQuantity = inboundLayers.reduce((sum, layer) => sum + layer.quantity, 0);
             const layerValue = inboundLayers.reduce((sum, layer) => sum + layer.quantity * layer.unitCost, 0);
-            if (Math.abs(layerQuantity - quantity) > 1e-6 || movement.totalCost == null || Math.abs(layerValue - Number(movement.totalCost)) > 1e-4) {
+            const movementValue = movement.totalCost == null ? Number.NaN : Number(movement.totalCost);
+            // FIFO layers are the ledger value only under FIFO. Under weighted
+            // average the OUT was valued at the moving average while its
+            // consumed layers keep FIFO provenance, so only quantities must
+            // reconcile; the financial value comes from the movement itself.
+            if (
+                Math.abs(layerQuantity - quantity) > 1e-6
+                || !Number.isFinite(movementValue) || movementValue < 0
+                || (costingMethod === 'FIFO' && Math.abs(layerValue - movementValue) > 1e-4)
+            ) {
                 throw new Error(`El costo/cantidad del movimiento ${movement.id} no concilia para devolución`);
             }
+            const originalValue = costingMethod === 'FIFO' ? layerValue : movementValue;
+            // Units sold on a negative balance that was covered (and trued up)
+            // before this return come back at that real cost, not the
+            // provisional one; the difference reverses the true-up's COGS.
+            const revalued = await planSaleReturnFromSlices(tx, {
+                companyId: params.companyId,
+                warehouseId: movement.warehouseId,
+                productId: movement.productId,
+                saleMovementIds: [movement.id],
+                layers: inboundLayers,
+            });
+            const adjustment = Math.abs(revalued.adjustment) > 1e-9 ? revalued.adjustment : 0;
+            const slicesInvolved = adjustment !== 0 || revalued.returnedOpenSlices.length > 0;
+            const returnValue = originalValue + adjustment;
             const weightedContext = costingMethod === 'WEIGHTED_AVERAGE'
                 ? await Promise.all([
                     tx.stock.aggregate({ where: { companyId: params.companyId, productId: movement.productId }, _sum: { quantity: true } }),
@@ -618,7 +681,7 @@ export class CateringFiscalService {
                 : null;
             const reversalGroupId = `CAT-NC-${params.creditNoteNumber}`;
             const reversalKey = `${reversalGroupId}-MOV-${movement.id}`;
-            await InventoryEngineService.applyMovement(tx, {
+            const returned = await InventoryEngineService.applyMovement(tx, {
                 type: 'ADJUSTMENT',
                 direction: 'IN',
                 origin: 'REVERSAL',
@@ -627,7 +690,14 @@ export class CateringFiscalService {
                 productId: movement.productId,
                 userId: params.userId,
                 quantity,
-                inboundLayers,
+                inboundLayers: revalued.layers,
+                // The movement keeps the value of the sale it reverses; a
+                // re-valued deficit is posted apart as a COST_TRUE_UP reversal.
+                ...(costingMethod === 'FIFO' && !slicesInvolved
+                    ? {}
+                    : { unitCost: quantity > 0 ? originalValue / quantity : 0 }),
+                ...(adjustment !== 0 ? { restoredValueAdjustment: adjustment } : {}),
+                ...(revalued.returnedOpenSlices.length > 0 ? { returnedOpenSlices: revalued.returnedOpenSlices } : {}),
                 sourceType: 'ADJUSTMENT',
                 reference: reversalKey,
                 reason: `Devolución completa Catering #${params.eventId} / ${params.creditNoteNumber}`,
@@ -635,20 +705,33 @@ export class CateringFiscalService {
                 reversalGroupId,
                 reversalKey,
             });
+            await revalued.commit(returned.movementId);
             if (costingMethod === 'FIFO') {
                 await CostingService.syncFifoCurrentAverageCost(tx, movement.productId, params.companyId);
             } else if (weightedContext) {
                 const previousQuantity = Number(weightedContext[0]._sum.quantity ?? 0);
                 const product = weightedContext[1];
-                if (!product || !product.averageCostKnown || !Number.isFinite(Number(product.currentAverageCost))) {
+                // Blending needs a confirmed average only when there is positive
+                // prior stock; with prior stock <= 0 the return cost becomes the
+                // average (calculateWeightedAverageCost semantics).
+                if (!product || (previousQuantity > 0 && (!product.averageCostKnown || !Number.isFinite(Number(product.currentAverageCost))))) {
                     throw new Error(`El producto ${movement.productId} no tiene costo promedio confirmado para la devolución`);
                 }
-                const newAverageCost = (previousQuantity * Number(product.currentAverageCost) + layerValue) / (previousQuantity + quantity);
-                await tx.product.update({
-                    where: { id: movement.productId },
-                    data: { currentAverageCost: newAverageCost, averageCostKnown: true }
-                });
+                // D8: fold through the history-writing helper so the return gets
+                // a ProductCostHistory row linked to its movement and later WA
+                // replays (receipt/production reversals) include it.
+                await CostingService.applyProductionCost(
+                    tx,
+                    movement.productId,
+                    params.companyId,
+                    quantity,
+                    quantity > 0 ? returnValue / quantity : 0,
+                    previousQuantity,
+                    undefined,
+                    returned.movementId
+                );
             }
         }
+        return true;
     }
 }

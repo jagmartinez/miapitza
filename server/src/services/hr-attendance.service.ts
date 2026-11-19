@@ -4,7 +4,9 @@ import prisma from '../utils/prisma';
 import { zonedDateKey, zonedDateTimeToUtc } from '../utils/timezone';
 import { decryptBiometricTemplate } from '../utils/hr-biometric-crypto';
 import { AuditLogService } from './audit-log.service';
-import { AttendancePolicyService, BiometricService, HrAttendanceError, livenessActionFromNonce } from './hr-biometric.service';
+import {
+    AttendancePolicyService, BIOMETRIC_ENROLLMENT_PENDING_APPROVAL, BiometricService, HrAttendanceError, livenessActionFromNonce,
+} from './hr-biometric.service';
 import {
     createFaceVerificationProvider,
     FaceEvidenceRejectedError,
@@ -749,7 +751,7 @@ export class AttendanceService {
         if (requestedDeviceId && process.env.HR_ATTENDANCE_KIOSK_ENABLED !== 'true') {
             throw new HrAttendanceError('El cliente de kiosco protegido no está habilitado en este despliegue', 503, 'KIOSK_DISABLED');
         }
-        if ((requestedDeviceId && !input.deviceKey) || (!requestedDeviceId && input.deviceKey)) throw new HrAttendanceError('Las credenciales de dispositivo están incompletas', 401, 'DEVICE_CREDENTIALS_REQUIRED');
+        if ((requestedDeviceId && !input.deviceKey) || (!requestedDeviceId && input.deviceKey)) throw new HrAttendanceError('Las credenciales de dispositivo están incompletas', 403, 'DEVICE_CREDENTIALS_REQUIRED');
         let device: { id: number; branchId: number } | null = null;
         if (requestedDeviceId && input.deviceKey) {
             const stored = await prisma.attendanceDevice.findFirst({
@@ -759,7 +761,7 @@ export class AttendanceService {
             const suppliedHash = createHash('sha256').update(input.deviceKey).digest('hex');
             const valid = stored && /^[0-9a-f]{64}$/i.test(stored.keyHash)
                 && timingSafeEqual(Buffer.from(stored.keyHash, 'hex'), Buffer.from(suppliedHash, 'hex'));
-            if (!valid || !stored) throw new HrAttendanceError('Dispositivo de asistencia inválido o revocado', 401, 'DEVICE_INVALID');
+            if (!valid || !stored) throw new HrAttendanceError('Dispositivo de asistencia inválido o revocado', 403, 'DEVICE_INVALID');
             device = { id: stored.id, branchId: stored.branchId };
         }
         const hash = requestHash({ userId: input.userId, action, challengeId: input.challengeId, latitude, longitude, accuracyM, clientAt: clientAt?.toISOString(), deviceId: device?.id || null });
@@ -867,7 +869,7 @@ export class AttendanceService {
             });
             consumedChallengeId = input.challengeId;
         } catch (error) {
-            challengeError = error instanceof HrAttendanceError ? error : new HrAttendanceError('Reto inválido', 401, 'CHALLENGE_INVALID');
+            challengeError = error instanceof HrAttendanceError ? error : new HrAttendanceError('Reto inválido', 409, 'CHALLENGE_INVALID');
         }
         if (challengeError?.code === 'IDEMPOTENCY_IN_PROGRESS') {
             const completed = await prisma.attendanceEvent.findFirst({ where: { companyId: input.companyId, idempotencyKey }, include: eventInclude });
@@ -875,13 +877,23 @@ export class AttendanceService {
             throw challengeError;
         }
         if (!challengeError && policy.requireBiometric && input.evidence && consumedChallenge) {
-            const profile = await prisma.biometricProfile.findFirst({ where: { companyId: input.companyId, userId: input.userId, status: 'ACTIVE' } });
-            if (!profile) {
+            const profile = await prisma.biometricProfile.findFirst({ where: { companyId: input.companyId, userId: input.userId } });
+            if (profile?.status === 'PENDING') {
+                // First enrollment awaiting HR approval: never matched against,
+                // recorded as a rejected attempt like a missing profile.
+                biometricProfileId = profile.id;
+                biometric = check('FAILED', 'Tu registro facial está pendiente de aprobación de RRHH; podrás marcar cuando sea aprobado', BIOMETRIC_ENROLLMENT_PENDING_APPROVAL);
+            } else if (!profile || profile.status !== 'ACTIVE') {
                 biometric = check('FAILED', 'No existe un perfil biométrico activo', 'BIOMETRIC_PROFILE_REQUIRED');
             } else if (!profile.retentionExpiresAt || profile.retentionExpiresAt <= now) {
                 biometric = check('FAILED', 'El perfil biométrico expiró y debe reenrolarse', 'BIOMETRIC_RETENTION_EXPIRED');
             } else if (profile.consentVersion !== policy.biometricConsentVersion) {
                 biometric = check('FAILED', 'El consentimiento biométrico debe renovarse', 'BIOMETRIC_CONSENT_STALE');
+            } else if (provider.name !== 'disabled' && profile.provider !== provider.name) {
+                // A template issued by another adapter (e.g. dev "fake" -> "http")
+                // is meaningless to the current provider; never send it for matching.
+                biometricProfileId = profile.id;
+                biometric = check('FAILED', 'Tu perfil biométrico fue creado con otro proveedor facial; debes volver a enrolarte en “Mi biometría”', 'BIOMETRIC_REENROLL_REQUIRED');
             } else {
                 biometricProfileId = profile.id;
                 try {
@@ -977,7 +989,9 @@ export class AttendanceService {
                 ? 'Marcaje aceptado'
                 : decision === 'REVIEW'
                     ? 'Marcaje enviado a revisión'
-                    : challengeError?.message || (sequence.status === 'FAILED' ? sequence.message : 'Marcaje rechazado'),
+                    : challengeError?.message || (sequence.status === 'FAILED'
+                        ? sequence.message
+                        : biometric.reasonCode === BIOMETRIC_ENROLLMENT_PENDING_APPROVAL ? biometric.message : 'Marcaje rechazado'),
             checks: json(checks),
         };
         let event: EventForApi;

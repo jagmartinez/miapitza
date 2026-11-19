@@ -46,7 +46,11 @@ export class CompanyService {
         if (!name) throw new Error('El nombre de la empresa es obligatorio');
         if (name.length > 200) throw new Error('El nombre de la empresa es demasiado largo');
         const ruc = data.ruc?.trim() || null;
-        const logo = data.logo?.trim() || null;
+        // Logos are owned by the upload lifecycle (/upload/logo). Accepting an
+        // arbitrary path here would let a tenant point at another tenant's file
+        // and have it unlinked on the next logo replacement/deletion.
+        if (data.logo?.trim()) throw new Error('El logo se administra desde la carga de archivos');
+        const logo = null;
         const payrollTaxRegime = this.normalizePayrollTaxRegime(data.payrollTaxRegime);
         if (typeof data.payrollIncomeTaxWithholding !== 'boolean') throw new Error('Debes indicar si la empresa retiene IR laboral');
         const payrollIncomeTaxWithholding = data.payrollIncomeTaxWithholding;
@@ -149,6 +153,13 @@ export class CompanyService {
                 }
             });
             if (!existing) throw new Error('Company not found');
+            if (updateData.logo !== undefined && updateData.logo !== null && updateData.logo !== existing.logo) {
+                throw new Error('El logo se administra desde la carga de archivos');
+            }
+            if (updateData.logo === null && existing.logo) {
+                throw new Error('Elimine el logo desde la carga de archivos');
+            }
+            if (updateData.logo !== undefined && updateData.logo === existing.logo) delete updateData.logo;
             const fiscalProfileTouched = data.payrollTaxRegime !== undefined
                 || data.payrollIncomeTaxWithholding !== undefined
                 || data.payrollTaxRegimeReference !== undefined

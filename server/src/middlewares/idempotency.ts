@@ -135,7 +135,7 @@ export async function idempotency(req: Request, res: Response, next: NextFunctio
         });
         if (!existing) return next(error);
         if (existing.fingerprint !== fingerprint) {
-            res.status(409).json({ success: false, message: 'Clave de idempotencia reutilizada con una solicitud diferente' });
+            res.status(409).json({ success: false, code: 'IDEMPOTENCY_MISMATCH', message: 'Clave de idempotencia reutilizada con una solicitud diferente' });
             return;
         }
         if (existing.status === 'COMPLETED' && existing.expiresAt > now && existing.httpStatus !== null) {
@@ -143,7 +143,7 @@ export async function idempotency(req: Request, res: Response, next: NextFunctio
             return;
         }
         if (existing.expiresAt > now) {
-            res.status(409).json({ success: false, message: 'Solicitud duplicada en proceso' });
+            res.status(409).json({ success: false, code: 'IDEMPOTENCY_IN_PROGRESS', message: 'Solicitud duplicada en proceso' });
             return;
         }
         const claimed = await prisma.idempotencyRecord.updateMany({
@@ -151,7 +151,7 @@ export async function idempotency(req: Request, res: Response, next: NextFunctio
             data: { fingerprint, status: 'PROCESSING', httpStatus: null, response: Prisma.JsonNull, expiresAt: new Date(now.getTime() + PROCESSING_TTL_MS) }
         });
         if (claimed.count !== 1) {
-            res.status(409).json({ success: false, message: 'Solicitud duplicada en proceso' });
+            res.status(409).json({ success: false, code: 'IDEMPOTENCY_IN_PROGRESS', message: 'Solicitud duplicada en proceso' });
             return;
         }
         record = { ...existing, fingerprint };

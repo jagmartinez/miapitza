@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
@@ -52,7 +54,7 @@ export default function RolesPermissions() {
             setRoles(rolesRes.data.data);
             setPermissions(permissionsRes.data.data);
         } catch (error) {
-            console.error('Error loading data:', error);
+            notifyError(error, 'No se pudieron cargar los roles y permisos');
         } finally {
             setLoading(false);
         }
@@ -85,7 +87,7 @@ export default function RolesPermissions() {
             loadData();
         } catch (error) {
             console.error('Error saving role:', error);
-            showError('Error al guardar el rol');
+            showError(getApiErrorMessage(error, 'Error al guardar el rol'));
         }
     };
 

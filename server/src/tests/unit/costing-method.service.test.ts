@@ -13,34 +13,37 @@ function makeTx(
     referenceCostKnown = referenceCost > 0
 ) {
     const createdLayers: Array<Record<string, unknown>> = [];
+    const sqlOf = (strings: unknown) => (Array.isArray(strings) ? strings.join('?') : String(strings));
     const tx = {
         company: {
             findUnique: jest.fn(async () => ({ id: 1, name: 'Tenant', costingMethod: currentMethod })),
             update: jest.fn(async (_args: unknown) => ({ id: 1, name: 'Tenant', costingMethod: 'FIFO' }))
         },
-        stock: {
+        warehouse: { updateMany: jest.fn(async (_args: unknown) => ({ count: 1 })) },
+        product: {
             findMany: jest.fn(async () => ([{
-                warehouseId: 2,
-                productId: 3,
-                quantity: stockQuantity,
-                product: {
-                    currentAverageCost: averageCost,
-                    averageCostKnown,
-                    cost: referenceCost,
-                    referenceCostKnown
-                }
+                id: 3,
+                currentAverageCost: averageCost,
+                averageCostKnown,
+                cost: referenceCost,
+                referenceCostKnown
             }]))
         },
         inventoryBatch: {
-            findMany: jest.fn(async () => layerQuantity > 0 ? [{
-                warehouseId: 2, productId: 3, remainingQty: layerQuantity
-            }] : []),
             create: jest.fn(async (args: { data: Record<string, unknown> }) => {
                 createdLayers.push(args.data);
                 return {};
             })
         },
-        $queryRaw: jest.fn(async () => [])
+        // Stock and layers are read WITH their row locks (latest committed).
+        $queryRaw: jest.fn(async (strings: unknown) => {
+            const sql = sqlOf(strings);
+            if (sql.includes('FROM `Stock`')) return [{ warehouseId: 2, productId: 3, quantity: stockQuantity }];
+            if (sql.includes('FROM `InventoryBatch`')) {
+                return layerQuantity > 0 ? [{ warehouseId: 2, productId: 3, remainingQty: layerQuantity }] : [];
+            }
+            return [];
+        })
     };
     return { tx, createdLayers };
 }
@@ -96,5 +99,23 @@ describe('CostingService.updateCostingMethod', () => {
         expect(createdLayers).toEqual([expect.objectContaining({
             productId: 3, originalQty: 4, remainingQty: 4, unitCost: 0
         })]);
+    });
+
+    it('switches every warehouse copy under Company -> Warehouse X locks in both directions', async () => {
+        for (const target of ['FIFO', 'WEIGHTED_AVERAGE'] as const) {
+            const { tx } = makeTx(5, 5, 7, 5, target === 'FIFO' ? 'WEIGHTED_AVERAGE' : 'FIFO');
+            jest.spyOn(prisma, '$transaction').mockImplementation(
+                (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+            );
+
+            await CostingService.updateCostingMethod(1, target);
+
+            const sql = tx.$queryRaw.mock.calls.map((call) => (call[0] as string[]).join('?'));
+            expect(sql[0]).toMatch(/FROM `Company`.*FOR UPDATE/);
+            expect(sql[1]).toMatch(/FROM `Warehouse`.*FOR UPDATE/);
+            expect(tx.warehouse.updateMany).toHaveBeenCalledWith({
+                where: { companyId: 1 }, data: { costingMethod: target }
+            });
+        }
     });
 });

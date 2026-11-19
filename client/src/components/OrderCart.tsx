@@ -5,6 +5,7 @@ import { promotionsAPI } from '../services/api';
 import Select from './Select';
 import type { SingleValue } from 'react-select';
 import type { MenuItem } from '../types';
+import { describePromotionSchedule, describePromotionValue, type PromotionRulesView } from '../utils/promotionRules';
 import './OrderCart.css';
 
 interface SelectedModifier {
@@ -35,6 +36,8 @@ interface OrderCartProps {
     onTipToggle?: (enabled: boolean) => void;
     enablePromotions?: boolean;
     onApplyPromotion?: (code: string) => void;
+    /** Branch of the order: only promotions valid there (and inside their happy hour) are listed. */
+    promotionBranchId?: number | null;
     formatMoney: (amount: unknown) => string;
 }
 
@@ -50,6 +53,7 @@ export default function OrderCart({
     onTipToggle,
     enablePromotions,
     onApplyPromotion,
+    promotionBranchId,
     formatMoney,
 }: OrderCartProps) {
     const { confirm } = useConfirmDialog();
@@ -156,6 +160,7 @@ export default function OrderCart({
                 {enablePromotions && (
                     <PromotionSelector
                         onApply={onApplyPromotion}
+                        branchId={promotionBranchId}
                         formatMoney={formatMoney}
                     />
                 )}
@@ -199,16 +204,19 @@ export default function OrderCart({
     );
 }
 
-interface PromotionListEntry {
+interface PromotionListEntry extends PromotionRulesView {
     id: number;
     code: string;
     name: string;
-    type: string;
-    value: number;
 }
 
-/** Inline promotion selector with active promos dropdown */
-function PromotionSelector({ onApply, formatMoney }: { onApply?: (code: string) => void; formatMoney: (amount: unknown) => string }) {
+function promotionOptionLabel(p: PromotionListEntry, formatMoney: (amount: unknown) => string): string {
+    const schedule = describePromotionSchedule(p);
+    return `${p.code} — ${p.name} (${describePromotionValue(p, formatMoney)}${schedule ? ` · ${schedule}` : ''})`;
+}
+
+/** Inline promotion selector with active promos dropdown (only those valid for the order's branch, right now). */
+function PromotionSelector({ onApply, formatMoney, branchId }: { onApply?: (code: string) => void; formatMoney: (amount: unknown) => string; branchId?: number | null }) {
     const [promos, setPromos] = useState<PromotionListEntry[]>([]);
     const [selected, setSelected] = useState('');
     const [manualCode, setManualCode] = useState('');
@@ -220,7 +228,7 @@ function PromotionSelector({ onApply, formatMoney }: { onApply?: (code: string) 
         let cancelled = false;
         setLoading(true);
         setLoadError(false);
-        promotionsAPI.getAll(true).then(res => {
+        promotionsAPI.getAll(true, { branchId, availableNow: true }).then(res => {
             if (cancelled) return;
             setPromos(res.data.data || []);
         }).catch(() => {
@@ -230,7 +238,7 @@ function PromotionSelector({ onApply, formatMoney }: { onApply?: (code: string) 
             if (!cancelled) setLoading(false);
         });
         return () => { cancelled = true; };
-    }, []);
+    }, [branchId]);
 
     const handleApply = () => {
         const code = mode === 'select' ? selected : manualCode.toUpperCase();
@@ -269,10 +277,7 @@ function PromotionSelector({ onApply, formatMoney }: { onApply?: (code: string) 
                             ? (() => {
                                 const p = promos.find((promo) => promo.code === selected);
                                 return p
-                                    ? {
-                                        value: p.code,
-                                        label: `${p.code} — ${p.name} (${p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : formatMoney(Number(p.value))})`
-                                    }
+                                    ? { value: p.code, label: promotionOptionLabel(p, formatMoney) }
                                     : { value: selected, label: selected };
                             })()
                             : null
@@ -280,7 +285,7 @@ function PromotionSelector({ onApply, formatMoney }: { onApply?: (code: string) 
                     onChange={(option: SingleValue<{ value: string; label: string }>) => setSelected(option?.value || '')}
                     options={promos.map((p) => ({
                         value: p.code,
-                        label: `${p.code} — ${p.name} (${p.type === 'PERCENTAGE' ? `${Number(p.value)}%` : formatMoney(Number(p.value))})`
+                        label: promotionOptionLabel(p, formatMoney)
                     }))}
                     placeholder={loading ? 'Cargando promociones...' : 'Seleccionar promoción...'}
                     isDisabled={loading || loadError || promos.length === 0}

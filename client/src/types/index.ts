@@ -288,6 +288,8 @@ export interface Order {
   tipAmount?: number;
   status: 'OPEN' | 'SENT_TO_KITCHEN' | 'IN_PREPARATION' | 'READY' | 'DELIVERED' | 'CANCELLED';
   financialStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
+  /** RESTAURANT, PEDIDOSYA, ... (channel orders have their own cancel flow). */
+  salesChannel?: string;
   customerName?: string;
   customerTaxId?: string;
   customerTaxIdType?: string;
@@ -338,6 +340,16 @@ export interface OrderItem {
   sentAt?: string;
   startedAt?: string;
   finishedAt?: string;
+  /** Kitchen void: a voided row keeps quantity 0 and records what was wasted. */
+  voidedQuantity?: number;
+  voidedAt?: string | null;
+  voidedById?: number | null;
+  voidReason?: string | null;
+  voidedFromItemId?: number | null;
+  voidWasteReference?: string | null;
+  /** Part of the order discount attributed to this line by a per-item / combo / happy-hour promotion. */
+  promotionDiscount?: number | string;
+  modifiers?: Array<{ id?: number; name?: string; price: number | string }>;
 }
 
 export interface Payment {
@@ -579,6 +591,10 @@ export interface Branch {
   timezone?: string | null;
   attendanceEnabled?: boolean;
   geofenceVersion?: number;
+  /** Sale warehouse for auto-delivery / POS availability (BRANCH warehouse of this branch). */
+  defaultSaleWarehouseId?: number | null;
+  /** BRANCH warehouses of the branch (candidates for the default sale warehouse). */
+  warehouses?: Array<{ id: number; name: string; code?: string; type?: 'CENTRAL' | 'BRANCH' }>;
   _count?: {
     users: number;
     tables: number;
@@ -603,8 +619,12 @@ export interface PurchaseOrder {
   branchId: number;
   supplierId: number;
   date: string;
-  status: 'DRAFT' | 'ISSUED' | 'RECEIVED' | 'CANCELLED';
+  status: 'DRAFT' | 'ISSUED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED';
   total: number;
+  /** Value of the goods received so far (payable for partial receipts). */
+  receivedTotal?: number;
+  receivingClosedAt?: string | null;
+  receivingCloseReason?: string | null;
   notes?: string;
   invoiceNumber?: string;
   invoicePdf?: string;
@@ -650,6 +670,8 @@ export interface PurchaseOrderItem {
   conversionFactor?: number;
   baseQuantity?: number;
   baseCost?: number;
+  /** Quantity received so far, in the purchase unit. */
+  receivedQuantity?: number;
 }
 
 export interface CashRegister {

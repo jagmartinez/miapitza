@@ -1,6 +1,18 @@
 import prisma from '../utils/prisma';
 import { formatCurrency } from '../utils/currency';
-import { SettingService } from './setting.service';
+import { DEFAULT_COMPANY_SETTINGS, SettingService } from './setting.service';
+import { isValidTimeZone } from '../utils/timezone';
+
+/** Ticket timestamps follow the company timezone, never the server's. */
+export function formatTicketDate(date: Date | string, timeZone?: string): string {
+    const zone = timeZone && isValidTimeZone(timeZone) ? timeZone : DEFAULT_COMPANY_SETTINGS.timezone;
+    return new Intl.DateTimeFormat('es-NI', {
+        timeZone: zone,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false
+    }).format(new Date(date));
+}
 
 /** Shape produced by generateOrderTicket / consumed by formatForPrinter */
 export interface PrintableOrderTicket {
@@ -17,6 +29,10 @@ export interface PrintableOrderTicket {
         financialStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
         number: string;
         date: Date;
+        /** IANA zone used to render `date`; company setting, default America/Managua. */
+        timeZone?: string;
+        /** `date` already rendered in the company timezone. */
+        dateLabel?: string;
         type: string;
         table: string | number;
         waiter: string;
@@ -82,9 +98,10 @@ export class TicketPrintingService {
             throw new Error('Orden no encontrada');
         }
 
-        const [settings, company] = await Promise.all([
+        const [settings, company, timeZone] = await Promise.all([
             SettingService.getAll(companyId),
-            prisma.company.findUnique({ where: { id: companyId }, select: { ruc: true } })
+            prisma.company.findUnique({ where: { id: companyId }, select: { ruc: true } }),
+            SettingService.getTimezone(companyId)
         ]);
 
         const getSettingValue = (key: string, defaultValue: string) => {
@@ -116,12 +133,14 @@ export class TicketPrintingService {
                 financialStatus: order.financialStatus,
                 number: order.id.toString().padStart(6, '0'),
                 date: order.createdAt,
+                timeZone,
+                dateLabel: formatTicketDate(order.createdAt, timeZone),
                 type: order.orderType || 'DINE_IN',
                 table: order.table?.number || 'N/A',
                 waiter: order.user?.name || '',
                 customerName: order.customerName || ''
             },
-            items: order.items.map((item) => ({
+            items: order.items.filter((item) => item.quantity > 0).map((item) => ({
                 name: item.menuItem.name,
                 quantity: item.quantity,
                 price: Number(item.price),
@@ -181,7 +200,7 @@ export class TicketPrintingService {
             table: order.table?.number || 'PARA LLEVAR',
             waiter: order.user?.name || '',
             time: order.createdAt,
-            items: order.items.map((item) => ({
+            items: order.items.filter((item) => item.quantity > 0).map((item) => ({
                 quantity: item.quantity,
                 name: item.menuItem.name,
                 modifiers: item.modifiers?.map((m) => m.name) || [],
@@ -250,7 +269,7 @@ export class TicketPrintingService {
 
         // Order info
         lines.push(plainLine(`Orden #: ${ticketData.order.number}`));
-        lines.push(plainLine(`Fecha: ${new Date(ticketData.order.date).toLocaleString()}`));
+        lines.push(plainLine(`Fecha: ${formatTicketDate(ticketData.order.date, ticketData.order.timeZone)}`));
         lines.push(plainLine(`Mesa: ${ticketData.order.table}`));
         lines.push(plainLine(`Mesero: ${ticketData.order.waiter}`));
         if (ticketData.order.customerName) {

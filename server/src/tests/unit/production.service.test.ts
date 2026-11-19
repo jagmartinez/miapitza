@@ -429,3 +429,162 @@ describe('Production recipe yield-unit contract', () => {
         expect(cost.yieldBaseUnit).toBe('g');
     });
 });
+
+describe('ProductionOrderService.cancel component valuation', () => {
+    function setup(costingMethod: 'WEIGHTED_AVERAGE' | 'FIFO') {
+        const order = {
+            id: 8, companyId: 1, status: 'FINISHED', productId: 30, warehouseId: 4,
+            code: 'PRD-8', producedQuantity: 0, realUnitCost: 0,
+            items: [{
+                id: 1, componentProductId: 12, consumedQuantity: 2,
+                unitCost: 6, totalCost: 12,
+                // Physical provenance: layers at 4 + 5 (=9) while WA consumed 12.
+                consumedLayers: [
+                    { quantity: 1, unitCost: 4, sourceRef: 'PO:1', sourceType: 'PURCHASE' },
+                    { quantity: 1, unitCost: 5, sourceRef: 'PO:2', sourceType: 'PURCHASE' }
+                ]
+            }]
+        };
+        jest.spyOn(prisma.productionOrder, 'findFirst').mockResolvedValue(order as never);
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            productionOrder: {
+                findFirst: jest.fn(async () => order),
+                update: jest.fn(async () => ({ ...order, status: 'CANCELLED' }))
+            },
+            company: { findUnique: jest.fn(async () => ({ costingMethod })) },
+            stock: { aggregate: jest.fn(async () => ({ _sum: { quantity: 3 } })) }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+        jest.spyOn(InventoryEngineService, 'lockInventoryScope').mockResolvedValue(undefined as never);
+        const movement = jest.spyOn(InventoryEngineService, 'applyMovement')
+            .mockResolvedValue({ movementId: 1, unitCost: 0, totalCost: 0, balanceQty: 0, balanceCost: 0, consumedLayers: [] } as never);
+        const waFold = jest.spyOn(CostingService, 'applyProductionCost').mockResolvedValue();
+        jest.spyOn(CostingService, 'syncFifoCurrentAverageCost').mockResolvedValue(undefined as never);
+        jest.spyOn(CostingService, 'reverseProductionCost').mockResolvedValue(undefined as never);
+        jest.spyOn(AuditLogService, 'log').mockResolvedValue({} as never);
+        jest.spyOn(ProductionOrderService, 'getById').mockResolvedValue({} as never);
+        return { movement, waFold };
+    }
+
+    it('restores WA components at the consumed average cost, keeping layers only as provenance', async () => {
+        const { movement, waFold } = setup('WEIGHTED_AVERAGE');
+        await ProductionOrderService.cancel(8, 1, 9, 'error de captura');
+
+        const inbound = movement.mock.calls.find((call) => call[1].type === 'IN')![1];
+        expect(inbound.unitCost).toBeCloseTo(6, 9);
+        expect(inbound.inboundLayers).toHaveLength(2);
+        expect(waFold).toHaveBeenCalledWith(expect.anything(), 12, 1, 2, 6, 3);
+    });
+
+    it('restores FIFO components at their exact layer costs', async () => {
+        const { movement } = setup('FIFO');
+        await ProductionOrderService.cancel(8, 1, 9, 'error de captura');
+
+        const inbound = movement.mock.calls.find((call) => call[1].type === 'IN')![1];
+        expect(inbound.unitCost).toBeCloseTo(4.5, 9);
+    });
+});
+
+describe('ProductionOrderService.cancel output reversal (D6)', () => {
+    function setup(costingMethod: 'WEIGHTED_AVERAGE' | 'FIFO', stockQty: number, ownLayerQty: number) {
+        const order = {
+            id: 8, companyId: 1, status: 'FINISHED', productId: 30, warehouseId: 4,
+            code: 'PRD-8', producedQuantity: 3, realCost: 10, realUnitCost: 3.333333,
+            items: []
+        };
+        jest.spyOn(prisma.productionOrder, 'findFirst').mockResolvedValue(order as never);
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            productionOrder: {
+                findFirst: jest.fn(async () => order),
+                update: jest.fn(async () => ({ ...order, status: 'CANCELLED' }))
+            },
+            product: { findFirst: jest.fn(async () => ({ name: 'Salsa base' })) },
+            company: { findUnique: jest.fn(async () => ({ costingMethod })) },
+            stock: { findUnique: jest.fn(async () => ({ quantity: stockQty })) },
+            inventoryBatch: { findMany: jest.fn(async () => (ownLayerQty > 0 ? [{ remainingQty: ownLayerQty }] : [])) }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+        jest.spyOn(InventoryEngineService, 'lockInventoryScope').mockResolvedValue(undefined as never);
+        const movement = jest.spyOn(InventoryEngineService, 'applyMovement')
+            .mockResolvedValue({ movementId: 1, unitCost: 0, totalCost: 0, balanceQty: 0, balanceCost: 0, consumedLayers: [] } as never);
+        jest.spyOn(CostingService, 'reverseProductionCost').mockResolvedValue(undefined as never);
+        jest.spyOn(AuditLogService, 'log').mockResolvedValue({} as never);
+        return { movement };
+    }
+
+    it('WA: cancels with a normal OUT at the exact real cost when part of the output layer was consumed', async () => {
+        const { movement } = setup('WEIGHTED_AVERAGE', 5, 1);
+        await ProductionOrderService.cancel(8, 1, 9, 'error de captura');
+
+        const out = movement.mock.calls.find((call) => call[1].type === 'OUT')![1];
+        expect(out.consumeSourceRef).toBeUndefined();
+        expect(out.quantity).toBe(3);
+        expect(out.unitCost! * out.quantity).toBeCloseTo(10, 12);
+    });
+
+    it('WA: still refuses when the warehouse holds less than the produced quantity', async () => {
+        const { movement } = setup('WEIGHTED_AVERAGE', 2, 2);
+        await expect(ProductionOrderService.cancel(8, 1, 9, 'error de captura'))
+            .rejects.toThrow(/se produjeron 3 y solo hay 2/);
+        expect(movement).not.toHaveBeenCalled();
+    });
+
+    it('FIFO: explains how much of the order layer was already consumed', async () => {
+        const { movement } = setup('FIFO', 5, 1);
+        await expect(ProductionOrderService.cancel(8, 1, 9, 'error de captura'))
+            .rejects.toThrow(/ya se consumieron 2 \(quedan 1 en el lote\)/);
+        expect(movement).not.toHaveBeenCalled();
+    });
+
+    it('FIFO: reverses the exact layer when it is intact', async () => {
+        const { movement } = setup('FIFO', 5, 3);
+        await ProductionOrderService.cancel(8, 1, 9, 'error de captura');
+        const out = movement.mock.calls.find((call) => call[1].type === 'OUT')![1];
+        expect(out.consumeSourceRef).toBe('PROD-8');
+    });
+});
+
+describe('ProductionOrderService.finish exact output valuation (D9)', () => {
+    it('values the output IN at exactly the real cost instead of a rounded unit cost', async () => {
+        const order = {
+            id: 8, companyId: 1, branchId: 2, status: 'IN_PROGRESS', recipeId: null,
+            productId: 30, warehouseId: 4, code: 'PRD-8', plannedQuantity: 3,
+            items: [{ id: 1, componentProductId: 12, requiredQuantity: 1 }]
+        };
+        jest.spyOn(prisma.productionOrder, 'findFirst').mockResolvedValue(order as never);
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            productionOrder: {
+                findFirst: jest.fn(async () => order),
+                update: jest.fn(async (_args: unknown) => ({ ...order, status: 'FINISHED' }))
+            },
+            productionOrderItem: { update: jest.fn(async () => ({})) },
+            product: { findFirst: jest.fn(async () => ({ id: 12, name: 'P12' })) },
+            stock: { aggregate: jest.fn(async () => ({ _sum: { quantity: 0 } })) }
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+        const movement = jest.spyOn(InventoryEngineService, 'applyMovement')
+            .mockResolvedValueOnce({ movementId: 1, unitCost: 10, totalCost: 10, balanceQty: 0, balanceCost: 0, consumedLayers: [] })
+            .mockResolvedValueOnce({ movementId: 2, unitCost: 10 / 3, totalCost: 10, balanceQty: 3, balanceCost: 10, consumedLayers: [] });
+        const fold = jest.spyOn(CostingService, 'applyProductionCost').mockResolvedValue();
+        jest.spyOn(AuditLogService, 'log').mockResolvedValue({} as never);
+
+        await ProductionOrderService.finish(8, 1, 9, { producedQuantity: 3 });
+
+        const inbound = movement.mock.calls.find((call) => call[1].type === 'IN')![1];
+        expect(inbound.unitCost! * inbound.quantity).toBeCloseTo(10, 12);
+        expect(inbound.unitCost).not.toBe(3.333333);
+        expect(fold.mock.calls[0][4]).toBeCloseTo(10 / 3, 12);
+        expect(tx.productionOrder.update).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ realCost: 10, realUnitCost: 3.333333 })
+        }));
+    });
+});

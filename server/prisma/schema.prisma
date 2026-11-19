@@ -167,25 +167,30 @@ enum CostingMethod {
 // ==========================================
 
 model Branch {
-  id                   Int          @id @default(autoincrement())
-  companyId            Int
-  name                 String
-  code                 String
-  address              String?
-  phone                String?
-  latitude             Decimal?     @db.Decimal(10, 7)
-  longitude            Decimal?     @db.Decimal(10, 7)
-  geofenceRadiusM      Int?
-  maxLocationAccuracyM Int?
-  timezone             String       @default("America/Managua") @db.VarChar(64)
-  attendanceEnabled    Boolean      @default(false)
-  geofenceVersion      Int          @default(0)
-  status               BranchStatus @default(ACTIVE)
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
+  id                     Int          @id @default(autoincrement())
+  companyId              Int
+  name                   String
+  code                   String
+  address                String?
+  phone                  String?
+  latitude               Decimal?     @db.Decimal(10, 7)
+  longitude              Decimal?     @db.Decimal(10, 7)
+  geofenceRadiusM        Int?
+  maxLocationAccuracyM   Int?
+  timezone               String       @default("America/Managua") @db.VarChar(64)
+  attendanceEnabled      Boolean      @default(false)
+  geofenceVersion        Int          @default(0)
+  status                 BranchStatus @default(ACTIVE)
+  // Sale warehouse used for automatic delivery and POS stock availability.
+  // Must be a BRANCH warehouse of this branch (validated on write). Null keeps
+  // the legacy rule: the branch's single BRANCH warehouse, if exactly one.
+  defaultSaleWarehouseId Int?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
 
   // Relations
   company                         Company                          @relation(fields: [companyId], references: [id])
+  defaultSaleWarehouse            Warehouse?                       @relation("BranchDefaultSaleWarehouse", fields: [defaultSaleWarehouseId], references: [id], onDelete: SetNull)
   users                           User[]
   allowedUsers                    UserBranch[]
   tables                          Table[]
@@ -195,7 +200,7 @@ model Branch {
   floorAreas                      FloorArea[]
   tableFloorPlans                 TableFloorPlan[]
   reservations                    Reservation[]
-  warehouses                      Warehouse[]
+  warehouses                      Warehouse[]                      @relation("BranchWarehouses")
   purchaseOrders                  PurchaseOrder[]
   orders                          Order[]
   kitchenBatches                  KitchenBatch[]
@@ -225,9 +230,12 @@ model Branch {
   payrollSnapshots                PayrollSnapshotLine[]
   kitchenNotifications            KitchenNotification[]
   travelRequests                  HrTravelRequest[]
+  inventoryWarehouseRoutes        InventoryWarehouseRoute[]
+  promotionBranches               PromotionBranch[]
 
   @@unique([companyId, code])
   @@index([companyId])
+  @@index([defaultSaleWarehouseId])
 }
 
 model InvoiceSequence {
@@ -399,6 +407,9 @@ model User {
   twoFactorEnabled       Boolean         @default(false)
   twoFactorRecoveryCodes Json?
   twoFactorEnabledAt     DateTime?
+  /// Last TOTP time step accepted for this user. Shared by every replica so a
+  /// code cannot be replayed within its validity window.
+  twoFactorLastTimeStep  Int?
   roleId                 Int
   branchId               Int? // Primary branch
   status                 UserStatus      @default(ACTIVE)
@@ -415,7 +426,7 @@ model User {
   role            Role          @relation(fields: [roleId], references: [id])
   branch          Branch?       @relation(fields: [branchId], references: [id])
   sessions        UserSession[]
-  loginAttempt    LoginAttempt?
+  loginAttempts   LoginAttempt[]
   userRoles       UserRole[]
   allowedBranches UserBranch[] // Branches a SUPERADMIN permits this user to be assigned to
   employee        Employee?
@@ -578,10 +589,14 @@ model UserSession {
 }
 
 /// Authoritative, cross-replica login lockout state. Unknown usernames are not
-/// materialized: the HTTP rate limiter remains the bounded first line of defense
-/// while known accounts are serialized by userId.
+/// materialized: the HTTP rate limiter remains the bounded first line of defense.
+/// One row per (user, client IP) locks an attacking IP quickly; the row with
+/// ipKey "*" is the per-user global counter, which only applies a short backoff
+/// so a distributed attacker cannot hold a legitimate user out.
 model LoginAttempt {
-  userId        Int       @id
+  id            Int       @id @default(autoincrement())
+  userId        Int
+  ipKey         String    @db.VarChar(64)
   failedCount   Int       @default(0)
   lockedUntil   DateTime?
   lastAttemptAt DateTime  @default(now())
@@ -590,6 +605,7 @@ model LoginAttempt {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, ipKey])
   @@index([lockedUntil])
   @@index([lastAttemptAt])
 }
@@ -726,6 +742,9 @@ model Employee {
   terminationDate              DateTime?      @db.Date
   employmentType               EmploymentType @default(FULL_TIME)
   status                       EmployeeStatus @default(ACTIVE)
+  /// Weekly rest day(s) (séptimo día, CT Art. 64) as ISO weekdays 1=Mon..7=Sun.
+  /// NULL = not configured: payroll applies the legal default (Sunday) and flags it.
+  weeklyRestDays               Json?
   departmentId                 Int?
   jobPositionId                Int?
   costCenterId                 Int?
@@ -1295,6 +1314,11 @@ model BiometricProfile {
   purgeRequestedAt   DateTime?
   revokedAt          DateTime?
   revocationReason   String?                @db.Text
+  /// HR approval of the user's facial enrollment. The first enrollment stays
+  /// PENDING until HR approves it; re-enrollments of an approved user go ACTIVE
+  /// directly. Cleared when HR revokes or rejects (re-approval required).
+  approvedAt         DateTime?
+  approvedByUserId   Int?
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
 
@@ -3375,9 +3399,11 @@ model Category {
   showInMenu      Boolean @default(true)
   showInInventory Boolean @default(true)
 
-  company   Company    @relation(fields: [companyId], references: [id])
-  menuItems MenuItem[]
-  products  Product[] // Categories for inventory products too
+  company                  Company                   @relation(fields: [companyId], references: [id])
+  menuItems                MenuItem[]
+  products                 Product[] // Categories for inventory products too
+  inventoryWarehouseRoutes InventoryWarehouseRoute[]
+  promotionTargets         PromotionTarget[]
 
   @@unique([companyId, name])
   @@unique([companyId, codePrefix])
@@ -3424,13 +3450,15 @@ model MenuItem {
   branch   Branch?    @relation(fields: [branchId], references: [id])
   brand    MenuBrand? @relation(fields: [brandId], references: [id])
 
-  recipes           Recipe[]
-  images            MenuItemImage[]
-  orderItems        OrderItem[]
-  modifierGroups    ModifierGroup[]
-  branchPrices      MenuItemBranchPrice[]
-  cateringMenuItems CateringMenuItem[]
-  pedidosYaMappings PedidosYaProductMapping[]
+  recipes             Recipe[]
+  images              MenuItemImage[]
+  orderItems          OrderItem[]
+  modifierGroups      ModifierGroup[]
+  branchPrices        MenuItemBranchPrice[]
+  cateringMenuItems   CateringMenuItem[]
+  pedidosYaMappings   PedidosYaProductMapping[]
+  promotionTargets    PromotionTarget[]
+  promotionComboItems PromotionComboItem[]
 
   @@index([companyId, categoryId])
   @@index([branchId])
@@ -3505,7 +3533,7 @@ model ProductUnit {
   companyId        Int
   productId        Int
   unitId           Int
-  conversionFactor Decimal @db.Decimal(18, 6)
+  conversionFactor Decimal @db.Decimal(24, 12)
   isDefault        Boolean @default(false)
   active           Boolean @default(true)
 
@@ -3528,7 +3556,7 @@ model Product {
   unit                  String // Legacy: kg, g, L, ml, unit
   baseUnitId            Int?
   minStock              Decimal      @default(0) @db.Decimal(10, 3)
-  cost                  Decimal      @default(0) @db.Decimal(10, 2)
+  cost                  Decimal      @default(0) @db.Decimal(18, 6)
   // A zero can be a reviewed cost (donation/sample) or a legacy missing value.
   // These flags make that distinction explicit without changing legacy numbers.
   referenceCostKnown    Boolean      @default(false)
@@ -3548,18 +3576,19 @@ model Product {
   category Category?      @relation(fields: [categoryId], references: [id])
   baseUnit UnitOfMeasure? @relation("ProductBaseUnit", fields: [baseUnitId], references: [id])
 
-  stocks               Stock[]
-  inventoryMovements   InventoryMovement[]
-  inventoryBatches     InventoryBatch[]
-  purchaseOrderItems   PurchaseOrderItem[]
-  recipes              Recipe[]
-  costHistory          ProductCostHistory[]
-  allowedUnits         ProductUnit[]
-  modifierLinks        Modifier[]                  @relation("ModifierProduct")
-  productionRecipes    ProductionRecipe[]          @relation("ProductProductionRecipes")
-  recipeComponents     ProductionRecipeComponent[] @relation("ProductRecipeComponents")
-  productionOrders     ProductionOrder[]           @relation("ProductProductionOrders")
-  productionOrderItems ProductionOrderItem[]       @relation("ProductProductionOrderItems")
+  stocks                   Stock[]
+  inventoryMovements       InventoryMovement[]
+  inventoryBatches         InventoryBatch[]
+  purchaseOrderItems       PurchaseOrderItem[]
+  recipes                  Recipe[]
+  costHistory              ProductCostHistory[]
+  allowedUnits             ProductUnit[]
+  modifierLinks            Modifier[]                  @relation("ModifierProduct")
+  productionRecipes        ProductionRecipe[]          @relation("ProductProductionRecipes")
+  recipeComponents         ProductionRecipeComponent[] @relation("ProductRecipeComponents")
+  productionOrders         ProductionOrder[]           @relation("ProductProductionOrders")
+  productionOrderItems     ProductionOrderItem[]       @relation("ProductProductionOrderItems")
+  inventoryWarehouseRoutes InventoryWarehouseRoute[]
 
   @@unique([companyId, sku])
   @@index([categoryId])
@@ -3585,7 +3614,7 @@ model Recipe {
   id         Int     @id @default(autoincrement())
   menuItemId Int
   productId  Int
-  quantity   Decimal @db.Decimal(10, 3)
+  quantity   Decimal @db.Decimal(18, 6)
   unit       String?
   unitId     Int?
 
@@ -3613,15 +3642,21 @@ model MenuItemImage {
 // ==========================================
 
 model Warehouse {
-  id        Int           @id @default(autoincrement())
-  companyId Int
-  branchId  Int?
-  type      WarehouseType @default(BRANCH)
-  name      String // Main, Kitchen, Bar
-  code      String
+  id            Int           @id @default(autoincrement())
+  companyId     Int
+  branchId      Int?
+  type          WarehouseType @default(BRANCH)
+  name          String // Main, Kitchen, Bar
+  code          String
+  // Copy of Company.costingMethod (the source of truth for the UI). Switched
+  // together with the company while every Warehouse row is held FOR UPDATE, so
+  // the inventory engine reads the method in force from its own Warehouse
+  // locking read (a plain Company read could return a stale snapshot).
+  costingMethod CostingMethod @default(WEIGHTED_AVERAGE)
 
   company                    Company                     @relation(fields: [companyId], references: [id])
-  branch                     Branch?                     @relation(fields: [branchId], references: [id])
+  branch                     Branch?                     @relation("BranchWarehouses", fields: [branchId], references: [id])
+  defaultSaleForBranches     Branch[]                    @relation("BranchDefaultSaleWarehouse")
   stocks                     Stock[]
   movements                  InventoryMovement[]
   inventoryBatches           InventoryBatch[]
@@ -3629,12 +3664,42 @@ model Warehouse {
   ProductionOrder            ProductionOrder[]
   fiscalCreditNotes          FiscalCreditNote[]
   fiscalInvoiceCancellations FiscalInvoiceCancellation[]
-  settlementPayments         Payment[]                    @relation("PaymentSettlementWarehouse")
+  settlementPayments         Payment[]                   @relation("PaymentSettlementWarehouse")
+  inventoryRoutes            InventoryWarehouseRoute[]
 
   @@unique([companyId, code])
   @@unique([companyId, branchId, name])
   @@index([companyId])
   @@index([branchId])
+}
+
+// Per-branch ingredient routing for sale consumption: recipe/modifier lines
+// whose inventory product (or its category) matches a rule are consumed from
+// the rule's warehouse instead of the order's sale warehouse. A product rule
+// wins over a category rule; no rule -> the sale warehouse. Exactly one of
+// categoryId/productId is set. The warehouse must be a BRANCH warehouse of the
+// same branch/company (validated on write, re-checked when consuming).
+model InventoryWarehouseRoute {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  branchId    Int
+  warehouseId Int
+  categoryId  Int?
+  productId   Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branch    Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  category  Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  product   Product?  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, categoryId], map: "InvWarehouseRoute_branch_category_key")
+  @@unique([branchId, productId], map: "InvWarehouseRoute_branch_product_key")
+  @@index([companyId, branchId], map: "InvWarehouseRoute_company_branch_idx")
+  @@index([warehouseId], map: "InvWarehouseRoute_warehouse_idx")
+  @@index([categoryId], map: "InvWarehouseRoute_category_idx")
+  @@index([productId], map: "InvWarehouseRoute_product_idx")
 }
 
 enum WarehouseType {
@@ -3643,11 +3708,15 @@ enum WarehouseType {
 }
 
 model Stock {
-  id          Int     @id @default(autoincrement())
-  warehouseId Int
-  productId   Int
-  companyId   Int
-  quantity    Decimal @default(0) @db.Decimal(18, 6)
+  id                  Int     @id @default(autoincrement())
+  warehouseId         Int
+  productId           Int
+  companyId           Int
+  quantity            Decimal @default(0) @db.Decimal(18, 6)
+  // Provisional value already charged to COGS for units sold while the
+  // balance was negative (allowNegative). The inbound that covers the deficit
+  // posts a COST_TRUE_UP movement for (real cost - this value). 0 when quantity >= 0.
+  negativeBalanceCost Decimal @default(0) @db.Decimal(18, 6)
 
   warehouse Warehouse @relation(fields: [warehouseId], references: [id])
   product   Product   @relation(fields: [productId], references: [id])
@@ -3717,6 +3786,42 @@ enum MovementType {
 // with its own unit cost; outbound movements consume batches oldest-first to
 // derive a real FIFO cost of goods. Only relevant when Company.costingMethod = FIFO;
 // for WEIGHTED_AVERAGE these rows are still maintained but not used for valuation.
+// One slice of a negative (unbacked) balance: units sold/consumed without
+// stock (allowNegative) at a provisional unit cost. Open slices
+// (coveringMovementId null, quantity > 0) form the FIFO deficit queue of a
+// (warehouse, product); Stock.negativeBalanceCost = sum(open quantity x
+// provisionalUnitCost). An inbound covering the deficit consumes open slices
+// oldest-first and records itself and the real value on them; reversing that
+// inbound re-opens its slices (LIFO). A sale return revalues exactly from its
+// own slices (covered part at coveredValue, open part stays provisional and
+// leaves the queue). Plain Int columns on purpose (no relations): rows are
+// written only by the inventory engine under the Stock row lock.
+model InventoryDeficitSlice {
+  id                  Int      @id @default(autoincrement())
+  companyId           Int
+  warehouseId         Int
+  productId           Int
+  /// OUT movement that left these units unbacked (null: backfilled legacy deficit).
+  saleMovementId      Int?
+  quantity            Decimal  @db.Decimal(18, 6)
+  provisionalUnitCost Decimal  @db.Decimal(18, 6)
+  /// Movement that covered this slice (null while the slice is open).
+  coveringMovementId  Int?
+  /// Real value charged to COGS for the covered quantity.
+  coveredValue        Decimal  @default(0) @db.Decimal(18, 6)
+  /// Set on the split-off part of a covered slice that a sale return brought
+  /// back (its layer has sourceRef DSLICE-<id>); null on live slices.
+  returnMovementId    Int?
+  createdAt           DateTime @default(now())
+
+  // Every lookup is scoped to (warehouseId, productId) so locking reads only
+  // gap-lock that scope, never other tenants' slice inserts.
+  @@index([warehouseId, productId, id], map: "InvDeficitSlice_scope_idx")
+  @@index([warehouseId, productId, saleMovementId], map: "InvDeficitSlice_sale_idx")
+  @@index([warehouseId, productId, coveringMovementId], map: "InvDeficitSlice_covering_idx")
+  @@index([companyId], map: "InvDeficitSlice_company_idx")
+}
+
 model InventoryBatch {
   id               Int      @id @default(autoincrement())
   companyId        Int
@@ -3765,29 +3870,37 @@ model Supplier {
 }
 
 model PurchaseOrder {
-  id             Int                 @id @default(autoincrement())
-  companyId      Int
-  branchId       Int
-  supplierId     Int
-  date           DateTime            @default(now())
-  status         PurchaseOrderStatus @default(DRAFT)
-  total          Decimal             @default(0) @db.Decimal(10, 2)
-  notes          String?
-  invoiceNumber  String?
-  invoicePdf     String?
-  invoiceDate    DateTime?
-  invoiceType    InvoiceType         @default(CASH)
-  paymentDueDate DateTime?
-  bank           String?
-  transferNumber String?
-  paidAmount     Decimal             @default(0) @db.Decimal(10, 2)
-  paymentStatus  PaymentStatus       @default(PENDING)
+  id                   Int                 @id @default(autoincrement())
+  companyId            Int
+  branchId             Int
+  supplierId           Int
+  date                 DateTime            @default(now())
+  status               PurchaseOrderStatus @default(DRAFT)
+  total                Decimal             @default(0) @db.Decimal(10, 2)
+  notes                String?
+  invoiceNumber        String?
+  invoicePdf           String?
+  invoiceDate          DateTime?
+  invoiceType          InvoiceType         @default(CASH)
+  paymentDueDate       DateTime?
+  bank                 String?
+  transferNumber       String?
+  paidAmount           Decimal             @default(0) @db.Decimal(10, 2)
+  paymentStatus        PaymentStatus       @default(PENDING)
+  /// Value of the goods actually received (sum of receivedQuantity * cost).
+  /// Payables and CASH settlement follow this figure, not the ordered total.
+  receivedTotal        Decimal             @default(0) @db.Decimal(10, 2)
+  /// Set when a partially received PO is closed short ("cerrar saldo").
+  receivingClosedAt    DateTime?
+  receivingClosedById  Int?
+  receivingCloseReason String?             @db.VarChar(500)
 
   company  Company                @relation(fields: [companyId], references: [id])
   branch   Branch                 @relation(fields: [branchId], references: [id])
   supplier Supplier               @relation(fields: [supplierId], references: [id])
   items    PurchaseOrderItem[]
   payments PurchaseOrderPayment[]
+  receipts PurchaseOrderReceipt[]
 
   @@index([supplierId])
   @@index([status])
@@ -3809,8 +3922,54 @@ enum PaymentStatus {
 enum PurchaseOrderStatus {
   DRAFT
   ISSUED
+  PARTIALLY_RECEIVED
   RECEIVED
   CANCELLED
+}
+
+/// One physical receipt of a purchase order. `reference` (PO-{id}-R{seq}) is
+/// the inventory movement reference and FIFO layer sourceRef of the receipt,
+/// so a reversal consumes exactly these layers. `idempotencyKey` makes a
+/// replayed request a no-op instead of a second stock entry.
+model PurchaseOrderReceipt {
+  id              Int       @id @default(autoincrement())
+  companyId       Int
+  purchaseOrderId Int
+  warehouseId     Int
+  userId          Int
+  sequence        Int
+  reference       String    @db.VarChar(64)
+  idempotencyKey  String    @db.VarChar(191)
+  totalValue      Decimal   @db.Decimal(18, 6)
+  createdAt       DateTime  @default(now())
+  reversedAt      DateTime?
+
+  purchaseOrder PurchaseOrder              @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  lines         PurchaseOrderReceiptLine[]
+
+  @@unique([companyId, reference])
+  @@unique([purchaseOrderId, idempotencyKey])
+  @@unique([purchaseOrderId, sequence])
+  @@index([companyId])
+}
+
+model PurchaseOrderReceiptLine {
+  id                  Int     @id @default(autoincrement())
+  receiptId           Int
+  purchaseOrderItemId Int
+  productId           Int
+  /// Quantity in the line's purchase unit.
+  quantity            Decimal @db.Decimal(18, 6)
+  baseQuantity        Decimal @db.Decimal(18, 6)
+  baseUnitCost        Decimal @db.Decimal(18, 6)
+  totalCost           Decimal @db.Decimal(18, 6)
+  inventoryMovementId Int?
+
+  receipt           PurchaseOrderReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  purchaseOrderItem PurchaseOrderItem    @relation(fields: [purchaseOrderItemId], references: [id], onDelete: Cascade)
+
+  @@index([receiptId])
+  @@index([purchaseOrderItemId])
 }
 
 model PurchaseOrderPayment {
@@ -3846,10 +4005,13 @@ model PurchaseOrderItem {
   conversionFactor Decimal? @db.Decimal(18, 6)
   baseQuantity     Decimal? @db.Decimal(18, 6)
   baseCost         Decimal? @db.Decimal(18, 6)
+  /// Quantity received so far, in the line's purchase unit.
+  receivedQuantity Decimal  @default(0) @db.Decimal(18, 6)
 
   purchaseOrder PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   product       Product              @relation(fields: [productId], references: [id])
   costHistory   ProductCostHistory[]
+  receiptLines  PurchaseOrderReceiptLine[]
 
   @@index([purchaseOrderId])
   @@index([productId])
@@ -4059,8 +4221,28 @@ model OrderItem {
   finishedAt     DateTime? // When kitchen finished preparing
   // Durable provenance for table transfers/consolidations. The first origin is
   // retained even if an item is moved more than once.
-  originOrderId Int?
-  originTableId Int?
+  originOrderId        Int?
+  originTableId        Int?
+  // Per-line kitchen void (anulación de línea ya comandada). A voided row is
+  // kept for KDS/audit with quantity 0 and subtotal 0, so every order sum,
+  // delivery consumption and invoice ignores it; `voidedQuantity` is what was
+  // wasted under `voidWasteReference` (WASTE-ORD-{orderId}-L{itemId}). A partial
+  // void splits the voided units into a new row pointing at the original line.
+  voidedQuantity       Int             @default(0)
+  voidedAt             DateTime?
+  voidedById           Int?
+  voidReason           String?         @db.VarChar(500)
+  voidedFromItemId     Int?
+  voidWasteReference   String?         @db.VarChar(191)
+  voidWasteWarehouseId Int?
+  voidIdempotencyKey   String?         @db.VarChar(191)
+  // Part of Order.discount attributed to this line by a per-item / combo /
+  // scheduled promotion (0 for order-level promotions and manual discounts,
+  // which keep the proportional allocation). Credit notes return it exactly.
+  promotionDiscount    Decimal         @default(0) @db.Decimal(10, 2)
+  // When the line was ordered: happy-hour promotions only discount lines
+  // ordered inside their window.
+  createdAt            DateTime        @default(now())
 
   order                       Order                    @relation(fields: [orderId], references: [id], onDelete: Restrict)
   menuItem                    MenuItem                 @relation(fields: [menuItemId], references: [id])
@@ -4069,11 +4251,13 @@ model OrderItem {
   fiscalCreditNoteLines       FiscalCreditNoteLine[]
   tableConsolidationSnapshots TableConsolidationItem[]
 
+  @@unique([orderId, voidIdempotencyKey])
   @@index([orderId])
   @@index([menuItemId])
   @@index([kitchenBatchId])
   @@index([originOrderId])
   @@index([originTableId])
+  @@index([voidedFromItemId])
 }
 
 enum OrderItemStatus {
@@ -4356,8 +4540,12 @@ model Modifier {
   // Optional inventory link: when set, selecting this modifier consumes
   // `consumeQuantity` (in `unitId`, or the product base unit) of `productId`.
   productId       Int?
-  consumeQuantity Decimal? @db.Decimal(10, 3)
+  consumeQuantity Decimal? @db.Decimal(18, 6)
   unitId          Int?
+  // ADD consumes `productId` on top of the recipe. REMOVE ("sin X") reduces the
+  // dish's recipe line of `productId` by `consumeQuantity` (or drops the whole
+  // line when consumeQuantity is null), clamped at 0.
+  inventoryEffect ModifierInventoryEffect @default(ADD)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -4369,6 +4557,11 @@ model Modifier {
   @@index([modifierGroupId])
   @@index([productId])
   @@index([unitId])
+}
+
+enum ModifierInventoryEffect {
+  ADD
+  REMOVE
 }
 
 model OrderItemModifier {
@@ -4395,19 +4588,36 @@ model Promotion {
   code           String
   name           String
   description    String?
-  type           PromotionType @default(PERCENTAGE)
-  value          Decimal       @db.Decimal(10, 2) // Percentage or fixed amount
-  minOrderAmount Decimal?      @db.Decimal(10, 2)
-  maxDiscount    Decimal?      @db.Decimal(10, 2)
-  validFrom      DateTime      @default(now())
+  type           PromotionType  @default(PERCENTAGE)
+  value          Decimal        @db.Decimal(10, 2) // Percentage, fixed amount or COMBO price
+  minOrderAmount Decimal?       @db.Decimal(10, 2)
+  maxDiscount    Decimal?       @db.Decimal(10, 2)
+  validFrom      DateTime       @default(now())
   validTo        DateTime?
   usageLimit     Int? // Max times it can be used
-  usageCount     Int           @default(0)
-  active         Boolean       @default(true)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  usageCount     Int            @default(0)
+  active         Boolean        @default(true)
+  // ORDER: discount over the order subtotal (legacy). ITEMS: computed per
+  // eligible line (targets = menu items and/or categories).
+  scope          PromotionScope @default(ORDER)
+  // Happy hour, evaluated in the company time zone. ISO weekdays CSV
+  // ("1,2,3,4,5" = Lun-Vie); null = every day. Daily window "HH:mm" (end
+  // exclusive); start > end crosses midnight and belongs to the start day.
+  weekdays       String?        @db.VarChar(20)
+  dailyStartTime String?        @db.VarChar(5)
+  dailyEndTime   String?        @db.VarChar(5)
+  // false = only the branches listed in PromotionBranch.
+  allBranches    Boolean        @default(true)
+  // BUY_X_GET_Y ("N x M"): every buyQuantity eligible units pay payQuantity.
+  buyQuantity    Int?
+  payQuantity    Int?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id])
+  company    Company              @relation(fields: [companyId], references: [id])
+  branches   PromotionBranch[]
+  targets    PromotionTarget[]
+  comboItems PromotionComboItem[]
 
   @@unique([companyId, code])
 }
@@ -4415,6 +4625,55 @@ model Promotion {
 enum PromotionType {
   PERCENTAGE
   FIXED_AMOUNT
+  BUY_X_GET_Y
+  COMBO
+}
+
+enum PromotionScope {
+  ORDER
+  ITEMS
+}
+
+model PromotionBranch {
+  promotionId Int
+  branchId    Int
+
+  promotion Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  branch    Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@id([promotionId, branchId])
+  @@index([branchId])
+}
+
+// Exactly one of menuItemId/categoryId is set (enforced by the service).
+model PromotionTarget {
+  id          Int  @id @default(autoincrement())
+  promotionId Int
+  menuItemId  Int?
+  categoryId  Int?
+
+  promotion Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  menuItem  MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  category  Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([promotionId, menuItemId])
+  @@unique([promotionId, categoryId])
+  @@index([menuItemId])
+  @@index([categoryId])
+}
+
+// COMBO components: one complete set = every component x quantity.
+model PromotionComboItem {
+  id          Int @id @default(autoincrement())
+  promotionId Int
+  menuItemId  Int
+  quantity    Int @default(1)
+
+  promotion Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  menuItem  MenuItem  @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+
+  @@unique([promotionId, menuItemId])
+  @@index([menuItemId])
 }
 
 // ==========================================

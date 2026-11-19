@@ -5,6 +5,7 @@ import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
 import ViewToggle from '../components/ViewToggle';
 import CatalogTable, { type CatalogColumn } from '../components/CatalogTable';
+import BranchWarehouseRoutes from '../components/BranchWarehouseRoutes';
 import { useViewMode } from '../hooks/useViewMode';
 import { Plus, MapPin, Phone, Edit2, Trash2, Building2, Store, AlertTriangle, LocateFixed } from 'lucide-react';
 import type { Branch } from '../types';
@@ -13,6 +14,8 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { hasAnyRole } from '../utils/authz';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
 import './Branches.css';
 
 interface BranchFormData {
@@ -28,6 +31,8 @@ interface BranchFormData {
     timezone: string;
     attendanceEnabled: boolean;
     geofenceVersion?: number;
+    /** Default sale warehouse (auto-delivery / POS availability); null = automatic. */
+    defaultSaleWarehouseId: number | null;
 }
 
 const resolvedBrowserTimezone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -44,6 +49,7 @@ const emptyBranchForm = (timezone = resolvedBrowserTimezone()): BranchFormData =
     maxLocationAccuracyM: '30',
     timezone,
     attendanceEnabled: false,
+    defaultSaleWarehouseId: null,
 });
 
 export default function Branches() {
@@ -77,7 +83,7 @@ export default function Branches() {
 
         } catch (error) {
             console.error('Error loading data:', error);
-            setLoadError('No fue posible cargar las sucursales.');
+            setLoadError(getApiErrorMessage(error, 'No fue posible cargar las sucursales'));
         } finally {
             setLoading(false);
         }
@@ -163,6 +169,9 @@ export default function Branches() {
             ...(formData.geofenceVersion !== undefined ? { expectedVersion: formData.geofenceVersion } : {}),
         };
 
+        const defaultSaleWarehouseChanged = !!editingBranch
+            && (editingBranch.defaultSaleWarehouseId ?? null) !== formData.defaultSaleWarehouseId;
+
         setSaving(true);
         try {
             let savedBranch = editingBranch;
@@ -177,8 +186,14 @@ export default function Branches() {
                         status: branchPayload.status,
                     });
                     savedBranch = editingBranch;
+                    if (defaultSaleWarehouseChanged) {
+                        await branchesAPI.update(editingBranch.id, { defaultSaleWarehouseId: formData.defaultSaleWarehouseId });
+                    }
                 } else {
-                    const response = await branchesAPI.update(editingBranch.id, branchPayload);
+                    const response = await branchesAPI.update(editingBranch.id, {
+                        ...branchPayload,
+                        ...(defaultSaleWarehouseChanged ? { defaultSaleWarehouseId: formData.defaultSaleWarehouseId } : {}),
+                    });
                     savedBranch = response.data.data as Branch;
                 }
             } else {
@@ -214,7 +229,7 @@ export default function Branches() {
             await loadData();
         } catch (error) {
             console.error('Error deleting branch:', error);
-            showError('Error al desactivar la sucursal');
+            showError(getApiErrorMessage(error, 'Error al desactivar la sucursal'));
         }
     };
 
@@ -238,6 +253,7 @@ export default function Branches() {
                 timezone: branch.timezone || user?.timezone || resolvedBrowserTimezone(),
                 attendanceEnabled: branch.attendanceEnabled ?? false,
                 geofenceVersion: branch.geofenceVersion,
+                defaultSaleWarehouseId: branch.defaultSaleWarehouseId ?? null,
             });
         } else {
             setEditingBranch(null);
@@ -264,7 +280,7 @@ export default function Branches() {
                 }
             } catch (error) {
                 console.error('Error loading branch geofence:', error);
-                showWarning('No se pudo actualizar la geocerca desde el servidor; se muestran los datos disponibles de la sucursal.');
+                notifyError(error, 'No se pudo actualizar la geocerca desde el servidor (se muestran los datos disponibles de la sucursal)', { type: 'warning' });
             } finally {
                 setGeofenceLoading(false);
             }
@@ -637,6 +653,45 @@ export default function Branches() {
                                                 ...(option?.value === 'INACTIVE' ? { attendanceEnabled: false } : {}),
                                             })}
                                             isSearchable={false}
+                                        />
+                                    )}
+
+                                    {editingBranch && (() => {
+                                        const saleWarehouses = (editingBranch.warehouses ?? [])
+                                            .filter((warehouse) => !warehouse.type || warehouse.type === 'BRANCH');
+                                        const automatic = { value: 0, label: 'Automática (única bodega de sucursal)' };
+                                        const options = [
+                                            automatic,
+                                            ...saleWarehouses.map((warehouse) => ({
+                                                value: warehouse.id,
+                                                label: warehouse.code ? `${warehouse.name} (${warehouse.code})` : warehouse.name,
+                                            })),
+                                        ];
+                                        return (
+                                            <div className="modal-input-group">
+                                                <Select
+                                                    variant="modal"
+                                                    label="Bodega de venta predeterminada"
+                                                    options={options}
+                                                    value={options.find((option) => option.value === (formData.defaultSaleWarehouseId ?? 0)) ?? automatic}
+                                                    onChange={(option: SingleValue<{ value: number; label: string }>) => setFormData({
+                                                        ...formData,
+                                                        defaultSaleWarehouseId: option && option.value > 0 ? option.value : null,
+                                                    })}
+                                                    isSearchable={options.length > 6}
+                                                />
+                                                <small style={{ color: 'var(--color-neutral-500)' }}>
+                                                    Se usa para la entrega automática y la disponibilidad del POS. Con varias bodegas y sin predeterminada, la entrega requiere elegir bodega.
+                                                </small>
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {editingBranch && (
+                                        <BranchWarehouseRoutes
+                                            branchId={editingBranch.id}
+                                            warehouses={editingBranch.warehouses ?? []}
+                                            canEdit={hasAnyRole(user, ['SUPERADMIN', 'ADMIN'])}
                                         />
                                     )}
                                 </div>

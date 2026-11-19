@@ -114,6 +114,8 @@ export interface HrEmployee {
     legalName: string;
     preferredName?: string | null;
     employmentType?: string | null;
+    /** Weekly rest day(s), ISO weekdays 1 = lunes .. 7 = domingo; null = legal default (domingo). */
+    weeklyRestDays?: number[] | null;
     documentType?: string | null;
     documentNumber?: string | null;
     socialSecurityNumber?: string | null;
@@ -198,6 +200,8 @@ export interface HrEmployeePayload {
     legalName: string;
     preferredName?: string | null;
     employmentType?: string | null;
+    /** Weekly rest day(s), ISO weekdays 1 = lunes .. 7 = domingo; null = legal default (domingo). */
+    weeklyRestDays?: number[] | null;
     documentType?: string | null;
     documentNumber?: string | null;
     socialSecurityNumber?: string | null;

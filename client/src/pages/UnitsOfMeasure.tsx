@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
 import { useNavigate } from 'react-router-dom';
 import { unitsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
@@ -135,7 +136,7 @@ export default function UnitsOfMeasurePage() {
             setUnits(res.data.data || []);
         } catch (error) {
             console.error('Error loading units:', error);
-            showError('No se pudieron cargar las unidades de medida');
+            showError(getApiErrorMessage(error, 'No se pudieron cargar las unidades de medida'));
         } finally {
             setLoading(false);
         }

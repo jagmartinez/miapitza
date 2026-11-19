@@ -104,8 +104,13 @@ async function ensureWarehouse(params: {
         return existing;
     }
 
+    // Warehouse copy of the company costing method (inventory engine source).
+    const company = await prisma.company.findUnique({
+        where: { id: params.companyId },
+        select: { costingMethod: true }
+    });
     return prisma.warehouse.create({
-        data: params
+        data: { ...params, costingMethod: company?.costingMethod ?? 'WEIGHTED_AVERAGE' }
     });
 }
 

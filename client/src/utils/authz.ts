@@ -105,6 +105,10 @@ export const canIssueCreditNote = (user: User | null | undefined): boolean =>
 export const canOperateKitchenLineItems = (user: User | null | undefined): boolean =>
     hasPermission(user, 'kds.manage', [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.COCINA, ROLES.CHEF]);
 
+/** POST /orders/:id/items/:itemId/void (supervisor: anula una línea ya comandada y registra merma) */
+export const canVoidKitchenLine = (user: User | null | undefined): boolean =>
+    hasPermission(user, 'orders.items.void', [ROLES.SUPERADMIN, ROLES.ADMIN]);
+
 /** PATCH /orders/:id/status. Kitchen-only roles must finish line items instead. */
 export const canUpdateWholeOrderStatus = (user: User | null | undefined): boolean =>
     hasPermission(user, 'orders.edit', [ROLES.SUPERADMIN, ROLES.ADMIN, ROLES.MESERO, ROLES.CAJERO]);

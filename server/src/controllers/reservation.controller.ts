@@ -133,19 +133,30 @@ export class ReservationController {
             const companyId = req.user!.companyId;
 
             // Ensure branchId is set - use from body if provided, otherwise use user's branchId
-            if (!req.body.branchId) {
-                if (!req.user?.branchId) {
-                    return next({ statusCode: 400, message: 'ID de sucursal requerido' });
-                }
-                req.body.branchId = req.user.branchId;
+            const requestedBranchId = req.body.branchId ? Number(req.body.branchId) : req.user?.branchId;
+            if (!requestedBranchId) {
+                return next({ statusCode: 400, message: 'ID de sucursal requerido' });
             }
-            req.body.branchId = ReservationController.resolveBranchScope(req, Number(req.body.branchId));
+            const branchId = ReservationController.resolveBranchScope(req, requestedBranchId);
+            if (!branchId) {
+                return next({ statusCode: 400, message: 'ID de sucursal requerido' });
+            }
 
-            // Convert date string to Date object
-            const data = {
-                ...req.body,
-                date: new Date(req.body.date)
+            // Allowlist: status, tableId, companyId, ids and audit fields are
+            // server-controlled and must never come from the request body.
+            const { customerName, phone, email, date, peopleCount, notes } = req.body;
+            if (typeof customerName !== 'string' || !customerName.trim()) {
+                return next({ statusCode: 400, message: 'Nombre del cliente es requerido' });
+            }
+            const data: Parameters<typeof ReservationService.create>[1] = {
+                branchId,
+                customerName,
+                date: new Date(date),
+                peopleCount: Number(peopleCount),
             };
+            if (phone !== undefined) data.phone = phone;
+            if (email !== undefined) data.email = email;
+            if (notes !== undefined) data.notes = notes;
 
             const reservation = await ReservationService.create(companyId, data);
             res.status(201).json({

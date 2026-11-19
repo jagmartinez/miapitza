@@ -35,6 +35,8 @@ export function buildKitchenNotificationDedupKey(input: {
     return `order:${input.orderId}${batchToken}:item:${input.itemId}:ready:${cycleToken}`;
 }
 
+const RECONCILE_READY_LIMIT = 50;
+
 export class KitchenNotificationService {
     private static async create(input: ReadyNotificationInput | ReleasedNotificationInput) {
         const released = 'released' in input;
@@ -161,20 +163,32 @@ export class KitchenNotificationService {
      * before publishing its side effect. The unique dedup key makes this safe.
      */
     static async reconcileReadyForUser(companyId: number, userId: number) {
+        // Only live orders: delivered/cancelled orders may keep historical READY
+        // batches (legacy migration, deliver without release) that must never
+        // resurface as fresh notifications. Batches without readyAt cannot build
+        // a dedup key, so they are skipped instead of failing the whole list.
         const batches = await prisma.kitchenBatch.findMany({
             where: {
                 companyId,
                 status: 'READY',
-                order: { userId },
+                readyAt: { not: null },
+                order: { userId, status: { notIn: ['DELIVERED', 'CANCELLED'] } },
             },
             select: { id: true, orderId: true },
+            orderBy: [{ readyAt: 'desc' }, { id: 'desc' }],
+            take: RECONCILE_READY_LIMIT,
         });
-        await Promise.all(batches.map((batch) => this.notifyReady({
+        const results = await Promise.allSettled(batches.map((batch) => this.notifyReady({
             companyId,
             orderId: batch.orderId,
             kitchenBatchId: batch.id,
             complete: true,
         })));
+        for (const result of results) {
+            if (result.status === 'rejected') {
+                console.error('[KDS] No se pudo reconciliar notificación de tanda lista:', result.reason);
+            }
+        }
     }
 
     static async list(companyId: number, userId: number, options?: { includeAttended?: boolean; limit?: number }) {

@@ -20,6 +20,7 @@ import PageHeader from '../../components/PageHeader';
 import Sidebar from '../../components/Sidebar';
 import HrModalFormShell from '../../components/hr/HrModalFormShell';
 import OnlineOnlyNotice from '../../components/hr/OnlineOnlyNotice';
+import PendingBiometricEnrollmentsPanel from '../../components/hr/PendingBiometricEnrollmentsPanel';
 import { attendanceClient, getAttendanceErrorMessage } from '../../components/hr/attendanceClient';
 import {
   validateAttendanceDevice,
@@ -636,6 +637,8 @@ export default function AttendanceSettings() {
                   <input
                     value={policy.biometricConsentVersion}
                     maxLength={64}
+                    readOnly={Boolean(scopeBranchId)}
+                    title={scopeBranchId ? 'El consentimiento es único por empresa; cámbielo en la regla general' : undefined}
                     onChange={(event) =>
                       updatePolicyField('biometricConsentVersion', event.target.value)
                     }
@@ -738,6 +741,8 @@ export default function AttendanceSettings() {
               </div>
             )}
           </section>
+
+          <PendingBiometricEnrollmentsPanel online={online} branchId={scopeBranchId} />
 
           <div className="hr-settings-columns">
             <section className="hr-settings-card hr-provider-card" aria-labelledby="provider-health-title">

@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import type { ActiveTableConsolidation, Order, OrderItem, Table } from '../types';
 import { getUserAccentColor } from '../utils/authz';
+import { isVoidableOrderLine, isVoidedOrderLine, orderLineVoidBlocker } from '../utils/orderLineVoid';
+import './KitchenLineVoidModal.css';
 import { getOrderStatusClassName, getOrderStatusLabel } from '../utils/orderStatus';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import { useCurrency } from '../hooks/useCurrency';
@@ -26,6 +28,9 @@ interface TableOrdersModalProps {
     canTransfer: boolean;
     canConsolidate: boolean;
     canGroup: boolean;
+    /** Supervisor grant orders.items.void: offers per-line kitchen void. */
+    canVoidLines?: boolean;
+    onVoidLine?: (order: Order, itemId: number) => void;
     activeConsolidation?: ActiveTableConsolidation | null;
     loadingConsolidation?: boolean;
     consolidationLookupError?: string | null;
@@ -59,6 +64,8 @@ export default function TableOrdersModal({
     canTransfer,
     canConsolidate,
     canGroup,
+    canVoidLines = false,
+    onVoidLine,
     activeConsolidation,
     loadingConsolidation = false,
     consolidationLookupError,
@@ -404,7 +411,18 @@ export default function TableOrdersModal({
                                         </div>
 
                                         <div className="order-items-list">
-                                            {order.items?.map((item) => (
+                                            {order.items?.map((item) => isVoidedOrderLine(item) ? (
+                                                <div key={item.id} className="order-item-line order-line-voided" title={item.voidReason || undefined}>
+                                                    <div className="item-quantity-name">
+                                                        <span className="item-qty">{item.voidedQuantity}x</span>
+                                                        <span className="item-name">
+                                                            <span className="order-line-voided-name">{item.menuItem?.name || 'Item'}</span>
+                                                            <small className="order-line-void-badge">Anulado{item.voidReason ? ` · ${item.voidReason}` : ''}</small>
+                                                        </span>
+                                                    </div>
+                                                    <span className="item-price">{formatMoney(0)}</span>
+                                                </div>
+                                            ) : (
                                                 <div key={item.id || item.menuItemId} className="order-item-line">
                                                     <div className="item-quantity-name">
                                                         <span className="item-qty">{item.quantity}x</span>
@@ -416,6 +434,16 @@ export default function TableOrdersModal({
                                                         </span>
                                                     </div>
                                                     <span className="item-price">{formatMoney(Number(item.subtotal))}</span>
+                                                    {canVoidLines && onVoidLine && isVoidableOrderLine(item) && !orderLineVoidBlocker(order) && (
+                                                        <button
+                                                            type="button"
+                                                            className="order-line-void-btn"
+                                                            onClick={() => onVoidLine(order, item.id)}
+                                                            title="Anular línea y registrar merma"
+                                                        >
+                                                            Anular
+                                                        </button>
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>

@@ -11,6 +11,23 @@ import { offlineManager } from './offlineManager';
 import { shouldQueueOfflineMutation } from './offlinePolicy';
 import { closeWebSocket } from '../utils/websocket';
 import { resolveApiBaseUrl } from '../utils/runtime-routing';
+import { markLiveResponse, markServedFromCache } from './cacheStatus';
+import { describeApiError } from '../utils/apiError';
+
+const IDEMPOTENCY_HEADER = 'X-Idempotency-Key';
+
+/** Attach the caller's per-action key; omitted keys keep the legacy (non-deduplicated) behaviour. */
+const idempotencyHeaders = (idempotencyKey?: string) =>
+    (idempotencyKey ? { headers: { [IDEMPOTENCY_HEADER]: idempotencyKey } } : {});
+
+const readIdempotencyHeader = (headers: unknown): string | null => {
+    if (!headers || typeof headers !== 'object') return null;
+    const bag = headers as { get?: (name: string) => unknown } & Record<string, unknown>;
+    const value = typeof bag.get === 'function'
+        ? bag.get(IDEMPOTENCY_HEADER)
+        : bag[IDEMPOTENCY_HEADER] ?? bag[IDEMPOTENCY_HEADER.toLowerCase()];
+    return typeof value === 'string' && value.length > 0 ? value : null;
+};
 
 type OfflineRequestMeta = Pick<SyncItem, 'operationType' | 'dependencyKey' | 'entityTempId'> & {
     /** Preserve causal ordering when an earlier operation in the same group was already queued. */
@@ -162,6 +179,8 @@ api.interceptors.request.use(
                 operationType: requestConfig.offlineMeta?.operationType || 'GENERIC_MUTATION',
                 dependencyKey: requestConfig.offlineMeta?.dependencyKey || null,
                 entityTempId: requestConfig.offlineMeta?.entityTempId || null,
+                // Replays must reuse the key of the user action that produced them.
+                idempotencyKey: readIdempotencyHeader(requestConfig.headers),
             });
             if (offlineManager.getStatus()) {
                 void offlineManager.processSyncQueue();
@@ -181,10 +200,33 @@ api.interceptors.request.use(
     (error) => Promise.reject(error)
 );
 
+/**
+ * 401 codes that reject a credential other than the user session (biometric
+ * challenge, kiosk device). They must never log the operator out. The server
+ * now answers these with 409/403; this guard covers older deployments.
+ */
+export const NON_SESSION_401_CODES: ReadonlySet<string> = new Set([
+    'CHALLENGE_INVALID',
+    'CHALLENGE_TOKEN_INVALID',
+    'DEVICE_INVALID',
+    'DEVICE_CREDENTIALS_REQUIRED',
+]);
+
+/** True when a 401 response means the browser session itself is no longer valid. */
+export function isSessionEnding401(error: unknown): boolean {
+    const response = (error as { response?: { status?: unknown; data?: unknown } } | null)?.response;
+    if (response?.status !== 401) return false;
+    const code = response.data && typeof response.data === 'object'
+        ? (response.data as { code?: unknown }).code
+        : undefined;
+    return !(typeof code === 'string' && NON_SESSION_401_CODES.has(code));
+}
+
 // Response interceptor for error handling and caching
 api.interceptors.response.use(
     async (response) => {
         captureCsrfFromHeaders(response.headers as Record<string, unknown>);
+        markLiveResponse();
 
         // Cache successful GET responses (skip auth endpoints and binary responses)
         const method = response.config.method?.toLowerCase();
@@ -217,7 +259,7 @@ api.interceptors.response.use(
             };
         }
 
-        if (error.response?.status === 401) {
+        if (isSessionEnding401(error)) {
             const requestUrl = error.config?.url || '';
             const isLoginRequest = requestUrl.startsWith('/auth/login');
             const isOnLoginPage = window.location.pathname === '/login';
@@ -244,6 +286,9 @@ api.interceptors.response.use(
             const cacheKey = buildCacheKey(error.config);
             const cachedData = await offlineManager.getCachedData(cacheKey);
             if (cachedData !== null) {
+                // Stale data must never look live: flag the response for callers
+                // and raise the app-wide "sin conexión" notice.
+                markServedFromCache(cacheKey);
                 return {
                     data: cachedData,
                     status: 200,
@@ -252,6 +297,21 @@ api.interceptors.response.use(
                     config: error.config,
                     _fromCache: true
                 };
+            }
+        }
+
+        // Every rejected API call carries a ready-to-show Spanish message.
+        // Callers that do not catch it reach the global unhandledrejection
+        // handler, which toasts this same text (see services/notify.ts).
+        if (error && typeof error === 'object') {
+            try {
+                Object.defineProperty(error, 'userMessage', {
+                    value: describeApiError(error).message,
+                    enumerable: false,
+                    configurable: true,
+                });
+            } catch {
+                // Frozen error object: notifyError() can still describe it.
             }
         }
 
@@ -364,6 +424,10 @@ export const menuAPI = {
     getAll: (params?: Record<string, unknown>) =>
         api.get('/menu-items', { params }),
 
+    /** Informational POS stock availability for the branch sale warehouse. */
+    getAvailability: (branchId: number) =>
+        api.get('/menu-items/availability', { params: { branchId } }),
+
     getById: (id: number) =>
         api.get(`/menu-items/${id}`),
 
@@ -416,16 +480,18 @@ export const ordersAPI = {
 
     create: (
         data: Record<string, unknown>,
-        offlineMeta?: OfflineRequestMeta
+        offlineMeta?: OfflineRequestMeta,
+        idempotencyKey?: string,
     ) =>
-        api.post('/orders', data, { offlineMeta }),
+        api.post('/orders', data, { offlineMeta, ...idempotencyHeaders(idempotencyKey) }),
 
     addItem: (
         orderId: number,
         data: Record<string, unknown>,
-        offlineMeta?: OfflineRequestMeta
+        offlineMeta?: OfflineRequestMeta,
+        idempotencyKey?: string,
     ) =>
-        api.post(`/orders/${orderId}/items`, data, { offlineMeta }),
+        api.post(`/orders/${orderId}/items`, data, { offlineMeta, ...idempotencyHeaders(idempotencyKey) }),
 
     removeItem: (itemId: number) =>
         api.delete(`/orders/items/${itemId}`),
@@ -482,6 +548,10 @@ export const ordersAPI = {
 };
 
 export const invoicesAPI = {
+    /** Paginated invoice history with server search and page/global totals. */
+    list: (params?: { startDate?: string; endDate?: string; search?: string; page?: number; limit?: number; branchId?: number }) =>
+        api.get('/invoices', { params }),
+
     issuePreInvoice: (orderId: number) => api.post(`/invoices/${orderId}/preinvoice`),
 
     reversePreInvoice: (orderId: number, reason: string) =>
@@ -776,8 +846,14 @@ export const purchaseOrdersAPI = {
     removeItem: (itemId: number) =>
         api.delete(`/purchase-orders/items/${itemId}`),
 
-    receive: (id: number, warehouseId: number, idempotencyKey: string) =>
-        api.post(`/purchase-orders/${id}/receive`, { warehouseId }, {
+    /** items omitted = receive every line's remaining balance. */
+    receive: (id: number, warehouseId: number, idempotencyKey: string, items?: Array<{ itemId: number; quantity: number }>) =>
+        api.post(`/purchase-orders/${id}/receive`, items ? { warehouseId, items } : { warehouseId }, {
+            headers: { 'X-Idempotency-Key': idempotencyKey },
+        }),
+
+    closeRemaining: (id: number, reason: string, idempotencyKey: string) =>
+        api.post(`/purchase-orders/${id}/close-remaining`, { reason }, {
             headers: { 'X-Idempotency-Key': idempotencyKey },
         }),
 
@@ -851,8 +927,8 @@ export const cashShiftsAPI = {
     open: (data: Record<string, unknown>) =>
         api.post('/cash-shifts/open', data),
 
-    addMovement: (id: number, data: Record<string, unknown>) =>
-        api.post(`/cash-shifts/${id}/movements`, data),
+    addMovement: (id: number, data: Record<string, unknown>, idempotencyKey?: string) =>
+        api.post(`/cash-shifts/${id}/movements`, data, idempotencyHeaders(idempotencyKey)),
 };
 
 // Payments API
@@ -1065,14 +1141,28 @@ export const inventoryMovementsAPI = {
         reason?: string;
         reference?: string;
         unit?: string;
-    }, idempotencyKey?: string) =>
+    }, idempotencyKey: string) =>
+        // The server requires the key (428 without it) so a double submit or a
+        // retried request can never post the movement twice.
         api.post('/inventory-movements', data, {
-            ...(idempotencyKey ? { headers: { 'X-Idempotency-Key': idempotencyKey } } : {})
+            headers: { 'X-Idempotency-Key': idempotencyKey }
         }),
 
-    transfer: (data: Record<string, unknown>, idempotencyKey?: string) =>
+    transfer: (data: Record<string, unknown>, idempotencyKey: string) =>
         api.post('/inventory-movements/transfer', data, {
-            ...(idempotencyKey ? { headers: { 'X-Idempotency-Key': idempotencyKey } } : {})
+            headers: { 'X-Idempotency-Key': idempotencyKey }
+        }),
+
+    /** Physical count: the server posts counted - current stock as IN/OUT. */
+    count: (data: {
+        warehouseId: number;
+        productId: number;
+        countedQuantity: number;
+        reason: string;
+        unit?: string;
+    }, idempotencyKey: string) =>
+        api.post('/inventory-movements/count', data, {
+            headers: { 'X-Idempotency-Key': idempotencyKey }
         }),
 
     reverse: (movementId: number, reason: string, idempotencyKey: string) =>
@@ -1156,10 +1246,27 @@ export const branchPricingAPI = {
 
 // Promotions API
 export const promotionsAPI = {
-    getAll: (activeOnly = true) =>
-        api.get('/promotions', { params: { activeOnly } }),
-    validate: (code: string, orderTotal: number) =>
-        api.post('/promotions/validate', { code, orderTotal }),
+    /** `branchId` keeps only promotions valid in that branch; `availableNow` also drops those outside their happy hour. */
+    getAll: (activeOnly = true, options: { branchId?: number | null; availableNow?: boolean } = {}) =>
+        api.get('/promotions', {
+            params: {
+                activeOnly,
+                ...(options.branchId ? { branchId: options.branchId } : {}),
+                ...(options.availableNow ? { availableNow: true } : {}),
+            }
+        }),
+    /** Preview: `items` (order + cart lines) and `branchId` let per-item, combo, happy-hour and branch rules be evaluated. */
+    validate: (
+        code: string,
+        orderTotal: number,
+        options: { branchId?: number | null; items?: Array<{ menuItemId: number; quantity: number; unitPrice: number; modifierUnitPrice?: number }> } = {}
+    ) =>
+        api.post('/promotions/validate', {
+            code,
+            orderTotal,
+            ...(options.branchId ? { branchId: options.branchId } : {}),
+            ...(options.items && options.items.length > 0 ? { items: options.items } : {}),
+        }),
     create: (data: Record<string, unknown>) => api.post('/promotions', data),
     update: (id: number, data: Record<string, unknown>) => api.put(`/promotions/${id}`, data),
     deactivate: (id: number) => api.patch(`/promotions/${id}/deactivate`)
@@ -1334,6 +1441,10 @@ export const cateringAPI = {
 
     checkAvailability: (date: string, branchId?: number) =>
         api.get('/catering/availability', { params: { date, branchId } }),
+
+    /** Per-ingredient source warehouse (branch routing, event warehouse as fallback) for finishing an event. */
+    getInventoryPreview: (eventId: number, warehouseId: number) =>
+        api.get(`/catering/${eventId}/inventory-preview`, { params: { warehouseId } }),
 
     deleteEvent: (id: number) =>
         api.delete(`/catering/${id}`),

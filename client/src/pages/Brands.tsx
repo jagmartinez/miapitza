@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { notifyError } from '../services/notify';
 import { menuBrandsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
@@ -41,7 +42,7 @@ export default function Brands() {
             const res = await menuBrandsAPI.getAll();
             setBrands(res.data.data);
         } catch (error) {
-            console.error('Error loading brands:', error);
+            notifyError(error, 'No se pudieron cargar las marcas');
         } finally {
             setLoading(false);
         }

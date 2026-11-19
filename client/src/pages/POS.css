@@ -1280,3 +1280,39 @@
 .pos-embedded .pos-header-new {
     padding-top: max(var(--spacing-md), env(safe-area-inset-top));
 }
+
+/* Informational stock badge (selling stays allowed). */
+.pos-stock-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 2;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.4;
+    pointer-events: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.pos-stock-badge--out {
+    /* #dc2626 keeps white text >= 4.5:1 (the --color-danger token is lighter). */
+    background: #dc2626;
+    color: #fff;
+}
+
+.pos-stock-badge--low {
+    background: var(--color-warning, #f59e0b);
+    color: #1f2937;
+}
+
+/* Reserve the badge row so it never covers the product name on compact tablet cards. */
+.product-card-new.has-stock-badge .product-info-overlay {
+    padding-top: calc(var(--spacing-md) + 18px);
+}
+
+.product-card-new:focus-visible {
+    outline: 3px solid var(--color-primary);
+    outline-offset: 2px;
+}

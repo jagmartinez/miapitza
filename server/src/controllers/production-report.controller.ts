@@ -53,7 +53,11 @@ export class ProductionReportController {
 
     static getTraceability(req: Request, res: Response, next: NextFunction) {
         const orderId = parseInt(req.params.orderId);
-        ProductionReportController.handle(res, next, () => ProductionReportService.getTraceability(req.user!.companyId, orderId));
+        ProductionReportController.handle(res, next, async () => ProductionReportService.getTraceability(
+            req.user!.companyId,
+            orderId,
+            resolveBranchScope(req.user!)
+        ));
     }
 
     static getDashboard(req: Request, res: Response, next: NextFunction) {

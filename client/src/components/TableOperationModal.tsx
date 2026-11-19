@@ -106,6 +106,12 @@ export default function TableOperationModal({
         () => orders.find((order) => order.id === Number(orderId)),
         [orderId, orders]
     );
+    // The backend only splits lines that have not been sent to kitchen (a sent
+    // line belongs to a KDS batch); voided rows (quantity 0) are history.
+    const transferableItems = useMemo(
+        () => (selectedOrder?.items || []).filter((item) => !item.kitchenBatchId && Number(item.quantity) > 0),
+        [selectedOrder]
+    );
     const transferSlices = useMemo(() => Object.entries(transferQuantities)
         .filter(([, quantity]) => quantity > 0)
         .map(([itemId, quantity]) => ({ orderItemId: Number(itemId), quantity })), [transferQuantities]);
@@ -258,7 +264,7 @@ export default function TableOperationModal({
                         </div>
                         {transferMode === 'PARTIAL' && (
                             <div className="table-operation-items">
-                                {selectedOrder.items.map((item) => {
+                                {transferableItems.map((item) => {
                                     const quantity = transferQuantities[item.id] ?? 0;
                                     return (
                                         <label key={item.id}>
@@ -278,7 +284,7 @@ export default function TableOperationModal({
                                         </label>
                                     );
                                 })}
-                                {selectedOrder.items.length === 0 && <p role="alert">La orden no tiene productos trasladables.</p>}
+                                {transferableItems.length === 0 && <p role="alert">La orden no tiene productos trasladables: los ya enviados a cocina se trasladan moviendo la orden completa.</p>}
                             </div>
                         )}
                     </fieldset>

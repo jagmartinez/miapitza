@@ -81,6 +81,18 @@ describe('offline ownership and single-flight', () => {
         expect(await offlineManager.getPendingCount()).toBe(0);
     });
 
+    it('replays a queued mutation with the idempotency key of the originating user action', async () => {
+        login(1, 10);
+        await offlineManager.enqueueRequest({
+            url: '/orders', method: 'POST', data: {}, operationType: 'CREATE_ORDER', idempotencyKey: 'action-key-123',
+        });
+        request.mockResolvedValue({ data: {} });
+        await offlineManager.processSyncQueue();
+        expect(request).toHaveBeenCalledWith(expect.objectContaining({
+            headers: expect.objectContaining({ 'X-Idempotency-Key': 'action-key-123' }),
+        }));
+    });
+
     it('stops the captured owner batch when the authenticated identity changes', async () => {
         login(1, 10);
         await offlineManager.enqueueRequest({ url: '/orders/1', method: 'POST', data: {}, operationType: 'CREATE_ORDER' });
@@ -165,6 +177,34 @@ describe('offline ownership and single-flight', () => {
         await offlineManager.processSyncQueue();
         expect(request).toHaveBeenCalledTimes(1);
         expect((await offlineManager.getFailedItems())[0]?.retryCount).toBe(1);
+    });
+
+    it.each(['CONCURRENT_UPDATE', 'DATABASE_BUSY', 'IDEMPOTENCY_IN_PROGRESS'])(
+        'retries a transient 409 %s with the same idempotency key instead of failing it',
+        async (code) => {
+            login(1, 10);
+            await offlineManager.enqueueRequest({ url: '/orders', method: 'POST', data: {}, operationType: 'CREATE_ORDER' });
+            request
+                .mockRejectedValueOnce({ response: { status: 409, data: { code, message: 'transient' } } })
+                .mockResolvedValueOnce({});
+            await offlineManager.processSyncQueue();
+            expect(await offlineManager.getFailedItems()).toHaveLength(0);
+            const firstKey = request.mock.calls[0][0].headers['X-Idempotency-Key'];
+
+            await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(2), { timeout: 4000 });
+            expect(request.mock.calls[1][0].headers['X-Idempotency-Key']).toBe(firstKey);
+            expect(await offlineManager.getPendingCount()).toBe(0);
+        },
+        10_000,
+    );
+
+    it('retries a 503 CONCURRENT_UPDATE deadlock response', async () => {
+        login(1, 10);
+        await offlineManager.enqueueRequest({ url: '/orders', method: 'POST', data: {}, operationType: 'CREATE_ORDER' });
+        request.mockRejectedValueOnce({ response: { status: 503, data: { code: 'CONCURRENT_UPDATE', message: 'deadlock' } } });
+        await offlineManager.processSyncQueue();
+        expect(await offlineManager.getFailedItems()).toHaveLength(0);
+        expect(await offlineManager.getPendingCount()).toBe(1);
     });
 
     it('automatically retries 429 with backoff and the same idempotency key', async () => {

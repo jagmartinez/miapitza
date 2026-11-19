@@ -145,17 +145,17 @@
 
 .catalog-pill.ok {
     background: #F0FDF4;
-    color: #16A34A;
+    color: #15803D; /* >= 4.5:1 on the tint */
 }
 
 .catalog-pill.danger {
     background: #FEF2F2;
-    color: #DC2626;
+    color: #B91C1C;
 }
 
 .catalog-pill.warning {
     background: #FFFBEB;
-    color: #D97706;
+    color: #92400E;
 }
 
 .catalog-pill.neutral {

@@ -4,7 +4,9 @@ import App from './App.tsx'
 import './index.css'
 import './components/Button.css'
 import { retireLegacyAppCache } from './utils/legacy-cache.ts'
+import { installGlobalErrorHandlers } from './services/globalErrorHandlers.ts'
 
+installGlobalErrorHandlers()
 void retireLegacyAppCache()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

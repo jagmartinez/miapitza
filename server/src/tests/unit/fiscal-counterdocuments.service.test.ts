@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
-import { describe, expect, it } from '@jest/globals';
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import prisma from '../../utils/prisma';
 import {
     CreditNoteService,
     deserializeCreditNoteSnapshot,
@@ -31,6 +32,10 @@ const originalInvoice = {
     taxRatePercent: 15,
     currencySymbol: 'C$',
 } as Prisma.JsonObject;
+
+afterEach(() => {
+    jest.restoreAllMocks();
+});
 
 describe('Fiscal counterdocument contracts', () => {
     it('deserializes an immutable credit-note snapshot tied to its original invoice', () => {
@@ -74,7 +79,7 @@ describe('Fiscal counterdocument contracts', () => {
             inventoryDisposition: 'NOT_RETURNED',
             refunds: [],
             originalInvoice,
-        } as Prisma.JsonObject)).toThrow('does not match');
+        } as Prisma.JsonObject)).toThrow('no corresponde a su factura original');
     });
 
     it('deserializes a cancellation while preserving the original invoice number', () => {
@@ -113,5 +118,33 @@ describe('Fiscal counterdocument contracts', () => {
         await expect(InvoiceCancellationService.cancel(41, 1, 7, {
             idempotencyKey: 'cancel-41-001', reason: 'x',
         })).rejects.toThrow('motivo');
+    });
+
+    it('reconciles the invoice against settlement payments, ignoring a manually reversed tender', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: { findFirst: jest.fn(async () => ({
+                id: 41, branchId: 2, tableId: null, status: 'DELIVERED', financialStatus: 'PAID',
+                invoiceNumber: 'FAC-1-000041', invoiceFiscalStatus: 'ISSUED', invoiceSnapshot: originalInvoice,
+                branch: { company: { ruc: '12345678901234' } },
+                payments: [
+                    { id: 1, amount: 115, status: 'REVERSED', methodType: 'CARD', fiscalCreditNoteRefunds: [] },
+                    { id: 2, amount: 115, status: 'ACTIVE', methodType: 'CASH', fiscalCreditNoteRefunds: [] },
+                ],
+                fiscalCreditNotes: [],
+                items: [{ id: 5, quantity: 1, price: 100, subtotal: 100 }],
+            })) },
+            user: { findFirst: jest.fn(async () => ({ id: 7, name: 'Administradora' })) },
+            fiscalCreditNote: { findUnique: jest.fn(async () => null) },
+            setting: { findMany: jest.fn(async () => []) },
+        };
+        jest.spyOn(prisma, '$transaction').mockImplementation(
+            (async (callback: (db: typeof tx) => unknown) => callback(tx)) as never
+        );
+
+        // Passing payment reconciliation reaches the fiscal configuration guard.
+        await expect(CreditNoteService.issue(41, 1, 7, {
+            idempotencyKey: 'credit-41-001', reason: 'Motivo valido', inventoryAction: 'NO_RETURN',
+        })).rejects.toThrow('jurisdicción fiscal');
     });
 });

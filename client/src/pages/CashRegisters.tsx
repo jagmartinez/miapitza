@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
@@ -61,7 +63,7 @@ export default function CashRegisters() {
             const res = await cashRegistersAPI.getAll();
             setRegisters(res.data.data);
         } catch (error) {
-            console.error('Error loading registers:', error);
+            notifyError(error, 'No se pudieron cargar las cajas');
         } finally {
             setLoading(false);
         }
@@ -77,8 +79,8 @@ export default function CashRegisters() {
                 setBranches(rows);
                 if (rows.length === 1) setNewRegisterBranchId(String(rows[0].id));
             })
-            .catch(() => {
-                if (!cancelled) showError('No se pudieron cargar las sucursales.');
+            .catch((error) => {
+                if (!cancelled) showError(getApiErrorMessage(error, 'No se pudieron cargar las sucursales'));
             });
         return () => { cancelled = true; };
     }, [showError, user?.branchId]);
@@ -92,7 +94,7 @@ export default function CashRegisters() {
             });
             setShifts(res.data.data);
         } catch (error: unknown) {
-            console.error('Error loading shifts:', error);
+            notifyError(error, 'No se pudieron cargar los turnos de caja');
         } finally {
             setLoading(false);
         }
@@ -135,7 +137,7 @@ export default function CashRegisters() {
             loadRegisters();
         } catch (error) {
             console.error('Error creating register:', error);
-            showError('Error al crear caja');
+            showError(getApiErrorMessage(error, 'Error al crear caja'));
         }
     };
 
@@ -194,7 +196,7 @@ export default function CashRegisters() {
                 loadRegisters();
             }
         } catch (error) {
-            console.error('Error getting active shift:', error);
+            notifyError(error, 'No se pudo abrir el turno activo');
         }
     };
 

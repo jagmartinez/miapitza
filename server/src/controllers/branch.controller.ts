@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { BranchService } from '../services/branch.service';
+import { WarehouseRouteService } from '../services/warehouse-route.service';
+import prisma from '../utils/prisma';
 import { getErrorMessage } from '../utils/error';
 import { assertBranchAccess, BranchScopeError, isCompanyWide, resolveBranchScope } from '../utils/branch-scope';
 import {
@@ -86,7 +88,13 @@ export class BranchController {
                 code: req.body.code,
                 address: req.body.address,
                 phone: req.body.phone,
-                status: req.body.status
+                status: req.body.status,
+                // Absent -> unchanged; null/'' -> clear; id -> validated in the service.
+                defaultSaleWarehouseId: req.body.defaultSaleWarehouseId === undefined
+                    ? undefined
+                    : req.body.defaultSaleWarehouseId === null || req.body.defaultSaleWarehouseId === ''
+                        ? null
+                        : Number(req.body.defaultSaleWarehouseId)
             }, req.user!.userId);
             res.json({
                 success: true,
@@ -110,6 +118,35 @@ export class BranchController {
             });
         } catch (error: unknown) {
             if (error instanceof TenantScopeError) return next(error);
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
+    /** Ingredient -> warehouse routing rules of a branch (sale consumption). */
+    static async getWarehouseRoutes(req: Request, res: Response, next: NextFunction) {
+        try {
+            const id = parseInt(req.params.id, 10);
+            const companyId = await BranchController.resolveBranchCompany(req, id);
+            assertBranchAccess(req.user!, id);
+            const data = await WarehouseRouteService.list(prisma, companyId, id);
+            res.json({ success: true, data });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError || error instanceof TenantScopeError) return next(error);
+            next({ statusCode: 404, message: getErrorMessage(error) });
+        }
+    }
+
+    /** Replaces the whole routing rule set of a branch (validated, audited). */
+    static async replaceWarehouseRoutes(req: Request, res: Response, next: NextFunction) {
+        try {
+            const id = parseInt(req.params.id, 10);
+            const companyId = await BranchController.resolveBranchCompany(req, id);
+            assertBranchAccess(req.user!, id);
+            const data = await prisma.$transaction((tx) =>
+                WarehouseRouteService.replaceForBranch(tx, companyId, id, req.body?.routes, req.user!.userId));
+            res.json({ success: true, message: 'Rutas de bodega actualizadas', data });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError || error instanceof TenantScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }

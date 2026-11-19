@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
 import { API_BASE_URL, pedidosYaAPI, menuAPI } from '../services/api';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
@@ -101,8 +102,8 @@ export default function PedidosYaIntegration() {
             setMenuItems((menuRes.data.data || []).map((mi: { id: number; name: string; price: number }) => ({
                 id: mi.id, name: mi.name, price: mi.price,
             })));
-        } catch {
-            showError('No se pudo cargar la configuración de PedidosYa.');
+        } catch (err) {
+            showError(getApiErrorMessage(err, 'No se pudo cargar la configuración de PedidosYa.'));
         }
         setLoading(false);
     }, [showError]);
@@ -111,21 +112,21 @@ export default function PedidosYaIntegration() {
         try {
             const res = await pedidosYaAPI.getMappings();
             setMappings(res.data.data || []);
-        } catch { showError('No se pudieron cargar los mapeos.'); }
+        } catch (err) { showError(getApiErrorMessage(err, 'No se pudieron cargar los mapeos.')); }
     }, [showError]);
 
     const loadOrderSyncs = useCallback(async () => {
         try {
             const res = await pedidosYaAPI.getOrderSyncs();
             setOrderSyncs(res.data.data || []);
-        } catch { showError('No se pudieron cargar las órdenes sincronizadas.'); }
+        } catch (err) { showError(getApiErrorMessage(err, 'No se pudieron cargar las órdenes sincronizadas.')); }
     }, [showError]);
 
     const loadWebhookLogs = useCallback(async () => {
         try {
             const res = await pedidosYaAPI.getWebhookLogs();
             setWebhookLogs(res.data.data || []);
-        } catch { showError('No se pudieron cargar los logs del webhook.'); }
+        } catch (err) { showError(getApiErrorMessage(err, 'No se pudieron cargar los logs del webhook.')); }
     }, [showError]);
 
     useEffect(() => {
@@ -149,8 +150,8 @@ export default function PedidosYaIntegration() {
             if (!config.webhookSecret?.trim()) delete payload.webhookSecret;
             await pedidosYaAPI.upsertConfig(payload);
             success('Configuración guardada');
-        } catch {
-            showError('Error al guardar');
+        } catch (err) {
+            showError(getApiErrorMessage(err, 'Error al guardar'));
         }
         setSaving(false);
     };
@@ -170,8 +171,8 @@ export default function PedidosYaIntegration() {
             const res = await pedidosYaAPI.syncMenu();
             success(`Menú sincronizado: ${res.data.data.synced} items`);
             loadAll();
-        } catch {
-            showError('Error al sincronizar menú');
+        } catch (err) {
+            showError(getApiErrorMessage(err, 'Error al sincronizar menú'));
         }
     };
 
@@ -185,8 +186,8 @@ export default function PedidosYaIntegration() {
             setMappingSidebarOpen(false);
             setMappingForm({ externalId: '', externalName: '', menuItemId: '' });
             loadMappings();
-        } catch {
-            showError('Error al guardar mapeo');
+        } catch (err) {
+            showError(getApiErrorMessage(err, 'Error al guardar mapeo'));
         }
     };
 
@@ -195,8 +196,8 @@ export default function PedidosYaIntegration() {
         try {
             await pedidosYaAPI.deleteMapping(id);
             loadMappings();
-        } catch {
-            showError('Error al eliminar');
+        } catch (err) {
+            showError(getApiErrorMessage(err, 'Error al eliminar'));
         }
     };
 

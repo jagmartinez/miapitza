@@ -42,7 +42,7 @@ const employeeFields = [
     'emergencyContactName', 'emergencyContactPhone', 'emergencyContactRelationship',
     'hireDate', 'employmentType', 'departmentId', 'jobPositionId', 'costCenterId',
     'supervisorEmployeeId', 'notes', 'branchIds', 'primaryBranchId',
-    'initialCompensation',
+    'initialCompensation', 'weeklyRestDays',
 ] as const;
 
 const employeeBodySchema = {
@@ -72,6 +72,8 @@ const employeeBodySchema = {
     notes: { type: 'string' as const, max: 5000 },
     branchIds: { type: 'array' as const, max: 100 },
     primaryBranchId: { type: 'number' as const, integer: true, min: 1 },
+    // ISO weekdays 1 = lunes .. 7 = domingo (Art. 64 CT); the service rejects duplicates.
+    weeklyRestDays: { type: 'array' as const, min: 1, max: 6, items: { type: 'number' as const, integer: true, min: 1, max: 7 } },
 };
 
 router.use(authMiddleware);

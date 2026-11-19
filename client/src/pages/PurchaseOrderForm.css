@@ -304,3 +304,43 @@
     color: white;
 }
 
+
+/* Partial receipts: per-line "recibir ahora" inputs */
+.receive-lines-hint {
+    margin: 0 0 8px;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+}
+
+.receive-qty-input {
+    width: 110px;
+    max-width: 100%;
+    padding: 6px 8px;
+    text-align: right;
+    border: 1px solid var(--dialog-panel-border, var(--color-border));
+    border-radius: 6px;
+    background: var(--dialog-field-bg, var(--color-surface));
+    color: var(--color-text);
+}
+
+/* Phones: keep the "Recibir ahora" column reachable (the shared container clips). */
+.receive-modal-container .modern-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.receive-lines-table th,
+.receive-lines-table td {
+    white-space: nowrap;
+}
+
+.receive-lines-table td:first-child {
+    white-space: normal;
+    min-width: 120px;
+}
+
+/* The sticky footer pins to the scrollport, but the shared .modal-body bottom padding
+   left a strip where table rows scrolled into view below it. */
+.modal-body:has(> .receive-modal-container) {
+    padding-bottom: 0;
+}

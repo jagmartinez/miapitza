@@ -16,6 +16,7 @@ import type { Branch } from '../types';
 import { formatLocalDateInput } from '../utils/dateInput';
 import { activateOnKeyboard } from '../utils/keyboardActivation';
 import './Reservations.css';
+import { getApiErrorMessage } from '../utils/apiError';
 
 interface Reservation {
     id: number;
@@ -87,7 +88,7 @@ export default function Reservations() {
             setLoadError(null);
         } catch (error) {
             console.error('Error loading reservations:', error);
-            setLoadError('No se pudieron cargar las reservaciones. Se conserva la última información disponible hasta reintentar.');
+            setLoadError(getApiErrorMessage(error, 'No se pudieron cargar las reservaciones (se conserva la última información disponible hasta reintentar)'));
         } finally {
             setLoading(false);
         }
@@ -108,8 +109,8 @@ export default function Reservations() {
                     setFormData((current) => ({ ...current, branchId: String(rows[0].id) }));
                 }
             })
-            .catch(() => {
-                if (!cancelled) showError('No se pudieron cargar las sucursales para reservar.');
+            .catch((error) => {
+                if (!cancelled) showError(getApiErrorMessage(error, 'No se pudieron cargar las sucursales para reservar'));
             });
         return () => { cancelled = true; };
     }, [showError, user?.branchId]);
@@ -177,11 +178,7 @@ export default function Reservations() {
             loadReservations();
         } catch (error: unknown) {
             console.error('Error updating status:', error);
-            const apiMsg = typeof error === 'object' && error !== null && 'response' in error
-                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
-                : undefined;
-            const errorMessage = apiMsg || (error instanceof Error ? error.message : '') || 'Error al actualizar el estado';
-            showError(errorMessage);
+            showError(getApiErrorMessage(error, 'Error al actualizar el estado'));
         }
     };
 
@@ -251,13 +248,8 @@ export default function Reservations() {
             success(editingReservation ? 'Reservación actualizada' : 'Reservación creada');
         } catch (error: unknown) {
             console.error('Error saving reservation:', error);
-            const resp = typeof error === 'object' && error !== null && 'response' in error
-                ? (error as { response?: { data?: { message?: string; errors?: Array<{ field: string; message: string }> } } }).response?.data
-                : undefined;
-            const detail = resp?.errors?.map(e => `${e.field}: ${e.message}`).join('\n');
-            const apiMsg = resp?.message;
-            const baseMsg = apiMsg || (error instanceof Error ? error.message : '') || 'Error al guardar la reservación';
-            showError(detail ? `${baseMsg}\n\n${detail}` : baseMsg);
+            // getApiErrorMessage already appends field-level validation details.
+            showError(getApiErrorMessage(error, 'Error al guardar la reservación'));
         } finally {
             setSaving(false);
         }

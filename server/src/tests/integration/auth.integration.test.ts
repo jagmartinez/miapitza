@@ -98,15 +98,19 @@ describe('Auth API Integration Tests', () => {
             const replicaA = new LoginAttemptService();
             const replicaB = new LoginAttemptService();
 
+            // supertest connects from loopback; the per-IP row is keyed on it.
+            const clientIp = '127.0.0.1';
             await Promise.all([
-                replicaA.recordFailure(user.id),
-                replicaB.recordFailure(user.id),
-                replicaA.recordFailure(user.id),
-                replicaB.recordFailure(user.id),
-                replicaA.recordFailure(user.id),
+                replicaA.recordFailure(user.id, clientIp),
+                replicaB.recordFailure(user.id, clientIp),
+                replicaA.recordFailure(user.id, clientIp),
+                replicaB.recordFailure(user.id, clientIp),
+                replicaA.recordFailure(user.id, clientIp),
             ]);
 
-            await expect(replicaB.assertAllowed(user.id)).rejects.toThrow('temporarily locked');
+            await expect(replicaB.assertAllowed(user.id, clientIp)).rejects.toThrow('temporarily locked');
+            // A lock earned from one IP must not lock the account for other IPs.
+            await expect(replicaB.assertAllowed(user.id, '203.0.113.9')).resolves.toBeUndefined();
             const response = await request(app)
                 .post('/api/auth/login')
                 .send({
@@ -114,7 +118,7 @@ describe('Auth API Integration Tests', () => {
                     password: testUser.password,
                 });
             expect(response.status).toBe(401);
-            expect(response.body.message).toMatch(/temporarily locked/i);
+            expect(response.body.message).toMatch(/Credenciales inválidas/i);
         });
     });
 });

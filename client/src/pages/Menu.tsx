@@ -32,6 +32,13 @@ import { isCategoryVisibleInMenu } from '../utils/categoryVisibility';
 import { effectiveUnitCost } from '../utils/productCost';
 import './Menu.css';
 import './Inventory.css';
+import { getApiErrorMessage } from '../utils/apiError';
+
+// The menu list flags items without any recipe line (legacy DIRECT rows): they
+// are still sellable but never deduct stock until a recipe is added.
+function lacksRecipe(item: MenuItem): boolean {
+  return (item as MenuItem & { missingRecipe?: boolean }).missingRecipe === true;
+}
 
 interface CategoryRow {
   id: number;
@@ -63,9 +70,13 @@ interface ModifierRow {
   productId?: number | null;
   consumeQuantity?: number | string | null;
   unitId?: number | null;
+  /** ADD consumes the product; REMOVE ("Sin X") reduces that recipe line of the dish. */
+  inventoryEffect?: ModifierInventoryEffect | null;
   product?: { id: number; name: string } | null;
   unit?: { id: number; name: string; abbreviation: string } | null;
 }
+
+type ModifierInventoryEffect = 'ADD' | 'REMOVE';
 
 interface ModifierGroupRow {
   id: number;
@@ -121,6 +132,7 @@ export default function Menu() {
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [onlyMissingRecipe, setOnlyMissingRecipe] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
@@ -180,7 +192,8 @@ export default function Menu() {
     extraPrice: '',
     productId: '',
     consumeQuantity: '',
-    unitId: ''
+    unitId: '',
+    inventoryEffect: 'ADD' as ModifierInventoryEffect
   });
   const [savingModifier, setSavingModifier] = useState(false);
 
@@ -214,7 +227,7 @@ export default function Menu() {
 
   const resetModifierForm = () => {
     setEditingModifierId(null);
-    setModifierForm({ name: '', extraPrice: '', productId: '', consumeQuantity: '', unitId: '' });
+    setModifierForm({ name: '', extraPrice: '', productId: '', consumeQuantity: '', unitId: '', inventoryEffect: 'ADD' });
   };
 
   const loadModifierData = async () => {
@@ -236,7 +249,7 @@ export default function Menu() {
       );
     } catch (error) {
       console.error('Error loading modifiers:', error);
-      showError('No se pudieron cargar los modificadores');
+      showError(getApiErrorMessage(error, 'No se pudieron cargar los modificadores'));
     }
   };
 
@@ -259,7 +272,7 @@ export default function Menu() {
       showSuccess('Grupo de modificadores creado');
     } catch (error) {
       console.error('Error creating modifier group:', error);
-      showError('No se pudo crear el grupo');
+      showError(getApiErrorMessage(error, 'No se pudo crear el grupo'));
     }
   };
 
@@ -270,7 +283,8 @@ export default function Menu() {
       extraPrice: modifier.price != null ? String(modifier.price) : '',
       productId: modifier.productId != null ? String(modifier.productId) : '',
       consumeQuantity: modifier.consumeQuantity != null ? String(modifier.consumeQuantity) : '',
-      unitId: modifier.unitId != null ? String(modifier.unitId) : ''
+      unitId: modifier.unitId != null ? String(modifier.unitId) : '',
+      inventoryEffect: modifier.inventoryEffect === 'REMOVE' ? 'REMOVE' : 'ADD'
     });
   };
 
@@ -286,8 +300,20 @@ export default function Menu() {
     }
     // A modifier links inventory only when a product is chosen; quantity is then required.
     const hasProduct = modifierForm.productId !== '';
-    if (hasProduct && (modifierForm.consumeQuantity === '' || Number(modifierForm.consumeQuantity) <= 0)) {
-      showWarning('Indica una cantidad a consumir mayor a 0');
+    const isRemoval = modifierForm.inventoryEffect === 'REMOVE';
+    // "Sin X": the product is required (it is the recipe line removed); an
+    // empty quantity removes the whole line.
+    if (isRemoval && !hasProduct) {
+      showWarning('Selecciona el ingrediente de la receta que este modificador quita');
+      return;
+    }
+    const hasQuantity = modifierForm.consumeQuantity !== '';
+    if (hasProduct && (isRemoval ? hasQuantity && Number(modifierForm.consumeQuantity) <= 0 : !hasQuantity || Number(modifierForm.consumeQuantity) <= 0)) {
+      showWarning(isRemoval ? 'La cantidad a quitar debe ser mayor a 0 (o déjala vacía para quitar todo)' : 'Indica una cantidad a consumir mayor a 0');
+      return;
+    }
+    if (isRemoval && !hasQuantity && modifierForm.unitId !== '') {
+      showWarning('Una unidad requiere una cantidad a quitar');
       return;
     }
 
@@ -296,8 +322,9 @@ export default function Menu() {
       extraPrice: modifierForm.extraPrice === '' ? 0 : Number(modifierForm.extraPrice),
       // Send explicit null to unlink when no product is selected.
       productId: hasProduct ? Number(modifierForm.productId) : null,
-      consumeQuantity: hasProduct ? Number(modifierForm.consumeQuantity) : null,
-      unitId: hasProduct && modifierForm.unitId !== '' ? Number(modifierForm.unitId) : null
+      consumeQuantity: hasProduct && hasQuantity ? Number(modifierForm.consumeQuantity) : null,
+      unitId: hasProduct && modifierForm.unitId !== '' ? Number(modifierForm.unitId) : null,
+      inventoryEffect: modifierForm.inventoryEffect
     };
 
     setSavingModifier(true);
@@ -313,7 +340,7 @@ export default function Menu() {
       await loadModifierData();
     } catch (error) {
       console.error('Error saving modifier:', error);
-      showError('No se pudo guardar el modificador');
+      showError(getApiErrorMessage(error, 'No se pudo guardar el modificador'));
     } finally {
       setSavingModifier(false);
     }
@@ -333,7 +360,7 @@ export default function Menu() {
       showSuccess('Modificador eliminado');
     } catch (error) {
       console.error('Error deleting modifier:', error);
-      showError('No se pudo eliminar el modificador');
+      showError(getApiErrorMessage(error, 'No se pudo eliminar el modificador'));
     }
   };
 
@@ -499,7 +526,7 @@ export default function Menu() {
       );
     } catch (error) {
       console.error('Error saving branch price:', error);
-      showError('No se pudo guardar el precio por sucursal');
+      showError(getApiErrorMessage(error, 'No se pudo guardar el precio por sucursal'));
     } finally {
       setSavingBranchPriceId(null);
     }
@@ -722,8 +749,8 @@ export default function Menu() {
     try {
       await menuAPI.delete(id);
       loadData();
-    } catch {
-      showError('Error al eliminar');
+    } catch (error) {
+      showError(getApiErrorMessage(error, 'Error al eliminar el plato'));
     }
   };
 
@@ -734,8 +761,10 @@ export default function Menu() {
     const matchesBranch = selectedBranch === 'all' || !item.branchId || item.branchId?.toString() === selectedBranch;
     const matchesBrand = selectedBrand === 'all'
       || (selectedBrand === 'none' ? !item.brandId : item.brandId?.toString() === selectedBrand);
-    return matchesSearch && matchesCategory && matchesBranch && matchesBrand;
+    return matchesSearch && matchesCategory && matchesBranch && matchesBrand
+      && (!onlyMissingRecipe || lacksRecipe(item));
   });
+  const missingRecipeCount = menuItems.filter(lacksRecipe).length;
 
   // Stats calculations
 
@@ -844,6 +873,17 @@ export default function Menu() {
         </div>
       </div>
 
+      {missingRecipeCount > 0 && (
+        <div className="catalog-pill warning" role="status" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', margin: '0 0 12px', padding: '8px 12px', width: 'fit-content', maxWidth: '100%', whiteSpace: 'normal', boxSizing: 'border-box', borderRadius: 12 }}>
+          <span>
+            {missingRecipeCount} {missingRecipeCount === 1 ? 'producto no tiene' : 'productos no tienen'} receta y no descuentan inventario al venderse.
+          </span>
+          <button type="button" className="catalog-action-btn" aria-pressed={onlyMissingRecipe} onClick={() => setOnlyMissingRecipe((value) => !value)}>
+            {onlyMissingRecipe ? 'Ver todos' : 'Ver solo sin receta'}
+          </button>
+        </div>
+      )}
+
       {viewMode === 'table' && filteredItems.length > 0 && (
         <CatalogTable<MenuItem>
           rows={filteredItems}
@@ -888,9 +928,20 @@ export default function Menu() {
               key: 'status',
               header: 'Estado',
               render: (item) => (
-                <span className={`catalog-pill ${item.active ? 'ok' : 'neutral'}`}>
-                  {item.active ? 'Activo' : 'Inactivo'}
-                </span>
+                <>
+                  <span className={`catalog-pill ${item.active ? 'ok' : 'neutral'}`}>
+                    {item.active ? 'Activo' : 'Inactivo'}
+                  </span>
+                  {lacksRecipe(item) && (
+                    <span
+                      className="catalog-pill warning"
+                      title="Sin receta: la venta no descuenta inventario. Agrega al menos un insumo."
+                      style={{ marginLeft: 6 }}
+                    >
+                      Sin receta
+                    </span>
+                  )}
+                </>
               ),
             },
             {
@@ -1635,10 +1686,21 @@ export default function Menu() {
                     <div key={modifier.id} className="modifier-list-row">
                       <div className="modifier-list-main">
                         <span className="modifier-list-name">{modifier.name}</span>
-                        <span className="modifier-list-price">+{formatMoney(Number(modifier.price))}</span>
+                        {Number(modifier.price) > 0 ? (
+                          <span className="modifier-list-price">+{formatMoney(Number(modifier.price))}</span>
+                        ) : (
+                          <span className="modifier-list-price">Sin costo</span>
+                        )}
                       </div>
                       <div className="modifier-list-link">
-                        {modifier.productId ? (
+                        {modifier.productId && modifier.inventoryEffect === 'REMOVE' ? (
+                          <span className="modifier-link-tag">
+                            <Package size={13} />
+                            {modifier.consumeQuantity != null
+                              ? `Quita ${Number(modifier.consumeQuantity)} ${modifier.unit?.abbreviation || ''} de ${modifier.product?.name || 'producto'} de la receta`
+                              : `Quita ${modifier.product?.name || 'el ingrediente'} de la receta`}
+                          </span>
+                        ) : modifier.productId ? (
                           <span className="modifier-link-tag">
                             <Package size={13} />
                             Consume {Number(modifier.consumeQuantity ?? 0)} {modifier.unit?.abbreviation || ''} de {modifier.product?.name || 'producto'}
@@ -1704,7 +1766,26 @@ export default function Menu() {
                   <div className="modal-form-row">
                     <Select
                       variant="modal"
-                      label="Producto / insumo a consumir"
+                      label="Efecto en inventario"
+                      options={[
+                        { value: 'ADD', label: 'Agrega consumo (extra)' },
+                        { value: 'REMOVE', label: 'Quita ingrediente de la receta ("Sin …")' }
+                      ]}
+                      value={modifierForm.inventoryEffect === 'REMOVE'
+                        ? { value: 'REMOVE', label: 'Quita ingrediente de la receta ("Sin …")' }
+                        : { value: 'ADD', label: 'Agrega consumo (extra)' }}
+                      onChange={(opt: SingleValue<StrOption>) => setModifierForm({
+                        ...modifierForm,
+                        inventoryEffect: opt?.value === 'REMOVE' ? 'REMOVE' : 'ADD'
+                      })}
+                      isSearchable={false}
+                    />
+                  </div>
+
+                  <div className="modal-form-row">
+                    <Select
+                      variant="modal"
+                      label={modifierForm.inventoryEffect === 'REMOVE' ? 'Ingrediente de la receta a quitar' : 'Producto / insumo a consumir'}
                       options={modifierProducts.map((p) => ({ value: String(p.id), label: p.sku ? `${p.name} (${p.sku})` : p.name }))}
                       value={modifierForm.productId
                         ? (() => {
@@ -1717,7 +1798,9 @@ export default function Menu() {
                       isClearable
                     />
                     <div className="modal-input-group">
-                      <label className="modal-input-label" htmlFor="modifier-qty">Cantidad a consumir</label>
+                      <label className="modal-input-label" htmlFor="modifier-qty">
+                        {modifierForm.inventoryEffect === 'REMOVE' ? 'Cantidad a quitar (vacío = todo)' : 'Cantidad a consumir'}
+                      </label>
                       <input
                         id="modifier-qty"
                         type="number"

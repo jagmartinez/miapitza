@@ -32,6 +32,12 @@ describe('Biometrics guided UX contract', () => {
         expect(source).toContain('Every failed submission therefore needs a fresh challenge');
     });
 
+    it('tells the employee the first enrollment waits for HR approval', () => {
+        expect(source).toContain('Registro facial pendiente de aprobación de RRHH');
+        expect(source).toContain("updated.status === 'PENDING'");
+        expect(source).toContain('profile.rejectionReason');
+    });
+
     it('uses the Mi RH shell and blocks sensitive mutations while offline', () => {
         expect(source).toContain('my-hr-page');
         expect(source).toContain('!online && <OnlineOnlyNotice online={false} />');

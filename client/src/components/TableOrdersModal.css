@@ -1242,3 +1242,11 @@
     .orders-modal { height: 96dvh; max-height: 96dvh; }
     .table-detail-summary { display: none; }
 }
+
+/* Tablets (769-1024px) also show the fixed bottom nav (z-index 1050): keep the
+   table drawer footer ("Emitir Factura" / "Agregar productos") reachable. */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .modal-overlay-orders {
+        z-index: 1500;
+    }
+}

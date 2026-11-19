@@ -9,7 +9,7 @@ import { UnitConversionService } from '../../services/unit-conversion.service';
 import { fileCleanupService } from '../../services/file-cleanup.service';
 
 describe('PurchaseOrderService accounting invariants', () => {
-    it('defaults an omitted invoice type to a fully settled cash purchase', async () => {
+    it('defaults an omitted invoice type to a cash purchase that owes nothing before receipt', async () => {
         jest.spyOn(prisma.branch, 'findFirst').mockResolvedValue({ id: 2 } as never);
         jest.spyOn(prisma.supplier, 'findFirst').mockResolvedValue({ id: 3 } as never);
         jest.spyOn(prisma.product, 'findMany').mockResolvedValue([{ id: 4 }] as never);
@@ -54,8 +54,9 @@ describe('PurchaseOrderService accounting invariants', () => {
 
         expect(createdOrderData.invoiceType).toBe('CASH');
         expect(createdOrderData.total).toBe(20.25);
-        expect(createdOrderData.paymentStatus).toBe('PAID');
-        expect(createdOrderData.paidAmount).toBe(20.25);
+        // CASH is paid on delivery: PENDING/0 until a receipt settles it.
+        expect(createdOrderData.paymentStatus).toBe('PENDING');
+        expect(createdOrderData.paidAmount).toBe(0);
         expect(conversion).toHaveBeenCalledWith(4, 1, 2, 'kg', 10.125, tx as never);
         expect(createdItemData).toEqual(expect.objectContaining({
             purchaseUnit: 'kg', conversionFactor: 1, baseQuantity: 2, baseCost: 10.125
@@ -292,6 +293,9 @@ describe('PurchaseOrderService accounting invariants', () => {
                 })
             },
             purchaseOrderPayment: { count: jest.fn(async () => 0) },
+            purchaseOrderItem: { updateMany: jest.fn(async () => ({ count: 2 })) },
+            purchaseOrderReceipt: { updateMany: jest.fn(async () => ({ count: 0 })) },
+            inventoryMovement: { findMany: jest.fn(async () => []) },
             inventoryBatch: {
                 findMany: jest.fn(async () => [
                     { warehouseId: 4, productId: 7, originalQty: 2 },
@@ -318,7 +322,7 @@ describe('PurchaseOrderService accounting invariants', () => {
             consumeSourceRef: 'PO-10', valueFromConsumedLayers: true
         }));
         expect(costSpy).toHaveBeenCalledWith(tx as never, [31, 32], 1);
-        expect(orderUpdates).toEqual([{ status: 'CANCELLED', paidAmount: 0, paymentStatus: 'PENDING' }]);
+        expect(orderUpdates).toEqual([{ status: 'CANCELLED', paidAmount: 0, paymentStatus: 'PENDING', receivedTotal: 0 }]);
         expect(AuditLogService.log).toHaveBeenCalledWith(
             expect.objectContaining({ entityType: 'PurchaseOrder', entityId: 10 }),
             tx as never

@@ -4,6 +4,7 @@ import { productsAPI } from '../services/api';
 import Card from '../components/Card';
 import { AlertTriangle, Package } from 'lucide-react';
 import './LowStockAlert.css';
+import { getApiErrorMessage } from '../utils/apiError';
 
 interface LowStockRow {
     id: number;
@@ -28,7 +29,7 @@ export default function LowStockAlert() {
             setLowStockItems(response.data.data || []);
         } catch (error) {
             console.error('Error loading low stock items:', error);
-            setLoadError(error instanceof Error ? error.message : 'No se pudieron consultar las alertas');
+            setLoadError(getApiErrorMessage(error, 'No se pudieron consultar las alertas'));
         } finally {
             setLoading(false);
         }

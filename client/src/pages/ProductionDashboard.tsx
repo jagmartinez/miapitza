@@ -20,6 +20,7 @@ import {
     PieChart, Pie, Cell, Legend, ComposedChart, Area, Line
 } from 'recharts';
 import './ProductionDashboard.css';
+import { getApiErrorMessage } from '../utils/apiError';
 
 interface Kpis {
     total: number; draft: number; pending: number; inProgress: number; finished: number; cancelled: number;
@@ -84,11 +85,7 @@ const monthStartStr = () => {
 };
 
 function apiErrorMessage(error: unknown): string {
-    if (typeof error === 'object' && error !== null && 'response' in error) {
-        const m = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
-        if (typeof m === 'string' && m) return m;
-    }
-    return error instanceof Error ? error.message : 'Error al cargar el panel';
+    return getApiErrorMessage(error);
 }
 
 export default function ProductionDashboard() {

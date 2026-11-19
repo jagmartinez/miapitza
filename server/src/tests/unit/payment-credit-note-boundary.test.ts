@@ -1,6 +1,11 @@
-import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import prisma from '../../utils/prisma';
 import { PaymentService } from '../../services/payment.service';
+
+beforeEach(() => {
+    // Table -> Order lock preflight (outside the transaction).
+    jest.spyOn(prisma.order, 'findFirst').mockResolvedValue({ tableId: null } as never);
+});
 
 afterEach(() => {
     jest.restoreAllMocks();

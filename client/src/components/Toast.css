@@ -2,11 +2,50 @@
     position: fixed;
     top: 80px;
     right: 24px;
-    z-index: 9999;
+    /* Above modals/confirm dialogs (≤ 10000) and the tablet bottom nav (1050). */
+    z-index: 10001;
     display: flex;
     flex-direction: column;
     gap: 12px;
     pointer-events: none;
+    max-height: calc(100vh - 100px);
+    overflow: hidden;
+}
+
+/* Tablets/phones: bottom-anchored above the fixed bottom nav and the
+   "sin conexión" pill, so notices are within reach and never covered. */
+@media (max-width: 1024px) {
+    .toast-container {
+        top: auto;
+        right: 12px;
+        left: 12px;
+        bottom: calc(120px + env(safe-area-inset-bottom, 0px));
+        align-items: center;
+        flex-direction: column-reverse;
+        max-height: calc(100dvh - 160px);
+    }
+
+    .toast-stack {
+        width: 100%;
+        align-items: center;
+        flex-direction: column-reverse;
+    }
+
+    .toast {
+        width: 100%;
+        min-width: 0;
+        max-width: 560px;
+    }
+}
+
+.toast-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.toast-stack:empty {
+    display: none;
 }
 
 .toast {
@@ -18,10 +57,12 @@
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     min-width: 300px;
-    max-width: 400px;
+    max-width: 420px;
     pointer-events: all;
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
     transition: all 0.3s ease;
-    border-left: 4px solid;
+    border-left: 5px solid;
 }
 
 .toast-visible {
@@ -97,8 +138,35 @@
 .toast-message {
     flex: 1;
     font-size: 14px;
+    line-height: 1.4;
     color: var(--color-text);
     font-weight: 500;
+    overflow-wrap: anywhere;
+}
+
+.toast-count {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 6px;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 700;
+    background: var(--color-surface-hover);
+    color: var(--color-text-secondary);
+}
+
+/* Tinted backgrounds keep the type recognisable without relying on the stripe alone. */
+.toast-error { background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface)); }
+.toast-warning { background: color-mix(in srgb, var(--color-warning) 12%, var(--color-surface)); }
+.toast-success { background: color-mix(in srgb, var(--color-success) 10%, var(--color-surface)); }
+
+@media (prefers-reduced-motion: reduce) {
+    .toast,
+    .toast-visible,
+    .toast-hidden {
+        animation: none;
+        transition: none;
+    }
 }
 
 .toast-close {
@@ -113,6 +181,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.toast-close:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+.toast-close {
+    min-width: 32px;
+    min-height: 32px;
 }
 
 .toast-close:hover {

@@ -37,9 +37,10 @@ import advancedFeaturesRoutes from './routes/advanced-features.routes';
 import cateringRoutes from './routes/catering.routes';
 import categoryRoutes from './routes/category.routes';
 import menuBrandRoutes from './routes/menu-brand.routes';
-import { errorHandler } from './middlewares/errorHandler';
+import { apiNotFoundHandler, errorHandler } from './middlewares/errorHandler';
 import { idempotency, preAuthenticateIdempotentRequest } from './middlewares/idempotency';
 import { csrfProtection } from './middlewares/csrf';
+import { createApiRateLimiter, parseTrustProxy } from './middlewares/api-rate-limit';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './utils/swagger';
 import invoiceRoutes from './routes/invoice.routes';
@@ -64,8 +65,9 @@ app.get('/health', (_req, res) => {
     res.status(200).type('text/plain').send('ok');
 });
 
-// Trust proxy for correct IP detection behind reverse proxy
-app.set('trust proxy', 1);
+// Trust proxy for correct IP detection behind reverse proxy. TRUST_PROXY accepts
+// a hop count, true/false or a subnet list; default is one hop.
+app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
 
 // Middleware
 app.use(helmet({
@@ -87,6 +89,10 @@ app.use(cors({
     credentials: true,
     exposedHeaders: ['X-CSRF-Token'],
 }));
+
+// Generous global per-IP ceiling for the whole API, applied before body
+// parsing. Health checks, websocket upgrades and HMAC webhooks are exempt.
+app.use('/api', createApiRateLimiter());
 app.use(express.json({
     limit: '1mb',
     verify: (req, _res, buf) => {
@@ -163,7 +169,7 @@ app.use('/api/docs', swaggerAuth, swaggerUi.serve, swaggerUi.setup(swaggerSpec))
 app.param('id', (req, res, next, value) => {
     const parsed = parseInt(value, 10);
     if (isNaN(parsed) || parsed <= 0) {
-        return res.status(400).json({ success: false, message: 'Invalid ID: must be a positive integer' });
+        return res.status(400).json({ success: false, code: 'INVALID_ID', message: 'ID inválido: debe ser un número entero positivo' });
     }
     next();
 });
@@ -175,14 +181,14 @@ const isProd = process.env.NODE_ENV === 'production';
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: isProd ? 20 : 1000,
-    message: { success: false, message: 'Too many attempts, please try again later' },
+    message: { success: false, code: 'RATE_LIMITED', message: 'Demasiados intentos. Espera unos minutos e intenta de nuevo.' },
     standardHeaders: true,
     legacyHeaders: false
 });
 const webhookLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: isProd ? 120 : 2000,
-    message: { success: false, message: 'Too many webhook requests, please try again later' },
+    message: { success: false, code: 'RATE_LIMITED', message: 'Demasiadas solicitudes de webhook. Intenta de nuevo más tarde.' },
     standardHeaders: true,
     legacyHeaders: false
 });
@@ -245,6 +251,9 @@ app.get('/api/health', (req: Request, res: Response) => {
         timestamp: new Date().toISOString()
     });
 });
+
+// Unknown API routes answer JSON so clients can show a readable message.
+app.use('/api', apiNotFoundHandler);
 
 // Error handling middleware (must be last)
 app.use(errorHandler);

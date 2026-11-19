@@ -188,3 +188,38 @@ def test_sequence_enforces_frame_bounds(tmp_path: Path) -> None:
         engine.analyze([frame()] * 3, "TURN_LEFT", True)
     with pytest.raises(BiometricError, match="demasiados"):
         engine.analyze([frame()] * 7, "TURN_LEFT", True)
+
+
+def test_declared_dimensions_are_read_from_headers_without_decoding() -> None:
+    from app.engine import declared_image_dimensions
+
+    image = np.full((480, 640, 3), 120, dtype=np.uint8)
+    assert declared_image_dimensions(cv2.imencode(".jpg", image)[1].tobytes()) == (640, 480)
+    assert declared_image_dimensions(cv2.imencode(".png", image)[1].tobytes()) == (640, 480)
+    assert declared_image_dimensions(b"GIF89a" + b"\x00" * 100) is None
+    assert declared_image_dimensions(b"\xff\xd8\xff\xd9") is None
+
+
+def test_decode_rejects_oversized_declared_canvas_before_pixel_allocation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import struct
+    import zlib
+
+    def forbidden_decode(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("imdecode must not run for an oversized declared canvas")
+
+    monkeypatch.setattr(cv2, "imdecode", forbidden_decode)
+    engine = FaceEngine(settings(tmp_path))
+    ihdr = struct.pack(">IIBBBBB", 30_000, 30_000, 8, 2, 0, 0, 0)
+    bomb = (
+        b"\x89PNG\r\n\x1a\n"
+        + struct.pack(">I", len(ihdr))
+        + b"IHDR"
+        + ihdr
+        + struct.pack(">I", zlib.crc32(b"IHDR" + ihdr))
+        + b"\x00" * 200
+    )
+    with pytest.raises(BiometricError) as rejected:
+        engine._decode(frame(bomb))
+    assert rejected.value.code == "CAPTURE_DIMENSIONS_INVALID"

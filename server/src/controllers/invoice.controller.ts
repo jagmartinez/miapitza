@@ -4,14 +4,27 @@ import { OrderService } from '../services/order.service';
 import { getErrorMessage } from '../utils/error';
 import { assertBranchAccess, BranchScopeError } from '../utils/branch-scope';
 import { resolveBranchScope } from '../utils/branch-scope';
-import { parseQueryDateFrom, parseQueryDateTo } from '../utils/date-range';
+import { InvalidQueryDateError, parseQueryDateFrom, parseQueryDateTo } from '../utils/date-range';
+import { SettingService } from '../services/setting.service';
 import { CreditNoteService } from '../services/credit-note.service';
 import { InvoiceCancellationService } from '../services/invoice-cancellation.service';
 
 const INVOICE_NOT_FOUND_ERRORS = new Set([
     'Order not found',
-    'Order not found or unauthorized'
+    'Order not found or unauthorized',
+    'Orden no encontrada o no autorizada'
 ]);
+
+// Integrity failures raised in Spanish by CreditNoteService (snapshot/order mismatches).
+const CREDIT_NOTE_INTEGRITY_PREFIXES = [
+    'Las líneas de la factura',
+    'El subtotal bruto de la factura',
+    'La factura no corresponde a su orden',
+    'Los totales de la factura no se pueden distribuir',
+    'La instantánea de la nota de crédito',
+    'La nota de crédito no corresponde',
+    'Los totales de la nota de crédito no concilian',
+];
 
 function forwardInvoiceError(error: unknown, next: NextFunction) {
     if (error instanceof BranchScopeError) return next(error);
@@ -60,12 +73,13 @@ function forwardCreditNoteError(error: unknown, next: NextFunction) {
     if (error instanceof BranchScopeError) return next(error);
     const message = getErrorMessage(error);
     if (INVOICE_NOT_FOUND_ERRORS.has(message)) return next({ statusCode: 404, message: 'Orden no encontrada' });
-    if (message === 'Credit note not issued') return next({ statusCode: 409, message: 'La factura no tiene nota de crédito emitida' });
+    if (message === 'Credit note not issued' || message === 'La nota de crédito no ha sido emitida') return next({ statusCode: 409, message: 'La factura no tiene nota de crédito emitida' });
     if (message === 'Invoice cancellation not issued') return next({ statusCode: 409, message: 'La factura no tiene anulación registrada' });
     if (
         message.startsWith('Configure ') || message.startsWith('Solo una factura')
         || message.startsWith('Invoice snapshot') || message.startsWith('Credit note snapshot')
         || message.startsWith('Invoice cancellation snapshot')
+        || CREDIT_NOTE_INTEGRITY_PREFIXES.some((prefix) => message.startsWith(prefix))
     ) return next({ statusCode: 409, message });
     if (
         /idempotencia|motivo|mercadería|bodega|reembolso|pago|RUC|orden no entregada|factura ya tiene|cantidad|línea|excede|saldo fiscal/i.test(message)
@@ -102,6 +116,29 @@ export class InvoiceController {
             );
             res.json({ success: true, data });
         } catch (error: unknown) {
+            forwardInvoiceError(error, next);
+        }
+    }
+
+    static async listInvoices(req: Request, res: Response, next: NextFunction) {
+        try {
+            const companyId = req.user!.companyId;
+            const requestedBranchId = req.query.branchId ? Number(req.query.branchId) : undefined;
+            const branchId = resolveBranchScope(req.user!, requestedBranchId);
+            const timeZone = await SettingService.getTimezone(companyId);
+            const page = req.query.page ? Number.parseInt(String(req.query.page), 10) : undefined;
+            const limit = req.query.limit ? Number.parseInt(String(req.query.limit), 10) : undefined;
+            const result = await InvoiceService.listInvoices(companyId, {
+                branchId,
+                startDate: req.query.startDate ? parseQueryDateFrom(String(req.query.startDate), timeZone) : undefined,
+                endDate: req.query.endDate ? parseQueryDateTo(String(req.query.endDate), timeZone) : undefined,
+                search: typeof req.query.search === 'string' ? req.query.search : undefined,
+                page,
+                limit,
+            });
+            res.json({ success: true, ...result });
+        } catch (error: unknown) {
+            if (error instanceof InvalidQueryDateError) return next({ statusCode: 400, message: error.message });
             forwardInvoiceError(error, next);
         }
     }

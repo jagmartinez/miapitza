@@ -120,18 +120,21 @@ export default function PayrollRuleConfigurationPanel({
   const seed = configurationSeed(revisions);
   const seedStatutory = seed?.statutory;
   const [currency, setCurrency] = useState(seed?.currency ?? 'NIO');
-  const [weekly, setWeekly] = useState(seed?.regular.minuteDivisors.WEEKLY ?? '2400');
-  const [biweekly, setBiweekly] = useState(seed?.regular.minuteDivisors.BIWEEKLY ?? '4800');
-  const [fortnightly, setFortnightly] = useState(seed?.regular.minuteDivisors.FORTNIGHTLY ?? '4800');
-  const [monthly, setMonthly] = useState(seed?.regular.minuteDivisors.MONTHLY ?? '9600');
+  const [weekly, setWeekly] = useState(seed?.regular.minuteDivisors.WEEKLY ?? '3360');
+  const [biweekly, setBiweekly] = useState(seed?.regular.minuteDivisors.BIWEEKLY ?? '7200');
+  const [fortnightly, setFortnightly] = useState(seed?.regular.minuteDivisors.FORTNIGHTLY ?? '6720');
+  const [monthly, setMonthly] = useState(seed?.regular.minuteDivisors.MONTHLY ?? '14400');
   const [overtime, setOvertime] = useState(seed?.regular.overtimeMultiplier ?? '2');
+  const [holidayMultiplier, setHolidayMultiplier] = useState(seed?.regular.holidayWorkedMultiplier ?? '2');
+  const [restDayMultiplier, setRestDayMultiplier] = useState(seed?.regular.restDayWorkedMultiplier ?? '2');
   const [leaveDay, setLeaveDay] = useState(seed?.regular.paidLeaveUnitMinutes.DAYS ?? '480');
   const [leaveHour, setLeaveHour] = useState(seed?.regular.paidLeaveUnitMinutes.HOURS ?? '60');
   const [leaveMinute, setLeaveMinute] = useState(seed?.regular.paidLeaveUnitMinutes.MINUTES ?? '1');
+  const [aguinaldoMethod, setAguinaldoMethod] = useState<'HISTORICAL_PAID_COMPONENTS' | 'HIGHEST_MONTH_LAST_6_MONTHS'>(seed?.aguinaldo.method ?? 'HIGHEST_MONTH_LAST_6_MONTHS');
   const [lookbackDays, setLookbackDays] = useState(String(seed?.aguinaldo.lookbackDays ?? 365));
   const [incomeDivisor, setIncomeDivisor] = useState(seed?.aguinaldo.incomeDivisor ?? '12');
   const [prorationMode, setProrationMode] = useState<'NONE' | 'SERVICE_DAYS_RATIO'>(seed?.aguinaldo.prorationMode ?? 'SERVICE_DAYS_RATIO');
-  const [eligibleSources, setEligibleSources] = useState(seed?.aguinaldo.eligibleSources.join(', ') ?? 'ORDINARY, OVERTIME, PAID_LEAVE');
+  const [eligibleSources, setEligibleSources] = useState(seed?.aguinaldo.eligibleSources.join(', ') ?? 'ORDINARY, PAID_LEAVE');
   const companyTaxRegime = companyTaxProfile.taxRegime;
   const taxRegimeReference = companyTaxProfile.sourceReference ?? '';
   const regimeIncomeTaxApplicability = companyTaxProfile.incomeTaxWithholding ? 'APPLIES' as const : 'DOES_NOT_APPLY' as const;
@@ -185,6 +188,7 @@ export default function PayrollRuleConfigurationPanel({
       reference.trim().length >= 3 && (applicability === 'APPLIES' || exception.trim().length >= 3);
     const operationalDecimals = [weekly, biweekly, fortnightly, monthly, overtime, leaveDay, leaveHour, leaveMinute, incomeDivisor];
     if (!/^[A-Z]{3}$/.test(currency) || operationalDecimals.some((value) => !DECIMAL.test(value) || Number(value) <= 0)) issues.push('Completa los parámetros operativos de nómina y aguinaldo.');
+    if ([holidayMultiplier, restDayMultiplier].some((value) => !DECIMAL.test(value) || Number(value) < 1)) issues.push('Los multiplicadores de feriado y día de descanso trabajados deben ser 1 o mayores.');
     if (!Number.isInteger(Number(lookbackDays)) || Number(lookbackDays) < 1 || Number(lookbackDays) > 731 || !eligibleSources.split(',').some((value) => value.trim())) issues.push('Revisa el período y las fuentes elegibles del aguinaldo.');
     if (!companyTaxProfile.ready || !taxRegimeReference.trim() || (regimeIncomeTaxApplicability === 'DOES_NOT_APPLY' && regimeIncomeTaxException.trim().length < 3)) issues.push('Completa y confirma el perfil fiscal desde Empresas antes de guardar esta versión.');
     if (!obligationReady(inssApplicability, inssReference, inssException) || ![inssEmployeeRate, inssEmployerBelow, inssEmployerAtOrAbove].every(validPercent) || !Number.isInteger(Number(inssThreshold)) || Number(inssThreshold) < 1 || !DECIMAL.test(inssMinimumBase) || (inssApplicability === 'APPLIES' && Number(inssMinimumBase) <= 0)) issues.push('Revisa tasas, umbral, base mínima y fuente del INSS.');
@@ -197,7 +201,7 @@ export default function PayrollRuleConfigurationPanel({
     if (sourceReference.trim().length < 3 || evidenceReference.trim().length < 3 || uploadReason.trim().length < 3) issues.push('Agrega fuente general, evidencia y motivo de la revisión.');
     if (!regimeRuleConfirmed || !sourceConfirmed) issues.push('Faltan las dos confirmaciones finales.');
     return issues;
-  }, [brackets, companyTaxProfile.ready, conceptCatalogReady, currency, eligibleSources, evidenceReference, fortnightly, incomeDivisor, incomeTaxReference, inatecApplicability, inatecException, inatecRate, inatecReference, inssApplicability, inssEmployeeRate, inssEmployerAtOrAbove, inssEmployerBelow, inssException, inssMinimumBase, inssReference, inssThreshold, leaveDay, leaveHour, leaveMinute, lookbackDays, monthly, overtime, paymentConceptCatalog, periodsBiweekly, periodsFortnightly, periodsMonthly, periodsWeekly, regimeIncomeTaxApplicability, regimeIncomeTaxException, regimeRuleConfirmed, sourceConfirmed, sourceReference, taxRegimeReference, uploadReason, weekly, biweekly]);
+  }, [brackets, companyTaxProfile.ready, conceptCatalogReady, currency, eligibleSources, evidenceReference, fortnightly, holidayMultiplier, restDayMultiplier, incomeDivisor, incomeTaxReference, inatecApplicability, inatecException, inatecRate, inatecReference, inssApplicability, inssEmployeeRate, inssEmployerAtOrAbove, inssEmployerBelow, inssException, inssMinimumBase, inssReference, inssThreshold, leaveDay, leaveHour, leaveMinute, lookbackDays, monthly, overtime, paymentConceptCatalog, periodsBiweekly, periodsFortnightly, periodsMonthly, periodsWeekly, regimeIncomeTaxApplicability, regimeIncomeTaxException, regimeRuleConfirmed, sourceConfirmed, sourceReference, taxRegimeReference, uploadReason, weekly, biweekly]);
 
   const uploadReady = validationIssues.length === 0;
   const editable = rule.status === 'DRAFT' && !rule.activeConfigurationRevisionId;
@@ -216,10 +220,13 @@ export default function PayrollRuleConfigurationPanel({
         regular: {
           minuteDivisors: { WEEKLY: weekly, BIWEEKLY: biweekly, FORTNIGHTLY: fortnightly, MONTHLY: monthly },
           overtimeMultiplier: overtime,
+          holidayWorkedMultiplier: holidayMultiplier,
+          restDayWorkedMultiplier: restDayMultiplier,
           paidLeaveUnitMinutes: { DAYS: leaveDay, HOURS: leaveHour, MINUTES: leaveMinute },
         },
         aguinaldo: {
-          method: 'HISTORICAL_PAID_COMPONENTS',
+          method: aguinaldoMethod,
+          ...(aguinaldoMethod === 'HIGHEST_MONTH_LAST_6_MONTHS' ? { baseMonths: 6 } : {}),
           lookbackDays: Number(lookbackDays),
           incomeDivisor,
           prorationMode,
@@ -398,11 +405,13 @@ export default function PayrollRuleConfigurationPanel({
             <div className="hr-legal-advanced-grid">
               <fieldset><legend>Nómina</legend><div className="hr-legal-field-grid">
                 <label>Moneda de la corrida<input value={currency} maxLength={3} onChange={(event) => setCurrency(event.target.value.toUpperCase())} /><small>Código ISO de tres letras, por ejemplo NIO.</small></label>
-                <label>Multiplicador de hora extra<input type="number" min="0.0001" step="0.0001" value={overtime} onChange={(event) => setOvertime(event.target.value)} /><small>2 representa pago doble.</small></label>
+                <label>Multiplicador de hora extra<input type="number" min="0.0001" step="0.0001" value={overtime} onChange={(event) => setOvertime(event.target.value)} /><small>2 = pago doble: salario mensual ÷ 30 ÷ 8 × 2 (mensual ÷ 120 por hora).</small></label>
+                <label>Multiplicador de feriado trabajado<input type="number" min="1" step="0.0001" value={holidayMultiplier} onChange={(event) => setHolidayMultiplier(event.target.value)} /><small>Total sobre la hora ordinaria; 2 = pago doble (FERIADO_TRABAJADO).</small></label>
+                <label>Multiplicador de día de descanso trabajado<input type="number" min="1" step="0.0001" value={restDayMultiplier} onChange={(event) => setRestDayMultiplier(event.target.value)} /><small>Séptimo día (Art. 64 CT); 2 = pago doble (DESCANSO_TRABAJADO). Si coincide con feriado se paga sólo el mayor.</small></label>
                 <label>Divisor semanal (minutos)<input type="number" min="0.0001" step="0.0001" value={weekly} onChange={(event) => setWeekly(event.target.value)} /></label>
                 <label>Divisor quincenal (minutos)<input type="number" min="0.0001" step="0.0001" value={biweekly} onChange={(event) => setBiweekly(event.target.value)} /></label>
                 <label>Divisor catorcenal (minutos)<input type="number" min="0.0001" step="0.0001" value={fortnightly} onChange={(event) => setFortnightly(event.target.value)} /></label>
-                <label>Divisor mensual (minutos)<input type="number" min="0.0001" step="0.0001" value={monthly} onChange={(event) => setMonthly(event.target.value)} /></label>
+                <label>Divisor mensual (minutos)<input type="number" min="0.0001" step="0.0001" value={monthly} onChange={(event) => setMonthly(event.target.value)} /><small>Por defecto 30 días × 8 h = 14 400 (salario diario = mensual ÷ 30; incluye el séptimo día). También mide las ausencias que se descuentan del salario fijo.</small></label>
               </div></fieldset>
               <fieldset><legend>Permisos pagados</legend><div className="hr-legal-field-grid">
                 <label>Minutos por día<input type="number" min="0.0001" step="0.0001" value={leaveDay} onChange={(event) => setLeaveDay(event.target.value)} /></label>
@@ -410,8 +419,9 @@ export default function PayrollRuleConfigurationPanel({
                 <label>Minutos por minuto<input type="number" min="0.0001" step="0.0001" value={leaveMinute} onChange={(event) => setLeaveMinute(event.target.value)} /></label>
               </div></fieldset>
               <fieldset><legend>Aguinaldo</legend><div className="hr-legal-field-grid">
+                <label className="span-full">Base de cálculo<HrReactSelect value={aguinaldoMethod} onChange={(event) => setAguinaldoMethod(event.target.value as typeof aguinaldoMethod)}><option value="HIGHEST_MONTH_LAST_6_MONTHS">Salario más alto de los últimos 6 meses</option><option value="HISTORICAL_PAID_COMPONENTS">Promedio histórico (ingresos ÷ divisor)</option></HrReactSelect><small>El mes más alto se toma de las nóminas pagadas con las fuentes elegibles; luego se aplica el prorrateo por días de servicio.</small></label>
                 <label>Días históricos<input type="number" min="1" max="731" value={lookbackDays} onChange={(event) => setLookbackDays(event.target.value)} /><small>Ventana de componentes pagados que alimenta el cálculo.</small></label>
-                <label>Divisor de ingreso<input type="number" min="0.0001" step="0.0001" value={incomeDivisor} onChange={(event) => setIncomeDivisor(event.target.value)} /></label>
+                <label>Divisor de ingreso<input disabled={aguinaldoMethod === 'HIGHEST_MONTH_LAST_6_MONTHS'} type="number" min="0.0001" step="0.0001" value={incomeDivisor} onChange={(event) => setIncomeDivisor(event.target.value)} /></label>
                 <label>Prorrateo<HrReactSelect value={prorationMode} onChange={(event) => setProrationMode(event.target.value as typeof prorationMode)}><option value="SERVICE_DAYS_RATIO">Proporción por días de servicio</option><option value="NONE">Sin prorrateo</option></HrReactSelect></label>
                 <label className="span-full">Fuentes elegibles<input value={eligibleSources} onChange={(event) => setEligibleSources(event.target.value)} placeholder="ORDINARY, OVERTIME" /><small>Códigos separados por coma.</small></label>
               </div></fieldset>
@@ -496,6 +506,6 @@ function ReadOnlyConfiguration({ configuration, revision }: { configuration: HrP
       <div className="hr-legal-readonly-table-wrap"><table><thead><tr><th>Concepto</th><th>Tipo</th><th>IR laboral</th><th>INSS</th><th>INATEC</th><th>Estado</th><th>Fuente</th></tr></thead><tbody>{statutory.paymentConceptCatalog.map((concept) => <tr key={concept.code} className={!concept.active ? 'is-disabled' : undefined}><td><strong>{concept.name}</strong><small>{concept.code}</small></td><td>{concept.type === 'INCOME' ? 'Ingreso' : 'Deducción'}</td><td>{concept.incomeTaxTreatment ? taxLabels[concept.incomeTaxTreatment] : concept.incomeTaxDeductible ? 'Deducible' : 'No sujeto'}</td><td>{yesNo(concept.socialSecurityApplicable)}</td><td>{yesNo(concept.trainingContributionApplicable)}</td><td><span className={`hr-legal-status ${concept.active ? 'is-active' : 'is-inactive'}`}>{concept.active ? 'Activo' : 'Inhabilitado'}</span></td><td>{concept.sourceReference}</td></tr>)}</tbody></table></div>
     </section>
 
-    <details className="hr-legal-readonly-operational"><summary>Ver parámetros operativos de nómina y aguinaldo</summary><dl><div><dt>Moneda</dt><dd>{configuration.currency}</dd></div><div><dt>Multiplicador de horas extra</dt><dd>{configuration.regular.overtimeMultiplier}×</dd></div><div><dt>Histórico de aguinaldo</dt><dd>{configuration.aguinaldo.lookbackDays} días</dd></div><div><dt>Divisor de aguinaldo</dt><dd>{configuration.aguinaldo.incomeDivisor}</dd></div></dl></details>
+    <details className="hr-legal-readonly-operational"><summary>Ver parámetros operativos de nómina y aguinaldo</summary><dl><div><dt>Moneda</dt><dd>{configuration.currency}</dd></div><div><dt>Multiplicador de horas extra</dt><dd>{configuration.regular.overtimeMultiplier}×</dd></div><div><dt>Feriado trabajado</dt><dd>{configuration.regular.holidayWorkedMultiplier ?? '2'}×</dd></div><div><dt>Día de descanso trabajado</dt><dd>{configuration.regular.restDayWorkedMultiplier ?? '2'}×</dd></div><div><dt>Histórico de aguinaldo</dt><dd>{configuration.aguinaldo.lookbackDays} días</dd></div><div><dt>Base de aguinaldo</dt><dd>{configuration.aguinaldo.method === 'HIGHEST_MONTH_LAST_6_MONTHS' ? `Salario más alto de los últimos ${configuration.aguinaldo.baseMonths ?? 6} meses` : `Ingresos históricos ÷ ${configuration.aguinaldo.incomeDivisor}`}</dd></div></dl></details>
   </div>;
 }

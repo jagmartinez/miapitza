@@ -27,6 +27,7 @@ import { newIdempotencyKey } from '../utils/idempotency';
 import { filterMenuItemsByCategory, getMenuCategoryOptions } from '../utils/cateringMenuFilter';
 import { activateOnKeyboard } from '../utils/keyboardActivation';
 import './CateringMod.css';
+import { getApiErrorMessage } from '../utils/apiError';
 
 interface CateringClausesForm {
     manifiestan: string;
@@ -65,6 +66,18 @@ interface CateringPaymentEntry {
     status?: 'ACTIVE' | 'REVERSED';
     reversedAt?: string | null;
     reversalReason?: string | null;
+}
+
+interface CateringInventoryPreviewLine {
+    productId: number;
+    productName: string;
+    unit: string | null;
+    warehouseId: number;
+    warehouseName: string;
+    routed: boolean;
+    required: number;
+    available: number;
+    shortage: number;
 }
 
 interface CateringServiceCatalog {
@@ -243,6 +256,23 @@ export default function Catering() {
         setExternalRefundReferences({});
     }, [selectedEvent?.id]);
     const [finishWarehouseId, setFinishWarehouseId] = useState<number | null>(null);
+    const [finishPreview, setFinishPreview] = useState<CateringInventoryPreviewLine[] | null>(null);
+    const [finishPreviewError, setFinishPreviewError] = useState<string | null>(null);
+    const finishPreviewEventId = selectedEvent?.status === 'PAID' && formData.status === 'FINISHED' ? selectedEvent.id : null;
+    useEffect(() => {
+        setFinishPreview(null);
+        setFinishPreviewError(null);
+        if (finishPreviewEventId == null || !finishWarehouseId) return;
+        let cancelled = false;
+        cateringAPI.getInventoryPreview(finishPreviewEventId, finishWarehouseId)
+            .then((response) => {
+                if (!cancelled) setFinishPreview((response.data?.data?.lines ?? []) as CateringInventoryPreviewLine[]);
+            })
+            .catch((error: unknown) => {
+                if (!cancelled) setFinishPreviewError(getApiErrorMessage(error, 'No se pudo calcular el origen de los ingredientes'));
+            });
+        return () => { cancelled = true; };
+    }, [finishPreviewEventId, finishWarehouseId]);
 
     const menuCategoryOptions = useMemo(
         () => [{ value: 'all', label: 'Todas las categorías' }, ...getMenuCategoryOptions(allMenuItems)],
@@ -291,7 +321,7 @@ export default function Catering() {
             setEvents(response.data.data);
         } catch (error) {
             console.error('Error loading catering events:', error);
-            showError('No se pudieron cargar los eventos de catering.');
+            showError(getApiErrorMessage(error, 'No se pudieron cargar los eventos de catering'));
         } finally {
             setLoading(false);
         }
@@ -316,7 +346,7 @@ export default function Catering() {
             setSettings(settingsRes.data.data);
         } catch (error) {
             console.error('Error loading master data:', error);
-            showError('No se pudieron cargar sucursales, menú o métodos de pago de catering.');
+            showError(getApiErrorMessage(error, 'No se pudieron cargar sucursales, menú o métodos de pago de catering'));
         }
     }, [showError]);
 
@@ -362,7 +392,7 @@ export default function Catering() {
                 });
             } catch (error) {
                 console.error('Error loading event details:', error);
-                showError('No se pudo cargar el detalle del evento.');
+                showError(getApiErrorMessage(error, 'No se pudo cargar el detalle del evento'));
                 return;
             }
         } else {
@@ -438,7 +468,15 @@ export default function Catering() {
 
             if (selectedEvent) {
                 if (selectedEvent.status === 'PAID' && formData.status === 'FINISHED') {
-                    await cateringAPI.updateEvent(selectedEvent.id, { status: 'FINISHED', warehouseId: finishWarehouseId });
+                    const response = await cateringAPI.updateEvent(selectedEvent.id, { status: 'FINISHED', warehouseId: finishWarehouseId });
+                    // Same policy as sales: short stock does not block the finish;
+                    // the server records the deficit and returns a warning.
+                    const inventoryWarning = response.data?.data?.inventoryWarning;
+                    if (typeof inventoryWarning === 'string' && inventoryWarning) {
+                        showWarning(inventoryWarning);
+                    } else {
+                        showSuccess('Evento finalizado e inventario descontado.');
+                    }
                 } else {
                     await cateringAPI.updateEvent(selectedEvent.id, dataToSave);
                 }
@@ -449,10 +487,8 @@ export default function Catering() {
             setIsSidebarOpen(false);
         } catch (error) {
             console.error('Error saving event:', error);
-            const message = typeof error === 'object' && error !== null && 'response' in error
-                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
-                : undefined;
-            showError(message || 'No se pudo guardar el evento de catering.');
+            // The server message already carries its own lead ("No se pudo actualizar…").
+            showError(getApiErrorMessage(error));
         } finally {
             setSavingEvent(false);
         }
@@ -644,7 +680,7 @@ export default function Catering() {
             loadEvents();
         } catch (error) {
             console.error('Error deleting event:', error);
-            showError('No se pudo eliminar el evento de catering.');
+            showError(getApiErrorMessage(error, 'No se pudo eliminar el evento de catering'));
         }
     };
 
@@ -1418,6 +1454,48 @@ export default function Catering() {
                                                 placeholder="Seleccionar bodega de la sucursal..."
                                                 noOptionsMessage={() => 'No hay bodegas de sucursal disponibles'}
                                             />
+                                        )}
+                                        {finishPreviewEventId != null && finishWarehouseId != null && (
+                                            <div className="catering-finish-preview" aria-live="polite">
+                                                <small>
+                                                    Cada ingrediente se descuenta de la bodega asignada por las reglas de la sucursal;
+                                                    sin regla, de la bodega seleccionada.
+                                                </small>
+                                                {finishPreviewError && <small role="alert">{finishPreviewError}</small>}
+                                                {finishPreview && finishPreview.length === 0 && (
+                                                    <small>El evento no tiene ingredientes con receta para descontar.</small>
+                                                )}
+                                                {finishPreview && finishPreview.length > 0 && (
+                                                    <table className="catering-finish-preview-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th scope="col">Ingrediente</th>
+                                                                <th scope="col">Bodega</th>
+                                                                <th scope="col">Requerido</th>
+                                                                <th scope="col">Disponible</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {finishPreview.map((line) => (
+                                                                <tr key={line.productId} className={line.shortage > 0 ? 'is-short' : undefined}>
+                                                                    <td>{line.productName}</td>
+                                                                    <td>{line.warehouseName}{line.routed ? ' (regla)' : ''}</td>
+                                                                    <td>{line.required} {line.unit ?? ''}</td>
+                                                                    <td>
+                                                                        {line.available} {line.unit ?? ''}
+                                                                        {line.shortage > 0 ? ` (faltan ${line.shortage})` : ''}
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                )}
+                                                {finishPreview?.some((line) => line.shortage > 0) && (
+                                                    <small>
+                                                        Hay faltantes: como en ventas, el evento se finaliza igual y se registra existencia negativa.
+                                                    </small>
+                                                )}
+                                            </div>
                                         )}
                                         <div className="modal-input-group">
                                             <label htmlFor="catering-people-count">Invitados</label>

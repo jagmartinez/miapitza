@@ -1,6 +1,8 @@
 import { db, SyncItem } from './db';
 import axios from 'axios';
 import { normalizeApiBaseUrl } from './api';
+import { publishNotice } from './notify';
+import { describeApiError } from '../utils/apiError';
 
 const CACHE_TTL: Record<string, number> = {
     '/products': 5 * 60 * 1000,
@@ -35,6 +37,54 @@ export function getCurrentOfflineOwnerKey(): string | null {
         return user?.id && user?.companyId ? `${user.companyId}:${user.id}` : null;
     } catch {
         return null;
+    }
+}
+
+/**
+ * Conflicts the server reports as transient: a deadlock/write conflict that
+ * was rolled back, a saturated connection pool, or the same idempotency key
+ * still being processed by an earlier attempt. Retrying with the same key is
+ * safe and expected; failing them would drop valid offline work.
+ */
+export const TRANSIENT_CONFLICT_CODES: ReadonlySet<string> = new Set([
+    'CONCURRENT_UPDATE',
+    'DATABASE_BUSY',
+    'IDEMPOTENCY_IN_PROGRESS',
+]);
+
+/** True when a failed sync attempt is permanent and must not be retried. */
+export function isPermanentSyncFailure(httpStatus: number | undefined, code?: unknown): boolean {
+    if (!httpStatus || httpStatus < 400 || httpStatus >= 500) return false;
+    if (httpStatus === 408 || httpStatus === 429) return false;
+    if (httpStatus === 409 && typeof code === 'string' && TRANSIENT_CONFLICT_CODES.has(code)) return false;
+    return true;
+}
+
+interface SyncOutcome {
+    synced: number;
+    /** User-facing reasons for operations that will not be retried automatically. */
+    failed: string[];
+}
+
+/** Tell the operator what happened to work queued while offline. */
+function reportSyncOutcome(outcome: SyncOutcome) {
+    if (outcome.failed.length > 0) {
+        const count = outcome.failed.length;
+        publishNotice({
+            type: 'error',
+            dedupeKey: 'offline-sync-failed',
+            duration: 12000,
+            message: `${count === 1 ? 'Una operación guardada sin conexión no se pudo sincronizar' : `${count} operaciones guardadas sin conexión no se pudieron sincronizar`}: ${outcome.failed[0].replace(/[.\s]+$/, '')}. Revísalas en el panel de sincronización para reintentar o descartar.`,
+        });
+    }
+    if (outcome.synced > 0) {
+        publishNotice({
+            type: 'success',
+            dedupeKey: 'offline-sync-ok',
+            message: outcome.synced === 1
+                ? 'Se sincronizó 1 operación pendiente.'
+                : `Se sincronizaron ${outcome.synced} operaciones pendientes.`,
+        });
     }
 }
 
@@ -77,7 +127,10 @@ class OfflineManager {
         return this.isOnline;
     }
 
-    public async enqueueRequest(item: Omit<SyncItem, 'id' | 'timestamp' | 'status' | 'retryCount' | 'lastError' | 'idempotencyKey' | 'ownerKey'>) {
+    public async enqueueRequest(
+        item: Omit<SyncItem, 'id' | 'timestamp' | 'status' | 'retryCount' | 'lastError' | 'idempotencyKey' | 'ownerKey'>
+            & { idempotencyKey?: string | null },
+    ) {
         const ownerKey = getCurrentOfflineOwnerKey();
         if (!ownerKey) throw new Error('No authenticated offline owner');
         await db.syncQueue.add({
@@ -87,7 +140,9 @@ class OfflineManager {
             status: item.dependencyKey ? 'blocked' : 'pending',
             retryCount: 0,
             lastError: null,
-            idempotencyKey: generateIdempotencyKey(),
+            // Reuse the caller's action key so a replay after an ambiguous online
+            // attempt deduplicates server-side instead of creating a twin.
+            idempotencyKey: item.idempotencyKey || generateIdempotencyKey(),
             nextAttemptAt: null,
         });
     }
@@ -174,7 +229,15 @@ class OfflineManager {
 
     public processSyncQueue(): Promise<void> {
         if (this.syncInFlight) return this.syncInFlight;
-        const run = this.runSyncQueue();
+        // Callers fire-and-forget this; a storage failure must surface as a
+        // notice instead of an unhandled rejection that only reaches the console.
+        const run = this.runSyncQueue().catch((error: unknown) => {
+            publishNotice({
+                type: 'warning',
+                dedupeKey: 'offline-sync-crash',
+                message: `No se pudo procesar la cola de sincronización: ${describeApiError(error).message}`,
+            });
+        });
         this.syncInFlight = run;
         void run.finally(() => {
             if (this.syncInFlight === run) this.syncInFlight = null;
@@ -225,6 +288,15 @@ class OfflineManager {
     }
 
     private async runSyncQueue() {
+        const outcome: SyncOutcome = { synced: 0, failed: [] };
+        try {
+            await this.runSyncQueueItems(outcome);
+        } finally {
+            reportSyncOutcome(outcome);
+        }
+    }
+
+    private async runSyncQueueItems(outcome: SyncOutcome) {
         if (!this.isOnline) return;
 
         const ownerKey = getCurrentOfflineOwnerKey();
@@ -279,6 +351,7 @@ class OfflineManager {
                 const failedDependency = dependencies.find((candidate) => candidate.status === 'failed');
                 if (failedDependency) {
                     const cause = failedDependency.lastError || 'La operación previa no pudo sincronizarse';
+                    outcome.failed.push(`Dependencia fallida: ${cause}`);
                     await db.syncQueue.update(item.id!, {
                         status: 'failed',
                         nextAttemptAt: null,
@@ -321,17 +394,20 @@ class OfflineManager {
 
                 await db.syncQueue.delete(item.id!);
                 processedIds.add(item.id!);
+                outcome.synced += 1;
             } catch (error: unknown) {
                 const retryCount = item.retryCount + 1;
-                const axiosErr = error as { response?: { status?: number; data?: { message?: string } }; message?: string };
+                const axiosErr = error as { response?: { status?: number; data?: { message?: string; code?: unknown } }; message?: string };
                 const lastError = axiosErr?.response?.data?.message || axiosErr?.message || 'Unknown sync error';
                 const httpStatus = axiosErr?.response?.status;
 
-                // Don't retry client errors (4xx) except 408, 429
-                const isClientError = httpStatus && httpStatus >= 400 && httpStatus < 500 && httpStatus !== 408 && httpStatus !== 429;
+                // Don't retry client errors (4xx) except 408, 429 and transient 409s
+                // (deadlock, busy pool, same idempotency key still in flight).
+                const isClientError = isPermanentSyncFailure(httpStatus, axiosErr?.response?.data?.code);
 
                 if (retryCount >= MAX_RETRIES || isClientError) {
                     const terminalError = isClientError ? `[${httpStatus}] ${lastError}` : lastError;
+                    outcome.failed.push(describeApiError(error).message);
                     await db.syncQueue.update(item.id!, {
                         retryCount,
                         status: 'failed',

@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
 import { useNavigate } from 'react-router-dom';
 import { settingsAPI, uploadAPI, backupAPI, salesChannelsAPI } from '../services/api';
 import Card from '../components/Card';
@@ -115,7 +117,7 @@ export default function Settings() {
             setSettingsLoaded(true);
         } catch (error) {
             console.error('Error loading settings:', error);
-            setSettingsLoadError('No fue posible recuperar la configuración vigente. El guardado permanecerá bloqueado para proteger los valores existentes.');
+            setSettingsLoadError(getApiErrorMessage(error, 'No fue posible recuperar la configuración vigente (el guardado permanecerá bloqueado para proteger los valores existentes)'));
         } finally {
             setLoading(false);
         }
@@ -126,8 +128,8 @@ export default function Settings() {
             setChannelsLoading(true);
             const res = await salesChannelsAPI.getAll();
             setChannels(res.data.data || []);
-        } catch {
-            console.error('Error loading sales channels');
+        } catch (error) {
+            notifyError(error, 'No se pudieron cargar los canales de venta');
         } finally {
             setChannelsLoading(false);
         }
@@ -137,8 +139,8 @@ export default function Settings() {
         try {
             await salesChannelsAPI.ensureDefaults();
             await loadChannels();
-        } catch {
-            showError('Error al crear canales por defecto');
+        } catch (err) {
+            showError(getApiErrorMessage(err, 'Error al crear canales por defecto'));
         }
     };
 
@@ -151,8 +153,8 @@ export default function Settings() {
                 isActive: channel.isActive,
             });
             await loadChannels();
-        } catch {
-            showError('Error al guardar configuración del canal');
+        } catch (err) {
+            showError(getApiErrorMessage(err, 'Error al guardar configuración del canal'));
         }
     };
 
@@ -195,7 +197,7 @@ export default function Settings() {
             loadSettings();
         } catch (error) {
             console.error('Error saving settings:', error);
-            showError('Error al guardar la configuración');
+            showError(getApiErrorMessage(error, 'Error al guardar la configuración'));
         } finally {
             setSaving(false);
         }

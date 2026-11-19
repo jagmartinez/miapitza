@@ -4,6 +4,8 @@ import { CostingService } from './costing.service';
 import { ProductionRecipeService } from './production-recipe.service';
 import { AuditLogService } from './audit-log.service';
 import { InventoryEngineService } from './inventory-engine.service';
+import { planSaleReturnFromSlices } from './inventory-consumption.service';
+import { transactionWithLockRetry } from '../utils/transaction-retry';
 
 type Tx = Prisma.TransactionClient;
 
@@ -136,13 +138,15 @@ export class ProductionOrderService {
         let canProduce = true;
 
         for (const line of cost.lines) {
-            const requiredQuantity = round6(line.baseQuantity * scaleFactor);
+            // Keep full precision (D9): rounding here turned tiny requirements
+            // into 0 and skewed totalCost. Persistence rounds to the column scale.
+            const requiredQuantity = line.baseQuantity * scaleFactor;
 
             const stock = await db.stock.findUnique({
                 where: { warehouseId_productId: { warehouseId, productId: line.componentProductId } }
             });
             const availableQuantity = stock ? Number(stock.quantity) : 0;
-            const sufficient = availableQuantity >= requiredQuantity;
+            const sufficient = availableQuantity >= requiredQuantity - 1e-9;
 
             const activeSub = await db.productionRecipe.findFirst({
                 where: { productId: line.componentProductId, companyId, status: 'ACTIVE' },
@@ -238,7 +242,9 @@ export class ProductionOrderService {
         const orderDate = data.date ? new Date(data.date) : new Date();
         if (Number.isNaN(orderDate.getTime())) throw new Error('La fecha de producción no es válida.');
 
-        const order = await prisma.$transaction(async (tx) => {
+        // Company X -> Warehouse: retried on deadlock/lock timeout (movement
+        // inserts take FK S-locks on Company).
+        const order = await transactionWithLockRetry(async (tx) => {
             // Serialize code allocation and revalidate the complete recipe/scope
             // snapshot in the same transaction that creates the order. Otherwise
             // an active recipe or an empty warehouse could change after preview.
@@ -538,13 +544,14 @@ export class ProductionOrderService {
             // lock in a deterministic order before the first movement so concurrent
             // productions with crossed BOM/output products cannot deadlock or leave
             // a stale FIFO display cost.
-            const productIds = [...new Set([
-                lockedOrder.productId,
-                ...lockedOrder.items.map((item) => item.componentProductId)
-            ])].sort((a, b) => a - b);
-            for (const productId of productIds) {
-                await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${productId} AND companyId = ${companyId} FOR UPDATE`;
-            }
+            // Canonical order Warehouse -> Products (ascending) -> Stock, same as
+            // order completion, purchase receipt and transfers.
+            await InventoryEngineService.lockInventoryScope(
+                tx,
+                companyId,
+                [lockedOrder.warehouseId],
+                [lockedOrder.productId, ...lockedOrder.items.map((item) => item.componentProductId)]
+            );
 
             let realCost = 0;
 
@@ -606,8 +613,13 @@ export class ProductionOrderService {
                 });
             }
 
-            realCost = round6(realCost);
-            const realUnitCost = producedQuantity > 0 ? round6(realCost / producedQuantity) : 0;
+            // D9: value the output IN at exactly realCost. The unit cost is derived
+            // unrounded (quantity * unitCost === realCost); only the persisted
+            // order fields are rounded to their Decimal(18, 6) scale.
+            const exactRealCost = realCost;
+            const exactRealUnitCost = producedQuantity > 0 ? exactRealCost / producedQuantity : 0;
+            realCost = round6(exactRealCost);
+            const realUnitCost = round6(exactRealUnitCost);
 
             // 2. Produce output (IN) at real unit cost.
             // Stock GLOBAL del producto fabricado ANTES de la entrada (suma de todas
@@ -631,7 +643,7 @@ export class ProductionOrderService {
                 productId: lockedOrder.productId,
                 userId,
                 quantity: producedQuantity,
-                unitCost: realUnitCost,
+                unitCost: exactRealUnitCost,
                 reason: `Producción ${lockedOrder.code}: entrada de producto fabricado`,
                 reference: PROD_REF(lockedOrder.id),
                 sourceType: 'PRODUCTION'
@@ -640,7 +652,7 @@ export class ProductionOrderService {
             // 3. Fold into the OUTPUT product's weighted-average cost using GLOBAL stock
             // (coherente con el costeo global; previousGlobalStock = suma de todas las bodegas).
             // productionOrderId enables exact cost reversal on cancellation (#1).
-            await CostingService.applyProductionCost(tx, lockedOrder.productId, companyId, producedQuantity, realUnitCost, previousGlobalStock, lockedOrder.id);
+            await CostingService.applyProductionCost(tx, lockedOrder.productId, companyId, producedQuantity, exactRealUnitCost, previousGlobalStock, lockedOrder.id);
 
             // 4. Mark order finished
             const updated = await tx.productionOrder.update({
@@ -705,16 +717,19 @@ export class ProductionOrderService {
 
             const wasFinished = lockedOrder.status === 'FINISHED';
             if (wasFinished) {
-                const productIds = [...new Set([
-                    lockedOrder.productId,
-                    ...lockedOrder.items.map((item) => item.componentProductId)
-                ])].sort((a, b) => a - b);
-                for (const productId of productIds) {
-                    await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${productId} AND companyId = ${companyId} FOR UPDATE`;
-                }
-                // Reverse the produced OUTPUT: take it back OUT of stock (valued at
-                // the product's current moving-average cost — bespoke, passed
-                // explicitly so the engine preserves the legacy number).
+                await InventoryEngineService.lockInventoryScope(
+                    tx,
+                    companyId,
+                    [lockedOrder.warehouseId],
+                    [lockedOrder.productId, ...lockedOrder.items.map((item) => item.componentProductId)]
+                );
+                // Method in force for this warehouse, read under its lock.
+                const isFifoCosting = (await InventoryEngineService.readWarehouseCostingMethod(
+                    tx, companyId, lockedOrder.warehouseId
+                )) === 'FIFO';
+
+                // Reverse the produced OUTPUT: take it back OUT of stock at the
+                // order's real cost (bespoke, passed explicitly).
                 const producedQuantity = Number(lockedOrder.producedQuantity);
                 if (producedQuantity > 0) {
                     const product = await tx.product.findFirst({
@@ -729,15 +744,45 @@ export class ProductionOrderService {
                         select: { quantity: true }
                     });
                     const currentQty = outStock ? Number(outStock.quantity) : 0;
-                    if (currentQty < producedQuantity) {
+                    const fmt = (n: number) => Number(n.toFixed(6)).toString();
+                    if (currentQty < producedQuantity - 1e-9) {
                         throw new Error(
-                            'No se puede anular: el producto fabricado ya fue consumido/vendido y no hay existencia suficiente para revertir.'
+                            `No se puede anular: se produjeron ${fmt(producedQuantity)} y solo hay ${fmt(Math.max(0, currentQty))} ` +
+                            `en existencia en el almacén (faltan ${fmt(producedQuantity - Math.max(0, currentQty))} ya consumidas/vendidas). ` +
+                            'Reponga la existencia o registre un ajuste antes de anular.'
                         );
                     }
+                    // D6: under FIFO the output must still sit in THIS order's
+                    // layer (layer identity is the cost). Under WEIGHTED_AVERAGE
+                    // units are fungible: removing produced qty at the order's real
+                    // cost through a normal OUT is exact, even if some of this
+                    // order's units were sold and replaced by other entries.
+                    if (isFifoCosting) {
+                        const ownLayers = await tx.inventoryBatch.findMany({
+                            where: {
+                                companyId,
+                                warehouseId: lockedOrder.warehouseId,
+                                productId: lockedOrder.productId,
+                                sourceRef: PROD_REF(lockedOrder.id),
+                                remainingQty: { gt: 0 }
+                            },
+                            select: { remainingQty: true }
+                        });
+                        const remainingInLayer = ownLayers.reduce((sum, layer) => sum + Number(layer.remainingQty), 0);
+                        if (remainingInLayer < producedQuantity - 1e-9) {
+                            throw new Error(
+                                `No se puede anular: con costeo FIFO se debe revertir el lote de esta orden, pero de las ` +
+                                `${fmt(producedQuantity)} unidades producidas ya se consumieron ${fmt(producedQuantity - remainingInLayer)} ` +
+                                `(quedan ${fmt(remainingInLayer)} en el lote). Registre un ajuste en lugar de anular.`
+                            );
+                        }
+                    }
                     // Reconcile against the original production entry, not the
-                    // product's later moving average. The exact source layer guard
-                    // below ensures only this order's still-open output is removed.
-                    const unitCost = Number(lockedOrder.realUnitCost);
+                    // product's later moving average: exact realCost / produced.
+                    const realCostTotal = Number(lockedOrder.realCost);
+                    const unitCost = Number.isFinite(realCostTotal) && realCostTotal > 0
+                        ? realCostTotal / producedQuantity
+                        : Number(lockedOrder.realUnitCost);
                     await InventoryEngineService.applyMovement(tx, {
                         type: 'OUT',
                         companyId,
@@ -748,7 +793,7 @@ export class ProductionOrderService {
                         unitCost,
                         reason: `Anulación producción ${lockedOrder.code}: reversa de producto fabricado`,
                         reference: PROD_REF(lockedOrder.id),
-                        consumeSourceRef: PROD_REF(lockedOrder.id),
+                        ...(isFifoCosting ? { consumeSourceRef: PROD_REF(lockedOrder.id) } : {}),
                         productName: product?.name
                     });
                 }
@@ -759,11 +804,6 @@ export class ProductionOrderService {
                 // stays stale when an intervening receipt changed the average
                 // between finish and cancel. FIFO averages are refreshed by the
                 // engine from remaining layers.
-                const companyCosting = await tx.company.findUnique({
-                    where: { id: companyId },
-                    select: { costingMethod: true }
-                });
-                const isFifoCosting = (companyCosting?.costingMethod || 'WEIGHTED_AVERAGE') === 'FIFO';
                 const orderedItems = [...lockedOrder.items].sort((a, b) => a.componentProductId - b.componentProductId);
                 for (const item of orderedItems) {
                     const consumed = Number(item.consumedQuantity);
@@ -788,9 +828,19 @@ export class ProductionOrderService {
                         : [];
                     const restoredQuantity = storedLayers.reduce((sum, layer) => sum + layer.quantity, 0);
                     const exactLayers = Math.abs(restoredQuantity - consumed) <= 1e-6 ? storedLayers : undefined;
-                    const restoreUnitCost = exactLayers && exactLayers.length > 0
-                        ? exactLayers.reduce((sum, layer) => sum + layer.quantity * layer.unitCost, 0) / consumed
+                    // FIFO: the layers ARE the financial value. WA: the OUT was
+                    // valued at the moving average (item.totalCost), while the
+                    // layers only carry physical provenance; restoring at layer
+                    // cost would gain/lose value versus what was consumed.
+                    const consumedTotalCost = Number(item.totalCost);
+                    const waRestoreUnitCost = Number.isFinite(consumedTotalCost) && consumedTotalCost > 0
+                        ? consumedTotalCost / consumed
                         : Number(item.unitCost);
+                    const restoreUnitCost = isFifoCosting && exactLayers && exactLayers.length > 0
+                        ? exactLayers.reduce((sum, layer) => sum + layer.quantity * layer.unitCost, 0) / consumed
+                        : isFifoCosting
+                            ? Number(item.unitCost)
+                            : waRestoreUnitCost;
 
                     await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${item.componentProductId} AND companyId = ${companyId} FOR UPDATE`;
                     const componentGlobalAgg = await tx.stock.aggregate({
@@ -799,7 +849,33 @@ export class ProductionOrderService {
                     });
                     const previousComponentStock = Number(componentGlobalAgg._sum.quantity || 0);
 
-                    await InventoryEngineService.applyMovement(tx, {
+                    // A component consumed on a negative balance opened deficit
+                    // slices: price that part from the consumption's OWN slices.
+                    const hasUnbacked = !!exactLayers?.some((layer) => layer.sourceRef == null);
+                    const componentOuts = hasUnbacked
+                        ? await tx.inventoryMovement.findMany({
+                            where: {
+                                companyId,
+                                warehouseId: lockedOrder.warehouseId,
+                                productId: item.componentProductId,
+                                reference: PROD_REF(lockedOrder.id),
+                                type: 'OUT'
+                            },
+                            select: { id: true }
+                        })
+                        : [];
+                    const plan = hasUnbacked && exactLayers
+                        ? await planSaleReturnFromSlices(tx, {
+                            companyId,
+                            warehouseId: lockedOrder.warehouseId,
+                            productId: item.componentProductId,
+                            saleMovementIds: componentOuts.map((movement) => movement.id),
+                            layers: exactLayers
+                        })
+                        : null;
+                    const adjustment = plan && Math.abs(plan.adjustment) > 1e-9 ? plan.adjustment : 0;
+
+                    const restored = await InventoryEngineService.applyMovement(tx, {
                         type: 'IN',
                         companyId,
                         warehouseId: lockedOrder.warehouseId,
@@ -807,11 +883,14 @@ export class ProductionOrderService {
                         userId,
                         quantity: consumed,
                         unitCost: restoreUnitCost,
-                        inboundLayers: exactLayers,
+                        inboundLayers: plan?.layers ?? exactLayers,
+                        ...(adjustment !== 0 ? { restoredValueAdjustment: adjustment } : {}),
+                        ...(plan?.returnedOpenSlices.length ? { returnedOpenSlices: plan.returnedOpenSlices } : {}),
                         reason: `Anulación producción ${lockedOrder.code}: reversa de insumo`,
                         reference: PROD_REF(lockedOrder.id),
                         sourceType: exactLayers ? undefined : 'ADJUSTMENT'
                     });
+                    await plan?.commit(restored.movementId);
 
                     // WA needs an explicit fold. FIFO IN does not auto-sync
                     // (preserves receipt history snapshots), so refresh here.
@@ -827,8 +906,8 @@ export class ProductionOrderService {
                             item.componentProductId,
                             companyId,
                             consumed,
-                            restoreUnitCost,
-                            previousComponentStock
+                            restoreUnitCost + adjustment / consumed,
+                            Math.max(0, previousComponentStock)
                         );
                     }
                 }

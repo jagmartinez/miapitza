@@ -145,9 +145,20 @@ export class AuthService {
             await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
             throw new Error('Credenciales inválidas');
         }
-        await loginAttemptService.assertAllowed(user.id);
+        try {
+            await loginAttemptService.assertAllowed(user.id, ip);
+        } catch (lockError) {
+            // Keep the lock server-side only: a distinct client message would
+            // reveal which usernames exist. Equalize timing with the bcrypt path.
+            console.warn('[AUTH] Login blocked by active lockout', { userId: user.id });
+            await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+            if (lockError instanceof Error && /temporarily locked/i.test(lockError.message)) {
+                throw new Error('Credenciales inválidas');
+            }
+            throw lockError;
+        }
         if (user.status !== 'ACTIVE') {
-            await loginAttemptService.recordFailure(user.id);
+            await loginAttemptService.recordFailure(user.id, ip);
             throw new Error('Credenciales inválidas'); // Don't reveal account status
         }
 
@@ -157,20 +168,20 @@ export class AuthService {
         ])).filter((name) => name !== ROLES.SUPERADMIN || user.role.name === ROLES.SUPERADMIN);
         const isSuperAdmin = authoritativeRoleNames.includes(ROLES.SUPERADMIN);
         if ((!user.company?.active || (user.branchId && user.branch?.status !== 'ACTIVE')) && !isSuperAdmin) {
-            await loginAttemptService.recordFailure(user.id);
+            await loginAttemptService.recordFailure(user.id, ip);
             throw new Error('Credenciales inválidas');
         }
         if (
             !isSuperAdmin && user.branchId && user.allowedBranches.length > 0 &&
             !user.allowedBranches.some((entry) => entry.branchId === user.branchId)
         ) {
-            await loginAttemptService.recordFailure(user.id);
+            await loginAttemptService.recordFailure(user.id, ip);
             throw new Error('Credenciales inválidas');
         }
 
         const isValidPassword = await bcrypt.compare(password, user.password);
         if (!isValidPassword) {
-            await loginAttemptService.recordFailure(user.id);
+            await loginAttemptService.recordFailure(user.id, ip);
             throw new Error('Credenciales inválidas');
         }
 
@@ -186,12 +197,20 @@ export class AuthService {
                 valid2FA = await TwoFactorService.validateRecoveryCode(user.id, twoFactorCode);
             }
             if (!valid2FA) {
-                await loginAttemptService.recordFailure(user.id);
+                await loginAttemptService.recordFailure(user.id, ip);
                 throw new Error('Código 2FA inválido');
             }
         }
 
-        await loginAttemptService.recordSuccess(user.id);
+        try {
+            await loginAttemptService.recordSuccess(user.id, ip);
+        } catch (lockError) {
+            // A lock established concurrently by another replica: same generic message.
+            if (lockError instanceof Error && /temporarily locked/i.test(lockError.message)) {
+                throw new Error('Credenciales inválidas');
+            }
+            throw lockError;
+        }
 
         // Check password expiry
         let passwordExpired = false;

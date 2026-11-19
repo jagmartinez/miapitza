@@ -48,6 +48,26 @@ const REASON_GUIDANCE: Record<string, string> = {
     CAPTURE_BLURRY: 'Limpia la cámara, mejora la iluminación y mantén el teléfono inmóvil durante la captura.',
     FACE_NOT_MATCHED: 'Retira mascarilla o lentes oscuros y repite la prueba con el rostro de frente.',
     LIVENESS_FAILED: 'Repite la prueba y gira únicamente cuando la pantalla lo indique.',
+    FACE_NOT_FOUND: 'Centra tu cara dentro del óvalo, de frente y sin gorra, mascarilla ni lentes oscuros.',
+    MULTIPLE_FACES: 'Solo debe aparecer tu rostro. Pide a las demás personas que se aparten de la cámara.',
+    FACE_TOO_CLOSE: 'Aléjate un poco hasta que todo tu rostro quede dentro del óvalo.',
+    CAPTURE_TOO_DARK: 'Busca una luz frontal; evita lugares oscuros o con la luz detrás de ti.',
+    CAPTURE_TOO_BRIGHT: 'Evita la luz directa o el sol sobre el rostro y vuelve a intentarlo.',
+    PASSIVE_LIVENESS_FAILED: 'Usa tu rostro real frente a la cámara; no se aceptan fotos, pantallas ni videos.',
+    ACTIVE_LIVENESS_FAILED: 'Empieza mirando al frente y gira despacio solo cuando aparezca “AHORA GIRA”.',
+    ACTIVE_LIVENESS_WRONG_DIRECTION: 'Giraste hacia el lado contrario. Sigue la flecha mostrada en la cámara.',
+    IDENTITY_CHANGED_DURING_CAPTURE: 'La misma persona debe aparecer en todos los cuadros de la secuencia.',
+    FACE_PROVIDER_UNAVAILABLE: 'El servicio de reconocimiento facial no respondió. El intento quedó registrado para revisión; reintenta en unos minutos.',
+    FACE_PROVIDER_ERROR: 'El servicio de reconocimiento facial falló. El intento quedó registrado para revisión.',
+    BIOMETRIC_PROFILE_REQUIRED: 'Primero completa tu enrolamiento en “Mi biometría”.',
+    BIOMETRIC_ENROLLMENT_PENDING_APPROVAL: 'Registro facial pendiente de aprobación de RRHH. Podrás marcar cuando Recursos Humanos lo apruebe.',
+    BIOMETRIC_RETENTION_EXPIRED: 'Tu plantilla expiró por la política de retención. Vuelve a enrolarte en “Mi biometría”.',
+    BIOMETRIC_CONSENT_STALE: 'La política de consentimiento cambió. Vuelve a enrolarte en “Mi biometría” para aceptar la versión vigente.',
+    BIOMETRIC_REENROLL_REQUIRED: 'Tu perfil biométrico debe renovarse. Vuelve a enrolarte en “Mi biometría”.',
+    TEMPLATE_NOT_FOUND: 'Tu plantilla no está disponible. Vuelve a enrolarte en “Mi biometría”.',
+    TEMPLATE_REVOKED: 'Tu plantilla fue revocada. Vuelve a enrolarte en “Mi biometría”.',
+    TEMPLATE_EXPIRED: 'Tu plantilla expiró. Vuelve a enrolarte en “Mi biometría”.',
+    TEMPLATE_MODEL_MISMATCH: 'El modelo facial se actualizó. Vuelve a enrolarte en “Mi biometría”.',
     CHECK_IN_LATE: 'La hora ya superó la tolerancia del turno. El intento será una novedad de horario, no un fallo del GPS.',
     CHECK_IN_TOO_EARLY: 'Espera a que inicie la ventana permitida o revisa el turno publicado.',
     GEOFENCE_NOT_CONFIGURED: 'La sucursal necesita una geocerca activa y versionada antes de permitir marcajes.',
@@ -115,4 +135,21 @@ export function presentAttendanceChecks(checks: HrAttendancePunchResult['checks'
 export function isChallengeExpired(expiresAt: string, now = Date.now()): boolean {
     const expiry = new Date(expiresAt).getTime();
     return !Number.isFinite(expiry) || expiry <= now;
+}
+
+export function cameraErrorMessage(name: string): string {
+    switch (name) {
+        case 'NotAllowedError':
+            return 'Permiso de cámara denegado. Habilítalo en la configuración del navegador o solicita el fallback supervisado.';
+        case 'SecurityError':
+            return 'El navegador bloqueó la cámara porque la página no se abrió en una conexión segura (HTTPS).';
+        case 'NotFoundError':
+        case 'OverconstrainedError':
+            return 'No se encontró una cámara frontal disponible en este dispositivo.';
+        case 'NotReadableError':
+        case 'AbortError':
+            return 'La cámara está siendo usada por otra aplicación o no respondió. Ciérrala e inténtalo de nuevo.';
+        default:
+            return 'No fue posible iniciar la cámara. Verifica que no esté siendo usada por otra aplicación.';
+    }
 }

@@ -345,8 +345,13 @@ async function main() {
     where: { companyId: CID, branchId: BID, name: 'Principal' },
   });
   if (!warehouse) {
+    // Warehouse copy of the company costing method (inventory engine source).
+    const company = await prisma.company.findUnique({ where: { id: CID }, select: { costingMethod: true } });
     warehouse = await prisma.warehouse.create({
-      data: { companyId: CID, branchId: BID, type: 'BRANCH', name: 'Principal', code: 'MAIN-OPS' },
+      data: {
+        companyId: CID, branchId: BID, type: 'BRANCH', name: 'Principal', code: 'MAIN-OPS',
+        costingMethod: company?.costingMethod ?? 'WEIGHTED_AVERAGE',
+      },
     });
   }
 

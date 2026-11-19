@@ -112,6 +112,7 @@ async function main() {
         'orders.edit',
         'orders.cancel',
         'orders.deliver',
+        'orders.items.void',
         'invoices.issue',
         'invoices.view',
         'invoices.cancel',

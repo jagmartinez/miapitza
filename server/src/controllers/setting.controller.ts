@@ -26,7 +26,7 @@ export class SettingController {
                 data: settings
             });
         } catch (error: unknown) {
-            next({ statusCode: 500, message: getErrorMessage(error) });
+            next({ statusCode: 400, message: getErrorMessage(error) });
         }
     }
 }

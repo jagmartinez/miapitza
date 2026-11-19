@@ -19,12 +19,47 @@ import {
 } from 'lucide-react';
 import type { AutoPurchaseSuggestion, Branch, Product, ProductAllowedUnit, StockAlertItem, Supplier, UnitOfMeasure, Warehouse } from '../types';
 import type { SingleValue } from 'react-select';
-import { formatCurrency, currencyInputPadding, type CurrencySettings } from '../utils/currency';
+import { formatCurrency, currencyInputPadding, getCurrencySymbol, type CurrencySettings } from '../utils/currency';
 import { useCurrency } from '../hooks/useCurrency';
 import { isCategoryVisibleInInventory } from '../utils/categoryVisibility';
 import { resolveEffectiveUnitCost, type ProductCostResolution } from '../utils/productCost';
 import { newIdempotencyKey } from '../utils/idempotency';
 import './Inventory.css';
+import { getApiErrorMessage } from '../utils/apiError';
+
+// Suggestions carry the line already expressed in the product's default
+// purchase unit (purchaseQuantity/purchaseUnit/purchaseUnitCost). The unit cost
+// is sent unrounded: a per-gram cost like 0.004 must not collapse to 0.00.
+type AutoPurchaseSuggestionLine = AutoPurchaseSuggestion & {
+    unit?: string;
+    purchaseUnit?: string;
+    purchaseQuantity?: number;
+    purchaseUnitCost?: number;
+};
+
+function toAutoPurchaseLine(suggestion: AutoPurchaseSuggestionLine) {
+    const purchaseQuantity = Number(suggestion.purchaseQuantity);
+    const usePurchaseUnit = Number.isFinite(purchaseQuantity) && purchaseQuantity > 0 && !!suggestion.purchaseUnit;
+    const purchaseUnitCost = Number(suggestion.purchaseUnitCost);
+    return {
+        productId: suggestion.productId,
+        quantity: usePurchaseUnit ? purchaseQuantity : Number(suggestion.suggestedQuantity),
+        ...(usePurchaseUnit ? { unit: suggestion.purchaseUnit } : {}),
+        // Omitted cost lets the server derive it from the unrounded product cost.
+        ...(usePurchaseUnit && Number.isFinite(purchaseUnitCost) && purchaseUnitCost >= 0
+            ? { cost: purchaseUnitCost }
+            : {}),
+    };
+}
+
+function formatSuggestionQuantity(suggestion: AutoPurchaseSuggestionLine) {
+    const purchaseQuantity = Number(suggestion.purchaseQuantity);
+    if (Number.isFinite(purchaseQuantity) && purchaseQuantity > 0 && suggestion.purchaseUnit) {
+        return `${Number(purchaseQuantity.toFixed(3))} ${suggestion.purchaseUnit}`;
+    }
+    return `${Number(Number(suggestion.suggestedQuantity).toFixed(3))}${suggestion.unit ? ` ${suggestion.unit}` : ''}`;
+}
+
 
 interface CategoryRow {
     id: number;
@@ -54,12 +89,7 @@ type ProductInventory = Product & {
 
 type StrOption = SingleValue<{ value: string; label: string }>;
 function apiErrorMessage(error: unknown): string {
-    if (typeof error === 'object' && error !== null && 'response' in error) {
-        const m = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
-        if (typeof m === 'string' && m) return m;
-    }
-    if (error instanceof Error) return error.message;
-    return 'Error';
+    return getApiErrorMessage(error);
 }
 
 function inventoryCostQuality(product: ProductInventory): ProductCostResolution {
@@ -73,16 +103,26 @@ function inventoryCostQuality(product: ProductInventory): ProductCostResolution 
     );
 }
 
+// Per-base-unit costs (per g/ml) are often below one cent; money formatting
+// to 2 decimals would show C$ 0.00. Show up to 6 decimals only when needed.
+function formatUnitCost(value: number, currencySettings: CurrencySettings): string {
+    if (!Number.isFinite(value) || value === 0 || Math.abs(value) >= 1) {
+        return formatCurrency(value, currencySettings);
+    }
+    const symbol = getCurrencySymbol(currencySettings);
+    return `${symbol} ${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6, useGrouping: false })}`;
+}
+
 function formatInventoryCost(product: ProductInventory, currencySettings: CurrencySettings): string {
     const quality = inventoryCostQuality(product);
-    return quality.known ? formatCurrency(quality.value, currencySettings) : 'N/D';
+    return quality.known ? formatUnitCost(quality.value, currencySettings) : 'N/D';
 }
 
 function formatLastPurchaseCost(product: ProductInventory, currencySettings: CurrencySettings): string {
     const value = Number(product.lastPurchaseCost);
     const known = product.lastPurchaseCostKnown === true || value > 0;
     return known && Number.isFinite(value) && value >= 0
-        ? formatCurrency(value, currencySettings)
+        ? formatUnitCost(value, currencySettings)
         : 'Sin compras';
 }
 
@@ -167,7 +207,9 @@ export default function Inventory() {
         productId: 0,
         productName: '',
         warehouseId: '',
-        type: 'OUT' as 'IN' | 'OUT' | 'ADJUSTMENT',
+        // COUNT = physical count: quantity is the counted stock, the server
+        // posts the difference against the current balance.
+        type: 'OUT' as 'IN' | 'OUT' | 'ADJUSTMENT' | 'COUNT',
         quantity: '',
         reason: '',
         unit: ''
@@ -423,24 +465,44 @@ export default function Inventory() {
             return;
         }
 
-        const payload = {
-                warehouseId: Number(adjustmentData.warehouseId),
-                productId: adjustmentData.productId,
-                type: adjustmentData.type,
-                quantity: parseFloat(adjustmentData.quantity),
-                reason: adjustmentData.reason,
-                unit: adjustmentData.unit || undefined
+        const isCount = adjustmentData.type === 'COUNT';
+        const enteredQuantity = parseFloat(adjustmentData.quantity);
+        if (!Number.isFinite(enteredQuantity) || (isCount ? enteredQuantity < 0 : enteredQuantity <= 0)) {
+            showWarning(isCount ? 'Indica la cantidad contada (0 o más).' : 'Indica una cantidad mayor a 0.');
+            return;
+        }
+        const common = {
+            warehouseId: Number(adjustmentData.warehouseId),
+            productId: adjustmentData.productId,
+            reason: adjustmentData.reason,
+            unit: adjustmentData.unit || undefined
         };
-        const fingerprint = JSON.stringify(payload);
+        const countPayload = { ...common, countedQuantity: enteredQuantity };
+        const movementPayload = {
+            ...common,
+            type: adjustmentData.type as 'IN' | 'OUT' | 'ADJUSTMENT',
+            quantity: enteredQuantity
+        };
+        const fingerprint = JSON.stringify(isCount ? countPayload : movementPayload);
         if (adjustmentAttemptRef.current?.fingerprint !== fingerprint) {
             adjustmentAttemptRef.current = { fingerprint, key: newIdempotencyKey() };
         }
 
         setAdjusting(true);
         try {
-            await inventoryMovementsAPI.create(payload, adjustmentAttemptRef.current.key);
+            if (isCount) {
+                const response = await inventoryMovementsAPI.count(countPayload, adjustmentAttemptRef.current.key);
+                const result = response.data?.data as { adjusted?: boolean; delta?: number } | undefined;
+                // Up to 6 decimals without float noise or trailing zeros (e.g. 0.3, not 0.30000000000000004).
+                const delta = Number(Number(result?.delta ?? 0).toFixed(6));
+                showSuccess(result?.adjusted
+                    ? `Conteo aplicado (diferencia ${delta > 0 ? '+' : ''}${delta} en unidad base)`
+                    : 'Conteo registrado: la existencia ya coincidía');
+            } else {
+                await inventoryMovementsAPI.create(movementPayload, adjustmentAttemptRef.current.key);
+                showSuccess('Ajuste realizado correctamente');
+            }
             localStorage.setItem('inventory_adjustment_warehouse_id', adjustmentData.warehouseId);
-            showSuccess('Ajuste realizado correctamente');
             adjustmentAttemptRef.current = null;
             setIsAdjustmentModalOpen(false);
             loadInventory();
@@ -524,10 +586,11 @@ export default function Inventory() {
             if (savedProductId) {
                 try {
                     await unitsAPI.autoConfigureProduct(savedProductId);
-                } catch {
-                    showWarning(
-                        'Producto guardado, pero no se pudo autoconfigurar su unidad. Revise Conversiones antes de comprar o consumir inventario.'
-                    );
+                } catch (error) {
+                    showWarning(getApiErrorMessage(
+                        error,
+                        'Producto guardado, pero no se pudo autoconfigurar su unidad (revise Conversiones antes de comprar o consumir inventario)'
+                    ));
                 }
             }
 
@@ -624,13 +687,7 @@ export default function Inventory() {
             const response = await autoPurchaseOrdersAPI.createFromSuggestions({
                 branchId: Number(autoPurchaseForm.branchId),
                 supplierId: Number(autoPurchaseForm.supplierId),
-                items: selectedSuggestions.map((suggestion) => ({
-                    productId: suggestion.productId,
-                    quantity: Number(suggestion.suggestedQuantity),
-                    cost: suggestion.suggestedQuantity > 0
-                        ? Number(((suggestion.estimatedCost || 0) / suggestion.suggestedQuantity).toFixed(2))
-                        : 0
-                }))
+                items: selectedSuggestions.map(toAutoPurchaseLine)
             });
 
             showSuccess('Borrador de orden de compra creado correctamente.');
@@ -662,8 +719,8 @@ export default function Inventory() {
             a.click();
             URL.revokeObjectURL(url);
             showSuccess('Plantilla descargada');
-        } catch {
-            showError('Error al descargar la plantilla');
+        } catch (error) {
+            showError(getApiErrorMessage(error, 'Error al descargar la plantilla'));
         }
     };
 
@@ -790,8 +847,8 @@ export default function Inventory() {
             } else {
                 showSuccess(`${res.data.data.summary.valid} productos listos para importar`);
             }
-        } catch {
-            showError('Error al validar el archivo');
+        } catch (error) {
+            showError(getApiErrorMessage(error, 'Error al validar el archivo'));
         } finally {
             setImportLoading(false);
         }
@@ -812,8 +869,8 @@ export default function Inventory() {
             setImportFile(null);
             setImportValidation(null);
             loadInventory();
-        } catch {
-            showError('Error al confirmar la importación');
+        } catch (error) {
+            showError(getApiErrorMessage(error, 'Error al confirmar la importación'));
         } finally {
             setImportLoading(false);
         }
@@ -997,7 +1054,7 @@ export default function Inventory() {
                             {autoPurchaseSuggestions.slice(0, 3).map((suggestion) => (
                                 <div key={`${suggestion.productId}-${suggestion.warehouseId}`} className="detail-item">
                                     <span>{suggestion.productName}</span>
-                                    <span>{suggestion.suggestedQuantity}</span>
+                                    <span>{formatSuggestionQuantity(suggestion)}</span>
                                 </div>
                             ))}
                             {autoPurchaseSuggestions.length === 0 && (
@@ -1443,7 +1500,7 @@ export default function Inventory() {
                                     <div className="inventory-detail-effective-cost">
                                         <div>
                                             <span>Costo efectivo para recetas</span>
-                                            <strong>{costQuality.known ? formatCurrency(costQuality.value, settings) : 'N/D'}</strong>
+                                            <strong>{costQuality.known ? formatUnitCost(costQuality.value, settings) : 'N/D'}</strong>
                                         </div>
                                         <span className="inventory-detail-cost-source">
                                             {costQuality.source === 'AVERAGE'
@@ -1452,7 +1509,7 @@ export default function Inventory() {
                                         </span>
                                     </div>
                                     <dl className="inventory-detail-finance-breakdown">
-                                        <div><dt>Referencia</dt><dd>{viewingProduct.referenceCostKnown || Number(viewingProduct.cost) > 0 ? formatCurrency(Number(viewingProduct.cost), settings) : 'N/D'}</dd></div>
+                                        <div><dt>Referencia</dt><dd>{viewingProduct.referenceCostKnown || Number(viewingProduct.cost) > 0 ? formatUnitCost(Number(viewingProduct.cost), settings) : 'N/D'}</dd></div>
                                         <div><dt>Última compra</dt><dd>{formatLastPurchaseCost(viewingProduct, settings)}</dd></div>
                                         <div><dt>Precio de venta</dt><dd>{viewingProduct.price != null ? formatCurrency(Number(viewingProduct.price), settings) : 'No aplica'}</dd></div>
                                     </dl>
@@ -1806,7 +1863,7 @@ export default function Inventory() {
                                                 <input
                                                     id="inventory-reference-cost"
                                                     type="number"
-                                                    step="0.01"
+                                                    step="any"
                                                     min="0"
                                                     className="modal-standard-input"
                                                     style={{ paddingLeft: currencyInputPadding(symbol) }}
@@ -1911,28 +1968,33 @@ export default function Inventory() {
                                     options={[
                                         { value: 'OUT', label: 'Salida (Desperdicio/Uso)' },
                                         { value: 'ADJUSTMENT', label: 'Entrada (Corrección de conteo)' },
-                                        { value: 'IN', label: 'Entrada Directa' }
+                                        { value: 'IN', label: 'Entrada Directa' },
+                                        { value: 'COUNT', label: 'Conteo físico (cantidad contada)' }
                                     ]}
                                     value={{
                                         value: adjustmentData.type,
                                         label: {
                                             'OUT': 'Salida (Desperdicio/Uso)',
                                             'ADJUSTMENT': 'Entrada (Corrección de conteo)',
-                                            'IN': 'Entrada Directa'
+                                            'IN': 'Entrada Directa',
+                                            'COUNT': 'Conteo físico (cantidad contada)'
                                         }[adjustmentData.type]
                                     }}
-                                    onChange={(option: SingleValue<{ value: 'OUT' | 'ADJUSTMENT' | 'IN'; label: string }>) =>
+                                    onChange={(option: SingleValue<{ value: 'OUT' | 'ADJUSTMENT' | 'IN' | 'COUNT'; label: string }>) =>
                                         option && setAdjustmentData({ ...adjustmentData, type: option.value })}
                                     isSearchable={false}
                                 />
 
                                 <div className="modal-form-row">
                                     <div className="modal-input-group" style={{ flex: 2 }}>
-                                        <label className="modal-input-label" htmlFor="inventory-adjustment-quantity">Cantidad</label>
+                                        <label className="modal-input-label" htmlFor="inventory-adjustment-quantity">
+                                            {adjustmentData.type === 'COUNT' ? 'Cantidad contada' : 'Cantidad'}
+                                        </label>
                                         <input
                                             id="inventory-adjustment-quantity"
                                             type="number"
                                             step="0.001"
+                                            min={adjustmentData.type === 'COUNT' ? 0 : undefined}
                                             className="modal-standard-input"
                                             value={adjustmentData.quantity}
                                             onChange={(e) => setAdjustmentData({ ...adjustmentData, quantity: e.target.value })}
@@ -2091,7 +2153,7 @@ export default function Inventory() {
                                                         <div className="po-suggestion-metrics">
                                                             <span><strong>Actual:</strong> {Number(suggestion.currentStock || 0).toFixed(2)}</span>
                                                             <span><strong>Mín:</strong> {Number(suggestion.minStock || 0).toFixed(2)}</span>
-                                                            <span><strong>Sugerido:</strong> {Number(suggestion.suggestedQuantity).toFixed(2)}</span>
+                                                            <span><strong>Sugerido:</strong> {formatSuggestionQuantity(suggestion)}</span>
                                                         </div>
                                                     </div>
                                                     <div className="po-suggestion-cost">

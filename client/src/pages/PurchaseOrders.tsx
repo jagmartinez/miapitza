@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { notifyError } from '../services/notify';
 import { useNavigate } from 'react-router-dom';
 import { purchaseOrdersAPI, autoPurchaseOrdersAPI, branchesAPI, suppliersAPI } from '../services/api';
 import api from '../services/api';
@@ -14,17 +15,49 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirmDialog } from '../context/ConfirmContext';
 import { useAppToast } from '../context/ToastContext';
 import { getUserRoleNames } from '../utils/authz';
-import { Plus, Eye, Zap, X, ShoppingCart, FileDown, FileText, CreditCard, DollarSign, Info, Save, AlertTriangle, History, Undo2 } from 'lucide-react';
+import { Plus, Eye, Zap, X, ShoppingCart, FileDown, FileText, CreditCard, DollarSign, Info, Save, AlertTriangle, History, Undo2, PackageCheck } from 'lucide-react';
 import { formatCurrency, type CurrencySettings } from '../utils/currency';
 import { formatLocalDateInput } from '../utils/dateInput';
 import { getIdempotentAttempt, type IdempotentAttempt } from '../utils/idempotency';
+import { PURCHASE_ORDER_STATUS_LABELS, purchaseOrderDateVisibility, purchaseOrderPayable } from '../utils/purchaseOrderReceipt';
 import { BANK_OPTIONS, type StrOption } from '../constants/purchaseOrderOptions';
 import type { SingleValue } from 'react-select';
 import type { AutoPurchaseSuggestion, Branch, PurchaseOrder, PurchaseOrderPayment, Supplier } from '../types';
 import './Inventory.css';
 import './PurchaseOrders.css';
+import { getApiErrorMessage } from '../utils/apiError';
 
-type PoSuggestionRow = AutoPurchaseSuggestion & { unit?: string };
+type PoSuggestionRow = AutoPurchaseSuggestion & {
+    unit?: string;
+    purchaseUnit?: string;
+    purchaseQuantity?: number;
+    purchaseUnitCost?: number;
+};
+
+// The suggestion line is expressed in the product's default purchase unit and
+// its unit cost is sent unrounded (a per-gram cost like 0.004 must not become
+// 0.00). Without a purchase unit, cost is omitted and derived by the server.
+function toAutoPurchaseLine(suggestion: PoSuggestionRow) {
+    const purchaseQuantity = Number(suggestion.purchaseQuantity);
+    const usePurchaseUnit = Number.isFinite(purchaseQuantity) && purchaseQuantity > 0 && !!suggestion.purchaseUnit;
+    const purchaseUnitCost = Number(suggestion.purchaseUnitCost);
+    return {
+        productId: suggestion.productId,
+        quantity: usePurchaseUnit ? purchaseQuantity : Number(suggestion.suggestedQuantity),
+        ...(usePurchaseUnit ? { unit: suggestion.purchaseUnit } : {}),
+        ...(usePurchaseUnit && Number.isFinite(purchaseUnitCost) && purchaseUnitCost >= 0
+            ? { cost: purchaseUnitCost }
+            : {}),
+    };
+}
+
+function formatSuggestionQuantity(suggestion: PoSuggestionRow) {
+    const purchaseQuantity = Number(suggestion.purchaseQuantity);
+    if (Number.isFinite(purchaseQuantity) && purchaseQuantity > 0 && suggestion.purchaseUnit) {
+        return `${Number(purchaseQuantity.toFixed(3))} ${suggestion.purchaseUnit}`;
+    }
+    return `${Number(Number(suggestion.suggestedQuantity).toFixed(3))}${suggestion.unit ? ` ${suggestion.unit}` : ''}`;
+}
 
 interface PoSuggestionsData {
     summary: {
@@ -80,6 +113,7 @@ export default function PurchaseOrders() {
     const [reversalReason, setReversalReason] = useState('');
     const [reversingPayment, setReversingPayment] = useState(false);
     const reverseReceiptAttemptRef = useRef<IdempotentAttempt | null>(null);
+    const closeRemainingAttemptRef = useRef<IdempotentAttempt | null>(null);
     const addPaymentAttemptRef = useRef<IdempotentAttempt | null>(null);
     const reversePaymentAttemptRef = useRef<IdempotentAttempt | null>(null);
     // Pagination and Filters state
@@ -104,7 +138,7 @@ export default function PurchaseOrders() {
             const response = await api.get('/settings');
             setSettings(response.data.data || {});
         } catch (error) {
-            console.error('Error loading settings:', error);
+            notifyError(error, 'No se pudo cargar la configuración; los montos usan el formato predeterminado', { type: 'warning' });
         }
     };
 
@@ -116,7 +150,7 @@ export default function PurchaseOrders() {
             setLoadError(null);
         } catch (error) {
             console.error('Error loading purchase orders:', error);
-            setLoadError('No se pudieron cargar las órdenes de compra. Se conserva la última información disponible y no se mostrará un estado vacío falso.');
+            setLoadError(getApiErrorMessage(error, 'No se pudieron cargar las órdenes de compra (se conserva la última información disponible y no se mostrará un estado vacío falso)'));
         } finally {
             setLoading(false);
         }
@@ -196,13 +230,7 @@ export default function PurchaseOrders() {
             const response = await autoPurchaseOrdersAPI.createFromSuggestions({
                 branchId: Number(autoPurchaseForm.branchId),
                 supplierId: Number(autoPurchaseForm.supplierId),
-                items: selectedSuggestions.map((suggestion) => ({
-                    productId: suggestion.productId,
-                    quantity: Number(suggestion.suggestedQuantity),
-                    cost: suggestion.suggestedQuantity > 0
-                        ? Number(((Number(suggestion.estimatedCost) || 0) / suggestion.suggestedQuantity).toFixed(2))
-                        : 0,
-                })),
+                items: selectedSuggestions.map(toAutoPurchaseLine),
             });
             showSuccess('Borrador de orden de compra creado correctamente.');
             setShowSuggestionsSidebar(false);
@@ -221,15 +249,11 @@ export default function PurchaseOrders() {
         const styles: Record<string, string> = {
             DRAFT: 'status-borrador',
             ISSUED: 'status-emitida',
+            PARTIALLY_RECEIVED: 'status-parcial',
             RECEIVED: 'status-recibida',
             CANCELLED: 'status-cancelada'
         };
-        const labels: Record<string, string> = {
-            DRAFT: 'Borrador',
-            ISSUED: 'Emitida',
-            RECEIVED: 'Recibida',
-            CANCELLED: 'Cancelada'
-        };
+        const labels = PURCHASE_ORDER_STATUS_LABELS;
         return (
             <span className={`modern-status-badge ${styles[status] || ''}`}>
                 {labels[status] ?? status}
@@ -246,17 +270,9 @@ export default function PurchaseOrders() {
             order.supplier?.name.toLowerCase().includes(searchLower) ||
             (order.invoiceNumber && order.invoiceNumber.toLowerCase().includes(searchLower));
 
-        // Date range filter (compare local YYYY-MM-DD strings to avoid timezone issues)
-        let matchesDate = true;
-        if (startDate || endDate) {
-            const od = new Date(order.date);
-            const orderDateStr = od.getFullYear() + '-' +
-                String(od.getMonth() + 1).padStart(2, '0') + '-' +
-                String(od.getDate()).padStart(2, '0');
-
-            if (startDate && orderDateStr < startDate) matchesDate = false;
-            if (endDate && orderDateStr > endDate) matchesDate = false;
-        }
+        // Date range (local YYYY-MM-DD). Partially received orders with a pending
+        // balance stay visible outside the range; see purchaseOrderDateVisibility.
+        const matchesDate = purchaseOrderDateVisibility(order, { startDate, endDate, statusFilter }).visible;
 
         return matchesStatus && matchesSearch && matchesDate;
     });
@@ -318,7 +334,8 @@ export default function PurchaseOrders() {
         setPaymentTab('register');
         setReversalPaymentId(null);
         setReversalReason('');
-        const balance = Number(order.total) - Number(order.paidAmount || 0);
+        // Partially received CREDIT orders owe only what arrived (server caps there).
+        const balance = purchaseOrderPayable(order) - Number(order.paidAmount || 0);
         setPaymentForm({
             amount: balance > 0 ? balance.toFixed(2) : '',
             date: formatLocalDateInput(),
@@ -330,16 +347,16 @@ export default function PurchaseOrders() {
         try {
             const res = await purchaseOrdersAPI.getPayments(order.id);
             setPaymentHistory(Array.isArray(res.data.data) ? res.data.data : []);
-        } catch {
+        } catch (error) {
             setPaymentHistory(order.payments || []);
-            showWarning('No se pudo actualizar el historial de pagos; se muestra la última información disponible.');
+            notifyError(error, 'No se pudo actualizar el historial de pagos (se muestra la última información disponible)', { type: 'warning' });
         } finally {
             setLoadingPaymentHistory(false);
         }
     };
 
     const handleReverseReceipt = async (order: PurchaseOrder) => {
-        if (!canDeletePurchaseOrders || order.status !== 'RECEIVED') return;
+        if (!canDeletePurchaseOrders || (order.status !== 'RECEIVED' && order.status !== 'PARTIALLY_RECEIVED')) return;
         const reason = window.prompt('Motivo obligatorio del reverso de recepción:')?.trim();
         if (!reason) return;
         const accepted = await confirm(
@@ -356,6 +373,28 @@ export default function PurchaseOrders() {
             loadOrders();
         } catch (error: unknown) {
             showError(errMsg(error, 'No se pudo revertir la recepción'));
+        }
+    };
+
+    /** "Cerrar saldo": finish a partially received order without receiving the rest. */
+    const handleCloseRemaining = async (order: PurchaseOrder) => {
+        if (!canManagePurchaseOrders || order.status !== 'PARTIALLY_RECEIVED') return;
+        const reason = window.prompt('Motivo obligatorio para cerrar el saldo pendiente:')?.trim();
+        if (!reason) return;
+        const accepted = await confirm(
+            `¿Cerrar el saldo de la orden #${order.id}? Lo pendiente se abandona sin afectar inventario y el total de la orden pasa a ${formatCurrency(Number(order.receivedTotal || 0), settings)} (valor recibido).`,
+            { title: 'Confirmar cierre de saldo' }
+        );
+        if (!accepted) return;
+        try {
+            const attempt = getIdempotentAttempt(closeRemainingAttemptRef.current, `close-remaining:${order.id}:${reason}`);
+            closeRemainingAttemptRef.current = attempt;
+            await purchaseOrdersAPI.closeRemaining(order.id, reason, attempt.key);
+            closeRemainingAttemptRef.current = null;
+            showSuccess('Saldo cerrado. La orden queda como recibida.');
+            loadOrders();
+        } catch (error: unknown) {
+            showError(errMsg(error, 'No se pudo cerrar el saldo de la orden'));
         }
     };
 
@@ -402,7 +441,7 @@ export default function PurchaseOrders() {
                 const updatedOrder = orderRes.data.data as PurchaseOrder;
                 setPaymentModalOrder(updatedOrder);
                 setPaymentHistory(Array.isArray(paymentsRes.data.data) ? paymentsRes.data.data : []);
-                const balance = Number(updatedOrder.total) - Number(updatedOrder.paidAmount || 0);
+                const balance = purchaseOrderPayable(updatedOrder) - Number(updatedOrder.paidAmount || 0);
                 setPaymentForm((prev) => ({
                     ...prev,
                     amount: balance > 0 ? balance.toFixed(2) : '',
@@ -410,8 +449,8 @@ export default function PurchaseOrders() {
                     referenceNumber: '',
                     observations: '',
                 }));
-            } catch {
-                showWarning('El pago fue registrado, pero no se pudo actualizar el detalle. Recarga antes de registrar otro abono.');
+            } catch (error) {
+                notifyError(error, 'El pago fue registrado, pero no se pudo actualizar el detalle (recarga antes de registrar otro abono)', { type: 'warning' });
             }
             loadOrders();
         } catch (error: unknown) {
@@ -450,8 +489,8 @@ export default function PurchaseOrders() {
                 ]);
                 setPaymentModalOrder(orderRes.data.data as PurchaseOrder);
                 setPaymentHistory(Array.isArray(paymentsRes.data.data) ? paymentsRes.data.data : []);
-            } catch {
-                showWarning('El reverso fue aplicado, pero no se pudo actualizar el historial. Recarga la orden para conciliarlo.');
+            } catch (error) {
+                notifyError(error, 'El reverso fue aplicado, pero no se pudo actualizar el historial (recarga la orden para conciliarlo)', { type: 'warning' });
             }
             setReversalPaymentId(null);
             setReversalReason('');
@@ -475,8 +514,9 @@ export default function PurchaseOrders() {
     const draftCount = orders.filter(o => o.status === 'DRAFT').length;
     const issuedCount = orders.filter(o => o.status === 'ISSUED').length;
     const receivedCount = orders.filter(o => o.status === 'RECEIVED').length;
+    const partialCount = orders.filter(o => o.status === 'PARTIALLY_RECEIVED').length;
     const pendingPaymentOrders = orders.filter(o =>
-        o.status === 'RECEIVED' && o.invoiceType === 'CREDIT' && o.paymentStatus !== 'PAID'
+        (o.status === 'RECEIVED' || o.status === 'PARTIALLY_RECEIVED') && o.invoiceType === 'CREDIT' && o.paymentStatus !== 'PAID'
     );
     const overduePayments = pendingPaymentOrders.filter(o => {
         const days = getDaysRemaining(o.paymentDueDate);
@@ -514,7 +554,7 @@ export default function PurchaseOrders() {
                         <div className="product-details-new">
                             <div className="detail-item"><span>{orders.length} órdenes totales</span></div>
                             <div className="detail-item"><span>{draftCount} borradores</span></div>
-                            <div className="detail-item"><span>{issuedCount} emitidas · {receivedCount} recibidas</span></div>
+                            <div className="detail-item"><span>{issuedCount} emitidas · {partialCount} parciales · {receivedCount} recibidas</span></div>
                         </div>
                     </div>
                 </div>
@@ -573,17 +613,14 @@ export default function PurchaseOrders() {
 
             <div className="inventory-filters-row">
                 <div className="inventory-status-filters">
-                    {['all', 'DRAFT', 'ISSUED', 'RECEIVED', 'CANCELLED'].map(status => (
+                    {['all', 'DRAFT', 'ISSUED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED'].map(status => (
                         <button
                             key={status}
                             type="button"
                             className={`inventory-status-btn ${statusFilter === status ? 'active' : ''}`}
                             onClick={() => setStatusFilter(status)}
                         >
-                            {status === 'all' ? 'Todas' :
-                                status === 'DRAFT' ? 'Borrador' :
-                                    status === 'ISSUED' ? 'Emitida' :
-                                        status === 'RECEIVED' ? 'Recibida' : 'Cancelada'}
+                            {status === 'all' ? 'Todas' : PURCHASE_ORDER_STATUS_LABELS[status]}
                         </button>
                     ))}
 
@@ -591,23 +628,25 @@ export default function PurchaseOrders() {
 
                     <div className="po-date-filters">
                         <div className="date-input-group">
-                            <label>Desde:</label>
+                            <label htmlFor="po-filter-start-date">Desde:</label>
                             <input
+                                id="po-filter-start-date"
                                 type="date"
                                 value={startDate}
                                 onChange={(e) => setStartDate(e.target.value)}
                             />
                         </div>
                         <div className="date-input-group">
-                            <label>Hasta:</label>
+                            <label htmlFor="po-filter-end-date">Hasta:</label>
                             <input
+                                id="po-filter-end-date"
                                 type="date"
                                 value={endDate}
                                 onChange={(e) => setEndDate(e.target.value)}
                             />
                         </div>
                         {(startDate || endDate) && (
-                            <button type="button" className="clear-dates" onClick={() => { setStartDate(''); setEndDate(''); }}>
+                            <button type="button" className="clear-dates" aria-label="Limpiar rango de fechas" title="Limpiar rango de fechas" onClick={() => { setStartDate(''); setEndDate(''); }}>
                                 <X size={14} />
                             </button>
                         )}
@@ -617,6 +656,7 @@ export default function PurchaseOrders() {
                 <div className="filter-right-section">
                     <input
                         type="text"
+                        aria-label="Buscar órdenes de compra por ID, proveedor o factura"
                         placeholder="Buscar por ID, proveedor o factura..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -677,6 +717,11 @@ export default function PurchaseOrders() {
                                         <div className="total-cell">
                                             {formatCurrency(Number(order.total) || 0, settings)}
                                         </div>
+                                        {order.status === 'PARTIALLY_RECEIVED' && (
+                                            <div className="po-received-subtotal">
+                                                Recibido {formatCurrency(Number(order.receivedTotal) || 0, settings)}
+                                            </div>
+                                        )}
                                     </td>
                                     <td data-label="Pago" onClick={(e) => e.stopPropagation()}>
                                         {order.invoiceType === 'CREDIT' ? (
@@ -696,14 +741,24 @@ export default function PurchaseOrders() {
                                                     </span>
                                                 )}
                                             </div>
-                                        ) : (
+                                        ) : order.paymentStatus === 'PAID' ? (
                                             <span className="payment-status-badge paid">Pagado</span>
+                                        ) : (
+                                            // CASH is paid on delivery: nothing is settled before a receipt.
+                                            <span className="payment-status-badge pending">Contra entrega</span>
                                         )}
                                     </td>
-                                    <td data-label="Estado">{getStatusBadge(order.status)}</td>
+                                    <td data-label="Estado">
+                                        {getStatusBadge(order.status)}
+                                        {purchaseOrderDateVisibility(order, { startDate, endDate, statusFilter }).outOfRange && (
+                                            <div className="po-out-of-range-hint" title="Fuera del rango de fechas: se muestra porque tiene saldo pendiente de recibir">
+                                                Saldo pendiente · fuera del rango
+                                            </div>
+                                        )}
+                                    </td>
                                     <td className="text-right" onClick={(e) => e.stopPropagation()}>
                                         <div className="table-actions">
-                                            {canManagePurchaseOrders && order.invoiceType === 'CREDIT' && order.status === 'RECEIVED' && (
+                                            {canManagePurchaseOrders && order.invoiceType === 'CREDIT' && (order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED') && (
                                                 <button
                                                     type="button"
                                                     className="table-action-btn"
@@ -721,9 +776,20 @@ export default function PurchaseOrders() {
                                                         e.stopPropagation();
                                                         handleOpenForm(order.id);
                                                     }}
-                                                    title={order.status === 'RECEIVED' ? 'Ver detalles' : 'Editar'}
+                                                    title={order.status === 'RECEIVED' ? 'Ver detalles' : order.status === 'PARTIALLY_RECEIVED' ? 'Ver / recibir saldo' : 'Editar'}
                                                 >
-                                                    {order.status === 'RECEIVED' ? <Eye size={16} /> : <Zap size={16} />}
+                                                    {order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED' ? <Eye size={16} /> : <Zap size={16} />}
+                                                </button>
+                                            )}
+                                            {canManagePurchaseOrders && order.status === 'PARTIALLY_RECEIVED' && (
+                                                <button
+                                                    type="button"
+                                                    className="table-action-btn"
+                                                    onClick={() => void handleCloseRemaining(order)}
+                                                    title="Cerrar saldo (abandonar lo pendiente)"
+                                                    aria-label={`Cerrar saldo de la orden ${order.id}`}
+                                                >
+                                                    <PackageCheck size={16} />
                                                 </button>
                                             )}
                                             {order.invoicePdf && (
@@ -752,7 +818,7 @@ export default function PurchaseOrders() {
                                                     <X size={16} />
                                                 </button>
                                             )}
-                                            {canDeletePurchaseOrders && order.status === 'RECEIVED' && (
+                                            {canDeletePurchaseOrders && (order.status === 'RECEIVED' || order.status === 'PARTIALLY_RECEIVED') && (
                                                 <button
                                                     type="button"
                                                     className="table-action-btn danger"
@@ -918,7 +984,7 @@ export default function PurchaseOrders() {
                                                             <div className="po-suggestion-metrics">
                                                                 <span><strong>Actual:</strong> {Number(suggestion.currentStock || 0).toFixed(2)} {suggestion.unit || ''}</span>
                                                                 <span><strong>Mín:</strong> {Number(suggestion.minStock || 0).toFixed(2)} {suggestion.unit || ''}</span>
-                                                                <span><strong>Sugerido:</strong> {Number(suggestion.suggestedQuantity).toFixed(2)} {suggestion.unit || ''}</span>
+                                                                <span><strong>Sugerido:</strong> {formatSuggestionQuantity(suggestion)}</span>
                                                             </div>
                                                         </div>
                                                         <div className="po-suggestion-cost">
@@ -1024,13 +1090,19 @@ export default function PurchaseOrders() {
                                                 <span>Total factura</span>
                                                 <strong>{formatCurrency(Number(paymentModalOrder.total), settings)}</strong>
                                             </div>
+                                            {paymentModalOrder.status === 'PARTIALLY_RECEIVED' && (
+                                                <div className="payment-summary-row">
+                                                    <span>Valor recibido (exigible)</span>
+                                                    <strong>{formatCurrency(Number(paymentModalOrder.receivedTotal || 0), settings)}</strong>
+                                                </div>
+                                            )}
                                             <div className="payment-summary-row">
                                                 <span>Abonado</span>
                                                 <strong>{formatCurrency(Number(paymentModalOrder.paidAmount || 0), settings)}</strong>
                                             </div>
                                             <div className="payment-summary-row highlight">
                                                 <span>Saldo pendiente</span>
-                                                <strong>{formatCurrency(Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0), settings)}</strong>
+                                                <strong>{formatCurrency(purchaseOrderPayable(paymentModalOrder) - Number(paymentModalOrder.paidAmount || 0), settings)}</strong>
                                             </div>
                                             {paymentModalOrder.paymentDueDate && (
                                                 <div className="payment-summary-row">
@@ -1041,7 +1113,7 @@ export default function PurchaseOrders() {
                                         </div>
                                     </div>
 
-                                    {Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0) > 0 ? (
+                                    {purchaseOrderPayable(paymentModalOrder) - Number(paymentModalOrder.paidAmount || 0) > 0 ? (
                                         <div className="modal-content-group">
                                             <div className="modal-section-header">
                                                 <DollarSign size={18} />
@@ -1057,7 +1129,7 @@ export default function PurchaseOrders() {
                                                         onChange={e => setPaymentForm({ ...paymentForm, amount: e.target.value })}
                                                         step="0.01"
                                                         min="0.01"
-                                                        max={Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0)}
+                                                        max={purchaseOrderPayable(paymentModalOrder) - Number(paymentModalOrder.paidAmount || 0)}
                                                         variant="modal"
                                                     />
                                                 </div>
@@ -1194,7 +1266,7 @@ export default function PurchaseOrders() {
                                     <Button
                                         type="button"
                                         className="save-btn-premium"
-                                        disabled={savingPayment || Number(paymentModalOrder.total) - Number(paymentModalOrder.paidAmount || 0) <= 0}
+                                        disabled={savingPayment || purchaseOrderPayable(paymentModalOrder) - Number(paymentModalOrder.paidAmount || 0) <= 0}
                                         onClick={handleSubmitPayment}
                                     >
                                         <Save size={20} />

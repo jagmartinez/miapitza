@@ -1210,22 +1210,29 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 .status-pill.status-ok,
 .status-pill.status-success {
   background: rgba(16, 185, 129, 0.12);
-  color: var(--color-success);
+  color: #047857; /* light mode: >= 4.5:1 on the tint */
   border-color: rgba(16, 185, 129, 0.3);
 }
 
 .status-pill.status-warning {
   background: rgba(245, 158, 11, 0.12);
-  color: var(--color-warning);
+  color: #92400e;
   border-color: rgba(245, 158, 11, 0.3);
 }
 
 .status-pill.status-critical,
 .status-pill.status-danger {
   background: rgba(239, 68, 68, 0.12);
-  color: var(--color-danger);
+  color: #b91c1c;
   border-color: rgba(239, 68, 68, 0.3);
 }
+
+/* Dark mode keeps the bright tokens (already >= 4.5:1 on dark surfaces). */
+.dark .status-pill.status-ok,
+.dark .status-pill.status-success { color: var(--color-success); }
+.dark .status-pill.status-warning { color: var(--color-warning); }
+.dark .status-pill.status-critical,
+.dark .status-pill.status-danger { color: var(--color-danger); }
 
 .status-pill.status-info {
   background: rgba(37, 99, 235, 0.12);
@@ -1656,4 +1663,15 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 [role='button'][tabindex]:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 3px;
+}
+
+/* App-shell "Sin conexión" notice: sits above the fixed mobile/tablet bottom nav. */
+.offline-cache-notice {
+  bottom: 16px;
+}
+
+@media (max-width: 1024px) {
+  .offline-cache-notice {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  }
 }

@@ -8,6 +8,7 @@ import { authMiddleware, requirePermission } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import * as s from '../middlewares/validate-schemas';
 import { getErrorMessage } from '../utils/error';
+import { BranchScopeError, resolveBranchScope } from '../utils/branch-scope';
 
 const router = Router();
 
@@ -34,14 +35,14 @@ router.post('/:orderId/evenly', validate(s.splitEvenly), async (req: Request, re
             });
         }
 
-        const result = await SplitBillService.splitEvenly(orderId, companyId, numberOfPeople);
+        const result = await SplitBillService.splitEvenly(orderId, companyId, numberOfPeople, resolveBranchScope(req.user!));
 
         res.json({
             success: true,
             data: result
         });
     } catch (error: unknown) {
-        next({ statusCode: 500, message: getErrorMessage(error) });
+        next(error instanceof BranchScopeError ? error : { statusCode: 500, message: getErrorMessage(error) });
     }
 });
 
@@ -62,14 +63,14 @@ router.post('/:orderId/by-items', validate(s.splitByItems), async (
         const orderId = parseInt(req.params.orderId);
         const { itemAssignments } = req.body;
 
-        const result = await SplitBillService.splitByItems(orderId, companyId, itemAssignments);
+        const result = await SplitBillService.splitByItems(orderId, companyId, itemAssignments, resolveBranchScope(req.user!));
 
         res.json({
             success: true,
             data: result
         });
     } catch (error: unknown) {
-        next(error instanceof SplitBillValidationError
+        next(error instanceof SplitBillValidationError || error instanceof BranchScopeError
             ? error
             : { statusCode: 500, message: getErrorMessage(error) });
     }
@@ -88,14 +89,14 @@ router.post('/:orderId/by-amount', async (req: Request, res: Response, next: Nex
         const orderId = parseInt(req.params.orderId);
         const { customSplits } = req.body;
 
-        const result = await SplitBillService.splitByAmount(orderId, companyId, customSplits);
+        const result = await SplitBillService.splitByAmount(orderId, companyId, customSplits, resolveBranchScope(req.user!));
 
         res.json({
             success: result.valid !== false,
             data: result
         });
     } catch (error: unknown) {
-        next({ statusCode: 500, message: getErrorMessage(error) });
+        next(error instanceof BranchScopeError ? error : { statusCode: 500, message: getErrorMessage(error) });
     }
 });
 
@@ -116,7 +117,7 @@ router.get('/suggested-tips', async (req: Request, res: Response, next: NextFunc
             data: suggestions
         });
     } catch (error: unknown) {
-        next({ statusCode: 500, message: getErrorMessage(error) });
+        next(error instanceof BranchScopeError ? error : { statusCode: 500, message: getErrorMessage(error) });
     }
 });
 

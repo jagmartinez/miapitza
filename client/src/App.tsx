@@ -13,6 +13,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import './pages/hr/hr-ui.css';
 import { LanguageProvider } from './context/LanguageContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ToastProvider } from './context/ToastContext';
 import { getUserRoleNames, hasPermission } from './utils/authz';
 import {
     ROLES,
@@ -114,6 +115,7 @@ function App() {
     return (
         <ErrorBoundary>
         <ThemeProvider>
+        <ToastProvider>
             <LanguageProvider>
                 <AuthProvider>
                     <CurrencyProvider>
@@ -208,6 +210,7 @@ function App() {
                     </CurrencyProvider>
                 </AuthProvider>
             </LanguageProvider>
+        </ToastProvider>
         </ThemeProvider>
         </ErrorBoundary>
     );

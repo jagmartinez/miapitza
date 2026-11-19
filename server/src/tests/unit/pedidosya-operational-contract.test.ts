@@ -84,7 +84,7 @@ describe('PedidosYa outbound operational contract', () => {
             id: 2, companyId: 1, branchId: null, active: true, defaultWarehouseId: 5
         }] as never);
         jest.spyOn(prisma.user, 'findFirst').mockResolvedValue({ id: 7 } as never);
-        jest.spyOn(OrderService, 'cancel').mockRejectedValue(new Error('Order is already cancelled'));
+        jest.spyOn(OrderService, 'cancel').mockRejectedValue(new Error('La orden ya está cancelada'));
         const syncUpdate = jest.spyOn(prisma.pedidosYaOrderSync, 'update').mockResolvedValue({} as never);
 
         await expect(PedidosYaService.processWebhook(1, 'ORDER_CANCELLED', { id: 'PY-100' }))

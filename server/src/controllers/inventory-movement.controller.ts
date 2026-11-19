@@ -123,6 +123,34 @@ export class InventoryMovementController {
         }
     }
 
+    static async physicalCount(req: Request, res: Response, next: NextFunction) {
+        try {
+            const companyId = req.user!.companyId;
+            const warehouse = await WarehouseService.getById(parseInt(String(req.body.warehouseId)), companyId);
+            assertBranchAccess(req.user!, (warehouse as { branchId: number | null }).branchId, { allowGlobal: true });
+
+            const result = await InventoryMovementService.physicalCount(companyId, {
+                warehouseId: Number(req.body.warehouseId),
+                productId: Number(req.body.productId),
+                countedQuantity: Number(req.body.countedQuantity),
+                unit: typeof req.body.unit === 'string' && req.body.unit.trim() ? req.body.unit.trim() : undefined,
+                reason: String(req.body.reason ?? ''),
+                reference: typeof req.body.reference === 'string' ? req.body.reference : undefined,
+                userId: req.user!.userId
+            });
+            res.status(result.adjusted ? 201 : 200).json({
+                success: true,
+                message: result.adjusted
+                    ? 'Conteo físico aplicado'
+                    : 'Conteo físico registrado: la existencia ya coincidía',
+                data: result
+            });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
     static async transfer(req: Request, res: Response, next: NextFunction) {
         try {
             const companyId = req.user!.companyId;

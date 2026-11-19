@@ -21,10 +21,44 @@ function decryptSecret(stored: string): string {
     return stored;
 }
 
-async function checkCode(token: string, storedSecret: string): Promise<boolean> {
+/**
+ * Verify a TOTP code. With `userId`, the code is also consumed: the accepted
+ * time step is persisted on the user row with a conditional update, so the
+ * same (or an older) code is rejected on every replica, and two concurrent
+ * requests with the same code cannot both succeed.
+ */
+async function checkCode(token: string, storedSecret: string, userId?: number): Promise<boolean> {
     const secret = decryptSecret(storedSecret);
-    const result = await verify({ secret, token });
-    return result.valid === true;
+    let afterTimeStep: number | undefined;
+    if (userId !== undefined) {
+        const state = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { twoFactorLastTimeStep: true },
+        });
+        afterTimeStep = state?.twoFactorLastTimeStep ?? undefined;
+    }
+    const result = await verify({
+        secret,
+        token,
+        ...(afterTimeStep !== undefined ? { afterTimeStep } : {}),
+    });
+    if (result.valid !== true) return false;
+    if (userId === undefined) return true;
+
+    const timeStep = (result as { timeStep?: unknown }).timeStep;
+    // Fail closed: without a time step the code cannot be marked as consumed.
+    if (typeof timeStep !== 'number' || !Number.isSafeInteger(timeStep)) return false;
+    const consumed = await prisma.user.updateMany({
+        where: {
+            id: userId,
+            OR: [
+                { twoFactorLastTimeStep: null },
+                { twoFactorLastTimeStep: { lt: timeStep } },
+            ],
+        },
+        data: { twoFactorLastTimeStep: timeStep },
+    });
+    return consumed.count === 1;
 }
 
 function generateRecoveryCodes(): string[] {
@@ -84,7 +118,7 @@ export class TwoFactorService {
         });
         if (!user?.twoFactorSecret) throw new Error('2FA not set up');
 
-        if (!(await checkCode(code, user.twoFactorSecret))) throw new Error('Código inválido');
+        if (!(await checkCode(code, user.twoFactorSecret, userId))) throw new Error('Código inválido');
 
         const plainCodes = generateRecoveryCodes();
         const hashedCodes = await hashRecoveryCodes(plainCodes);
@@ -113,7 +147,7 @@ export class TwoFactorService {
         const secret = user.twoFactorSecret;
         if (!secret) throw new Error('Código inválido');
 
-        if (!(await checkCode(code, secret))) throw new Error('Código inválido');
+        if (!(await checkCode(code, secret, userId))) throw new Error('Código inválido');
 
         await prisma.user.update({
             where: { id: userId },
@@ -136,7 +170,7 @@ export class TwoFactorService {
             select: { twoFactorSecret: true },
         });
         if (!user?.twoFactorSecret) return false;
-        return await checkCode(code, user.twoFactorSecret);
+        return await checkCode(code, user.twoFactorSecret, userId);
     }
 
     static async validateRecoveryCode(userId: number, code: string): Promise<boolean> {
@@ -190,7 +224,7 @@ export class TwoFactorService {
             throw new Error('2FA is not enabled');
         }
 
-        if (!(await checkCode(code, user.twoFactorSecret))) {
+        if (!(await checkCode(code, user.twoFactorSecret, userId))) {
             throw new Error('Código inválido');
         }
 

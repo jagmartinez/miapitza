@@ -4,6 +4,17 @@ import prisma from '../utils/prisma';
 import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
 import { AuditLogService } from './audit-log.service';
 import { BranchService } from './branch.service';
+import { isValidWeeklyRestDays, normalizeWeeklyRestDays } from '../utils/hr-rest-days';
+
+/** undefined = untouched; null = clear (legal default Sunday); otherwise a sorted ISO weekday list. */
+export function weeklyRestDaysInput(value: unknown): number[] | null | undefined {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    if (!isValidWeeklyRestDays(value)) {
+        throw new HrDomainError('weeklyRestDays debe listar uno o dos días distintos de la semana (1 = lunes … 7 = domingo)');
+    }
+    return normalizeWeeklyRestDays(value);
+}
 
 export class HrDomainError extends Error {
     constructor(message: string, public readonly statusCode = 400) {
@@ -48,6 +59,8 @@ export interface EmployeeWriteInput {
     hireDate?: string;
     terminationDate?: string | null;
     employmentType?: EmploymentTypeValue;
+    /** ISO weekdays (1 = Mon .. 7 = Sun); null clears it so payroll uses the legal default (Sunday). */
+    weeklyRestDays?: number[] | null;
     departmentId?: number | null;
     jobPositionId?: number | null;
     costCenterId?: number | null;
@@ -90,6 +103,7 @@ const employeeListSelect = {
     terminationDate: true,
     employmentType: true,
     status: true,
+    weeklyRestDays: true,
     departmentId: true,
     jobPositionId: true,
     costCenterId: true,
@@ -450,6 +464,7 @@ export class HrEmployeeService {
         const employmentType = input.employmentType || 'FULL_TIME';
         if (!EMPLOYMENT_TYPES.includes(employmentType)) throw new HrDomainError('Tipo de empleo inválido');
         const compensation = initialCompensation(input.initialCompensation);
+        const weeklyRestDays = weeklyRestDaysInput(input.weeklyRestDays);
 
         const created = await prisma.$transaction(async (tx) => {
             await tx.user.update({ where: { id: userId }, data: { accountType: 'INTERNAL' } });
@@ -469,6 +484,7 @@ export class HrEmployeeService {
                     emergencyContactPhone: nullableText(input.emergencyContactPhone, 'emergencyContactPhone'),
                     emergencyContactRelationship: nullableText(input.emergencyContactRelationship, 'emergencyContactRelationship'),
                     hireDate, employmentType,
+                    ...(weeklyRestDays ? { weeklyRestDays } : {}),
                     departmentId: optionalId(input.departmentId, 'departmentId'),
                     jobPositionId: optionalId(input.jobPositionId, 'jobPositionId'),
                     costCenterId: optionalId(input.costCenterId, 'costCenterId'),
@@ -561,12 +577,20 @@ export class HrEmployeeService {
             throw new HrDomainError('La fecha de terminación sólo puede cambiarse mediante el flujo de estado');
         }
         if (input.employmentType !== undefined) data.employmentType = input.employmentType;
+        // A change after a payroll was calculated makes that run stale
+        // (HR_PAYROLL_REST_DAY_SOURCE_STALE) until it is recalculated.
+        const weeklyRestDays = weeklyRestDaysInput(input.weeklyRestDays);
+        if (weeklyRestDays !== undefined) data.weeklyRestDays = weeklyRestDays === null ? Prisma.DbNull : weeklyRestDays;
         if (input.departmentId !== undefined) data.department = input.departmentId == null ? { disconnect: true } : { connect: { id: input.departmentId } };
         if (input.jobPositionId !== undefined) data.jobPosition = input.jobPositionId == null ? { disconnect: true } : { connect: { id: input.jobPositionId } };
         if (input.costCenterId !== undefined) data.costCenter = input.costCenterId == null ? { disconnect: true } : { connect: { id: input.costCenterId } };
         if (input.supervisorEmployeeId !== undefined) data.supervisor = input.supervisorEmployeeId == null ? { disconnect: true } : { connect: { id: input.supervisorEmployeeId } };
 
         await prisma.$transaction(async (tx) => {
+            // Lock the employee first so the frozen-payroll guard below reads
+            // payroll coverage after any concurrent run commits (snapshot is
+            // taken at the first consistent read, which follows this lock).
+            await tx.$queryRaw(Prisma.sql`SELECT id FROM Employee WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`);
             if (input.supervisorEmployeeId !== undefined) {
                 await tx.$queryRaw(Prisma.sql`
                     SELECT id FROM Employee
@@ -579,6 +603,12 @@ export class HrEmployeeService {
                     optionalId(input.supervisorEmployeeId, 'supervisorEmployeeId'),
                     tx,
                 );
+            }
+            if (data.hireDate instanceof Date && existing.userId) {
+                const { assertEmploymentDateChangeOutsideFrozenPayroll } = await import('./hr-employment-records.service');
+                await assertEmploymentDateChangeOutsideFrozenPayroll(tx, {
+                    companyId, userId: existing.userId, field: 'hireDate', previous: existing.hireDate, next: data.hireDate,
+                });
             }
             await tx.employee.update({ where: { id }, data });
             if (branchIds !== undefined) {
@@ -626,7 +656,11 @@ export class HrEmployeeService {
             await AuditLogService.log({
                 companyId, userId: actorUserId, entityType: 'Employee', entityId: id,
                 action: 'UPDATE',
-                details: { before: { employeeCode: existing.employeeCode, status: existing.status }, fields: Object.keys(input) },
+                details: {
+                    before: { employeeCode: existing.employeeCode, status: existing.status, ...(weeklyRestDays !== undefined ? { weeklyRestDays: existing.weeklyRestDays ?? null } : {}) },
+                    ...(weeklyRestDays !== undefined ? { after: { weeklyRestDays } } : {}),
+                    fields: Object.keys(input),
+                },
             }, tx);
         });
         return this.getById(id, companyId, { branchId: scopeBranchId });
@@ -660,7 +694,18 @@ export class HrEmployeeService {
             throw new HrDomainError('terminationDate sólo aplica al estado TERMINATED');
         }
         await prisma.$transaction(async (tx) => {
+            // Lock the employee first so the frozen-payroll guard below reads
+            // payroll coverage after any concurrent run commits (snapshot is
+            // taken at the first consistent read, which follows this lock).
+            await tx.$queryRaw(Prisma.sql`SELECT id FROM Employee WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`);
             let biometricPurgeRequestId: number | null = null;
+            const nextTerminationDate = status === 'TERMINATED' ? statusDate : null;
+            if (existing.userId) {
+                const { assertEmploymentDateChangeOutsideFrozenPayroll } = await import('./hr-employment-records.service');
+                await assertEmploymentDateChangeOutsideFrozenPayroll(tx, {
+                    companyId, userId: existing.userId, field: 'terminationDate', previous: existing.terminationDate ?? null, next: nextTerminationDate,
+                });
+            }
             const changed = await tx.employee.updateMany({
                 where: { id, companyId, status: existing.status },
                 data: {
@@ -702,19 +747,23 @@ export class HrEmployeeService {
                     data: { revoked: true },
                 });
                 const biometric = await tx.biometricProfile.findFirst({
-                    where: { companyId, userId: existing.userId, status: 'ACTIVE' },
+                    // PENDING (awaiting HR approval) also holds a provider template.
+                    where: { companyId, userId: existing.userId, status: { in: ['ACTIVE', 'PENDING'] } },
                     select: { id: true, provider: true, templateRef: true },
                 });
                 if (biometric) {
                     const now = new Date();
                     const revoked = await tx.biometricProfile.updateMany({
-                        where: { id: biometric.id, companyId, userId: existing.userId, status: 'ACTIVE' },
+                        where: { id: biometric.id, companyId, userId: existing.userId, status: { in: ['ACTIVE', 'PENDING'] } },
                         data: {
                             status: 'REVOKED',
                             templateRef: `REVOKED:${randomUUID()}`,
                             revokedAt: now,
                             purgeRequestedAt: now,
                             revocationReason: 'EMPLOYMENT_TERMINATED',
+                            // A rehired employee's first enrollment needs HR approval again.
+                            approvedAt: null,
+                            approvedByUserId: null,
                         },
                     });
                     if (revoked.count === 1) {
@@ -733,6 +782,14 @@ export class HrEmployeeService {
                         });
                         biometricPurgeRequestId = purge.id;
                     }
+                } else {
+                    // Already REVOKED (e.g. self-revoked, which keeps the HR
+                    // approval): a rehired employee's first enrollment must
+                    // still wait for a new HR approval.
+                    await tx.biometricProfile.updateMany({
+                        where: { companyId, userId: existing.userId, approvedAt: { not: null } },
+                        data: { approvedAt: null, approvedByUserId: null },
+                    });
                 }
             }
             await AuditLogService.log({

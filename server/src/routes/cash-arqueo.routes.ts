@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { CashArqueoService } from '../services/cash-arqueo.service';
+import { CashArqueoService, ShiftCloseForbiddenError } from '../services/cash-arqueo.service';
 import { authMiddleware, requireRole } from '../middlewares/auth';
 import { CASHIERS } from '../constants/roles';
 import prisma from '../utils/prisma';
@@ -137,6 +137,7 @@ router.post('/:shiftId/close', validate(s.closeShift), async (req: Request, res:
             data: result
         });
     } catch (error: unknown) {
+        if (error instanceof ShiftCloseForbiddenError) return next({ statusCode: 403, message: error.message });
         next({ statusCode: 500, message: getErrorMessage(error) });
     }
 });

@@ -123,7 +123,7 @@ export class UnitConversionService {
         return String(raw || '').trim().toLowerCase().replace(/[.\s_-]+/g, '');
     }
 
-    private static normalizeLegacyAbbreviation(raw: string): string {
+    static normalizeLegacyAbbreviation(raw: string): string {
         const abbr = this.sanitizeLegacyUnit(raw);
         const aliasMap: Record<string, string> = {
             // Common legacy aliases
@@ -175,7 +175,71 @@ export class UnitConversionService {
         return aliasMap[abbr] || abbr;
     }
 
-    private static buildLegacyUnitCandidates(legacyUnit: string): string[] {
+    /**
+     * Match a requested unit against configured abbreviations (D3). A raw
+     * (case-insensitive) match always wins; otherwise both sides are normalised
+     * through the legacy alias map (cja -> caja, lt -> l, ...). A normalised
+     * match is accepted only when it is unambiguous, so an alias can never
+     * silently resolve to a different configured unit.
+     */
+    static matchUnitAbbreviation<T>(
+        requested: string,
+        candidates: T[],
+        abbreviationOf: (candidate: T) => string
+    ): T | undefined {
+        const raw = String(requested || '').trim().toLowerCase();
+        if (!raw) return undefined;
+        const exact = candidates.filter((candidate) =>
+            String(abbreviationOf(candidate) || '').trim().toLowerCase() === raw);
+        if (exact.length > 0) return exact[0];
+        const normalized = this.normalizeLegacyAbbreviation(raw);
+        const aliased = candidates.filter((candidate) =>
+            this.normalizeLegacyAbbreviation(abbreviationOf(candidate)) === normalized);
+        return aliased.length === 1 ? aliased[0] : undefined;
+    }
+
+    /** Company-unit lookup keys for a requested unit: raw abbreviation, then its normalised alias. */
+    static companyUnitLookupKeys(requested: string): string[] {
+        const raw = String(requested || '').trim().toLowerCase();
+        return [...new Set([raw, this.normalizeLegacyAbbreviation(raw)].filter(Boolean))];
+    }
+
+    /**
+     * Pure company-unit resolution shared by convert() and preloaded readers
+     * (POS availability): first ACTIVE unit over the raw-then-normalised keys,
+     * otherwise the first one found (so callers can report it as inactive).
+     */
+    static pickCompanyUnit<T extends { active: boolean }>(
+        requested: string,
+        lookup: (abbreviation: string) => T | null | undefined
+    ): T | null {
+        let firstFound: T | null = null;
+        for (const abbreviation of this.companyUnitLookupKeys(requested)) {
+            const unit = lookup(abbreviation) ?? null;
+            if (unit?.active) return unit;
+            firstFound = firstFound ?? unit;
+        }
+        return firstFound;
+    }
+
+    /** Company unit lookup by the raw abbreviation first, then its normalised alias. */
+    private static async findCompanyUnitByAbbreviation(
+        db: Tx | typeof prisma,
+        companyId: number,
+        requested: string
+    ) {
+        const found = new Map<string, Awaited<ReturnType<typeof db.unitOfMeasure.findUnique>>>();
+        for (const abbreviation of this.companyUnitLookupKeys(requested)) {
+            const unit = await db.unitOfMeasure.findUnique({
+                where: { companyId_abbreviation: { companyId, abbreviation } }
+            });
+            found.set(abbreviation, unit);
+            if (unit?.active) break;
+        }
+        return this.pickCompanyUnit(requested, (abbreviation) => found.get(abbreviation));
+    }
+
+    static buildLegacyUnitCandidates(legacyUnit: string): string[] {
         const raw = String(legacyUnit || '').trim().toLowerCase();
         if (!raw) return [];
 
@@ -293,8 +357,7 @@ export class UnitConversionService {
                 );
             }
 
-            const requestedAbbr = this.normalizeLegacyAbbreviation(unitAbbreviation);
-            if (requestedAbbr === inferredBase.abbreviation.toLowerCase()) {
+            if (this.matchUnitAbbreviation(unitAbbreviation, [inferredBase], (unit) => unit.abbreviation)) {
                 return {
                     baseQuantity: quantity,
                     conversionFactor: 1,
@@ -304,14 +367,7 @@ export class UnitConversionService {
                 };
             }
 
-            const dynamicUnit = await db.unitOfMeasure.findUnique({
-                where: {
-                    companyId_abbreviation: {
-                        companyId,
-                        abbreviation: requestedAbbr
-                    }
-                }
-            });
+            const dynamicUnit = await this.findCompanyUnitByAbbreviation(db, companyId, unitAbbreviation);
 
             if (!dynamicUnit || !dynamicUnit.active || dynamicUnit.measurementType !== inferredBase.measurementType) {
                 throw new Error(
@@ -350,8 +406,15 @@ export class UnitConversionService {
             };
         }
 
-        const abbr = this.normalizeLegacyAbbreviation(unitAbbreviation);
-        if (abbr === baseUnit.abbreviation.toLowerCase()) {
+        // Raw match first, then normalised aliases on BOTH sides (base unit and
+        // configured ProductUnit abbreviations), rejecting ambiguous aliases.
+        type UnitCandidate = { abbreviation: string; productUnit: (typeof product.allowedUnits)[number] | null };
+        const unitCandidates: UnitCandidate[] = [
+            { abbreviation: baseUnit.abbreviation, productUnit: null },
+            ...product.allowedUnits.map((pu) => ({ abbreviation: pu.unit.abbreviation, productUnit: pu }))
+        ];
+        const matchedUnit = this.matchUnitAbbreviation(unitAbbreviation, unitCandidates, (c) => c.abbreviation);
+        if (matchedUnit && !matchedUnit.productUnit) {
             return {
                 baseQuantity: quantity,
                 conversionFactor: 1,
@@ -361,21 +424,12 @@ export class UnitConversionService {
             };
         }
 
-        const productUnit = product.allowedUnits.find(
-            pu => pu.unit.abbreviation.toLowerCase() === abbr
-        );
+        const productUnit = matchedUnit?.productUnit ?? undefined;
 
         if (!productUnit) {
             // Dynamic fallback: allow any active unit from the same measurement type
             // even if it was not explicitly configured in product.allowedUnits.
-            const dynamicUnit = await db.unitOfMeasure.findUnique({
-                where: {
-                    companyId_abbreviation: {
-                        companyId,
-                        abbreviation: abbr
-                    }
-                }
-            });
+            const dynamicUnit = await this.findCompanyUnitByAbbreviation(db, companyId, unitAbbreviation);
 
             if (!dynamicUnit || !dynamicUnit.active) {
                 const allowed = product.allowedUnits.map(pu => pu.unit.abbreviation).join(', ');

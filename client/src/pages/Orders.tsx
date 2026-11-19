@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { ordersAPI, invoicesAPI, cashShiftsAPI, warehousesAPI } from '../services/api';
-import { canSendOrderToKitchen, canCancelOrder, canCreatePayment, canDeliverOrder, canOperateKitchenLineItems, getUserRoleNames, hasPermission } from '../utils/authz';
+import { canSendOrderToKitchen, canCancelOrder, canCreatePayment, canDeliverOrder, canOperateKitchenLineItems, canVoidKitchenLine, getUserRoleNames, hasPermission } from '../utils/authz';
+import KitchenLineVoidModal from '../components/KitchenLineVoidModal';
+import { isVoidableOrderLine, isVoidedOrderLine, orderLineVoidBlocker } from '../utils/orderLineVoid';
 import { useDebounce } from '../utils/useDebounce';
 import Button from '../components/Button';
 import Sidebar from '../components/Sidebar';
@@ -9,6 +11,7 @@ import PaymentModal from '../components/PaymentModal';
 import Modal from '../components/Modal';
 import Select from '../components/Select';
 import { NoResultsEmptyState } from '../components/EmptyState';
+import Pagination from '../components/Pagination';
 import { LoadingOverlay } from '../components/LoadingSpinner';
 import {
     Send, CheckCircle, XCircle, CreditCard,
@@ -23,7 +26,13 @@ import { activateOnKeyboard } from '../utils/keyboardActivation';
 import { useAppToast } from '../context/ToastContext';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
 import { DeliveryAttemptGate } from '../utils/deliveryAttempt';
+import { readServerPagination } from '../utils/serverPagination';
+import { preferredSaleWarehouseId } from '../utils/saleWarehouse';
 import './Orders.css';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
+
+const ORDERS_PAGE_SIZE = 50;
 
 interface ActiveShiftStatus {
     hasActiveShift: boolean;
@@ -41,6 +50,7 @@ export default function Orders() {
     const canPayOrder = canCreatePayment(user);
     const canDeliver = canDeliverOrder(user);
     const canIssueInvoice = hasPermission(user, 'invoices.issue', ['SUPERADMIN', 'ADMIN', 'CAJERO']);
+    const canVoidLines = canVoidKitchenLine(user);
     const userRoleNames = getUserRoleNames(user);
     const isWaiterWithoutAdministrativeRole = userRoleNames.includes('MESERO')
         && !userRoleNames.some((role) => role === 'ADMIN' || role === 'SUPERADMIN');
@@ -48,7 +58,11 @@ export default function Orders() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState<string>('all');
+    const [page, setPage] = useState(1);
+    const [totalOrders, setTotalOrders] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+    const [voidLineItemId, setVoidLineItemId] = useState<number | null>(null);
     const [activeTab, setActiveTab] = useState<'info' | 'items'>('info');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -79,8 +93,10 @@ export default function Orders() {
     const [loadingWarehouses, setLoadingWarehouses] = useState(false);
     const [completingDelivery, setCompletingDelivery] = useState(false);
     const deliveryAttemptGateRef = useRef(new DeliveryAttemptGate());
+    const loadOrdersRequestRef = useRef(0);
 
     const loadOrders = useCallback(async () => {
+        const requestId = ++loadOrdersRequestRef.current;
         try {
             const now = new Date();
             let startDate: string;
@@ -112,17 +128,38 @@ export default function Orders() {
 
             const response = await ordersAPI.getAll({
                 startDate,
-                endDate
+                endDate,
+                // Status filtering happens on the server so totals/pages describe the filtered set.
+                ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+                // Text search runs server-side so pagination/totals describe the matches.
+                ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
+                page,
+                limit: ORDERS_PAGE_SIZE,
             });
-            setOrders(response.data.data);
+            // A late response for an older date range must not overwrite newer results.
+            if (requestId !== loadOrdersRequestRef.current) return true;
+            const rows: Order[] = Array.isArray(response.data?.data) ? response.data.data : [];
+            const pagination = readServerPagination(response.data, rows.length, ORDERS_PAGE_SIZE, page);
+            setOrders(rows);
+            setTotalOrders(pagination.total);
+            setTotalPages(pagination.totalPages);
+            // A refresh can shrink the result set (e.g. orders cancelled elsewhere); clamp to the last page.
+            if (page > pagination.totalPages) setPage(pagination.totalPages);
             return true;
         } catch (error) {
+            if (requestId !== loadOrdersRequestRef.current) return true;
             console.error('Error loading orders:', error);
+            notifyError(error, 'No se pudieron cargar las órdenes');
             return false;
         } finally {
-            setLoading(false);
+            if (requestId === loadOrdersRequestRef.current) setLoading(false);
         }
-    }, [customEndDate, customStartDate, dateRange]);
+    }, [customEndDate, customStartDate, dateRange, debouncedSearch, page, statusFilter]);
+
+    // Any filter change restarts from the first page.
+    useEffect(() => {
+        setPage(1);
+    }, [statusFilter, dateRange, customStartDate, customEndDate, debouncedSearch]);
 
     const loadShiftStatus = useCallback(async () => {
         try {
@@ -186,7 +223,7 @@ export default function Orders() {
             setIsSidebarOpen(false);
         } catch (error) {
             console.error('Error updating order status:', error);
-            showError('Error al actualizar el estado de la orden');
+            showError(getApiErrorMessage(error, 'Error al actualizar el estado de la orden'));
         }
     };
 
@@ -214,7 +251,7 @@ export default function Orders() {
                 payableOrder = refreshed.data.data as Order;
             } catch (refreshError) {
                 console.error('Pre-invoice issued but order refresh failed:', refreshError);
-                showWarning('La prefactura fue emitida, pero el detalle no pudo actualizarse. El cobro usará la última información disponible.');
+                notifyError(refreshError, 'La prefactura fue emitida, pero el detalle no pudo actualizarse (el cobro usará la última información disponible)', { type: 'warning' });
             }
 
             await loadOrders();
@@ -274,9 +311,9 @@ export default function Orders() {
             try {
                 const warehouses = await loadBranchWarehouses(order.branchId);
                 setCancelWarehouses(warehouses);
-                if (warehouses.length === 1) setCancelWarehouseId(warehouses[0].id);
-            } catch {
-                showError('No se pudieron cargar las bodegas de la sucursal.');
+                setCancelWarehouseId(preferredSaleWarehouseId(warehouses));
+            } catch (error) {
+                showError(getApiErrorMessage(error, 'No se pudieron cargar las bodegas de la sucursal'));
             } finally {
                 setLoadingWarehouses(false);
             }
@@ -303,7 +340,7 @@ export default function Orders() {
             setCancelWarehouseId(null);
         } catch (error) {
             console.error('Error cancelling order:', error);
-            showError('Error al cancelar la orden');
+            showError(getApiErrorMessage(error, 'Error al cancelar la orden'));
         }
     };
 
@@ -344,8 +381,8 @@ export default function Orders() {
             link.download = `${fileName}.pdf`;
             link.click();
             URL.revokeObjectURL(url);
-        } catch {
-            showError('No se pudo descargar el contraflujo fiscal.');
+        } catch (error) {
+            showError(getApiErrorMessage(error, 'No se pudo descargar el contraflujo fiscal'));
         }
     };
 
@@ -358,9 +395,10 @@ export default function Orders() {
         try {
             const warehouses = await loadBranchWarehouses(order.branchId);
             setDeliveryWarehouses(warehouses);
-            if (warehouses.length === 1) setDeliveryWarehouseId(warehouses[0].id);
-        } catch {
-            showError('No se pudieron cargar las bodegas de la sucursal.');
+            // Branch default sale warehouse first, else the only one.
+            setDeliveryWarehouseId(preferredSaleWarehouseId(warehouses));
+        } catch (error) {
+            showError(getApiErrorMessage(error, 'No se pudieron cargar las bodegas de la sucursal'));
         } finally {
             setLoadingWarehouses(false);
         }
@@ -505,17 +543,9 @@ export default function Orders() {
         return buttons;
     };
 
-    const filteredOrders = orders.filter(o => {
-        const matchStatus = statusFilter === 'all'
-            || (statusFilter === 'PAID' ? o.financialStatus === 'PAID' : o.status === statusFilter);
-        const searchLower = debouncedSearch.toLowerCase();
-        const matchSearch = !debouncedSearch || String(o.id).includes(searchLower) ||
-            o.customerName?.toLowerCase().includes(searchLower) ||
-            o.user?.name.toLowerCase().includes(searchLower) ||
-            (o.table && String(o.table.number).includes(debouncedSearch));
-
-        return matchStatus && matchSearch;
-    });
+    // Text search is applied by the server (`search` param) across every page.
+    const filteredOrders = orders.filter(o => statusFilter === 'all'
+        || (statusFilter === 'PAID' ? o.financialStatus === 'PAID' : o.status === statusFilter));
 
     if (loading) return <LoadingOverlay text="Sincronizando órdenes..." />;
 
@@ -612,7 +642,8 @@ export default function Orders() {
                     <div className="search-box">
                         <input
                             type="text"
-                            placeholder="Buscar por #, mesa, mesero..."
+                            aria-label="Buscar órdenes por número, mesa, mesero, cliente o factura"
+                            placeholder="Buscar por #, mesa, mesero o cliente..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                         />
@@ -706,6 +737,14 @@ export default function Orders() {
                     <NoResultsEmptyState />
                 )}
             </div>
+
+            <Pagination
+                page={page}
+                totalPages={totalPages}
+                totalItems={totalOrders}
+                pageSize={ORDERS_PAGE_SIZE}
+                onPageChange={setPage}
+            />
 
             {/* Sidebar Details */}
             <Sidebar
@@ -841,7 +880,16 @@ export default function Orders() {
                                 <div className="tab-pane animate-fade-in">
                                     {/* Items */}
                                     <div className="detail-items">
-                                        {selectedOrder.items?.map((item) => (
+                                        {selectedOrder.items?.map((item) => isVoidedOrderLine(item) ? (
+                                            <div key={item.id} className="detail-item-row order-line-voided" title={item.voidReason || undefined}>
+                                                <span className="item-qty">{item.voidedQuantity}x</span>
+                                                <div className="item-info">
+                                                    <div className="item-name order-line-voided-name">{item.menuItem?.name || 'Item eliminado'}</div>
+                                                    {item.voidReason && <div className="item-notes">Anulado: {item.voidReason}</div>}
+                                                </div>
+                                                <span className="order-line-void-badge">Anulado</span>
+                                            </div>
+                                        ) : (
                                             <div key={item.id || item.menuItemId} className="detail-item-row">
                                                 <span className="item-qty">{item.quantity}x</span>
                                                 <div className="item-info">
@@ -849,6 +897,16 @@ export default function Orders() {
                                                     {item.notes && <div className="item-notes">{item.notes}</div>}
                                                 </div>
                                                 <span className="item-price">{formatMoney(Number(item.subtotal))}</span>
+                                                {canVoidLines && isVoidableOrderLine(item) && !orderLineVoidBlocker(selectedOrder) && (
+                                                    <button
+                                                        type="button"
+                                                        className="order-line-void-btn"
+                                                        onClick={() => setVoidLineItemId(item.id)}
+                                                        title="Anular línea y registrar merma"
+                                                    >
+                                                        Anular
+                                                    </button>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
@@ -863,6 +921,17 @@ export default function Orders() {
                     </div>
                 )}
             </Sidebar >
+
+            <KitchenLineVoidModal
+                isOpen={voidLineItemId !== null}
+                order={selectedOrder}
+                initialItemId={voidLineItemId}
+                onClose={() => setVoidLineItemId(null)}
+                onVoided={(updated) => {
+                    if (updated) setSelectedOrder((current) => (current && current.id === updated.id ? { ...current, ...updated } : current));
+                    void loadOrders();
+                }}
+            />
 
             {/* Payment Modal */}
             {

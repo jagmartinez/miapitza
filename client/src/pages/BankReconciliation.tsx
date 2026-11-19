@@ -22,14 +22,10 @@ import {
     Save,
     RotateCcw,
 } from 'lucide-react';
+import { getApiErrorMessage } from '../utils/apiError';
 
 function errorMessage(error: unknown): string {
-    if (typeof error === 'object' && error !== null && 'response' in error) {
-        const msg = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
-        if (typeof msg === 'string' && msg) return msg;
-    }
-    if (error instanceof Error) return error.message;
-    return 'Error';
+    return getApiErrorMessage(error);
 }
 
 interface ReconciliationStatus {
@@ -109,7 +105,7 @@ const BankReconciliation: React.FC = () => {
             setSettings(response.data.data || {});
         } catch (error) {
             console.error('Error loading settings:', error);
-            showError('No se pudo cargar la configuración monetaria. Verifique los importes antes de conciliar.');
+            showError(getApiErrorMessage(error, 'No se pudo cargar la configuración monetaria (verifique los importes antes de conciliar)'));
         }
     }, [showError]);
 

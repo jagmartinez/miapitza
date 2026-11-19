@@ -23,3 +23,14 @@ export function getIdempotentAttempt(
     if (current?.fingerprint === fingerprint) return current;
     return { fingerprint, key: newIdempotencyKey() };
 }
+
+/**
+ * True when a failed mutation may or may not have been applied server-side
+ * (network loss, timeout, 5xx, in-flight conflict). Only then must a retry of
+ * the same action reuse its key; a definitive rejection starts a fresh attempt.
+ */
+export function isAmbiguousMutationFailure(error: unknown): boolean {
+    const status = (error as { response?: { status?: unknown } } | null)?.response?.status;
+    if (typeof status !== 'number') return true;
+    return status >= 500 || status === 408 || status === 409 || status === 429;
+}

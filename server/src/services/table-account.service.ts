@@ -118,11 +118,52 @@ export function allocatePartialFinancials(input: {
     };
 }
 
+/** Legacy order-status merge, only for accounts without persisted kitchen batches. */
 function workflowStatus(statuses: ActiveStatus[]): ActiveStatus {
     if (statuses.length > 0 && statuses.every((status) => status === 'READY')) return 'READY';
     if (statuses.includes('IN_PREPARATION') || statuses.includes('READY')) return 'IN_PREPARATION';
     if (statuses.includes('SENT_TO_KITCHEN')) return 'SENT_TO_KITCHEN';
     return 'OPEN';
+}
+
+/**
+ * Operational status of an account after lines moved between orders, derived
+ * from its lines and kitchen batches exactly like the KDS compatibility sync:
+ * an active batch wins, then unsent draft lines (OPEN), then a fully released
+ * kitchen history (READY, deliverable). Merging raw order statuses instead left
+ * e.g. OPEN + released-READY accounts as IN_PREPARATION with no batch in the
+ * KDS, an account nobody could mark ready, deliver or auto-deliver.
+ * `legacyStatus` applies only to sent lines without any persisted batch.
+ */
+export function deriveAccountWorkflowStatus(input: {
+    items: Array<{ sentAt: Date | null }>;
+    batchStatuses: string[];
+    legacyStatus: ActiveStatus;
+}): ActiveStatus {
+    const active = input.batchStatuses.filter((status) => status !== 'RELEASED');
+    if (active.includes('IN_PREPARATION')) return 'IN_PREPARATION';
+    if (active.includes('PENDING')) return 'SENT_TO_KITCHEN';
+    if (active.includes('READY')) return 'READY';
+    if (input.items.some((item) => item.sentAt == null)) return 'OPEN';
+    if (input.batchStatuses.length > 0) return 'READY';
+    if (input.items.length === 0) return 'OPEN';
+    return input.legacyStatus;
+}
+
+async function deriveStoredAccountStatus(tx: Tx, orderId: number, legacyStatus: ActiveStatus): Promise<ActiveStatus> {
+    const account = await tx.order.findUnique({
+        where: { id: orderId },
+        select: {
+            items: { select: { sentAt: true } },
+            kitchenBatches: { select: { status: true } },
+        },
+    });
+    if (!account) throw new Error(`La orden #${orderId} no existe`);
+    return deriveAccountWorkflowStatus({
+        items: account.items,
+        batchStatuses: account.kitchenBatches.map((batch) => batch.status),
+        legacyStatus,
+    });
 }
 
 function assertPositiveInteger(value: unknown, label: string): number {
@@ -131,11 +172,26 @@ function assertPositiveInteger(value: unknown, label: string): number {
     return parsed;
 }
 
-async function lockTables(tx: Tx, companyId: number, ids: number[]) {
+/**
+ * Locks the tables (ascending id) and then, through `lockAccountsBeforeRead`,
+ * the orders the operation will mutate, BEFORE the first plain read. Under
+ * MySQL REPEATABLE READ the first non-locking SELECT fixes the transaction
+ * snapshot; reading tables/orders before the order locks let a concurrent
+ * addItem/removeItem/kitchen send (which lock only the Order row) commit
+ * unseen, so moved item lists and summed totals could be stale (an added line
+ * left on an absorbed, cancelled order; a restored total missing a line).
+ */
+async function lockTables(
+    tx: Tx,
+    companyId: number,
+    ids: number[],
+    lockAccountsBeforeRead?: () => Promise<void>
+) {
     const sorted = [...new Set(ids)].sort((a, b) => a - b);
     for (const id of sorted) {
         await tx.$queryRaw`SELECT id FROM \`Table\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
     }
+    if (lockAccountsBeforeRead) await lockAccountsBeforeRead();
     const tables = await tx.table.findMany({ where: { companyId, id: { in: sorted } } });
     if (tables.length !== sorted.length) throw new Error('Una o más mesas no existen o no pertenecen a la empresa');
     return tables;
@@ -145,6 +201,14 @@ async function lockOrders(tx: Tx, companyId: number, ids: number[]) {
     for (const id of [...new Set(ids)].sort((a, b) => a - b)) {
         await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
     }
+}
+
+/** Locking read of every open table account on the given tables (Table locks already held). */
+async function lockOpenAccountOrders(tx: Tx, companyId: number, tableIds: number[]) {
+    const sorted = [...new Set(tableIds)].sort((a, b) => a - b);
+    if (sorted.length === 0) return;
+    const rows = await tx.$queryRaw<Array<{ id: number }>>`SELECT id FROM \`Order\` WHERE companyId = ${companyId} AND tableId IN (${Prisma.join(sorted)}) AND status IN ('OPEN', 'SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED') AND financialStatus <> 'PAID' ORDER BY id FOR UPDATE`;
+    return Array.isArray(rows) ? rows.map((row) => Number(row.id)) : [];
 }
 
 async function syncTableStatus(tx: Tx, companyId: number, tableId: number) {
@@ -274,7 +338,12 @@ export class TableAccountService {
         if (sourceTableIds.includes(destinationTableId)) throw new Error('La mesa destino no puede ser también origen');
 
         return prisma.$transaction(async (tx) => {
-            const tables = await lockTables(tx, companyId, [destinationTableId, ...sourceTableIds]);
+            const tables = await lockTables(
+                tx,
+                companyId,
+                [destinationTableId, ...sourceTableIds],
+                async () => { await lockOpenAccountOrders(tx, companyId, [destinationTableId, ...sourceTableIds]); }
+            );
             const destination = tables.find((table) => table.id === destinationTableId)!;
             assertCompatiblePhysicalGroups(tables, 'consolidar cuentas');
             if (destination.status === 'OUT_OF_SERVICE') throw new Error('La mesa destino está fuera de servicio');
@@ -295,6 +364,7 @@ export class TableAccountService {
                         where: { status: { not: 'RELEASED' } },
                         select: { id: true },
                     },
+                    _count: { select: { kitchenBatches: true } },
                     items: {
                         select: {
                             id: true,
@@ -397,7 +467,14 @@ export class TableAccountService {
                 where: { id: primary.id },
                 data: {
                     tableId: destinationTableId,
-                    status: workflowStatus(orders.map((order) => order.status as ActiveStatus)),
+                    // Active batches were refused above, so every persisted
+                    // batch of the merged account is RELEASED.
+                    status: deriveAccountWorkflowStatus({
+                        items: orders.flatMap((order) => order.items),
+                        batchStatuses: orders.flatMap((order) =>
+                            Array.from({ length: order._count.kitchenBatches }, () => 'RELEASED')),
+                        legacyStatus: workflowStatus(orders.map((order) => order.status as ActiveStatus)),
+                    }),
                     total: fromCents(sumCents(orders.map((order) => order.total))),
                     discount: fromCents(sumCents(orders.map((order) => order.discount))),
                     tax: fromCents(sumCents(orders.map((order) => order.tax))),
@@ -580,7 +657,22 @@ export class TableAccountService {
         }
 
         return prisma.$transaction(async (tx) => {
-            await tx.$queryRaw`SELECT id FROM \`TableConsolidation\` WHERE id = ${consolidationId} AND companyId = ${companyId} FOR UPDATE`;
+            const lockedConsolidation = await tx.$queryRaw<Array<{ destinationTableId: number }>>`SELECT id, destinationTableId FROM \`TableConsolidation\` WHERE id = ${consolidationId} AND companyId = ${companyId} FOR UPDATE`;
+            // Lock the whole scope (Table ascending -> Order ascending) through
+            // locking reads before the first plain read fixes the snapshot, so
+            // the post-consolidation version checks below see committed edits.
+            if (Array.isArray(lockedConsolidation) && lockedConsolidation.length === 1) {
+                const scope = await tx.$queryRaw<Array<{ orderId: number; originalTableId: number }>>`SELECT orderId, originalTableId FROM \`TableConsolidationOrder\` WHERE tableConsolidationId = ${consolidationId} FOR UPDATE`;
+                const scopeRows = Array.isArray(scope) ? scope : [];
+                const scopeTableIds = [...new Set([
+                    Number(lockedConsolidation[0].destinationTableId),
+                    ...scopeRows.map((row) => Number(row.originalTableId))
+                ])].sort((a, b) => a - b);
+                for (const id of scopeTableIds) {
+                    await tx.$queryRaw`SELECT id FROM \`Table\` WHERE id = ${id} AND companyId = ${companyId} FOR UPDATE`;
+                }
+                await lockOrders(tx, companyId, scopeRows.map((row) => Number(row.orderId)));
+            }
             const consolidation = await tx.tableConsolidation.findFirst({
                 where: { id: consolidationId, companyId },
                 include: {
@@ -831,7 +923,10 @@ export class TableAccountService {
         if (sourceTableId === destinationTableId) throw new Error('Seleccione una mesa destino diferente');
 
         return prisma.$transaction(async (tx) => {
-            const tables = await lockTables(tx, companyId, [sourceTableId, destinationTableId]);
+            const tables = await lockTables(tx, companyId, [sourceTableId, destinationTableId], async () => {
+                await lockOrders(tx, companyId, [orderId]);
+                await lockOpenAccountOrders(tx, companyId, [destinationTableId]);
+            });
             const sourceTable = tables.find((table) => table.id === sourceTableId)!;
             const destination = tables.find((table) => table.id === destinationTableId)!;
             assertCompatiblePhysicalGroups(tables, 'cambiar el consumo de mesa');
@@ -979,7 +1074,12 @@ export class TableAccountService {
             const movedTip = allocation.movedTipCents;
             const movedCommission = Math.round(toCents(order.channelCommission) * ratio);
             const movedMarkup = Math.round(toCents(order.channelMarkup) * ratio);
-            const remainingItems = await tx.orderItem.count({ where: { orderId: order.id } });
+            // Kitchen-voided rows (quantity 0) are history, not consumption: a
+            // source left with only voided rows is fully transferred.
+            const remainingItems = await tx.orderItem.count({ where: { orderId: order.id, quantity: { gt: 0 } } });
+            const sourceStatus = remainingItems === 0
+                ? null
+                : await deriveStoredAccountStatus(tx, order.id, order.status as ActiveStatus);
 
             const sourceOrder = await tx.order.update({
                 where: { id: order.id },
@@ -990,6 +1090,7 @@ export class TableAccountService {
                     tipAmount: fromCents(toCents(order.tipAmount) - movedTip),
                     channelCommission: fromCents(toCents(order.channelCommission) - movedCommission),
                     channelMarkup: fromCents(toCents(order.channelMarkup) - movedMarkup),
+                    ...(sourceStatus ? { status: sourceStatus } : {}),
                     ...(remainingItems === 0 ? {
                         status: 'CANCELLED' as const,
                         consolidatedIntoOrderId: destinationOrder.id,
@@ -1001,10 +1102,16 @@ export class TableAccountService {
                 }
             });
 
-            const targetStatus = workflowStatus([
-                destinationOrder.status as ActiveStatus,
-                order.status as ActiveStatus
-            ]);
+            // Moved lines are unsent drafts, so the destination follows its own
+            // kitchen batches (an active wave stays visible in the KDS) and
+            // otherwise becomes OPEN for the next send.
+            const targetStatus = await deriveStoredAccountStatus(
+                tx,
+                destinationOrder.id,
+                existingDestination
+                    ? workflowStatus([destinationOrder.status as ActiveStatus, order.status as ActiveStatus])
+                    : order.status as ActiveStatus
+            );
             const updatedDestination = await tx.order.update({
                 where: { id: destinationOrder.id },
                 data: {

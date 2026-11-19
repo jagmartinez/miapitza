@@ -59,7 +59,11 @@ describe('PaymentService.delete financial-state reversal', () => {
                 findFirst: jest.fn(async () => ({ id: 4, usageCount: 1 })),
                 update: jest.fn(async (_args: unknown) => ({}))
             },
-            auditLog: { create: jest.fn(async (_args: unknown) => ({})) }
+            auditLog: {
+                create: jest.fn(async (_args: unknown) => ({})),
+                // Legacy order: use was claimed at payment, no prefactura reservation.
+                findFirst: jest.fn(async (_args: unknown) => null)
+            }
         };
         jest.spyOn(prisma, '$transaction').mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
 
@@ -197,7 +201,10 @@ describe('OrderService.cancel paid-like states', () => {
                 findFirst: jest.fn(async () => ({ status: 'OCCUPIED', activeTableGroupId: null })),
                 update: jest.fn(async (_args: unknown) => ({}))
             },
-            auditLog: { create: jest.fn(async (_args: unknown) => ({})) }
+            auditLog: {
+                create: jest.fn(async (_args: unknown) => ({})),
+                findFirst: jest.fn(async (_args: unknown) => null)
+            }
         };
     }
 
@@ -230,7 +237,7 @@ describe('OrderService.cancel paid-like states', () => {
         const reverse = jest.spyOn(InventoryConsumptionService, 'reverseForOrder')
             .mockResolvedValue({ reversed: true });
 
-        await expect(OrderService.cancel(7, 1, 9, 'Manual')).rejects.toThrow(/paid/i);
+        await expect(OrderService.cancel(7, 1, 9, 'Manual')).rejects.toThrow(/pagadas/i);
         expect(reverse).not.toHaveBeenCalled();
         expect(tx.order.update).not.toHaveBeenCalled();
     });

@@ -185,6 +185,8 @@ describe('persistent KDS batches', () => {
                     status: 'SENT_TO_KITCHEN',
                     items: [{ id: 12, sentAt: current.sentAt, status: 'PENDING' }],
                 })),
+                findUnique: jest.fn(async () => compatibilityOrder(['PENDING'])),
+                update: jest.fn(async (_args: unknown) => ({})),
             },
             kitchenBatch: {
                 findFirst: jest.fn(async () => current),
@@ -198,6 +200,69 @@ describe('persistent KDS batches', () => {
 
         expect(result).toMatchObject({ kitchenBatchId: 81, kitchenBatchSent: false });
         expect(tx.orderItem.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('restores READY on a no-op send when a released order was left OPEN with nothing unsent', async () => {
+        const released = batchRow({ status: 'RELEASED' });
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            order: {
+                findFirst: jest.fn(async () => ({
+                    id: 41,
+                    branchId: 2,
+                    status: 'OPEN',
+                    items: [{ id: 12, sentAt: released.sentAt, status: 'DONE' }],
+                })),
+                findUnique: jest.fn(async () => ({ ...compatibilityOrder(['RELEASED']), status: 'OPEN' })),
+                update: jest.fn(async (_args: unknown) => ({})),
+            },
+            kitchenBatch: { findFirst: jest.fn(async () => released) },
+            orderItem: { updateMany: jest.fn() },
+        };
+        jest.spyOn(prisma, '$transaction')
+            .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
+
+        await OrderService.sendToKitchen(41, 1);
+
+        expect(tx.order.update).toHaveBeenCalledWith(expect.objectContaining({
+            where: { id: 41 },
+            data: expect.objectContaining({ status: 'READY' }),
+        }));
+    });
+
+    it('restores READY after removing the only draft line added to a released order', async () => {
+        const tx = {
+            $queryRaw: jest.fn(async () => []),
+            orderItem: {
+                findFirst: jest.fn(async () => ({ orderId: 41 })),
+                findUnique: jest.fn(async () => ({
+                    id: 13,
+                    orderId: 41,
+                    sentAt: null,
+                    order: {
+                        id: 41, companyId: 1, branchId: 2, status: 'OPEN', invoiceNumber: null,
+                        preInvoicedAt: null, discount: 0, discountCode: null, tipAmount: 0, payments: [],
+                    },
+                })),
+                delete: jest.fn(async () => ({})),
+                findMany: jest.fn(async () => [{ subtotal: 20 }]),
+            },
+            setting: { findMany: jest.fn(async () => []) },
+            order: {
+                findUnique: jest.fn(async () => ({ ...compatibilityOrder(['RELEASED']), status: 'OPEN' })),
+                update: jest.fn(async (_args: unknown) => ({})),
+            },
+            kitchenBatch: { count: jest.fn(async () => 1) },
+        };
+        jest.spyOn(prisma, '$transaction')
+            .mockImplementation((async (callback: (db: typeof tx) => unknown) => callback(tx)) as never);
+
+        await expect(OrderService.removeItem(13, 1)).resolves.toEqual({ success: true });
+
+        expect(tx.order.update).toHaveBeenLastCalledWith(expect.objectContaining({
+            where: { id: 41 },
+            data: expect.objectContaining({ status: 'READY' }),
+        }));
     });
 
     it('starts only the requested batch and stamps its own lifecycle', async () => {

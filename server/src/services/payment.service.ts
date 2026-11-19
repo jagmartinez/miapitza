@@ -3,7 +3,8 @@ import type { PaymentMethodType, Prisma } from '@prisma/client';
 import { DEFAULT_COMPANY_SETTINGS } from './setting.service';
 import { isValidTimeZone, zonedDateKey } from '../utils/timezone';
 import { OrderService } from './order.service';
-import { transactionWithP2034Retry } from '../utils/transaction-retry';
+import { SETTLEMENT_TRANSACTION_OPTIONS, transactionWithP2034Retry } from '../utils/transaction-retry';
+import { claimPromotionUsageAtSettlement, getActivePromotionReservation } from './promotion.service';
 
 export class PaymentService {
     private static normalizeMoney(value: unknown): { amount: number; cents: number } {
@@ -24,6 +25,41 @@ export class PaymentService {
         if (!normalized) return null;
         if (normalized.length > 191) throw new Error(`${field} is too long`);
         return normalized;
+    }
+
+    /**
+     * Shared Table -> Order lock order (same as order creation, prefactura and
+     * fiscal issuance). The table is read in a preflight outside the
+     * transaction and re-checked (lockCurrentTableIfMoved) after both locks are held.
+     */
+    private static async lockTableThenOrder(
+        tx: Prisma.TransactionClient,
+        companyId: number,
+        orderId: number,
+        candidateTableId: number | null
+    ) {
+        if (candidateTableId !== null) {
+            await tx.$queryRaw`SELECT id FROM \`Table\` WHERE id = ${candidateTableId} AND companyId = ${companyId} FOR UPDATE`;
+        }
+        await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND companyId = ${companyId} FOR UPDATE`;
+    }
+
+    /**
+     * The preflight table can only be stale if the order was moved between
+     * the preflight and the Order lock. In that rare case fall back to locking
+     * the order's current table now (pre-existing Order -> Table behaviour);
+     * the retry helper covers the residual deadlock window.
+     */
+    private static async lockCurrentTableIfMoved(
+        tx: Prisma.TransactionClient,
+        companyId: number,
+        actualTableId: number | null | undefined,
+        candidateTableId: number | null
+    ) {
+        const actual = actualTableId ?? null;
+        if (actual !== null && actual !== candidateTableId) {
+            await tx.$queryRaw`SELECT id FROM \`Table\` WHERE id = ${actual} AND companyId = ${companyId} FOR UPDATE`;
+        }
     }
 
     private static async resolveCompanyTimezone(
@@ -131,10 +167,18 @@ export class PaymentService {
         const payerName = this.normalizeOptionalText(data.payerName, 'Payer name');
         const idempotencyKey = this.normalizeOptionalText(data.idempotencyKey, 'Idempotency key');
 
+        const candidate = await prisma.order.findFirst({
+            where: { id: data.orderId, companyId },
+            select: { tableId: true }
+        });
+        const candidateTableId = candidate?.tableId ?? null;
+
         // ALL validation and writes inside a single transaction to prevent race conditions
         return await transactionWithP2034Retry(async (tx) => {
-            // Pessimistic lock: prevent concurrent payments on the same order
-            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${data.orderId} AND companyId = ${companyId} FOR UPDATE`;
+            // Pessimistic lock in the shared Table -> Order order: prevents
+            // concurrent payments on the same order and lock-order deadlocks
+            // against prefactura/invoice/order creation on the same table.
+            await this.lockTableThenOrder(tx, companyId, data.orderId, candidateTableId);
 
             const order = await tx.order.findFirst({
                 where: { id: data.orderId, companyId },
@@ -144,6 +188,7 @@ export class PaymentService {
             if (!order) {
                 throw new Error('Order not found');
             }
+            await this.lockCurrentTableIfMoved(tx, companyId, order.tableId, candidateTableId);
 
             const actor = await tx.user.findFirst({
                 where: { id: userId, companyId, status: 'ACTIVE' },
@@ -234,7 +279,8 @@ export class PaymentService {
                     payerName,
                     idempotencyKey,
                     // Payment rows are financial facts only. Physical stock
-                    // consumption belongs exclusively to explicit delivery.
+                    // consumption belongs to delivery (explicit, or automatic
+                    // once the order is settled and released by the kitchen).
                     settlementWarehouseId: null,
                     registeredById: userId
                 },
@@ -304,25 +350,20 @@ export class PaymentService {
                     data: { financialStatus: 'PAID', closedAt: new Date() }
                 });
 
-                if (order.discountCode) {
-                    const promo = await tx.promotion.findFirst({
-                        where: { companyId, code: order.discountCode.toUpperCase() },
-                        select: { id: true, usageLimit: true, usageCount: true }
-                    });
-                    if (promo) {
-                        const claimed = await tx.promotion.updateMany({
-                            where: {
-                                id: promo.id,
-                                ...(promo.usageLimit === null
-                                    ? {}
-                                    : { usageCount: { lt: promo.usageLimit } })
-                            },
-                            data: { usageCount: { increment: 1 } }
-                        });
-                        if (claimed.count !== 1) {
-                            throw new Error('Promotion usage limit reached');
-                        }
-                    }
+                // A use reserved when the prefactura was issued is honored
+                // here (never claimed twice); unreserved orders claim now.
+                await claimPromotionUsageAtSettlement(tx, {
+                    companyId,
+                    orderId: order.id,
+                    discountCode: order.discountCode
+                });
+
+                // A settled order whose kitchen work is fully released is handed
+                // over now: consume its stock in this same transaction (already
+                // holding Table -> Order). Not-yet-released orders are delivered
+                // automatically by the kitchen release instead.
+                if (order.status === 'READY') {
+                    await OrderService.autoDeliverIfSettledWithTransaction(tx, order.id, companyId, userId);
                 }
 
                 if (order.tableId) {
@@ -345,14 +386,14 @@ export class PaymentService {
             }
 
             return payment;
-        });
+        }, SETTLEMENT_TRANSACTION_OPTIONS);
     }
 
     static async delete(id: number, companyId: number, userId: number, reversalReason?: string) {
         if (!reversalReason?.trim()) throw new Error('Reversal reason is required');
         const target = await prisma.payment.findFirst({
             where: { id, status: 'ACTIVE', order: { companyId } },
-            select: { orderId: true }
+            select: { orderId: true, order: { select: { tableId: true } } }
         });
 
         if (!target) {
@@ -363,7 +404,7 @@ export class PaymentService {
             // Serialize payment removal with payment creation, order completion
             // and cancellation. The status alone is not an inventory marker: a
             // fully-paid order may already be DELIVERED.
-            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${target.orderId} AND companyId = ${companyId} FOR UPDATE`;
+            await this.lockTableThenOrder(tx, companyId, target.orderId, target.order?.tableId ?? null);
 
             const payment = await tx.payment.findFirst({
                 where: { id, orderId: target.orderId, status: 'ACTIVE', order: { companyId } },
@@ -375,6 +416,7 @@ export class PaymentService {
                 }
             });
             if (!payment) throw new Error('Payment not found');
+            await this.lockCurrentTableIfMoved(tx, companyId, payment.order.tableId, target.order?.tableId ?? null);
             if (
                 (payment.fiscalCreditNoteRefunds || []).length > 0
                 || ['PARTIALLY_CREDITED', 'CREDITED'].includes(payment.order.invoiceFiscalStatus)
@@ -494,7 +536,13 @@ export class PaymentService {
                 // Promotion usage is financial-state based: it was counted
                 // when the order first became fully paid, regardless of later
                 // operational status changes.
-                if (payment.order.discountCode) {
+                // A prefactura reservation stays held: the order is still
+                // pre-invoiced and must settle with its promotion. Only
+                // unreserved (claimed-at-payment) uses are returned here.
+                const reservation = payment.order.discountCode
+                    ? await getActivePromotionReservation(tx, companyId, payment.orderId)
+                    : null;
+                if (payment.order.discountCode && !reservation) {
                     const promo = await tx.promotion.findFirst({
                         where: { companyId, code: payment.order.discountCode.toUpperCase() },
                         select: { id: true, usageCount: true }

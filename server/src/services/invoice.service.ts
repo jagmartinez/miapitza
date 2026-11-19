@@ -5,6 +5,16 @@ import prisma from '../utils/prisma';
 import { DEFAULT_COMPANY_SETTINGS, SettingService, validateConfiguredFiscalTaxId } from './setting.service';
 import { reconcileTableGroupForTable } from './table-group.service';
 import { transactionWithP2034Retry } from '../utils/transaction-retry';
+import { releasePromotionReservationForOrder, reservePromotionUsageForOrder } from './promotion.service';
+
+export interface InvoiceListFilters {
+    branchId?: number;
+    startDate?: Date;
+    endDate?: Date;
+    search?: string;
+    page?: number;
+    limit?: number;
+}
 
 export interface InvoiceData {
     orderId: number;
@@ -14,7 +24,12 @@ export interface InvoiceData {
     customerFiscalAddress?: string;
     customerEmail?: string;
     customerPhone?: string;
-    items: Array<{ orderItemId?: number; name: string; quantity: number; price: number; subtotal: number }>;
+    /**
+     * `discount` (optional) = part of the invoice discount attributed to the
+     * line by a per-item / combo / happy-hour promotion. Credit notes return
+     * it with the line; any unattributed remainder is allocated proportionally.
+     */
+    items: Array<{ orderItemId?: number; name: string; quantity: number; price: number; subtotal: number; discount?: number }>;
     grossSubtotal: number;
     discount: number;
     subtotal: number;
@@ -88,6 +103,13 @@ function assertInvoiceReconciles(data: InvoiceData, label: string): void {
         if (moneyCents(item.price * item.quantity) !== moneyCents(item.subtotal)) {
             throw new Error(`${label} totals do not reconcile`);
         }
+        if (item.discount !== undefined && (!Number.isFinite(item.discount) || item.discount < 0 || moneyCents(item.discount) > moneyCents(item.subtotal))) {
+            throw new Error(`${label} totals do not reconcile`);
+        }
+    }
+    const attributedDiscount = data.items.reduce((sum, item) => sum + moneyCents(item.discount ?? 0), 0);
+    if (attributedDiscount > moneyCents(data.discount)) {
+        throw new Error(`${label} totals do not reconcile`);
     }
     const grossSubtotal = data.items.reduce((sum, item) => sum + item.subtotal, 0);
     const netSubtotal = Math.max(0, data.grossSubtotal - data.discount);
@@ -134,6 +156,7 @@ export function deserializeInvoiceSnapshot(snapshot: Prisma.JsonValue): InvoiceD
                 quantity: finiteNumber(item.quantity, `items[${index}].quantity`),
                 price: finiteNumber(item.price, `items[${index}].price`),
                 subtotal: finiteNumber(item.subtotal, `items[${index}].subtotal`),
+                ...(item.discount == null ? {} : { discount: finiteNumber(item.discount, `items[${index}].discount`) }),
             };
         }),
         grossSubtotal: finiteNumber(raw.grossSubtotal, 'grossSubtotal'),
@@ -193,12 +216,17 @@ function buildInvoiceData(
         customerFiscalAddress: order.customerFiscalAddress || undefined,
         customerEmail: order.customerEmail || undefined,
         customerPhone: order.customerPhone || undefined,
-        items: order.items.map((item) => ({
+        // Kitchen-voided rows stay on the order with quantity 0 for audit and
+        // KDS display only; fiscal documents list billable lines.
+        items: order.items.filter((item) => item.quantity > 0).map((item) => ({
             orderItemId: item.id,
             name: item.menuItem.name,
             quantity: item.quantity,
             price: finiteNumber(item.price, 'item.price'),
             subtotal: finiteNumber(item.subtotal, 'item.subtotal'),
+            ...(moneyCents(Number(item.promotionDiscount ?? 0)) > 0
+                ? { discount: finiteNumber(item.promotionDiscount, 'item.promotionDiscount') }
+                : {}),
         })),
         grossSubtotal: itemSubtotal,
         discount,
@@ -309,10 +337,19 @@ export class InvoiceService {
                 order.status === 'CANCELLED'
                 || order.financialStatus === 'PAID'
                 || totalCents <= 0
-                || order.items.length === 0
+                || !order.items.some((item) => Number(item.quantity) !== 0)
             ) {
                 throw new Error('Solo se puede emitir una prefactura para una orden activa, pendiente de pago, con productos y total mayor a cero');
             }
+
+            // Claim the promotion use now (atomic, limit-respecting) so the
+            // account can always be settled even across partial payments.
+            await reservePromotionUsageForOrder(tx, {
+                companyId,
+                orderId: order.id,
+                discountCode: order.discountCode,
+                userId: actor.id,
+            });
 
             const preInvoicedAt = new Date();
             const preInvoice = buildInvoiceData(
@@ -406,6 +443,7 @@ export class InvoiceService {
                     financialStatus: true,
                     preInvoicedAt: true,
                     preInvoiceSnapshot: true,
+                    discountCode: true,
                     invoiceNumber: true,
                     invoicedAt: true,
                     invoiceSnapshot: true,
@@ -449,6 +487,16 @@ export class InvoiceService {
                     preInvoiceSnapshot: Prisma.DbNull,
                 },
             });
+            // discountCode cannot change while pre-invoiced, so an order
+            // without a code never holds a reservation.
+            if (order.discountCode) {
+                await releasePromotionReservationForOrder(tx, {
+                    companyId,
+                    orderId: order.id,
+                    userId: actor.id,
+                    reason: 'Prefactura revertida',
+                });
+            }
             await tx.auditLog.create({
                 data: {
                     companyId,
@@ -560,7 +608,7 @@ export class InvoiceService {
             // persisted line, discount, tax, tip and total snapshot and fails
             // closed if upstream pricing did not leave them reconciled.
             const totalCents = Math.round(finiteNumber(order.total, 'total') * 100);
-            if (order.status === 'CANCELLED' || totalCents <= 0 || order.items.length === 0) {
+            if (order.status === 'CANCELLED' || totalCents <= 0 || !order.items.some((item) => Number(item.quantity) !== 0)) {
                 throw new Error('Solo se puede emitir una factura para una orden activa, con productos y total mayor a cero');
             }
             if (order.financialStatus !== 'PAID') {
@@ -618,6 +666,76 @@ export class InvoiceService {
             }
             return invoiceData;
         });
+    }
+
+    /**
+     * Paginated fiscal invoice history. `search` matches invoice number,
+     * customer name or customer tax id (NIT/RUC). Totals cover both the
+     * returned page and the whole filtered set so the UI never extrapolates
+     * revenue from a single page.
+     */
+    static async listInvoices(companyId: number, filters: InvoiceListFilters = {}) {
+        const where: Prisma.OrderWhereInput = { companyId, invoiceNumber: { not: null } };
+        if (filters.branchId) where.branchId = filters.branchId;
+        if (filters.startDate || filters.endDate) {
+            where.invoicedAt = {
+                ...(filters.startDate ? { gte: filters.startDate } : {}),
+                ...(filters.endDate ? { lte: filters.endDate } : {}),
+            };
+        }
+        const search = filters.search?.trim().slice(0, 100);
+        if (search) {
+            where.OR = [
+                { invoiceNumber: { contains: search } },
+                { customerName: { contains: search } },
+                { customerTaxId: { contains: search } },
+            ];
+        }
+
+        const page = Number.isInteger(filters.page) && filters.page! > 0 ? filters.page! : 1;
+        const limit = Math.min(Number.isInteger(filters.limit) && filters.limit! > 0 ? filters.limit! : 20, 200);
+
+        const [rows, total, aggregate, cancelledAggregate] = await Promise.all([
+            prisma.order.findMany({
+                where,
+                include: {
+                    branch: { select: { id: true, name: true, code: true } },
+                    user: { select: { id: true, name: true } },
+                    payments: { include: { paymentMethod: { select: { id: true, name: true } } } },
+                    fiscalCreditNotes: {
+                        select: { id: true, number: true, status: true, issuedAt: true },
+                        orderBy: [{ issuedAt: 'desc' }, { id: 'desc' }],
+                        take: 1
+                    },
+                    fiscalInvoiceCancellation: { select: { id: true, cancelledAt: true, reason: true } }
+                },
+                orderBy: [{ invoicedAt: 'desc' }, { id: 'desc' }],
+                skip: (page - 1) * limit,
+                take: limit
+            }),
+            prisma.order.count({ where }),
+            prisma.order.aggregate({ where, _sum: { total: true } }),
+            prisma.order.aggregate({ where: { AND: [where, { invoiceFiscalStatus: 'CANCELLED' }] }, _sum: { total: true } }),
+        ]);
+
+        const data = rows.map(({ fiscalCreditNotes, ...order }) => ({
+            ...order,
+            fiscalCreditNote: fiscalCreditNotes[0] || null
+        }));
+        const pageTotal = data.reduce((sum, order) => sum.add(new Prisma.Decimal(order.total)), new Prisma.Decimal(0));
+        const aggregateTotal = new Prisma.Decimal(aggregate._sum.total ?? 0);
+        const cancelledTotal = new Prisma.Decimal(cancelledAggregate._sum.total ?? 0);
+
+        return {
+            data,
+            pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
+            totals: {
+                pageTotal: pageTotal.toNumber(),
+                aggregateTotal: aggregateTotal.toNumber(),
+                // Fiscally cancelled invoices are listed but are not revenue.
+                aggregateNetTotal: aggregateTotal.sub(cancelledTotal).toNumber(),
+            }
+        };
     }
 
     /** Pure read. It never assigns a number or reconstructs mutable data. */

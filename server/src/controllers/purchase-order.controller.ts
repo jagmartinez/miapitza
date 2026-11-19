@@ -46,7 +46,7 @@ export class PurchaseOrderController {
             const filters: {
                 branchId?: number;
                 supplierId?: number;
-                status?: 'DRAFT' | 'ISSUED' | 'RECEIVED' | 'CANCELLED';
+                status?: 'DRAFT' | 'ISSUED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED';
                 search?: string;
             } = {};
 
@@ -264,17 +264,38 @@ export class PurchaseOrderController {
         try {
             const id = parseInt(req.params.id);
             const companyId = req.user!.companyId;
-            const { warehouseId } = req.body;
+            const warehouseId = Number(req.body?.warehouseId);
 
-            if (!warehouseId) {
+            if (!Number.isInteger(warehouseId) || warehouseId <= 0) {
                 return next({ statusCode: 400, message: 'warehouseId es requerido' });
             }
 
+            // Optional per-line quantities (purchase unit). Omitted = receive
+            // every line's remaining balance.
+            const rawItems = req.body?.items;
+            let items: Array<{ itemId: number; quantity: number }> | undefined;
+            if (rawItems !== undefined && rawItems !== null) {
+                if (!Array.isArray(rawItems) || rawItems.length > 500) {
+                    return next({ statusCode: 400, message: 'Formato de líneas de recepción inválido' });
+                }
+                items = rawItems.map((line: Record<string, unknown>) => ({
+                    itemId: Number(line?.itemId),
+                    quantity: Number(line?.quantity)
+                }));
+            }
+            const rawKey = req.headers['x-idempotency-key'];
+            const idempotencyKey = typeof rawKey === 'string' ? rawKey : undefined;
+
             await PurchaseOrderController.assertOrderBranch(req, id);
-            const order = await PurchaseOrderService.receive(id, companyId, req.user?.userId!, warehouseId);
+            const order = await PurchaseOrderService.receive(id, companyId, req.user?.userId!, warehouseId, {
+                items,
+                idempotencyKey
+            });
             res.json({
                 success: true,
-                message: 'Orden de compra recibida exitosamente. Inventario actualizado.',
+                message: order.status === 'PARTIALLY_RECEIVED'
+                    ? 'Recepción parcial registrada. Inventario actualizado.'
+                    : 'Orden de compra recibida exitosamente. Inventario actualizado.',
                 data: order
             });
         } catch (error: unknown) {
@@ -379,6 +400,24 @@ export class PurchaseOrderController {
                 String(req.body.reason || '')
             );
             res.json({ success: true, message: 'Recepción revertida correctamente', data: order });
+        } catch (error: unknown) {
+            if (error instanceof BranchScopeError) return next(error);
+            next({ statusCode: 400, message: getErrorMessage(error) });
+        }
+    }
+
+    static async closeRemaining(req: Request, res: Response, next: NextFunction) {
+        try {
+            const id = parseInt(req.params.id);
+            const companyId = req.user!.companyId;
+            await PurchaseOrderController.assertOrderBranch(req, id);
+            const order = await PurchaseOrderService.closeRemaining(
+                id,
+                companyId,
+                req.user!.userId,
+                String(req.body?.reason || '')
+            );
+            res.json({ success: true, message: 'Saldo de la orden cerrado sin afectar inventario', data: order });
         } catch (error: unknown) {
             if (error instanceof BranchScopeError) return next(error);
             next({ statusCode: 400, message: getErrorMessage(error) });

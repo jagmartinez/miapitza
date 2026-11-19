@@ -1,5 +1,7 @@
 import type { Prisma } from '@prisma/client';
+import { allocateDiscountWithAttribution } from './promotion.service';
 import prisma from '../utils/prisma';
+import { purchaseLineReceived, RECEIVED_PURCHASE_STATUSES } from '../utils/purchase-received';
 import { UnitConversionService } from './unit-conversion.service';
 import { effectiveUnitCost } from '../utils/product-cost';
 import { SettingService } from './setting.service';
@@ -43,6 +45,16 @@ function fiscalGrossWhere(closedAt?: Prisma.DateTimeNullableFilter): Prisma.Orde
         closedAt: closedAt ? { not: null, ...closedAt } : { not: null }
     };
 }
+/** Payments that represent a real gross collection: still ACTIVE, or reversed
+ * by a fiscal credit note (whose refund is subtracted separately at issuedAt).
+ * An ordinary payment reversal (reverse + re-collect) never was revenue and
+ * would double-count collected amounts and method breakdowns. */
+export const COLLECTED_PAYMENT_WHERE: Prisma.PaymentWhereInput = {
+    OR: [
+        { status: 'ACTIVE' },
+        { fiscalCreditNoteRefunds: { some: {} } }
+    ]
+};
 const ACTIVE_ORDER_WHERE: Prisma.OrderWhereInput = tableOperationalOrderWhere();
 export type ReportPeriod = 'today' | 'week' | 'month' | 'year';
 
@@ -143,6 +155,7 @@ export class ReportService {
                 lines: {
                     select: {
                         quantity: true,
+                        grossSubtotal: true,
                         subtotal: true,
                         orderItem: { select: { menuItemId: true } }
                     }
@@ -207,7 +220,7 @@ export class ReportService {
             where: {
                 companyId,
                 ...branchFilter,
-                status: { in: ['DRAFT', 'ISSUED'] }
+                status: { in: ['DRAFT', 'ISSUED', 'PARTIALLY_RECEIVED'] }
             }
         });
 
@@ -293,7 +306,7 @@ export class ReportService {
                         fill: CHART_COLORS[Object.keys(categoryData).length % CHART_COLORS.length]
                     };
                 }
-                categoryData[categoryName].value -= Number(line.subtotal);
+                categoryData[categoryName].value -= Number(line.grossSubtotal);
             }
         }
 
@@ -588,7 +601,7 @@ export class ReportService {
                 const menuItemId = line.orderItem.menuItemId;
                 const current = productTotals.get(menuItemId) || { quantity: 0, revenue: 0 };
                 current.quantity -= line.quantity;
-                current.revenue -= Number(line.subtotal);
+                current.revenue -= Number(line.grossSubtotal);
                 productTotals.set(menuItemId, current);
             }
         }
@@ -829,24 +842,27 @@ export class ReportService {
         });
     }
 
-    static async getMyStats(userId: number, companyId: number, role: string = 'MESERO') {
+    static async getMyStats(userId: number, companyId: number, role: string = 'MESERO', branchId?: number) {
+        // Branch-pinned roles only see their active branch; company-wide
+        // admins pass undefined (all branches).
+        const ob: { branchId?: number } = branchId ? { branchId } : {};
         const timeZone = await SettingService.getTimezone(companyId);
         const today = getZonedDayBounds(timeZone).start;
 
         // ── COCINA ──
         if (role === 'COCINA') {
-            const pendingOrders = await prisma.order.count({ where: { companyId, status: { in: ['SENT_TO_KITCHEN', 'IN_PREPARATION'] } } });
-            const readyOrders = await prisma.order.count({ where: { companyId, status: 'READY' } });
+            const pendingOrders = await prisma.order.count({ where: { companyId, ...ob, status: { in: ['SENT_TO_KITCHEN', 'IN_PREPARATION'] } } });
+            const readyOrders = await prisma.order.count({ where: { companyId, ...ob, status: 'READY' } });
 
             const todayPaidItems = await prisma.orderItem.findMany({
-                where: { order: { companyId, financialStatus: 'PAID', status: { not: 'CANCELLED' }, closedAt: { gte: today } } },
+                where: { order: { companyId, ...ob, financialStatus: 'PAID', status: { not: 'CANCELLED' }, closedAt: { gte: today } } },
                 select: { quantity: true }
             });
             const dishesToday = todayPaidItems.reduce((s, i) => s + i.quantity, 0);
 
             const topDishData = await prisma.orderItem.groupBy({
                 by: ['menuItemId'],
-                where: { order: { companyId, createdAt: { gte: today }, status: { in: ['SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED'] } } },
+                where: { order: { companyId, ...ob, createdAt: { gte: today }, status: { in: ['SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED'] } } },
                 _sum: { quantity: true },
                 orderBy: { _sum: { quantity: 'desc' } },
                 take: 5
@@ -863,7 +879,7 @@ export class ReportService {
             }));
 
             const queue = await prisma.order.findMany({
-                where: { companyId, status: { in: ['SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] } },
+                where: { companyId, ...ob, status: { in: ['SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY'] } },
                 select: { id: true, status: true, createdAt: true, table: { select: { number: true } }, _count: { select: { items: true } } },
                 orderBy: { createdAt: 'asc' }, take: 15
             });
@@ -878,18 +894,18 @@ export class ReportService {
         // ── CHEF (kitchen + inventory) ──
         if (role === 'CHEF') {
             // Kitchen metrics
-            const pendingOrders = await prisma.order.count({ where: { companyId, status: { in: ['SENT_TO_KITCHEN', 'IN_PREPARATION'] } } });
-            const readyOrders = await prisma.order.count({ where: { companyId, status: 'READY' } });
+            const pendingOrders = await prisma.order.count({ where: { companyId, ...ob, status: { in: ['SENT_TO_KITCHEN', 'IN_PREPARATION'] } } });
+            const readyOrders = await prisma.order.count({ where: { companyId, ...ob, status: 'READY' } });
 
             const todayPaidItems = await prisma.orderItem.findMany({
-                where: { order: { companyId, financialStatus: 'PAID', status: { not: 'CANCELLED' }, closedAt: { gte: today } } },
+                where: { order: { companyId, ...ob, financialStatus: 'PAID', status: { not: 'CANCELLED' }, closedAt: { gte: today } } },
                 select: { quantity: true }
             });
             const dishesToday = todayPaidItems.reduce((s, i) => s + i.quantity, 0);
 
             const topDishData = await prisma.orderItem.groupBy({
                 by: ['menuItemId'],
-                where: { order: { companyId, createdAt: { gte: today }, status: { in: ['SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED'] } } },
+                where: { order: { companyId, ...ob, createdAt: { gte: today }, status: { in: ['SENT_TO_KITCHEN', 'IN_PREPARATION', 'READY', 'DELIVERED'] } } },
                 _sum: { quantity: true },
                 orderBy: { _sum: { quantity: 'desc' } },
                 take: 5
@@ -980,7 +996,7 @@ export class ReportService {
             });
 
             const pendingPOs = await prisma.purchaseOrder.count({
-                where: { companyId, status: { in: ['DRAFT', 'ISSUED'] } }
+                where: { companyId, ...ob, status: { in: ['DRAFT', 'ISSUED', 'PARTIALLY_RECEIVED'] } }
             });
 
             return { role: 'BODEGA', lowStockCount: lowStock.length, criticalCount, lowStockProducts, recentMovements, topConsumed, pendingPOs };
@@ -1006,9 +1022,11 @@ export class ReportService {
             });
             let activeShift = null;
             if (activeShiftRaw) {
-                const cashIn = activeShiftRaw.movements
-                    .filter((mov) => mov.type === 'IN')
-                    .reduce((s, mov) => s + Number(mov.amount), 0);
+                // Net of refunds/outflows (same ledger the arqueo uses), in cents.
+                const cashIn = activeShiftRaw.movements.reduce(
+                    (s, mov) => s + (mov.type === 'IN' ? 1 : -1) * Math.round(Number(mov.amount) * 100),
+                    0
+                ) / 100;
                 activeShift = {
                     registerName: activeShiftRaw.cashRegister?.name || 'Caja',
                     startAmount: Number(activeShiftRaw.startAmount),
@@ -1018,14 +1036,14 @@ export class ReportService {
             }
 
             const invoicesToday = await prisma.order.count({
-                where: { companyId, ...fiscalGrossWhere({ gte: today }) }
+                where: { companyId, ...ob, ...fiscalGrossWhere({ gte: today }) }
             });
 
             const [paymentRows, companyCreditsToday] = await Promise.all([
                 prisma.payment.findMany({
                     where: {
                         createdAt: { gte: today },
-                        order: { companyId },
+                        order: { companyId, ...ob },
                         OR: [
                             { status: 'ACTIVE' },
                             { fiscalCreditNoteRefunds: { some: {} } }
@@ -1033,7 +1051,7 @@ export class ReportService {
                     },
                     include: { paymentMethod: { select: { name: true } } }
                 }),
-                this.loadFiscalCredits(companyId, { dateFrom: today })
+                this.loadFiscalCredits(companyId, { dateFrom: today, branchId })
             ]);
             const breakdownMap = new Map<string, number>();
             for (const p of paymentRows) {
@@ -1091,7 +1109,7 @@ export class ReportService {
                 const menuItemId = line.orderItem.menuItemId;
                 const current = productTotals.get(menuItemId) || { quantity: 0, revenue: 0 };
                 current.quantity -= line.quantity;
-                current.revenue -= Number(line.subtotal);
+                current.revenue -= Number(line.grossSubtotal);
                 productTotals.set(menuItemId, current);
             }
         }
@@ -1270,7 +1288,8 @@ export class ReportService {
     }) {
         const poWhere: Prisma.PurchaseOrderWhereInput = {
             companyId,
-            status: 'RECEIVED',
+            // Received basis: partial receipts count for what arrived.
+            status: { in: [...RECEIVED_PURCHASE_STATUSES] },
             ...(filters?.branchId ? { branchId: filters.branchId } : {}),
             ...(filters?.supplierId ? { supplierId: filters.supplierId } : {}),
             ...(filters?.dateFrom || filters?.dateTo
@@ -1318,7 +1337,11 @@ export class ReportService {
                 if (filters?.categoryId && item.product.categoryId !== filters.categoryId) continue;
                 if (filters?.productId && item.productId !== filters.productId) continue;
 
-                const lineSubtotal = Number(item.subtotal);
+                // Only the received share counts (partial receipts, orders
+                // closed short): never the ordered remainder.
+                const received = purchaseLineReceived(item);
+                if (!(received.fraction > 0)) continue;
+                const lineSubtotal = received.value;
                 totalPurchaseCost += lineSubtotal;
 
                 // Aggregate volume and cost in BASE units so avgUnitCost is comparable
@@ -1330,7 +1353,7 @@ export class ReportService {
                     excludedLegacyPurchaseAmount += lineSubtotal;
                     continue;
                 }
-                const baseQty = Number(item.baseQuantity);
+                const baseQty = Number(received.baseQuantity);
                 const baseUnitCost = Number(item.baseCost);
 
                 if (!productCosts[item.productId]) {
@@ -1586,7 +1609,7 @@ export class ReportService {
             ...(filters?.supplierId ? { supplierId: filters.supplierId } : {}),
             status: filters?.status
                 ? filters.status as Prisma.PurchaseOrderWhereInput['status']
-                : 'RECEIVED',
+                : { in: [...RECEIVED_PURCHASE_STATUSES] },
             ...(filters?.dateFrom || filters?.dateTo
                 ? {
                       date: {
@@ -1634,8 +1657,15 @@ export class ReportService {
             supplierSet.add(po.supplierId);
             for (const item of po.items) {
                 if (filters?.categoryId && item.product.categoryId !== filters.categoryId) continue;
+                // Received orders report what arrived (partial receipts, orders
+                // closed short); open/draft orders keep their ordered lines.
+                const receivedBasis = po.status === 'RECEIVED' || po.status === 'PARTIALLY_RECEIVED';
+                const received = purchaseLineReceived(item);
+                if (receivedBasis && !(received.fraction > 0)) continue;
                 productSet.add(item.productId);
-                const cost = Math.round(Number(item.subtotal) * 100) / 100;
+                const lineValue = receivedBasis ? received.value : Number(item.subtotal);
+                const lineBaseQuantity = receivedBasis ? received.baseQuantity : (item.baseQuantity == null ? null : Number(item.baseQuantity));
+                const cost = Math.round(lineValue * 100) / 100;
                 totalAmount += cost;
                 const hasNormalizedUom = item.baseQuantity != null && item.baseCost != null;
                 if (!hasNormalizedUom) {
@@ -1648,7 +1678,7 @@ export class ReportService {
                     supplierName: po.supplier.name,
                     productName: item.product.name,
                     categoryName: item.product.category?.name || null,
-                    quantity: hasNormalizedUom ? Math.round(Number(item.baseQuantity) * 100) / 100 : null,
+                    quantity: hasNormalizedUom ? Math.round(Number(lineBaseQuantity) * 100) / 100 : null,
                     unit: hasNormalizedUom
                         ? item.product.baseUnit?.abbreviation || item.product.unit
                         : 'UOM no normalizada',
@@ -1696,7 +1726,7 @@ export class ReportService {
             ...(filters?.branchId ? { branchId: filters.branchId } : {}),
             ...(filters?.userId ? { userId: filters.userId } : {}),
             ...(filters?.paymentMethodId
-                ? { payments: { some: { paymentMethodId: filters.paymentMethodId } } }
+                ? { payments: { some: { paymentMethodId: filters.paymentMethodId, ...COLLECTED_PAYMENT_WHERE } } }
                 : {}),
         };
 
@@ -1715,6 +1745,7 @@ export class ReportService {
                     }
                 },
                 payments: {
+                    where: COLLECTED_PAYMENT_WHERE,
                     include: {
                         paymentMethod: { select: { name: true } }
                     }
@@ -1810,8 +1841,16 @@ export class ReportService {
                 reportCents(item.subtotal, `subtotal del ítem ${item.id || index + 1}`)
             );
             const tieBreakers = order.items.map((item, index) => item.id || index + 1);
-            const discountByLine = allocateReportCents(
-                reportCents(order.discount, `descuento de la orden ${order.id}`),
+            // Line-attributed promotion discounts (per-item, combo, happy
+            // hour) stay on their lines, exactly as credit notes return them.
+            const orderDiscountCents = reportCents(order.discount, `descuento de la orden ${order.id}`);
+            const discountByLine = allocateDiscountWithAttribution(
+                orderDiscountCents,
+                grossByLine,
+                order.items.map((item) => Math.round(Number(item.promotionDiscount || 0) * 100) || 0),
+                tieBreakers
+            ) ?? allocateReportCents(
+                orderDiscountCents,
                 grossByLine,
                 tieBreakers,
                 `descuento de la orden ${order.id}`

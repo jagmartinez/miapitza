@@ -10,6 +10,17 @@ import {
  * Cash Register Arqueo Service
  * Detailed cash counting and reconciliation
  */
+/** Roles that may close a cash shift opened by another user. */
+export const SHIFT_CLOSE_SUPERVISOR_ROLES: ReadonlySet<string> = new Set(['ADMIN', 'SUPERADMIN']);
+
+export class ShiftCloseForbiddenError extends Error {
+    readonly statusCode = 403;
+    constructor() {
+        super('Solo el cajero que abrió el turno o un administrador puede cerrarlo');
+        this.name = 'ShiftCloseForbiddenError';
+    }
+}
+
 export class CashArqueoService {
     private static hasPhysicalBreakdown(breakdown?: {
         bills?: { denomination: number; count: number }[];
@@ -304,6 +315,14 @@ export class CashArqueoService {
         }
         if (!Number.isInteger(actorId) || actorId <= 0) {
             throw new Error('El actor de cierre no es válido');
+        }
+        const isShiftSupervisor = actorRoles.some((role) => SHIFT_CLOSE_SUPERVISOR_ROLES.has(role));
+        if (!isShiftSupervisor) {
+            const owner = await prisma.cashShift.findFirst({
+                where: { id: shiftId, companyId },
+                select: { userId: true }
+            });
+            if (owner && owner.userId !== actorId) throw new ShiftCloseForbiddenError();
         }
         const normalizedEndAmount = Math.round(endAmount * 100) / 100;
         const hasPhysicalBreakdown = this.hasPhysicalBreakdown(breakdown);

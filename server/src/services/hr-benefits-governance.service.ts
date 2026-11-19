@@ -4,6 +4,7 @@ import autoTable from 'jspdf-autotable';
 import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
 import { HrBenefitsError } from './hr-benefits.error';
+import { frozenPayrollCoverageForDateChange } from './hr-employment-records.service';
 
 type Input = Record<string, unknown>;
 type Scope = { companyId: number; actorId: number };
@@ -1027,6 +1028,21 @@ export class HrEmploymentSettlementService {
       });
       if (changed.count !== 1)
         throw new HrBenefitsError('La liquidación cambió concurrentemente', 409);
+      if (action === 'pay') {
+        const frozenRun = await frozenPayrollCoverageForDateChange(tx, {
+          companyId: scope.companyId,
+          userId: row.user.id,
+          field: 'terminationDate',
+          previous: row.employee.terminationDate,
+          next: row.terminationDate,
+        });
+        if (frozenRun)
+          throw new HrBenefitsError(
+            `La fecha de terminación cambiaría la cobertura congelada de la nómina ${frozenRun.code} (${frozenRun.status}); anule esa corrida antes de pagar la liquidación`,
+            409,
+            'HR_SETTLEMENT_PAYROLL_COVERAGE_FROZEN'
+          );
+      }
       if (action === 'pay')
         await tx.employee.update({
           where: { id: row.employeeId },

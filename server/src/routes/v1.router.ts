@@ -192,15 +192,11 @@ async function checkFilesystemReadiness(): Promise<ReadinessCheck> {
 const globalLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 120,
-    message: { success: false, message: 'Too many requests, please try again later' },
+    message: { success: false, code: 'RATE_LIMITED', message: 'Demasiadas solicitudes. Espera un momento e intenta de nuevo.' },
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => {
-        const apiKey = req.headers['x-api-key'];
-        if (typeof apiKey === 'string') return `apikey:${apiKey.slice(0, 8)}`;
-        return req.ip || 'unknown';
-    },
-    validate: { keyGeneratorIpFallback: false }
+    // Key by client IP only (library default, IPv6-subnet aware). Unverified
+    // client headers such as x-api-key must not select the bucket.
 });
 
 // ── Extended health endpoint ──

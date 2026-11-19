@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../hooks/useLanguage';
 import { ConfirmProvider } from '../context/ConfirmContext';
-import { ToastProvider } from '../context/ToastContext';
+import { ErrorBoundary } from './ErrorBoundary';
 import ThemeToggle from './ThemeToggle';
 import LanguageSelector from './LanguageSelector';
 import NetworkStatus from './NetworkStatus';
@@ -213,7 +213,6 @@ export default function Layout() {
 
     return (
         <ConfirmProvider>
-        <ToastProvider>
         <div className={`layout ${isTableWorkspace ? 'workspace-layout' : ''}`}>
             <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
                 <div className="sidebar-header">
@@ -279,7 +278,10 @@ export default function Layout() {
                 }}
             >
                 <div className="main-content-inner">
-                    <Outlet />
+                    {/* A crashing page keeps the shell (menu, sync, toasts) usable; navigating resets it. */}
+                    <ErrorBoundary variant="page" resetKey={location.pathname}>
+                        <Outlet />
+                    </ErrorBoundary>
                 </div>
                 <SyncStatus />
             </main>
@@ -372,7 +374,6 @@ export default function Layout() {
                 </>
             )}
         </div>
-        </ToastProvider>
         </ConfirmProvider>
     );
 }

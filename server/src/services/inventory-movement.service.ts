@@ -3,8 +3,21 @@ import { randomUUID } from 'crypto';
 import prisma from '../utils/prisma';
 import { UnitConversionService } from './unit-conversion.service';
 import { AuditLogService } from './audit-log.service';
-import { InventoryEngineService } from './inventory-engine.service';
+import { InventoryEngineService, COST_TRUE_UP_ORIGIN } from './inventory-engine.service';
 import { CostingService } from './costing.service';
+import { planSaleReturnFromSlices } from './inventory-consumption.service';
+import { resolveEffectiveUnitCost } from '../utils/product-cost';
+
+/**
+ * `DSLICE-<id>` is the internal sourceRef of layers created when a sale returns
+ * units that had covered a deficit; a manual reference must never mimic it
+ * (layers take their sourceRef from the movement reference).
+ */
+function assertManualReferenceAllowed(reference?: string | null): void {
+    if (typeof reference === 'string' && /^\s*DSLICE-/i.test(reference)) {
+        throw new Error('La referencia "DSLICE-…" está reservada para el sistema; use otra referencia');
+    }
+}
 
 export class InventoryMovementService {
     private static movementDirection(movement: { type: string; direction?: string | null; reason?: string | null }): 'IN' | 'OUT' {
@@ -12,6 +25,19 @@ export class InventoryMovementService {
         if (movement.type === 'IN' || movement.type === 'ADJUSTMENT') return 'IN';
         if (movement.type === 'OUT') return 'OUT';
         return (movement.reason || '').toLowerCase().startsWith('transfer in') ? 'IN' : 'OUT';
+    }
+
+    /**
+     * Units of an inbound that covered a negative balance (trimmed by the
+     * engine, so no layer of its own holds them): min(qty, -balance before).
+     */
+    private static coveredDeficitQuantity(movement: { quantity: unknown; balanceQty?: unknown }): number {
+        const quantity = Number(movement.quantity);
+        if (movement.balanceQty == null || !(quantity > 0)) return 0;
+        const balanceAfter = Number(movement.balanceQty);
+        if (!Number.isFinite(balanceAfter)) return 0;
+        const shortfall = Math.min(quantity, Math.max(0, quantity - balanceAfter));
+        return shortfall > 1e-9 ? Math.round(shortfall * 1e9) / 1e9 : 0;
     }
 
     private static consumedLayers(value: Prisma.JsonValue | null): Array<{
@@ -191,6 +217,7 @@ export class InventoryMovementService {
         // to preserve backward compatibility with existing callers.
         unitCost?: number;
     }) {
+        assertManualReferenceAllowed(data.reference);
         // Verify warehouse belongs to company
         const warehouse = await prisma.warehouse.findFirst({
             where: { id: data.warehouseId, companyId }
@@ -250,7 +277,9 @@ export class InventoryMovementService {
         return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             let previousGlobalStock: number | null = null;
             if (data.type === 'IN' || data.type === 'ADJUSTMENT') {
-                await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${data.productId} AND companyId = ${companyId} FOR UPDATE`;
+                // Canonical lock order Warehouse -> Product -> Stock before the
+                // global-stock snapshot (the engine re-lock is then a no-op).
+                await InventoryEngineService.lockInventoryScope(tx, companyId, [data.warehouseId], [data.productId]);
                 const global = await tx.stock.aggregate({
                     where: { productId: data.productId, companyId },
                     _sum: { quantity: true }
@@ -311,6 +340,160 @@ export class InventoryMovementService {
         });
     }
 
+    /**
+     * Physical count (D10). The user enters the COUNTED quantity (in any
+     * configured unit); the server converts it to base, reads the current stock
+     * under the canonical Warehouse -> Product lock and posts the difference:
+     *   - counted < stock: ADJUSTMENT/OUT valued by the engine (FIFO layers or
+     *     the moving average), i.e. at current cost;
+     *   - counted > stock: ADJUSTMENT/IN at the current average cost, falling
+     *     back to the last purchase cost, folded into the moving average;
+     *   - equal: no movement, the count is still audited.
+     */
+    static async physicalCount(companyId: number, data: {
+        warehouseId: number;
+        productId: number;
+        userId: number;
+        countedQuantity: number;
+        unit?: string;
+        reason: string;
+        reference?: string;
+    }) {
+        assertManualReferenceAllowed(data.reference);
+        const counted = Number(data.countedQuantity);
+        if (!Number.isFinite(counted) || counted < 0) {
+            throw new Error('La cantidad contada debe ser un número finito mayor o igual a 0');
+        }
+        const reason = data.reason?.trim();
+        if (!reason) throw new Error('El motivo del conteo físico es requerido');
+
+        const warehouse = await prisma.warehouse.findFirst({
+            where: { id: data.warehouseId, companyId },
+            select: { id: true }
+        });
+        if (!warehouse) throw new Error('Warehouse not found or unauthorized');
+        const product = await prisma.product.findFirst({
+            where: { id: data.productId, companyId },
+            include: { baseUnit: { select: { abbreviation: true } } }
+        });
+        if (!product) throw new Error('Product not found or unauthorized');
+
+        const effectiveUnit = data.unit || product.baseUnit?.abbreviation || product.unit;
+        // convert() requires a positive quantity; a count of 0 is 0 in any unit
+        // but the unit must still be valid for the product.
+        const conv = await UnitConversionService.convert(
+            data.productId, companyId, counted > 0 ? counted : 1, effectiveUnit
+        );
+        const countedBase = counted > 0 ? conv.baseQuantity : 0;
+        const factor = conv.conversionFactor > 0 ? conv.conversionFactor : 1;
+
+        return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+            // Product FOR UPDATE serializes every stock writer of this product, so
+            // the stock read below cannot change before the engine posts the delta.
+            await InventoryEngineService.lockInventoryScope(tx, companyId, [data.warehouseId], [data.productId]);
+            const stock = await tx.stock.findUnique({
+                where: { warehouseId_productId: { warehouseId: data.warehouseId, productId: data.productId } },
+                select: { id: true, quantity: true }
+            });
+            const previousQuantity = Number(stock?.quantity ?? 0);
+            const delta = countedBase - previousQuantity;
+            const countReason = `Conteo físico: ${reason}`;
+
+            let movementId: number | null = null;
+            let direction: 'IN' | 'OUT' | null = null;
+            if (Math.abs(delta) > 1e-9) {
+                direction = delta > 0 ? 'IN' : 'OUT';
+                const quantity = Math.abs(delta);
+                let unitCost: number | undefined;
+                let previousGlobalStock: number | null = null;
+                if (direction === 'IN') {
+                    const locked = await tx.product.findFirst({
+                        where: { id: data.productId, companyId },
+                        select: {
+                            currentAverageCost: true, averageCostKnown: true,
+                            cost: true, referenceCostKnown: true,
+                            lastPurchaseCost: true, lastPurchaseCostKnown: true
+                        }
+                    });
+                    const current = resolveEffectiveUnitCost(locked?.currentAverageCost, locked?.cost, {
+                        averageCostKnown: locked?.averageCostKnown,
+                        referenceCostKnown: locked?.referenceCostKnown
+                    });
+                    const lastCost = Number(locked?.lastPurchaseCost);
+                    if (current.known) {
+                        unitCost = current.value;
+                    } else if (locked?.lastPurchaseCostKnown || (Number.isFinite(lastCost) && lastCost > 0)) {
+                        unitCost = Number.isFinite(lastCost) && lastCost >= 0 ? lastCost : undefined;
+                    }
+                    if (unitCost == null) {
+                        throw new Error(
+                            `PRODUCT_COST_MISSING: "${product.name}" no tiene costo promedio ni último costo de compra; ` +
+                            'registre una entrada valorizada antes de ajustar el conteo al alza'
+                        );
+                    }
+                    const global = await tx.stock.aggregate({
+                        where: { productId: data.productId, companyId },
+                        _sum: { quantity: true }
+                    });
+                    previousGlobalStock = Number(global._sum.quantity ?? 0);
+                }
+                const result = await InventoryEngineService.applyMovement(tx, {
+                    type: 'ADJUSTMENT',
+                    direction,
+                    companyId,
+                    warehouseId: data.warehouseId,
+                    productId: data.productId,
+                    userId: data.userId,
+                    quantity,
+                    unitCost,
+                    reason: countReason,
+                    reference: data.reference,
+                    originalQuantity: quantity / factor,
+                    originalUnit: conv.originalUnit,
+                    conversionFactor: factor,
+                    sourceType: 'ADJUSTMENT',
+                    origin: 'MANUAL',
+                    productName: product.name
+                });
+                movementId = result.movementId;
+                if (previousGlobalStock != null) {
+                    await CostingService.applyProductionCost(
+                        tx, data.productId, companyId, quantity, result.unitCost,
+                        previousGlobalStock, undefined, result.movementId
+                    );
+                }
+            }
+
+            await AuditLogService.log({
+                companyId, userId: data.userId,
+                entityType: 'InventoryCount',
+                entityId: movementId ?? stock?.id ?? data.productId,
+                action: 'UPDATE',
+                details: {
+                    kind: 'PHYSICAL_COUNT',
+                    productId: data.productId,
+                    warehouseId: data.warehouseId,
+                    countedQuantity: counted,
+                    countedUnit: conv.originalUnit,
+                    countedBaseQuantity: countedBase,
+                    previousQuantity,
+                    delta,
+                    movementId,
+                    reason
+                }
+            }, tx);
+
+            return {
+                adjusted: movementId != null,
+                movementId,
+                direction,
+                previousQuantity,
+                countedQuantity: countedBase,
+                delta
+            };
+        });
+    }
+
     static async delete(_id: number) {
         // Generally, inventory movements should not be deleted
         // but marked as cancelled or reversed
@@ -347,8 +530,14 @@ export class InventoryMovementService {
             });
             if (!selected) throw new Error('Movimiento no encontrado para esta empresa');
 
+            // Legacy COST_TRUE_UP rows inherited the transferGroupId of the
+            // inbound leg that posted them; they are not transfer legs.
             const groupWhere: Prisma.InventoryMovementWhereInput = selected.transferGroupId
-                ? { companyId, transferGroupId: selected.transferGroupId }
+                ? {
+                    companyId,
+                    transferGroupId: selected.transferGroupId,
+                    OR: [{ origin: null }, { origin: { not: COST_TRUE_UP_ORIGIN } }]
+                }
                 : { companyId, id: selected.id };
             const ids = (await tx.inventoryMovement.findMany({
                 where: groupWhere,
@@ -413,6 +602,16 @@ export class InventoryMovementService {
             const reversedIds: number[] = [];
             const isTransfer = originals.some((row) => row.type === 'TRANSFER' || row.transferGroupId != null);
 
+            // Canonical lock order: Warehouses (ascending) -> Products -> Stock.
+            // A transfer reversal touches destination before source, which would
+            // otherwise invert the ascending warehouse order used by transfer().
+            await InventoryEngineService.lockInventoryScope(
+                tx,
+                companyId,
+                originals.map((row) => row.warehouseId),
+                originals.map((row) => row.productId)
+            );
+
             if (isTransfer) {
                 const incoming = originals.filter((row) => this.movementDirection(row) === 'IN');
                 const outgoing = originals.filter((row) => this.movementDirection(row) === 'OUT');
@@ -428,27 +627,73 @@ export class InventoryMovementService {
                 }
 
                 // Remove destination stock first, consuming only the exact layers
-                // opened by the original inbound transfer movement.
-                const destinationReverse = await InventoryEngineService.applyMovement(tx, {
-                    type: 'TRANSFER', direction: 'OUT', origin: 'REVERSAL',
+                // opened by the original inbound transfer movement. The part of
+                // the inbound that covered a negative destination balance has
+                // no layer: it is taken back through reverseCoveredShortfall.
+                const destinationQuantity = Number(destination.quantity);
+                const destinationShortfall = this.coveredDeficitQuantity(destination);
+                const destinationLayerQuantity = destinationQuantity - destinationShortfall;
+                const destinationCommon = {
+                    type: 'TRANSFER' as const, origin: 'REVERSAL' as const,
                     companyId, warehouseId: destination.warehouseId, productId: destination.productId,
-                    userId: data.userId, quantity: Number(destination.quantity),
-                    unitCost: Number(destination.unitCost),
-                    consumeSourceMovementId: destination.id,
+                    userId: data.userId, unitCost: Number(destination.unitCost),
                     reason: `REVERSAL: ${reason}`,
                     reference: `REV-MOV-${destination.id}`,
                     transferGroupId: reversalGroupId,
-                    reversalOfId: destination.id, reversalGroupId, reversalKey
-                });
-                reversedIds.push(destinationReverse.movementId);
+                    reversalGroupId, reversalKey
+                };
+                const removedLayers: NonNullable<Awaited<ReturnType<typeof InventoryEngineService.applyMovement>>['consumedLayers']> = [];
+                let destinationReversalLinked = false;
+                let destinationExactValue = 0;
+                if (destinationLayerQuantity > 1e-9) {
+                    // With a trimmed part, the surviving layer is valued at its own
+                    // cost (the inbound's layers may carry different costs) and the
+                    // shortfall gets the rest of the inbound value.
+                    const destinationReverse = await InventoryEngineService.applyMovement(tx, {
+                        ...destinationCommon,
+                        ...(destinationShortfall > 1e-9 ? { unitCost: undefined, valueFromConsumedLayers: true } : {}),
+                        direction: 'OUT',
+                        quantity: destinationLayerQuantity,
+                        consumeSourceMovementId: destination.id,
+                        reversalOfId: destination.id
+                    });
+                    destinationExactValue = destinationReverse.totalCost;
+                    destinationReversalLinked = true;
+                    reversedIds.push(destinationReverse.movementId);
+                    removedLayers.push(...(destinationReverse.consumedLayers ?? []));
+                }
+                if (destinationShortfall > 1e-9) {
+                    const shortfall = await InventoryEngineService.reverseCoveredShortfall(tx, {
+                        ...destinationCommon,
+                        quantity: destinationShortfall,
+                        unitCost: Math.max(0, Number(destination.totalCost) - destinationExactValue) / destinationShortfall,
+                        coveringMovementIds: [destination.id],
+                        ...(destinationReversalLinked ? {} : { reversalOfId: destination.id })
+                    });
+                    reversedIds.push(...shortfall.movementIds);
+                    removedLayers.push(...shortfall.consumedLayers);
+                }
 
-                // Restore source stock with the exact FIFO portions just removed
-                // from destination, preserving their original acquisition order.
+                // Restore source stock with the exact FIFO portions that left it
+                // (the destination layers when nothing was trimmed; otherwise the
+                // source leg's own consumed layers), preserving acquisition order.
+                let sourceLayers = removedLayers;
+                if (destinationShortfall > 1e-9) {
+                    try {
+                        const original = this.consumedLayers(source.consumedLayers);
+                        const originalQuantity = (original ?? []).reduce((sum, layer) => sum + layer.quantity, 0);
+                        if (original && Math.abs(originalQuantity - Number(source.quantity)) <= 1e-6) {
+                            sourceLayers = original;
+                        }
+                    } catch {
+                        // Legacy source leg without provenance: keep the removed layers.
+                    }
+                }
                 const sourceReverse = await InventoryEngineService.applyMovement(tx, {
                     type: 'TRANSFER', direction: 'IN', origin: 'REVERSAL',
                     companyId, warehouseId: source.warehouseId, productId: source.productId,
                     userId: data.userId, quantity: Number(source.quantity),
-                    unitCost: Number(source.unitCost), inboundLayers: destinationReverse.consumedLayers,
+                    unitCost: Number(source.unitCost), inboundLayers: sourceLayers,
                     reason: `REVERSAL: ${reason}`,
                     reference: `REV-MOV-${source.id}`,
                     transferGroupId: reversalGroupId, sourceType: 'TRANSFER',
@@ -464,27 +709,79 @@ export class InventoryMovementService {
                 const original = originals[0];
                 const originalDirection = this.movementDirection(original);
                 if (originalDirection === 'IN') {
-                    const reversal = await InventoryEngineService.applyMovement(tx, {
-                        type: 'ADJUSTMENT', direction: 'OUT', origin: 'REVERSAL',
+                    // An IN that covered a negative balance (e.g. stock -20,
+                    // count 5 -> IN 25) only opened a layer for the part above
+                    // zero. Reverse that layer exactly and take the covered part
+                    // back through reverseCoveredShortfall (other layers at their
+                    // cost + true-up, or re-create the deficit at this cost).
+                    const quantity = Number(original.quantity);
+                    const shortfallQuantity = this.coveredDeficitQuantity(original);
+                    const layerQuantity = quantity - shortfallQuantity;
+                    const reverseCommon = {
+                        type: 'ADJUSTMENT' as const, origin: 'REVERSAL' as const,
                         companyId, warehouseId: original.warehouseId, productId: original.productId,
-                        userId: data.userId, quantity: Number(original.quantity),
-                        unitCost: Number(original.unitCost), consumeSourceMovementId: original.id,
+                        userId: data.userId, unitCost: Number(original.unitCost),
                         reason: `REVERSAL: ${reason}`, reference: `REV-MOV-${original.id}`,
-                        reversalOfId: original.id, reversalGroupId, reversalKey
-                    });
-                    reversedIds.push(reversal.movementId);
-                    await CostingService.reverseInventoryMovementCost(tx, original.id, reversal.movementId, companyId);
+                        reversalGroupId, reversalKey
+                    };
+                    let linkedReversalId: number | null = null;
+                    let exactValue = 0;
+                    if (layerQuantity > 1e-9) {
+                        const reversal = await InventoryEngineService.applyMovement(tx, {
+                            ...reverseCommon,
+                            ...(shortfallQuantity > 1e-9 ? { unitCost: undefined, valueFromConsumedLayers: true } : {}),
+                            direction: 'OUT',
+                            quantity: layerQuantity,
+                            consumeSourceMovementId: original.id,
+                            reversalOfId: original.id
+                        });
+                        exactValue = reversal.totalCost;
+                        linkedReversalId = reversal.movementId;
+                        reversedIds.push(reversal.movementId);
+                    }
+                    if (shortfallQuantity > 1e-9) {
+                        const shortfall = await InventoryEngineService.reverseCoveredShortfall(tx, {
+                            ...reverseCommon,
+                            quantity: shortfallQuantity,
+                            unitCost: Math.max(0, Number(original.totalCost) - exactValue) / shortfallQuantity,
+                            coveringMovementIds: [original.id],
+                            ...(linkedReversalId == null ? { reversalOfId: original.id } : {})
+                        });
+                        linkedReversalId = linkedReversalId ?? shortfall.firstMovementId;
+                        reversedIds.push(...shortfall.movementIds);
+                    }
+                    if (linkedReversalId == null) throw new Error('No se pudo registrar la reversa del movimiento');
+                    await CostingService.reverseInventoryMovementCost(tx, original.id, linkedReversalId, companyId);
                 } else {
                     const layers = this.consumedLayers(original.consumedLayers);
+                    // An OUT that went negative (manual/waste with allowNegative)
+                    // opened deficit slices: price its unbacked part from its OWN
+                    // slices (covered at their real value, open ones leave the
+                    // queue) instead of covering another sale's oldest slice.
+                    const plan = await planSaleReturnFromSlices(tx, {
+                        companyId, warehouseId: original.warehouseId, productId: original.productId,
+                        saleMovementIds: [original.id],
+                        layers: (layers ?? []).map((layer) => ({
+                            quantity: layer.quantity,
+                            unitCost: layer.unitCost,
+                            sourceRef: layer.sourceRef ?? null,
+                            sourceType: layer.sourceType ?? 'ADJUSTMENT',
+                            createdAt: layer.createdAt
+                        }))
+                    });
+                    const adjustment = Math.abs(plan.adjustment) > 1e-9 ? plan.adjustment : 0;
                     const reversal = await InventoryEngineService.applyMovement(tx, {
                         type: 'ADJUSTMENT', direction: 'IN', origin: 'REVERSAL',
                         companyId, warehouseId: original.warehouseId, productId: original.productId,
                         userId: data.userId, quantity: Number(original.quantity),
-                        unitCost: Number(original.unitCost), inboundLayers: layers,
+                        unitCost: Number(original.unitCost), inboundLayers: plan.layers,
+                        ...(adjustment !== 0 ? { restoredValueAdjustment: adjustment } : {}),
+                        ...(plan.returnedOpenSlices.length > 0 ? { returnedOpenSlices: plan.returnedOpenSlices } : {}),
                         reason: `REVERSAL: ${reason}`, reference: `REV-MOV-${original.id}`,
                         sourceType: 'ADJUSTMENT',
                         reversalOfId: original.id, reversalGroupId, reversalKey
                     });
+                    await plan.commit(reversal.movementId);
                     reversedIds.push(reversal.movementId);
                     const company = await tx.company.findUnique({ where: { id: companyId }, select: { costingMethod: true } });
                     if ((company?.costingMethod || 'WEIGHTED_AVERAGE') === 'FIFO') {
@@ -498,16 +795,15 @@ export class InventoryMovementService {
                             where: { productId: original.productId, companyId },
                             _sum: { quantity: true }
                         });
+                        // A negative prior balance is legitimate (allowNegative OUTs);
+                        // the fold treats it as no prior stock.
                         const previousGlobalStock = Number(global._sum.quantity ?? 0) - Number(original.quantity);
-                        if (previousGlobalStock < -1e-9) {
-                            throw new Error('MOVEMENT_STOCK_INTEGRITY_ERROR: el saldo global previo a la reversa es inválido');
-                        }
                         await CostingService.applyProductionCost(
                             tx,
                             original.productId,
                             companyId,
                             Number(original.quantity),
-                            Number(original.unitCost),
+                            (Number(reversal.totalCost) + adjustment) / Number(original.quantity),
                             Math.max(0, previousGlobalStock),
                             undefined,
                             reversal.movementId
@@ -572,6 +868,7 @@ export class InventoryMovementService {
         reference?: string;
         unit?: string;
     }) {
+        assertManualReferenceAllowed(data.reference);
         if (data.fromWarehouseId === data.toWarehouseId) {
             throw new Error('Cannot transfer to the same warehouse');
         }
@@ -611,6 +908,9 @@ export class InventoryMovementService {
             const secondWarehouseId = Math.max(data.fromWarehouseId, data.toWarehouseId);
             await tx.$queryRaw`SELECT id FROM \`Warehouse\` WHERE companyId = ${companyId} AND id IN (${firstWarehouseId}, ${secondWarehouseId}) ORDER BY id FOR UPDATE`;
 
+            // Product before Stock: the engine (and every other writer) takes
+            // Warehouse -> Product -> Stock; locking Stock first inverted it.
+            await tx.$queryRaw`SELECT id FROM \`Product\` WHERE id = ${data.productId} AND companyId = ${companyId} FOR UPDATE`;
             const product = await tx.product.findFirst({
                 where: { id: data.productId, companyId }
             });

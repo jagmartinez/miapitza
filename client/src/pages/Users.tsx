@@ -33,6 +33,7 @@ import { hasAnyRole } from '../utils/authz';
 import { activateOnKeyboard } from '../utils/keyboardActivation';
 import { createLatestRequestGuard } from '../utils/latestRequest';
 import './Users.css';
+import { getApiErrorMessage } from '../utils/apiError';
 
 function toApiPayload(payload: UserSavePayload): Record<string, unknown> {
     return payload as unknown as Record<string, unknown>;
@@ -115,7 +116,7 @@ export default function Users() {
         } catch (error) {
             if (!loadRequestGuard.current.isCurrent(requestId)) return;
             console.error('Error loading data:', error);
-            setLoadError('No se pudieron cargar los usuarios y sus catálogos. La consulta y las acciones quedan bloqueadas hasta reintentar.');
+            setLoadError(getApiErrorMessage(error, 'No se pudieron cargar los usuarios y sus catálogos (la consulta y las acciones quedan bloqueadas hasta reintentar)'));
         } finally {
             if (loadRequestGuard.current.isCurrent(requestId)) setLoading(false);
         }

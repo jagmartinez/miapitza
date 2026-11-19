@@ -7,7 +7,9 @@ import { initializeSound, playNotificationSound } from '../utils/sound';
 import { escapeHtml } from '../utils/escapeHtml';
 import { useDebounce } from '../utils/useDebounce';
 import { initializeWebSocket, subscribeWebSocket, WS_EVENTS } from '../utils/websocket';
-import { getUserAccentColor, canOperateKitchenLineItems, getUserRoleNames } from '../utils/authz';
+import { getUserAccentColor, canOperateKitchenLineItems, canVoidKitchenLine, getUserRoleNames } from '../utils/authz';
+import KitchenLineVoidModal from '../components/KitchenLineVoidModal';
+import { isVoidableOrderLine, isVoidedOrderLine, orderLineVoidBlocker } from '../utils/orderLineVoid';
 import { useAppToast } from '../context/ToastContext';
 import './Kitchen.css';
 import { getOrderStatusLabel, getOrderTimeline } from '../utils/orderStatus';
@@ -18,6 +20,8 @@ import EmptyState from '../components/EmptyState';
 import type { SingleValue } from 'react-select';
 import type { Order, OrderItem } from '../types';
 import { getKdsTimeClass, getKdsWaitMinutes, getKitchenReceivedAt } from '../utils/kdsTiming';
+import { getApiErrorMessage } from '../utils/apiError';
+import { notifyError } from '../services/notify';
 
 function axiosMsg(err: unknown, fallback: string): string {
     if (typeof err === 'object' && err !== null && 'response' in err) {
@@ -48,6 +52,8 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
     const { error: showError, warning: showWarning, success } = useAppToast();
     const { confirm } = useConfirmDialog();
     const canKitchenLineOps = canOperateKitchenLineItems(user);
+    const canVoidLines = canVoidKitchenLine(user);
+    const [voidTarget, setVoidTarget] = useState<{ order: Order; itemId: number } | null>(null);
     const canReturnToAdministration = getUserRoleNames(user).some((role) => ['SUPERADMIN', 'ADMIN', 'CHEF'].includes(role));
     const pageRef = useRef<HTMLDivElement>(null);
 
@@ -66,6 +72,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
     const [timingConfig, setTimingConfig] = useState<{ warningMinutes: number; urgentMinutes: number } | null>(null);
     const [, setClockTick] = useState(0);
     const previousOrderCount = useRef(0);
+    const loadOrdersRequestRef = useRef(0);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
 
@@ -87,10 +94,13 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
     };
 
     const loadOrders = useCallback(async () => {
+        const requestId = ++loadOrdersRequestRef.current;
         try {
             const response = showHistory
                 ? await ordersAPI.getKitchenHistory({ limit: 200 })
                 : await ordersAPI.getKitchenQueue();
+            // Ignore late responses (e.g. queue vs history toggle) superseded by a newer load.
+            if (requestId !== loadOrdersRequestRef.current) return;
             const kitchenOrders = showHistory
                 ? response.data.data
                 : response.data.data.filter((o: Order) =>
@@ -105,10 +115,11 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
             setOrders(kitchenOrders);
             setLoadError(null);
         } catch (error: unknown) {
+            if (requestId !== loadOrdersRequestRef.current) return;
             console.error('Error loading orders:', error);
             setLoadError(axiosMsg(error, 'No se pudo cargar la cola de cocina. Revisa la conexión o tus permisos.'));
         } finally {
-            setLoading(false);
+            if (requestId === loadOrdersRequestRef.current) setLoading(false);
         }
     }, [showHistory, soundEnabled]);
 
@@ -116,7 +127,10 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
         loadOrders();
         ordersAPI.getKitchenConfig()
             .then((response) => setTimingConfig(response.data.data))
-            .catch((error) => console.error('Error loading KDS timing config:', error));
+            .catch((error) => {
+                console.error('Error loading KDS timing config:', error);
+                notifyError(error, 'No se pudo cargar la configuración de tiempos del KDS (se usan los tiempos por defecto)', { type: 'warning' });
+            });
         initializeWebSocket();
 
         const unsubscribe = subscribeWebSocket((message) => {
@@ -157,7 +171,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
             loadOrders();
         } catch (error) {
             console.error('Error updating order:', error);
-            showError('Error al actualizar orden');
+            showError(getApiErrorMessage(error, 'Error al actualizar orden'));
         }
     };
 
@@ -210,8 +224,12 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
         }
         try {
             const res = await ordersAPI.finishItem(orderId, itemId);
-            if (res.data.data?.allDone) {
-                const order = orders.find(o => o.id === orderId);
+            const finished = res.data.data;
+            if (finished?.allDone) {
+                // Print the batch that was just finished, not the first card of the order.
+                const order = orders.find(o => o.id === orderId && finished.kitchenBatchId != null && o.kitchenBatchId === finished.kitchenBatchId)
+                    ?? orders.find(o => o.id === orderId && o.items?.some((item) => item.id === itemId))
+                    ?? (finished.order as Order | undefined);
                 if (order) printOrderTicket(order);
             }
             loadOrders();
@@ -253,7 +271,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                 <p><strong>Hora:</strong> ${e(new Date().toLocaleTimeString('es-ES'))}</p>
                 <div class="divider"></div>
                 <h3>Items:</h3>
-                ${order.items?.map((item: OrderItem) => `
+                ${order.items?.filter((item: OrderItem) => !isVoidedOrderLine(item)).map((item: OrderItem) => `
                     <div class="item">
                         <span>${e(item.quantity)}x ${e(item.menuItem?.name)}</span>
                     </div>
@@ -419,6 +437,7 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                             id="table-filter"
                             type="text"
                             className="table-filter-input"
+                            aria-label="Filtrar por número de mesa"
                             placeholder="Mesa #"
                             value={tableFilter}
                             onChange={(e) => setTableFilter(e.target.value)}
@@ -539,6 +558,14 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                     <div className="kds-visible-items-heading"><ListOrdered size={15} /><span>Preparación</span><b>{order.items?.length || 0}</b></div>
                                     {order.items?.map((item) => {
                                         const awaitingSend = !item.sentAt && item.status === 'PENDING';
+                                        if (isVoidedOrderLine(item)) {
+                                            return (
+                                                <div key={item.id} className="kds-visible-item status-voided order-line-voided" title={item.voidReason || undefined}>
+                                                    <div><strong className="order-line-voided-name">{item.voidedQuantity}× {item.menuItem?.name || 'Producto'}</strong></div>
+                                                    <small className="order-line-void-badge">Anulado</small>
+                                                </div>
+                                            );
+                                        }
                                         return (
                                             <div key={item.id} className={`kds-visible-item status-${item.status.toLowerCase()}`}>
                                                 <div><strong>{item.quantity}× {item.menuItem?.name || 'Producto'}</strong>{item.notes && <span>{item.notes}</span>}</div>
@@ -698,6 +725,18 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                     const prepTime = getItemTimeDiff(item.startedAt);
                                     const awaitingSend = !item.sentAt && item.status === 'PENDING';
                                     const itemStatusClass = item.status === 'DONE' ? 'item-done' : item.status === 'IN_PROGRESS' ? 'item-progress' : 'item-pending';
+                                    if (isVoidedOrderLine(item)) {
+                                        return (
+                                            <div key={item.id} className="kitchen-item item-done order-line-voided">
+                                                <span className="item-qty-kitchen">{item.voidedQuantity}×</span>
+                                                <span className="item-name-kitchen">
+                                                    <strong className="order-line-voided-name">{item.menuItem?.name || 'Producto'}</strong>
+                                                    {item.voidReason && <small className="item-note-kitchen">Motivo: {item.voidReason}</small>}
+                                                </span>
+                                                <span className="order-line-void-badge">Anulado</span>
+                                            </div>
+                                        );
+                                    }
                                     return (
                                         <div key={item.id || item.menuItemId} className={`kitchen-item ${itemStatusClass}`}>
                                             <span className="item-qty-kitchen">{item.quantity}×</span>
@@ -706,6 +745,16 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                                                 {item.notes && <small className="item-note-kitchen">{item.notes}</small>}
                                             </span>
                                             <span className={`kitchen-item-state status-${item.status.toLowerCase()}`}>{awaitingSend ? 'Pendiente de envío' : kitchenItemStatusLabel[item.status]}{item.status === 'IN_PROGRESS' && prepTime !== null ? ` · ${prepTime} min` : ''}</span>
+                                            {canVoidLines && isVoidableOrderLine(item) && !orderLineVoidBlocker(detailOrder) && (
+                                                <button
+                                                    type="button"
+                                                    className="order-line-void-btn"
+                                                    onClick={() => setVoidTarget({ order: detailOrder, itemId: item.id })}
+                                                    title="Anular línea y registrar merma"
+                                                >
+                                                    Anular
+                                                </button>
+                                            )}
                                             {detailOrder.status !== 'READY' && (
                                                 <>
                                                     {canKitchenLineOps && item.status === 'PENDING' && !awaitingSend && (
@@ -739,6 +788,14 @@ export default function Kitchen({ displayMode = false }: { displayMode?: boolean
                     </Modal>
                 );
             })()}
+
+            <KitchenLineVoidModal
+                isOpen={voidTarget !== null}
+                order={voidTarget?.order ?? null}
+                initialItemId={voidTarget?.itemId ?? null}
+                onClose={() => setVoidTarget(null)}
+                onVoided={() => { void loadOrders(); }}
+            />
 
             <Modal
                 isOpen={showProblemModal}

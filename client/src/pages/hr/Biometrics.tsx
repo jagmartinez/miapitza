@@ -120,7 +120,9 @@ export default function Biometrics() {
             setChallenge(null);
             setFaceEvidence(null);
             setConsent(false);
-            showSuccess('Perfil biométrico enrolado.');
+            showSuccess(updated.status === 'PENDING'
+                ? 'Registro facial enviado. Registro facial pendiente de aprobación de RRHH.'
+                : 'Perfil biométrico enrolado.');
         } catch (enrollError) {
             const message = getAttendanceErrorMessage(enrollError, 'No fue posible completar el enrolamiento.');
             // The server consumes a challenge before evaluating biometric evidence.
@@ -175,6 +177,14 @@ export default function Biometrics() {
                     icon: CheckCircle2,
                 };
             case 'REVOKED':
+                if (profile.rejectionReason) {
+                    return {
+                        label: 'Rechazado',
+                        title: 'RRHH rechazó tu registro facial',
+                        description: `Motivo: ${profile.rejectionReason}. Repite el enrolamiento con buena luz y el rostro de frente; RRHH deberá aprobarlo de nuevo.`,
+                        icon: ShieldAlert,
+                    };
+                }
                 return {
                     label: 'Revocado',
                     title: 'El consentimiento fue revocado',
@@ -182,10 +192,11 @@ export default function Biometrics() {
                     icon: RotateCcw,
                 };
             case 'PENDING':
+                // First enrollment: HR must approve it before the employee can punch.
                 return {
-                    label: 'En revisión',
-                    title: 'Tu enrolamiento está pendiente de revisión',
-                    description: 'No necesitas volver a capturar una imagen mientras el servidor procesa o revisa el estado.',
+                    label: 'Pendiente de aprobación',
+                    title: 'Registro facial pendiente de aprobación de RRHH',
+                    description: 'Recursos Humanos debe aprobar tu primer registro facial. Podrás marcar asistencia en cuanto sea aprobado; no necesitas volver a capturar tu rostro.',
                     icon: Clock3,
                 };
             default:
@@ -240,7 +251,7 @@ export default function Biometrics() {
                             <Button variant="ghost" onClick={() => void load()} disabled={saving} aria-label="Actualizar estado biométrico">
                                 <RefreshCw size={16} /> Actualizar
                             </Button>
-                            {profile.status === 'ACTIVE' && (
+                            {(profile.status === 'ACTIVE' || profile.status === 'PENDING') && (
                                 <Button variant="danger" onClick={() => void revoke()} disabled={saving || !online}>
                                     <Trash2 size={17} /> Revocar biometría
                                 </Button>
@@ -292,8 +303,16 @@ export default function Biometrics() {
                             {!challenge && (
                                 <div className="hr-biometric-start-panel">
                                     <div>
-                                        <h3>{profile.status === 'ACTIVE' ? 'Tu enrolamiento está completo' : 'Cuando estés listo, crea un reto seguro'}</h3>
-                                        <p>{profile.status === 'ACTIVE' ? 'No necesitas repetirlo. Puedes revocar el consentimiento desde el estado superior.' : 'El reto dura pocos minutos y no almacena evidencia en este dispositivo.'}</p>
+                                        <h3>{profile.status === 'ACTIVE'
+                                            ? 'Tu enrolamiento está completo'
+                                            : profile.status === 'PENDING'
+                                                ? 'Registro facial pendiente de aprobación de RRHH'
+                                                : 'Cuando estés listo, crea un reto seguro'}</h3>
+                                        <p>{profile.status === 'ACTIVE'
+                                            ? 'No necesitas repetirlo. Puedes revocar el consentimiento desde el estado superior.'
+                                            : profile.status === 'PENDING'
+                                                ? 'Tu captura ya fue enviada. Te avisaremos aquí cuando RRHH la apruebe; mientras tanto no podrás marcar con reconocimiento facial.'
+                                                : 'El reto dura pocos minutos y no almacena evidencia en este dispositivo.'}</p>
                                     </div>
                                     {profile.status !== 'ACTIVE' && profile.status !== 'PENDING' && (
                                         <Button onClick={() => void beginEnrollment()} disabled={!online || saving || profile.canEnroll === false}>

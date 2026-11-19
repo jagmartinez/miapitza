@@ -1,4 +1,7 @@
+import type { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+
+export const NEGATIVE_SALE_STOCK_ACTION = 'NEGATIVE_STOCK_SALE';
 
 /**
  * Stock Alert Service
@@ -59,15 +62,63 @@ export class StockAlertService {
             });
     }
 
-    /** True when total quantity is at or below minStock (and minStock > 0). */
+    /**
+     * True when total quantity is at or below minStock (and minStock > 0), or
+     * when any warehouse balance is negative (an oversold sale), regardless of
+     * the configured minimum.
+     */
     private static isBelowMinimum(
         stocks: { quantity: unknown }[],
         minStock: unknown
     ): boolean {
+        if (stocks.some((stock) => Number(stock.quantity) < 0)) return true;
         const min = Number(minStock);
         if (min <= 0) return false;
         const total = stocks.reduce((sum, stock) => sum + Number(stock.quantity), 0);
         return total <= min;
+    }
+
+    /**
+     * Records, inside the caller's transaction, that a sale drove one or more
+     * products below zero. Sales of an already-sold order are never blocked by
+     * stock; this audit row (plus the negative balance itself, which the
+     * low-stock alert always reports) is the operator's signal to reconcile.
+     */
+    static async recordNegativeSaleStock(
+        tx: Prisma.TransactionClient,
+        params: {
+            companyId: number;
+            warehouseId: number;
+            userId: number;
+            reference: string;
+            /** Entity id of the alert (order id, or the `entityType` row id). */
+            orderId: number;
+            /** AuditLog entity (default `Order`), e.g. `CateringEvent`. */
+            entityType?: string;
+            products: Array<{ productId: number; productName: string; balance: number }>;
+        }
+    ): Promise<void> {
+        if (params.products.length === 0) return;
+        for (const product of params.products) {
+            console.warn(
+                `[StockAlert] Venta ${params.reference} dejó "${product.productName}" (#${product.productId}) ` +
+                `en ${product.balance} en almacén ${params.warehouseId} (empresa ${params.companyId})`
+            );
+        }
+        await tx.auditLog.create({
+            data: {
+                companyId: params.companyId,
+                entityType: params.entityType ?? 'Order',
+                entityId: params.orderId,
+                action: NEGATIVE_SALE_STOCK_ACTION,
+                userId: params.userId,
+                details: {
+                    reference: params.reference,
+                    warehouseId: params.warehouseId,
+                    products: params.products
+                }
+            }
+        });
     }
 
     /**
@@ -78,7 +129,7 @@ export class StockAlertService {
 
         return {
             totalAlerts: lowStockProducts.length,
-            criticalAlerts: lowStockProducts.filter((p) => p.currentStock === 0).length,
+            criticalAlerts: lowStockProducts.filter((p) => p.currentStock <= 0).length,
             warningAlerts: lowStockProducts.filter((p) => p.currentStock > 0).length,
             products: lowStockProducts.slice(0, 10) // Top 10 for quick view
         };
