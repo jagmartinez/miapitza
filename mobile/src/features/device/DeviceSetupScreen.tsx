@@ -91,6 +91,11 @@ export function DeviceSetupScreen({ api, onDone }: Props) {
             onDone(type);
         } catch (err) {
             const status = httpStatus(err);
+            // Do not keep the admin token around while the form sits open.
+            await api.cancel();
+            setAdmin(null);
+            setNeedsCode(false);
+            setStep('login');
             setError(status === 403 ? 'Este usuario no puede registrar dispositivos' : 'No se pudo registrar el dispositivo');
             setBusy(false);
         }

@@ -14,7 +14,7 @@ export interface DeviceApi {
     /** Password login of an administrator. The session is held privately, never stored as the app session. */
     adminLogin(username: string, password: string, twoFactorCode?: string): Promise<AdminLoginResult>;
     /** Registers the device (PERSONAL only records the type), then drops the admin session. */
-    register(input: RegisterInput): Promise<{ deviceType: DeviceType; deviceToken?: string }>;
+    register(input: RegisterInput): Promise<{ deviceType: DeviceType }>;
     /** Abandons setup: revokes the admin session if one is held. */
     cancel(): Promise<void>;
 }
@@ -67,7 +67,7 @@ export function createDeviceApi(deps: { http: AxiosInstance; sessions: SessionSt
             await sessions.saveDeviceToken(deviceToken);
             await sessions.saveDeviceType(input.type);
             await dropAdminSession();
-            return { deviceType: input.type, deviceToken };
+            return { deviceType: input.type };
         },
 
         cancel: dropAdminSession,

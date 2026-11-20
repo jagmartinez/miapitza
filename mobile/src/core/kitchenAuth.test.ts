@@ -73,6 +73,32 @@ describe('kitchenAuth', () => {
         auth.stop();
     });
 
+    it('grows the re-login backoff when the socket never reaches CONNECTED, and resets on online', async () => {
+        const { auth, sessions, calls } = setup([ok('k-1')]);
+        await sessions.saveDeviceToken('dev-1');
+        await auth.start();
+        const waits: number[] = [];
+        for (let n = 0; n < 4; n++) {
+            const before = logins(calls);
+            appEvents.emit('session-expired');
+            let waited = 0;
+            while (logins(calls) === before && waited < 60_000) {
+                await vi.advanceTimersByTimeAsync(100);
+                waited += 100;
+            }
+            waits.push(waited);
+        }
+        expect(waits[0]).toBeGreaterThanOrEqual(900);
+        expect(waits[1]).toBeGreaterThanOrEqual(1900);
+        expect(waits[2]).toBeGreaterThanOrEqual(3900);
+        appEvents.emit('realtime-status', 'online');
+        const before = logins(calls);
+        appEvents.emit('session-expired');
+        await vi.advanceTimersByTimeAsync(50);
+        expect(logins(calls)).toBe(before + 1);
+        auth.stop();
+    });
+
     it('treats a rejected device token as revoked: clears the device and stops retrying', async () => {
         const { auth, sessions, calls, onRevoked } = setup([{ status: 401 }]);
         await sessions.saveDeviceToken('dev-1');

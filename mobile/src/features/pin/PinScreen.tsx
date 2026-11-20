@@ -51,7 +51,9 @@ export function PinScreen({ api, onLoggedIn, onRevoked }: Props) {
         if (!selected || pin.length < MIN_DIGITS || busy) return;
         setBusy(true);
         try {
-            onLoggedIn(await api.login(selected.id, pin));
+            const session = await api.login(selected.id, pin);
+            setPin('');
+            onLoggedIn(session);
         } catch {
             // One generic message for every failure; never say which part was wrong.
             setError(true);

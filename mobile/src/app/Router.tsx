@@ -33,6 +33,12 @@ export function Router({ services }: { services: Services }) {
             let stored = await sessions.load();
             if (type === 'SERVICE_TABLET' || type === 'KITCHEN_TABLET') {
                 // Shared devices always start from the PIN screen / a fresh device login.
+                // Best effort: revoke the abandoned session server-side too.
+                if (stored) {
+                    void services.http
+                        .post('/auth/logout', undefined, { headers: { Authorization: `Bearer ${stored.token}` } })
+                        .catch(() => undefined);
+                }
                 await sessions.clear();
                 stored = null;
             }
@@ -44,7 +50,7 @@ export function Router({ services }: { services: Services }) {
         return () => {
             alive = false;
         };
-    }, [sessions, realtime]);
+    }, [sessions, realtime, services.http]);
 
     useEffect(() => {
         if (mode) void applyOrientation(mode);
@@ -83,8 +89,13 @@ export function Router({ services }: { services: Services }) {
     }, [mode, services.http, sessions, realtime, handleRevoked]);
 
     const switchUser = useCallback(async () => {
-        await pinApi.logout(); // closes realtime first, then revokes
-        setSession(null);
+        try {
+            await pinApi.logout(); // closes realtime first, then revokes
+        } catch {
+            // A storage failure must never leave the tablet unlocked.
+        } finally {
+            setSession(null);
+        }
     }, [pinApi]);
 
     if (mode === null) return null;
@@ -104,7 +115,7 @@ export function Router({ services }: { services: Services }) {
             return session ? (
                 <AccountHome
                     session={session}
-                    onLogout={() => void accountApi.logout().then(() => setSession(null))}
+                    onLogout={() => void accountApi.logout().catch(() => undefined).finally(() => setSession(null))}
                 />
             ) : (
                 <LoginScreen api={accountApi} onLoggedIn={setSession} />

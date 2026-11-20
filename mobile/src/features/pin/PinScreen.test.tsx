@@ -52,6 +52,7 @@ describe('PinScreen', () => {
         fireEvent.click(enter);
         await waitFor(() => expect(api.login).toHaveBeenCalledWith(1, '1234'));
         await waitFor(() => expect(onLoggedIn).toHaveBeenCalledWith(session));
+        expect(screen.getByTestId('pin-dots').getAttribute('data-filled')).toBe('0');
     });
 
     it('accepts up to 6 digits and ignores the 7th', async () => {

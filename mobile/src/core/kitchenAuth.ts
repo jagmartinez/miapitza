@@ -6,8 +6,6 @@ import type { Session, SessionStore } from './session';
 
 const MIN_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 30_000;
-/** A fresh session that expires again at once (e.g. socket auth loop) must not hammer the server. */
-const MIN_RELOGIN_GAP_MS = 5000;
 
 type RealtimeControl = Pick<ReturnType<typeof createRealtime>, 'reconnect'>;
 
@@ -31,7 +29,10 @@ export function createKitchenAuth(deps: Deps) {
     let inFlight = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let backoff = MIN_BACKOFF_MS;
-    let lastSuccessAt = 0;
+    // Re-login spacing when the socket never became healthy after the last login.
+    let expiryBackoff = MIN_BACKOFF_MS;
+    let online = false;
+    let unsubscribeStatus: (() => void) | null = null;
     let unsubscribe: (() => void) | null = null;
 
     function schedule(delay: number) {
@@ -67,7 +68,7 @@ export function createKitchenAuth(deps: Deps) {
             await sessions.save(session);
             await realtime.reconnect();
             backoff = MIN_BACKOFF_MS;
-            lastSuccessAt = Date.now();
+            online = false;
             onSession(session);
         } catch (err) {
             if (stopped) return;
@@ -87,8 +88,23 @@ export function createKitchenAuth(deps: Deps) {
         async start() {
             stopped = false;
             unsubscribe?.();
+            unsubscribeStatus?.();
+            // CONNECTED proves the new session works: the next expiry is a normal one.
+            unsubscribeStatus = appEvents.on('realtime-status', (status) => {
+                if (status === 'online') {
+                    online = true;
+                    expiryBackoff = MIN_BACKOFF_MS;
+                }
+            });
             unsubscribe = appEvents.on('session-expired', () => {
-                schedule(Math.max(0, lastSuccessAt + MIN_RELOGIN_GAP_MS - Date.now()));
+                if (online) {
+                    schedule(0);
+                    return;
+                }
+                // Socket auth failed right after a successful login: back off 1 s -> 30 s.
+                const wait = expiryBackoff;
+                expiryBackoff = Math.min(expiryBackoff * 2, MAX_BACKOFF_MS);
+                schedule(wait);
             });
             await attempt();
         },
@@ -98,6 +114,8 @@ export function createKitchenAuth(deps: Deps) {
             timer = null;
             unsubscribe?.();
             unsubscribe = null;
+            unsubscribeStatus?.();
+            unsubscribeStatus = null;
         },
     };
 }
