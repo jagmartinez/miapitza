@@ -1,0 +1,1473 @@
+{
+ "schemaVersion": 1,
+ "phase": "A",
+ "companyId": 1,
+ "source": {
+  "file": "COSTO RECETAS.xlsx",
+  "sha256": "09cab7d96b62bb75c69df8723bead0c69e7e7389dea2aea7b8cbf78a7b10d765",
+  "asOfDate": "2026-06-21",
+  "reviewedAt": "2026-11-19",
+  "review": "especialistas + refutadores (Fable 5.2); excluye inactivos, intermedios y filas en disputa"
+ },
+ "productCosts": [
+  {
+   "productId": 12,
+   "sku": "CON-000001",
+   "name": "AROS DE CEBOLLA",
+   "baseUnit": "lb",
+   "oldCost": 0.0,
+   "newCost": 200.1,
+   "excelRow": 87,
+   "conversionPath": "pack 2.5 lb -> g x453.592 (Excel /(2.5x450)); base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 13,
+   "sku": "CON-000002",
+   "name": "BEEF",
+   "baseUnit": "lb",
+   "oldCost": 0.0,
+   "newCost": 141.5,
+   "excelRow": 9,
+   "conversionPath": "libra 1 libra -> g x453.592; base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 14,
+   "sku": "CON-000003",
+   "name": "CARNE HAMBURGUESA  TUBO",
+   "baseUnit": "lb",
+   "oldCost": 0.0,
+   "newCost": 258.75,
+   "excelRow": 6,
+   "conversionPath": "tubo 10 lb -> g x453.592 (Excel: 10x450=4500 g); base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 18,
+   "sku": "CON-000007",
+   "name": "CREMA ACIDA",
+   "baseUnit": "lb",
+   "oldCost": 330.47,
+   "newCost": 55.079029,
+   "excelRow": 59,
+   "conversionPath": "Bolsa 420 gramos -> g x1; base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 20,
+   "sku": "CON-000009",
+   "name": "DEDOS DE QUESO MOZZARELA",
+   "baseUnit": "lb",
+   "oldCost": 0.0,
+   "newCost": 232.875,
+   "excelRow": 88,
+   "conversionPath": "libra -> g x453.592 (I vacio; Excel /450); base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 23,
+   "sku": "CON-000012",
+   "name": "JAMON COTTO",
+   "baseUnit": "lb",
+   "oldCost": 0.0,
+   "newCost": 200.0,
+   "excelRow": 7,
+   "conversionPath": "libra -> g x453.592 (Excel: /450); base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 26,
+   "sku": "CON-000015",
+   "name": "JAMON SERRANO",
+   "baseUnit": "lb",
+   "oldCost": 671.53,
+   "newCost": 671.534451,
+   "excelRow": 4,
+   "conversionPath": "pack 200 gramos -> g x1; base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 45,
+   "sku": "CON-000034",
+   "name": "SALAMI",
+   "baseUnit": "lb",
+   "oldCost": 0.0,
+   "newCost": 418.6,
+   "excelRow": 53,
+   "conversionPath": "libra 1 libra -> g x453.592; base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 50,
+   "sku": "CON-000039",
+   "name": "YOGURT",
+   "baseUnit": "lb",
+   "oldCost": 0.0,
+   "newCost": 76.202286,
+   "excelRow": 56,
+   "conversionPath": "pote 35 onz -> g x28.3495 (onz de masa 28.3495; no onz_fl 29.5735); base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 52,
+   "sku": "MIS-000002",
+   "name": "ACEITE VEGETAL MAZOLA",
+   "baseUnit": "gal",
+   "oldCost": 345.19,
+   "newCost": 345.191538,
+   "excelRow": 140,
+   "conversionPath": "pote 5 litro -> ml x1000; base BD gal (x3785.41 ml)"
+  },
+  {
+   "productId": 94,
+   "sku": "EMP-000004",
+   "name": "BOLSA GABACHA",
+   "baseUnit": "paquete",
+   "oldCost": 0.0,
+   "newCost": 89.999,
+   "excelRow": 175,
+   "conversionPath": "pack x1000 -> unidad /1000 (I vacio); base BD paquete (x1 u); 1 paquete = 1000 bolsas"
+  },
+  {
+   "productId": 114,
+   "sku": "EMP-000024",
+   "name": "PAPEL ENCERADO",
+   "baseUnit": "paquete",
+   "oldCost": 0.0,
+   "newCost": 218.4425,
+   "excelRow": 99,
+   "conversionPath": "rollo -> 1 unidad (sin contenido en metros); base BD paquete (x1 u)"
+  },
+  {
+   "productId": 139,
+   "sku": "BEB-000017",
+   "name": "VINO SAN TELMO",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 251.7695,
+   "excelRow": 190,
+   "conversionPath": "botella 750 ml 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 140,
+   "sku": "BEB-000018",
+   "name": "VINO TINTO 19 CRIMES",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 813.004,
+   "excelRow": 191,
+   "conversionPath": "botella 750ml 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 162,
+   "sku": "VEG-000001",
+   "name": "AJO",
+   "baseUnit": "lb",
+   "oldCost": 84.92,
+   "newCost": 98.0,
+   "excelRow": 49,
+   "conversionPath": "libra 1 libra -> g x453.592; base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 173,
+   "sku": "VEG-000012",
+   "name": "ROMERO",
+   "baseUnit": "lb",
+   "oldCost": 159.86,
+   "newCost": 191.516622,
+   "excelRow": 45,
+   "conversionPath": "Bolsa 225 gramos -> g x1; base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 174,
+   "sku": "VEG-000013",
+   "name": "TOMATE CRIOLLO",
+   "baseUnit": "lb",
+   "oldCost": 0.0,
+   "newCost": 35.0,
+   "excelRow": 32,
+   "conversionPath": "LIBRA 1 libra -> g x453.592; base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 186,
+   "sku": "CON-000044",
+   "name": "CARNE HAMBURGUESA",
+   "baseUnit": "oz",
+   "oldCost": 0.0,
+   "newCost": 16.171875,
+   "excelRow": 6,
+   "conversionPath": "tubo 10 lb -> g x453.592 (Excel: 10x450=4500 g); base BD oz (x28.3495 g)"
+  },
+  {
+   "productId": 192,
+   "sku": "CON-000050",
+   "name": "GORGONZOLA",
+   "baseUnit": "oz",
+   "oldCost": 20.84,
+   "newCost": 20.84375,
+   "excelRow": 64,
+   "conversionPath": "pack 5 lb -> g x453.592 (Excel /(5x450)); base BD oz (x28.3495 g)"
+  },
+  {
+   "productId": 195,
+   "sku": "CON-000053",
+   "name": "JAMON SELVA NEGRA",
+   "baseUnit": "oz",
+   "oldCost": 12.81,
+   "newCost": 12.812437,
+   "excelRow": 11,
+   "conversionPath": "libra -> g x453.592 (Excel: /450); base BD oz (x28.3495 g)"
+  },
+  {
+   "productId": 199,
+   "sku": "CON-000056",
+   "name": "MOZZARELA RUEDA",
+   "baseUnit": "lb",
+   "oldCost": 0.0,
+   "newCost": 120.0,
+   "excelRow": 51,
+   "conversionPath": "LIBRA 1 LIBRA -> g x453.592; base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 202,
+   "sku": "CON-000059",
+   "name": "MOZZARELLA RALLADO",
+   "baseUnit": "lb",
+   "oldCost": 110.39,
+   "newCost": 110.3885,
+   "excelRow": 50,
+   "conversionPath": "bolsa 5 lb -> g x453.592 (Excel L = J/80 por onz masa); base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 205,
+   "sku": "CON-000061",
+   "name": "PAN HAMBURGUESA",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 14.333333,
+   "excelRow": 72,
+   "conversionPath": "bolsa 6 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 211,
+   "sku": "CON-000067",
+   "name": "PEPPERONI",
+   "baseUnit": "lb",
+   "oldCost": 275.47,
+   "newCost": 184.0,
+   "excelRow": 13,
+   "conversionPath": "caja 25 lb -> g x453.592 (Excel: 25x450=11250 g); base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 214,
+   "sku": "CON-000068",
+   "name": "PIÑA",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 120.0,
+   "excelRow": 40,
+   "conversionPath": "und 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 218,
+   "sku": "CON-000072",
+   "name": "QUESO AMARILLO",
+   "baseUnit": "unidad",
+   "oldCost": 5.75,
+   "newCost": 5.749201,
+   "excelRow": 55,
+   "conversionPath": "Barra 72 lasca -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 224,
+   "sku": "CON-000078",
+   "name": "TORTILLA QUESADILLA",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 6.666667,
+   "excelRow": 137,
+   "conversionPath": "PACK 12 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 226,
+   "sku": "MIS-000041",
+   "name": "ACEITE DE OLIVA",
+   "baseUnit": "l",
+   "oldCost": 262.27,
+   "newCost": 272.044463,
+   "excelRow": 85,
+   "conversionPath": "pote 2.98 L -> ml x1000 (I vacio en Excel); base BD l (x1000 ml)"
+  },
+  {
+   "productId": 231,
+   "sku": "MIS-000045",
+   "name": "ADOBO BADIA",
+   "baseUnit": "lb",
+   "oldCost": 0.0,
+   "newCost": 159.275,
+   "excelRow": 155,
+   "conversionPath": "pote 32 onz -> g x28.3495 (onz de masa 28.3495; no onz_fl 29.5735); base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 234,
+   "sku": "MIS-000047",
+   "name": "AZUCAR",
+   "baseUnit": "lb",
+   "oldCost": 18.77,
+   "newCost": 18.774362,
+   "excelRow": 97,
+   "conversionPath": "pack 6 kilogramo -> g x1000; base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 235,
+   "sku": "MIS-000048",
+   "name": "CANELA",
+   "baseUnit": "lb",
+   "oldCost": 0.0,
+   "newCost": 444.222,
+   "excelRow": 73,
+   "conversionPath": "Libra 1 libra -> g x453.592; base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 236,
+   "sku": "MIS-000049",
+   "name": "CHILE DE SOBRE",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 0.768764,
+   "excelRow": 30,
+   "conversionPath": "Bolson 1000 sobre -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 237,
+   "sku": "MIS-000050",
+   "name": "CHILE",
+   "baseUnit": "lb",
+   "oldCost": 0.0,
+   "newCost": 299.575,
+   "excelRow": 199,
+   "conversionPath": "libra -> g x453.592 (Excel /450); base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 238,
+   "sku": "MIS-000051",
+   "name": "CHIPOTLE LA COSTEÑA",
+   "baseUnit": "g",
+   "oldCost": 0.0,
+   "newCost": 0.386364,
+   "excelRow": 91,
+   "conversionPath": "lata 220 gramos -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 242,
+   "sku": "MIS-000055",
+   "name": "LATA DE TOMATE NAPOLI",
+   "baseUnit": "kg",
+   "oldCost": 0.0,
+   "newCost": 115.486538,
+   "excelRow": 134,
+   "conversionPath": "lata 2600 gramo -> g x1; base BD kg (x1000 g)"
+  },
+  {
+   "productId": 246,
+   "sku": "MIS-000059",
+   "name": "MEZCLA BROWNIES",
+   "baseUnit": "unidad",
+   "oldCost": 145.67,
+   "newCost": 145.657083,
+   "excelRow": 95,
+   "conversionPath": "caja 7.49 lb -> g x453.592 (Excel /I/450); 1 unidad = 1/6 de caja 7.49 lb (caja de 6 bolsas, catalogo MIS-000019)"
+  },
+  {
+   "productId": 257,
+   "sku": "MIS-000069",
+   "name": "PIMIENTA NEGRA",
+   "baseUnit": "g",
+   "oldCost": 0.0,
+   "newCost": 1.338648,
+   "excelRow": 79,
+   "conversionPath": "pote 2 lb -> g x453.592 (Excel /900); base BD g (x1 g)"
+  },
+  {
+   "productId": 258,
+   "sku": "MIS-000070",
+   "name": "PIMIENTA NEGRA MOLIDA",
+   "baseUnit": "lb",
+   "oldCost": 0.0,
+   "newCost": 607.2,
+   "excelRow": 79,
+   "conversionPath": "pote 2 lb -> g x453.592 (Excel /900); base BD lb (x453.592 g)"
+  },
+  {
+   "productId": 264,
+   "sku": "MIS-000076",
+   "name": "SALSA KETCHUP",
+   "baseUnit": "kg",
+   "oldCost": 113.63,
+   "newCost": 113.62561,
+   "excelRow": 116,
+   "conversionPath": "botella 4.1 kilogramos -> g x1000; base BD kg (x1000 g)"
+  },
+  {
+   "productId": 265,
+   "sku": "MIS-000077",
+   "name": "SALSA TARTUFATA",
+   "baseUnit": "g",
+   "oldCost": 2.02,
+   "newCost": 2.020826,
+   "excelRow": 131,
+   "conversionPath": "pote 500 gramos -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 273,
+   "sku": "EMP-000037",
+   "name": "BOLSA KRAFT 2 LB",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 1.40001,
+   "excelRow": 156,
+   "conversionPath": "und 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 274,
+   "sku": "EMP-000038",
+   "name": "BOLSA KRAFT 12 LB",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 2.80002,
+   "excelRow": 157,
+   "conversionPath": "und 1 uniidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 275,
+   "sku": "EMP-000039",
+   "name": "BOLSA KRAFT 16 LB",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 3.799945,
+   "excelRow": 158,
+   "conversionPath": "und 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 277,
+   "sku": "EMP-000041",
+   "name": "CAJAS PARA PIZZA",
+   "baseUnit": "unidad",
+   "oldCost": 16.0,
+   "newCost": 22.838886,
+   "excelRow": 106,
+   "conversionPath": "pack x 50 50 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 282,
+   "sku": "EMP-000046",
+   "name": "EMPAQUE NEGRO PITZA",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 5.166665,
+   "excelRow": 176,
+   "conversionPath": "pack x25 -> unidad /25 (I vacio); base BD unidad (x1 u)"
+  },
+  {
+   "productId": 286,
+   "sku": "EMP-000049",
+   "name": "ENVASE 1 OZ",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 0.584,
+   "excelRow": 104,
+   "conversionPath": "ristra x125 -> unidad /125 (I vacio); base BD unidad (x1 u)"
+  },
+  {
+   "productId": 289,
+   "sku": "EMP-000052",
+   "name": "PAJILLAS",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 0.25,
+   "excelRow": 159,
+   "conversionPath": "caja 500 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 293,
+   "sku": "EMP-000056",
+   "name": "PAPEL TOALLA",
+   "baseUnit": "unidad",
+   "oldCost": 41.68,
+   "newCost": 41.680312,
+   "excelRow": 102,
+   "conversionPath": "pack 8 rollo -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 300,
+   "sku": "BEB-000024",
+   "name": "COCA CERO",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 16.77,
+   "excelRow": 168,
+   "conversionPath": "lata 12 onz 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 306,
+   "sku": "BEB-000030",
+   "name": "GATORADE",
+   "baseUnit": "unidad",
+   "oldCost": 31.91,
+   "newCost": 31.910104,
+   "excelRow": 181,
+   "conversionPath": "pack 24 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 307,
+   "sku": "BEB-000031",
+   "name": "GINGER",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 16.77,
+   "excelRow": 170,
+   "conversionPath": "Lata 12 onz 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 310,
+   "sku": "BEB-000034",
+   "name": "MIEL",
+   "baseUnit": "oz",
+   "oldCost": 0.0,
+   "newCost": 3.660147,
+   "excelRow": 24,
+   "conversionPath": "cubeta 25560 g -> g x1; volumen 18 L (densidad implicita 1.42 g/ml); base BD oz (x28.3495 g)"
+  },
+  {
+   "productId": 315,
+   "sku": "BEB-000038",
+   "name": "VINO BLANCO PINOT",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 379.2815,
+   "excelRow": 187,
+   "conversionPath": "botella 750 ml 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 322,
+   "sku": "BEB-000044",
+   "name": "VINO BLANCO FRONTERA",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 284.625,
+   "excelRow": 194,
+   "conversionPath": "botella 750 ml 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 332,
+   "sku": "LIM-000025",
+   "name": "GUANTES NEGROS",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 3.5,
+   "excelRow": 109,
+   "conversionPath": "caja x100 -> unidad /100 (I vacio); base BD unidad (x1 u)"
+  },
+  {
+   "productId": 342,
+   "sku": "VEG-000016",
+   "name": "APIO VERDE MOÑOS",
+   "baseUnit": "unidad",
+   "oldCost": 0.0,
+   "newCost": 55.0,
+   "excelRow": 37,
+   "conversionPath": "moño 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 370,
+   "sku": "VGR-000001",
+   "name": "Albahaca",
+   "baseUnit": "g",
+   "oldCost": 0.37,
+   "newCost": 0.374786,
+   "excelRow": 41,
+   "conversionPath": "libra 1 libra -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 372,
+   "sku": "VGR-000003",
+   "name": "Rúcula",
+   "baseUnit": "g",
+   "oldCost": 0.37,
+   "newCost": 0.374786,
+   "excelRow": 33,
+   "conversionPath": "libra 1 libra -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 396,
+   "sku": "RCP-000006",
+   "name": "Hongos frescos para receta",
+   "baseUnit": "g",
+   "oldCost": 0.71,
+   "newCost": 0.654527,
+   "excelRow": 42,
+   "conversionPath": "Bandeja 650 Gramos -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 397,
+   "sku": "RCP-000008",
+   "name": "Miel envase de mesa",
+   "baseUnit": "g",
+   "oldCost": 0.13,
+   "newCost": 0.129108,
+   "excelRow": 24,
+   "conversionPath": "cubeta 25560 g -> g x1; volumen 18 L (densidad implicita 1.42 g/ml); base BD g (x1 g)"
+  },
+  {
+   "productId": 398,
+   "sku": "RCP-000005",
+   "name": "Mozzarella fresco para receta",
+   "baseUnit": "g",
+   "oldCost": 0.24,
+   "newCost": 0.264555,
+   "excelRow": 51,
+   "conversionPath": "LIBRA 1 LIBRA -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 399,
+   "sku": "RCP-000004",
+   "name": "Queso mozzarella para receta",
+   "baseUnit": "g",
+   "oldCost": 0.27,
+   "newCost": 0.243365,
+   "excelRow": 50,
+   "conversionPath": "bolsa 5 lb -> g x453.592 (Excel L = J/80 por onz masa); base BD g (x1 g)"
+  },
+  {
+   "productId": 400,
+   "sku": "RCP-000007",
+   "name": "Reducción de balsámico para receta",
+   "baseUnit": "g",
+   "oldCost": 0.76,
+   "newCost": 0.75,
+   "excelRow": 110,
+   "conversionPath": "botella 280 gramos -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 504,
+   "sku": "CCI-516C41C43E",
+   "name": "PROSCIUTTO (base g)",
+   "baseUnit": "g",
+   "oldCost": 1.66,
+   "newCost": 1.657184,
+   "excelRow": 3,
+   "conversionPath": "pack 340 gramos -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 505,
+   "sku": "CCI-41F01F7AAD",
+   "name": "PECHUGA DE POLLO",
+   "baseUnit": "g",
+   "oldCost": 0.21,
+   "newCost": 0.209341,
+   "excelRow": 5,
+   "conversionPath": "libra -> g x453.592 (Excel: I=450 g); base BD g (x1 g)"
+  },
+  {
+   "productId": 506,
+   "sku": "CCI-5E06DFA766",
+   "name": "JAMON COTTO PIERNA",
+   "baseUnit": "g",
+   "oldCost": 0.74,
+   "newCost": 0.440925,
+   "excelRow": 7,
+   "conversionPath": "libra -> g x453.592 (Excel: /450); base BD g (x1 g)"
+  },
+  {
+   "productId": 508,
+   "sku": "CCI-4045D078DE",
+   "name": "BEEF ENTERO",
+   "baseUnit": "g",
+   "oldCost": 0.31,
+   "newCost": 0.311954,
+   "excelRow": 9,
+   "conversionPath": "libra 1 libra -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 509,
+   "sku": "CCI-F103EC28F5",
+   "name": "ROAS BEEF PORCION",
+   "baseUnit": "g",
+   "oldCost": 0.31,
+   "newCost": 0.49528,
+   "excelRow": 10,
+   "conversionPath": "Porcion 125 gramos -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 510,
+   "sku": "CCI-26B6C68C51",
+   "name": "PEPPERONI PORCION",
+   "baseUnit": "g",
+   "oldCost": 0.61,
+   "newCost": 0.535294,
+   "excelRow": 14,
+   "conversionPath": "porcion 68 gramos -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 511,
+   "sku": "CCI-DAB047458A",
+   "name": "LEVADURA",
+   "baseUnit": "g",
+   "oldCost": 0.2,
+   "newCost": 0.198,
+   "excelRow": 21,
+   "conversionPath": "unidad 500 gramos -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 512,
+   "sku": "CCI-B227D34CC2",
+   "name": "QUESO PARMESANO (base g)",
+   "baseUnit": "g",
+   "oldCost": 0.62,
+   "newCost": 0.600392,
+   "excelRow": 22,
+   "conversionPath": "Pote 1130 gramos -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 513,
+   "sku": "CCI-BC2425A131",
+   "name": "VINAGRE BALSAMICO (base ml)",
+   "baseUnit": "ml",
+   "oldCost": 0.44,
+   "newCost": 0.436943,
+   "excelRow": 23,
+   "conversionPath": "Botella 1000 ml -> ml x1; base BD ml (x1 ml)"
+  },
+  {
+   "productId": 515,
+   "sku": "CCI-367F1397DC",
+   "name": "PEPINILLO (base g)",
+   "baseUnit": "g",
+   "oldCost": 0.4,
+   "newCost": 0.399462,
+   "excelRow": 25,
+   "conversionPath": "Pote 25.89 onz -> g x28.3495 (onz de masa 28.3495; no onz_fl 29.5735); base BD g (x1 g)"
+  },
+  {
+   "productId": 516,
+   "sku": "CCI-6C01B6B668",
+   "name": "HARINA FOCACCIA",
+   "baseUnit": "g",
+   "oldCost": 0.03,
+   "newCost": 0.030314,
+   "excelRow": 20,
+   "conversionPath": "quintal 100 lb -> g x45359.2 (Excel: 100x450=45000 g); base BD g (x1 g)"
+  },
+  {
+   "productId": 517,
+   "sku": "CCI-A5A59FE181",
+   "name": "VINO CLOSS (base ml)",
+   "baseUnit": "ml",
+   "oldCost": 0.27,
+   "newCost": 0.267921,
+   "excelRow": 26,
+   "conversionPath": "Pack 2 litro -> ml x1000; base BD ml (x1 ml)"
+  },
+  {
+   "productId": 518,
+   "sku": "CCI-0BBCE4D381",
+   "name": "OREGANO SECO SOBRE",
+   "baseUnit": "unidad",
+   "oldCost": 1.09,
+   "newCost": 1.093179,
+   "excelRow": 28,
+   "conversionPath": "Bolson 1000 sobre -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 519,
+   "sku": "CCI-677E4C40ED",
+   "name": "OREGANO SECO",
+   "baseUnit": "g",
+   "oldCost": 0.98,
+   "newCost": 0.979343,
+   "excelRow": 29,
+   "conversionPath": "Bolsa 1 libra -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 520,
+   "sku": "CCI-EB9BED577D",
+   "name": "CHILE SECO SOBRE",
+   "baseUnit": "unidad",
+   "oldCost": 0.77,
+   "newCost": 0.768764,
+   "excelRow": 30,
+   "conversionPath": "Bolson 1000 sobre -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 527,
+   "sku": "CCI-A72342C5B5",
+   "name": "ZANAHORA",
+   "baseUnit": "g",
+   "oldCost": 0.06,
+   "newCost": 0.055116,
+   "excelRow": 38,
+   "conversionPath": "libra 1 libra -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 528,
+   "sku": "CCI-01F3E4B742",
+   "name": "FRESAS FRESCAS",
+   "baseUnit": "g",
+   "oldCost": 0.47,
+   "newCost": 0.475,
+   "excelRow": 39,
+   "conversionPath": "Bandeja 400 gramos -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 530,
+   "sku": "CCI-CF3BAE412C",
+   "name": "HONGOS (base g)",
+   "baseUnit": "g",
+   "oldCost": 0.65,
+   "newCost": 0.654527,
+   "excelRow": 42,
+   "conversionPath": "Bandeja 650 Gramos -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 532,
+   "sku": "CCI-F135819EB8",
+   "name": "ROMERO FRESCO",
+   "baseUnit": "g",
+   "oldCost": 0.42,
+   "newCost": 0.422222,
+   "excelRow": 45,
+   "conversionPath": "Bolsa 225 gramos -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 534,
+   "sku": "CCI-4D49EF70EA",
+   "name": "FLOR DE LATE",
+   "baseUnit": "g",
+   "oldCost": 0.81,
+   "newCost": 0.810227,
+   "excelRow": 52,
+   "conversionPath": "Bolsa 220 gramos -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 535,
+   "sku": "CCI-212BFF1755",
+   "name": "SALAMI GENOA",
+   "baseUnit": "g",
+   "oldCost": 0.92,
+   "newCost": 0.922856,
+   "excelRow": 53,
+   "conversionPath": "libra 1 libra -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 536,
+   "sku": "CCI-A749D6AA3D",
+   "name": "YOGURT GRIEGO YES",
+   "baseUnit": "g",
+   "oldCost": 0.17,
+   "newCost": 0.167997,
+   "excelRow": 56,
+   "conversionPath": "pote 35 onz -> g x28.3495 (onz de masa 28.3495; no onz_fl 29.5735); base BD g (x1 g)"
+  },
+  {
+   "productId": 538,
+   "sku": "CCI-8CF1D79A4D",
+   "name": "CREMA LIQUIDA",
+   "baseUnit": "g",
+   "oldCost": 0.13,
+   "newCost": 0.132277,
+   "excelRow": 61,
+   "conversionPath": "libra 1 libra -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 539,
+   "sku": "CCI-E84124CA3A",
+   "name": "QUESO PROVOLONE",
+   "baseUnit": "g",
+   "oldCost": 0.53,
+   "newCost": 0.532417,
+   "excelRow": 62,
+   "conversionPath": "libra 1 libra -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 540,
+   "sku": "CCI-25E4131C13",
+   "name": "LECHE (base ml)",
+   "baseUnit": "ml",
+   "oldCost": 0.06,
+   "newCost": 0.056407,
+   "excelRow": 63,
+   "conversionPath": "litro 1 litro -> ml x1000; base BD ml (x1 ml)"
+  },
+  {
+   "productId": 541,
+   "sku": "CCI-FDFB775AD9",
+   "name": "LINGUINI",
+   "baseUnit": "g",
+   "oldCost": 0.36,
+   "newCost": 0.363763,
+   "excelRow": 66,
+   "conversionPath": "libra 1 libra -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 542,
+   "sku": "CCI-D06BDE2F2F",
+   "name": "CANELONES",
+   "baseUnit": "unidad",
+   "oldCost": 34.58,
+   "newCost": 34.583333,
+   "excelRow": 67,
+   "conversionPath": "pack 12 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 543,
+   "sku": "CCI-FEAE225293",
+   "name": "FUSILLI",
+   "baseUnit": "g",
+   "oldCost": 0.18,
+   "newCost": 0.18377,
+   "excelRow": 68,
+   "conversionPath": "pack 500 gramos -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 545,
+   "sku": "CCI-0E5537DA3E",
+   "name": "MAYONESA (base g)",
+   "baseUnit": "g",
+   "oldCost": 0.14,
+   "newCost": 0.139134,
+   "excelRow": 71,
+   "conversionPath": "pote 3.55 Kilogramos -> g x1000; base BD g (x1 g)"
+  },
+  {
+   "productId": 546,
+   "sku": "CCI-F0765EA18D",
+   "name": "PAN PARA HAMBURGUESA",
+   "baseUnit": "unidad",
+   "oldCost": 14.33,
+   "newCost": 14.333333,
+   "excelRow": 72,
+   "conversionPath": "bolsa 6 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 548,
+   "sku": "CCI-267BC6F36D",
+   "name": "CANELA EN RAJA",
+   "baseUnit": "g",
+   "oldCost": 0.98,
+   "newCost": 0.979343,
+   "excelRow": 73,
+   "conversionPath": "Libra 1 libra -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 549,
+   "sku": "CCI-B6824B3E54",
+   "name": "AJO EN POLVO",
+   "baseUnit": "g",
+   "oldCost": 0.46,
+   "newCost": 0.458113,
+   "excelRow": 74,
+   "conversionPath": "pote 640 gramos -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 550,
+   "sku": "CCI-BCCD423C4D",
+   "name": "MOSTAZA (base ml)",
+   "baseUnit": "ml",
+   "oldCost": 0.11,
+   "newCost": 0.109215,
+   "excelRow": 75,
+   "conversionPath": "galon -> ml x3785.41 (Excel /3785, etiquetado gr); base BD ml (x1 ml)"
+  },
+  {
+   "productId": 551,
+   "sku": "CCI-DAA4D7773D",
+   "name": "PIMIENTA MOLIDA",
+   "baseUnit": "g",
+   "oldCost": 1.34,
+   "newCost": 1.338648,
+   "excelRow": 79,
+   "conversionPath": "pote 2 lb -> g x453.592 (Excel /900); base BD g (x1 g)"
+  },
+  {
+   "productId": 552,
+   "sku": "CCI-9C9C052E5D",
+   "name": "VINAGRE BLANCO (base ml)",
+   "baseUnit": "ml",
+   "oldCost": 0.04,
+   "newCost": 0.035558,
+   "excelRow": 80,
+   "conversionPath": "pote 3.75 litro -> ml x1000; base BD ml (x1 ml)"
+  },
+  {
+   "productId": 553,
+   "sku": "CCI-115DF86816",
+   "name": "ANCHOAS (base g)",
+   "baseUnit": "g",
+   "oldCost": 2.81,
+   "newCost": 2.810581,
+   "excelRow": 81,
+   "conversionPath": "lata 14 onz -> g x28.3495 (onz de masa 28.3495; no onz_fl 29.5735); base BD g (x1 g)"
+  },
+  {
+   "productId": 554,
+   "sku": "CCI-66473E67BB",
+   "name": "ACEITUNAS NEGRAS",
+   "baseUnit": "g",
+   "oldCost": 0.21,
+   "newCost": 0.205734,
+   "excelRow": 82,
+   "conversionPath": "lata 106 onz -> g x28.3495 (onz de masa 28.3495; no onz_fl 29.5735); base BD g (x1 g)"
+  },
+  {
+   "productId": 555,
+   "sku": "CCI-C32CE6FA6B",
+   "name": "ACEITE OLIVA POMANCE",
+   "baseUnit": "ml",
+   "oldCost": 0.43,
+   "newCost": 0.430269,
+   "excelRow": 86,
+   "conversionPath": "galon -> ml x3785.41 (Excel /3700: error); base BD ml (x1 ml)"
+  },
+  {
+   "productId": 556,
+   "sku": "CCI-0DDFE791A7",
+   "name": "LATA DE CHIPOTLE",
+   "baseUnit": "g",
+   "oldCost": 0.39,
+   "newCost": 0.386364,
+   "excelRow": 91,
+   "conversionPath": "lata 220 gramos -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 557,
+   "sku": "CCI-3901E22DF8",
+   "name": "MEZCLA PARA BROWNIES",
+   "baseUnit": "g",
+   "oldCost": 0.26,
+   "newCost": 0.257238,
+   "excelRow": 95,
+   "conversionPath": "caja 7.49 lb -> g x453.592 (Excel /I/450); base BD g (x1 g)"
+  },
+  {
+   "productId": 559,
+   "sku": "CCI-E6A08B9EDC",
+   "name": "AMBIENTADOR (base ml)",
+   "baseUnit": "ml",
+   "oldCost": 0.03,
+   "newCost": 0.027738,
+   "excelRow": 118,
+   "conversionPath": "galon -> ml x3785.41; base BD ml (x1 ml)"
+  },
+  {
+   "productId": 560,
+   "sku": "CCI-CB63D0A45A",
+   "name": "NUTELLA (base g)",
+   "baseUnit": "g",
+   "oldCost": 0.63,
+   "newCost": 0.632443,
+   "excelRow": 133,
+   "conversionPath": "pote 1 kilogramo -> g x1000; base BD g (x1 g)"
+  },
+  {
+   "productId": 561,
+   "sku": "CCI-4A47D265C6",
+   "name": "TOMATE PELADO",
+   "baseUnit": "g",
+   "oldCost": 0.12,
+   "newCost": 0.115487,
+   "excelRow": 134,
+   "conversionPath": "lata 2600 gramo -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 562,
+   "sku": "CCI-09137D1D0D",
+   "name": "MOZZARELLA LIBRA",
+   "baseUnit": "g",
+   "oldCost": 0.26,
+   "newCost": 0.264555,
+   "excelRow": 136,
+   "conversionPath": "libra 1 libra -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 563,
+   "sku": "CCI-0BC3A5AE30",
+   "name": "KETCHUP",
+   "baseUnit": "g",
+   "oldCost": 0.11,
+   "newCost": 0.113626,
+   "excelRow": 141,
+   "conversionPath": "botella 4.1 kilogramos -> g x1000; base BD g (x1 g)"
+  },
+  {
+   "productId": 564,
+   "sku": "CCI-F8ED62A2FE",
+   "name": "PASTA PENNE (base g)",
+   "baseUnit": "g",
+   "oldCost": 0.15,
+   "newCost": 0.151455,
+   "excelRow": 143,
+   "conversionPath": "Bolsa 1 kilogramo -> g x1000; base BD g (x1 g)"
+  },
+  {
+   "productId": 565,
+   "sku": "CCI-3EC662E274",
+   "name": "MANTECA LIQUIDA",
+   "baseUnit": "g",
+   "oldCost": 0.13,
+   "newCost": 0.134658,
+   "excelRow": 145,
+   "conversionPath": "35 lb -> g x453.592 (Excel /453 y etiqueta ml); base BD g (x1 g)"
+  },
+  {
+   "productId": 566,
+   "sku": "CCI-9CE4B1944C",
+   "name": "CARACU",
+   "baseUnit": "g",
+   "oldCost": 0.18,
+   "newCost": 0.180779,
+   "excelRow": 150,
+   "conversionPath": "libra 1 libra -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 567,
+   "sku": "CCI-5A3563DEB1",
+   "name": "CHUCK ROLL",
+   "baseUnit": "g",
+   "oldCost": 0.31,
+   "newCost": 0.317466,
+   "excelRow": 151,
+   "conversionPath": "libra 1 libra -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 568,
+   "sku": "CCI-DB8A946F68",
+   "name": "BOTELLA DE AGUA 600 ml",
+   "baseUnit": "unidad",
+   "oldCost": 20.95,
+   "newCost": 20.952381,
+   "excelRow": 152,
+   "conversionPath": "und 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 569,
+   "sku": "CCI-FD1AC24042",
+   "name": "ROMERO SECO BADIA",
+   "baseUnit": "g",
+   "oldCost": 1.21,
+   "newCost": 1.214417,
+   "excelRow": 153,
+   "conversionPath": "pote 8 onz -> g x28.3495 (onz de masa 28.3495; no onz_fl 29.5735); base BD g (x1 g)"
+  },
+  {
+   "productId": 570,
+   "sku": "CCI-0F6F93D5FE",
+   "name": "VEGETALES MIXTOS DELMONTE",
+   "baseUnit": "g",
+   "oldCost": 0.24,
+   "newCost": 0.242255,
+   "excelRow": 154,
+   "conversionPath": "lata 15 onz -> g x28.3495 (onz de masa 28.3495; no onz_fl 29.5735); base BD g (x1 g)"
+  },
+  {
+   "productId": 571,
+   "sku": "CCI-750BFA1359",
+   "name": "BOLSA KRAFT # 2",
+   "baseUnit": "unidad",
+   "oldCost": 1.4,
+   "newCost": 1.40001,
+   "excelRow": 156,
+   "conversionPath": "und 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 572,
+   "sku": "CCI-7571B85710",
+   "name": "BOLSA KRAFT # 12",
+   "baseUnit": "unidad",
+   "oldCost": 2.8,
+   "newCost": 2.80002,
+   "excelRow": 157,
+   "conversionPath": "und 1 uniidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 573,
+   "sku": "CCI-6646074C03",
+   "name": "BOLSA KRAFT # 16",
+   "baseUnit": "unidad",
+   "oldCost": 3.8,
+   "newCost": 3.799945,
+   "excelRow": 158,
+   "conversionPath": "und 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 577,
+   "sku": "CCI-E154D1A8FE",
+   "name": "AGUA FUENTE PURA",
+   "baseUnit": "unidad",
+   "oldCost": 360.0,
+   "newCost": 359.996,
+   "excelRow": 162,
+   "conversionPath": "Botellon 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 578,
+   "sku": "CCI-94FFB1508A",
+   "name": "MIEL PICANTE — botella",
+   "baseUnit": "g",
+   "oldCost": 0.9,
+   "newCost": 0.903896,
+   "excelRow": 163,
+   "conversionPath": "botella 8 onz -> g x28.3495 (onz de masa 28.3495; no onz_fl 29.5735); base BD g (x1 g)"
+  },
+  {
+   "productId": 579,
+   "sku": "CCI-52594DDCB4",
+   "name": "MIEL PICANTE — botella",
+   "baseUnit": "g",
+   "oldCost": 1.37,
+   "newCost": 1.366867,
+   "excelRow": 164,
+   "conversionPath": "botella 4 onz -> g x28.3495 (onz de masa 28.3495; no onz_fl 29.5735); base BD g (x1 g)"
+  },
+  {
+   "productId": 580,
+   "sku": "CCI-33992E5E02",
+   "name": "PECHUGA DE POLLO CON HUESO",
+   "baseUnit": "g",
+   "oldCost": 0.23,
+   "newCost": 0.233249,
+   "excelRow": 165,
+   "conversionPath": "libra 1 libra -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 581,
+   "sku": "CCI-07C613D23C",
+   "name": "PAPA 3/8",
+   "baseUnit": "g",
+   "oldCost": 0.15,
+   "newCost": 0.149584,
+   "excelRow": 166,
+   "conversionPath": "bolsa 5 lb -> g x453.592 (Excel L = J/80 por onz masa); base BD g (x1 g)"
+  },
+  {
+   "productId": 585,
+   "sku": "CCI-7DBB13A9CC",
+   "name": "HI-C LIM",
+   "baseUnit": "unidad",
+   "oldCost": 22.62,
+   "newCost": 22.624813,
+   "excelRow": 171,
+   "conversionPath": "caja 330 ml 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 586,
+   "sku": "CCI-BFFB28DEEA",
+   "name": "FIOR DI LATTE",
+   "baseUnit": "g",
+   "oldCost": 0.81,
+   "newCost": 0.810227,
+   "excelRow": 172,
+   "conversionPath": "Bolsa 220 gr -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 587,
+   "sku": "CCI-B2BE14418F",
+   "name": "SANTA RITA PINOT GRIGIO",
+   "baseUnit": "unidad",
+   "oldCost": 379.28,
+   "newCost": 379.2815,
+   "excelRow": 187,
+   "conversionPath": "botella 750 ml 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 589,
+   "sku": "CCI-1035102145",
+   "name": "SAN TELMO MALBEC",
+   "baseUnit": "unidad",
+   "oldCost": 251.77,
+   "newCost": 251.7695,
+   "excelRow": 190,
+   "conversionPath": "botella 750 ml 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 590,
+   "sku": "CCI-DE0BA9340D",
+   "name": "19 CRIMES CABERNET SAUVIGNON",
+   "baseUnit": "unidad",
+   "oldCost": 813.0,
+   "newCost": 813.004,
+   "excelRow": 191,
+   "conversionPath": "botella 750ml 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 591,
+   "sku": "CCI-F36DFA460A",
+   "name": "FRONTERA SAUVIGNON BLANC",
+   "baseUnit": "unidad",
+   "oldCost": 284.63,
+   "newCost": 284.625,
+   "excelRow": 194,
+   "conversionPath": "botella 750 ml 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  },
+  {
+   "productId": 592,
+   "sku": "CCI-B4C1CC42C4",
+   "name": "Champiñones enteros",
+   "baseUnit": "g",
+   "oldCost": 0.71,
+   "newCost": 0.654527,
+   "excelRow": 42,
+   "conversionPath": "Bandeja 650 Gramos -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 594,
+   "sku": "CCI-C329AE1D78",
+   "name": "Tomate enlatado",
+   "baseUnit": "g",
+   "oldCost": 0.12,
+   "newCost": 0.115487,
+   "excelRow": 134,
+   "conversionPath": "lata 2600 gramo -> g x1; base BD g (x1 g)"
+  },
+  {
+   "productId": 598,
+   "sku": "CCI-8440C685DE",
+   "name": "Oregano (base g)",
+   "baseUnit": "g",
+   "oldCost": 1.0,
+   "newCost": 0.979343,
+   "excelRow": 29,
+   "conversionPath": "Bolsa 1 libra -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 599,
+   "sku": "CCI-231D2853E8",
+   "name": "Chile seco",
+   "baseUnit": "g",
+   "oldCost": 0.62,
+   "newCost": 0.66045,
+   "excelRow": 199,
+   "conversionPath": "libra -> g x453.592 (Excel /450); base BD g (x1 g)"
+  },
+  {
+   "productId": 601,
+   "sku": "CCI-FFE2D77F8F",
+   "name": "Sal (base g)",
+   "baseUnit": "g",
+   "oldCost": 0.05,
+   "newCost": 0.026455,
+   "excelRow": 89,
+   "conversionPath": "libra -> g x453.592 (I vacio; Excel 12/450); base BD g (x1 g)"
+  },
+  {
+   "productId": 602,
+   "sku": "CCI-3B3E4E909B",
+   "name": "Queso mozarella",
+   "baseUnit": "g",
+   "oldCost": 0.27,
+   "newCost": 0.243365,
+   "excelRow": 50,
+   "conversionPath": "bolsa 5 lb -> g x453.592 (Excel L = J/80 por onz masa); base BD g (x1 g)"
+  },
+  {
+   "productId": 604,
+   "sku": "CCI-8E6E379FA6",
+   "name": "Leche entera",
+   "baseUnit": "ml",
+   "oldCost": 0.05,
+   "newCost": 0.056407,
+   "excelRow": 63,
+   "conversionPath": "litro 1 litro -> ml x1000; base BD ml (x1 ml)"
+  },
+  {
+   "productId": 605,
+   "sku": "CCI-A5CBBB18B1",
+   "name": "Queso gorgonzola",
+   "baseUnit": "g",
+   "oldCost": 0.73,
+   "newCost": 0.735242,
+   "excelRow": 64,
+   "conversionPath": "pack 5 lb -> g x453.592 (Excel /(5x450)); base BD g (x1 g)"
+  },
+  {
+   "productId": 607,
+   "sku": "CCI-0723871492",
+   "name": "Arrugula",
+   "baseUnit": "g",
+   "oldCost": 0.35,
+   "newCost": 0.374786,
+   "excelRow": 33,
+   "conversionPath": "libra 1 libra -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 608,
+   "sku": "CCI-36F3E2B1CB",
+   "name": "Premezcla para brownies",
+   "baseUnit": "g",
+   "oldCost": 145.67,
+   "newCost": 0.257238,
+   "excelRow": 95,
+   "conversionPath": "caja 7.49 lb -> g x453.592 (Excel /I/450); base BD g (x1 g)"
+  },
+  {
+   "productId": 613,
+   "sku": "CCI-3817ABCFFC",
+   "name": "Zanahoria",
+   "baseUnit": "g",
+   "oldCost": 17.0,
+   "newCost": 0.055116,
+   "excelRow": 38,
+   "conversionPath": "libra 1 libra -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 627,
+   "sku": "CCI-F040DABE5C",
+   "name": "Mozarella fresco",
+   "baseUnit": "g",
+   "oldCost": 0.24,
+   "newCost": 0.264555,
+   "excelRow": 51,
+   "conversionPath": "LIBRA 1 LIBRA -> g x453.592; base BD g (x1 g)"
+  },
+  {
+   "productId": 631,
+   "sku": "CCI-6BFF847EC0",
+   "name": "Banano",
+   "baseUnit": "unidad",
+   "oldCost": 5.0,
+   "newCost": 3.5,
+   "excelRow": 44,
+   "conversionPath": "und 1 unidad -> unidad x1; base BD unidad (x1 u)"
+  }
+ ],
+ "productUnits": [
+  {
+   "productUnitId": 1067,
+   "productId": 177,
+   "sku": "ING-000002",
+   "unit": "g",
+   "oldFactor": 2.2e-05,
+   "newFactor": 2.2046244e-05,
+   "reason": "1 g = 1/45359.2 qq (base qq)"
+  },
+  {
+   "productUnitId": 75,
+   "productId": 195,
+   "sku": "CON-000053",
+   "unit": "qq",
+   "oldFactor": 100,
+   "newFactor": 1600,
+   "reason": "base oz: 1 qq = 100 lb = 1600 oz"
+  }
+ ],
+ "recipeLines": [
+  {
+   "recipeId": 215,
+   "menuItem": "Rúcula & Hongos al Vino",
+   "old": {
+    "productId": 610,
+    "quantity": 60,
+    "unit": "g",
+    "unitId": 9
+   },
+   "new": {
+    "productId": 517,
+    "quantity": 60,
+    "unit": "ml",
+    "unitId": 14
+   },
+   "reason": "'fiel' es el vino de la receta; vino se mide en ml (VINO CLOSS base ml)"
+  }
+ ]
+}

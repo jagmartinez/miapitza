@@ -1,0 +1,264 @@
+{
+ "schemaVersion": 1,
+ "phase": "B",
+ "subphase": "B2",
+ "companyId": 1,
+ "source": {
+  "reviewedAt": "2026-11-19",
+  "dependsOn": "costo-recetas-20261119.phaseB.json (aplicado)",
+  "decisions": [
+   "Se quita Agua de proceso 404 de los BOM ACTIVE 10 Masa integral y 13 Te preparado (v2 ACTIVE, v1 INACTIVE); costo sin cambio (agua = 0)"
+  ]
+ },
+ "conventions": {
+  "onz": 28.3495,
+  "lb": 453.592,
+  "gal": 3785.41,
+  "costTolerancePct": 0.5,
+  "intermediateCostRounding": 6
+ },
+ "productCosts": [],
+ "productUnits": [],
+ "productionRecipes": [
+  {
+   "key": "MASA_INTEGRAL",
+   "productId": 407,
+   "sku": "RCP-000011",
+   "productName": "Masa integral",
+   "action": "NEW_VERSION",
+   "excelRows": null,
+   "source": {
+    "recipeId": 10,
+    "name": "Receta de Masa integral",
+    "version": 1,
+    "status": "ACTIVE",
+    "yield": {
+     "qty": 8,
+     "unitId": 18
+    },
+    "components": [
+     {
+      "productId": 177,
+      "qty": 500,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 634,
+      "qty": 500,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 52,
+      "qty": 120,
+      "unit": "ml",
+      "unitId": 14
+     },
+     {
+      "productId": 234,
+      "qty": 5.5,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 511,
+      "qty": 7,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 601,
+      "qty": 12.5,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 404,
+      "qty": 600,
+      "unit": "ml",
+      "unitId": 14
+     }
+    ]
+   },
+   "target": {
+    "name": "Receta de Masa integral",
+    "version": 2,
+    "status": "ACTIVE",
+    "yield": {
+     "qty": 8,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    "components": [
+     {
+      "productId": 177,
+      "qty": 500,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 634,
+      "qty": 500,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 52,
+      "qty": 120,
+      "unit": "ml",
+      "unitId": 14
+     },
+     {
+      "productId": 234,
+      "qty": 5.5,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 511,
+      "qty": 7,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 601,
+      "qty": 12.5,
+      "unit": "g",
+      "unitId": 9
+     }
+    ]
+   },
+   "omitted": [
+    {
+     "productId": 404,
+     "qty": 600,
+     "unit": "ml",
+     "unitId": 14,
+     "reason": "Agua de proceso: el cierre de produccion exige stock de componentes; costo 0"
+    }
+   ],
+   "expected": {
+    "batchCost": 42.294394,
+    "yieldBaseQty": 8,
+    "unitCost": 5.286799
+   }
+  },
+  {
+   "key": "TE_PREPARADO",
+   "productId": 636,
+   "sku": "RCP-000016",
+   "productName": "Té preparado",
+   "action": "NEW_VERSION",
+   "excelRows": null,
+   "source": {
+    "recipeId": 13,
+    "name": "Receta de Té preparado",
+    "version": 1,
+    "status": "ACTIVE",
+    "yield": {
+     "qty": 20,
+     "unitId": 18
+    },
+    "components": [
+     {
+      "productId": 404,
+      "qty": 1,
+      "unit": "gal",
+      "unitId": 17
+     },
+     {
+      "productId": 638,
+      "qty": 15,
+      "unit": "unidad",
+      "unitId": 18
+     },
+     {
+      "productId": 234,
+      "qty": 639,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 533,
+      "qty": 20,
+      "unit": "unidad",
+      "unitId": 18
+     }
+    ]
+   },
+   "target": {
+    "name": "Receta de Té preparado",
+    "version": 2,
+    "status": "ACTIVE",
+    "yield": {
+     "qty": 20,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    "components": [
+     {
+      "productId": 638,
+      "qty": 15,
+      "unit": "unidad",
+      "unitId": 18
+     },
+     {
+      "productId": 234,
+      "qty": 639,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 533,
+      "qty": 20,
+      "unit": "unidad",
+      "unitId": 18
+     }
+    ]
+   },
+   "omitted": [
+    {
+     "productId": 404,
+     "qty": 1,
+     "unit": "gal",
+     "unitId": 17,
+     "reason": "Agua de proceso: el cierre de produccion exige stock de componentes; costo 0"
+    }
+   ],
+   "expected": {
+    "batchCost": 240.352982,
+    "yieldBaseQty": 20,
+    "unitCost": 12.017649
+   }
+  }
+ ],
+ "intermediateCosts": [
+  {
+   "productId": 407,
+   "sku": "RCP-000011",
+   "name": "Masa integral",
+   "baseUnit": "unidad",
+   "oldCost": 5.286799,
+   "oldReferenceCostKnown": true,
+   "expectedNewCost": 5.286799,
+   "bom": {
+    "recipeKey": "MASA_INTEGRAL"
+   }
+  },
+  {
+   "productId": 636,
+   "sku": "RCP-000016",
+   "name": "Té preparado",
+   "baseUnit": "unidad",
+   "oldCost": 12.017649,
+   "oldReferenceCostKnown": true,
+   "expectedNewCost": 12.017649,
+   "bom": {
+    "recipeKey": "TE_PREPARADO"
+   }
+  }
+ ],
+ "menuRecipes": [],
+ "outOfScope": []
+}

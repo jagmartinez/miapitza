@@ -25,6 +25,12 @@ import {
 } from '../utils/menuRecipe';
 
 type CatFilterOption = { value: string; label: string };
+type MenuStatusFilter = 'active' | 'inactive' | 'all';
+const STATUS_FILTER_OPTIONS: { value: MenuStatusFilter; label: string }[] = [
+  { value: 'active', label: 'Activos' },
+  { value: 'inactive', label: 'Inactivos' },
+  { value: 'all', label: 'Activos e inactivos' },
+];
 import MenuItemCard from '../components/MenuItemCard';
 import { useCurrency } from '../hooks/useCurrency';
 import ImageViewer from '../components/ImageViewer';
@@ -138,6 +144,9 @@ export default function Menu() {
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
   const [brands, setBrands] = useState<MenuBrand[]>([]);
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
+  // Inactive dishes (e.g. imported without price) must stay reachable so they
+  // can be priced and activated; the default view keeps showing active ones.
+  const [selectedStatus, setSelectedStatus] = useState<MenuStatusFilter>('active');
   const { viewMode, setViewMode } = useViewMode('menu');
 
   // Sidebar State
@@ -155,7 +164,8 @@ export default function Menu() {
     price: '',
     categoryId: '',
     branchId: '',
-    brandId: ''
+    brandId: '',
+    active: true
   });
 
   const [recipe, setRecipe] = useState<EditableMenuRecipe[]>([]);
@@ -202,7 +212,7 @@ export default function Menu() {
   const loadData = useCallback(async () => {
     try {
       const [menuRes, productsRes, categoriesRes, branchesRes, brandsRes] = await Promise.all([
-        menuAPI.getAll({ active: true }),
+        menuAPI.getAll(),
         productsAPI.getAll({ active: true, limit: 500 }),
         categoriesAPI.getAll(),
         branchesAPI.getAll(),
@@ -373,7 +383,8 @@ export default function Menu() {
         price: item.price.toString(),
         categoryId: item.categoryId.toString(),
         branchId: item.branchId?.toString() || '',
-        brandId: item.brandId?.toString() || ''
+        brandId: item.brandId?.toString() || '',
+        active: item.active !== false
       });
       // Never leave data from the previously-opened item in the editor while
       // this item's imported recipe is being loaded.
@@ -453,7 +464,7 @@ export default function Menu() {
       }
     } else {
       setEditingItem(null);
-      setFormData({ name: '', description: '', price: '', categoryId: '', branchId: '', brandId: '' });
+      setFormData({ name: '', description: '', price: '', categoryId: '', branchId: '', brandId: '', active: true });
       setRecipe([]);
       setRecipeUnitsByProduct({});
       setImages([]);
@@ -686,7 +697,7 @@ export default function Menu() {
         branchId: formData.branchId ? parseInt(formData.branchId) : null,
         brandId: formData.brandId ? parseInt(formData.brandId) : null,
         type: 'PREPARED',
-        active: true
+        active: formData.active
       };
 
       let menuItemId: number;
@@ -761,7 +772,8 @@ export default function Menu() {
     const matchesBranch = selectedBranch === 'all' || !item.branchId || item.branchId?.toString() === selectedBranch;
     const matchesBrand = selectedBrand === 'all'
       || (selectedBrand === 'none' ? !item.brandId : item.brandId?.toString() === selectedBrand);
-    return matchesSearch && matchesCategory && matchesBranch && matchesBrand
+    const matchesStatus = selectedStatus === 'all' || (selectedStatus === 'active' ? item.active : !item.active);
+    return matchesSearch && matchesCategory && matchesBranch && matchesBrand && matchesStatus
       && (!onlyMissingRecipe || lacksRecipe(item));
   });
   const missingRecipeCount = menuItems.filter(lacksRecipe).length;
@@ -862,6 +874,15 @@ export default function Menu() {
               isSearchable={false}
             />
           )}
+
+          <Select
+            className="branch-select-container"
+            value={STATUS_FILTER_OPTIONS.find((o) => o.value === selectedStatus) || STATUS_FILTER_OPTIONS[0]}
+            onChange={(val: SingleValue<CatFilterOption>) => setSelectedStatus((val?.value as MenuStatusFilter) || 'active')}
+            options={STATUS_FILTER_OPTIONS}
+            placeholder="Estado..."
+            isSearchable={false}
+          />
 
           <input
             type="text"
@@ -1278,6 +1299,16 @@ export default function Menu() {
                       onChange={(opt: SingleValue<StrOption>) => setFormData({ ...formData, brandId: opt ? opt.value : '' })}
                       isDisabled={!canMutateMenu}
                     />
+
+                    <label className="modal-input-group" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, cursor: canMutateMenu ? 'pointer' : 'default' }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.active}
+                        onChange={(e) => setFormData({ ...formData, active: e.target.checked })}
+                        disabled={!canMutateMenu}
+                      />
+                      <span className="modal-input-label" style={{ margin: 0 }}>Activo (visible en POS y menú)</span>
+                    </label>
 
                     <div className="modal-input-group">
                       <label className="modal-input-label" htmlFor="menu-item-price">Precio Final</label>

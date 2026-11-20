@@ -1,0 +1,2842 @@
+{
+ "schemaVersion": 1,
+ "phase": "B",
+ "companyId": 1,
+ "source": {
+  "file": "COSTO RECETAS.xlsx",
+  "sha256": "09cab7d96b62bb75c69df8723bead0c69e7e7389dea2aea7b8cbf78a7b10d765",
+  "asOfDate": "2026-06-21",
+  "reviewedAt": "2026-11-19",
+  "dependsOn": "costo-recetas-20261119.phaseA.json (aplicado)",
+  "decisions": [
+   "Manda COSTO RECETAS sobre Recetas Menu: se quita MIEL 310 de 11 lineas; Dulce Fiery conserva 397 70 g",
+   "Jamon serrano 26 por gramos reemplaza PROSCIUTTO 215",
+   "Ricotta casera 406 (sub-receta Excel, crema acida, 13 lb) en pizzas y antipastos",
+   "La Reina salsa roja 6 onz (170 g)",
+   "Rendimientos: salsa roja 440 onz, pesto 65 onz, ricotta 13 lb",
+   "Piña: VEG-000011 (172) costeada con Excel, usada en Maui",
+   "Empaques/servilletas/cubiertos omitidos",
+   "Rucula Pan Rustico 80 g",
+   "Aumentos de porcion aprobados",
+   "No se crean los 16 platos sin MenuItem ni sus intermedios",
+   "Vodka 614 = 600 C$ por 1.75 L (0.342857/ml); Salsa vodka 405 con su sub-receta Excel (R6 DRAFT editada y activada, 100 onz)",
+   "Masa precocida 374 desde BOM Excel (7 discos)",
+   "onz = 28.3495 g (vino en ml); lb = 453.592 g (\"N*450 gr\" del Excel = N lb)",
+   "Gorgonzola = producto 192"
+  ]
+ },
+ "requires": {
+  "phase": "A2",
+  "plan": "costo-recetas-20261119.phaseA2.json",
+  "products": [
+   {
+    "sku": "VGR-000002",
+    "productId": 371,
+    "cost": 0.2
+   },
+   {
+    "sku": "CCI-RVW-PAN-INTEGRAL",
+    "productId": 637,
+    "cost": 1.251643
+   },
+   {
+    "sku": "CCI-XLS-FRESA-CONGELADA",
+    "productId": null,
+    "cost": 0.244444,
+    "baseUnit": "g"
+   },
+   {
+    "sku": "CCI-XLS-NUEZ-MOSCADA",
+    "productId": null,
+    "cost": 4.230769,
+    "baseUnit": "g"
+   }
+  ]
+ },
+ "conventions": {
+  "onz": 28.3495,
+  "lb": 453.592,
+  "gal": 3785.41,
+  "costTolerancePct": 0.5,
+  "intermediateCostRounding": 6
+ },
+ "productCosts": [
+  {
+   "productId": 172,
+   "sku": "VEG-000011",
+   "name": "PIÑA GOLDEN",
+   "baseUnit": "lb",
+   "oldCost": 0,
+   "oldReferenceCostKnown": false,
+   "newCost": 120.957867,
+   "excelRow": 40,
+   "conversionPath": "und 120 C$ con 450 g aprovechables (3x150) -> 0.266667/g x 453.592"
+  },
+  {
+   "productId": 614,
+   "sku": "CCI-B39A60F59B",
+   "name": "Vodka",
+   "baseUnit": "ml",
+   "oldCost": 0.64,
+   "oldReferenceCostKnown": true,
+   "newCost": 0.342857,
+   "excelRow": 139,
+   "conversionPath": "botella 1.75 L a 600 C$ (decision negocio punto 11) -> 600/1750 ml"
+  },
+  {
+   "productId": 404,
+   "sku": "CCI-AGUA-PROCESO",
+   "name": "Agua de proceso",
+   "baseUnit": "ml",
+   "oldCost": 0,
+   "oldReferenceCostKnown": false,
+   "newCost": 0,
+   "allowZero": true,
+   "excelRow": 302,
+   "conversionPath": "agua de proceso: costo 0 conocido (referenceCostKnown=true); resolveEffectiveUnitCost lo trata como REFERENCE conocido"
+  }
+ ],
+ "productUnits": [
+  {
+   "productUnitId": 257,
+   "productId": 68,
+   "sku": "MIS-000018",
+   "name": "MAYONESA REAL GALÓN",
+   "active": false,
+   "unit": "ml",
+   "oldFactor": 0.000264,
+   "newFactor": 0.000264172177,
+   "reason": "1 ml = 1/3785.41 gal"
+  },
+  {
+   "productUnitId": 269,
+   "productId": 71,
+   "sku": "MIS-000021",
+   "name": "MOSTAZA GALÓN",
+   "active": false,
+   "unit": "ml",
+   "oldFactor": 0.000264,
+   "newFactor": 0.000264172177,
+   "reason": "1 ml = 1/3785.41 gal"
+  },
+  {
+   "productUnitId": 343,
+   "productId": 90,
+   "sku": "MIS-000040",
+   "name": "VINAGRE BLANCO DE 1 GALON",
+   "active": false,
+   "unit": "ml",
+   "oldFactor": 0.000264,
+   "newFactor": 0.000264172177,
+   "reason": "1 ml = 1/3785.41 gal"
+  },
+  {
+   "productUnitId": 541,
+   "productId": 146,
+   "sku": "LIM-000001",
+   "name": "AMBIENTADOR DOKAR LAVANDA 1 GL",
+   "active": false,
+   "unit": "ml",
+   "oldFactor": 0.000264,
+   "newFactor": 0.000264172177,
+   "reason": "1 ml = 1/3785.41 gal"
+  },
+  {
+   "productUnitId": 660,
+   "productId": 52,
+   "sku": "MIS-000002",
+   "name": "ACEITE VEGETAL MAZOLA",
+   "active": true,
+   "unit": "ml",
+   "oldFactor": 0.000264,
+   "newFactor": 0.000264172177,
+   "reason": "1 ml = 1/3785.41 gal"
+  },
+  {
+   "productUnitId": 997,
+   "productId": 172,
+   "sku": "VEG-000011",
+   "name": "PIÑA GOLDEN",
+   "active": true,
+   "unit": "unidad",
+   "oldFactor": 1,
+   "newFactor": 0.992080989083,
+   "reason": "1 piña = 450 g aprovechables (Excel L40 =K40/3/150) = 0.992081 lb; mantiene 120 C$/unidad = 120.957867/lb"
+  }
+ ],
+ "productUnitDefaults": [
+  {
+   "productUnitId": 633,
+   "productId": 172,
+   "sku": "VEG-000011",
+   "unit": "lb",
+   "oldIsDefault": true,
+   "newIsDefault": false,
+   "reason": "PIÑA GOLDEN se compra por unidad: unico default = unidad"
+  },
+  {
+   "productUnitId": 997,
+   "productId": 172,
+   "sku": "VEG-000011",
+   "unit": "unidad",
+   "oldIsDefault": true,
+   "newIsDefault": true,
+   "reason": "unico default"
+  }
+ ],
+ "productionRecipes": [
+  {
+   "key": "SALSA_ROJA",
+   "productId": 403,
+   "sku": "RCP-000001",
+   "productName": "Salsa roja",
+   "action": "NEW_VERSION",
+   "excelRows": "subrecetas!F123:J139",
+   "source": {
+    "recipeId": 4,
+    "name": "Receta de Salsa roja",
+    "version": 1,
+    "status": "ACTIVE",
+    "yield": {
+     "qty": 17000,
+     "unitId": 9
+    },
+    "components": [
+     {
+      "productId": 162,
+      "qty": 30,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 226,
+      "qty": 350,
+      "unit": "ml",
+      "unitId": 14
+     },
+     {
+      "productId": 370,
+      "qty": 80,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 594,
+      "qty": 15600,
+      "unit": "g",
+      "unitId": 9
+     }
+    ]
+   },
+   "target": {
+    "name": "Receta de Salsa roja",
+    "version": 2,
+    "status": "ACTIVE",
+    "yield": {
+     "qty": 12473.78,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "440 onz (J138 =80*5.5) x 28.3495"
+    },
+    "components": [
+     {
+      "productId": 162,
+      "qty": 30,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "Ajo 30 gr"
+     },
+     {
+      "productId": 226,
+      "qty": 385,
+      "unit": "ml",
+      "unitId": 14,
+      "excel": "Aceite oliva 385 ml"
+     },
+     {
+      "productId": 370,
+      "qty": 80,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "Albahaca 80 gr"
+     },
+     {
+      "productId": 594,
+      "qty": 15600,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "Tomate de lata 15600 gr (6 latas)"
+     }
+    ]
+   },
+   "omitted": [],
+   "expected": {
+    "batchCost": 1942.799898,
+    "yieldBaseQty": 12473.78,
+    "unitCost": 0.155751,
+    "perOz": 4.415463,
+    "excelPerBase": 0.155773,
+    "pctVsExcel": -0.01
+   }
+  },
+  {
+   "key": "RICOTTA",
+   "productId": 406,
+   "sku": "RCP-000010",
+   "productName": "Queso Ricotta producido",
+   "action": "NEW_VERSION",
+   "excelRows": "subrecetas!F234:I248",
+   "source": {
+    "recipeId": 8,
+    "name": "Receta de Queso Ricotta producido",
+    "version": 1,
+    "status": "ACTIVE",
+    "yield": {
+     "qty": 6810,
+     "unitId": 9
+    },
+    "components": [
+     {
+      "productId": 540,
+      "qty": 24,
+      "unit": "l",
+      "unitId": 15
+     },
+     {
+      "productId": 19,
+      "qty": 6,
+      "unit": "lb",
+      "unitId": 1
+     },
+     {
+      "productId": 552,
+      "qty": 450,
+      "unit": "ml",
+      "unitId": 14
+     },
+     {
+      "productId": 601,
+      "qty": 90,
+      "unit": "g",
+      "unitId": 9
+     }
+    ]
+   },
+   "target": {
+    "name": "Receta de Queso Ricotta producido",
+    "version": 2,
+    "status": "ACTIVE",
+    "yield": {
+     "qty": 5896.696,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "13 lb (I248 =J240/(13*16))"
+    },
+    "components": [
+     {
+      "productId": 540,
+      "qty": 24000,
+      "unit": "ml",
+      "unitId": 14,
+      "excel": "leche 24000 ml"
+     },
+     {
+      "productId": 18,
+      "qty": 2721.552,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "Crema acida 2700 gr = 6*450 (6 lb)"
+     },
+     {
+      "productId": 552,
+      "qty": 460,
+      "unit": "ml",
+      "unitId": 14,
+      "excel": "Vinagre blanco 460 ml"
+     },
+     {
+      "productId": 601,
+      "qty": 90,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "Sal 90 gr"
+     }
+    ]
+   },
+   "omitted": [],
+   "expected": {
+    "batchCost": 1703.036104,
+    "yieldBaseQty": 5896.696,
+    "unitCost": 0.288812,
+    "perOz": 8.187676,
+    "excelPerBase": 0.288364,
+    "pctVsExcel": 0.16
+   }
+  },
+  {
+   "key": "PESTO_PIZZA",
+   "productId": 402,
+   "sku": "RCP-000002",
+   "productName": "Salsa pesto",
+   "action": "NEW_VERSION",
+   "excelRows": "subrecetas!F88:I104",
+   "source": {
+    "recipeId": 5,
+    "name": "Receta de Salsa pesto",
+    "version": 1,
+    "status": "ACTIVE",
+    "yield": {
+     "qty": 1120,
+     "unitId": 9
+    },
+    "components": [
+     {
+      "productId": 266,
+      "qty": 50,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 226,
+      "qty": 896,
+      "unit": "ml",
+      "unitId": 14
+     },
+     {
+      "productId": 370,
+      "qty": 450,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 162,
+      "qty": 20,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 512,
+      "qty": 340,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 601,
+      "qty": 5,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 552,
+      "qty": 5,
+      "unit": "ml",
+      "unitId": 14
+     }
+    ]
+   },
+   "target": {
+    "name": "Receta de Salsa pesto",
+    "version": 2,
+    "status": "ACTIVE",
+    "yield": {
+     "qty": 1842.7175,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "65 onz"
+    },
+    "components": [
+     {
+      "productId": 370,
+      "qty": 500,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "Albahaca 500 gr"
+     },
+     {
+      "productId": 512,
+      "qty": 200,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "Queso parmesano 200 gr"
+     },
+     {
+      "productId": 226,
+      "qty": 1000,
+      "unit": "ml",
+      "unitId": 14,
+      "excel": "aceite de oliva 1000 ml"
+     },
+     {
+      "productId": 162,
+      "qty": 20,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "Ajo 20 gr"
+     },
+     {
+      "productId": 266,
+      "qty": 50,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "marañon 50 gr"
+     },
+     {
+      "productId": 601,
+      "qty": 10,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "sal 10 gr"
+     }
+    ]
+   },
+   "omitted": [],
+   "expected": {
+    "batchCost": 622.689713,
+    "yieldBaseQty": 1842.7175,
+    "unitCost": 0.337919,
+    "perOz": 9.579835,
+    "excelPerBase": 0.338914,
+    "pctVsExcel": -0.29
+   }
+  },
+  {
+   "key": "DISCO_14",
+   "productId": 374,
+   "sku": "PRD-000002",
+   "productName": "Masa precocida",
+   "action": "NEW_VERSION",
+   "excelRows": "subrecetas!F295:I306",
+   "source": {
+    "recipeId": 9,
+    "name": "Receta de Masa precocida",
+    "version": 1,
+    "status": "ACTIVE",
+    "yield": {
+     "qty": 4,
+     "unitId": 18
+    },
+    "components": [
+     {
+      "productId": 511,
+      "qty": 7,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 177,
+      "qty": 500,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 601,
+      "qty": 12.5,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 234,
+      "qty": 6,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 52,
+      "qty": 40,
+      "unit": "ml",
+      "unitId": 14
+     }
+    ]
+   },
+   "target": {
+    "name": "Receta de Masa precocida",
+    "version": 2,
+    "status": "ACTIVE",
+    "yield": {
+     "qty": 7,
+     "unit": "unidad",
+     "unitId": 18,
+     "excel": "7 discos"
+    },
+    "components": [
+     {
+      "productId": 511,
+      "qty": 1,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "Levadura 1 gr"
+     },
+     {
+      "productId": 177,
+      "qty": 1000,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "harina 1000 gr"
+     },
+     {
+      "productId": 601,
+      "qty": 20,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "sal 20 gr"
+     },
+     {
+      "productId": 234,
+      "qty": 1,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "azucar 1 gr"
+     },
+     {
+      "productId": 52,
+      "qty": 65,
+      "unit": "ml",
+      "unitId": 14,
+      "excel": "aceite vegetal 65 ml"
+     }
+    ]
+   },
+   "omitted": [
+    {
+     "excel": "Agua 530 gr (costo 0)",
+     "reason": "Agua de proceso 404 no lleva stock: el cierre de la orden de producción exige existencias y fallaría. Costo 0, no cambia costo ni rendimiento (refuta-faseB punto 4)"
+    }
+   ],
+   "expected": {
+    "batchCost": 35.510288,
+    "yieldBaseQty": 7,
+    "unitCost": 5.072898,
+    "perOz": null,
+    "excelPerBase": 5.106357,
+    "pctVsExcel": -0.66
+   }
+  },
+  {
+   "key": "SALSA_4_QUESOS",
+   "productId": 401,
+   "sku": "RCP-000003",
+   "productName": "Salsa 4 quesos",
+   "action": "CREATE",
+   "excelRows": "subrecetas!F249:I268",
+   "source": null,
+   "target": {
+    "name": "Salsa 4 quesos",
+    "version": 1,
+    "status": "ACTIVE",
+    "yield": {
+     "qty": 3855.532,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "8.5 lb (I266)"
+    },
+    "components": [
+     {
+      "productId": 540,
+      "qty": 3000,
+      "unit": "ml",
+      "unitId": 14,
+      "excel": "Leche 3000 ml"
+     },
+     {
+      "productId": 177,
+      "qty": 240,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "harina 240 gr"
+     },
+     {
+      "productId": 226,
+      "qty": 260,
+      "unit": "ml",
+      "unitId": 14,
+      "excel": "aceite de oliva 260 ml"
+     },
+     {
+      "productId": 398,
+      "qty": 360,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "queso mozzarella fresco 360 gr"
+     },
+     {
+      "productId": 512,
+      "qty": 360,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "parmesano 360 gr"
+     },
+     {
+      "productId": 192,
+      "qty": 120,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "gorgonzola 120 gr (producto 192)"
+     },
+     {
+      "productId": null,
+      "productSku": "CCI-XLS-NUEZ-MOSCADA",
+      "qty": 3,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "nuez moscada 3 gr (producto nuevo fase A2)"
+     }
+    ]
+   },
+   "omitted": [],
+   "expected": {
+    "batchCost": 659.170346,
+    "yieldBaseQty": 3855.532,
+    "unitCost": 0.170967,
+    "perOz": 4.846829,
+    "excelPerBase": 0.171362,
+    "pctVsExcel": -0.23
+   }
+  },
+  {
+   "key": "CHORIZO_ITALIANO",
+   "productId": 373,
+   "sku": "PRD-000001",
+   "productName": "Carne Della Nonna",
+   "action": "EDIT_DRAFT",
+   "excelRows": "subrecetas!F212:J233",
+   "source": {
+    "recipeId": 7,
+    "name": "Receta de Carne Della Nonna",
+    "version": 1,
+    "status": "DRAFT",
+    "yield": {
+     "qty": 1053,
+     "unitId": 9
+    },
+    "components": [
+     {
+      "productId": 187,
+      "qty": 2,
+      "unit": "lb",
+      "unitId": 1
+     },
+     {
+      "productId": 219,
+      "qty": 80,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 512,
+      "qty": 50,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 162,
+      "qty": 15,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 598,
+      "qty": 20,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 237,
+      "qty": 10,
+      "unit": "g",
+      "unitId": 9
+     }
+    ]
+   },
+   "target": {
+    "name": "Carne Della Nonna (chorizo italiano)",
+    "version": 1,
+    "status": "ACTIVE",
+    "yield": {
+     "qty": 1051.785,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "1051.785 gr (J232 =3.5*28.35*10.6)"
+    },
+    "components": [
+     {
+      "productId": 187,
+      "qty": 907.184,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "Carne molida 900 gr = 2 lb (2*450)"
+     },
+     {
+      "productId": 406,
+      "qty": 85.0485,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "Ricotta casera 3 onz"
+     },
+     {
+      "productId": 512,
+      "qty": 50,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "Parmesano 50 gr"
+     },
+     {
+      "productId": 162,
+      "qty": 15,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "Ajo 15 gr"
+     },
+     {
+      "productId": 599,
+      "qty": 4,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "Chile seco 4 gr"
+     },
+     {
+      "productId": 519,
+      "qty": 10,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "oregano seco 10 gr"
+     },
+     {
+      "productId": 601,
+      "qty": 15,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "Sal 15 gr"
+     }
+    ]
+   },
+   "omitted": [],
+   "expected": {
+    "batchCost": 588.244194,
+    "yieldBaseQty": 1051.785,
+    "unitCost": 0.559282,
+    "perOz": 15.855365,
+    "excelPerBase": 0.559283,
+    "pctVsExcel": 0
+   }
+  },
+  {
+   "key": "SALSA_VODKA",
+   "productId": 405,
+   "sku": "RCP-000009",
+   "productName": "Salsa vodka",
+   "action": "EDIT_DRAFT",
+   "excelRows": "subrecetas!F271:I288",
+   "source": {
+    "recipeId": 6,
+    "name": "Receta de Salsa vodka",
+    "version": 1,
+    "status": "DRAFT",
+    "yield": {
+     "qty": 1039,
+     "unitId": 9
+    },
+    "components": [
+     {
+      "productId": 614,
+      "qty": 56,
+      "unit": "ml",
+      "unitId": 14
+     },
+     {
+      "productId": 166,
+      "qty": 70,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 162,
+      "qty": 5,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 226,
+      "qty": 28,
+      "unit": "ml",
+      "unitId": 14
+     },
+     {
+      "productId": 594,
+      "qty": 700,
+      "unit": "g",
+      "unitId": 9
+     },
+     {
+      "productId": 19,
+      "qty": 180,
+      "unit": "g",
+      "unitId": 9
+     }
+    ]
+   },
+   "target": {
+    "name": "Receta de Salsa vodka",
+    "version": 1,
+    "status": "ACTIVE",
+    "yield": {
+     "qty": 2834.95,
+     "unit": "g",
+     "unitId": 9,
+     "excel": "100 onz"
+    },
+    "components": [
+     {
+      "productId": 19,
+      "qty": 453.592,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "Crema dulce 450 gr = 1 lb"
+     },
+     {
+      "productId": 403,
+      "qty": 2267.96,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "Salsa roja 80 onz (sub-receta anidada)"
+     },
+     {
+      "productId": 166,
+      "qty": 120,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "cebolla 120 gr"
+     },
+     {
+      "productId": 601,
+      "qty": 5,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "sal 5 gr"
+     },
+     {
+      "productId": 551,
+      "qty": 5,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "pimienta 5 gr"
+     },
+     {
+      "productId": 599,
+      "qty": 10,
+      "unit": "g",
+      "unitId": 9,
+      "excel": "chile seco 10 gr"
+     },
+     {
+      "productId": 614,
+      "qty": 59.147,
+      "unit": "ml",
+      "unitId": 14,
+      "excel": "vodka 2 onz fl (J279 corregida: onz x costo por ml)"
+     }
+    ]
+   },
+   "omitted": [],
+   "expected": {
+    "batchCost": 455.423438,
+    "yieldBaseQty": 2834.95,
+    "unitCost": 0.160646,
+    "perOz": 4.554234,
+    "excelPerBase": 0.160721,
+    "pctVsExcel": -0.05
+   }
+  }
+ ],
+ "intermediateCosts": [
+  {
+   "productId": 403,
+   "sku": "RCP-000001",
+   "name": "Salsa roja",
+   "baseUnit": "g",
+   "oldCost": 0.11,
+   "oldReferenceCostKnown": true,
+   "expectedNewCost": 0.155751,
+   "perOz": 4.415463,
+   "bom": {
+    "recipeKey": "SALSA_ROJA"
+   }
+  },
+  {
+   "productId": 405,
+   "sku": "RCP-000009",
+   "name": "Salsa vodka",
+   "baseUnit": "g",
+   "oldCost": 0.14,
+   "oldReferenceCostKnown": true,
+   "expectedNewCost": 0.160646,
+   "perOz": 4.554234,
+   "bom": {
+    "recipeKey": "SALSA_VODKA"
+   }
+  },
+  {
+   "productId": 406,
+   "sku": "RCP-000010",
+   "name": "Queso Ricotta producido",
+   "baseUnit": "g",
+   "oldCost": 0.18,
+   "oldReferenceCostKnown": true,
+   "expectedNewCost": 0.288812,
+   "perOz": 8.187676,
+   "bom": {
+    "recipeKey": "RICOTTA"
+   }
+  },
+  {
+   "productId": 402,
+   "sku": "RCP-000002",
+   "name": "Salsa pesto",
+   "baseUnit": "g",
+   "oldCost": 0.55,
+   "oldReferenceCostKnown": true,
+   "expectedNewCost": 0.337919,
+   "perOz": 9.579835,
+   "bom": {
+    "recipeKey": "PESTO_PIZZA"
+   }
+  },
+  {
+   "productId": 374,
+   "sku": "PRD-000002",
+   "name": "Masa precocida",
+   "baseUnit": "unidad",
+   "oldCost": 0,
+   "oldReferenceCostKnown": false,
+   "expectedNewCost": 5.072898,
+   "perOz": null,
+   "bom": {
+    "recipeKey": "DISCO_14"
+   }
+  },
+  {
+   "productId": 401,
+   "sku": "RCP-000003",
+   "name": "Salsa 4 quesos",
+   "baseUnit": "g",
+   "oldCost": 0.15,
+   "oldReferenceCostKnown": true,
+   "expectedNewCost": 0.170967,
+   "perOz": 4.846829,
+   "bom": {
+    "recipeKey": "SALSA_4_QUESOS"
+   }
+  },
+  {
+   "productId": 373,
+   "sku": "PRD-000001",
+   "name": "Carne Della Nonna",
+   "baseUnit": "g",
+   "oldCost": 0,
+   "oldReferenceCostKnown": false,
+   "expectedNewCost": 0.559282,
+   "perOz": 15.855365,
+   "bom": {
+    "recipeKey": "CHORIZO_ITALIANO"
+   }
+  },
+  {
+   "productId": 407,
+   "sku": "RCP-000011",
+   "name": "Masa integral",
+   "baseUnit": "unidad",
+   "oldCost": 5.86,
+   "oldReferenceCostKnown": true,
+   "expectedNewCost": 5.286799,
+   "perOz": null,
+   "bom": {
+    "recipeId": 10,
+    "note": "BOM ACTIVE sin cambios; solo se sincroniza Product.cost"
+   }
+  },
+  {
+   "productId": 408,
+   "sku": "RCP-000012",
+   "name": "Brownie",
+   "baseUnit": "unidad",
+   "oldCost": 40.45,
+   "oldReferenceCostKnown": true,
+   "expectedNewCost": 40.314062,
+   "perOz": null,
+   "bom": {
+    "recipeId": 11,
+    "note": "BOM ACTIVE sin cambios; solo se sincroniza Product.cost"
+   }
+  },
+  {
+   "productId": 636,
+   "sku": "RCP-000016",
+   "name": "Té preparado",
+   "baseUnit": "unidad",
+   "oldCost": 9.93,
+   "oldReferenceCostKnown": true,
+   "expectedNewCost": 12.017649,
+   "perOz": null,
+   "bom": {
+    "recipeId": 13,
+    "note": "BOM ACTIVE sin cambios; solo se sincroniza Product.cost"
+   }
+  }
+ ],
+ "menuRecipes": [
+  {
+   "menuItemId": 1,
+   "name": "Pitza Pepperoni",
+   "type": "PREPARED",
+   "price": 565,
+   "excelSheet": "Pizzas",
+   "excelRows": "13-19",
+   "notes": "pepperoni 60->65 g; sin miel 310",
+   "old": [
+    {
+     "recipeId": 1,
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 4,
+     "productId": 211,
+     "quantity": 60,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 176,
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 177,
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 178,
+     "productId": 310,
+     "quantity": 70,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "new": [
+    {
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 211,
+     "quantity": 65,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "cost": {
+    "before": 100.51,
+    "after": 106.35,
+    "excelOriginal": 106.48,
+    "excelCorrected": 106.48,
+    "excelNote": null,
+    "pctAfterVsExcel": -0.12
+   }
+  },
+  {
+   "menuItemId": 2,
+   "name": "Cheese Bar Pie",
+   "type": "PREPARED",
+   "price": 510,
+   "excelSheet": "Pizzas",
+   "excelRows": "136-142",
+   "notes": "ricotta 219 36 g -> 406 casera 2 onz; sin miel",
+   "old": [
+    {
+     "recipeId": 5,
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 8,
+     "productId": 219,
+     "quantity": 36,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 145,
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 146,
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 147,
+     "productId": 310,
+     "quantity": 70,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "new": [
+    {
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 406,
+     "quantity": 57,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "cost": {
+    "before": 82.29,
+    "after": 96.44,
+    "excelOriginal": 96.25,
+    "excelCorrected": 96.25,
+    "excelNote": null,
+    "pctAfterVsExcel": 0.2
+   }
+  },
+  {
+   "menuItemId": 3,
+   "name": "Capresse",
+   "type": "PREPARED",
+   "price": 550,
+   "excelSheet": "Pizzas",
+   "excelRows": "3-11",
+   "notes": "cherry 150, albahaca 25, mozz. fresco 60; sin miel",
+   "old": [
+    {
+     "recipeId": 9,
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 12,
+     "productId": 370,
+     "quantity": 36,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 13,
+     "productId": 371,
+     "quantity": 60,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 141,
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 142,
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 143,
+     "productId": 398,
+     "quantity": 35,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 144,
+     "productId": 310,
+     "quantity": 70,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "new": [
+    {
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 371,
+     "quantity": 150,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 370,
+     "quantity": 25,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 398,
+     "quantity": 60,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "cost": {
+    "before": 105.52,
+    "after": 135.22,
+    "excelOriginal": 135.34,
+    "excelCorrected": 135.34,
+    "excelNote": null,
+    "pctAfterVsExcel": -0.09
+   }
+  },
+  {
+   "menuItemId": 4,
+   "name": "La Cotto",
+   "type": "PREPARED",
+   "price": 530,
+   "excelSheet": "Pizzas",
+   "excelRows": "39-46",
+   "notes": "sin miel 310",
+   "old": [
+    {
+     "recipeId": 15,
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 18,
+     "productId": 195,
+     "quantity": 95,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 158,
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 159,
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 160,
+     "productId": 398,
+     "quantity": 35,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 161,
+     "productId": 310,
+     "quantity": 70,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "new": [
+    {
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 195,
+     "quantity": 95,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 398,
+     "quantity": 35,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "cost": {
+    "before": 128.36,
+    "after": 132.17,
+    "excelOriginal": 132.51,
+    "excelCorrected": 132.51,
+    "excelNote": null,
+    "pctAfterVsExcel": -0.26
+   }
+  },
+  {
+   "menuItemId": 5,
+   "name": "La Extra",
+   "type": "PREPARED",
+   "price": 530,
+   "excelSheet": "Pizzas",
+   "excelRows": "21-28",
+   "notes": "pepperoni 65, hongos 80; sin miel",
+   "old": [
+    {
+     "recipeId": 20,
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 23,
+     "productId": 211,
+     "quantity": 36,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 162,
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 163,
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 164,
+     "productId": 396,
+     "quantity": 60,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 165,
+     "productId": 310,
+     "quantity": 70,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "new": [
+    {
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 211,
+     "quantity": 65,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 396,
+     "quantity": 80,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "cost": {
+    "before": 130.04,
+    "after": 158.71,
+    "excelOriginal": 158.84,
+    "excelCorrected": 158.84,
+    "excelNote": null,
+    "pctAfterVsExcel": -0.08
+   }
+  },
+  {
+   "menuItemId": 6,
+   "name": "La Bianco",
+   "type": "PREPARED",
+   "price": 685,
+   "excelSheet": "Pizzas",
+   "excelRows": "47-55",
+   "notes": "prosciutto 2 und -> jamon serrano 26 30 g; ricotta 406; rucula 40; sin miel",
+   "old": [
+    {
+     "recipeId": 25,
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 28,
+     "productId": 372,
+     "quantity": 36,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 29,
+     "productId": 215,
+     "quantity": 2,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 30,
+     "productId": 219,
+     "quantity": 28,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 155,
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 156,
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 157,
+     "productId": 310,
+     "quantity": 70,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "new": [
+    {
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 372,
+     "quantity": 40,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 26,
+     "quantity": 30,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 406,
+     "quantity": 28,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "cost": {
+    "before": 141,
+    "after": 147.48,
+    "excelOriginal": 147.6,
+    "excelCorrected": 147.6,
+    "excelNote": null,
+    "pctAfterVsExcel": -0.08
+   }
+  },
+  {
+   "menuItemId": 7,
+   "name": "Dulce Fiery",
+   "type": "PREPARED",
+   "price": 570,
+   "excelSheet": "Pizzas",
+   "excelRows": "57-66",
+   "notes": "pepperoni 65, jalapeno 35; quita miel 310 10 g; conserva miel 397 70 g (Excel G65)",
+   "old": [
+    {
+     "recipeId": 31,
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 34,
+     "productId": 211,
+     "quantity": 36,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 35,
+     "productId": 348,
+     "quantity": 10,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 36,
+     "productId": 310,
+     "quantity": 10,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 151,
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 152,
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 153,
+     "productId": 173,
+     "quantity": 5,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 154,
+     "productId": 397,
+     "quantity": 70,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "new": [
+    {
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 211,
+     "quantity": 65,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 348,
+     "quantity": 35,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 173,
+     "quantity": 5,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 397,
+     "quantity": 70,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "cost": {
+    "before": 95.28,
+    "after": 121.36,
+    "excelOriginal": 121.51,
+    "excelCorrected": 121.51,
+    "excelNote": null,
+    "pctAfterVsExcel": -0.12
+   }
+  },
+  {
+   "menuItemId": 8,
+   "name": "Maui Pitza",
+   "type": "PREPARED",
+   "price": 590,
+   "excelSheet": "Pizzas",
+   "excelRows": "68-76",
+   "notes": "jamon 100; pina 172 150 g (antes 70 g sin costo); sin miel",
+   "old": [
+    {
+     "recipeId": 37,
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 40,
+     "productId": 195,
+     "quantity": 80,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 42,
+     "productId": 346,
+     "quantity": 15,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 172,
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 173,
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 174,
+     "productId": 172,
+     "quantity": 70,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 175,
+     "productId": 310,
+     "quantity": 70,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "new": [
+    {
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 195,
+     "quantity": 100,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 172,
+     "quantity": 150,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 346,
+     "quantity": 15,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "cost": {
+    "before": 113.98,
+    "after": 166.84,
+    "excelOriginal": 167.12,
+    "excelCorrected": 167.12,
+    "excelNote": null,
+    "pctAfterVsExcel": -0.17
+   }
+  },
+  {
+   "menuItemId": 9,
+   "name": "Basilea",
+   "type": "PREPARED",
+   "price": 595,
+   "excelSheet": "Pizzas",
+   "excelRows": "78-86",
+   "notes": "mozz. 199, pesto 5 onz, mozz. fresco 60, cherry 120; sin miel",
+   "old": [
+    {
+     "recipeId": 43,
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 47,
+     "productId": 371,
+     "quantity": 50,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 136,
+     "productId": 399,
+     "quantity": 150,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 137,
+     "productId": 402,
+     "quantity": 60,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 138,
+     "productId": 398,
+     "quantity": 35,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 139,
+     "productId": 400,
+     "quantity": 10,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 140,
+     "productId": 310,
+     "quantity": 70,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "new": [
+    {
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 402,
+     "quantity": 142,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 398,
+     "quantity": 60,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 371,
+     "quantity": 120,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 400,
+     "quantity": 10,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "cost": {
+    "before": 100.8,
+    "after": 148.86,
+    "excelOriginal": 148.94,
+    "excelCorrected": 148.94,
+    "excelNote": null,
+    "pctAfterVsExcel": -0.05
+   }
+  },
+  {
+   "menuItemId": 10,
+   "name": "Della Nonna",
+   "type": "PREPARED",
+   "price": 560,
+   "excelSheet": "Pizzas",
+   "excelRows": "88-95",
+   "notes": "ricotta 219 28 g -> 406 2 onz; sin miel",
+   "old": [
+    {
+     "recipeId": 48,
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 51,
+     "productId": 373,
+     "quantity": 100,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 52,
+     "productId": 219,
+     "quantity": 28,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 148,
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 149,
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 150,
+     "productId": 310,
+     "quantity": 70,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "new": [
+    {
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 373,
+     "quantity": 100,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 406,
+     "quantity": 57,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "cost": {
+    "before": 80.93,
+    "after": 152.37,
+    "excelOriginal": 152.18,
+    "excelCorrected": 152.18,
+    "excelNote": null,
+    "pctAfterVsExcel": 0.12
+   }
+  },
+  {
+   "menuItemId": 11,
+   "name": "4 Quesos y Hongos",
+   "type": "PREPARED",
+   "price": 580,
+   "excelSheet": "Pizzas",
+   "excelRows": "30-38",
+   "notes": "salsa 4 quesos 6 onz, +gorgonzola 192 30 g, hongos 80, ricotta 406 1 onz; sin miel",
+   "old": [
+    {
+     "recipeId": 69,
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 70,
+     "productId": 219,
+     "quantity": 36,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 132,
+     "productId": 401,
+     "quantity": 84,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 133,
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 134,
+     "productId": 396,
+     "quantity": 98,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 135,
+     "productId": 310,
+     "quantity": 70,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "new": [
+    {
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 401,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 192,
+     "quantity": 30,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 396,
+     "quantity": 80,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 406,
+     "quantity": 28,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "cost": {
+    "before": 140.33,
+    "after": 165.07,
+    "excelOriginal": 165.32,
+    "excelCorrected": 165.32,
+    "excelNote": null,
+    "pctAfterVsExcel": -0.15
+   }
+  },
+  {
+   "menuItemId": 12,
+   "name": "La Sussana",
+   "type": "PREPARED",
+   "price": 590,
+   "excelSheet": "Pizzas",
+   "excelRows": "107-115",
+   "notes": "jamon 100, hongos 80, mozz. fresco 60",
+   "old": [
+    {
+     "recipeId": 58,
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 62,
+     "productId": 195,
+     "quantity": 95,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 168,
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 169,
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 170,
+     "productId": 396,
+     "quantity": 70,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 171,
+     "productId": 398,
+     "quantity": 70,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "new": [
+    {
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 195,
+     "quantity": 100,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 396,
+     "quantity": 80,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 398,
+     "quantity": 60,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "cost": {
+    "before": 174.4,
+    "after": 193.41,
+    "excelOriginal": 193.82,
+    "excelCorrected": 193.82,
+    "excelNote": null,
+    "pctAfterVsExcel": -0.21
+   }
+  },
+  {
+   "menuItemId": 13,
+   "name": "La Pedronni",
+   "type": "PREPARED",
+   "price": 585,
+   "excelSheet": "Pizzas",
+   "excelRows": "117-124",
+   "notes": "pepperoni 130, jalapeno 70",
+   "old": [
+    {
+     "recipeId": 74,
+     "productId": 348,
+     "quantity": 28,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 76,
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 78,
+     "productId": 211,
+     "quantity": 90,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 166,
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 167,
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "new": [
+    {
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 211,
+     "quantity": 130,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 348,
+     "quantity": 70,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "cost": {
+    "before": 106.73,
+    "after": 140.44,
+    "excelOriginal": 140.83,
+    "excelCorrected": 140.83,
+    "excelNote": null,
+    "pctAfterVsExcel": -0.28
+   }
+  },
+  {
+   "menuItemId": 23,
+   "name": "Tabla de Antipasto",
+   "type": "PREPARED",
+   "price": 587,
+   "excelSheet": "Antipastos",
+   "excelRows": "19-29",
+   "notes": "ricotta 1.5 onz, prosciutto -> serrano 40 g, pesto 1 onz, fresa 528 -> FRESA CONGELADA (A2) 30 g",
+   "old": [
+    {
+     "recipeId": 195,
+     "productId": 637,
+     "quantity": 3,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 196,
+     "productId": 406,
+     "quantity": 40,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 197,
+     "productId": 215,
+     "quantity": 2,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 198,
+     "productId": 372,
+     "quantity": 20,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 199,
+     "productId": 371,
+     "quantity": 60,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 200,
+     "productId": 528,
+     "quantity": 30,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 201,
+     "productId": 402,
+     "quantity": 15,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 202,
+     "productId": 211,
+     "quantity": 15,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "new": [
+    {
+     "productId": 637,
+     "quantity": 3,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 406,
+     "quantity": 43,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 26,
+     "quantity": 40,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 372,
+     "quantity": 20,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 371,
+     "quantity": 60,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": null,
+     "quantity": 30,
+     "unit": "g",
+     "unitId": 9,
+     "productSku": "CCI-XLS-FRESA-CONGELADA"
+    },
+    {
+     "productId": 402,
+     "quantity": 28,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 211,
+     "quantity": 15,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "cost": {
+    "before": 111.46,
+    "after": 117.78,
+    "excelOriginal": 117.87,
+    "excelCorrected": 117.87,
+    "excelNote": null,
+    "pctAfterVsExcel": -0.08
+   }
+  },
+  {
+   "menuItemId": 24,
+   "name": "Pan Rústico",
+   "type": "PREPARED",
+   "price": 495,
+   "excelSheet": "Antipastos",
+   "excelRows": "31-39",
+   "notes": "ricotta 1 onz, pesto 1 onz, rucula 80 g (decision), prosciutto -> serrano 40 g",
+   "old": [
+    {
+     "recipeId": 203,
+     "productId": 637,
+     "quantity": 2,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 204,
+     "productId": 406,
+     "quantity": 20,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 205,
+     "productId": 402,
+     "quantity": 20,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 206,
+     "productId": 372,
+     "quantity": 80,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 207,
+     "productId": 215,
+     "quantity": 2,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 208,
+     "productId": 371,
+     "quantity": 50,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "new": [
+    {
+     "productId": 637,
+     "quantity": 2,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 406,
+     "quantity": 28,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 402,
+     "quantity": 28,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 372,
+     "quantity": 80,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 26,
+     "quantity": 40,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 371,
+     "quantity": 50,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "cost": {
+    "before": 106.66,
+    "after": 119.26,
+    "excelOriginal": 90.45,
+    "excelCorrected": 119.73,
+    "excelNote": "Excel corregido 116.28 ajustado a rucula 80 g (decision 8)",
+    "pctAfterVsExcel": -0.39
+   }
+  },
+  {
+   "menuItemId": 25,
+   "name": "Rúcula & Hongos al Vino",
+   "type": "PREPARED",
+   "price": 457,
+   "excelSheet": "Antipastos",
+   "excelRows": "3-12",
+   "notes": "ricotta 1 onz (vino 517 60 ml ya aplicado en fase A)",
+   "old": [
+    {
+     "recipeId": 209,
+     "productId": 637,
+     "quantity": 2,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 210,
+     "productId": 406,
+     "quantity": 20,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 211,
+     "productId": 195,
+     "quantity": 80,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 212,
+     "productId": 372,
+     "quantity": 40,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 213,
+     "productId": 371,
+     "quantity": 40,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 214,
+     "productId": 592,
+     "quantity": 100,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 215,
+     "productId": 517,
+     "quantity": 60,
+     "unit": "ml",
+     "unitId": 14
+    }
+   ],
+   "new": [
+    {
+     "productId": 637,
+     "quantity": 2,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 406,
+     "quantity": 28,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 195,
+     "quantity": 80,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 372,
+     "quantity": 40,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 371,
+     "quantity": 40,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 592,
+     "quantity": 100,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 517,
+     "quantity": 60,
+     "unit": "ml",
+     "unitId": 14
+    }
+   ],
+   "cost": {
+    "before": 150.68,
+    "after": 151.27,
+    "excelOriginal": 152.43,
+    "excelCorrected": 152.43,
+    "excelNote": null,
+    "pctAfterVsExcel": -0.76
+   }
+  },
+  {
+   "menuItemId": 26,
+   "name": "Alla Vodka",
+   "type": "PREPARED",
+   "price": 575,
+   "excelSheet": "Pizzas",
+   "excelRows": "97-103",
+   "notes": "prosciutto -> serrano 35 g (salsa vodka 405 desde BOM Excel)",
+   "old": [
+    {
+     "recipeId": 216,
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 217,
+     "productId": 405,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 218,
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 219,
+     "productId": 215,
+     "quantity": 2,
+     "unit": "unidad",
+     "unitId": 18
+    }
+   ],
+   "new": [
+    {
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 405,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 399,
+     "quantity": 199,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 26,
+     "quantity": 35,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "cost": {
+    "before": 118.81,
+    "after": 132.64,
+    "excelOriginal": 131.38,
+    "excelCorrected": 131.38,
+    "excelNote": null,
+    "pctAfterVsExcel": 0.96
+   }
+  },
+  {
+   "menuItemId": 28,
+   "name": "La Reina",
+   "type": "PREPARED",
+   "price": 560,
+   "excelSheet": "Pizzas",
+   "excelRows": "126-132",
+   "notes": "salsa roja 224 -> 170 g (6 onz), parmesano 30, albahaca 30",
+   "old": [
+    {
+     "recipeId": 224,
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "recipeId": 225,
+     "productId": 403,
+     "quantity": 224,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 226,
+     "productId": 512,
+     "quantity": 25,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "recipeId": 227,
+     "productId": 370,
+     "quantity": 10,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "new": [
+    {
+     "productId": 374,
+     "quantity": 1,
+     "unit": "unidad",
+     "unitId": 18
+    },
+    {
+     "productId": 403,
+     "quantity": 170,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 512,
+     "quantity": 30,
+     "unit": "g",
+     "unitId": 9
+    },
+    {
+     "productId": 370,
+     "quantity": 30,
+     "unit": "g",
+     "unitId": 9
+    }
+   ],
+   "cost": {
+    "before": 43.4,
+    "after": 60.81,
+    "excelOriginal": 77.5,
+    "excelCorrected": 60.95,
+    "excelNote": null,
+    "pctAfterVsExcel": -0.23
+   }
+  }
+ ],
+ "outOfScope": [
+  "16 platos del Excel sin MenuItem y sus 13 intermedios: fase C (construye sobre B: usa 403/405/406/402/373/374 ya costeados)",
+  "Agua de proceso 404 fuera de las versiones nuevas de BOM (sin stock; costo 0). R10 Masa integral y R13 Te la conservan (no se versionan aqui)",
+  "ProductUnit oz_fl de productos base gal (0.007812): sin cambio (error 0.006%)",
+  "BOM R12 Pan de acompañamiento (DRAFT): sin cambios"
+ ]
+}

@@ -1,0 +1,75 @@
+{
+ "schemaVersion": 1,
+ "phase": "A2",
+ "companyId": 1,
+ "source": {
+  "file": "COSTO RECETAS.xlsx",
+  "sha256": "09cab7d96b62bb75c69df8723bead0c69e7e7389dea2aea7b8cbf78a7b10d765",
+  "asOfDate": "2026-06-21",
+  "reviewedAt": "2026-11-19",
+  "dependsOn": "costo-recetas-20261119.phaseA.json (aplicado)",
+  "review": "anexo pedido por refuta-faseB.md punto 5; requisito de la fase B"
+ },
+ "productCosts": [
+  {
+   "productId": 371,
+   "sku": "VGR-000002",
+   "name": "Tomate cherry",
+   "baseUnit": "g",
+   "oldCost": 0.11,
+   "newCost": 0.2,
+   "excelRow": 31,
+   "conversionPath": "INGREDIENTES L31 = J31/450 (bandeja C$90 = 1 lb Excel); el 0.11 venia de compras (50 por 454 g)"
+  },
+  {
+   "productId": 637,
+   "sku": "CCI-RVW-PAN-INTEGRAL",
+   "name": "Rodaja de pan integral",
+   "baseUnit": "unidad",
+   "oldCost": 5,
+   "newCost": 1.251643,
+   "excelRow": 205,
+   "conversionPath": "INGREDIENTES L205 = subrecetas!I336 = I335/10 (pan molde casero 37.5493 / 3 barras / 10 rodajas)"
+  }
+ ],
+ "productUnits": [],
+ "recipeLines": [],
+ "newProducts": [
+  {
+   "sku": "CCI-XLS-FRESA-CONGELADA",
+   "name": "FRESA CONGELADA",
+   "type": "INGREDIENT",
+   "baseUnit": "g",
+   "categoryId": 7,
+   "categoryName": "Vegetales",
+   "storageType": "FROZEN",
+   "cost": 0.244444,
+   "excelRow": 203,
+   "conversionPath": "INGREDIENTES L203 = J203/(450*5) (bolsa C$550); distinto de 528 FRESAS FRESCAS (fila 39)"
+  },
+  {
+   "sku": "CCI-XLS-NUEZ-MOSCADA",
+   "name": "NUEZ MOSCADA",
+   "type": "INGREDIENT",
+   "baseUnit": "g",
+   "categoryId": 10,
+   "categoryName": "Misceláneo",
+   "storageType": "NON_PERISHABLE",
+   "cost": 4.230769,
+   "excelRow": 111,
+   "conversionPath": "INGREDIENTES L111 = J111/I111 (C$55 / 13 g)"
+  },
+  {
+   "sku": "CCI-XLS-SAZONADOR-POLLO",
+   "name": "SAZONADOR DE POLLO",
+   "type": "INGREDIENT",
+   "baseUnit": "g",
+   "categoryId": 10,
+   "categoryName": "Misceláneo",
+   "storageType": "NON_PERISHABLE",
+   "cost": 0.499811,
+   "excelRow": 76,
+   "conversionPath": "INGREDIENTES L76 = J76/793.8 (C$396.75; el Excel lo rotula SAZONADOR y K76 da #DIV/0!); requerido por la fase C"
+  }
+ ]
+}
