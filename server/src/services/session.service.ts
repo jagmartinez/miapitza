@@ -94,6 +94,15 @@ export class SessionService {
         });
     }
 
+    /** Revoke every active session tagged with an operational-device tag (e.g. `op-device:7`). */
+    static async revokeByDevice(tag: string, db: SessionClient = prisma): Promise<number> {
+        const result = await db.userSession.updateMany({
+            where: { device: tag, revoked: false },
+            data: { revoked: true },
+        });
+        return result.count;
+    }
+
     /** Revoke the session identified by a raw token (e.g. on logout) */
     static async revokeByToken(token: string, db: SessionClient = prisma) {
         return db.userSession.updateMany({
